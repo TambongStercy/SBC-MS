@@ -1,0 +1,149 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Rules for Sniper Business Center Microservices Project
+
+This project follows a microservices architecture. Please adhere to the following guidelines when making changes or analyzing the code:
+
+## Core Architecture Rules
+
+1. **Microservice Independence:** Each service must be completely independent, with its own codebase, dependencies, and database models.
+2. **Targeted Changes:** Always make modifications within the specific service directory they relate to (e.g., user-service/, payment-service/).
+3. **Service Communication:** Services communicate via REST APIs or message queues. Never directly access another service's database.
+4. **Configuration Management:** Each service manages its own environment variables via a `.env` file within its directory.
+5. **Service-Specific Dependencies:** Install dependencies per microservice with `npm install` executed within that service's directory.
+
+## Service Structure
+
+6. **Standard Directory Structure:**
+   * `src/`: All source code (`.ts` files)
+   * `src/api/`: Routes, controllers, middleware
+   * `src/api/controllers/`: Handle HTTP requests and responses
+   * `src/api/middleware/`: Authentication, validation, error handling
+   * `src/api/routes/`: Define API endpoints and connect to controllers
+   * `src/services/`: Business logic implementation
+   * `src/database/`: Database-related code
+   * `src/database/models/`: Mongoose schemas and interfaces
+   * `src/database/repositories/`: Data access layer
+   * `src/database/connection.ts`: Database connection setup
+   * `src/utils/`: Utility functions and helpers
+   * `src/config/`: Environment configuration
+   * `src/jobs/`: Background jobs and processors (if applicable)
+   * `src/server.ts`: Entry point for the service
+   * `logs/`: Log output directory
+
+7. **Model-Repository Pattern:**
+   * Models define schemas and interfaces only - no methods in model files
+   * All database operations go in repository classes
+   * Services use repositories, never interact with models directly
+   * Each model has a corresponding repository
+
+8. **Controller Structure:**
+   * Controllers should be thin wrappers around service calls
+   * Handle request/response formatting only
+   * Delegate business logic to service layer
+   * Follow consistent error handling patterns
+
+## Coding Standards
+
+9. **Logging Standards:**
+   * Use the unified logger from `utils/logger.ts`
+   * Create component-specific loggers with `const log = logger.getLogger('ComponentName')`
+   * Use appropriate log levels (error, warn, info, debug)
+   * Never use console.log, console.error, etc.
+   * Include contextual data in logs
+
+10. **Error Handling:**
+    * Use try-catch in all async functions
+    * Log errors with appropriate context
+    * Use consistent error response format
+    * Return appropriate HTTP status codes
+
+11. **TypeScript Usage:**
+    * Define clear interfaces for all data structures
+    * Use proper type annotations for function parameters and returns
+    * Avoid use of `any` type where possible
+    * Use enums for fixed sets of values
+
+12. **Authentication:**
+    * Use consistent auth middleware across all services
+    * JWT tokens should follow the same structure
+    * Use role-based access control (RBAC) consistently
+    * Validate tokens at the middleware level
+
+## API Design
+
+13. **Consistent Response Format:**
+    * All API responses should follow the same structure
+    * Success responses: `{ success: true, data: {...} }`
+    * Error responses: `{ success: false, message: '...', errors: [...] }`
+    * Include appropriate HTTP status codes
+    * Pagination should be implemented consistently
+
+14. **REST Principles:**
+    * Use nouns for resource names (e.g., `/users` not `/getUsers`)
+    * Use HTTP methods appropriately (GET, POST, PUT, DELETE)
+    * Use query parameters for filtering/pagination
+    * Use path parameters for specific resources
+
+15. **Validation:**
+    * Validate all input data at the controller/middleware level
+    * Use consistent validation patterns across services
+    * Return clear validation error messages
+    * Sanitize inputs to prevent injection attacks
+
+## Setting Up New Microservices
+
+16. **Service Creation:**
+    * Copy structure from an existing service as a template
+    * Update package.json with service-specific name and dependencies
+    * Configure tsconfig.json consistently with other services
+    * Create service-specific .env and .env.example files
+
+17. **Server Configuration:**
+    * Implement consistent middleware ordering:
+      - Security middleware (helmet, etc.)
+      - CORS configuration
+      - Body parsers
+      - Request logging
+      - Authentication middleware
+      - Error handling middleware
+    * Include health check endpoint
+    * Configure graceful shutdown
+    * Use async server startup pattern
+
+18. **Database Setup:**
+    * Create database connection with consistent error handling
+    * Implement models with appropriate schemas
+    * Create repositories for all data access
+    * Set up initial migrations if needed
+
+## Best Practices
+
+19. **Code Organization:**
+    * Keep files focused on a single responsibility
+    * Use consistent naming conventions
+    * Group related functionality
+    * Keep service methods reasonably sized
+
+20. **Comments and Documentation:**
+    * Document public APIs with clear descriptions
+    * Include JSDoc comments for functions with complex parameters
+    * Document expected errors and edge cases
+    * Keep comments up-to-date with code changes
+
+21. **Testing:**
+    * Write unit tests for services and repositories
+    * Use integration tests for API endpoints
+    * Maintain consistent test structure
+    * Mock external dependencies
+
+22. **Performance:**
+    * Implement appropriate indexing in database models
+    * Use pagination for large result sets
+    * Consider caching for frequently accessed data
+    * Monitor and optimize database queries
+
+Thank you for following these guidelines to maintain consistency and quality across the microservices architecture. 

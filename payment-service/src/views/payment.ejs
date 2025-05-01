@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SBC Payment Confirmation</title>
+    <link href="/css/style.css" rel="stylesheet">
+    <!-- Basic animation styles -->
+    <style>
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        .animation-delay-100 {
+            animation-delay: 0.1s;
+        }
+
+        .animation-delay-200 {
+            animation-delay: 0.2s;
+        }
+
+        .animation-delay-300 {
+            animation-delay: 0.3s;
+        }
+
+        .animation-delay-400 {
+            animation-delay: 0.4s;
+        }
+
+        .animation-delay-500 {
+            animation-delay: 0.5s;
+        }
+
+        /* Add subtle pulse for loading */
+        .animate-subtle-pulse {
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .7;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gradient-to-br from-indigo-50 via-white to-blue-50 flex items-center justify-center min-h-screen p-4">
+    <div
+        class="bg-white p-6 md:p-8 rounded-xl shadow-lg w-full max-w-lg transform transition-all duration-500 ease-in-out animate-fade-in">
+        <!-- App Logo -->
+        <div class="flex justify-center mb-6 animate-fade-in animation-delay-100">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQs64zZUAxJdhK6bFAVD7GIdLNmNuv9mo05eQ&s"
+                alt="Sniper Business Center Logo" class="h-16 w-auto">
+        </div>
+        <h1 class="text-2xl md:text-3xl font-bold text-center text-gray-800 mb-2 animate-fade-in animation-delay-100">
+            Confirm Payment Details</h1>
+        <p class="text-center text-gray-500 mb-6 animate-fade-in animation-delay-200">Review your payment details
+            and provide required information.</p>
+
+        <% if (typeof errorMessage !=='undefined' && errorMessage) { %>
+            <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 animate-fade-in">
+                <p class="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20"
+                        fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                            clip-rule="evenodd" />
+                    </svg>
+                    <%= errorMessage %>
+                </p>
+            </div>
+            <% } %>
+
+                <div
+                    class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6 animate-fade-in animation-delay-300">
+                    <p class="text-xl font-bold text-center text-indigo-900 mt-1">Amount Due: <span
+                            class="font-semibold">
+                            <%= amount %>
+                                <%= currency %>
+                        </span></p>
+                </div>
+
+                <form id="payment-form" action="javascript:void(0);" method="post"
+                    class="space-y-4 animate-fade-in animation-delay-400" onsubmit="return false;">
+                    <div>
+                        <label for="country" class="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                        <select id="country" name="country" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm">
+                            <option value="" disabled selected>Select Your Country</option>
+                            <option value="BJ">Benin</option>
+                            <option value="BF">Burkina Faso</option>
+                            <option value="CI">Côte d'Ivoire</option>
+                            <option value="SN">Senegal</option>
+                            <option value="CG">Congo</option>
+                            <option value="TG">Togo</option>
+                            <option value="CM">Cameroon</option>
+                            <option value="GA">Gabon</option>
+                            <option value="CD">DRC</option>
+                            <option value="KE">Kenya</option>
+                            <!-- Add other countries as needed -->
+                        </select>
+                    </div>
+
+                    <div id="operator-select-group" class="hidden mt-4">
+                        <label for="operator" class="block text-sm font-medium text-gray-700 mb-1">Select
+                            Operator</label>
+                        <select id="operator" name="operator"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm">
+                            <option value="" disabled selected>-- Select Payment Operator --</option>
+                            <!-- Options will be populated by JavaScript -->
+                        </select>
+                    </div>
+
+                    <div id="phone-input-group" class="hidden mt-4">
+                        <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number for
+                            Payment</label>
+                        <input type="tel" id="phone" name="phone" placeholder="Enter Phone Number (e.g. 229XXXXXXXX)"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm"
+                            pattern="[0-9]{8,}" title="Please enter a valid phone number with at least 8 digits">
+                    </div>
+
+                    <div class="pt-4 animate-fade-in animation-delay-500">
+                        <button type="button" id="submit-button"
+                            class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span id="button-text">Proceed to Payment</span>
+                            <svg id="button-loading-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden"
+                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="4">
+                                </circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div id="error-message" class="text-red-600 text-sm text-center mt-3 min-h-[1.25rem]"></div>
+                    <!-- Reserve space -->
+                    <div id="loading" class="text-gray-600 text-sm text-center mt-2 hidden animate-subtle-pulse">
+                        Processing your request...
+                    </div>
+                </form>
+
+                <!-- Retry button for errors -->
+                <div id="retry-container" class="mt-4 text-center hidden">
+                    <p class="text-red-600 text-sm mb-2">If you continue to experience issues, you can try refreshing
+                        the page.</p>
+                    <button onclick="window.location.reload()"
+                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh Page
+                    </button>
+                </div>
+
+                <!-- Powered By Section -->
+                <div class="mt-8 text-center border-t pt-4 animate-fade-in animation-delay-500">
+                    <p class="text-xs text-gray-500 mb-2">Secure Payments Powered By:</p>
+                    <div class="flex justify-center items-center space-x-4">
+                        <img src="https://africabusinesscommunities.com/Images/Key%20Logos/FEEXPAY.png"
+                            alt="FeexPay Logo" class="h-5 md:h-6 w-auto grayscale opacity-75">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSbHJ_vdJJJtZovlSLFIAv_uVGsbuX6xkH1kA&s"
+                            alt="CinetPay Logo" class="h-5 md:h-6 w-auto grayscale opacity-75">
+                    </div>
+                </div>
+    </div>
+
+    <script>
+        // Export the sessionId as a global variable for the payment.js script
+        var sessionId = "<%= sessionId %>";
+        var paymentAmount = "<%= amount %>"; // Pass amount if needed by JS
+        var paymentCurrency = "<%= currency %>"; // Pass currency if needed by JS
+    </script>
+    <script src="/js/payment.js"></script>
+</body>
+
+</html>

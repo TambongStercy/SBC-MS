@@ -1,0 +1,27 @@
+{
+    "compilerOptions": {
+        "target": "ES2016", // Target latest ECMAScript features
+        "module": "CommonJS", // Use CommonJS modules for Node.js
+        "outDir": "./dist", // Output directory for compiled JavaScript
+        "rootDir": "./src", // Root directory of source files
+        "strict": true, // Enable all strict type-checking options
+        "esModuleInterop": true, // Enables interoperability between CommonJS and ES Modules
+        "skipLibCheck": true, // Skip type checking of declaration files
+        "forceConsistentCasingInFileNames": true, // Disallow inconsistently-cased references to the same file
+        "resolveJsonModule": true, // Allow importing JSON files
+        "moduleResolution": "node", // Specify module resolution strategy
+        "sourceMap": true, // Generate source maps for debugging
+        "declaration": true, // Generate corresponding '.d.ts' file
+        // Add other options based on project needs
+        // "baseUrl": "./",                     // Base directory for non-relative module imports
+        // "paths": { ... }                   // Module path aliases
+    },
+    "include": [
+        "src/**/*" // Include all files within the src directory
+    ],
+    "exclude": [
+        "node_modules", // Exclude the node_modules directory
+        "**/*.spec.ts", // Exclude test files (adjust pattern if needed)
+        "dist" // Exclude the output directory
+    ]
+}

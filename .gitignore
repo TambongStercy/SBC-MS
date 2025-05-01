@@ -1,0 +1,34 @@
+# Node.js specific ignores
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+
+# Log files
+logs/
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE specific files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Ignore node_modules in all subdirectories (microservices)
+*/node_modules/ 

@@ -1,0 +1,408 @@
+# User Flow API Tests (.http file for REST Client)
+# Change the baseUrl if your API Gateway runs on a different host/port
+@baseUrl = http://localhost:3000/api
+
+# --- User A (Referrer) --- 
+@userA_Username = referrer_1
+@userA_Email = test1@example.com
+@userA_Password = StrongPassword123!
+@userA_Region = Center
+@userA_PhoneNumber = 0700000000
+@userA_AuthToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2N2ZiODAwNjU0NzZlODE3MjUyNjJiYjEiLCJlbWFpbCI6InRlc3QxQGV4YW1wbGUuY29tIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NDQ3NTQyMzcsImV4cCI6MTc0NDg0MDYzN30.T0jnJTAy6xZFu4wD8b_pHK8woBDzvr3CTuCjVoV69FQ
+@userA_ReferralCode = thQuxq5p
+@userA_Id = 67fb80065476e81725262bb1
+@userA_Otp = GAoug5
+
+# --- User B (Referred) ---
+@userB_Username = referred_2
+@userB_Email = test2@example.com
+@userB_Password = StrongPassword123!
+@userB_Region = Center
+@userB_PhoneNumber = 080000000
+@userB_AuthToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2N2ZiODIyMGI0ZmU2NzdkZmFlZjMxNGIiLCJlbWFpbCI6InRlc3QyQGV4YW1wbGUuY29tIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NDQ4MjgxODEsImV4cCI6MTc0NDkxNDU4MX0.iTcxkpTFkR4q4WtcOnRYSn5PeZhWTnXXbkTzSSQgIWU
+@userB_Id = 67fb8220b4fe677dfaef314b
+@userB_Otp = W8nQ5U
+# --- Subscription Details ---
+@subscriptionType = PLATFORM_ACCESS
+@subscriptionPlan = monthly
+
+# --- Product/Rating IDs ---
+@productId = 67fbb35bd88f7f3871f59a1f
+@ratingId = 
+
+###
+# ==========================
+# User A (Referrer) Setup
+# ==========================
+
+
+###
+# A1-1. Register User A (Referrer)
+POST {{baseUrl}}/users/register
+Content-Type: application/json
+
+{
+  "name": "{{userA_Username}}",
+  "email": "{{userA_Email}}",
+  "password": "{{userA_Password}}",
+  "region": "{{userA_Region}}",
+  "phoneNumber": "{{userA_PhoneNumber}}",
+  "sex": "male",
+  "age": 25
+}
+
+###
+# A1-2. Verify OTP
+POST {{baseUrl}}/users/verify-otp
+Content-Type: application/json
+
+{
+  "userId": "{{userA_Id}}",
+  "otpCode": "{{userA_Otp}}"
+}
+
+###
+# A2. Login User A (Referrer)
+# @name loginUserA
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userA_Email}}",
+  "password": "{{userA_Password}}"
+}
+
+
+###
+# A3. Get User A Profile & Capture Referral Code
+# @name getUserAProfile
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{userA_AuthToken}}
+
+# IMPORTANT: Adjust 'response.body.data.user.referralCode' and 'response.body.data.user._id' paths if different!
+# > {% client.global.set("userA_ReferralCode", response.body.data.user.referralCode); %}
+
+###
+# ==========================
+# User B (Referred) Setup
+# ==========================
+
+###
+# B1. (Optional) Check who User A's referral code belongs to (Public)
+GET {{baseUrl}}/users/get-affiliation?referralCode={{userA_ReferralCode}}
+
+###
+# B2-1. Register User B (Referred) using User A's code
+POST {{baseUrl}}/users/register
+Content-Type: application/json
+
+{
+  "name": "{{userB_Username}}",
+  "email": "{{userB_Email}}",
+  "password": "{{userB_Password}}",
+  "region": "{{userB_Region}}",
+  "phoneNumber": "{{userB_PhoneNumber}}",
+  "referrerCode": "{{userA_ReferralCode}}"
+}
+
+###
+# B2-2. Verify OTP
+POST {{baseUrl}}/users/verify-otp
+Content-Type: application/json
+
+{
+  "userId": "{{userB_Id}}",
+  "otpCode": "{{userB_Otp}}"
+}
+
+###
+# B3. Login User B (Referred)
+# @name loginUserB
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userB_Email}}",
+  "password": "{{userB_Password}}"
+}
+
+# > {% client.global.set("userB_AuthToken", response.body.data.token); %}
+
+###
+# B4. Get User B Profile (Verify registration & Capture ID)
+# @name getUserBProfile
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{userB_AuthToken}}
+
+# IMPORTANT: Adjust 'response.body.data.user._id' path if different!
+# > {% client.global.set("userB_Id", response.body.data.user._id); %}
+
+###
+# ====================================
+# User B Subscription Flow (Simulated)
+# ====================================
+
+###
+# S1. Initiate Payment Intent for Platform Access (Requires User B Auth Token in theory, but endpoint needs ID in body)
+# Note: The payment service endpoint seems to expect userId in the body. 
+# This flow assumes the gateway or auth middleware makes the ID available implicitly, 
+# or the payment service retrieves it based on the token indirectly.
+# If it strictly requires userId in body, adjust the request below.
+POST {{baseUrl}}/payments/intents
+Authorization: Bearer {{userA_AuthToken}} # Auth might be needed depending on gateway setup
+Content-Type: application/json
+
+{
+  "userId": "{{userA_Id}}",
+  "subscriptionType": "{{subscriptionType}}",
+  "subscriptionPlan": "{{subscriptionPlan}}"
+}
+
+###
+# S2. << SIMULATED PAYMENT >>
+# Normally, the user would be redirected to a payment page using the sessionId from S1 response.
+# After payment, a webhook would notify the payment-service, which then calls user-service 
+# internal endpoint to activate the subscription.
+# We skip these steps and proceed assuming payment was successful.
+
+###
+# S3. Check Subscription Status for User B (Requires User B Auth)
+# Should return active: true (or similar) after simulated payment
+GET {{baseUrl}}/subscriptions/check/{{subscriptionType}}
+Authorization: Bearer {{userA_AuthToken}}
+
+###
+# ==========================
+# Referrer Checks (User A)
+# ==========================
+
+###
+# C1. Get User A's Referral Statistics (Requires User A Auth)
+GET {{baseUrl}}/users/get-referals
+Authorization: Bearer {{userA_AuthToken}}
+
+###
+# C2. Get User A's Referred Users List (Requires User A Auth)
+# Should list User B
+GET {{baseUrl}}/users/get-refered-users?page=1&limit=10
+Authorization: Bearer {{userA_AuthToken}}
+
+###
+# ==========================
+# Product Flow (Example using User B - Requires Subscription)
+# ==========================
+
+###
+# P1. Search Products (Public)
+GET {{baseUrl}}/products/search?searchTerm=example&category=electronics
+
+###
+# P2. Create Product (Requires User B Authentication & Active Subscription)
+# @name createProduct
+POST {{baseUrl}}/products
+Authorization: Bearer {{userB_AuthToken}} 
+Content-Type: application/json
+
+{
+  "name": "User B Test Product {{$randomInt}}",
+  "category": "Cars",
+  "subcategory": "Cars",
+  "description": "A product created by the referred user.",
+  "imagesUrl": ["https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png"],
+  "price": 19.99
+}
+
+# Extract the product ID for later use (adjust path if needed)
+# > {% client.global.set("productId", response.body.data._id); %}
+
+###
+# P3. Get Specific Product (Public) - Uses ID from Create Product
+GET {{baseUrl}}/products/{{productId}}
+
+###
+# P4. Get User B's Products (Requires User B Authentication)
+GET {{baseUrl}}/products/user
+Authorization: Bearer {{userB_AuthToken}}
+
+###
+# P5. Update User B's Product (Requires User B Authentication) - Uses ID from Create Product
+PUT {{baseUrl}}/products/{{productId}}
+Authorization: Bearer {{userB_AuthToken}}
+Content-Type: application/json
+
+{
+  "description": "Updated product description by User B.",
+  "price": 21.99
+}
+
+###
+# P6. Rate Product (Requires User B Authentication) - Uses ID from Create Product
+# @name rateProduct
+POST {{baseUrl}}/products/{{productId}}/ratings
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+  "rating": 5,
+  "review": "Excellent product by User A!"
+}
+
+
+###
+# P7. Get Product Ratings (Public) - Uses ID from Create Product
+GET {{baseUrl}}/products/{{productId}}/ratings
+
+###
+# P8. Get User B's Ratings (Requires User B Authentication)
+GET {{baseUrl}}/products/user/ratings
+Authorization: Bearer {{userB_AuthToken}}
+
+###
+# P9. Mark Rating as Helpful (Requires User B Authentication) - Uses ID from Rate Product
+POST {{baseUrl}}/products/ratings/{{ratingId}}/helpful
+Authorization: Bearer {{userB_AuthToken}}
+
+###
+# P10. Delete Rating (Requires User B Authentication) - Uses ID from Rate Product
+DELETE {{baseUrl}}/products/ratings/{{ratingId}}
+Authorization: Bearer {{userB_AuthToken}}
+
+###
+# P11. Delete Product (Requires User B Authentication) - Uses ID from Create Product
+DELETE {{baseUrl}}/products/{{productId}}
+Authorization: Bearer {{userB_AuthToken}}
+
+###
+# =====================
+# Optional Error Tests
+# =====================
+
+###
+# (Optional) Test Invalid Token for User Profile
+GET {{baseUrl}}/users/profile
+Authorization: Bearer invalidtoken123
+
+###
+# (Optional) Test Login with incorrect password (User A)
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userA_Email}}",
+  "password": "WrongPassword"
+}
+
+###
+# (Optional) Test Get Non-Existent Product
+GET {{baseUrl}}/products/60c72b2f9b1e8a5d4c8a0a99 # Use a likely non-existent ID
+
+###
+# (Optional) Test Create Product without Auth
+POST {{baseUrl}}/products
+Content-Type: application/json
+
+{
+  "name": "Unauthorized Product",
+  "category": "Test",
+  "subcategory": "Test",
+  "description": "Test desc.",
+  "imagesUrl": [],
+  "price": 10
+}
+
+###
+# (Optional) Test Register with invalid referral code
+POST {{baseUrl}}/users/register
+Content-Type: application/json
+
+{
+  
+  "name": "invalid_ref_{{$randomInt}}",
+  "email": "invalid_ref_{{$randomInt}}@example.com",
+  "password": "Password123",
+  "region": "Center",
+  "phoneNumber": "0000000000",
+  "sex": "male",
+  "age": 25,
+  "referrerCode": "INVALIDCODE123"
+}
+
+###
+# (Optional) Test Check Subscription without Auth
+GET {{baseUrl}}/subscriptions/check/{{subscriptionType}}
+
+###
+# (Optional) Try to Create Product without Subscription (Assuming S1-S3 were skipped)
+# This test only makes sense if you run requests individually and skip S1-S3
+POST {{baseUrl}}/products
+Authorization: Bearer {{userB_AuthToken}} 
+Content-Type: application/json
+
+{
+  "name": "Product Without Subscription {{$randomInt}}",
+  "category": "Test",
+  "subcategory": "Test",
+  "description": "This should fail if subscription is required.",
+  "imagesUrl": [],
+  "price": 5
+}
+
+###
+# ====================================
+# Contact Plan Subscription (User B)
+# ====================================
+
+@contactSubscriptionType = CONTACT_PLAN
+@contactSubscriptionPlan = contacts_100
+
+###
+# CS1. Initiate Payment Intent for Contact Plan (User B)
+# Requires User B ID in body based on previous payment intent requests
+POST {{baseUrl}}/payments/intents
+Authorization: Bearer {{userB_AuthToken}} # Or appropriate service token if gateway requires
+Content-Type: application/json
+
+{
+  "userId": "{{userB_Id}}",
+  "subscriptionType": "{{contactSubscriptionType}}",
+  "subscriptionPlan": "{{contactSubscriptionPlan}}"
+}
+
+###
+# CS2. << PAYMENT SIMULATED >>
+# Payment Service is configured to auto-succeed for testing.
+
+###
+# CS3. Check Contact Plan Subscription Status for User B
+# Should return active: true (or similar) after simulated payment
+GET {{baseUrl}}/subscriptions/check/{{contactSubscriptionType}}
+Authorization: Bearer {{userB_AuthToken}}
+
+###
+# ====================================
+# Contact Download/Export Tests
+# ====================================
+
+# Note: These tests assume contacts have been added to User B previously.
+# Adding contacts route is not defined in the provided files.
+
+###
+# CD1. User B (with Contact Plan) Downloads All Contacts
+# Expects success (200 OK) and contact data (e.g., VCF or JSON)
+GET {{baseUrl}}/contacts/export
+Authorization: Bearer {{userA_AuthToken}}
+
+###
+# CD2. User B (with Contact Plan) Downloads Filtered Contacts
+# Example filters: category and region
+# Expects success (200 OK) and filtered contact data
+GET {{baseUrl}}/contacts/export?category=Business&region=North
+Authorization: Bearer {{userA_AuthToken}}
+
+###
+# CD3. User A (Platform Access Only) Tries to Download Contacts
+# Expected result depends on business logic:
+# - If PLATFORM_ACCESS allows downloads -> Success (200 OK)
+# - If CONTACT_PLAN is strictly required -> Forbidden (403) or Bad Request (400)
+GET {{baseUrl}}/contacts/export
+Authorization: Bearer {{userA_AuthToken}}
