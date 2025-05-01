@@ -5,7 +5,7 @@ dotenv.config(); // Load .env file
 const config = {
     nodeEnv: process.env.NODE_ENV || 'development',
     port: process.env.PORT || '3007',
-    mongodbUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/sbc_settings_dev',
+    mongodbUri: process.env.NODE_ENV === 'production' ? process.env.MONGODB_URI_PROD as string : process.env.MONGODB_URI_DEV as string,
     jwt: {
         secret: process.env.JWT_SECRET || 'supersecretkey',
         accessExpiry: process.env.ACCESS_TOKEN_EXPIRY || '1h',

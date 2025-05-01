@@ -60,7 +60,7 @@ const config: IConfig = {
     port: parseInt(process.env.PORT || '3003', 10), // Default to 3003 for payment service?
     host: process.env.HOST || '0.0.0.0',
     mongodb: {
-        uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/sbc_payment_dev', // Ensure this is set in .env
+        uri: process.env.NODE_ENV === 'production' ? process.env.MONGODB_URI_PROD as string : process.env.MONGODB_URI_DEV as string,
         options: {
             useNewUrlParser: true,
             useUnifiedTopology: true,

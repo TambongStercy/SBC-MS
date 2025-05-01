@@ -88,7 +88,7 @@ const config: IConfig = {
     },
 
     mongodb: {
-        uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/sbc_notification_dev',
+        uri: process.env.NODE_ENV === 'production' ? process.env.MONGODB_URI_PROD as string : process.env.MONGODB_URI_DEV as string,
         options: {
             useNewUrlParser: true,
             useUnifiedTopology: true,
