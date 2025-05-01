@@ -119,12 +119,12 @@ const validateConfig = (): void => {
 
     // Only validate these in production
     if (config.nodeEnv === 'production') {
-        requiredEnvs.push(
-            'AWS_ACCESS_KEY_ID',
-            'AWS_SECRET_ACCESS_KEY',
-            'AWS_REGION',
-            'AWS_BUCKET_NAME'
-        );
+        // requiredEnvs.push(
+        //     'AWS_ACCESS_KEY_ID',
+        //     'AWS_SECRET_ACCESS_KEY',
+        //     'AWS_REGION',
+        //     'AWS_BUCKET_NAME'
+        // );
     }
 
     const missingEnvs = requiredEnvs.filter(env => !process.env[env]);
