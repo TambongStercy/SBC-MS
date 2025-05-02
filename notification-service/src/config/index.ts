@@ -146,7 +146,6 @@ const config: IConfig = {
 // Validation function for required configurations
 const validateConfig = (): void => {
     const requiredEnvs = [
-        'MONGODB_URI',
         'JWT_SECRET'
     ];
 
