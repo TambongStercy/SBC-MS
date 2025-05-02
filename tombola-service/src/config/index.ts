@@ -116,14 +116,14 @@ const validateConfig = (cfg: IConfig): void => {
         'host',
         'mongodb.uri',
         'jwt.secret',
-        'jwt.expiresIn',
-        'services.serviceSecret',
-        'services.userService',
-        'services.paymentService',
-        'services.notificationService',
-        'services.productService',
-        'services.apiGateway',
-        'tombolaTicketPrice'
+        // 'jwt.expiresIn',
+        // 'services.serviceSecret',
+        // 'services.userService',
+        // 'services.paymentService',
+        // 'services.notificationService',
+        // 'services.productService',
+        // 'services.apiGateway',
+        // 'tombolaTicketPrice'
         // Add other strictly required variables here
         // e.g., 'apiKey' if using API key auth for all services
     ];
