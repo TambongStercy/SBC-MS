@@ -577,30 +577,30 @@ class PaymentService {
         });
         log.info(`Created initial PaymentIntent ${paymentIntent.sessionId} for user ${data.userId}, type: ${data.paymentType}`);
 
-        // --- TESTING ONLY: Immediately mark as succeeded --- 
-        log.warn(`TESTING MODE: Immediately marking PaymentIntent ${paymentIntent.sessionId} as SUCCEEDED.`);
-        const updatedIntent = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-            status: PaymentStatus.SUCCEEDED,
-            gateway: PaymentGateway.TESTING, // Mark gateway as TESTING
-            gatewayPaymentId: `test_${paymentIntent.sessionId}`, // Add a test gateway ID
-            paidAmount: paymentIntent.amount, // Assume paid amount is the original amount
-            paidCurrency: paymentIntent.currency // Assume paid currency is the original currency
-        });
+        // // --- TESTING ONLY: Immediately mark as succeeded --- 
+        // log.warn(`TESTING MODE: Immediately marking PaymentIntent ${paymentIntent.sessionId} as SUCCEEDED.`);
+        // const updatedIntent = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+        //     status: PaymentStatus.SUCCEEDED,
+        //     gateway: PaymentGateway.TESTING, // Mark gateway as TESTING
+        //     gatewayPaymentId: `test_${paymentIntent.sessionId}`, // Add a test gateway ID
+        //     paidAmount: paymentIntent.amount, // Assume paid amount is the original amount
+        //     paidCurrency: paymentIntent.currency // Assume paid currency is the original currency
+        // });
 
-        if (!updatedIntent) {
-            log.error(`TESTING MODE: Failed to update intent ${paymentIntent.sessionId} to SUCCEEDED. Aborting completion.`);
-            // Throw an error because we couldn't complete the test flow
-            throw new Error(`TESTING MODE Error: Failed to update intent ${paymentIntent.sessionId} to SUCCEEDED.`);
-        } else {
-            log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to SUCCEEDED.`);
-            // Trigger completion logic (which now only notifies originating service)
-            // Run this asynchronously but don't wait for it to finish before returning
-            this.handlePaymentCompletion(updatedIntent).catch(err => {
-                log.error(`TESTING MODE: Error in background handlePaymentCompletion for ${updatedIntent.sessionId}:`, err);
-            });
-            paymentIntent = updatedIntent; // Use the updated intent for the response
-        }
-        // --- END TESTING ONLY ---
+        // if (!updatedIntent) {
+        //     log.error(`TESTING MODE: Failed to update intent ${paymentIntent.sessionId} to SUCCEEDED. Aborting completion.`);
+        //     // Throw an error because we couldn't complete the test flow
+        //     throw new Error(`TESTING MODE Error: Failed to update intent ${paymentIntent.sessionId} to SUCCEEDED.`);
+        // } else {
+        //     log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to SUCCEEDED.`);
+        //     // Trigger completion logic (which now only notifies originating service)
+        //     // Run this asynchronously but don't wait for it to finish before returning
+        //     this.handlePaymentCompletion(updatedIntent).catch(err => {
+        //         log.error(`TESTING MODE: Error in background handlePaymentCompletion for ${updatedIntent.sessionId}:`, err);
+        //     });
+        //     paymentIntent = updatedIntent; // Use the updated intent for the response
+        // }
+        // // --- END TESTING ONLY ---
 
         // Fetch the latest state just in case, though updatedIntent should be correct
         const finalIntentState = await paymentIntentRepository.findBySessionId(paymentIntent.sessionId);

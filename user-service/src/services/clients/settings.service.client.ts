@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import config from '../../config';
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
+import FormData from 'form-data';
 
 const log = logger.getLogger('SettingsServiceClient');
 
@@ -47,7 +48,7 @@ class SettingsServiceClient {
         }
         this.apiClient = axios.create({
             baseURL: baseURL || undefined,
-            timeout: 5000,
+            timeout: 15000,
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${config.services.serviceSecret}`,
@@ -124,37 +125,59 @@ class SettingsServiceClient {
     }
 
     /**
-     * Uploads a file (as base64) to the settings service.
+     * Uploads a file to the settings service internal endpoint.
+     * @param fileBuffer The file content as a Buffer.
+     * @param mimeType The MIME type of the file.
+     * @param originalName The original name of the file.
+     * @param folderName Optional target folder name ('profile-picture', 'product-docs').
+     * @returns The full FileUploadResponseData (including fileId).
      */
-    async uploadFile(fileBuffer: Buffer, mimeType: string, originalName: string): Promise<FileUploadResponseData> {
-        const url = '/files/upload'; // Assumed endpoint
-        const base64Content = fileBuffer.toString('base64');
+    async uploadFile(
+        fileBuffer: Buffer,
+        mimeType: string,
+        originalName: string,
+        folderName?: 'profile-picture' | 'product-docs'
+    ): Promise<FileUploadResponseData> {
+        const url = '/settings/internal/upload';
+        log.info(`Uploading file "${originalName}" (${mimeType}) to internal endpoint ${this.apiClient.defaults.baseURL}${url}, Folder: ${folderName || 'default'}`);
 
-        const payload: FileUploadPayload = {
-            fileName: originalName,
-            mimeType: mimeType,
-            fileContent: base64Content,
-            folderName: 'user_avatars' // Example folder
-        };
+        const formData = new FormData();
+        formData.append('file', fileBuffer, {
+            filename: originalName,
+            contentType: mimeType,
+        });
 
-        log.info(`Uploading file ${originalName} (${mimeType}) to settings service at ${url}`);
+        if (folderName) {
+            formData.append('folderName', folderName);
+        }
+
         try {
-            const response = await this.apiClient.post<ServiceResponse<FileUploadResponseData>>(url, payload);
+            const response = await this.apiClient.post<ServiceResponse<FileUploadResponseData>>(
+                url,
+                formData,
+                {
+                    headers: {
+                        ...formData.getHeaders(),
+                        'Authorization': `Bearer ${config.services.serviceSecret}`,
+                        'X-Service-Name': 'user-service',
+                    }
+                }
+            );
 
-            if (response.status === 201 && response.data?.success && response.data.data?.fileId) {
-                log.info(`File uploaded successfully. File ID: ${response.data.data.fileId}`);
+            if (response.status === 200 && response.data?.success && response.data.data?.fileId) {
+                log.info(`File uploaded successfully via user-service client. File ID: ${response.data.data.fileId}`);
                 return response.data.data;
             } else {
-                log.warn('Settings service responded with failure or unexpected structure for file upload.', {
+                log.warn('Settings service responded with failure or unexpected structure for file upload (user-service client).', {
                     status: response.status,
                     responseData: response.data
                 });
                 throw new AppError(response.data?.message || 'Failed to upload file via settings service', response.status);
             }
         } catch (error: any) {
-            log.error(`Error calling settings service ${url}: ${error.message}`);
+            log.error(`Error calling settings service ${url} from user-service: ${error.message}`);
             if (axios.isAxiosError(error) && error.response) {
-                log.error('Settings Service Error Response (uploadFile):', { status: error.response.status, data: error.response.data });
+                log.error('Settings Service Error Response (uploadFile - user-service client):', { status: error.response.status, data: error.response.data });
                 throw new AppError(error.response.data?.message || 'Settings service communication error', error.response.status);
             }
             throw new AppError('Settings service communication error', 500);

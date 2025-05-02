@@ -48,13 +48,13 @@ export const generateVCard = (user: IUser): string => {
 export const generateVCFFile = (users: Array<{
     name: string;
     email: string;
-    phoneNumber: number;
-    region: string;
+    phoneNumber?: string;
+    region?: string;
     shareContactInfo?: boolean;
 }>): Buffer => {
     const vcfContent = users
         .filter(user => user.shareContactInfo !== false)
-        .map(user => generateVCard(user as any))
+        .map(user => generateVCard(user as IUser))
         .join('\r\n');
 
     return Buffer.from(vcfContent, 'utf8');

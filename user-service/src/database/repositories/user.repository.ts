@@ -389,24 +389,131 @@ export class UserRepository {
      * @returns An array of user ID strings.
      */
     async findIdsBySearchTerm(query: FilterQuery<IUser>): Promise<string[]> {
+        // Only fetch the _id field and convert them to strings
+        const users = await UserModel.find(query).select('_id').lean().exec();
+        return users.map(user => (user._id as Types.ObjectId).toHexString());
+    }
+
+    /**
+     * Searches for users based on contact filters, excluding the requesting user.
+     * Implements pagination and filtering based on ContactSearchFilters.
+     * @param requestingUserId - The ID of the user performing the search (to exclude).
+     * @param filters - The search criteria.
+     * @returns A paginated list of matching users and total count.
+     */
+    async searchContactUsers(requestingUserId: string | Types.ObjectId, filters: ContactSearchFilters): Promise<ContactSearchResponse> {
+        const query: FilterQuery<IUser> = {
+            _id: { $ne: requestingUserId }, // Exclude the user performing the search
+            deleted: { $ne: true }, // Exclude soft-deleted users
+            // Future: Add filter for only users who allow contact sharing?
+        };
+
+        // Apply filters from ContactSearchFilters
+        if (filters.country) query.country = filters.country;
+        if (filters.region) query.region = filters.region;
+        if (filters.city) query.city = filters.city;
+        if (filters.sex) query.sex = filters.sex;
+        if (filters.language) query.language = filters.language; // Assuming IUser.language is string
+        if (filters.profession) query.profession = { $regex: filters.profession, $options: 'i' }; // Case-insensitive search
+
+        // Age filter (requires birthDate field)
+        if (filters.minAge || filters.maxAge) {
+            query.birthDate = {};
+            const now = new Date();
+            if (filters.minAge) {
+                const maxBirthDate = new Date(now.getFullYear() - filters.minAge, now.getMonth(), now.getDate());
+                query.birthDate.$lte = maxBirthDate;
+            }
+            if (filters.maxAge) {
+                const minBirthDate = new Date(now.getFullYear() - filters.maxAge - 1, now.getMonth(), now.getDate());
+                query.birthDate.$gte = minBirthDate;
+            }
+        }
+
+        // Interests filter (assuming IUser.interests is array of strings)
+        if (filters.interests && filters.interests.length > 0) {
+            query.interests = { $in: filters.interests }; // Match any interest in the list
+        }
+
+        // Preference Categories filter (assuming same field as interests for now)
+        // If preferenceCategories should map to a different field, update query.preferenceCategories
+        if (filters.preferenceCategories && filters.preferenceCategories.length > 0) {
+            if (!query.interests) query.interests = {}; // Initialize if not already set
+            query.interests.$in = [...(query.interests.$in || []), ...filters.preferenceCategories]; // Combine with interests?
+            // Or replace: query.interests = { $in: filters.preferenceCategories };
+            // ** Clarification needed on how preferenceCategories relates to interests **
+        }
+
+        // Registration Date filter
+        if (filters.registrationDateStart || filters.registrationDateEnd) {
+            query.createdAt = {};
+            if (filters.registrationDateStart) {
+                query.createdAt.$gte = filters.registrationDateStart;
+            }
+            if (filters.registrationDateEnd) {
+                // Adjust end date to include the whole day
+                const endDate = new Date(filters.registrationDateEnd);
+                endDate.setHours(23, 59, 59, 999);
+                query.createdAt.$lte = endDate;
+            }
+        }
+
+        // Require active subscription filter (Handled in service layer, not directly here)
+        // The service layer will fetch users with active subscriptions separately if needed.
+
+        // Pagination
+        const page = filters.page || 1;
+        const limit = filters.limit || 10;
+        const skip = (page - 1) * limit;
+
+        // Fields to select for the response (match ContactSearchResponse)
+        const selection = {
+            _id: 1,
+            name: 1,
+            email: 1, // TODO: Conditionally include based on shareContactInfo?
+            phoneNumber: 1, // TODO: Conditionally include based on shareContactInfo?
+            region: 1,
+            city: 1,
+            sex: 1,
+            birthDate: 1,
+            language: 1,
+            profession: 1,
+            interests: 1,
+            createdAt: 1,
+            // avatar: 1 // Add if needed in response
+        };
+
+        log.debug('Executing contact search query:', query);
+        log.debug('Pagination:', { page, limit, skip });
+
         try {
-            // Ensure the base query includes non-deleted/non-blocked if not already present
-            const finalQuery = {
-                ...query,
-                deleted: query.deleted ?? { $ne: true },
-                blocked: query.blocked ?? { $ne: true },
+            const [users, totalCount] = await Promise.all([
+                UserModel.find(query)
+                    .select(selection)
+                    .sort({ createdAt: -1 }) // Default sort, can be made configurable
+                    .skip(skip)
+                    .limit(limit)
+                    .lean() // Use lean for performance if not modifying docs
+                    .exec(),
+                UserModel.countDocuments(query).exec(),
+            ]);
+
+            log.debug(`Contact search found ${users.length} users out of ${totalCount} total.`);
+
+            const totalPages = Math.ceil(totalCount / limit);
+
+            return {
+                users: users.map(user => ({ // Map to the response structure if needed
+                    ...user,
+                    _id: (user._id as Types.ObjectId).toHexString() // Ensure ID is string
+                })),
+                totalCount,
+                page,
+                totalPages,
             };
-
-            const users = await UserModel.find(finalQuery)
-                .select('_id') // Select only the ID field
-                .lean()      // Use lean for performance
-                .exec();
-
-            // Map the results to an array of strings
-            return users.map((user: { _id: Types.ObjectId }) => user._id.toString());
         } catch (error: any) {
-            log.error(`Error finding user IDs by search term: ${error.message}`, { query });
-            throw error; // Re-throw for service layer to handle
+            log.error('Error during contact search in repository:', error);
+            throw new Error(`Database error during contact search: ${error.message}`);
         }
     }
 

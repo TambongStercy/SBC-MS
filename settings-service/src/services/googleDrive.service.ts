@@ -39,19 +39,17 @@ class GoogleDriveService {
      * @param fileBuffer The file content as a Buffer.
      * @param mimeType The MIME type of the file.
      * @param fileName The desired name for the file in Google Drive.
+     * @param parentFolderId The ID of the parent folder in Google Drive.
      * @returns An object containing the Google Drive file ID and public links.
      */
-    async uploadFile(fileBuffer: Buffer, mimeType: string, fileName: string): Promise<UploadResult> {
+    async uploadFile(fileBuffer: Buffer, mimeType: string, fileName: string, parentFolderId?: string): Promise<UploadResult> {
         const bufferStream = new stream.PassThrough();
         bufferStream.end(fileBuffer);
 
         const fileMetadata: any = {
             name: fileName,
+            ...(parentFolderId && { parents: [parentFolderId] }),
         };
-        // If a parent folder ID is configured, add it to metadata
-        if (this.parentFolderId) {
-            fileMetadata.parents = [this.parentFolderId];
-        }
 
         let fileId: string | null = null;
 

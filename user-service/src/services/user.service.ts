@@ -25,20 +25,19 @@ import { AppError } from '../utils/errors';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
-    CM: '237',
-    BJ: '229',
-    CG: '242',
-    GH: '233',
+    CM: '237', BJ: '229', CG: '242', GH: '233',
     DZ: '213', AO: '244', BW: '267', BF: '226', BI: '257', CV: '238',
     CF: '236', TD: '235', KM: '269', CD: '243', CI: '225', DJ: '253',
     EG: '20', GQ: '240', ER: '291', SZ: '268', ET: '251', GA: '241',
-    GM: '220', GN: '224', GW: '245', KE: '254', LS: '266', LR: '231',
-    LY: '218', MG: '261', MW: '265', ML: '223', MR: '222', MU: '230',
-    MA: '212', MZ: '258', NA: '264', NE: '227', NG: '234', RW: '250',
-    ST: '239', SN: '221', SC: '248', SL: '232', SO: '252', ZA: '27',
-    SS: '211', SD: '249', TZ: '255', TG: '228', TN: '216', UG: '256',
-    ZM: '260', ZW: '263'
+    GM: '220', GN: '224', GW: '245', KE: '254', LS: '266',
+    LR: '231', LY: '218', MG: '261', MW: '265', ML: '223', MR: '222',
+    MU: '230', MA: '212', MZ: '258', NA: '264', NE: '227', NG: '234',
+    RW: '250', ST: '239', SN: '221', SC: '248', SL: '232', SO: '252',
+    ZA: '27', SS: '211', SD: '249', TZ: '255', TG: '228', TN: '216',
+    UG: '256', ZM: '260', ZW: '263'
 };
+
+const defaultAffiliator = null;
 const prefixToCountryCode: { [key: string]: string } = Object.entries(countryCodePrefixes)
     .reduce((acc, [code, prefix]) => {
         acc[prefix] = code;
@@ -177,6 +176,8 @@ export class UserService {
             }
             // Optional: Check if referrer is allowed to refer (e.g., not blocked)
             if (referrer.blocked) { throw new Error('Referrer is blocked'); }
+        } else if (defaultAffiliator) {
+            referrer = await userRepository.findById(defaultAffiliator);
         }
 
         // 3. Generate a unique referral code for the new user
@@ -522,11 +523,12 @@ export class UserService {
      */
     async updateUserProfile(
         userId: string | Types.ObjectId,
-        // Explicitly list fields for Pick, using momoOperator
+        // Add referralCode to Pick
         updateData: Partial<Pick<IUser,
             'name' | 'region' | 'country' | 'city' | 'phoneNumber' | 'momoNumber' |
             'momoOperator' | 'avatar' | 'avatarId' | 'sex' | 'birthDate' | 'language' |
-            'preferenceCategories' | 'interests' | 'profession' | 'shareContactInfo'
+            'preferenceCategories' | 'interests' | 'profession' | 'shareContactInfo' |
+            'referralCode' // Added referralCode here
         >>
     ): Promise<Omit<IUser, 'password' | 'otps' | 'contactsOtps'> | null> {
         // Only allow specific fields to be updated by the user
@@ -548,8 +550,25 @@ export class UserService {
         if (updateData.interests !== undefined) allowedFields.interests = updateData.interests;
         if (updateData.profession !== undefined) allowedFields.profession = updateData.profession;
         if (updateData.shareContactInfo !== undefined) allowedFields.shareContactInfo = updateData.shareContactInfo;
+        if (updateData.referralCode !== undefined) allowedFields.referralCode = updateData.referralCode; // Add referral code assignment
 
-        // Skip update if no allowed fields are being modified
+        // --- Referral Code Uniqueness Check --- 
+        if (allowedFields.referralCode) {
+            // Basic validation: check length, characters if needed (e.g., alphanumeric)
+            if (typeof allowedFields.referralCode !== 'string' || allowedFields.referralCode.length < 4) { // Example: min length 4
+                throw new AppError('Referral code must be at least 4 characters long.', 400);
+            }
+            // Check if the code is already taken by ANOTHER user
+            const existingUserWithCode = await userRepository.findByReferralCode(allowedFields.referralCode);
+            if (existingUserWithCode && existingUserWithCode._id.toString() !== userId.toString()) {
+                log.warn(`User ${userId} attempted to update referral code to ${allowedFields.referralCode}, but it's already taken by user ${existingUserWithCode._id}`);
+                throw new AppError('Referral code is already in use by another user.', 409); // 409 Conflict
+            }
+            log.info(`Referral code ${allowedFields.referralCode} is available for user ${userId}.`);
+        }
+        // --- End Referral Code Check --- 
+
+        // Skip update if no allowed fields are being modified (after potential referral code validation)
         if (Object.keys(allowedFields).length === 0) {
             const user = await userRepository.findById(userId);
             return user ? this.mapUserToResponse(user) : null;
@@ -2341,13 +2360,18 @@ export class UserService {
     ): Promise<Partial<IUser>> { // Return Partial<IUser> to include avatar URL
         log.info(`Updating avatar for user ${userId}`);
         try {
-            // 1. Upload to Settings Service
-            const uploadResult = await settingsService.uploadFile(fileBuffer, mimeType, originalName);
+            // 1. Upload to Settings Service, specifying the folder
+            const uploadResult = await settingsService.uploadFile(
+                fileBuffer,
+                mimeType,
+                originalName,
+                'profile-picture' // Specify the target folder name
+            );
             const fileId = uploadResult.fileId;
 
             // 2. Construct Proxy URL
             // Use relative path which will be resolved based on where user-service is mounted
-            const proxyUrl = `/users/avatar/${fileId}`; // Relative URL
+            const proxyUrl = `/settings/files/${fileId}`; // Relative URL pointing to settings-service proxy
 
             // 3. Update User Document
             const updatedUser = await userRepository.updateById(userId, {
@@ -2448,6 +2472,133 @@ export class UserService {
         };
 
         return publicProfile;
+    }
+
+    /**
+     * Resends an OTP code to the user's registered email.
+     * @param email - The email address of the user.
+     * @param purpose - The reason for requesting the OTP (e.g., 'login', 'register', 'forgotPassword').
+     * @returns Promise<void>
+     */
+    async resendOtp(email: string, purpose: 'login' | 'register' | 'forgotPassword' | 'changeEmail' | string): Promise<void> {
+        log.info(`OTP resend requested for email: ${email}, purpose: ${purpose}`);
+
+        const user = await userRepository.findByEmail(email);
+
+        // IMPORTANT: Do not confirm if the user exists to prevent email enumeration attacks.
+        // If user exists, proceed with OTP generation and sending.
+        if (user && !user.blocked && !user.deleted) { // Only send if user is active
+            try {
+                // Generate and store a new general-purpose OTP
+                const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
+
+                // Send OTP via notification service
+                // The notification service might internally adjust the message based on purpose
+                await notificationService.sendOtp({
+                    userId: user._id.toString(),
+                    recipient: user.email,
+                    channel: DeliveryChannel.EMAIL,
+                    code: otpCode,
+                    expireMinutes: 10, // Standard expiration
+                    isRegistration: purpose === 'register', // Set based on purpose
+                    purpose: purpose, // Pass the purpose directly
+                    userName: user.name
+                });
+
+                log.info(`Resent OTP successfully for email: ${email}`);
+
+            } catch (error) {
+                log.error(`Failed to resend OTP for email ${email}:`, error);
+                // Log the error but don't throw it back to the controller to avoid revealing info.
+                // The controller will return a generic success message regardless.
+            }
+        } else {
+            log.warn(`OTP resend requested for non-existent or inactive user: ${email}. No action taken.`);
+            // No error thrown, just log internally.
+        }
+        // Always return void, regardless of user existence or OTP sending success.
+    }
+
+    /**
+     * Sends an OTP for password reset purposes.
+     * @param email - The email address of the user requesting the reset.
+     * @returns Promise<void>
+     */
+    async requestPasswordResetOtp(email: string): Promise<void> {
+        const purpose = 'forgotPassword';
+        log.info(`Password reset OTP requested for email: ${email}`);
+
+        const user = await userRepository.findByEmail(email);
+
+        // IMPORTANT: Do not confirm if the user exists.
+        if (user && !user.blocked && !user.deleted) {
+            try {
+                const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
+                await notificationService.sendOtp({
+                    userId: user._id.toString(),
+                    recipient: user.email,
+                    channel: DeliveryChannel.EMAIL,
+                    code: otpCode,
+                    expireMinutes: 10,
+                    isRegistration: false, // Added missing property
+                    purpose: purpose,
+                    userName: user.name
+                });
+                log.info(`Password reset OTP sent successfully for email: ${email}`);
+            } catch (error) {
+                log.error(`Failed to send password reset OTP for email ${email}:`, error);
+            }
+        } else {
+            log.warn(`Password reset OTP requested for non-existent or inactive user: ${email}. No action taken.`);
+        }
+    }
+
+    /**
+     * Sends an OTP to a *new* email address to verify an email change request.
+     * Requires the user to be authenticated.
+     * @param userId - The ID of the authenticated user requesting the change.
+     * @param newEmail - The new email address to verify.
+     * @returns Promise<void>
+     */
+    async requestChangeEmailOtp(userId: string | Types.ObjectId, newEmail: string): Promise<void> {
+        const purpose = 'changeEmail';
+        log.info(`Change email OTP requested for user ${userId} to new email: ${newEmail}`);
+
+        // 1. Validate new email format
+        if (!newEmail || typeof newEmail !== 'string' || !this.isValidEmailDomain(newEmail)) {
+            throw new AppError('Invalid new email address format or domain.', 400);
+        }
+
+        // 2. Check if new email is already in use by *another* user
+        const existingUserWithNewEmail = await userRepository.findByEmail(newEmail);
+        if (existingUserWithNewEmail && existingUserWithNewEmail._id.toString() !== userId.toString()) {
+            throw new AppError('This email address is already associated with another account.', 409); // 409 Conflict
+        }
+
+        // 3. Get current user details (for username in notification)
+        const currentUser = await userRepository.findById(userId);
+        if (!currentUser || currentUser.blocked || currentUser.deleted) {
+            // This shouldn't happen if the user is authenticated, but check anyway.
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+
+        // 4. Generate and store OTP for the *current* user
+        const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps');
+
+        // 5. Send OTP to the *new* email address
+        await notificationService.sendOtp({
+            userId: currentUser._id.toString(),
+            recipient: newEmail, // Send to the NEW email
+            channel: DeliveryChannel.EMAIL,
+            code: otpCode,
+            expireMinutes: 10,
+            isRegistration: false, // Added missing property
+            purpose: purpose,
+            userName: currentUser.name // Use current user's name
+        });
+
+        log.info(`Change email OTP sent successfully to ${newEmail} for user ${userId}`);
+        // No error thrown if notification fails, handled by notificationService client
     }
 }
 

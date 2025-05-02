@@ -10,6 +10,7 @@ import GoogleDriveService from './googleDrive.service'; // Import Google Drive S
 import logger from '../utils/logger';
 import { AppError, NotFoundError } from '../utils/errors'; // Import NotFoundError if needed
 import { Types } from 'mongoose';
+import config from '../config'; // Import config to access folder IDs
 
 const log = logger.getLogger('SettingsService');
 
@@ -170,18 +171,45 @@ class SettingsService {
      * Stores the file in Google Drive and returns access information.
      * Does NOT modify the main Settings document.
      * @param file The file uploaded via Multer.
+     * @param folderName Optional name ('profile-picture', 'product-docs') to specify target folder.
      * @returns Information about the uploaded file, including the proxy URL.
      */
-    async uploadGenericFile(file: Express.Multer.File): Promise<UploadedFileInfo> {
-        log.info(`Uploading generic file: ${file.originalname} (Size: ${file.size})`);
+    async uploadGenericFile(file: Express.Multer.File, folderName?: string): Promise<UploadedFileInfo> {
+        log.info(`Uploading generic file: ${file.originalname} (Size: ${file.size}), Target Folder Name: ${folderName || 'Default'}`);
         let fileId: string;
+
+        // Determine the parent folder ID based on folderName
+        let parentFolderId: string | undefined;
+        switch (folderName) {
+            case 'profile-picture':
+                parentFolderId = config.googleDrive.profilePictureFolderId;
+                log.debug('Targeting Profile Picture folder.');
+                break;
+            case 'product-docs':
+                parentFolderId = config.googleDrive.productDocsFolderId;
+                log.debug('Targeting Product Docs folder.');
+                break;
+            default:
+                // Use default settings folder ID or undefined if none configured
+                parentFolderId = config.googleDrive.parentFolderId;
+                log.debug('Targeting default settings folder (or root if none specified).');
+        }
+
+        // Optional: Add a check if a specific folder was requested but its ID is missing
+        if (folderName && !parentFolderId) {
+            log.warn(`Folder ID for requested folder '${folderName}' is not configured. Uploading to default/root.`);
+            // Reset to default/root if specific folder ID missing
+            parentFolderId = config.googleDrive.parentFolderId;
+        }
+
         try {
             log.debug(`Uploading generic file '${file.originalname}' to Google Drive...`);
             const uniqueFileName = `generic_${Date.now()}_${file.originalname}`;
             const uploadResult = await GoogleDriveService.uploadFile(
                 file.buffer,
                 file.mimetype,
-                uniqueFileName
+                uniqueFileName,
+                parentFolderId // Pass the determined parent folder ID
             );
             fileId = uploadResult.fileId;
             log.info(`Generic file uploaded successfully. File ID: ${fileId}`);

@@ -19,10 +19,12 @@ export interface ContactSearchFilters {
     interests?: string[]; // Added interests filter (array)
     // 'interest' singular was used in controller, let's keep 'interests' as array here.
 
-    // Filters based on other criteria (if needed, TBD)
-    // registrationDateStart?: Date;
-    // registrationDateEnd?: Date;
-    // preferenceCategories?: string[]; // Removed, redundant with interests
+    // Added missing date filters
+    registrationDateStart?: Date;
+    registrationDateEnd?: Date;
+
+    // Added missing category filter
+    preferenceCategories?: string[];
 
     // Special filter flag (added by controller/service logic)
     requireActiveSubscription?: boolean;
@@ -40,7 +42,7 @@ export interface ContactSearchResponse {
         _id: string;
         name: string;
         email: string; // Consider omitting if shareContactInfo is false
-        phoneNumber?: number; // Optional, consider omitting if shareContactInfo is false
+        phoneNumber?: string; // Changed from number to string
         region?: string;
         city?: string; // Add city
         sex?: UserSex;

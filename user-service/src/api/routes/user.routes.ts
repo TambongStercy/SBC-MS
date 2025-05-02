@@ -46,6 +46,11 @@ router.use('/internal', serviceRouter);
 router.post('/register', mediumLimiter, (req, res) => userController.register(req, res));
 router.post('/login', strictLimiter, (req, res) => userController.login(req, res));
 router.post('/verify-otp', strictLimiter, (req, res) => userController.verifyOtp(req, res));
+// Resend OTP Route (Public, but rate limited)
+router.post('/resend-otp', mediumLimiter, (req, res, next) => userController.resendOtp(req, res, next));
+// Request OTP for Password Reset (Public, but rate limited)
+router.post('/request-password-reset', mediumLimiter, (req, res, next) => userController.requestPasswordResetOtp(req, res, next));
+
 // Get user information by affiliation code
 router.get('/get-affiliation', (req, res) => userController.getAffiliation(req, res));
 
@@ -77,5 +82,8 @@ router.get('/get-product', (req, res) => userController.getUserProduct(req as Au
 // --- Public Profile View Route ---
 router.get('/:userId', (req, res, next) => userController.viewUserProfile(req, res, next));
 // --- End Public Profile View ---
+
+// Request OTP for Email Change (Authenticated)
+router.post('/request-change-email', (req, res, next) => userController.requestChangeEmailOtp(req as AuthenticatedRequest, res, next));
 
 export default router; 

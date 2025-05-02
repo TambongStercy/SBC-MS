@@ -14,6 +14,7 @@ interface OtpNotificationRequest {
     expireMinutes: number;
     isRegistration: boolean;
     userName?: string;
+    purpose?: string;
 }
 
 // Define notification types

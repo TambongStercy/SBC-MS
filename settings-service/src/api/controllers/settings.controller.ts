@@ -120,6 +120,30 @@ export const uploadGenericFile = async (req: Request, res: Response, next: NextF
     }
 };
 
+// Controller method for INTERNAL service-to-service file uploads
+export const internalUploadFile = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling POST /internal/upload request (internal service upload)');
+    const folderName = req.body.folderName as string | undefined;
+
+    if (!req.file) {
+        log.warn('No file provided in internal upload request.');
+        return next(new BadRequestError('No file uploaded.'));
+    }
+
+    try {
+        log.info(`Received internal file: ${req.file.originalname}, size: ${req.file.size}, target folder: ${folderName || 'default'}`);
+        // Call service method, passing the file and potential folder name
+        const fileInfo = await settingsService.uploadGenericFile(req.file, folderName);
+        log.info('Internal file uploaded and processed successfully.');
+        // Return the file info (id, url, name, type, size)
+        res.status(200).json({ success: true, data: fileInfo, message: 'File uploaded successfully.' }); // Use 200 OK for internal success
+    } catch (error) {
+        log.error('Error processing internal file upload:', error);
+        // Pass specific error if available, otherwise generic
+        next(error instanceof AppError ? error : new AppError('Failed to process internal file upload', 500));
+    }
+};
+
 // Proxy file content - this remains the same
 export const getFileFromDrive = async (req: Request, res: Response, next: NextFunction) => {
     const { fileId } = req.params;
@@ -195,7 +219,7 @@ export const getThumbnailFromDrive = async (req: Request, res: Response, next: N
             return res.status(response.status).send(`Error fetching thumbnail (status: ${response.status})`);
         }
 
-        console.log(response.data); 
+        console.log(response.data);
 
         // Set content type from Drive response and send data
         res.set('Content-Type', response.headers['content-type'] || 'image/jpeg'); // Default to jpeg if header missing
@@ -210,6 +234,6 @@ export const getThumbnailFromDrive = async (req: Request, res: Response, next: N
         // Avoid sending detailed errors to client
         res.status(500).send('Server error fetching thumbnail');
     }
-}; 
+};
 
 

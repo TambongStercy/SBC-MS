@@ -7,6 +7,12 @@ export enum ProductStatus {
     REJECTED = 'rejected'
 }
 
+// Interface for a single image stored in the product
+export interface IProductImage {
+    url: string; // The proxied URL to access the image (e.g., /settings/files/fileId)
+    fileId: string; // The original file ID from the settings service / Google Drive
+}
+
 // Interface defining the Product document structure
 export interface IProduct extends Document {
     _id: Types.ObjectId;
@@ -15,7 +21,7 @@ export interface IProduct extends Document {
     category: string;
     subcategory: string;
     description: string;
-    imagesUrl: string[];
+    images: IProductImage[]; // Array of image objects
     price: number;
     ratings: Types.ObjectId[]; // References to Rating documents
     overallRating: number;
@@ -27,6 +33,11 @@ export interface IProduct extends Document {
     createdAt: Date;
     updatedAt: Date;
 }
+
+const ProductImageSchema = new Schema<IProductImage>({
+    url: { type: String, required: true },
+    fileId: { type: String, required: true },
+}, { _id: false });
 
 const ProductSchema = new Schema<IProduct>(
     {
@@ -60,9 +71,7 @@ const ProductSchema = new Schema<IProduct>(
             required: true,
             trim: true
         },
-        imagesUrl: [{
-            type: String
-        }],
+        images: [ProductImageSchema], // Use the new schema
         price: {
             type: Number,
             required: true,
@@ -81,7 +90,7 @@ const ProductSchema = new Schema<IProduct>(
         status: {
             type: String,
             enum: Object.values(ProductStatus),
-            default: ProductStatus.PENDING,
+            default: ProductStatus.APPROVED,
             index: true
         },
         rejectionReason: {

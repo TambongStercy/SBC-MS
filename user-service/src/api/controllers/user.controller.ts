@@ -184,8 +184,15 @@ export class UserController {
     async register(req: Request, res: Response): Promise<void> {
         try {
             log.info('Registering a new user');
+
+            // Normalize sex field to lowercase if it exists
+            const registrationData = { ...req.body };
+            if (registrationData.sex && typeof registrationData.sex === 'string') {
+                registrationData.sex = registrationData.sex.toLowerCase();
+            }
+
             // Now returns { message, userId }
-            const result = await userService.registerUser(req.body, req.ip);
+            const result = await userService.registerUser(registrationData, req.ip);
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
         } catch (error: any) {
             log.error('Error registering a new user', error);
@@ -334,7 +341,7 @@ export class UserController {
                 city,
                 phoneNumber,
                 momoNumber,
-                momoCorrespondent,
+                momoOperator,
                 avatar,
                 sex,
                 birthDate,
@@ -342,7 +349,8 @@ export class UserController {
                 preferenceCategories,
                 interests,
                 profession,
-                shareContactInfo
+                shareContactInfo,
+                referralCode
             } = req.body;
 
             // Construct update object with only the fields provided
@@ -353,7 +361,7 @@ export class UserController {
             if (city !== undefined) updateData.city = city;
             if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber; // Consider validation
             if (momoNumber !== undefined) updateData.momoNumber = momoNumber;
-            if (momoCorrespondent !== undefined) updateData.momoCorrespondent = momoCorrespondent;
+            if (momoOperator !== undefined) updateData.momoOperator = momoOperator;
             if (avatar !== undefined) updateData.avatar = avatar;
             if (sex !== undefined) updateData.sex = sex; // Consider validation against enum
             if (birthDate !== undefined) {
@@ -380,6 +388,7 @@ export class UserController {
             if (interests !== undefined) updateData.interests = interests; // Consider validation
             if (profession !== undefined) updateData.profession = profession; // Consider validation
             if (shareContactInfo !== undefined) updateData.shareContactInfo = shareContactInfo;
+            if (referralCode !== undefined) updateData.referralCode = referralCode;
 
             // Check if there is anything to update
             if (Object.keys(updateData).length === 0) {
@@ -522,7 +531,7 @@ export class UserController {
             // Return only the necessary information
             res.status(200).json({
                 success: true,
-                user: {
+                data: {
                     name: user.name,
                     email: user.email
                 }
@@ -1045,7 +1054,100 @@ export class UserController {
         }
     }
 
+    /**
+     * Resend OTP code
+     * @route POST /api/users/resend-otp
+     */
+    async resendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { email, purpose } = req.body;
+
+            // Basic validation
+            if (!email || typeof email !== 'string' || !email.includes('@')) {
+                res.status(400).json({ success: false, message: 'Valid email address is required.' });
+                return;
+            }
+            // Optional: Validate purpose against a known list if desired, but service can handle unknown purposes gracefully.
+            const validPurposes = ['login', 'register', 'forgotPassword', 'changeEmail'];
+            if (!purpose || typeof purpose !== 'string' || !validPurposes.includes(purpose)) {
+                res.status(400).json({ success: false, message: `Valid purpose is required (${validPurposes.join(', ')}).` });
+                return;
+            }
+
+            // Call the service method. It handles logic internally and doesn't throw errors based on user existence.
+            await userService.resendOtp(email, purpose);
+
+            // Send a generic success response to prevent leaking information about account existence.
+            res.status(200).json({ success: true, message: 'If an account with this email exists, an OTP has been sent.' });
+
+        } catch (error: any) {
+            // Catch potential unexpected errors from the service layer (e.g., notification service failure if not handled internally)
+            this.log.error(`Unexpected error during OTP resend for email ${req.body?.email}:`, error);
+            // Still send a generic message, but log the internal error
+            res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
+        }
+    }
+
+    /**
+     * Request OTP for password reset
+     * @route POST /api/users/request-password-reset
+     */
+    async requestPasswordResetOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { email } = req.body;
+            if (!email || typeof email !== 'string' || !email.includes('@')) {
+                res.status(400).json({ success: false, message: 'Valid email address is required.' });
+                return;
+            }
+
+            await userService.requestPasswordResetOtp(email);
+
+            // Always return success to prevent email enumeration
+            res.status(200).json({ success: true, message: 'If an account exists for this email, a password reset OTP has been sent.' });
+
+        } catch (error: any) {
+            log.error('[Controller] Error requesting password reset OTP:', error);
+            // Send generic error to client, details logged internally
+            res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
+            // Note: No need to call next(error) unless you have a dedicated error middleware
+        }
+    }
+
+    /**
+     * Request OTP to verify a new email address (Requires Authentication)
+     * @route POST /api/users/request-change-email
+     */
+    async requestChangeEmailOtp(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication required.' });
+                return;
+            }
+
+            const { newEmail } = req.body;
+            if (!newEmail || typeof newEmail !== 'string' || !newEmail.includes('@')) {
+                res.status(400).json({ success: false, message: 'Valid new email address is required.' });
+                return;
+            }
+
+            await userService.requestChangeEmailOtp(userId, newEmail);
+
+            // Return success message indicating OTP sent to the NEW email
+            res.status(200).json({ success: true, message: `An OTP has been sent to ${newEmail} to verify the change.` });
+
+        } catch (error: any) {
+            log.error(`[Controller] Error requesting change email OTP for user ${req.user?.userId}:`, error);
+            // If AppError, use its message and status, otherwise generic 500
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
+            }
+        }
+    }
+
 }
 
-// Export an instance of the controller for use in routes
+// Export singleton instance
 export const userController = new UserController(); 

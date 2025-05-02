@@ -1,12 +1,19 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { Types } from 'mongoose';
 import { productService } from '../../services/product.service';
 import { CustomError } from '../../utils/custom-error';
 import { ProductStatus } from '../../database/models/product.model';
 import logger from '../../utils/logger';
-import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { NextFunction } from 'express';
 
+// Define an interface for requests that have passed authentication
+interface AuthenticatedRequest extends Request {
+    user?: {
+        id: string;
+        role: string;
+        email: string;
+        // Add other user properties if needed
+    };
+}
 
 const log = logger.getLogger('ProductController');
 
@@ -15,54 +22,45 @@ export class ProductController {
      * Create a new product
      * @route POST /api/products
      */
-    async createProduct(req: Request, res: Response) {
+    async createProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { name, category, subcategory, description, imagesUrl, price } = req.body;
+            // Extract fields from req.body
+            const { name, category, subcategory, description, price } = req.body;
+            // Get uploaded files from req.files
+            const imageFiles = req.files as Express.Multer.File[];
 
             // Basic validation
             if (!name || !category || !description || !price) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Missing required fields: name, category, description, price'
-                });
+                throw new CustomError('Missing required fields: name, category, description, price', 400);
             }
 
-            // Create product with user ID from authenticated user
+            // Get user ID from authenticated request
             const userId = req.user?.id;
             if (!userId) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'User not authenticated'
-                });
+                // This should ideally be caught by the auth middleware, but double-check
+                throw new CustomError('User not authenticated', 401);
             }
 
-            const product = await productService.createProduct({
+            const productData = {
                 userId: new Types.ObjectId(userId),
                 name,
                 category,
                 subcategory,
                 description,
-                imagesUrl: imagesUrl || [],
-                price,
-                status: ProductStatus.PENDING
-            });
+                // Removed imagesUrl, images are handled by service with imageFiles
+                price: parseFloat(price), // Ensure price is a number
+                status: ProductStatus.APPROVED
+            };
 
-            return res.status(201).json({
+            const product = await productService.createProduct(productData, imageFiles);
+
+            res.status(201).json({
                 success: true,
                 data: product
             });
         } catch (error) {
-            console.error('Error in createProduct controller:', error);
-            if (error instanceof CustomError) {
-                return res.status(error.statusCode).json({
-                    success: false,
-                    message: error.message
-                });
-            }
-            return res.status(500).json({
-                success: false,
-                message: 'Internal server error'
-            });
+            log.error('Error in createProduct controller:', error);
+            next(error); // Pass error to the centralized error handler
         }
     }
 
@@ -143,51 +141,43 @@ export class ProductController {
      * Update a product
      * @route PUT /api/products/:productId
      */
-    async updateProduct(req: Request, res: Response) {
+    async updateProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
             const { productId } = req.params;
             const userId = req.user?.id;
             const isAdmin = req.user?.role === 'admin';
+            const imageFiles = req.files as Express.Multer.File[]; // Get uploaded files
 
             if (!userId) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'User not authenticated'
-                });
+                throw new CustomError('User not authenticated', 401);
             }
 
             if (!Types.ObjectId.isValid(productId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid product ID'
-                });
+                throw new CustomError('Invalid product ID', 400);
             }
 
+            // Extract update data from the body (excluding files)
             const updateData = req.body;
+            if (updateData.price) {
+                updateData.price = parseFloat(updateData.price); // Ensure price is a number if provided
+            }
 
+            // Call the service method, passing the image files
             const updatedProduct = await productService.updateProduct(
                 productId,
                 updateData,
-                userId,
-                isAdmin
+                imageFiles, // Pass the image files here
+                userId,     // Pass userId for authorization check in service
+                isAdmin     // Pass isAdmin for authorization check in service
             );
 
-            return res.json({
+            res.json({
                 success: true,
                 data: updatedProduct
             });
         } catch (error) {
-            console.error('Error in updateProduct controller:', error);
-            if (error instanceof CustomError) {
-                return res.status(error.statusCode).json({
-                    success: false,
-                    message: error.message
-                });
-            }
-            return res.status(500).json({
-                success: false,
-                message: 'Internal server error'
-            });
+            log.error('Error in updateProduct controller:', error);
+            next(error); // Pass error to the centralized error handler
         }
     }
 
@@ -356,7 +346,7 @@ export class ProductController {
             if (limit && typeof limit === 'string') {
                 filters.limit = parseInt(limit);
             }
-            
+
             const results = await productService.searchProducts(filters);
 
             return res.json({
@@ -645,7 +635,13 @@ export class ProductController {
 
             log.debug('Passing filters to service:', filters);
 
-            const result = await productService.adminListProducts(filters);
+            // Correctly type the status filter before passing to the service
+            const serviceFilters = {
+                ...filters,
+                status: filters.status as ProductStatus | 'deleted' | 'all' | undefined,
+            };
+
+            const result = await productService.adminListProducts(serviceFilters);
 
             res.status(200).json({
                 success: true,

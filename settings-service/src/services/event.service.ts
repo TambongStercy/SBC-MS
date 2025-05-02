@@ -64,14 +64,14 @@ class EventService {
     private async uploadFileToDrive(file: Express.Multer.File, prefix: string): Promise<IFileReference> {
         const uniqueFileName = `${prefix}_${Date.now()}_${file.originalname}`;
         try {
-            const fileId = await GoogleDriveService.uploadFile(
+            const uploadResult = await GoogleDriveService.uploadFile(
                 file.buffer,
                 file.mimetype,
                 uniqueFileName
             );
-            log.info(`${prefix} file uploaded successfully. File ID: ${fileId}`);
+            log.info(`${prefix} file uploaded successfully. File ID: ${uploadResult.fileId}`);
             return {
-                fileId: fileId,
+                fileId: uploadResult.fileId,
                 fileName: file.originalname,
                 mimeType: file.mimetype,
                 size: file.size,
@@ -169,7 +169,7 @@ class EventService {
             log.debug(`New image provided for event ${eventId}. Uploading...`);
             newImageRef = await this.uploadFileToDrive(updateData.imageFile, 'event_image');
             updatePayload.image = newImageRef;
-    }
+        }
 
         // 3. Upload new video if provided
         if (updateData.videoFile) {

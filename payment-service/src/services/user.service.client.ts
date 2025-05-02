@@ -52,7 +52,12 @@ class UserServiceClient {
 
             if (response.data && (response.data.success === true || response.status < 300)) {
                 log.debug(`User Service request successful for ${path}`);
-                return response.data.data !== undefined ? response.data.data : { success: true };
+                if (response.data.data !== undefined) {
+                    return response.data.data;
+                } else {
+                    log.warn(`User Service request successful for ${path} but response data payload is missing.`);
+                    throw new Error('User Service response missing expected data payload');
+                }
             } else {
                 log.warn(`User Service request failed or returned unsuccessful status for ${path}:`, response.data);
                 throw new Error(response.data?.message || 'User Service request failed');

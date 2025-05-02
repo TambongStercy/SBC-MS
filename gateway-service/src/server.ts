@@ -48,6 +48,24 @@ app.get('/version', (req, res) => {
 // --- PROXY ROUTES ---
 // Define ALL proxy routes BEFORE global body parsers
 
+// --- Proxy rules for Payment Service Static Assets ---
+// Forward requests for /css/* to payment-service/css/*
+app.use('/css', proxy(config.services.paymentServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying static asset request: /css${req.url}`);
+    return '/css' + req.url; // Forward path like /css/style.css
+  }
+}));
+
+// Forward requests for /js/* to payment-service/js/*
+app.use('/js', proxy(config.services.paymentServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying static asset request: /js${req.url}`);
+    return '/js' + req.url; // Forward path like /js/payment.js
+  }
+}));
+// --- End Static Asset Proxy ---
+
 // User services
 app.use('/api/users', proxy(config.services.userServiceUrl, {
   proxyReqPathResolver: (req) => {

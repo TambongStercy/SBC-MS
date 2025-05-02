@@ -11,8 +11,9 @@
 # --- User Credentials ---
 @test_email = tambongsterling@gmail.com
 @test_password = 123456
-@user_id = 65d2b0344a7e2b9efbf6205d
-@otp_code = CnqtZP
+# @user_id = 65d2b0344a7e2b9efbf6205d
+@user_id = {{loginUser.response.body.$.data.userId}}
+@otp_code = XHTs8e
 
 # --- Admin Credentials ---
 @admin_email = test1@example.com # Assuming this admin exists
@@ -21,12 +22,12 @@
 @admin_otp_code = # Set manually if needed for OTP verification
 
 # --- Tokens (Set by Login/Verify OTP requests) ---
-@auth_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0NjA1MDUyMCwiZXhwIjoxNzQ2MTM2OTIwfQ.-PTVsE1l2MN95n4MNBw0P3fJYYBy3q3oJKnsbTwsMlw
+@auth_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0NjE4OTE3OCwiZXhwIjoxNzQ2Mjc1NTc4fQ.QW7vFz9X9GPZb0VenpYiO32C21pvG9eyJUdI6xlMzhU
 @auth_fabs = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2Nzg2NjBhODU1MDNkNjgzNDEzMGVhOGMiLCJpZCI6IjY3ODY2MGE4NTUwM2Q2ODM0MTMwZWE4YyIsImVtYWlsIjoidHNhZmFja2ZhYmlvbGEwMEBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc0NjA4NzA5MSwiZXhwIjoxNzQ2MTczNDkxfQ.63sibgFHOVn8wmVAJTHoUBKa_VCIoblm7aIjUL5KrZs
 @admin_auth_token = # Admin's JWT
 
 # --- Dynamic IDs (Set during flows) ---
-@product_id = 6810ffbdc1b0df69f8b5790a
+@product_id = 6814cbb07c9ad3312608c050
 @rating_id = # Set after creating a rating
 @payment_session_id = # Set after initiating a payment intent
 @ad_pack_id = # (Advertising - Lower Priority)
@@ -93,6 +94,39 @@ Content-Type: application/json
 
 # Capture the final auth token after OTP verification
 # > {% client.global.set("auth_token", response.body.data?.token); %}
+
+### 1.3.1 Resend OTP (e.g., if verification fails or user didn't receive)
+# @name resendOtp
+# Hits: User Service via Gateway
+POST {{gateway_url}}/users/resend-otp
+Content-Type: application/json
+
+{
+  "email": "{{test_email}}",
+  "purpose": "login" # Or 'register', 'forgotPassword', 'changeEmail'
+}
+
+### 1.3.2 Request Password Reset OTP (Public)
+# @name requestPasswordResetOtp
+# Hits: User Service via Gateway
+POST {{gateway_url}}/users/request-password-reset
+Content-Type: application/json
+
+{
+  "email": "{{test_email}}" // Email of the user who forgot password
+}
+
+### 1.3.3 Request Change Email OTP (Requires Auth)
+# @name requestChangeEmailOtp
+# Hits: User Service via Gateway
+# Requires: @auth_token
+POST {{gateway_url}}/users/request-change-email
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "newEmail": "new_{{test_email}}" // The NEW email address to verify
+}
 
 ### 1.4 Get Logged-in User Profile
 # @name getUserProfile
@@ -281,19 +315,39 @@ Authorization: Bearer {{auth_token}}
 # Requires: @auth_token
 POST {{gateway_url}}/products
 Authorization: Bearer {{auth_token}}
-Content-Type: application/json
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
 
-{
-  "name": "Sample Widget {{$randomInt}}",
-  "description": "A high-quality sample widget for testing purposes.",
-  "price": 15000, # Price in XAF
-  "category": "Widgets",
-  "subcategory": "Sample Widgets",
-  "imagesUrl": [ 
-    "https://via.placeholder.com/300/0000FF/FFFFFF?text=ProductImage1",
-    "https://via.placeholder.com/300/FF0000/FFFFFF?text=ProductImage2"
-  ]
-}
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="name"
+
+Sample Widget 1
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="description"
+
+A high-quality sample widget for testing purposes.
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="price"
+
+15000
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="category"
+
+Widgets
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="subcategory"
+
+Sample Widgets
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="images"; filename="image1.jpg"
+Content-Type: image/jpeg
+
+< green.png
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="images"; filename="image2.png"
+Content-Type: image/png
+
+< blue.png
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
 
 # Capture the new product ID
 # > {% client.global.set("product_id", response.body.data._id); %}
@@ -323,13 +377,25 @@ GET {{gateway_url}}/products/{{product_id}}
 # Requires: @auth_token, @product_id (must be owner)
 PUT {{gateway_url}}/products/{{product_id}}
 Authorization: Bearer {{auth_token}}
-Content-Type: application/json
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gX
 
-{
-  "description": "Updated description: Now even more widgety!",
-  "price": 16500
-  # Only include fields that can be updated by the user
-}
+------WebKitFormBoundary7MA4YWxkTrZu0gX
+Content-Disposition: form-data; name="description"
+
+Updated description: Now even more widgety!
+------WebKitFormBoundary7MA4YWxkTrZu0gX
+Content-Disposition: form-data; name="price"
+
+16500
+# To ADD/REPLACE images, include the 'images' field again.
+# If you don't include the 'images' field, existing images will be kept.
+# Example: Replacing images with one new image
+------WebKitFormBoundary7MA4YWxkTrZu0gX
+Content-Disposition: form-data; name="images"; filename="new_image.webp"
+Content-Type: image/webp
+
+< green.png
+------WebKitFormBoundary7MA4YWxkTrZu0gX--
 
 ### 4.6 Delete Product
 # @name deleteProduct

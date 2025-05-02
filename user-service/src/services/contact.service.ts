@@ -1,6 +1,7 @@
 import { IUser } from '../database/models/user.model';
 import { UserRepository } from '../database/repositories/user.repository';
-import { ContactSearchFilters, ContactSearchResponse, SubscriptionType } from '../types/contact.types';
+import { ContactSearchFilters, ContactSearchResponse } from '../types/contact.types';
+import { SubscriptionType } from '../database/models/subscription.model';
 import { generateVCFFile } from '../utils/vcf.utils';
 import { SubscriptionService } from './subscription.service';
 
@@ -20,13 +21,13 @@ export class ContactService {
      * @returns Boolean indicating if the user has the required subscription
      */
     private async hasSubscriptionAccess(userId: string, requiredSubscription: SubscriptionType): Promise<boolean> {
-        // Basic platform access check
-        if (requiredSubscription === SubscriptionType.PLATFORM_ACCESS) {
+        // Basic platform access check - Assuming CLASSIQUE is platform access
+        if (requiredSubscription === SubscriptionType.CLASSIQUE) {
             return await this.subscriptionService.hasActiveSubscription(userId);
         }
 
-        // Advanced contact plan check
-        if (requiredSubscription === SubscriptionType.CONTACT_PLAN) {
+        // Advanced contact plan check - Assuming CIBLE is contact plan
+        if (requiredSubscription === SubscriptionType.CIBLE) {
             return await this.subscriptionService.hasContactPlanSubscription(userId);
         }
 
@@ -40,7 +41,7 @@ export class ContactService {
      * @throws Error if the user doesn't have access to certain filters
      */
     private async validateFilters(userId: string, filters: ContactSearchFilters): Promise<void> {
-        const hasBasicAccess = await this.hasSubscriptionAccess(userId, SubscriptionType.PLATFORM_ACCESS);
+        const hasBasicAccess = await this.hasSubscriptionAccess(userId, SubscriptionType.CLASSIQUE);
 
         if (!hasBasicAccess) {
             throw new Error('You need an active subscription to access contacts');
@@ -55,7 +56,7 @@ export class ContactService {
             filters.region !== undefined;
 
         if (usingAdvancedFilters) {
-            const hasContactPlan = await this.hasSubscriptionAccess(userId, SubscriptionType.CONTACT_PLAN);
+            const hasContactPlan = await this.hasSubscriptionAccess(userId, SubscriptionType.CIBLE);
 
             if (!hasContactPlan) {
                 throw new Error('Advanced filtering requires a contact plan subscription');

@@ -1,29 +1,64 @@
 import { Types } from 'mongoose';
 import { productRepository, ProductSearchFilters, AdminProductSearchFilters } from '../database/repositories/product.repository';
 import { ratingRepository } from '../database/repositories/rating.repository';
-import { IProduct, ProductStatus } from '../database/models/product.model';
+import { IProduct, ProductStatus, IProductImage } from '../database/models/product.model';
 import { IRating } from '../database/models/rating.model';
 import { CustomError } from '../utils/custom-error';
+import { settingsServiceClient } from '../services/clients/settings.service.client';
+import logger from '../utils/logger';
+
+const log = logger.getLogger('ProductService');
 
 export class ProductService {
     /**
      * Create a new product
-     * @param productData Product data
+     * @param productData Product data (excluding images)
+     * @param imageFiles Array of uploaded image files
      * @returns Created product
      */
-    async createProduct(productData: Partial<IProduct>): Promise<IProduct> {
+    async createProduct(
+        productData: Omit<Partial<IProduct>, 'images'>, // Exclude images from initial data
+        imageFiles: Express.Multer.File[] = [] // Accept image files
+    ): Promise<IProduct> {
+        log.info(`Creating new product for user ${productData.userId}`);
         try {
-            // Set initial product status to PENDING
-            const newProductData = {
+            const uploadedImages: IProductImage[] = [];
+
+            // 1. Upload Images to Settings Service
+            if (imageFiles && imageFiles.length > 0) {
+                log.info(`Uploading ${imageFiles.length} images for product...`);
+                const uploadPromises = imageFiles.map(file =>
+                    settingsServiceClient.uploadFile(
+                        file.buffer,
+                        file.mimetype,
+                        file.originalname,
+                        'product-docs' // Specify folder name for product images
+                    ).then((uploadResult: { fileId: string }) => ({
+                        fileId: uploadResult.fileId,
+                        // Construct proxy URL pointing to settings-service endpoint
+                        url: `/settings/files/${uploadResult.fileId}`
+                    }))
+                );
+                const results = await Promise.all(uploadPromises);
+                uploadedImages.push(...results);
+                log.info('Product images uploaded successfully.');
+            }
+
+            // 2. Prepare product data for saving
+            const newProductData: Partial<IProduct> = {
                 ...productData,
+                images: uploadedImages, // Add uploaded image details
                 overallRating: 0,
-                ratings: []
+                ratings: [],
+                status: ProductStatus.PENDING // Ensure status is pending
             };
 
+            // 3. Create product in repository
             return await productRepository.create(newProductData);
-        } catch (error) {
-            console.error('Error creating product:', error);
-            throw new CustomError('Failed to create product', 500);
+        } catch (error: any) {
+            log.error('Error creating product:', error);
+            // Consider deleting uploaded files if creation fails (complex)
+            throw new CustomError(error.message || 'Failed to create product', error.statusCode || 500);
         }
     }
 
@@ -65,42 +100,67 @@ export class ProductService {
     /**
      * Update a product
      * @param productId Product ID
-     * @param updateData Data to update
+     * @param updateData Data to update (excluding images)
+     * @param imageFiles Optional new image files to replace existing ones
      * @param userId User ID of the requester (for authorization)
+     * @param isAdmin Is the requester an admin
      * @returns Updated product
      */
     async updateProduct(
         productId: string | Types.ObjectId,
-        updateData: Partial<IProduct>,
+        updateData: Omit<Partial<IProduct>, 'images'>,
+        imageFiles?: Express.Multer.File[], // Accept optional image files
         userId?: string | Types.ObjectId,
         isAdmin?: boolean
     ): Promise<IProduct | null> {
+        log.info(`Updating product ${productId} for user ${userId || 'Admin'}`);
         try {
-            // If userId is provided, verify product ownership
-            if (userId) {
-                const product = await productRepository.findById(productId);
-                if (!product) {
-                    throw new CustomError('Product not found', 404);
-                }
-
-                if (!isAdmin && product.userId.toString() !== userId.toString()) {
-                    throw new CustomError('Unauthorized: You do not own this product', 403);
-                }
+            const product = await productRepository.findById(productId);
+            if (!product) {
+                throw new CustomError('Product not found', 404);
             }
 
-            // Don't allow direct updates to sensitive fields
-            const safeUpdateData = { ...updateData };
+            // Authorization check
+            if (!isAdmin && product.userId.toString() !== userId?.toString()) {
+                throw new CustomError('Unauthorized: You do not own this product', 403);
+            }
+
+            const safeUpdateData: Partial<IProduct> = { ...updateData };
+            // Remove fields that shouldn't be directly updated this way
             delete safeUpdateData.ratings;
             delete safeUpdateData.overallRating;
-            delete safeUpdateData.userId;
-            delete safeUpdateData.status;
+            delete safeUpdateData.userId; // Cannot change owner
+            delete safeUpdateData.status; // Status updated via separate method
+            delete safeUpdateData.images; // Images handled separately below
 
+            // 1. Handle Image Updates (Replace Strategy)
+            if (imageFiles && imageFiles.length > 0) {
+                log.info(`Replacing images for product ${productId} with ${imageFiles.length} new files.`);
+                // TODO: Optional - Delete old files from settings-service using product.images[].fileId
+
+                const uploadPromises = imageFiles.map(file =>
+                    settingsServiceClient.uploadFile(
+                        file.buffer,
+                        file.mimetype,
+                        file.originalname,
+                        'product-docs' // Specify folder name for product images
+                    ).then((uploadResult: { fileId: string }) => ({
+                        fileId: uploadResult.fileId,
+                        url: `/settings/files/${uploadResult.fileId}`
+                    }))
+                );
+                safeUpdateData.images = await Promise.all(uploadPromises);
+                log.info('New product images uploaded and processed.');
+            }
+
+            // 2. Perform the update
             return await productRepository.updateById(productId, safeUpdateData);
-        } catch (error) {
+
+        } catch (error: any) {
             if (error instanceof CustomError) {
                 throw error;
             }
-            console.error('Error updating product:', error);
+            log.error(`Error updating product ${productId}:`, error);
             throw new CustomError('Failed to update product', 500);
         }
     }

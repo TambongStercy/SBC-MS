@@ -14,8 +14,8 @@ const app: Express = express();
 connectDB();
 
 // Middleware
-app.use(helmet()); // Basic security headers
-app.use(cors({ origin: config.cors.allowedOrigins })); // CORS configuration
+app.use(helmet({ crossOriginOpenerPolicy: false })); // Basic security headers
+// app.use(cors({ origin: config.cors.allowedOrigins }));
 app.use(morgan('dev')); // HTTP request logger
 
 // Apply body parsers BEFORE API routes with increased limit for file uploads
@@ -27,8 +27,8 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Body parser f
 
 // Middleware to log incoming requests
 app.use((req: Request, res: Response, next: NextFunction) => {
-  log.info(`Incoming request: ${req.method} ${req.originalUrl}`);
-  next(); // Pass control to the next middleware function
+    log.info(`Incoming request: ${req.method} ${req.originalUrl}`);
+    next(); // Pass control to the next middleware function
 });
 
 // --- API Routes ---
@@ -56,7 +56,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     }
     // Handle generic payload too large errors (might come from urlencoded or other parsers)
     if (err.type === 'entity.too.large') {
-         return res.status(413).json({ success: false, message: 'Payload too large' });
+        return res.status(413).json({ success: false, message: 'Payload too large' });
     }
 
 

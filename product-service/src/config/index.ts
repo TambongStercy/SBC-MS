@@ -35,6 +35,7 @@ interface IConfig {
         userService: string;
         paymentService: string;
         notificationService: string;
+        settingsServiceUrl: string;
         apiGateway: string;
     };
     logging: {
@@ -87,6 +88,7 @@ const config: IConfig = {
         userService: process.env.USER_SERVICE_URL || 'http://localhost:3001/api',
         paymentService: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3003/api',
         notificationService: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3002/api',
+        settingsServiceUrl: process.env.SETTINGS_SERVICE_URL || 'http://localhost:3007/api',
         apiGateway: process.env.API_GATEWAY_URL || 'http://localhost:3000/api'
     },
 

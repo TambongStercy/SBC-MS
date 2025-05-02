@@ -110,7 +110,7 @@ const validateConfig = (): void => {
         'NODE_ENV',
         'PORT',
         'HOST',
-        'MONGODB_URI',
+        'MONGODB_URI_PROD',
         'JWT_SECRET',
         'FEEXPAY_API_KEY',
         'FEEXPAY_SHOP_ID',
