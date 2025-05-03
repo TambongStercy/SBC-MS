@@ -7,7 +7,7 @@ import {
   UsersRound,
   UserRoundPlus,
   UserRoundCheck,
-  UserRound,
+  // UserRound,
 } from "lucide-react";
 import Loader from "../components/common/loader";
 import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats } from '../services/adminUserApi';
@@ -239,7 +239,7 @@ function Users() {
     );
   }
 
-  const totalSubscribers = summaryStats ? summaryStats.activeClassique + summaryStats.activeCible : 0;
+  // const totalSubscribers = summaryStats ? summaryStats.activeClassique + summaryStats.activeCible : 0;
 
   return (
     <div className="flex-1 overflow-auto relative z-10">

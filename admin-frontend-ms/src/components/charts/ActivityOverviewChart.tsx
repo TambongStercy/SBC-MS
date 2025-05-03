@@ -37,7 +37,8 @@ const ActivityOverviewChart: React.FC<ActivityOverviewChartProps> = ({ data }) =
     });
 
     return (
-        <ResponsiveContainer width="100%" height={300}> // Fixed height for consistency
+        // Fixed height for consistency
+        <ResponsiveContainer width="100%" height={300}>
             <BarChart
                 data={formattedData}
                 margin={{

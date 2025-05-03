@@ -43,7 +43,8 @@ const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({ data }) => {
     };
 
     return (
-        <ResponsiveContainer width="100%" height={300}> // Fixed height
+        // Fixed height
+        <ResponsiveContainer width="100%" height={300}>
             <AreaChart
                 data={formattedData}
                 margin={{

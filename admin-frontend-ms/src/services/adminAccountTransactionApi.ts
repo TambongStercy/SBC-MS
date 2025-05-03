@@ -1,6 +1,6 @@
 import axios from 'axios';
 import apiClient from '../api/apiClient';
-import { PaginationOptions } from './common'; // Assuming common types are here
+// import { PaginationOptions } from '../components/common/Pagination'; // Assuming common types are here - REMOVED
 import { Currency, TransactionStatus, TransactionType } from '../types/enums'; // Corrected Import Path
 
 const log = {
@@ -47,7 +47,11 @@ interface AccountTransactionListResponse {
 }
 
 // Filter Type Definition
-export interface AccountTransactionFilters extends Partial<PaginationOptions> {
+export interface AccountTransactionFilters {
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
     userSearchTerm?: string;
     status?: TransactionStatus | ''; // Allow empty string for 'all'
     type?: TransactionType | '';     // Allow empty string for 'all'

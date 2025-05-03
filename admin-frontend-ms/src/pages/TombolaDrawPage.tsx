@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     getTombolaMonthDetails,
@@ -52,7 +52,7 @@ const ballColors = [
 
 // Define animation variants for the balls
 const ballVariants: Variants = {
-    initial: (i: number) => ({
+    initial: (_i: number) => ({
         y: Math.random() * 4 - 2,
         scale: 1,
         opacity: 0.8 // Start slightly transparent
@@ -112,7 +112,7 @@ function TombolaDrawPage() {
     const { monthId } = useParams<{ monthId: string }>();
     const navigate = useNavigate();
     const [tombola, setTombola] = useState<TombolaMonth | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    // const [isLoading, setIsLoading] = useState(true); // REMOVED - Replaced by drawingState checks
     // const [isDrawing, setIsDrawing] = useState(false); // Replaced by drawingState
     const [error, setError] = useState<string | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -134,10 +134,10 @@ function TombolaDrawPage() {
     const fetchTombola = useCallback(async () => {
         if (!monthId) {
             setError("Tombola Month ID is missing.");
-            setIsLoading(false);
+            setDrawingState('error'); // Set error state
             return;
         }
-        setIsLoading(true);
+        // setIsLoading(true); // REMOVED
         setError(null);
         setDrawError(null); // Reset draw error on fetch
         setDrawingState('loading'); // Indicate loading details
@@ -162,7 +162,7 @@ function TombolaDrawPage() {
             setTombola(null);
             setDrawingState('error'); // Set error state
         } finally {
-            setIsLoading(false);
+            // setIsLoading(false); // REMOVED
         }
     }, [monthId]); // Keep only monthId dependency
 

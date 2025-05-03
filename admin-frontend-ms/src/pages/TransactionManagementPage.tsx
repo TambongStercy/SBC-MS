@@ -5,7 +5,6 @@ import Header from '../components/common/Header';
 import Pagination from '../components/common/Pagination';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
-import { debounce } from 'lodash';
 import MetadataViewerModal from '../components/common/MetadataViewerModal';
 
 // Helper to format date strings

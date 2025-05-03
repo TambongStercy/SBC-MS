@@ -30,7 +30,7 @@ const UserProductsTable: React.FC<UserProductsProps> = ({ data }) => {
 
   const handleDelete = async (productId: string) => {
     try {
-      await deleteProduct(filteredData.id, productId); // Call API to delete product
+      await deleteProduct(productId);
       // Remove the deleted product from the UI
       setFilteredData((prevData) => ({
         ...prevData,

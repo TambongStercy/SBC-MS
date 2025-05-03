@@ -1,9 +1,6 @@
 import { Route, Routes, useLocation } from "react-router-dom";
 import OverViewPage from "./pages/overViewPage";
 import Deconnexion from "./pages/Deconnexion";
-import Marketing from "./pages/Marketing";
-import RetraitAdmin from "./pages/RetraitAdmin";
-import ModifyLinks from "./pages/ModifyLinks";
 import Users from "./pages/Users";
 import Sidebar from "./components/Sidebar";
 import UsersPage from "./pages/usersPage";
@@ -61,9 +58,6 @@ function App() {
             <Route path="/settings" element={<SettingsManagementPage />} />
             <Route path="/tombola" element={<TombolaManagementPage />} />
             <Route path="/tombola/draw/:monthId" element={<TombolaDrawPage />} />
-            <Route path="/modifyLinks" element={<ModifyLinks />} />
-            <Route path="/retraitAdmin" element={<RetraitAdmin />} />
-            <Route path="/marketing" element={<Marketing />} />
             <Route path="/logout" element={<Deconnexion />} />
             <Route path="/userpage/:userId" element={<UsersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />

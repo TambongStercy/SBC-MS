@@ -46,8 +46,8 @@ export interface Product {
     subcategory?: string;
     imagesUrl?: string[];
     stock?: number;
+    isActive?: boolean; // Ensure isActive is an optional boolean property
     // flashSales?: FlashSale[]; // Array of flash sales (Potentially replaced by hasActiveFlashSale)
-    // isActive?: boolean; // (Potentially replaced by hasActiveFlashSale or backend status)
     hasActiveFlashSale?: boolean; // <-- Added: Indicates if product has an active flash sale
     createdAt?: string;
     updatedAt?: string;
@@ -78,7 +78,7 @@ const ProductsManagementPage: React.FC = () => {
     const [flashSaleFilter, setFlashSaleFilter] = useState<string>('all');
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [totalPages, setTotalPages] = useState<number>(1);
-    const [limit, setLimit] = useState<number>(10);
+    const [limit] = useState<number>(10);
     const [fetchTrigger, setFetchTrigger] = useState<number>(0);
     // --- State for Confirmation Modal ---
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState<boolean>(false);
@@ -179,14 +179,14 @@ const ProductsManagementPage: React.FC = () => {
         setError(null);
         try {
             await deleteProduct(itemIdToDelete);
-                fetchProducts(); // Refresh list
+            fetchProducts(); // Refresh list
             toast.success('Product deleted successfully.'); // Use toast for feedback
         } catch (err) { // Type assertion for err
-                console.error("Failed to delete product:", err);
-                setError(err instanceof Error ? err.message : 'Failed to delete product');
+            console.error("Failed to delete product:", err);
+            setError(err instanceof Error ? err.message : 'Failed to delete product');
             toast.error(err instanceof Error ? err.message : 'Failed to delete product');
-            } finally {
-                setIsLoading(false);
+        } finally {
+            setIsLoading(false);
             closeConfirmationModal();
         }
     };
@@ -290,19 +290,19 @@ const ProductsManagementPage: React.FC = () => {
     const confirmFlashSaleDelete = async () => {
         if (!itemIdToDelete) return;
         setIsLoading(true); // Use main loading state or a dedicated one
-            setError(null);
-            try {
+        setError(null);
+        try {
             const response = await deleteFlashSaleById(itemIdToDelete);
             console.log("Delete flash sale response:", response);
-                fetchProducts(); // Refresh list to see changes
+            fetchProducts(); // Refresh list to see changes
             setIsFlashSaleModalVisible(false); // Close the main flash sale modal too
             toast.success(response.message || 'Flash sale removed successfully.'); // Toast feedback
         } catch (err) { // Type assertion for err
-                console.error("Failed to delete flash sale:", err);
-                setError(err instanceof Error ? err.message : 'Failed to delete flash sale');
+            console.error("Failed to delete flash sale:", err);
+            setError(err instanceof Error ? err.message : 'Failed to delete flash sale');
             toast.error(err instanceof Error ? err.message : 'Failed to delete flash sale');
-            } finally {
-                setIsLoading(false);
+        } finally {
+            setIsLoading(false);
             closeConfirmationModal();
         }
     };

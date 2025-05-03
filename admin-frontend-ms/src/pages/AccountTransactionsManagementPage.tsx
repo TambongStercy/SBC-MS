@@ -39,7 +39,7 @@ const getStatusBadge = (status: TransactionStatus) => {
 };
 
 // Define currencies (copied from TransactionManagementPage)
-const CURRENCIES = [
+const _CURRENCIES = [
     { code: 'XAF', name: 'Central African CFA franc' },
     { code: 'XOF', name: 'West African CFA franc' },
     { code: 'USD', name: 'US Dollar' },

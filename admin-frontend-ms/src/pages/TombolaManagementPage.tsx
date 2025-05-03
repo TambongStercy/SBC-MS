@@ -48,7 +48,6 @@ function TombolaManagementPage() {
     const [tombolas, setTombolas] = useState<TombolaMonth[]>([]);
     const [pagination, setPagination] = useState<PaginationOptions>({ page: 1, limit: 10 });
     const [totalPages, setTotalPages] = useState(1);
-    const [totalCount, setTotalCount] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
@@ -86,7 +85,6 @@ function TombolaManagementPage() {
             // Access data and pagination based on the revised interface
             setTombolas(response.data || []);
             setTotalPages(response.pagination?.totalPages || 1);
-            setTotalCount(response.pagination?.totalCount || 0);
             // Ensure current page is sync with response in case API adjusted it
             if (response.pagination?.page && response.pagination.page !== pagination.page) {
                 setPagination(prev => ({ ...prev, page: response.pagination.page }));
@@ -97,7 +95,6 @@ function TombolaManagementPage() {
             toast.error(`Failed to load tombolas: ${message}`);
             setTombolas([]);
             setTotalPages(1);
-            setTotalCount(0);
         } finally {
             setIsLoading(false);
         }
@@ -127,6 +124,7 @@ function TombolaManagementPage() {
         const loadingToastId = toast.loading('Creating new tombola...');
         try {
             const newTombola = await createTombolaMonth(month, year);
+            console.log(newTombola);
             toast.success(`Successfully created tombola for ${String(month).padStart(2, '0')}/${year}.`, { id: loadingToastId });
             handleCloseCreateModal();
             fetchTombolas(); // Refresh the list
@@ -153,9 +151,9 @@ function TombolaManagementPage() {
             const response = await listTicketsForMonth(selectedTombolaForTickets._id, ticketsPagination, currentSearchTerm);
 
             // Adjusted access based on expected API response structure
-            // Assuming response has { data: Ticket[], pagination: { totalPages, totalCount, page } }
-            if (response && response.data && response.pagination) {
-                setTickets(response.data || []); // Use response.data directly
+            // Assuming response has { data: { tickets: Ticket[], ... }, pagination: { totalPages, totalCount, page } }
+            if (response && response.data && response.data.tickets && response.pagination) {
+                setTickets(response.data.tickets || []); // Access the 'tickets' array inside response.data
                 setTicketsTotalPages(response.pagination.totalPages || 1);
                 setTicketsTotalCount(response.pagination.totalCount || 0);
                 // Sync local pagination state if API adjusted the page
@@ -382,7 +380,6 @@ function TombolaManagementPage() {
                         <Pagination
                             currentPage={pagination.page ?? 1}
                             totalPages={totalPages ?? 1}
-                            totalCount={totalCount ?? 0}
                             onPageChange={handlePageChange}
                         />
                     </>
@@ -402,7 +399,7 @@ function TombolaManagementPage() {
                 tombolaMonth={selectedTombolaForTickets}
                 tickets={tickets}
                 isLoading={isLoadingTickets}
-                currentPage={ticketsPagination.page}
+                currentPage={ticketsPagination.page ?? 1}
                 totalPages={ticketsTotalPages ?? 1}
                 totalTickets={ticketsTotalCount ?? 0}
                 onPageChange={handleTicketsPageChange}

@@ -3,36 +3,9 @@ import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import { AdminUserData, updateUser } from "../services/adminUserApi"; // <-- Import admin update function
 
-import ToggleSwitch from "../components/common/ToggleSwitch";
 import Dropdown from "../components/common/dropdown";
 
-interface UserProductsProps {
-  data: {
-    id: string;
-    name: string;
-    region: string;
-    phoneNumber: string;
-    email: string;
-    avatar: string;
-    momoNumber: string;
-    momoOperator: string;
-    registeredAt: string;
-    isSubscribed: boolean;
-    pack: string;
-    product: Array<ProductsProps>;
-  };
-}
 
-interface ProductsProps {
-  id: string;
-  name: string;
-  category: string;
-  subcategory: string;
-  description: string;
-  imagesUrl: Array<string>;
-  price: number;
-  overallRating: number;
-}
 
 enum SubscriptionType {
   CLASSIQUE = 'CLASSIQUE',
@@ -41,22 +14,31 @@ enum SubscriptionType {
 }
 
 interface UserCardProps {
-  data: AdminUserData & { // Use AdminUserData from api service now
-    id: string; // Keep id for simplicity if components use it
-    // Redundant fields if AdminUserData includes them, but okay for prop definition
+  // Define the data shape UserCard actually needs, based on AdminUserData
+  // but ensuring correct types for display/input components.
+  data: {
+    // Fields directly from AdminUserData (types might need adjustment)
+    _id: string; // Use _id from AdminUserData
+    id: string; // Keep id if needed for child components
     name: string;
-    region: string;
-    phoneNumber: string;
-    email: string;
-    avatar: string;
-    momoNumber: string;
-    momoOperator: string;
-    registeredAt: string;
-    // Remove isSubscribed and pack if using activeSubscriptionTypes
-    // isSubscribed: boolean;
-    // pack: string; 
-    product: Array<any>;
-    country?: string;
+    email?: string; // Allow optional email
+    role: string; // Assuming role is a string
+    avatar?: string; // Optional avatar
+    momoOperator?: string; // Optional momoOperator
+    city?: string; // Optional city
+    region?: string; // Optional region
+    country?: string; // Optional country
+    isVerified?: boolean; // Assuming boolean
+    activeSubscriptionTypes?: string[]; // Assuming array of strings
+    createdAt?: string; // Original date string
+
+    // Fields that need type conversion or specific handling
+    phoneNumber: string; // Ensure this is string for the component
+    momoNumber: string;  // Ensure this is string for the component
+    registeredAt: string; // Ensure this is string (formatted date)
+
+    // Include other fields from AdminUserData if UserCard actually uses them
+    product?: Array<any>; // Assuming product is needed, keep type flexible
   };
   onSubscriptionChange: (userId: string, newType: SubscriptionType | 'NONE') => Promise<void>;
 }
@@ -142,9 +124,10 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange }) => {
     }
 
     // If region is a valid country code, use that
-    if (isValidCountryCode(data.region?.toUpperCase())) {
-      console.log("Using region as country:", data.region.toUpperCase());
-      return data.region.toUpperCase() as CountryCode;
+    const upperRegion = data.region?.toUpperCase(); // Get uppercase version safely
+    if (upperRegion && isValidCountryCode(upperRegion)) { // Check both existence and validity
+      console.log("Using region as country:", upperRegion);
+      return upperRegion; // Return the validated uppercase string
     }
 
     // Default fallback
@@ -349,7 +332,11 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange }) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
-            onClick={() => handleSimpleFieldUpdate("region", region)}
+            onClick={() => {
+              if (region !== undefined) { // Ensure region is defined before updating
+                handleSimpleFieldUpdate("region", region)
+              }
+            }}
             disabled={isSubmitting}
           >
             <Check color="#10b981" />
@@ -445,7 +432,11 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange }) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
-            onClick={() => handleMomoOperatorUpdate(momoOperator)}
+            onClick={() => {
+              if (momoOperator) { // Ensure momoOperator is defined before updating
+                handleMomoOperatorUpdate(momoOperator)
+              }
+            }}
             disabled={isSubmitting || !momoOperator}
           >
             <Check color="#10b981" />

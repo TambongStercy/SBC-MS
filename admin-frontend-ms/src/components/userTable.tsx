@@ -31,7 +31,7 @@ function UserTable() {
 
     setLoading(true);
     try {
-      const usersResponse = await fetchUsers(searchTerm, page, controller.signal); // Pass the abort signal
+      const usersResponse = await fetchUsers(searchTerm, page, usersPerPage, controller.signal);
       console.log("Users Data:", usersResponse); // Debugging
       setUsers(usersResponse.users);
       setTotalUsers(usersResponse.total); // Assuming the API returns total users count

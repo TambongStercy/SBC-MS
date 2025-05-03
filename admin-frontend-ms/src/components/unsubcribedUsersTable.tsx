@@ -12,24 +12,26 @@ interface User {
   avatar: string;
 }
 
-interface UnsubcribedUsersTableProps {
-  users: User[];
-  monthlyData: Array<MonthlyData>;
+// Copied from UsersOverViewCahrt.tsx to match expected data structure
+interface MonthlyUserSubData {
+  monthLabel: string; // Formatted month label (e.g., "Jan 24")
+  Users: number;
+  Classique: number;
+  Cible: number;
 }
 
-interface MonthlyData {
-  name: string;
-  subUsers: number;
-  nonSubusers: number;
+interface UnsubcribedUsersTableProps {
+  users: User[];
+  monthlyData: MonthlyUserSubData[]; // Use the correct type here
 }
 
 const UnsubcribedUsersTable: React.FC<UnsubcribedUsersTableProps> = ({ users, monthlyData }) => {
   const handleDownload = async () => {
-    openInNewTab(import.meta.env.VITE_API_URL+'/download-nonsub')
+    openInNewTab(import.meta.env.VITE_API_URL + '/download-nonsub')
   };
 
   const handleDownloadCSV = async () => {
-    openInNewTab(import.meta.env.VITE_API_URL+'/download-nonsub-csv')
+    openInNewTab(import.meta.env.VITE_API_URL + '/download-nonsub-csv')
   };
 
 
@@ -123,7 +125,7 @@ const UnsubcribedUsersTable: React.FC<UnsubcribedUsersTableProps> = ({ users, mo
           </table>
         </div>
       </motion.div>
-      <UsersOverViewCahrt data={monthlyData} type={2} />
+      <UsersOverViewCahrt data={monthlyData} />
 
     </>
   );

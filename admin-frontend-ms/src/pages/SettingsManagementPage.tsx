@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom'; // Assuming react-router for links
 import {
-    Trash2, UploadCloud, Loader2, ExternalLink, Image as ImageIcon, Video as VideoIcon, File as FileIcon, Info, AlertTriangle
+    Trash2, UploadCloud, Loader2, ExternalLink, File as FileIcon, AlertTriangle
 } from 'lucide-react'; // Keep lucide icons
 import {
     getSettings, updateSettings, uploadCompanyLogo, uploadTermsPdf, uploadPresentationVideo,
@@ -38,6 +37,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
     const [isUploading, setIsUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
 
+    console.log(fieldKey);
     // Clean up object URLs
     useEffect(() => {
         // Revoke the object URL when the component unmounts or previewSrc changes
@@ -153,10 +153,10 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
                             {currentFile?.size && <p className="text-gray-400 mt-1">Size: {(currentFile.size / (1024 * 1024)).toFixed(2)} MB</p>}
                             {currentFile?.mimeType && <p className="text-gray-400">Type: {currentFile.mimeType}</p>}
                         </div>
-                </div>
+                    </div>
                 ) : (
                     <p className="text-sm text-gray-400 italic">No file uploaded yet.</p>
-            )}
+                )}
             </div>
 
             {/* Dropzone */}
@@ -403,7 +403,7 @@ const SettingsManagementPage: React.FC = () => {
                 // Create new event (ensure image is present)
                 if (!newEventImage) throw new Error('Image file is required for new events.'); // Should be caught by initial check
                 await createEvent({ ...eventData, imageFile: newEventImage });
-            toast.success('Event created successfully.', { id: toastId });
+                toast.success('Event created successfully.', { id: toastId });
             }
             resetEventForm();
             fetchEvents(1); // Refresh event list
@@ -694,10 +694,10 @@ const SettingsManagementPage: React.FC = () => {
                                 </h3>
 
                                 {/* Event Title Input */}
-                            <div>
+                                <div>
                                     <label htmlFor="eventTitle" className="block text-sm font-medium text-gray-300 mb-1">Title</label>
-                                <input
-                                    type="text"
+                                    <input
+                                        type="text"
                                         id="eventTitle"
                                         className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
                                         value={newEventTitle}
@@ -710,14 +710,14 @@ const SettingsManagementPage: React.FC = () => {
                                 <div>
                                     <label htmlFor="eventDesc" className="block text-sm font-medium text-gray-300 mb-1">Description</label>
                                     <textarea
-                                    id="eventDesc"
+                                        id="eventDesc"
                                         rows={3}
                                         className="block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
-                                    value={newEventDesc}
+                                        value={newEventDesc}
                                         onChange={(e) => setNewEventDesc(e.target.value)}
-                                    required
-                                />
-                            </div>
+                                        required
+                                    />
+                                </div>
 
                                 {/* Event Image Upload */}
                                 <div>
@@ -771,8 +771,8 @@ const SettingsManagementPage: React.FC = () => {
                                 {createOrUpdateError && (
                                     <div className="p-3 bg-red-900 border border-red-700 rounded-md text-red-100 text-sm">
                                         {createOrUpdateError}
-                                </div>
-                            )}
+                                    </div>
+                                )}
 
                                 {/* Submit Button */}
                                 <button
@@ -793,13 +793,13 @@ const SettingsManagementPage: React.FC = () => {
                                         Cancel Edit
                                     </button>
                                 )}
-                        </form>
-                    </div>
+                            </form>
+                        </div>
 
                         {/* Event List */}
                         <div className="lg:col-span-2">
-                    <div className="bg-gray-800 shadow rounded-lg p-6">
-                        <h3 className="text-lg font-semibold mb-4 text-white">Existing Events</h3>
+                            <div className="bg-gray-800 shadow rounded-lg p-6">
+                                <h3 className="text-lg font-semibold mb-4 text-white">Existing Events</h3>
                                 {isLoadingEvents ? (
                                     <div className="flex justify-center items-center p-8">
                                         <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
@@ -807,7 +807,7 @@ const SettingsManagementPage: React.FC = () => {
                                 ) : events.length === 0 ? (
                                     <p className="text-gray-400 italic">No events found.</p>
                                 ) : (
-                            <div className="space-y-4">
+                                    <div className="space-y-4">
                                         {events.map((event) => {
                                             // Construct absolute URLs for this event's files
                                             const imageUrl = getEventFileUrl(event.image?.fileId);
@@ -822,7 +822,7 @@ const SettingsManagementPage: React.FC = () => {
                                                                 src={imageUrl}
                                                                 alt={`Event ${event._id} image`}
                                                                 className="h-16 w-16 object-cover rounded bg-gray-600"
-                                                                onError={(e) => { /* fallback */ }}
+                                                                // onError={(e) => { /* fallback */ }}
                                                             />
                                                         )}
                                                         {/* Optional Event Video Preview - Use absolute URL */}
@@ -832,8 +832,8 @@ const SettingsManagementPage: React.FC = () => {
                                                                 className="h-16 w-auto rounded bg-gray-600"
                                                                 preload="metadata"
                                                             />
-                                                )}
-                                            </div>
+                                                        )}
+                                                    </div>
 
                                                     <div className="flex-grow">
                                                         {/* Display Event Title */}
@@ -842,7 +842,7 @@ const SettingsManagementPage: React.FC = () => {
                                                         <p className="text-xs text-gray-400">
                                                             Posted: {new Date(event.timestamp || event.createdAt).toLocaleString()}
                                                         </p>
-                                        </div>
+                                                    </div>
                                                     <div className="flex flex-col space-y-1 flex-shrink-0">
                                                         {/* Edit Button */}
                                                         <button
@@ -854,37 +854,37 @@ const SettingsManagementPage: React.FC = () => {
                                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                                         </button>
                                                         {/* Delete Button - Now triggers modal */}
-                                        <button
+                                                        <button
                                                             onClick={() => handleDeleteClick(event._id)} // Use new handler
                                                             className="p-1 text-red-400 hover:text-red-300 focus:outline-none"
-                                            title="Delete Event"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
-                                    </div>
+                                                            title="Delete Event"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
-                            </div>
-                        )}
+                                    </div>
+                                )}
                                 {/* Pagination Controls */}
-                        {eventTotalPages > 1 && (
+                                {eventTotalPages > 1 && (
                                     <div className="mt-6 flex justify-between items-center text-sm">
-                                    <button
-                                        onClick={() => handleEventPageChange(eventPage - 1)}
+                                        <button
+                                            onClick={() => handleEventPageChange(eventPage - 1)}
                                             disabled={eventPage <= 1 || isLoadingEvents}
                                             className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Previous
-                                    </button>
+                                        >
+                                            Previous
+                                        </button>
                                         <span className="text-gray-400">Page {eventPage} of {eventTotalPages}</span>
-                                    <button
-                                        onClick={() => handleEventPageChange(eventPage + 1)}
+                                        <button
+                                            onClick={() => handleEventPageChange(eventPage + 1)}
                                             disabled={eventPage >= eventTotalPages || isLoadingEvents}
                                             className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Next
-                                    </button>
+                                        >
+                                            Next
+                                        </button>
                                     </div>
                                 )}
                             </div>

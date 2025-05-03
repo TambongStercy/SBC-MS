@@ -63,7 +63,7 @@ function UsersPage() {
       console.error("Subscription update failed:", error);
       toast.error(`Failed to update subscription: ${error.message}`, { id: toastId });
       // Revert optimistic update if done
-      // setUserData(originalUserData);
+      setUserData(originalUserData as AdminUserData);
     }
   };
 
@@ -100,13 +100,22 @@ function UsersPage() {
         >
           <UserCard
             data={{
-              ...userData,
+              _id: userData._id,
               id: userData._id,
+              name: userData.name || 'Unknown Name',
+              email: userData.email || 'N/A',
+              role: userData.role || 'USER',
               phoneNumber: userData.phoneNumber?.toString() || 'N/A',
               registeredAt: new Date(userData.createdAt || Date.now()).toLocaleDateString(),
               avatar: userData.avatar || 'https://via.placeholder.com/150',
               momoNumber: userData.momoNumber?.toString() || 'N/A',
               momoOperator: userData.momoOperator || 'N/A',
+              city: userData.city || 'N/A',
+              region: userData.region || 'N/A',
+              isVerified: userData.isVerified,
+              activeSubscriptionTypes: userData.activeSubscriptionTypes,
+              createdAt: userData.createdAt,
+              country: userData.country,
               product: []
             }}
             onSubscriptionChange={handleSubscriptionChange}

@@ -7,9 +7,9 @@ import {
   UserRound,
   UserRoundCheck,
   ListChecks,
-  Package,
-  CalendarDays,
-  Ticket,
+  // Package,
+  // CalendarDays,
+  // Ticket,
   Landmark,
   ChevronDown,
 } from "lucide-react";
@@ -20,18 +20,20 @@ import ActivityOverviewChart from "../components/charts/ActivityOverviewChart";
 import RecentTransactionsList from "../components/common/RecentTransactionsList";
 
 import { fetchDashboard, fetchRecentTransactions } from "../api"; // Import the API functions
+import { AccountTransaction } from "../services/adminAccountTransactionApi"; // Import the shared AccountTransaction type
 
 import { convertDatesToMonthlyData } from "../utils/dateUtils"; // Utility function
 import Loader from "../components/common/loader";
 import { getCountryName } from "../utils/countryUtils"; // Import the new helper
 
 // --- Define Interface for Dashboard Data ---
-interface MonthlyRevenueData {
+export interface MonthlyRevenueData {
   month: string;      // e.g., "2024-5"
   totalAmount: number;
 }
 
-interface ActivityOverviewData {
+// Export the interface so other components can import it
+export interface ActivityOverviewData {
   month: string;      // e.g., "2024-5"
   deposits: number;
   withdrawals: number;
@@ -51,21 +53,6 @@ interface AdminDashboardData {
   monthlyRevenue: MonthlyRevenueData[];
   balancesByCountry: { [countryCode: string]: number };
   activityOverview: ActivityOverviewData[];
-}
-// --- End Interface ---
-
-// --- Interface for Recent Transaction ---
-interface RecentTransaction {
-  _id: string;
-  transactionId: string;
-  userId: string; // Or an object with user details if populated
-  userName?: string; // Optional: If backend enriches data
-  type: string; // e.g., 'deposit', 'withdrawal', 'payment'
-  amount: number;
-  currency: string; // e.g., 'XAF'
-  status: string; // e.g., 'completed', 'pending'
-  description: string;
-  createdAt: string; // Date string
 }
 // --- End Interface ---
 
@@ -95,7 +82,7 @@ const getColorForCountry = (countryCode: string) => {
 const OverViewPage = () => {
   // State to store dashboard and users data
   const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(null);
-  const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<AccountTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -135,18 +122,18 @@ const OverViewPage = () => {
         // Extract all relevant data from the dashboard response
         // Destructure from the verified actualDashboardData
         const {
-          adminBalance,
-          count,
-          subCount,
+          // adminBalance,
+          // count,
+          // subCount,
           classiqueSubStartDates,
           cibleSubStartDates,
           allUsersDates,
-          totalTransactions,
-          totalWithdrawals,
-          totalRevenue,
-          monthlyRevenue,
-          balancesByCountry,
-          activityOverview
+          // totalTransactions,
+          // totalWithdrawals,
+          // totalRevenue,
+          // monthlyRevenue,
+          // balancesByCountry,
+          // activityOverview
         } = actualDashboardData;
 
         // Convert dates for the UsersOverViewChart
