@@ -116,6 +116,19 @@ Content-Type: application/json
   "email": "{{test_email}}" // Email of the user who forgot password
 }
 
+### 1.3.2.1 Reset Password using OTP (Public)
+# @name resetPassword
+# Hits: User Service via Gateway
+# Requires: email, otpCode from the password reset email, newPassword
+POST {{gateway_url}}/users/reset-password
+Content-Type: application/json
+
+{
+  "email": "{{test_email}}",
+  "otpCode": "{{otp_code}}", // Replace with OTP from email
+  "newPassword": "newStrongPassword123!"
+}
+
 ### 1.3.3 Request Change Email OTP (Requires Auth)
 # @name requestChangeEmailOtp
 # Hits: User Service via Gateway
@@ -126,6 +139,19 @@ Content-Type: application/json
 
 {
   "newEmail": "new_{{test_email}}" // The NEW email address to verify
+}
+
+### 1.3.3.1 Confirm Change Email using OTP (Requires Auth)
+# @name confirmChangeEmail
+# Hits: User Service via Gateway
+# Requires: @auth_token, newEmail (same as requested), otpCode from the new email
+POST {{gateway_url}}/users/confirm-change-email
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "newEmail": "new_{{test_email}}",
+  "otpCode": "{{otp_code}}" // Replace with OTP from the *new* email address
 }
 
 ### 1.4 Get Logged-in User Profile
@@ -279,6 +305,14 @@ Authorization: Bearer {{auth_token}}
 # Requires: @auth_token, Active CIBLE Subscription
 # Example: Find male contacts in Cameroon (CM), aged 30-40, interested in Business, page 1.
 GET {{gateway_url}}/contacts/search?country=CM&sex=male&minAge=30&maxAge=40&interests=Business&page=1&limit=20
+Authorization: Bearer {{auth_token}}
+
+### 3.1.1 Search Contacts with Date Range (Requires CIBLE Subscription)
+# @name searchContactsWithDateRange
+# Hits: User Service (Contacts) via Gateway
+# Requires: @auth_token, Active CIBLE Subscription
+# Example: Find contacts registered between 2023-01-01 and 2023-12-31
+GET {{gateway_url}}/contacts/search?startDate=2023-01-01&endDate=2023-12-31&page=1&limit=20
 Authorization: Bearer {{auth_token}}
 
 ### 3.2 Search Contacts (Filter by Region)
@@ -657,4 +691,24 @@ Authorization: Bearer {{auth_token}}
 # Hits: Settings Service via Gateway
 # Requires: @auth_token (or @admin_auth_token might work)
 GET {{gateway_url}}/settings/thumbnails/{{fileId}}
+Authorization: Bearer {{auth_token}}
+
+# =========================================
+# X. PARTNER FLOW (User Service - Partner Endpoints)
+# =========================================
+# These requests assume the logged-in user is also a partner.
+
+### X.1 Get My Partner Details
+# @name getMyPartnerDetails
+# Hits: User Service (Partner Routes) via Gateway
+# Requires: @auth_token (user must be an active partner)
+GET {{gateway_url}}/partners/me
+Authorization: Bearer {{auth_token}}
+
+### X.2 Get My Partner Transactions (Commissions)
+# @name getMyPartnerTransactions
+# Hits: User Service (Partner Routes) via Gateway
+# Requires: @auth_token (user must be an active partner)
+# Optional query params: page, limit
+GET {{gateway_url}}/partners/me/transactions?page=1&limit=10
 Authorization: Bearer {{auth_token}}

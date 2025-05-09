@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import userRoutes from './user.routes';
 import contactRoutes from './contact.routes';
-import subscriptionRoutes from './subscription.routes';
+import subscriptionRoutes from './subscription.routes'; 
 import dailyWithdrawalRoutes from './daily-withdrawal.routes';
+import partnerRoutes from './partner.routes';
 import adminRoutes from './admin.routes';
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/users', userRoutes);
 router.use('/contacts', contactRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/withdrawals', dailyWithdrawalRoutes);
+router.use('/partners', partnerRoutes);
 
 export default router;

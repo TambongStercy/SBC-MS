@@ -447,8 +447,8 @@ export class UserController {
             const page = parseInt(pageQuery as string, 10) || 1;
             const limit = parseInt(limitQuery as string, 10) || 10;
 
-            // Call service with filters
-            const result = await userService.getReferredUsers(
+            // Call the CORRECT service method with filters
+            const result = await userService.getReferredUsersInfoPaginated(
                 userId,
                 level,
                 nameFilter as string | undefined, // Pass name filter
@@ -875,8 +875,28 @@ export class UserController {
         if (query.interests) {
             filters.interests = Array.isArray(query.interests) ? query.interests : [query.interests];
         }
-        // Add requireActiveSubscription if needed (done in the calling method)
-        // if (query.requireActiveSubscription) filters.requireActiveSubscription = query.requireActiveSubscription === 'true';
+
+        // Add date filters
+        if (query.startDate) {
+            const startDate = new Date(query.startDate as string);
+            if (!isNaN(startDate.getTime())) {
+                filters.registrationDateStart = startDate;
+            } else {
+                this.log.warn(`Invalid startDate format provided: ${query.startDate}`);
+                // Optionally throw an error or handle as a bad request
+            }
+        }
+        if (query.endDate) {
+            const endDate = new Date(query.endDate as string);
+            if (!isNaN(endDate.getTime())) {
+                // To make the endDate inclusive of the whole day
+                endDate.setHours(23, 59, 59, 999);
+                filters.registrationDateEnd = endDate;
+            } else {
+                this.log.warn(`Invalid endDate format provided: ${query.endDate}`);
+                // Optionally throw an error or handle as a bad request
+            }
+        }
 
         // Add simple validation/sanitization if needed (e.g., check NaN for ages)
         if (isNaN(filters.minAge as number)) delete filters.minAge;
@@ -1143,6 +1163,64 @@ export class UserController {
                 res.status(error.statusCode).json({ success: false, message: error.message });
             } else {
                 res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
+            }
+        }
+    }
+
+    /**
+     * Handles the password reset request.
+     */
+    async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { email, otpCode, newPassword } = req.body;
+
+            if (!email || !otpCode || !newPassword) {
+                res.status(400).json({ success: false, message: 'Email, OTP, and new password are required.' });
+                return;
+            }
+
+            await userService.resetPassword(email, otpCode, newPassword);
+
+            res.status(200).json({ success: true, message: 'Password reset successful.' });
+
+        } catch (error) {
+            log.error('Password reset failed:', error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                res.status(500).json({ success: false, message: 'An internal error occurred during password reset.' });
+            }
+        }
+    }
+
+    /**
+     * Handles the email change confirmation request.
+     */
+    async confirmChangeEmail(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            // User ID comes from the authenticated request middleware
+            const userId = req.user?.userId; // Or req.user?._id depending on auth middleware
+            const { newEmail, otpCode } = req.body;
+
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication required.' });
+                return;
+            }
+            if (!newEmail || !otpCode) {
+                res.status(400).json({ success: false, message: 'New email and OTP are required.' });
+                return;
+            }
+
+            await userService.confirmChangeEmail(userId, newEmail, otpCode);
+
+            res.status(200).json({ success: true, message: 'Email change confirmed successfully.' });
+
+        } catch (error) {
+            log.error('Email change confirmation failed:', error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                res.status(500).json({ success: false, message: 'An internal error occurred during email change confirmation.' });
             }
         }
     }

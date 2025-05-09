@@ -6,16 +6,10 @@ import { PaginationOptions } from '../../types/express';
 import { ContactSearchFilters } from '../../types/contact.types'; // Assuming filters might be reused
 import { isValidObjectId } from 'mongoose';
 import { SubscriptionType } from '../../database/models/subscription.model'; // Import enum
-
-// Define AuthenticatedRequest if not globally available
-interface AuthenticatedRequest extends Request {
-    user?: {
-        id: string; // Usually the JWT 'sub' or primary key
-        userId: string; // Often redundant with id, depends on token structure
-        email: string;
-        role: string;
-    };
-}
+import { AuthenticatedRequest } from '../middleware/auth.middleware'; // Import AuthenticatedRequest
+import { partnerService } from '../../services/partner.service'; // Import PartnerService
+import { subscriptionService } from '../../services/subscription.service'; // Import Subscription Service
+import { AppError } from '../../utils/errors'; // Import AppError
 
 const log = logger.getLogger('AdminController');
 
@@ -411,6 +405,104 @@ class AdminController {
             const isServiceError = error instanceof Error && error.message.includes('service might be unavailable');
             res.status(isServiceError ? 503 : 500).json({ success: false, message: error instanceof Error ? error.message : 'Failed to retrieve dashboard data' });
             // Alternatively use next(error) to pass to a generic error handler
+        }
+    }
+
+    /**
+     * [Admin] Set/Update a user's partner status and pack.
+     */
+    async setUserAsPartner(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        log.info('Admin request to set/update partner status.');
+        if (!req.user || !req.user.role) {
+            return next(new AppError('Authentication details missing.', 401));
+        }
+        const { userId, pack } = req.body;
+        if (!userId || !pack || !['silver', 'gold'].includes(pack) || !isValidObjectId(userId)) {
+            return next(new AppError('Invalid input: userId (ObjectId) and pack (silver/gold) are required.', 400));
+        }
+
+        try {
+            const actingUserRole = req.user.role as UserRole;
+            const partner = await partnerService.adminSetUserAsPartner(actingUserRole, userId, pack);
+            res.status(200).json({ success: true, message: 'Partner status updated successfully.', data: partner });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * [Admin] Deactivate a user's partner status.
+     */
+    async deactivatePartner(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        log.info('Admin request to deactivate partner.');
+        if (!req.user || !req.user.role) {
+            return next(new AppError('Authentication details missing.', 401));
+        }
+        const { userId } = req.params; // User ID of the partner to deactivate
+        if (!userId || !isValidObjectId(userId)) {
+            return next(new AppError('Invalid input: User ID (ObjectId) of the partner is required.', 400));
+        }
+
+        try {
+            const actingUserRole = req.user.role as UserRole;
+            const partner = await partnerService.adminRemovePartnerStatus(actingUserRole, userId);
+            if (!partner) {
+                // This case is handled by the service throwing an error if not found
+                return next(new AppError('Partner not found or already inactive.', 404));
+            }
+            res.status(200).json({ success: true, message: 'Partner deactivated successfully.', data: partner });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * [Admin] List all partners with pagination.
+     * @route GET /api/admin/partners
+     */
+    async listPartners(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        log.info('Admin request to list partners');
+        try {
+            const { page = 1, limit = 10 } = req.query;
+            const pagination: PaginationOptions = {
+                page: parseInt(page as string, 10) || 1,
+                limit: parseInt(limit as string, 10) || 10,
+            };
+
+            const result = await partnerService.adminListPartners(pagination.page, pagination.limit);
+
+            res.status(200).json({
+                success: true,
+                data: result.docs,
+                pagination: {
+                    totalDocs: result.totalDocs,
+                    limit: result.limit,
+                    page: result.page,
+                    totalPages: result.totalPages,
+                    hasNextPage: result.hasNextPage,
+                    hasPrevPage: result.hasPrevPage,
+                    nextPage: result.nextPage,
+                    prevPage: result.prevPage,
+                }
+            });
+        } catch (error) {
+            log.error('Error listing partners (admin):', error);
+            next(error); // Pass to error handling middleware
+        }
+    }
+
+    /**
+     * [Admin] Get summary statistics for active partners.
+     * @route GET /api/admin/partners/summary
+     */
+    async getPartnerSummaryStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        log.info('Admin request for partner summary stats');
+        try {
+            const stats = await partnerService.getPartnerSummaryStats();
+            res.status(200).json({ success: true, data: stats });
+        } catch (error) {
+            log.error('Error getting partner summary stats (controller):', error);
+            next(error); // Pass to error handling middleware
         }
     }
 }

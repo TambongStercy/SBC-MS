@@ -22,7 +22,7 @@ export class ProductController {
      * Create a new product
      * @route POST /api/products
      */
-    async createProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    async createProduct(req: AuthenticatedRequest, res: Response, next: NextFunction) {
         try {
             // Extract fields from req.body
             const { name, category, subcategory, description, price } = req.body;
@@ -54,7 +54,7 @@ export class ProductController {
 
             const product = await productService.createProduct(productData, imageFiles);
 
-            res.status(201).json({
+            return res.status(201).json({
                 success: true,
                 data: product
             });
@@ -141,7 +141,7 @@ export class ProductController {
      * Update a product
      * @route PUT /api/products/:productId
      */
-    async updateProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    async updateProduct(req: AuthenticatedRequest, res: Response, next: NextFunction) {
         try {
             const { productId } = req.params;
             const userId = req.user?.id;
@@ -171,7 +171,7 @@ export class ProductController {
                 isAdmin     // Pass isAdmin for authorization check in service
             );
 
-            res.json({
+            return res.json({
                 success: true,
                 data: updatedProduct
             });

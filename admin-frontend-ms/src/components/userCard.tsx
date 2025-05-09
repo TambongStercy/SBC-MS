@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Check } from "lucide-react";
-import { AdminUserData, updateUser } from "../services/adminUserApi"; // <-- Import admin update function
+import { AdminUserData, updateUser, PartnerPack } from "../services/adminUserApi"; // <-- Update import to include PartnerPack
 
 import Dropdown from "../components/common/dropdown";
 
@@ -31,6 +31,7 @@ interface UserCardProps {
     isVerified?: boolean; // Assuming boolean
     activeSubscriptionTypes?: string[]; // Assuming array of strings
     createdAt?: string; // Original date string
+    partnerPack?: PartnerPack; // Add partner pack
 
     // Fields that need type conversion or specific handling
     phoneNumber: string; // Ensure this is string for the component
@@ -41,9 +42,10 @@ interface UserCardProps {
     product?: Array<any>; // Assuming product is needed, keep type flexible
   };
   onSubscriptionChange: (userId: string, newType: SubscriptionType | 'NONE') => Promise<void>;
+  onPartnerPackChange: (userId: string, newPack: 'silver' | 'gold' | 'none') => Promise<void>;
 }
 
-const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange }) => {
+const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartnerPackChange }) => {
   const [name, setName] = useState(data.name);
   const [phoneNumber, setPhoneNumber] = useState<string>(String(data.phoneNumber || ''));
   const [selectedSubscription, setSelectedSubscription] = useState<SubscriptionType | 'NONE'>(() => {
@@ -60,6 +62,14 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange }) => {
     console.log("Setting initial subscription to NONE");
     return 'NONE';
   });
+
+  // Add state for partner pack
+  const [selectedPartnerPack, setSelectedPartnerPack] = useState<'silver' | 'gold' | 'none'>(() => {
+    if (data.partnerPack === PartnerPack.SILVER) return 'silver';
+    if (data.partnerPack === PartnerPack.GOLD) return 'gold';
+    return 'none';
+  });
+
   const [momoNumber, setMomoNumber] = useState<string>(String(data.momoNumber || ''));
   const [momoOperator, setMomoOperator] = useState(data.momoOperator);
   const [region, setRegion] = useState(data.region);
@@ -187,6 +197,24 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange }) => {
       console.error("Failed to update subscription from UserCard", error);
       // Revert local state if the API call fails
       setSelectedSubscription(originalType);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Add handler for partner pack selection
+  const handlePartnerPackSelect = async (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPack = event.target.value as 'silver' | 'gold' | 'none';
+    const originalPack = selectedPartnerPack; // Store original state for potential revert
+    setSelectedPartnerPack(newPack);
+    console.log("Selected partner pack:", newPack);
+    setIsSubmitting(true);
+    try {
+      await onPartnerPackChange(data.id, newPack);
+    } catch (error) {
+      console.error("Failed to update partner pack from UserCard", error);
+      // Revert local state if the API call fails
+      setSelectedPartnerPack(originalPack);
     } finally {
       setIsSubmitting(false);
     }
@@ -373,21 +401,46 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange }) => {
           </motion.button>
         </div>
 
-        {/* Subscription Dropdown */}
-        <div className="flex flex-col items-center mb-6 w-full max-w-xs">
-          <h3 className="mb-1 self-start">Abonnement</h3>
-          <select
-            name="subscription"
-            value={selectedSubscription}
-            onChange={handleSubscriptionSelect}
-            disabled={isSubmitting}
-            className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-8 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
-            style={{ backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="white" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em' }}
-          >
-            <option value="NONE">Aucun</option>
-            <option value={SubscriptionType.CLASSIQUE}>Classique</option>
-            <option value={SubscriptionType.CIBLE}>Cible</option>
-          </select>
+        {/* Subscription Selector */}
+        <div className="flex flex-col sm:flex-row sm:gap-4 mt-4 sm:mt-0 w-full">
+          <div className="mb-4 sm:mb-0 flex-1">
+            <label htmlFor="subscription" className="block text-sm font-medium mb-1 text-gray-300">
+              Type d'abonnement
+            </label>
+            <select
+              id="subscription"
+              name="subscription"
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors 
+                ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+              onChange={handleSubscriptionSelect}
+              value={selectedSubscription}
+              disabled={isSubmitting}
+            >
+              <option value="NONE">Aucun</option>
+              <option value="CLASSIQUE">CLASSIQUE</option>
+              <option value="CIBLE">CIBLE</option>
+            </select>
+          </div>
+
+          {/* Partner Pack Selector */}
+          <div className="mb-4 sm:mb-0 flex-1">
+            <label htmlFor="partnerPack" className="block text-sm font-medium mb-1 text-gray-300">
+              Pack Partenaire
+            </label>
+            <select
+              id="partnerPack"
+              name="partnerPack"
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors 
+                ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+              onChange={handlePartnerPackSelect}
+              value={selectedPartnerPack}
+              disabled={isSubmitting}
+            >
+              <option value="none">Non Partenaire</option>
+              <option value="silver">Silver</option>
+              <option value="gold">Gold</option>
+            </select>
+          </div>
         </div>
 
         {/* Momo Number Input */}

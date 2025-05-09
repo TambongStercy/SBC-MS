@@ -7,6 +7,7 @@ import logger from '../utils/logger';
 import { paymentService } from './clients/payment.service.client';
 import config from '../config';
 import { userService } from './user.service'; // Import userService to get referrers
+import { partnerService } from './partner.service'; // Import partnerService
 // import { AppError } from '../utils/AppError'; // AppError not found, using Error for now
 
 // --- Subscription Plan Definitions ---
@@ -81,7 +82,7 @@ export class SubscriptionService {
         try {
             // Check specifically for CONTACT_PLAN subscription type
             const subscription = await this.subscriptionRepository.findActiveSubscriptionByType(
-                userId,
+                new Types.ObjectId(userId),
                 SubscriptionType.CIBLE
             );
             return subscription !== null;
@@ -491,6 +492,7 @@ export class SubscriptionService {
         this.log.info(`Distributing commissions for user ${buyerUserId}, plan ${planType}, isUpgrade: ${isUpgrade}`);
 
         const commissionRates = { level1: 0.50, level2: 0.25, level3: 0.125 };
+        const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
         let commissionBaseAmount = 0;
 
         if (isUpgrade) {
@@ -519,6 +521,8 @@ export class SubscriptionService {
 
             const currency = 'XAF'; // Assuming XAF for commissions
             const payoutPromises: Promise<any>[] = [];
+            const partnerPayoutPromises: Promise<any>[] = []; // For partner commissions
+
             // Update planDesc logic to handle all cases
             let planDesc: string;
             if (isUpgrade) {
@@ -531,14 +535,17 @@ export class SubscriptionService {
                 planDesc = planName || 'Unknown Subscription'; // Fallback
             }
 
+            // Calculate individual referral commissions
+            let l1Amount = 0, l2Amount = 0, l3Amount = 0;
+
             // Level 1
             if (referrers.level1) {
-                const amount = commissionBaseAmount * commissionRates.level1;
+                l1Amount = commissionBaseAmount * commissionRates.level1;
                 const description = `Level 1 (50%) commission from ${planDesc} purchase by user ${buyerUserId}`;
-                this.log.info(`Recording L1 commission deposit of ${amount} ${currency} for referrer ${referrers.level1}`);
+                this.log.info(`Recording L1 commission deposit of ${l1Amount} ${currency} for referrer ${referrers.level1}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level1,
-                    amount: amount,
+                    amount: l1Amount,
                     currency: currency,
                     description: description,
                     metadata: {
@@ -552,12 +559,12 @@ export class SubscriptionService {
             }
             // Level 2
             if (referrers.level2) {
-                const amount = commissionBaseAmount * commissionRates.level2;
+                l2Amount = commissionBaseAmount * commissionRates.level2;
                 const description = `Level 2 (25%) commission from ${planDesc} purchase by user ${buyerUserId}`;
-                this.log.info(`Recording L2 commission deposit of ${amount} ${currency} for referrer ${referrers.level2}`);
+                this.log.info(`Recording L2 commission deposit of ${l2Amount} ${currency} for referrer ${referrers.level2}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level2,
-                    amount: amount,
+                    amount: l2Amount,
                     currency: currency,
                     description: description,
                     metadata: {
@@ -571,12 +578,12 @@ export class SubscriptionService {
             }
             // Level 3
             if (referrers.level3) {
-                const amount = commissionBaseAmount * commissionRates.level3;
+                l3Amount = commissionBaseAmount * commissionRates.level3;
                 const description = `Level 3 (12.5%) commission from ${planDesc} purchase by user ${buyerUserId}`;
-                this.log.info(`Recording L3 commission deposit of ${amount} ${currency} for referrer ${referrers.level3}`);
+                this.log.info(`Recording L3 commission deposit of ${l3Amount} ${currency} for referrer ${referrers.level3}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level3,
-                    amount: amount,
+                    amount: l3Amount,
                     currency: currency,
                     description: description,
                     metadata: {
@@ -589,8 +596,58 @@ export class SubscriptionService {
                 }));
             }
 
+            // Calculate remaining commission for partners
+            const totalReferralPayout = l1Amount + l2Amount + l3Amount;
+            const remainingForPartners = commissionBaseAmount - totalReferralPayout;
+
+            this.log.info(`Total referral payout: ${totalReferralPayout} ${currency}. Remaining for partners: ${remainingForPartners} ${currency}.`);
+
+            if (remainingForPartners > 0) {
+                const processPartnerCommission = async (referrerId: string, referralLevel: 1 | 2 | 3) => {
+                    if (!referrerId) return; // Should not happen if referrer exists for a level
+
+                    const partnerDetails = await partnerService.getActivePartnerByUserId(referrerId);
+                    if (partnerDetails) {
+                        const partnerRate = PARTNER_RATES[partnerDetails.pack];
+                        const partnerCommissionShare = remainingForPartners * partnerRate;
+
+                        if (partnerCommissionShare > 0) {
+                            this.log.info(`Referrer ${referrerId} (L${referralLevel}) is a ${partnerDetails.pack} partner. Recording partner commission: ${partnerCommissionShare} ${currency}.`);
+                            partnerPayoutPromises.push(
+                                partnerService.recordPartnerCommission({
+                                    partner: partnerDetails,
+                                    commissionAmount: partnerCommissionShare,
+                                    sourcePaymentSessionId: sourcePaymentSessionId,
+                                    sourceSubscriptionType: planType,
+                                    referralLevelInvolved: referralLevel,
+                                    buyerUserId: buyerUserId,
+                                    currency: currency
+                                })
+                            );
+                        } else {
+                            this.log.info(`Partner commission share for L${referralLevel} partner ${referrerId} is zero or less. Skipping.`);
+                        }
+                    } else {
+                        this.log.info(`Referrer ${referrerId} (L${referralLevel}) is not an active partner. No partner commission.`);
+                    }
+                };
+
+                // Check L1 referrer
+                if (referrers.level1 && l1Amount > 0) { // Only if they received a referral commission
+                    await processPartnerCommission(referrers.level1, 1);
+                }
+                // Check L2 referrer
+                if (referrers.level2 && l2Amount > 0) {
+                    await processPartnerCommission(referrers.level2, 2);
+                }
+                // Check L3 referrer
+                if (referrers.level3 && l3Amount > 0) {
+                    await processPartnerCommission(referrers.level3, 3);
+                }
+            }
+
             // Wait for all deposit recordings to complete (or fail individually)
-            await Promise.allSettled(payoutPromises);
+            await Promise.allSettled([...payoutPromises, ...partnerPayoutPromises]);
             this.log.info(`Finished commission distribution requests for user ${buyerUserId}, paymentSession ${sourcePaymentSessionId}.`);
 
         } catch (error) {
@@ -663,13 +720,13 @@ export class SubscriptionService {
                 } else {
                     // No active CIBLE or CLASSIQUE exists, create new CLASSIQUE.
                     this.log.info(`Creating new lifetime CLASSIQUE subscription for user ${userId}.`);
-            const newSubscriptionData: Partial<ISubscription> = {
-                user: userObjectId,
+                    const newSubscriptionData: Partial<ISubscription> = {
+                        user: userObjectId,
                         subscriptionType: SubscriptionType.CLASSIQUE,
                         startDate: now,
                         endDate: LIFETIME_END_DATE, // Lifetime
-                status: SubscriptionStatus.ACTIVE,
-            };
+                        status: SubscriptionStatus.ACTIVE,
+                    };
                     return await this.subscriptionRepository.create(newSubscriptionData as any);
                 }
             }

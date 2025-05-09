@@ -12,7 +12,7 @@ const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const storage = multer.memoryStorage();
 
 // Configure file filter
-const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     if (allowedMimes.includes(file.mimetype)) {
         log.debug(`File filter allowed: ${file.originalname} (${file.mimetype})`);
         cb(null, true);

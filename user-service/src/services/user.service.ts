@@ -1,27 +1,28 @@
 import bcrypt from 'bcrypt';
-import { IUser, UserRole } from '../database/models/user.model'; // Use 'import type'
-import { userRepository } from '../database/repositories/user.repository'; // Import the repository
-import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository'; // Import referral repository
+import { IUser, UserRole } from '../database/models/user.model';
+import { userRepository } from '../database/repositories/user.repository';
+import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
-import { generateReferralCode } from '../utils/referral.utils'; // Import generator
-import { Types, FilterQuery, FlattenMaps } from 'mongoose'; // Make sure FilterQuery and FlattenMaps are imported
-import { generateSecureOTP, getOtpExpiration } from '../utils/otp.utils'; // Import OTP utils
-import { notificationService, DeliveryChannel } from './clients/notification.service.client'; // Corrected path
+import { generateReferralCode } from '../utils/referral.utils';
+import { Types, FilterQuery, FlattenMaps } from 'mongoose';
+import { generateSecureOTP, getOtpExpiration } from '../utils/otp.utils';
+import { notificationService, DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import config from '../config';
 import { dailyWithdrawalRepository } from '../database/repositories/daily-withdrawal.repository';
-import SubscriptionModel, { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model'; // Import SubscriptionModel and ISubscription
-import UserModel from '../database/models/user.model'; // Import UserModel
-import { subscriptionService } from './subscription.service'; // Import Subscription Service
-import { subscriptionRepository } from '../database/repositories/subscription.repository'; // Import SubscriptionRepository
+import SubscriptionModel, { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model';
+import UserModel from '../database/models/user.model';
+import { subscriptionService } from './subscription.service';
+import { partnerService } from './partner.service'; // Corrected and consolidated
+import { subscriptionRepository } from '../database/repositories/subscription.repository';
 import { ContactSearchFilters } from '../types/contact.types';
 import { PaginationOptions } from '../types/express';
-import { UserDetails } from '../database/repositories/user.repository'; // <-- Import UserDetails interface
+import { UserDetails } from '../database/repositories/user.repository';
 
 // Import service clients
-import { paymentService } from './clients/payment.service.client'; // Import Payment Service Client
+import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError } from '../utils/errors';
+import { AppError } from '../utils/errors'; // Consolidated AppError import
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -338,13 +339,12 @@ export class UserService {
 
     /**
      * Retrieves a user profile, removing sensitive information.
-     * Appends active subscription types and total benefits.
+     * Appends active subscription types, total benefits, and partner pack.
      * @param userId The ID of the user to retrieve.
      * @returns User profile or null if not found.
      */
-    async getUserProfile(userId: string): Promise<IUserProfileResponse | null> {
+    async getUserProfile(userId: string): Promise<(IUserProfileResponse & { partnerPack?: 'silver' | 'gold' }) | null> {
         log.info(`Getting profile for user ${userId}`);
-        // Find user using repository
         const user = await userRepository.findById(userId);
 
         if (!user || user.deleted) {
@@ -358,18 +358,23 @@ export class UserService {
 
         // Fetch additional data in parallel
         try {
-            log.info(`Fetching additional profile data (subscriptions, benefits) for user ${userId}`);
-            const [activeSubscriptions, totalBenefits] = await Promise.all([
-                subscriptionService.getActiveSubscriptionTypes(userId),
-                paymentService.getUserTotalWithdrawals(userId) // Call the new client method
+            log.info(`Fetching additional profile data (subscriptions, benefits, partner status) for user ${userId}`);
+            const userObjectId = new Types.ObjectId(userId);
+            const [activeSubscriptions, totalBenefits, activePartner] = await Promise.all([
+                subscriptionService.getActiveSubscriptionTypes(userObjectId.toString()),
+                paymentService.getUserTotalWithdrawals(userObjectId.toString()), // Call the new client method
+                partnerService.getActivePartnerByUserId(userObjectId.toString()) // Fetch partner status
             ]);
-            log.info(`Fetched active subscriptions (${activeSubscriptions.length}) and total benefits (${totalBenefits}) for user ${userId}`);
+            log.info(`Fetched active subscriptions (${activeSubscriptions.length}), total benefits (${totalBenefits}) for user ${userId}`);
+            if (activePartner) {
+                log.info(`User ${userId} is an active partner with pack: ${activePartner.pack}.`);
+            }
 
-            // Add additional data to the response
-            const extendedResponse: IUserProfileResponse = {
+            const extendedResponse: IUserProfileResponse & { partnerPack?: 'silver' | 'gold' } = {
                 ...userResponse,
-                activeSubscriptions: activeSubscriptions.length > 0 ? activeSubscriptions as string[] : undefined, // Only include if not empty
-                totalBenefits: totalBenefits
+                activeSubscriptions: activeSubscriptions.length > 0 ? activeSubscriptions as string[] : undefined,
+                totalBenefits: totalBenefits,
+                partnerPack: activePartner ? activePartner.pack : undefined // Add partnerPack
             };
 
             return extendedResponse;
@@ -729,12 +734,11 @@ export class UserService {
      * @param nameFilter - Optional name fragment to filter referred users (case-insensitive).
      * @param page - Page number for pagination (default: 1).
      * @param limit - Items per page (default: 10).
-     * @returns An object containing referred user information with subscriptions, and pagination details.
      */
-    async getReferredUsers(
+    async getReferredUsersInfoPaginated( // <<< ADDED METHOD NAME HERE
         referrerId: string | Types.ObjectId,
-        level?: number,
-        nameFilter?: string, // Added nameFilter
+        level?: number, // Optional
+        nameFilter?: string, // Optional
         page: number = 1,
         limit: number = 10
     ): Promise<{ // Return type updated
@@ -826,6 +830,7 @@ export class UserService {
             throw error;
         }
     }
+
 
     /**
      * Gets detailed information about referrals with counts by level.
@@ -1610,7 +1615,7 @@ export class UserService {
     /**
      * [Admin] List users with filtering and pagination.
      */
-    async adminListUsers(filters: { status?: string; role?: string; search?: string }, pagination: PaginationOptions): Promise<{ users: Partial<IUser>[], paginationInfo: any }> {
+    async adminListUsers(filters: { status?: string; role?: string; search?: string }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold' })[], paginationInfo: any }> {
         log.info('Admin request to list users with filters:', { filters, pagination });
         const { page = 1, limit = 10 } = pagination;
         const skip = (page - 1) * limit;
@@ -1647,13 +1652,30 @@ export class UserService {
 
         try {
             const totalCount = await userRepository.countDocuments(query);
-            const users = await userRepository.find(query, {
+            const usersFromDb = await userRepository.find(query, {
                 skip,
                 limit,
                 sort: { createdAt: -1 },
-                // Select fields appropriate for admin view (potentially more than public)
                 select: '_id name email role balance blocked isVerified createdAt ipAddress referralCode phoneNumber region country city'
             });
+
+            // Extract user IDs to fetch partner statuses
+            const userIds = usersFromDb.map(u => u._id);
+            let partnerPackMap = new Map<string, 'silver' | 'gold'>();
+
+            if (userIds.length > 0) {
+                // Ensure all IDs are ObjectIds before passing to the service method
+                const objectIdsToFetch = userIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
+                const activePartners = await partnerService.getActivePartnersByUserIds(objectIdsToFetch);
+                activePartners.forEach(partner => {
+                    partnerPackMap.set(partner.user.toString(), partner.pack);
+                });
+            }
+
+            const usersWithPartnerPack = usersFromDb.map(user => ({
+                ...(typeof user.toObject === 'function' ? user.toObject() : { ...user }),
+                partnerPack: partnerPackMap.get(user._id.toString())
+            }));
 
             const totalPages = Math.ceil(totalCount / limit);
             const paginationInfo = {
@@ -1667,7 +1689,7 @@ export class UserService {
 
             // Map to response to exclude sensitive fields if needed, though admin might see more
             // const mappedUsers = users.map(user => this.mapUserToResponse(user));
-            return { users: users, paginationInfo }; // Return raw users for admin for now
+            return { users: usersWithPartnerPack, paginationInfo }; // Return users with partner pack
 
         } catch (error) {
             log.error('Error listing users (admin):', error);
@@ -1677,9 +1699,9 @@ export class UserService {
 
     /**
      * [Admin] Get full details for a specific user.
-     * Returns the complete user document, including active subscription types.
+     * Returns the complete user document, including active subscription types and partner pack.
      */
-    async adminGetUserById(userId: string | Types.ObjectId): Promise<Partial<IUser> & { activeSubscriptionTypes?: SubscriptionType[] } | null> {
+    async adminGetUserById(userId: string | Types.ObjectId): Promise<Partial<IUser> & { activeSubscriptionTypes?: SubscriptionType[], partnerPack?: 'silver' | 'gold' } | null> {
         log.info(`Admin request to get full details for user: ${userId}`);
         try {
             const user = await userRepository.findById(userId);
@@ -1689,9 +1711,17 @@ export class UserService {
                 return null;
             }
 
-            // Fetch active subscription types
-            const activeSubscriptionTypes = await subscriptionService.getActiveSubscriptionTypes(userId.toString());
+            // Fetch active subscription types and partner status in parallel
+            const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
+            const [activeSubscriptionTypes, activePartner] = await Promise.all([
+                subscriptionService.getActiveSubscriptionTypes(userObjectId.toString()),
+                partnerService.getActivePartnerByUserId(userObjectId.toString()) // Fetch partner status
+            ]);
+
             log.debug(`Active subscriptions for user ${userId}:`, activeSubscriptionTypes);
+            if (activePartner) {
+                log.debug(`User ${userId} is an active partner with pack: ${activePartner.pack}`);
+            }
 
             // Create a mutable user object (if it's a Mongoose doc)
             const userObject = typeof user.toObject === 'function' ? user.toObject() : { ...user };
@@ -1705,7 +1735,8 @@ export class UserService {
             // Add subscription types to the returned object
             const result = {
                 ...userObject,
-                activeSubscriptionTypes: activeSubscriptionTypes
+                activeSubscriptionTypes: activeSubscriptionTypes.length > 0 ? activeSubscriptionTypes : undefined,
+                partnerPack: activePartner ? activePartner.pack : undefined // Add partnerPack
             };
 
             return result;
@@ -2114,7 +2145,26 @@ export class UserService {
             // Convert all userIds to ObjectId for consistency in the query
             const objectIds = userIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
             const users = await userRepository.findDetailsByIds(objectIds);
-            return users;
+
+            // Extract user IDs from the fetched user details to get partner statuses
+            const fetchedUserIds = users.map(u => u._id); // Assuming UserDetails has _id as Types.ObjectId
+            let partnerPackMap = new Map<string, 'silver' | 'gold'>();
+
+            if (fetchedUserIds.length > 0) {
+                // Ensure all IDs are ObjectIds before passing to the service method
+                const objectIdsToFetch = fetchedUserIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
+                const activePartners = await partnerService.getActivePartnersByUserIds(objectIdsToFetch);
+                activePartners.forEach(partner => {
+                    partnerPackMap.set(partner.user.toString(), partner.pack);
+                });
+            }
+
+            const usersWithPartnerPack = users.map(user => ({
+                ...user,
+                partnerPack: partnerPackMap.get(user._id.toString())
+            }));
+
+            return usersWithPartnerPack;
         } catch (error: any) {
             log.error(`Error fetching user details by IDs: ${error.message}`, { userIds });
             throw new Error('Failed to fetch user details');
@@ -2599,6 +2649,112 @@ export class UserService {
 
         log.info(`Change email OTP sent successfully to ${newEmail} for user ${userId}`);
         // No error thrown if notification fails, handled by notificationService client
+    }
+
+    /**
+     * Resets the user's password after verifying the forgot password OTP.
+     * @param email - The user's email address.
+     * @param otpCode - The OTP code received for password reset.
+     * @param newPassword - The new password to set.
+     * @returns Promise<void>
+     */
+    async resetPassword(email: string, otpCode: string, newPassword: string): Promise<void> {
+        log.info(`Password reset attempt for email: ${email}`);
+
+        if (!email || !otpCode || !newPassword) {
+            throw new AppError('Email, OTP, and new password are required.', 400);
+        }
+
+        // 1. Find user by email
+        // Note: Unlike request, here we NEED the user to exist to reset the password.
+        const user = await userRepository.findByEmail(email);
+        if (!user) {
+            // Still use a generic error to avoid confirming email existence
+            throw new AppError('Invalid OTP or email.', 400);
+        }
+        if (user.blocked || user.deleted) {
+            throw new AppError('Account is inactive.', 403);
+        }
+
+        // 2. Validate the OTP (using the general 'otps' field)
+        const now = new Date();
+        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+
+        if (!matchingOtp) {
+            log.warn(`Invalid or expired password reset OTP for email: ${email}`);
+            // Optional: Implement attempt limiting logic here
+            throw new AppError('Invalid or expired OTP.', 400);
+        }
+
+        // 3. OTP is valid, clear *all* general OTPs for security
+        await userRepository.clearOtps(user._id, 'otps');
+
+        // 4. REMOVED: Hash the new password (Handled by pre-save hook)
+        // const hashedPassword = await bcrypt.hash(newPassword, config.saltRounds);
+
+        // 5. Update the password in the repository (send plain password, hook will hash)
+        await userRepository.updateById(user._id, { password: newPassword });
+
+        // 6. Optional: Invalidate existing login tokens/sessions if any
+        await userRepository.updateById(user._id, { token: undefined });
+
+        log.info(`Password successfully reset for email: ${email}`);
+
+        // Optional: Send confirmation email?
+        // await notificationService.sendPasswordResetConfirmation(user.id, user.email, user.name);
+    }
+
+    /**
+     * Confirms an email change request after verifying the OTP sent to the new email.
+     * Requires the user to be authenticated.
+     * @param userId - The ID of the authenticated user.
+     * @param newEmail - The new email address that was previously requested.
+     * @param otpCode - The OTP code received at the new email address.
+     * @returns Promise<void>
+     */
+    async confirmChangeEmail(userId: string | Types.ObjectId, newEmail: string, otpCode: string): Promise<void> {
+        log.info(`Confirming email change for user ${userId} to new email: ${newEmail}`);
+
+        if (!newEmail || !otpCode) {
+            throw new AppError('New email and OTP are required.', 400);
+        }
+
+        // 1. Find the currently authenticated user
+        const user = await userRepository.findById(userId);
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+
+        // 2. Validate the OTP stored against the *current* user
+        const now = new Date();
+        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+
+        if (!matchingOtp) {
+            log.warn(`Invalid or expired email change OTP for user: ${userId}`);
+            throw new AppError('Invalid or expired OTP.', 400);
+        }
+
+        // 3. Check *again* if the new email is already in use by *another* user (race condition check)
+        if (!this.isValidEmailDomain(newEmail)) {
+            throw new AppError('Invalid new email address format or domain.', 400);
+        }
+        const existingUserWithNewEmail = await userRepository.findByEmail(newEmail);
+        if (existingUserWithNewEmail && existingUserWithNewEmail._id.toString() !== userId.toString()) {
+            // Clear the OTP even if the email is taken now, to prevent reuse
+            await userRepository.clearOtps(user._id, 'otps');
+            throw new AppError('This email address has been taken by another account since the request was made.', 409);
+        }
+
+        // 4. OTP is valid and email is available. Clear *all* general OTPs.
+        await userRepository.clearOtps(user._id, 'otps');
+
+        // 5. Update the user's email address
+        await userRepository.updateById(user._id, { email: newEmail });
+
+        log.info(`Email address successfully changed to ${newEmail} for user ${userId}`);
+
+        // Optional: Send confirmation to the *old* email address?
+        // await notificationService.sendEmailChangeConfirmation(user.id, user.email /* old email */, newEmail, user.name);
     }
 }
 

@@ -13,6 +13,7 @@ import TransactionManagementPage from './pages/TransactionManagementPage';
 import AccountTransactionsManagementPage from './pages/AccountTransactionsManagementPage';
 import SettingsManagementPage from './pages/SettingsManagementPage';
 import NotificationsPage from './pages/NotificationsPage';
+import Partners from './pages/Partners';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -52,6 +53,7 @@ function App() {
             <Route path="/" element={<OverViewPage />} />
             <Route path="/dashboard" element={<OverViewPage />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/partners" element={<Partners />} />
             <Route path="/products" element={<ProductsManagementPage />} />
             <Route path="/transactions" element={<TransactionManagementPage />} />
             <Route path="/account-transactions" element={<AccountTransactionsManagementPage />} />

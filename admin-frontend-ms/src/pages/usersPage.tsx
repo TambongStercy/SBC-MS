@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import Header from "../components/common/Header";
 import UserCard from "../components/userCard";
 import UserProductsTable from "../components/usersProductsTable";
-import { getUserDetails, AdminUserData, adminUpdateUserSubscription } from "../services/adminUserApi";  // Import the API function
+import { getUserDetails, AdminUserData, adminUpdateUserSubscription, adminUpdateUserPartner, PartnerPack } from "../services/adminUserApi";  // Import the API function
 import { useEffect, useState } from 'react';
 import Loader from '../components/common/loader';
 import toast from 'react-hot-toast'; // Import toast for errors
@@ -67,6 +67,32 @@ function UsersPage() {
     }
   };
 
+  // Handler for partner pack changes from UserCard
+  const handlePartnerPackChange = async (targetUserId: string, newPack: 'silver' | 'gold' | 'none') => {
+    console.log(`Handling partner pack change for ${targetUserId} to ${newPack}`);
+    const originalUserData = { ...userData }; // Keep backup in case of error
+
+    const toastId = toast.loading('Updating partner status...');
+    try {
+      await adminUpdateUserPartner(targetUserId, newPack);
+      toast.success('Partner status updated successfully!', { id: toastId });
+
+      // Update local state to reflect the change
+      if (userData) {
+        setUserData({
+          ...userData,
+          partnerPack: newPack === 'none' ? undefined :
+            (newPack === 'silver' ? PartnerPack.SILVER : PartnerPack.GOLD)
+        });
+      }
+    } catch (error: any) {
+      console.error("Partner update failed:", error);
+      toast.error(`Failed to update partner status: ${error.message}`, { id: toastId });
+      // Revert local state
+      setUserData(originalUserData as AdminUserData);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
@@ -116,9 +142,11 @@ function UsersPage() {
               activeSubscriptionTypes: userData.activeSubscriptionTypes,
               createdAt: userData.createdAt,
               country: userData.country,
+              partnerPack: userData.partnerPack,
               product: []
             }}
             onSubscriptionChange={handleSubscriptionChange}
+            onPartnerPackChange={handlePartnerPackChange}
           />
         </motion.div>
         <motion.div

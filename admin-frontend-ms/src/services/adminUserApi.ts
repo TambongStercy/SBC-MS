@@ -12,6 +12,13 @@ enum SubscriptionType {
     CIBLE = 'CIBLE',
 }
 
+// Define PartnerPack enum
+export enum PartnerPack {
+    SILVER = 'silver',
+    GOLD = 'gold',
+    NONE = 'none'
+}
+
 // --- Interfaces ---
 
 // Interface for the structure of user data returned by the API
@@ -35,7 +42,30 @@ export interface AdminUserData {
     createdAt?: string;
     lastLogin?: string;
     activeSubscriptionTypes?: SubscriptionType[];
+    partnerPack?: PartnerPack;
     // Add other relevant fields from IUser model if needed
+}
+
+// Interface for partner data
+export interface PartnerData {
+    _id: string;
+    user: AdminUserData;
+    pack: 'silver' | 'gold';
+    isActive: boolean;
+    amount: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+// Interface for the list partners response
+export interface PartnerListResponse {
+    data: PartnerData[];
+    pagination: {
+        currentPage: number;
+        totalPages: number;
+        totalCount: number;
+        limit: number;
+    };
 }
 
 // Interface for the list users response
@@ -74,6 +104,13 @@ export interface UserSummaryStats {
     activeClassique: number;
     activeCible: number;
     // Add other fields if the backend returns more
+}
+
+// Interface for partner summary data
+export interface PartnerSummaryData {
+    totalActivePartners: number;
+    activeSilverPartners: number;
+    activeGoldPartners: number;
 }
 
 // --- Axios Instance ---
@@ -333,4 +370,75 @@ export const adminUpdateUserSubscription = async (userId: string, subscriptionTy
 // export const getUserSubscriptions = async (userId: string): Promise<any> => { ... };
 // export const getBalanceByCountryStats = async (): Promise<any> => { ... };
 // export const getMonthlyActivity = async (months?: number): Promise<any> => { ... };
+
+// --- Partner Management Functions ---
+
+export const setUserAsPartner = async (userId: string, pack: 'silver' | 'gold'): Promise<void> => {
+    try {
+        await apiClient.post('/users/admin/partners/set-user-partner', { userId, pack });
+    } catch (error) {
+        console.error(`Failed to set user ${userId} as partner with pack ${pack}:`, error);
+        if (axios.isAxiosError(error) && error.response) {
+            throw new Error(error.response.data?.message || 'Failed to set user as partner');
+        }
+        throw new Error('Failed to set user as partner');
+    }
+};
+
+export const deactivatePartner = async (userId: string): Promise<void> => {
+    try {
+        await apiClient.patch(`/users/admin/partners/${userId}/deactivate`);
+    } catch (error) {
+        console.error(`Failed to deactivate partner status for user ${userId}:`, error);
+        if (axios.isAxiosError(error) && error.response) {
+            throw new Error(error.response.data?.message || 'Failed to deactivate partner');
+        }
+        throw new Error('Failed to deactivate partner');
+    }
+};
+
+export const adminUpdateUserPartner = async (userId: string, partnerPack: 'silver' | 'gold' | 'none'): Promise<void> => {
+    try {
+        if (partnerPack === 'none') {
+            await deactivatePartner(userId);
+        } else {
+            await setUserAsPartner(userId, partnerPack as 'silver' | 'gold');
+        }
+    } catch (error) {
+        console.error(`Failed to update partner status for user ${userId}:`, error);
+        throw error;
+    }
+};
+
+export const listPartners = async (
+    pagination: PaginationOptions = { page: 1, limit: 10 }
+): Promise<PartnerListResponse> => {
+    try {
+        const params = {
+            page: pagination.page,
+            limit: pagination.limit,
+        };
+
+        const response = await apiClient.get('/users/admin/partners', { params });
+        return {
+            data: response.data.data,
+            pagination: response.data.pagination
+        };
+    } catch (error) {
+        console.error('Failed to list partners:', error);
+        if (axios.isAxiosError(error) && error.response) {
+            throw new Error(error.response.data?.message || 'Failed to fetch partners');
+        }
+        throw new Error('Failed to fetch partners');
+    }
+};
+
+export const getPartnerSummary = async (): Promise<PartnerSummaryData> => {
+    const response = await apiClient.get<{ success: boolean, data: PartnerSummaryData }>('/users/admin/partners/summary'); // Adjust base URL if needed
+    if (response.data.success) {
+        return response.data.data;
+    } else {
+        throw new Error('Failed to fetch partner summary');
+    }
+};
 

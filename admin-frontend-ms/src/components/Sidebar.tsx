@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart2,
   Users,
+  HandshakeIcon,
   Grip,
   Power,
   Package,
@@ -27,6 +28,12 @@ const SIDEBAR_ITEMS = [
     icon: Users,
     color: "#8b5cf6",
     path: "/users",
+  },
+  {
+    name: "Partenaires",
+    icon: HandshakeIcon,
+    color: "#ec4899",
+    path: "/partners",
   },
   {
     name: "Produits",

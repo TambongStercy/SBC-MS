@@ -38,6 +38,16 @@ router.patch('/users/:userId/subscription', adminController.adminSetUserSubscrip
 // --- Subscription Management (Related to Users) ---
 router.get('/users/:userId/subscriptions', adminController.getUserSubscriptions as any); // GET /api/admin/users/:userId/subscriptions
 
+// --- Partner Management Routes (Admin Only) ---
+router.post('/partners/set-user-partner', adminController.setUserAsPartner as any); // POST /api/admin/partners/set-user-partner
+router.patch('/partners/:userId/deactivate', adminController.deactivatePartner as any); // PATCH /api/admin/partners/:userId/deactivate
+
+// --- Route to list all partners ---
+router.get('/partners', adminController.listPartners as any); // GET /api/admin/partners
+
+// --- Route for partner summary stats ---
+router.get('/partners/summary', adminController.getPartnerSummaryStats as any); // GET /api/admin/partners/summary
+
 // --- Dashboard Statistics Routes ---
 router.get('/stats/user-summary', adminController.getUserSummaryStats as any); // GET /api/admin/stats/user-summary
 router.get('/stats/balance-by-country', adminController.getBalanceByCountryStats as any); // GET /api/admin/stats/balance-by-country

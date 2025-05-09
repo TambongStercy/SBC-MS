@@ -15,6 +15,8 @@ import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
 
+const host = 'https://sniperbuisnesscenter.com';
+
 const log = logger.getLogger('PaymentService');
 
 // Interface for generic payment intent creation data (replacing subscription specific)
@@ -1167,8 +1169,8 @@ class PaymentService {
                 customer_country: paymentIntent.countryCode, // Already required
                 customer_state: paymentIntent.metadata?.customerState || paymentIntent.countryCode || "Unknown", // Use countryCode, then Unknown
                 customer_zip_code: paymentIntent.metadata?.customerZipCode || "00000", // Use 00000 as fallback
-                notify_url: `${'https://sniper-xvs9.onrender.com'}/api/payments/webhooks/cinetpay`,
-                return_url: `${'https://sniper-xvs9.onrender.com'}/payment-result?sessionId=${paymentIntent.sessionId}`,
+                notify_url: `${host}/api/payments/webhooks/cinetpay`,
+                return_url: `${host}`,
                 channels: "ALL",
                 metadata: JSON.stringify({ sessionId: paymentIntent.sessionId }),
                 lang: 'en' // Or 'fr' based on preference
