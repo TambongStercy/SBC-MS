@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Types, Model } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique transaction IDs if needed
+import { URL } from 'url'; // For parsing URLs
 
 // --- Configuration ---
 const SOURCE_DB_URI = 'mongodb://127.0.0.1:27017/SBC'; // Your source DB
@@ -16,9 +17,11 @@ enum TargetUserRole { USER = 'user', ADMIN = 'admin' }
 enum TargetUserSex { MALE = 'male', FEMALE = 'female', OTHER = 'other', PREFER_NOT_TO_SAY = 'prefer_not_to_say' }
 enum TargetSubscriptionType { CLASSIQUE = 'CLASSIQUE', CIBLE = 'CIBLE' }
 enum TargetSubscriptionStatus { ACTIVE = 'active', EXPIRED = 'expired', CANCELLED = 'cancelled' }
+// Add partner pack enum
+enum TargetPartnerPack { SILVER = 'silver', GOLD = 'gold' }
 // Payment Service Enums
 enum TargetTransactionStatus { PENDING = 'pending', COMPLETED = 'completed', FAILED = 'failed', CANCELLED = 'cancelled', REFUNDED = 'refunded' }
-enum TargetTransactionType { DEPOSIT = 'deposit', WITHDRAWAL = 'withdrawal', TRANSFER = 'transfer', PAYMENT = 'payment', REFUND = 'refund', FEE = 'fee' }
+enum TargetTransactionType { DEPOSIT = 'deposit', WITHDRAWAL = 'withdrawal', TRANSFER = 'transfer', PAYMENT = 'payment', REFUND = 'refund', FEE = 'fee', PARTNER_EARNINGS = 'partner_earnings' }
 enum TargetCurrency { XAF = 'XAF', XOF = 'XOF', USD = 'USD', EUR = 'EUR', GBP = 'GBP' }
 // Product Service Enums
 enum TargetProductStatus { PENDING = 'pending', APPROVED = 'approved', REJECTED = 'rejected' }
@@ -29,6 +32,11 @@ enum TargetProductStatus { PENDING = 'pending', APPROVED = 'approved', REJECTED 
 // Sub-interfaces/types
 interface ITargetOtp { code: string; expiration: Date; }
 interface ITargetPaymentProviderData { provider: string; transactionId: string; status: string; metadata?: Record<string, any>; }
+// Interface for the NEW image structure for Products
+interface ITargetProductImage {
+    url: string;
+    fileId: string;
+}
 
 // Main Interfaces
 interface ITargetUser extends Document {
@@ -74,6 +82,7 @@ interface ITargetUser extends Document {
     shareContactInfo: boolean;
     createdAt: Date;
     updatedAt: Date;
+    partnerPack?: TargetPartnerPack; // Add partner pack to user model
     // Note: referredBy is not directly on the user model based on referral.model.ts
 }
 
@@ -84,7 +93,7 @@ interface ITargetProduct extends Document {
     category: string;
     subcategory: string;
     description: string;
-    imagesUrl: string[];
+    images: ITargetProductImage[]; // Updated to new structure
     price: number;
     ratings: Types.ObjectId[]; // Array of Rating ObjectIds
     overallRating: number;
@@ -147,6 +156,33 @@ interface ITargetReferral extends Document {
     createdAt: Date; // Source only has createdAt
 }
 
+// New Partner interface
+interface ITargetPartner extends Document {
+    _id: Types.ObjectId;
+    user: Types.ObjectId;
+    pack: TargetPartnerPack;
+    amount: number;
+    isActive?: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+// --- Target PartnerTransaction Model (Add this after TargetPartner model)
+interface ITargetPartnerTransaction extends Document {
+    _id: Types.ObjectId;
+    partnerId: Types.ObjectId;
+    user: Types.ObjectId;
+    pack: 'silver' | 'gold';
+    transType: 'deposit' | 'withdrawal';
+    message: string;
+    amount: number;
+    sourcePaymentSessionId?: string;
+    sourceSubscriptionType?: TargetSubscriptionType;
+    referralLevelInvolved?: 1 | 2 | 3;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 
 // --- Interfaces for Source Data (Matching Schemas) ---
 interface ISourceOtp {
@@ -164,7 +200,7 @@ interface ISourceProduct {
     category: string;
     subcategory: string;
     description: string;
-    imagesUrl: string[];
+    imagesUrl: string[]; // Old field, used for migration
     imagesId?: string[]; // Optional based on source
     price: number;
     ratings?: ISourceRating[]; // Array of source ratings
@@ -184,8 +220,8 @@ interface ISourceUser extends Document {
     email: string;
     password?: string; // Assuming this holds the HASHED password
     token?: string;
-    avatar?: string;
-    avatarId?: string;
+    avatar?: string; // Source avatar URL
+    avatarId?: string; // May or may not be present/useful from source
     blocked?: boolean;
     debt?: number;
     flagged?: boolean;
@@ -243,6 +279,31 @@ interface ISourceReferral extends Document {
     archivedAt?: Date;
 }
 
+// Source Partner interface
+interface ISourcePartner extends Document {
+    _id: Types.ObjectId;
+    user?: Types.ObjectId;
+    pack?: string;
+    amount?: number;
+    isActive?: boolean;
+    createdAt?: Date;
+    updatedAt?: Date;
+}
+
+// Source Partner Transaction interface
+interface ISourcePartnerTransaction extends Document {
+    _id: Types.ObjectId;
+    partnerId?: Types.ObjectId;
+    user?: Types.ObjectId;
+    pack?: string;
+    transType?: string;
+    message?: string;
+    amount?: string;
+    date?: Date;
+    createdAt?: Date;
+    updatedAt?: Date;
+}
+
 
 // --- Simplified Schemas for Source Data Fetching (Based on oldschema/*.js) ---
 
@@ -256,7 +317,7 @@ const SourceProductSchema = new Schema<ISourceProduct>({
     category: String,
     subcategory: String,
     description: String,
-    imagesUrl: [String],
+    imagesUrl: [String], // Old field
     imagesId: [String], // Not in target product model
     price: Number,
     ratings: [ // Embedded ratings - skipping migration of these for now
@@ -280,7 +341,7 @@ const SourceUserSchema = new Schema<ISourceUser>({
     email: String,
     password: String, // Hashed password from source
     token: String, // Not directly migrated
-    avatar: String,
+    avatar: String, // Source avatar URL
     avatarId: String,
     blocked: Boolean,
     debt: Number,
@@ -336,83 +397,69 @@ const SourceReferralSchema = new Schema<ISourceReferral>({
     archivedAt: Date,
 }, { strict: false, collection: 'referrals' });
 
+// Add SourcePartnerSchema
+const SourcePartnerSchema = new Schema<ISourcePartner>({
+    _id: Schema.Types.ObjectId,
+    user: { type: Schema.Types.ObjectId, ref: 'user' },
+    pack: String,
+    amount: Number,
+    isActive: Boolean,
+    createdAt: Date,
+    updatedAt: Date
+}, { strict: false, collection: 'partners' });
+
+// Add SourcePartnerTransactionSchema
+const SourcePartnerTransactionSchema = new Schema<ISourcePartnerTransaction>({
+    _id: Schema.Types.ObjectId,
+    partnerId: { type: Schema.Types.ObjectId, ref: 'partner' },
+    user: { type: Schema.Types.ObjectId, ref: 'user' },
+    pack: String,
+    transType: String,
+    message: String,
+    amount: String,
+    date: Date,
+    createdAt: Date,
+    updatedAt: Date
+}, { strict: false, collection: 'partnertransactions' });
+
 
 // --- Country Code Mapping ---
 // Note: Prefixes are strings, numbers will be converted for checking
 const countryCodePrefixes: { [key: string]: string[] } = {
-    'DZ': ['213'], // Algeria
-    'AO': ['244'], // Angola
-    'BJ': ['229'], // Benin
-    'BW': ['267'], // Botswana
-    'BF': ['226'], // Burkina Faso
-    'BI': ['257'], // Burundi
-    'CV': ['238'], // Cabo Verde
-    'CM': ['237'], // Cameroon
-    'CF': ['236'], // Central African Republic
-    'TD': ['235'], // Chad
-    'KM': ['269'], // Comoros
-    'CD': ['243'], // Congo, DRC
-    'CG': ['242'], // Congo, Republic
-    'CI': ['225'], // Cote d'Ivoire
-    'DJ': ['253'], // Djibouti
-    'EG': ['20'],  // Egypt
-    'GQ': ['240'], // Equatorial Guinea
-    'ER': ['291'], // Eritrea
-    'SZ': ['268'], // Eswatini
-    'ET': ['251'], // Ethiopia
-    'GA': ['241'], // Gabon
-    'GM': ['220'], // Gambia
-    'GH': ['233'], // Ghana
-    'GN': ['224'], // Guinea
-    'GW': ['245'], // Guinea-Bissau
-    'KE': ['254'], // Kenya
-    'LS': ['266'], // Lesotho
-    'LR': ['231'], // Liberia
-    'LY': ['218'], // Libya
-    'MG': ['261'], // Madagascar
-    'MW': ['265'], // Malawi
-    'ML': ['223'], // Mali
-    'MR': ['222'], // Mauritania
-    'MU': ['230'], // Mauritius
-    'MA': ['212'], // Morocco
-    'MZ': ['258'], // Mozambique
-    'NA': ['264'], // Namibia
-    'NE': ['227'], // Niger
-    'NG': ['234'], // Nigeria
-    'RW': ['250'], // Rwanda
-    'ST': ['239'], // Sao Tome and Principe
-    'SN': ['221'], // Senegal
-    'SC': ['248'], // Seychelles
-    'SL': ['232'], // Sierra Leone
-    'SO': ['252'], // Somalia
-    'ZA': ['27'],  // South Africa
-    'SS': ['211'], // South Sudan
-    'SD': ['249'], // Sudan
-    'TZ': ['255'], // Tanzania
-    'TG': ['228'], // Togo
-    'TN': ['216'], // Tunisia
-    'UG': ['256'], // Uganda
-    'ZM': ['260'], // Zambia
-    'ZW': ['263'], // Zimbabwe
+    'DZ': ['213'], 'AO': ['244'], 'BJ': ['229'], 'BW': ['267'], 'BF': ['226'], 'BI': ['257'], 'CV': ['238'], 'CM': ['237'], 'CF': ['236'], 'TD': ['235'], 'KM': ['269'], 'CD': ['243'], 'CG': ['242'], 'CI': ['225'], 'DJ': ['253'], 'EG': ['20'], 'GQ': ['240'], 'ER': ['291'], 'SZ': ['268'], 'ET': ['251'], 'GA': ['241'], 'GM': ['220'], 'GH': ['233'], 'GN': ['224'], 'GW': ['245'], 'KE': ['254'], 'LS': ['266'], 'LR': ['231'], 'LY': ['218'], 'MG': ['261'], 'MW': ['265'], 'ML': ['223'], 'MR': ['222'], 'MU': ['230'], 'MA': ['212'], 'MZ': ['258'], 'NA': ['264'], 'NE': ['227'], 'NG': ['234'], 'RW': ['250'], 'ST': ['239'], 'SN': ['221'], 'SC': ['248'], 'SL': ['232'], 'SO': ['252'], 'ZA': ['27'], 'SS': ['211'], 'SD': ['249'], 'TZ': ['255'], 'TG': ['228'], 'TN': ['216'], 'UG': ['256'], 'ZM': ['260'], 'ZW': ['263'],
 };
 
 // Helper function to get country ISO code from phone number (handles number or string type from source)
 function getCountryFromPhoneNumber(phoneNumber: number | string | undefined, momoNumber: number | string | undefined): string | undefined {
     const numbersToCheck: (number | string | undefined)[] = [phoneNumber, momoNumber];
-
     for (const num of numbersToCheck) {
-        if (num !== undefined && num !== null) { // Check if num has a value
-            const numStr = String(num); // Convert number or string to string
+        if (num !== undefined && num !== null) {
+            const numStr = String(num);
             for (const [isoCode, prefixes] of Object.entries(countryCodePrefixes)) {
                 for (const prefix of prefixes) {
-                    if (numStr.startsWith(prefix)) {
-                        return isoCode; // Return the first match
-                    }
+                    if (numStr.startsWith(prefix)) { return isoCode; }
                 }
             }
         }
     }
-    return undefined; // No match found
+    return undefined;
+}
+
+// Helper function to parse old image URL and extract file ID
+function parseLegacyUrl(imageUrl: string): string | null {
+    try {
+        // Check if it's the expected legacy URL format
+        if (!imageUrl.includes('onrender.com/image?id=')) {
+            return null; // Not the format we need to parse
+        }
+        const parsed = new URL(imageUrl);
+        if (parsed.searchParams.has('id')) {
+            return parsed.searchParams.get('id');
+        }
+    } catch (e) {
+        // console.warn(`Could not parse URL: ${imageUrl}`, e); // Optional: more verbose logging
+    }
+    return null;
 }
 
 
@@ -426,6 +473,7 @@ async function runMigration() {
     let productConn: mongoose.Connection | null = null;
 
     const userIdMap = new Map<string, Types.ObjectId>(); // Map<oldUserIdString, newUserIdObjectId>
+    const partnerIdMap = new Map<string, Types.ObjectId>(); // Map<oldPartnerIdString, newPartnerIdObjectId>
 
     try {
         // --- Connect to Databases ---
@@ -442,6 +490,8 @@ async function runMigration() {
         const SourceTransaction: Model<ISourceTransaction> = sourceConn.model<ISourceTransaction>('SourceTransaction', SourceTransactionSchema);
         const SourceSubscribe: Model<ISourceSubscribe> = sourceConn.model<ISourceSubscribe>('SourceSubscribe', SourceSubscribeSchema);
         const SourceReferral: Model<ISourceReferral> = sourceConn.model<ISourceReferral>('SourceReferral', SourceReferralSchema);
+        const SourcePartner: Model<ISourcePartner> = sourceConn.model<ISourcePartner>('SourcePartner', SourcePartnerSchema);
+        const SourcePartnerTransaction: Model<ISourcePartnerTransaction> = sourceConn.model<ISourcePartnerTransaction>('SourcePartnerTransaction', SourcePartnerTransactionSchema);
 
         // --- Define Target Schemas and Models ---
         // These should ideally match your actual microservice model definitions exactly
@@ -458,8 +508,8 @@ async function runMigration() {
             momoOperator: { type: String },
             email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
             password: { type: String, select: false }, // select: false is important for the TARGET model
-            avatar: { type: String },
-            avatarId: { type: String },
+            avatar: { type: String }, // Will store new format: /settings/files/FILE_ID
+            avatarId: { type: String }, // Will store extracted FILE_ID
             blocked: { type: Boolean, default: false },
             debt: { type: Number, default: 0 },
             flagged: { type: Boolean, default: false },
@@ -488,19 +538,25 @@ async function runMigration() {
             interests: [{ type: String }],
             profession: { type: String },
             shareContactInfo: { type: Boolean, default: true }, // Default from target model
+            createdAt: Date,
+            updatedAt: Date,
+            partnerPack: { type: String, enum: Object.values(TargetPartnerPack), index: true }, // Add partner pack field
         }, { timestamps: true, collection: 'users' });
 
         const TargetUser: Model<ITargetUser> = userConn.model<ITargetUser>('User', TargetUserSchema);
 
-
         // Target Product Model
+        const TargetProductImageSchema = new Schema<ITargetProductImage>({
+            url: { type: String, required: true },
+            fileId: { type: String, required: true },
+        }, { _id: false });
         const TargetProductSchema = new Schema<ITargetProduct>({
             userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
             name: { type: String, required: true, trim: true },
             category: { type: String, required: true, trim: true, lowercase: true, index: true },
             subcategory: { type: String, required: true, trim: true, lowercase: true, index: true },
             description: { type: String, required: true, trim: true },
-            imagesUrl: [{ type: String }],
+            images: [TargetProductImageSchema], // New field for structured image data
             price: { type: Number, required: true, min: 0 },
             ratings: [{ type: Schema.Types.ObjectId, ref: 'Rating' }], // Ref to Rating model
             overallRating: { type: Number, default: 0, min: 0, max: 5 },
@@ -565,6 +621,65 @@ async function runMigration() {
         }, { timestamps: { createdAt: true, updatedAt: false }, collection: 'referrals' }); // Match target model timestamps
         const TargetReferral: Model<ITargetReferral> = userConn.model<ITargetReferral>('Referral', TargetReferralSchema);
 
+        // Target Partner Model
+        const TargetPartnerSchema = new Schema<ITargetPartner>({
+            user: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true, index: true },
+            pack: { type: String, enum: Object.values(TargetPartnerPack), required: true },
+            amount: { type: Number, default: 0 },
+            isActive: { type: Boolean, default: true },
+        }, { timestamps: true, collection: 'partners' });
+
+        const TargetPartner: Model<ITargetPartner> = userConn.model<ITargetPartner>('Partner', TargetPartnerSchema);
+
+        // Target PartnerTransaction Model
+        const TargetPartnerTransactionSchema = new Schema<ITargetPartnerTransaction>({
+            partnerId: {
+                type: Schema.Types.ObjectId,
+                ref: 'Partner',
+                required: true,
+                index: true,
+            },
+            user: {
+                type: Schema.Types.ObjectId,
+                ref: 'User',
+                required: true,
+                index: true,
+            },
+            pack: {
+                type: String,
+                enum: ['silver', 'gold'],
+                required: true,
+            },
+            transType: {
+                type: String,
+                enum: ['deposit', 'withdrawal'],
+                required: true,
+            },
+            message: {
+                type: String,
+                required: true,
+            },
+            amount: {
+                type: Number,
+                required: true,
+            },
+            sourcePaymentSessionId: {
+                type: String,
+                required: false,
+            },
+            sourceSubscriptionType: {
+                type: String,
+                enum: Object.values(TargetSubscriptionType),
+                required: false,
+            },
+            referralLevelInvolved: {
+                type: Number,
+                enum: [1, 2, 3],
+                required: false,
+            },
+        }, { timestamps: true, collection: 'partnertransactions' });
+
+        const TargetPartnerTransaction: Model<ITargetPartnerTransaction> = userConn.model<ITargetPartnerTransaction>('PartnerTransaction', TargetPartnerTransactionSchema);
 
         // Target Rating Model (Product Service)
         interface ITargetRating extends Document {
@@ -602,7 +717,7 @@ async function runMigration() {
         let productBatch: (Partial<ITargetProduct> & {
             _originalUserId: string;
             _originalProductIndex: number; // To uniquely identify the source product within the user
-            _sourceRatings?: ISourceRating[]; // Store original ratings temporarily
+            // _sourceRatings?: ISourceRating[]; // No longer storing source ratings directly here
         })[] = [];
         let usersProcessed = 0;
         let usersMigrated = 0;
@@ -627,10 +742,10 @@ async function runMigration() {
         const processUserProductBatch = async () => {
             if (userBatch.length === 0 && productBatch.length === 0) return;
 
-            const currentProductBatch = [...productBatch]; // Copy product batch for processing ratings later
-            productBatch = []; // Clear global batch for next iteration
-            const currentUserBatch = [...userBatch]; // Copy user batch
-            userBatch = []; // Clear global batch
+            // const currentProductBatch = [...productBatch]; // No longer needed like this
+            // productBatch = [];
+            const currentUserBatch = [...userBatch];
+            userBatch = [];
 
             // --- Insert Users ---
             if (currentUserBatch.length > 0) {
@@ -672,92 +787,62 @@ async function runMigration() {
                                     const conflictingKey = Object.keys(writeError.keyValue)[0];
                                     const conflictingValue = writeError.keyValue[conflictingKey];
                                     console.log(`   -> Duplicate key error for User ID ${oldUserId} on ${conflictingKey}: ${conflictingValue}. Attempting to find existing target user...`);
-
-                                    if (oldUserId === TARGET_USER_DEBUG_ID) {
-                                        console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Encountered duplicate key error during insertion.`);
-                                    }
-
+                                    if (oldUserId === TARGET_USER_DEBUG_ID) { console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Encountered duplicate key error during insertion.`); }
                                     let existingUser: { _id: Types.ObjectId } | null = null;
                                     try {
-                                        // Try finding by the field that caused the error first
                                         existingUser = await TargetUser.findOne({ [conflictingKey]: conflictingValue }).select('_id').lean();
-
-                                        // If not found, and the failed user has the other unique field, try that
                                         if (!existingUser) {
-                                            if (conflictingKey === 'phoneNumber' && failedUser.email) {
-                                                console.log(`   -> Finding by phoneNumber failed, trying email: ${failedUser.email}`);
-                                                existingUser = await TargetUser.findOne({ email: failedUser.email.toLowerCase() }).select('_id').lean();
-                                            } else if (conflictingKey === 'email' && failedUser.phoneNumber) {
-                                                const phoneStr = String(failedUser.phoneNumber); // Convert to string for query
-                                                console.log(`   -> Finding by email failed, trying phoneNumber: ${phoneStr}`);
-                                                existingUser = await TargetUser.findOne({ phoneNumber: phoneStr }).select('_id').lean();
-                                            }
+                                            if (conflictingKey === 'phoneNumber' && failedUser.email) { existingUser = await TargetUser.findOne({ email: failedUser.email.toLowerCase() }).select('_id').lean(); }
+                                            else if (conflictingKey === 'email' && failedUser.phoneNumber) { existingUser = await TargetUser.findOne({ phoneNumber: String(failedUser.phoneNumber) }).select('_id').lean(); }
                                         }
-
                                         if (existingUser) {
-                                            // Log details before mapping duplicate
-                                            console.log(`   -> Found existing user ${existingUser._id}. Mapping old user ${oldUserId} to it.`);
-                                            console.log(`     Old User Details: Email=${failedUser.email}, Phone=${failedUser.phoneNumber}`);
-                                            // We can't easily log existing user details here without another query, but the ID confirms it was found.
                                             userIdMap.set(oldUserId, existingUser._id);
                                             console.log(`   -> SUCCESS: Mapped old user ID ${oldUserId} to existing target user ${existingUser._id}.`);
-                                            if (oldUserId === TARGET_USER_DEBUG_ID) {
-                                                console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Successfully mapped to existing user ${existingUser._id} after duplicate error.`);
-                                            }
+                                            if (oldUserId === TARGET_USER_DEBUG_ID) { console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Successfully mapped to existing user ${existingUser._id} after duplicate error.`); }
                                         } else {
                                             console.warn(`   -> FAILURE: Could not find existing target user for duplicate check on User ID ${oldUserId}. Ratings by this user will be skipped.`);
-                                            if (oldUserId === TARGET_USER_DEBUG_ID) {
-                                                console.warn(`[DEBUG ${TARGET_USER_DEBUG_ID}] FAILED to map to existing user after duplicate error. Ratings BY this user will be skipped.`);
-                                            }
+                                            if (oldUserId === TARGET_USER_DEBUG_ID) { console.warn(`[DEBUG ${TARGET_USER_DEBUG_ID}] FAILED to map to existing user after duplicate error. Ratings BY this user will be skipped.`); }
                                         }
                                     } catch (lookupError: any) {
                                         console.error(`   -> ERROR during duplicate user lookup for ${oldUserId}: ${lookupError.message}`);
-                                        if (oldUserId === TARGET_USER_DEBUG_ID) {
-                                            console.error(`[DEBUG ${TARGET_USER_DEBUG_ID}] Error during duplicate lookup: ${lookupError.message}`);
-                                        }
+                                        if (oldUserId === TARGET_USER_DEBUG_ID) { console.error(`[DEBUG ${TARGET_USER_DEBUG_ID}] Error during duplicate lookup: ${lookupError.message}`); }
                                     }
                                 }
                             });
                         }
-                    } else {
-                        console.error(' -> Unhandled error during user batch insert:', error);
-                    }
+                    } else { console.error(' -> Unhandled error during user batch insert:', error); }
                 }
             }
 
-            // --- Insert Products (without ratings first) ---
+            // --- Insert Products (with new image structure, ratings handled later) ---
             let productInsertResult: ITargetProduct[] = [];
-            const productDataToInsert = currentProductBatch.filter(p => userIdMap.has(p._originalUserId)); // Only insert products whose user was mapped
+            const productDataToInsert = productBatch.filter(p => userIdMap.has(p._originalUserId));
+            productBatch = []; // Clear global product batch for next iteration
 
             if (productDataToInsert.length > 0) {
                 console.log(`Processing product batch of ${productDataToInsert.length}...`);
-                // Remove temporary fields before insertion
-                const cleanProductData = productDataToInsert.map(({ _originalUserId, _originalProductIndex, _sourceRatings, ...rest }) => ({
+                const cleanProductData = productDataToInsert.map(({ _originalUserId, _originalProductIndex, ...rest }) => ({
                     ...rest,
-                    userId: userIdMap.get(_originalUserId)!, // Assign the mapped userId
+                    userId: userIdMap.get(_originalUserId)!,
                 }));
 
                 try {
                     productInsertResult = await TargetProduct.insertMany(cleanProductData, { ordered: false });
                     productsMigrated += productInsertResult.length;
                     console.log(` -> Inserted ${productInsertResult.length} products.`);
-
-                    // Populate productMap for successfully inserted products
                     productInsertResult.forEach((insertedProduct, index) => {
-                        const originalProductData = productDataToInsert[index]; // Find corresponding original data
+                        const originalProductData = productDataToInsert[index];
                         if (originalProductData) {
                             const mapKey = `${originalProductData._originalUserId}-${originalProductData._originalProductIndex}`;
                             productMap.set(mapKey, insertedProduct._id);
                         }
                     });
                 } catch (error: any) {
-                    // Handle partial success for products
                     if (error.name === 'MongoBulkWriteError' && error.result) {
                         const numInserted = error.result.nInserted || 0;
                         productsMigrated += numInserted;
                         console.warn(` -> Partially inserted ${numInserted} products due to errors.`);
                         const insertedIdsMap = error.result.insertedIds || {};
-                        // Populate map for successful inserts from the error result
                         for (const indexStr in insertedIdsMap) {
                             if (insertedIdsMap.hasOwnProperty(indexStr)) {
                                 const index = parseInt(indexStr, 10);
@@ -775,169 +860,9 @@ async function runMigration() {
                                 console.warn(`  -> Failed product insert (Index ${writeError.index}): ${writeError.errmsg}. Original User ID: ${failedProductData?._originalUserId}, Product Name: ${failedProductData?.name}`);
                             });
                         }
-                    } else {
-                        console.error(`Error inserting product batch: ${error.message}`, error);
-                    }
+                    } else { console.error(`Error inserting product batch: ${error.message}`, error); }
                 }
             }
-
-            // --- Process Ratings and Product Updates --- (REMOVED FROM BATCH - will happen after main loop)
-            /*
-            const ratingBatch: Partial<ITargetRating>[] = [];
-            const productUpdateOps: any[] = []; // Array for bulkWrite operations
-            let skippedRatings = 0;
-
-            // Iterate through the *original* product data batch again to find source ratings and map products
-            for (const originalProductData of productDataToInsert) {
-                const mapKey = `${originalProductData._originalUserId}-${originalProductData._originalProductIndex}`;
-                const newProductId = productMap.get(mapKey);
-
-                if (!newProductId) {
-                    if (originalProductData._sourceRatings && originalProductData._sourceRatings.length > 0) {
-                        skippedRatings += originalProductData._sourceRatings.length;
-                    }
-                    continue; // Skip if the product itself wasn't successfully inserted/mapped
-                }
-
-                const sourceRatings = originalProductData._sourceRatings ?? [];
-                if (sourceRatings.length === 0) {
-                    continue; // No ratings for this product
-                }
-
-                const newRatingIds: Types.ObjectId[] = [];
-                let ratingSum = 0;
-
-                for (const sourceRating of sourceRatings) {
-                    // DEBUG Log start for target user's product ratings
-                    if (originalProductData._originalUserId === TARGET_USER_DEBUG_ID) {
-                        console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Processing rating by user ${sourceRating.user?.toString()} for product index ${originalProductData._originalProductIndex} (New PID: ${newProductId})`);
-                    }
-
-                    const oldRatingUserId = sourceRating.user?.toString();
-                    const newRatingUserId = oldRatingUserId ? userIdMap.get(oldRatingUserId) : undefined;
-
-                    if (!newRatingUserId) {
-                        const message = ` -> Skipping rating for product ${newProductId}: Rating User ${oldRatingUserId} not found in userIdMap.`;
-                        console.warn(message);
-                        // DEBUG Log skip reason if related to target user
-                        if (originalProductData._originalUserId === TARGET_USER_DEBUG_ID) {
-                            console.warn(`[DEBUG ${TARGET_USER_DEBUG_ID}] Rating for OWN product skipped because rating user ${oldRatingUserId} was not mapped.`);
-                        }
-                        if (oldRatingUserId === TARGET_USER_DEBUG_ID) {
-                            console.warn(`[DEBUG ${TARGET_USER_DEBUG_ID}] Rating BY target user for product ${newProductId} skipped because target user was not mapped (this shouldn't happen if caught earlier, but checking).`);
-                        }
-                        skippedRatings++;
-                        continue;
-                    }
-                    if (!sourceRating.rating || sourceRating.rating < 1 || sourceRating.rating > 5) {
-                        skippedRatings++;
-                        continue;
-                    }
-
-                    const newRating: Partial<ITargetRating> = {
-                        _id: new Types.ObjectId(), // Generate new ID for the rating
-                        userId: newRatingUserId,
-                        productId: newProductId,
-                        rating: sourceRating.rating,
-                        review: undefined, // Source has no review
-                        helpful: 0,
-                        helpfulVotes: [],
-                        deleted: false,
-                        // Use the PRODUCT's creation timestamp (derived from user ID) for rating creation
-                        createdAt: originalProductData.createdAt ?? new Date()
-                    };
-                    ratingBatch.push(newRating);
-                    newRatingIds.push(newRating._id!); // Add the new rating ID
-                    ratingSum += sourceRating.rating;
-                }
-
-                if (newRatingIds.length > 0) {
-                    const newOverallRating = ratingSum / newRatingIds.length;
-                    // Prepare update operation for this product
-                    productUpdateOps.push({
-                        updateOne: {
-                            filter: { _id: newProductId },
-                            update: {
-                                $set: {
-                                    ratings: newRatingIds,
-                                    overallRating: parseFloat(newOverallRating.toFixed(2)) // Store with 2 decimal places
-                                }
-                            }
-                        }
-                    });
-                }
-            }
-
-            // Insert Ratings
-            if (ratingBatch.length > 0) {
-                console.log(`Inserting rating batch of ${ratingBatch.length}...`);
-                try {
-                    const ratingInsertResult = await TargetRating.insertMany(ratingBatch, { ordered: false });
-                    ratingsMigrated += ratingInsertResult.length;
-                    console.log(` -> Inserted ${ratingInsertResult.length} ratings.`);
-                } catch (error: any) {
-                    const numInserted = error.result?.nInserted || 0;
-                    ratingsMigrated += numInserted;
-                    console.error(`Error inserting rating batch: ${error.message}`);
-                    if (error.name === 'MongoBulkWriteError' && error.writeErrors) {
-                        console.warn(` -> Partially inserted ${numInserted} ratings due to errors.`);
-                        error.writeErrors.forEach((writeError: any) => {
-                            const failedRatingData = ratingBatch[writeError.index];
-                            console.warn(`  -> Failed rating insert (Index ${writeError.index}): ${writeError.errmsg}. ProductID: ${failedRatingData?.productId}`);
-                        });
-                        // Check if any failed rating involved the target user or their products
-                        error.writeErrors.forEach((writeError: any) => {
-                            const failedRatingIndex = writeError.index;
-                            const failedRating = ratingBatch[failedRatingIndex];
-                            const failedProductId = failedRating?.productId;
-                            const failedRatingUserId = failedRating?.userId; // This is the NEW user ID
-
-                            // Check if the product belongs to the target user
-                            let productOwnerIsTarget = false;
-                            productMap.forEach((value, key) => {
-                                if (productOwnerIsTarget) return; // Already found, skip rest
-                                if (value.equals(failedProductId) && key.startsWith(TARGET_USER_DEBUG_ID + '-')) {
-                                    productOwnerIsTarget = true;
-                                }
-                            });
-
-                            // Check if the rating was made by the target user (requires mapping target ID)
-                            const targetNewUserId = userIdMap.get(TARGET_USER_DEBUG_ID);
-                            const ratingUserIsTarget = targetNewUserId && targetNewUserId.equals(failedRatingUserId);
-
-                            if (productOwnerIsTarget) {
-                                console.warn(`[DEBUG ${TARGET_USER_DEBUG_ID}] Rating insert failed for OWN product ${failedProductId}. Error: ${writeError.errmsg}`);
-                            }
-                            if (ratingUserIsTarget) {
-                                console.warn(`[DEBUG ${TARGET_USER_DEBUG_ID}] Rating insert failed for rating MADE BY target user for product ${failedProductId}. Error: ${writeError.errmsg}`);
-                            }
-                        });
-                    } else {
-                        console.error(' -> Unhandled error during rating batch insert:', error);
-                    }
-                }
-            }
-            if (skippedRatings > 0) {
-                console.warn(` -> Skipped ${skippedRatings} ratings due to mapping issues or invalid data.`);
-            }
-
-            // Update Products with ratings
-            if (productUpdateOps.length > 0) {
-                console.log(`Updating ${productUpdateOps.length} products with ratings info...`);
-                try {
-                    const bulkWriteResult = await TargetProduct.bulkWrite(productUpdateOps, { ordered: false });
-                    console.log(` -> Product BulkWrite result: Matched: ${bulkWriteResult.matchedCount}, Modified: ${bulkWriteResult.modifiedCount}`);
-                } catch (error: any) {
-                    console.error(`Error during product bulk update for ratings: ${error.message}`, error);
-                    // Log specific errors if available (bulkWrite errors are complex)
-                    if (error.writeErrors) {
-                        error.writeErrors.forEach((writeError: any) => {
-                            console.warn(`  -> Failed product update op (Index ${writeError.index}): ${writeError.errmsg}`);
-                        });
-                    }
-                }
-            }
-            */
         };
 
         // --- Main User Processing Loop ---
@@ -949,26 +874,45 @@ async function runMigration() {
             }
             const oldUserId = sourceUser._id.toString();
 
-            // DEBUG Log when processing the target user
-            if (oldUserId === TARGET_USER_DEBUG_ID) {
-                console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Processing source user ${oldUserId}...`);
-            }
+            if (oldUserId === TARGET_USER_DEBUG_ID) { console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Processing source user ${oldUserId}...`); }
 
             const mappedCountry = getCountryFromPhoneNumber(sourceUser.phoneNumber, sourceUser.momoNumber);
 
+            // Handle user avatar migration
+            let newAvatarUrl: string | undefined = undefined;
+            let newAvatarId: string | undefined = undefined;
+            if (sourceUser.avatar && typeof sourceUser.avatar === 'string') {
+                const fileId = parseLegacyUrl(sourceUser.avatar);
+                if (fileId) {
+                    newAvatarUrl = `/settings/files/${fileId}`;
+                    newAvatarId = fileId;
+                } else {
+                    newAvatarUrl = sourceUser.avatar; // Keep original if parsing fails or not a legacy URL
+                    newAvatarId = sourceUser.avatarId; // Keep original avatarId
+                    // Only log warning if it looked like a legacy URL but failed parsing
+                    if (sourceUser.avatar.includes('onrender.com/image?id=')) {
+                        console.warn(`Could not parse legacy avatar URL for user ${oldUserId}: ${sourceUser.avatar}. Using original.`);
+                    }
+                }
+            } else {
+                newAvatarUrl = sourceUser.avatar; // Handles undefined or non-string types gracefully
+                newAvatarId = sourceUser.avatarId;
+            }
+
+
             const newUser: Partial<ITargetUser> = {
-                _id: sourceUser._id, // Store old ID temporarily 
+                _id: sourceUser._id, // Will be replaced by mongoose upon insertion if not using old IDs
                 name: sourceUser.name,
                 region: sourceUser.region,
                 country: mappedCountry,
                 city: sourceUser.ipCity,
-                phoneNumber: String(sourceUser.phoneNumber), // <-- Convert to string
-                momoNumber: sourceUser.momoNumber !== undefined && sourceUser.momoNumber !== null ? String(sourceUser.momoNumber) : undefined, // <-- Convert to string if exists
+                phoneNumber: String(sourceUser.phoneNumber),
+                momoNumber: sourceUser.momoNumber !== undefined && sourceUser.momoNumber !== null ? String(sourceUser.momoNumber) : undefined,
                 momoOperator: sourceUser.momoCorrespondent,
                 email: sourceUser.email?.toLowerCase(),
-                password: sourceUser.password, // Assign existing hash
-                avatar: sourceUser.avatar,
-                avatarId: sourceUser.avatarId,
+                password: sourceUser.password,
+                avatar: newAvatarUrl, // Use migrated URL
+                avatarId: newAvatarId, // Use extracted fileId
                 blocked: sourceUser.blocked ?? false,
                 debt: sourceUser.debt ?? 0,
                 flagged: sourceUser.flagged ?? false,
@@ -989,48 +933,70 @@ async function runMigration() {
                 createdAt: sourceUser._id?.getTimestamp() ?? new Date(), // Use ObjectId timestamp
             };
 
-            if (!newUser.password) {
-                // Handle users without passwords if necessary (e.g., generate one, or skip)
-                console.warn(`User ${oldUserId} (${newUser.email}) has no password hash in source. Skipping password field.`);
-            }
-
+            if (!newUser.password) { console.warn(`User ${oldUserId} (${newUser.email}) has no password hash in source. Skipping password field.`); }
             userBatch.push(newUser);
 
-            // Prepare Products for this user
+            // Prepare Products for this user, integrating image migration logic
             if (Array.isArray(sourceUser.product) && sourceUser.product.length > 0) {
                 sourceUser.product.forEach((sourceProduct, index) => {
                     if (!sourceProduct || typeof sourceProduct !== 'object' || !sourceProduct.name) return;
+                    if (oldUserId === TARGET_USER_DEBUG_ID) { console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Processing OWN product at index ${index}: ${sourceProduct.name}`); }
 
-                    // DEBUG Log when processing one of the target user's products
-                    if (oldUserId === TARGET_USER_DEBUG_ID) {
-                        console.log(`[DEBUG ${TARGET_USER_DEBUG_ID}] Processing OWN product at index ${index}: ${sourceProduct.name}`);
+                    const newProductImages: ITargetProductImage[] = [];
+                    let productStatus = TargetProductStatus.PENDING; // Default status
+                    let migratedLegacyImages = false; // Flag to track if legacy URLs were processed
+
+                    // Set initial status based on 'accepted' from source
+                    if (sourceProduct.accepted === true) {
+                        productStatus = TargetProductStatus.APPROVED;
                     }
 
-                    let targetStatus: TargetProductStatus = TargetProductStatus.PENDING;
-                    if (sourceProduct.accepted === true) targetStatus = TargetProductStatus.APPROVED;
+                    // Migrate imagesUrl to new images structure
+                    if (Array.isArray(sourceProduct.imagesUrl) && sourceProduct.imagesUrl.length > 0) {
+                        for (const imageUrl of sourceProduct.imagesUrl) {
+                            if (typeof imageUrl === 'string') {
+                                const fileId = parseLegacyUrl(imageUrl);
+                                if (fileId) {
+                                    newProductImages.push({
+                                        fileId: fileId,
+                                        url: `/settings/files/${fileId}`
+                                    });
+                                    migratedLegacyImages = true; // Mark that we processed at least one legacy URL
+                                } else {
+                                    // Only log warning if it looked like a legacy URL but failed parsing
+                                    if (imageUrl.includes('onrender.com/image?id=')) {
+                                        console.warn(`Could not extract fileId from product image URL: ${imageUrl} for product of user ${oldUserId}`);
+                                    }
+                                }
+                            }
+                        }
+                        // If images were successfully migrated from legacy format, set status to APPROVED
+                        // This overrides the status set by `sourceProduct.accepted`.
+                        if (migratedLegacyImages) {
+                            productStatus = TargetProductStatus.APPROVED;
+                        }
+                    }
+
 
                     const productCreatedAt = sourceUser._id?.getTimestamp() ?? sourceProduct.createdAt ?? new Date();
-
-                    const newProductData: Partial<ITargetProduct> & { _originalUserId: string; _originalProductIndex: number; _sourceRatings?: ISourceRating[] } = {
+                    const newProductData: Partial<ITargetProduct> & { _originalUserId: string; _originalProductIndex: number; } = {
                         _originalUserId: oldUserId,
-                        _originalProductIndex: index, // Store the index within the user's product array
-                        // _sourceRatings: sourceProduct.ratings, // No longer needed directly here
-                        // userId will be added during batch processing after mapping
+                        _originalProductIndex: index,
                         name: sourceProduct.name,
                         category: sourceProduct.category?.toLowerCase(),
                         subcategory: sourceProduct.subcategory?.toLowerCase(),
                         description: sourceProduct.description,
-                        imagesUrl: sourceProduct.imagesUrl || [],
+                        images: newProductImages, // Use new images array
                         price: sourceProduct.price,
-                        ratings: [], // Initially empty, will be populated after rating migration
-                        overallRating: 0, // Initially 0, will be recalculated
-                        status: targetStatus,
+                        ratings: [], // Ratings will be populated in a later phase
+                        overallRating: 0, // Overall rating will be recalculated later
+                        status: productStatus, // Use determined status
                         deleted: false,
                         createdAt: productCreatedAt,
                     };
-                    productBatch.push(newProductData);
+                    productBatch.push(newProductData as any); // Cast as any to satisfy batch type temporarily
 
-                    // --- Collect Pending Ratings Info ---
+                    // Collect rating info for later processing
                     if (Array.isArray(sourceProduct.ratings)) {
                         for (const sourceRating of sourceProduct.ratings) {
                             if (sourceRating && sourceRating.user && sourceRating.rating >= 1 && sourceRating.rating <= 5) {
@@ -1041,25 +1007,20 @@ async function runMigration() {
                                     ratingValue: sourceRating.rating,
                                     createdAt: productCreatedAt // Use product creation time for rating time
                                 });
-                            } else {
-                                // Optional: Log skipped collection due to invalid source rating data
-                                // console.warn(`Skipping collection of rating for product owner ${oldUserId}, index ${index} due to invalid source rating data:`, sourceRating);
                             }
                         }
                     }
                 });
             }
 
-            if (userBatch.length >= BATCH_SIZE || productBatch.length >= BATCH_SIZE) {
+            if (userBatch.length >= BATCH_SIZE || productBatch.length >= BATCH_SIZE * 2) { // Adjust batch trigger for products if needed
                 await processUserProductBatch();
             }
-
-            if (usersProcessed % (BATCH_SIZE * 5) === 0) { // Log progress more frequently
+            if (usersProcessed % (BATCH_SIZE * 5) === 0) {
                 console.log(`--- Progress: Processed ${usersProcessed} source users | Users Migrated: ${usersMigrated} | Products Migrated: ${productsMigrated} | Ratings Migrated: ${ratingsMigrated} ---`);
             }
         }
-        // Process any remaining users/products/ratings in the last batch
-        await processUserProductBatch();
+        await processUserProductBatch(); // Process any remaining users/products in the last batch
 
         console.log(`User/Product migration finished. Processed Users: ${usersProcessed}, Migrated Users: ${usersMigrated}, Migrated Products: ${productsMigrated}`);
         console.log(`User ID Map size: ${userIdMap.size}`);
@@ -1083,7 +1044,7 @@ async function runMigration() {
             if (newRatingUserId && newProductId) {
                 // Prepare rating document for insertion
                 const newRating: Partial<ITargetRating> = {
-                    _id: new Types.ObjectId(),
+                    _id: new Types.ObjectId(), // Generate new ID for the rating
                     userId: newRatingUserId,
                     productId: newProductId,
                     rating: pendingRating.ratingValue,
@@ -1103,18 +1064,13 @@ async function runMigration() {
                     productUpdatesMap.set(productIdStr, { newRatingIds: [], ratingSum: 0 });
                 }
                 const productUpdateData = productUpdatesMap.get(productIdStr)!;
-                productUpdateData.newRatingIds.push(newRating._id!);
+                productUpdateData.newRatingIds.push(newRating._id!); // Add the new rating ID
                 productUpdateData.ratingSum += newRating.rating!;
 
             } else {
                 // Log why it was skipped (user not mapped or product not mapped)
-                if (!newRatingUserId) {
-                    // Minimal log to avoid flooding console, check previous logs for duplicate/failure details
-                    // console.warn(`Skipping collected rating by ${pendingRating.oldRatingUserId}: User not mapped.`);
-                }
-                if (!newProductId) {
-                    console.warn(`Skipping collected rating by ${pendingRating.oldRatingUserId}: Product (Owner: ${pendingRating.oldProductOwnerId}, Index: ${pendingRating.originalProductIndex}) not mapped.`);
-                }
+                // if (!newRatingUserId) { console.warn(`Skipping collected rating by ${pendingRating.oldRatingUserId}: User not mapped.`); }
+                // if (!newProductId) { console.warn(`Skipping collected rating for product (Owner: ${pendingRating.oldProductOwnerId}, Index: ${pendingRating.originalProductIndex}): Product not mapped.`); }
                 skippedRatingsCount++;
             }
 
@@ -1175,12 +1131,7 @@ async function runMigration() {
                 productUpdateOpsFinal.push({
                     updateOne: {
                         filter: { _id: new Types.ObjectId(productIdStr) },
-                        update: {
-                            $set: {
-                                ratings: updateData.newRatingIds,
-                                overallRating: parseFloat(newOverallRating.toFixed(2))
-                            }
-                        }
+                        update: { $set: { ratings: updateData.newRatingIds, overallRating: parseFloat(newOverallRating.toFixed(2)) } }
                     }
                 });
             }
@@ -1207,6 +1158,7 @@ async function runMigration() {
         }
 
         console.log('Product rating updates finished.');
+
 
         // --- Helper function for processing batches of related data ---
         const processBatch = async (
@@ -1236,13 +1188,15 @@ async function runMigration() {
                     let docsToInsert = batchData;
                     if (checkExistingFunction) {
                         console.warn(`Skipping checkExistingFunction for ${modelName} in this batch implementation.`);
+                        // const existingIds = await checkExistingFunction(docsToInsert);
+                        // docsToInsert = docsToInsert.filter(doc => !existingIds.has(doc._id!.toString())); // Example check
                     }
 
                     try {
                         const result = await targetModel.insertMany(docsToInsert, { ordered: false });
                         migratedCount += result.length;
                     } catch (error: any) {
-                        migratedCount += error.result?.insertedIds?.length ?? 0;
+                        migratedCount += error.result?.insertedIds?.length ?? 0; // Add successfully inserted before error
                         console.error(`Error inserting ${modelName} batch: ${error.message}`);
                         if (error.name === 'MongoBulkWriteError' && error.writeErrors) {
                             error.writeErrors.forEach((writeError: any) => console.warn(`  -> Failed ${modelName} insert: ${writeError.errmsg}`));
@@ -1252,7 +1206,7 @@ async function runMigration() {
                     }
                     console.log(` -> ${modelName}: Processed ${processedCount}, Migrated ${migratedCount}, Skipped ${skippedCount}`);
                 }
-                if (processedCount % (BATCH_SIZE * 10) === 0) {
+                if (processedCount % (BATCH_SIZE * 10) === 0) { // Log progress more frequently
                     console.log(`Processed ${processedCount} source ${modelName}...`);
                 }
             }
@@ -1295,11 +1249,12 @@ async function runMigration() {
             } else if (typeof sourceTx.amount === 'number') { amountNumber = sourceTx.amount; }
             else return null; // Skip missing/invalid amount
 
-            let targetStatus: TargetTransactionStatus = TargetTransactionStatus.PENDING;
+            let targetStatus: TargetTransactionStatus = TargetTransactionStatus.COMPLETED; // Default to COMPLETED
             const sourceStatusLower = sourceTx.status?.toLowerCase();
-            if (sourceStatusLower === 'completed' || sourceStatusLower === 'success' || sourceStatusLower === 'successful') targetStatus = TargetTransactionStatus.COMPLETED;
-            else if (sourceStatusLower === 'failed' || sourceStatusLower === 'failure') targetStatus = TargetTransactionStatus.FAILED;
+            // Explicitly set to FAILED or CANCELLED if source indicates, otherwise it remains COMPLETED
+            if (sourceStatusLower === 'failed' || sourceStatusLower === 'failure') targetStatus = TargetTransactionStatus.FAILED;
             else if (sourceStatusLower === 'cancelled' || sourceStatusLower === 'canceled') targetStatus = TargetTransactionStatus.CANCELLED;
+            // No need for an explicit 'completed' check if it's the default
 
             return {
                 transactionId: uuidv4(), userId: newUserId, type: targetType, amount: amountNumber, currency: TargetCurrency.XAF, fee: 0, status: targetStatus,
@@ -1374,6 +1329,217 @@ async function runMigration() {
         // Optional: Add checkExisting function for Referrals if needed
         await processBatch('Referrals', referralCursor, TargetReferral, mapReferral);
 
+
+        // --- Add Partner migration ---
+        console.log('\nMigrating partners...');
+        const partnerCursor = SourcePartner.find().cursor();
+        let partnersProcessed = 0;
+        let partnersMigrated = 0;
+        let usersWithPartnerStatus = 0;
+
+        // Define pack percentage rates for commission recalculation
+        const PACK_PERCENTAGE_RATES = {
+            'silver': 0.10, // 10% for silver partners
+            'gold': 0.18,   // 18% for gold partners
+        };
+
+        // Collect all partner transactions first to recalculate partner balances
+        console.log('Collecting partner transactions for balance recalculation...');
+        const partnerTxCursor = SourcePartnerTransaction.find().cursor();
+        const partnerTransactions = new Map<string, { totalAmount: number, transactions: any[] }>();
+
+        // First pass: Collect and recalculate all transactions
+        for await (const sourceTx of partnerTxCursor) {
+            const oldPartnerId = sourceTx.partnerId?.toString();
+            if (!oldPartnerId) {
+                continue;
+            }
+
+            let amountNumber: number | null = null;
+            if (typeof sourceTx.amount === 'string') {
+                try {
+                    amountNumber = parseFloat(sourceTx.amount);
+                    if (isNaN(amountNumber)) continue;
+                } catch {
+                    continue;
+                }
+            } else if (typeof sourceTx.amount === 'number') {
+                amountNumber = sourceTx.amount;
+            } else {
+                continue;
+            }
+
+            // Get the partner pack to determine the correct percentage
+            const packValue = sourceTx.pack?.toLowerCase();
+            if (packValue !== 'silver' && packValue !== 'gold') {
+                continue;
+            }
+
+            // Apply the percentage to recalculate the amount
+            const percentageRate = PACK_PERCENTAGE_RATES[packValue as keyof typeof PACK_PERCENTAGE_RATES];
+            const recalculatedAmount = amountNumber * percentageRate;
+
+            // Store the transaction with recalculated amount by partnerId
+            if (!partnerTransactions.has(oldPartnerId)) {
+                partnerTransactions.set(oldPartnerId, { totalAmount: 0, transactions: [] });
+            }
+
+            const partnerTxData = partnerTransactions.get(oldPartnerId)!;
+            partnerTxData.totalAmount += recalculatedAmount;
+            partnerTxData.transactions.push({
+                ...sourceTx.toObject(),
+                recalculatedAmount,
+                originalAmount: amountNumber
+            });
+        }
+
+        console.log(`Collected and recalculated transactions for ${partnerTransactions.size} partners`);
+
+        // Now process partners with their corrected total amounts
+        for await (const sourcePartner of partnerCursor) {
+            partnersProcessed++;
+            const oldPartnerId = sourcePartner._id?.toString();
+            const oldUserId = sourcePartner.user?.toString();
+
+            if (!oldUserId || !oldPartnerId) {
+                console.warn(`Skipping partner without user or _id`);
+                continue;
+            }
+
+            const newUserId = userIdMap.get(oldUserId);
+            if (!newUserId) {
+                console.warn(`Skipping partner for user ${oldUserId} - User not found in userIdMap`);
+                continue;
+            }
+
+            // Validate partner pack
+            const packValue = sourcePartner.pack?.toLowerCase();
+            if (packValue !== 'silver' && packValue !== 'gold') {
+                console.warn(`Skipping partner with invalid pack: ${packValue}`);
+                continue;
+            }
+
+            const partnerPack = packValue === 'silver' ? TargetPartnerPack.SILVER : TargetPartnerPack.GOLD;
+
+            // Get recalculated total amount from transactions or use 0 if no transactions found
+            const partnerTxData = partnerTransactions.get(oldPartnerId);
+            const correctedTotalAmount = partnerTxData?.totalAmount || 0;
+
+            try {
+                // 1. Create partner record with corrected amount
+                const newPartner = await TargetPartner.create({
+                    user: newUserId,
+                    pack: partnerPack,
+                    amount: correctedTotalAmount, // Use the recalculated sum of transactions
+                    isActive: sourcePartner.isActive ?? true,
+                    createdAt: sourcePartner.createdAt || sourcePartner._id.getTimestamp(),
+                    updatedAt: sourcePartner.updatedAt || new Date()
+                });
+
+                partnerIdMap.set(oldPartnerId, newPartner._id);
+                partnersMigrated++;
+
+                // 2. Update user with partner pack
+                await TargetUser.updateOne(
+                    { _id: newUserId },
+                    { $set: { partnerPack: partnerPack } }
+                );
+                usersWithPartnerStatus++;
+
+                console.log(`Migrated partner ${oldPartnerId} with corrected amount ${correctedTotalAmount} (original amount was ${sourcePartner.amount || 0})`);
+
+                if (partnersProcessed % 100 === 0) {
+                    console.log(`Processed ${partnersProcessed} partners, migrated ${partnersMigrated}`);
+                }
+            } catch (error: any) {
+                console.error(`Error migrating partner ${oldPartnerId}: ${error.message}`);
+            }
+        }
+        console.log(`Partner migration finished. Processed: ${partnersProcessed}, Migrated: ${partnersMigrated}, Users updated: ${usersWithPartnerStatus}`);
+
+        // --- Migrate Partner Transactions with corrected amounts ---
+        console.log('\nMigrating partner transactions with corrected amounts...');
+        let partnerTxProcessed = 0;
+        let partnerTxMigrated = 0;
+        let partnerSpecificTxMigrated = 0;
+
+        // Second pass: Create transaction records using the recalculated amounts
+        const partnerIds = Array.from(partnerTransactions.keys()); // Convert keys to an array
+        for (const oldPartnerId of partnerIds) { // Iterate over the array
+            const partnerTxData = partnerTransactions.get(oldPartnerId)!; // Get data using the key
+            const newPartnerId = partnerIdMap.get(oldPartnerId);
+
+            if (!newPartnerId) {
+                console.warn(`Skipping transactions for partner ${oldPartnerId} - Partner not found in partnerIdMap`);
+                continue;
+            }
+
+            for (const txData of partnerTxData.transactions) {
+                partnerTxProcessed++;
+                const oldUserId = txData.user?.toString();
+
+                if (!oldUserId) {
+                    console.warn(`Skipping partner transaction without user`);
+                    continue;
+                }
+
+                const newUserId = userIdMap.get(oldUserId);
+                if (!newUserId) {
+                    console.warn(`Skipping partner transaction for user ${oldUserId} - User not found in userIdMap`);
+                    continue;
+                }
+
+                try {
+                    // Create transaction for partner earnings with recalculated amount
+                    await TargetTransaction.create({
+                        transactionId: uuidv4(),
+                        userId: newUserId,
+                        type: TargetTransactionType.PARTNER_EARNINGS,
+                        amount: txData.recalculatedAmount, // Use the recalculated amount
+                        currency: TargetCurrency.XAF,
+                        fee: 0,
+                        status: TargetTransactionStatus.COMPLETED,
+                        description: txData.message || 'Partner earnings (recalculated)',
+                        metadata: {
+                            sourceTransactionId: txData._id.toString(),
+                            partnerId: newPartnerId.toString(),
+                            pack: txData.pack,
+                            sourceType: txData.transType,
+                            originalAmount: txData.originalAmount,
+                            recalculated: true
+                        },
+                        createdAt: txData.date || txData.createdAt || txData._id.getTimestamp(),
+                    });
+
+                    // Also create a partner-specific transaction record
+                    await TargetPartnerTransaction.create({
+                        partnerId: newPartnerId,
+                        user: newUserId,
+                        pack: txData.pack?.toLowerCase() === 'silver' ? 'silver' : 'gold',
+                        transType: txData.transType?.toLowerCase() === 'withdrawal' ? 'withdrawal' : 'deposit',
+                        message: txData.message || 'Migrated partner transaction',
+                        amount: txData.recalculatedAmount, // Use the recalculated amount
+                        // Optional fields - set if available in source data
+                        sourcePaymentSessionId: txData.sourcePaymentSessionId,
+                        sourceSubscriptionType: txData.sourceSubscriptionType,
+                        referralLevelInvolved: txData.referralLevelInvolved,
+                        createdAt: txData.date || txData.createdAt || txData._id.getTimestamp(),
+                        updatedAt: txData.updatedAt || new Date()
+                    });
+
+                    partnerSpecificTxMigrated++;
+                    partnerTxMigrated++;
+
+                    if (partnerTxProcessed % 100 === 0) {
+                        console.log(`Processed ${partnerTxProcessed} partner transactions, migrated ${partnerTxMigrated} regular transactions, ${partnerSpecificTxMigrated} partner-specific transactions`);
+                    }
+                } catch (error: any) {
+                    console.error(`Error migrating partner transaction ${txData._id}: ${error.message}`);
+                }
+            }
+        }
+
+        console.log(`Partner transaction migration finished. Processed: ${partnerTxProcessed}, Migrated: ${partnerTxMigrated} regular transactions, ${partnerSpecificTxMigrated} partner-specific transactions`);
 
         console.log('\nMigration completed successfully!');
 
