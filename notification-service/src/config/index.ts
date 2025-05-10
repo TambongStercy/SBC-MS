@@ -152,9 +152,9 @@ const validateConfig = (): void => {
     // Only validate these in production
     if (config.nodeEnv === 'production') {
         requiredEnvs.push(
-            // 'EMAIL_SERVICE',
-            // 'EMAIL_USER',
-            // 'EMAIL_PASSWORD',
+            'EMAIL_SERVICE',
+            'EMAIL_USER',
+            'EMAIL_PASSWORD',
             // 'TWILIO_ACCOUNT_SID',
             // 'TWILIO_AUTH_TOKEN',
             // 'TWILIO_PHONE_NUMBER',

@@ -31,6 +31,8 @@ class EmailService {
             if (config.email.service && config.email.user && config.email.password) {
                 this.transporter = nodemailer.createTransport({
                     service: config.email.service,
+                    port: 465, // Secure port
+                    secure: true, // Use TLS
                     auth: {
                         user: config.email.user,
                         pass: config.email.password,
