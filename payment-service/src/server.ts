@@ -38,11 +38,12 @@ app.set('views', path.join(__dirname, 'views'));
 
 // Serve Static Files (like CSS)
 let staticPath: string;
-if (config.nodeEnv === 'production') {
-    staticPath = path.join(__dirname, 'public');
-} else {
-    staticPath = path.join(__dirname, '../public');
-}
+// if (config.nodeEnv === 'production') {
+//     staticPath = path.join(__dirname, 'public');
+// } else {
+//     staticPath = path.join(__dirname, '../public');
+// }
+staticPath = path.join(__dirname, '../public');
 app.use(express.static(staticPath));
 logger.info(`[Server] Serving static files from: ${staticPath}`);
 
