@@ -1,0 +1,11 @@
+version: '3.8' # Specifies the version of the Docker Compose file format
+
+services:
+  gateway-service:
+    # Defines a service named 'gateway-service'
+    build:
+      context: ./gateway-service # Tells Docker Compose to look for a Dockerfile in the ./gateway-service directory
+      dockerfile: Dockerfile # Specifies the name of the Dockerfile
+    ports:
+      - "3000:3000" # Maps port 3000 of the host to port 3000 of the container (as exposed in your Dockerfile)
+    container_name: gateway_service_container # Optional: a friendly name for your container 

@@ -9,22 +9,146 @@ import logger from '../utils/logger';
 
 const log = logger.getLogger('ProductService');
 
+// --- Placeholder for UserServiceClient and UserDetails ---
+// In a real microservice architecture, this client would make HTTP calls
+// to the User Service to fetch user details.
+interface UserDetails {
+    _id: Types.ObjectId | string;
+    phoneNumber?: string;
+    // Add other fields if needed from user-service
+}
+
+// This is a MOCK client. Replace with actual HTTP client implementation.
+const userServiceClient = {
+    async getUsersDetailsByIds(userIds: string[]): Promise<UserDetails[]> {
+        // TODO: Remove this mock and creation functional client
+        log.warn(`(MOCK) userServiceClient.getUsersDetailsByIds called for IDs: ${userIds.join(', ')}`);
+        // Simulate fetching user data. In a real scenario, this would be an API call.
+        // Example: return an empty array or mock data if needed for testing.
+        // This mock is NOT for production.
+        // You would typically use an HTTP client like axios here, configured with the User Service URL.
+        // For the purpose of this example, let's assume it returns some mock data or empty.
+        // Example:
+        // return userIds.map(id => ({ _id: new Types.ObjectId(id), phoneNumber: \`+1234567890${id.slice(-1)}\`}));
+        return []; // Defaulting to empty to avoid breaking logic if not mocked externally
+    }
+};
+// --- End Placeholder ---
+
+// Define a type for the product augmented with a WhatsApp link
+type ProductWithWhatsappLink = IProduct & { whatsappLink?: string };
+
+// Define a local pagination response type if not reliably importable
+interface ProductPaginationResponse {
+    products: IProduct[]; // Assuming the repository uses 'products' field
+    paginationInfo: {
+        totalCount: number;
+        totalPages: number;
+        currentPage: number;
+        limit: number;
+        hasNextPage: boolean;
+        hasPreviousPage: boolean;
+        // Add nextPage and prevPage if they exist in the actual repo response
+        nextPage?: number;
+        prevPage?: number;
+    };
+}
+
 export class ProductService {
+    /**
+     * Helper to generate WhatsApp link from a phone number.
+     * @param phoneNumber Phone number (preferably in international format)
+     * @returns WhatsApp link string or undefined.
+     */
+    private generateWhatsAppLink(phoneNumber?: string): string | undefined {
+        if (!phoneNumber) return undefined;
+        // Remove all non-digit characters except '+' at the beginning
+        const cleanedNumber = phoneNumber.replace(/(?!^\+)[^0-9]/g, '');
+        if (!cleanedNumber) return undefined;
+        // If it starts with '+', remove it for wa.me link if it's common practice, otherwise keep it.
+        // wa.me typically expects the number without '+' but includes country code.
+        const finalNumber = cleanedNumber.startsWith('+') ? cleanedNumber.substring(1) : cleanedNumber;
+        return `https://wa.me/${finalNumber}`;
+    }
+
+    /**
+     * Augments a single product with a WhatsApp link.
+     * @param product The product document or plain object.
+     * @returns Product object with whatsappLink.
+     */
+    private async augmentProductWithWhatsappLink(
+        product: IProduct
+    ): Promise<ProductWithWhatsappLink> {
+        // Create a new object from the Mongoose document to avoid directly mutating it
+        // if it's not desired, and to ensure it's a plain object for the whatsappLink.
+        const plainProduct: ProductWithWhatsappLink = product.toObject() as ProductWithWhatsappLink;
+
+        if (!plainProduct.userId) {
+            return plainProduct; // Return as is if no userId
+        }
+        try {
+            const userDetailsArray = await userServiceClient.getUsersDetailsByIds([plainProduct.userId.toString()]);
+            if (userDetailsArray && userDetailsArray.length > 0) {
+                const user = userDetailsArray[0];
+                plainProduct.whatsappLink = this.generateWhatsAppLink(user.phoneNumber);
+            }
+        } catch (error) {
+            log.error(`Failed to fetch user details for WhatsApp link (product ${plainProduct._id}):`, error);
+            // whatsappLink will remain undefined
+        }
+        return plainProduct;
+    }
+
+    /**
+     * Augments multiple products with WhatsApp links using a batch fetch for user details.
+     * @param products Array of product documents or plain objects.
+     * @returns Array of product objects with whatsappLink.
+     */
+    private async augmentProductsWithWhatsappLink(
+        products: IProduct[]
+    ): Promise<ProductWithWhatsappLink[]> {
+        if (!products || products.length === 0) {
+            return [];
+        }
+
+        // Convert all products to plain objects first
+        const plainProducts: ProductWithWhatsappLink[] = products.map(p => p.toObject() as ProductWithWhatsappLink);
+        const userIds = Array.from(new Set(plainProducts.map(p => p.userId?.toString()).filter(id => !!id)));
+
+        if (userIds.length === 0) {
+            return plainProducts; // Return as is if no userIds to fetch
+        }
+
+        const userDetailsMap = new Map<string, UserDetails>();
+        try {
+            const userDetailsArray = await userServiceClient.getUsersDetailsByIds(userIds as string[]); // Cast to string[] is fine here
+            userDetailsArray.forEach(ud => userDetailsMap.set(ud._id.toString(), ud));
+        } catch (error) {
+            log.error('Failed to fetch user details in batch for WhatsApp links:', error);
+        }
+
+        // Add whatsappLink to each plain product object
+        return plainProducts.map(p => {
+            const userDetail = p.userId ? userDetailsMap.get(p.userId.toString()) : undefined;
+            p.whatsappLink = userDetail ? this.generateWhatsAppLink(userDetail.phoneNumber) : undefined;
+            return p;
+        });
+    }
+
     /**
      * Create a new product
      * @param productData Product data (excluding images)
      * @param imageFiles Array of uploaded image files
-     * @returns Created product
+     * @returns Created product with whatsappLink
      */
     async createProduct(
         productData: Omit<Partial<IProduct>, 'images'>, // Exclude images from initial data
         imageFiles: Express.Multer.File[] = [] // Accept image files
-    ): Promise<IProduct> {
+    ): Promise<ProductWithWhatsappLink> {
         log.info(`Creating new product for user ${productData.userId}`);
         try {
             const uploadedImages: IProductImage[] = [];
 
-            // 1. Upload Images to Settings Service
             if (imageFiles && imageFiles.length > 0) {
                 log.info(`Uploading ${imageFiles.length} images for product...`);
                 const uploadPromises = imageFiles.map(file =>
@@ -32,10 +156,9 @@ export class ProductService {
                         file.buffer,
                         file.mimetype,
                         file.originalname,
-                        'product-docs' // Specify folder name for product images
+                        'product-docs'
                     ).then((uploadResult: { fileId: string }) => ({
                         fileId: uploadResult.fileId,
-                        // Construct proxy URL pointing to settings-service endpoint
                         url: `/settings/files/${uploadResult.fileId}`
                     }))
                 );
@@ -44,20 +167,18 @@ export class ProductService {
                 log.info('Product images uploaded successfully.');
             }
 
-            // 2. Prepare product data for saving
             const newProductData: Partial<IProduct> = {
                 ...productData,
-                images: uploadedImages, // Add uploaded image details
+                images: uploadedImages,
                 overallRating: 0,
                 ratings: [],
-                status: ProductStatus.PENDING // Ensure status is pending
+                status: ProductStatus.PENDING
             };
 
-            // 3. Create product in repository
-            return await productRepository.create(newProductData);
+            const createdProductDoc = await productRepository.create(newProductData);
+            return this.augmentProductWithWhatsappLink(createdProductDoc);
         } catch (error: any) {
             log.error('Error creating product:', error);
-            // Consider deleting uploaded files if creation fails (complex)
             throw new CustomError(error.message || 'Failed to create product', error.statusCode || 500);
         }
     }
@@ -65,20 +186,20 @@ export class ProductService {
     /**
      * Get a product by ID
      * @param productId Product ID
-     * @returns Product or null if not found
+     * @returns Product with whatsappLink or null if not found
      */
-    async getProductById(productId: string | Types.ObjectId): Promise<IProduct | null> {
+    async getProductById(productId: string | Types.ObjectId): Promise<ProductWithWhatsappLink | null> {
         try {
-            const product = await productRepository.findById(productId);
-            if (!product) {
+            const productDoc = await productRepository.findById(productId);
+            if (!productDoc) {
                 throw new CustomError('Product not found', 404);
             }
-            return product;
+            return this.augmentProductWithWhatsappLink(productDoc);
         } catch (error) {
             if (error instanceof CustomError) {
                 throw error;
             }
-            console.error('Error getting product by ID:', error);
+            log.error('Error getting product by ID:', error);
             throw new CustomError('Failed to get product', 500);
         }
     }
@@ -86,13 +207,14 @@ export class ProductService {
     /**
      * Get products by user ID
      * @param userId User ID
-     * @returns Array of products
+     * @returns Array of products with whatsappLink
      */
-    async getProductsByUserId(userId: string | Types.ObjectId): Promise<IProduct[]> {
+    async getProductsByUserId(userId: string | Types.ObjectId): Promise<ProductWithWhatsappLink[]> {
         try {
-            return await productRepository.findByUserId(userId);
+            const productDocs = await productRepository.findByUserId(userId);
+            return this.augmentProductsWithWhatsappLink(productDocs);
         } catch (error) {
-            console.error('Error getting products by user ID:', error);
+            log.error('Error getting products by user ID:', error);
             throw new CustomError('Failed to get user products', 500);
         }
     }
@@ -104,46 +226,41 @@ export class ProductService {
      * @param imageFiles Optional new image files to replace existing ones
      * @param userId User ID of the requester (for authorization)
      * @param isAdmin Is the requester an admin
-     * @returns Updated product
+     * @returns Updated product with whatsappLink
      */
     async updateProduct(
         productId: string | Types.ObjectId,
         updateData: Omit<Partial<IProduct>, 'images'>,
-        imageFiles?: Express.Multer.File[], // Accept optional image files
+        imageFiles?: Express.Multer.File[],
         userId?: string | Types.ObjectId,
         isAdmin?: boolean
-    ): Promise<IProduct | null> {
+    ): Promise<ProductWithWhatsappLink | null> {
         log.info(`Updating product ${productId} for user ${userId || 'Admin'}`);
         try {
-            const product = await productRepository.findById(productId);
-            if (!product) {
+            const productDoc = await productRepository.findById(productId);
+            if (!productDoc) {
                 throw new CustomError('Product not found', 404);
             }
 
-            // Authorization check
-            if (!isAdmin && product.userId.toString() !== userId?.toString()) {
+            if (!isAdmin && productDoc.userId.toString() !== userId?.toString()) {
                 throw new CustomError('Unauthorized: You do not own this product', 403);
             }
 
             const safeUpdateData: Partial<IProduct> = { ...updateData };
-            // Remove fields that shouldn't be directly updated this way
             delete safeUpdateData.ratings;
             delete safeUpdateData.overallRating;
-            delete safeUpdateData.userId; // Cannot change owner
-            delete safeUpdateData.status; // Status updated via separate method
-            delete safeUpdateData.images; // Images handled separately below
+            delete safeUpdateData.userId;
+            delete safeUpdateData.status;
+            delete safeUpdateData.images;
 
-            // 1. Handle Image Updates (Replace Strategy)
             if (imageFiles && imageFiles.length > 0) {
                 log.info(`Replacing images for product ${productId} with ${imageFiles.length} new files.`);
-                // TODO: Optional - Delete old files from settings-service using product.images[].fileId
-
                 const uploadPromises = imageFiles.map(file =>
                     settingsServiceClient.uploadFile(
                         file.buffer,
                         file.mimetype,
                         file.originalname,
-                        'product-docs' // Specify folder name for product images
+                        'product-docs'
                     ).then((uploadResult: { fileId: string }) => ({
                         fileId: uploadResult.fileId,
                         url: `/settings/files/${uploadResult.fileId}`
@@ -153,8 +270,9 @@ export class ProductService {
                 log.info('New product images uploaded and processed.');
             }
 
-            // 2. Perform the update
-            return await productRepository.updateById(productId, safeUpdateData);
+            const updatedProductDoc = await productRepository.updateById(productId, safeUpdateData);
+            if (!updatedProductDoc) return null;
+            return this.augmentProductWithWhatsappLink(updatedProductDoc);
 
         } catch (error: any) {
             if (error instanceof CustomError) {
@@ -170,17 +288,19 @@ export class ProductService {
      * @param productId Product ID
      * @param status New status
      * @param rejectionReason Optional reason for rejection
-     * @returns Updated product
+     * @returns Updated product with whatsappLink
      */
     async updateProductStatus(
         productId: string | Types.ObjectId,
         status: string,
         rejectionReason?: string
-    ): Promise<IProduct | null> {
+    ): Promise<ProductWithWhatsappLink | null> {
         try {
-            return await productRepository.updateStatus(productId, status as ProductStatus, rejectionReason);
+            const updatedProductDoc = await productRepository.updateStatus(productId, status as ProductStatus, rejectionReason);
+            if (!updatedProductDoc) return null;
+            return this.augmentProductWithWhatsappLink(updatedProductDoc);
         } catch (error) {
-            console.error('Error updating product status:', error);
+            log.error('Error updating product status:', error);
             throw new CustomError('Failed to update product status', 500);
         }
     }
@@ -189,29 +309,30 @@ export class ProductService {
      * Delete a product (soft delete)
      * @param productId Product ID
      * @param userId User ID of the requester (for authorization)
-     * @returns Deleted product
+     * @returns Deleted product with whatsappLink
      */
     async deleteProduct(
         productId: string | Types.ObjectId,
         userId: string | Types.ObjectId
-    ): Promise<IProduct | null> {
+    ): Promise<ProductWithWhatsappLink | null> {
         try {
-            // Verify product ownership
-            const product = await productRepository.findById(productId);
-            if (!product) {
+            const productDoc = await productRepository.findById(productId);
+            if (!productDoc) {
                 throw new CustomError('Product not found', 404);
             }
 
-            if (product.userId.toString() !== userId.toString()) {
+            if (productDoc.userId.toString() !== userId.toString()) {
                 throw new CustomError('Unauthorized: You do not own this product', 403);
             }
 
-            return await productRepository.softDelete(productId);
+            const deletedProductDoc = await productRepository.softDelete(productId);
+            if (!deletedProductDoc) return null;
+            return this.augmentProductWithWhatsappLink(deletedProductDoc);
         } catch (error) {
             if (error instanceof CustomError) {
                 throw error;
             }
-            console.error('Error deleting product:', error);
+            log.error('Error deleting product:', error);
             throw new CustomError('Failed to delete product', 500);
         }
     }
@@ -219,14 +340,15 @@ export class ProductService {
     /**
      * [Admin] List products with extended filtering and pagination
      * @param filters Admin-specific search filters including status
-     * @returns Products matching the criteria with pagination info
+     * @returns Products matching the criteria with pagination info and whatsappLink
      */
-    async adminListProducts(filters: AdminProductSearchFilters) {
+    async adminListProducts(filters: AdminProductSearchFilters): Promise<Omit<ProductPaginationResponse, 'products'> & { products: ProductWithWhatsappLink[] }> {
         try {
-            // Call the repository method designed for admin listing
-            return await productRepository.adminSearchProducts(filters);
+            const result = await productRepository.adminSearchProducts(filters);
+            const augmentedProducts = await this.augmentProductsWithWhatsappLink(result.products);
+            return { ...result, products: augmentedProducts };
         } catch (error) {
-            console.error('Error listing products (admin):', error);
+            log.error('Error listing products (admin):', error);
             throw new CustomError('Failed to list products', 500);
         }
     }
@@ -234,13 +356,15 @@ export class ProductService {
     /**
      * Restore a deleted product (admin only)
      * @param productId Product ID
-     * @returns Restored product
+     * @returns Restored product with whatsappLink
      */
-    async restoreProduct(productId: string | Types.ObjectId): Promise<IProduct | null> {
+    async restoreProduct(productId: string | Types.ObjectId): Promise<ProductWithWhatsappLink | null> {
         try {
-            return await productRepository.restore(productId);
+            const restoredProductDoc = await productRepository.restore(productId);
+            if (!restoredProductDoc) return null;
+            return this.augmentProductWithWhatsappLink(restoredProductDoc);
         } catch (error) {
-            console.error('Error restoring product:', error);
+            log.error('Error restoring product:', error);
             throw new CustomError('Failed to restore product', 500);
         }
     }
@@ -248,13 +372,15 @@ export class ProductService {
     /**
      * Search products with filters
      * @param filters Search filters
-     * @returns Products matching the criteria with pagination info
+     * @returns Products matching the criteria with pagination info and whatsappLink
      */
-    async searchProducts(filters: ProductSearchFilters) {
+    async searchProducts(filters: ProductSearchFilters): Promise<Omit<ProductPaginationResponse, 'products'> & { products: ProductWithWhatsappLink[] }> {
         try {
-            return await productRepository.searchProducts(filters);
+            const result = await productRepository.searchProducts(filters);
+            const augmentedProducts = await this.augmentProductsWithWhatsappLink(result.products);
+            return { ...result, products: augmentedProducts };
         } catch (error) {
-            console.error('Error searching products:', error);
+            log.error('Error searching products:', error);
             throw new CustomError('Failed to search products', 500);
         }
     }
@@ -275,7 +401,6 @@ export class ProductService {
                 throw new CustomError('Product not found', 404);
             }
 
-            // Check if user has already rated this product
             const existingRating = await ratingRepository.findByUserAndProduct(
                 ratingData.userId!,
                 productId
@@ -284,7 +409,6 @@ export class ProductService {
             let rating: IRating;
 
             if (existingRating) {
-                // Update existing rating
                 const updatedRating = await ratingRepository.updateById(
                     existingRating._id,
                     {
@@ -296,37 +420,28 @@ export class ProductService {
                 if (!updatedRating) {
                     throw new CustomError('Failed to update rating', 500);
                 }
-
                 rating = updatedRating;
             } else {
-                // Create new rating
-                // Ensure productId is ObjectId before creating rating data
                 const objectIdProductId = typeof productId === 'string' ? new Types.ObjectId(productId) : productId;
-
                 const newRatingData: Partial<IRating> = {
                     ...ratingData,
-                    productId: objectIdProductId, // Use the converted ObjectId
+                    productId: objectIdProductId,
                     helpful: 0
                 };
-
                 rating = await ratingRepository.create(newRatingData);
-
-                // Add rating ID to product
                 await productRepository.addRating(productId, rating._id);
             }
 
-            // Calculate and update the overall product rating
             const averageRating = await ratingRepository.calculateAverageRating(productId);
             if (averageRating !== null) {
                 await productRepository.updateOverallRating(productId, averageRating);
             }
-
             return rating;
         } catch (error) {
             if (error instanceof CustomError) {
                 throw error;
             }
-            console.error('Error rating product:', error);
+            log.error('Error rating product:', error);
             throw new CustomError('Failed to rate product', 500);
         }
     }
@@ -347,34 +462,23 @@ export class ProductService {
                 throw new CustomError('Rating not found', 404);
             }
 
-            // Verify rating ownership
             if (rating.userId.toString() !== userId.toString()) {
                 throw new CustomError('Unauthorized: You do not own this rating', 403);
             }
 
             const productId = rating.productId;
-
-            // Soft delete the rating
             await ratingRepository.softDelete(ratingId);
-
-            // Remove rating from product
             await productRepository.removeRating(productId, ratingId);
 
-            // Recalculate overall product rating
             const averageRating = await ratingRepository.calculateAverageRating(productId);
-            if (averageRating !== null) {
-                await productRepository.updateOverallRating(productId, averageRating);
-            } else {
-                // If no ratings left, set overall rating to 0
-                await productRepository.updateOverallRating(productId, 0);
-            }
+            await productRepository.updateOverallRating(productId, averageRating !== null ? averageRating : 0);
 
             return { success: true, message: 'Rating deleted successfully' };
         } catch (error) {
             if (error instanceof CustomError) {
                 throw error;
             }
-            console.error('Error deleting rating:', error);
+            log.error('Error deleting rating:', error);
             throw new CustomError('Failed to delete rating', 500);
         }
     }
@@ -391,26 +495,20 @@ export class ProductService {
         userId: string | Types.ObjectId
     ): Promise<IRating | null> {
         try {
-            // Use the repository method that adds the user ID to the set
             const updatedRating = await ratingRepository.addHelpfulVote(ratingId, userId);
-
             if (!updatedRating) {
-                // This means either the rating wasn't found OR the user already voted.
-                // We might want to check the rating existence first for a clearer error.
                 const ratingExists = await ratingRepository.findById(ratingId);
                 if (!ratingExists) {
                     throw new CustomError('Rating not found', 404);
                 }
-                // If it exists, the user must have already voted.
-                throw new CustomError('User has already marked this rating as helpful', 409); // 409 Conflict
+                throw new CustomError('User has already marked this rating as helpful', 409);
             }
-
             return updatedRating;
         } catch (error) {
             if (error instanceof CustomError) {
                 throw error;
             }
-            console.error('Error marking rating as helpful:', error);
+            log.error('Error marking rating as helpful:', error);
             throw new CustomError('Failed to mark rating as helpful', 500);
         }
     }
@@ -436,7 +534,7 @@ export class ProductService {
                 sortOrder: 'desc'
             });
         } catch (error) {
-            console.error('Error getting product ratings:', error);
+            log.error('Error getting product ratings:', error);
             throw new CustomError('Failed to get product ratings', 500);
         }
     }
@@ -462,7 +560,7 @@ export class ProductService {
                 sortOrder: 'desc'
             });
         } catch (error) {
-            console.error('Error getting user ratings:', error);
+            log.error('Error getting user ratings:', error);
             throw new CustomError('Failed to get user ratings', 500);
         }
     }
