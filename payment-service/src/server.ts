@@ -37,15 +37,16 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 // Serve Static Files (like CSS)
-let staticPath: string;
-// if (config.nodeEnv === 'production') {
-//     staticPath = path.join(__dirname, 'public');
-// } else {
-//     staticPath = path.join(__dirname, '../public');
-// }
-staticPath = path.join(__dirname, '../public');
-app.use(express.static(staticPath));
-logger.info(`[Server] Serving static files from: ${staticPath}`);
+const assetServingPath = '/api/payments/static'; // URL path prefix
+let diskStaticPath: string; // Actual path on disk
+
+if (config.nodeEnv === 'production') {
+    diskStaticPath = path.join(__dirname, 'public');
+} else {
+    diskStaticPath = path.join(__dirname, '../public');
+}
+app.use(assetServingPath, express.static(diskStaticPath));
+logger.info(`[Server] Serving static files from disk path: ${diskStaticPath} at URL path: ${assetServingPath}`);
 
 // --- Trust Proxy --- 
 // This is important for accurately getting req.ip behind a reverse proxy (like Nginx)

@@ -1,0 +1,73 @@
+server {
+    listen 443 ssl http2; # Ensure http2 is enabled if possible
+    listen [::]:443 ssl http2;
+    server_name sniperbuisnesscenter.com www.sniperbuisnesscenter.com;
+
+    root /var/www/sniper; # Your frontend root
+
+    # SSL Configuration (Certbot likely added these)
+    ssl_certificate /etc/letsencrypt/live/sniperbuisnesscenter.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sniperbuisnesscenter.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # ACME challenge location (might be needed for renewals)
+    location /.well-known/acme-challenge/ {
+        allow all;
+        root /var/www/sniper; # Or wherever Certbot places challenges
+    }
+
+    # NEW: Location block for your backend API
+    location /api/ {
+        # Forward requests to your Node.js app running via PM2 on port 3000
+        # Using localhost is generally preferred if backend is on the same server
+        proxy_pass http://localhost:3000;
+
+        # Set headers to pass along useful info to your backend app
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme; # Important: Lets backend know request came via https
+
+        # Optional: Adjust timeouts if your API calls might take longer
+        # proxy_connect_timeout 60s;
+        # proxy_send_timeout 60s;
+        # proxy_read_timeout 60s;
+    }
+
+
+    # Main location block for the Flutter frontend app
+    # Ensure this comes AFTER specific locations like /api/
+    location / {
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Optional: Other locations for assets, etc.
+    location ~* \.(?:ico|css|js|gif|jpe?g|png|svg|woff|woff2|ttf|eot)$ {
+        expires 1M;
+        access_log off;
+        add_header Cache-Control "public";
+    }
+
+    # Optional: Logging directives for HTTPS block
+    access_log /var/log/nginx/sniperbuisnesscenter.ssl.access.log;
+    error_log /var/log/nginx/sniperbuisnesscenter.ssl.error.log;
+}
+
+# Optional but recommended: Redirect HTTP to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name sniperbuisnesscenter.com www.sniperbuisnesscenter.com;
+
+    # If using Certbot, it might have added ACME challenge handling here too
+    location /.well-known/acme-challenge/ {
+         allow all;
+         root /var/www/sniper; # Or wherever Certbot places challenges
+    }
+
+    location / {
+         return 301 https://$host$request_uri;
+    }
+}
