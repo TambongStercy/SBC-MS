@@ -40,11 +40,13 @@ app.set('views', path.join(__dirname, 'views'));
 const assetServingPath = '/api/payments/static'; // URL path prefix
 let diskStaticPath: string; // Actual path on disk
 
-if (config.nodeEnv === 'production') {
-    diskStaticPath = path.join(__dirname, 'public');
-} else {
-    diskStaticPath = path.join(__dirname, '../public');
-}
+// if (config.nodeEnv === 'production') {
+//     diskStaticPath = path.join(__dirname, 'public');
+// } else {
+//     diskStaticPath = path.join(__dirname, '../public');
+// }
+
+diskStaticPath = path.join(__dirname, '../public');
 app.use(assetServingPath, express.static(diskStaticPath));
 logger.info(`[Server] Serving static files from disk path: ${diskStaticPath} at URL path: ${assetServingPath}`);
 
