@@ -47,7 +47,8 @@ export class PaymentController {
                 subscriptionPlan: paymentIntent.subscriptionPlan,
                 amount: paymentIntent.amount,
                 currency: paymentIntent.currency,
-                errorMessage: status === PaymentStatus.ERROR ? 'Previous payment attempt failed. Please try again.' : ''
+                errorMessage: status === PaymentStatus.ERROR ? 'Previous payment attempt failed. Please try again.' : '',
+                assetBasePath: '/api/payments/static'
             });
         } catch (error) {
             log.error('Error rendering payment page:', error);

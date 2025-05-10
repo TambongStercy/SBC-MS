@@ -212,4 +212,4 @@ document.addEventListener('DOMContentLoaded', function () {
         e.preventDefault();
         handleSubmission(e);
     });
-}); 
+});
