@@ -29,15 +29,31 @@ class EmailService {
         try {
             // Only initialize if email config is available
             if (config.email.service && config.email.user && config.email.password) {
-                this.transporter = nodemailer.createTransport({
-                    service: config.email.service,
-                    port: 465, // Secure port
-                    secure: true, // Use TLS
-                    auth: {
-                        user: config.email.user,
-                        pass: config.email.password,
-                    },
-                });
+                let transportConfig: nodemailer.TransportOptions;
+
+                // Check if the service is SendGrid (case-insensitive)
+                if (config.email.service.toLowerCase() === 'sendgrid') {
+                    transportConfig = {
+                        service: 'SendGrid',
+                        auth: {
+                            user: config.email.user, // Should be 'apikey' for SendGrid API key
+                            pass: config.email.password,
+                        }
+                    } as nodemailer.TransportOptions; // Cast to assure TypeScript
+                } else {
+                    // For other services, or generic SMTP
+                    transportConfig = {
+                        host: config.email.service, // Assuming service name can be host if not 'sendgrid'
+                        port: 465,
+                        secure: true, // true for 465, false for other ports
+                        auth: {
+                            user: config.email.user,
+                            pass: config.email.password,
+                        }
+                    } as nodemailer.TransportOptions; // Cast to assure TypeScript
+                }
+
+                this.transporter = nodemailer.createTransport(transportConfig);
                 this.isInitialized = true;
                 log.info('Transporter initialized successfully');
             } else {
