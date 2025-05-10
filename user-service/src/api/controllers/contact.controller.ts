@@ -20,11 +20,15 @@ export class ContactController {
         const filters: ContactSearchFilters = {};
 
         // Parse date filters
-        if (query.registrationDateStart) {
+        if (query.startDate) {
+            filters.registrationDateStart = new Date(query.startDate);
+        } else if (query.registrationDateStart) {
             filters.registrationDateStart = new Date(query.registrationDateStart);
         }
 
-        if (query.registrationDateEnd) {
+        if (query.endDate) {
+            filters.registrationDateEnd = new Date(query.endDate);
+        } else if (query.registrationDateEnd) {
             filters.registrationDateEnd = new Date(query.registrationDateEnd);
         }
 

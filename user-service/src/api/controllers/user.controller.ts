@@ -582,7 +582,7 @@ export class UserController {
                 for (const key in queryFilters) {
                     if (Object.prototype.hasOwnProperty.call(queryFilters, key)) {
                         // Allow pagination/sorting fields if you add them later
-                        const allowedKeys = ['country', 'page', 'limit', 'sortBy', 'sortOrder'];
+                        const allowedKeys = ['country', 'page', 'limit', 'sortBy', 'sortOrder', 'startDate', 'endDate'];
                         if (!allowedKeys.includes(key)) {
                             this.log.warn(`User ${userId} (CLASSIQUE) attempted export with disallowed filter: ${key}`);
                             res.status(403).json({ success: false, message: `Your current plan only allows filtering by country. Filter '${key}' is not permitted.` });
@@ -797,7 +797,7 @@ export class UserController {
 
             // --- Filter Validation ---
             const queryFilters = req.query;
-            const allowedFilters: (keyof ContactSearchFilters)[] = ['country', 'page', 'limit']; // Base allowed for CLASSIQUE + pagination
+            const allowedFilters = ['country', 'page', 'limit', 'startDate', 'endDate']; // Base allowed for CLASSIQUE + pagination
             let useAdvancedFilters = false;
 
             if (hasCible) {
@@ -877,7 +877,7 @@ export class UserController {
         }
 
         // Add date filters
-        if (query.startDate) {
+        if (query.startDate) { // Accept startDate
             const startDate = new Date(query.startDate as string);
             if (!isNaN(startDate.getTime())) {
                 filters.registrationDateStart = startDate;
@@ -885,8 +885,16 @@ export class UserController {
                 this.log.warn(`Invalid startDate format provided: ${query.startDate}`);
                 // Optionally throw an error or handle as a bad request
             }
+        } else if (query.registrationDateStart) { // Keep existing logic as fallback
+            const startDate = new Date(query.registrationDateStart as string);
+            if (!isNaN(startDate.getTime())) {
+                filters.registrationDateStart = startDate;
+            } else {
+                this.log.warn(`Invalid registrationDateStart format provided: ${query.registrationDateStart}`);
+            }
         }
-        if (query.endDate) {
+
+        if (query.endDate) { // Accept endDate
             const endDate = new Date(query.endDate as string);
             if (!isNaN(endDate.getTime())) {
                 // To make the endDate inclusive of the whole day
@@ -895,6 +903,15 @@ export class UserController {
             } else {
                 this.log.warn(`Invalid endDate format provided: ${query.endDate}`);
                 // Optionally throw an error or handle as a bad request
+            }
+        } else if (query.registrationDateEnd) { // Keep existing logic as fallback
+            const endDate = new Date(query.registrationDateEnd as string);
+            if (!isNaN(endDate.getTime())) {
+                endDate.setHours(23, 59, 59, 999);
+                filters.registrationDateEnd = endDate;
+            }
+            else {
+                this.log.warn(`Invalid registrationDateEnd format provided: ${query.registrationDateEnd}`);
             }
         }
 
