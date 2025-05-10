@@ -14,12 +14,12 @@ interface FileUploadResponseData {
 }
 
 // Define the payload structure for JSON/Base64 upload
-interface FileUploadPayload {
-    fileName: string;
-    mimeType: string;
-    fileContent: string; // Base64 encoded file content
-    folderName?: string; // Optional: Specify Google Drive folder (e.g., 'product_images')
-}
+// interface FileUploadPayload { // Removing this unused interface
+//     fileName: string;
+//     mimeType: string;
+//     fileContent: string; // Base64 encoded file content
+//     folderName?: string; // Optional: Specify Google Drive folder (e.g., 'product_images')
+// }
 
 interface ServiceResponse<T> {
     success: boolean;

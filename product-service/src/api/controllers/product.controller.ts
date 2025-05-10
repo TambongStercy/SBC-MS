@@ -22,7 +22,7 @@ export class ProductController {
      * Create a new product
      * @route POST /api/products
      */
-    async createProduct(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    async createProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<Response | void> {
         try {
             // Extract fields from req.body
             const { name, category, subcategory, description, price } = req.body;
@@ -141,7 +141,7 @@ export class ProductController {
      * Update a product
      * @route PUT /api/products/:productId
      */
-    async updateProduct(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    async updateProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<Response | void> {
         try {
             const { productId } = req.params;
             const userId = req.user?.id;

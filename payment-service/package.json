@@ -4,7 +4,7 @@
     "description": "Payment processing service for Sniper Business Center",
     "main": "dist/server.js",
     "scripts": {
-        "build": "tsc && shx cp -r src/views dist/views",
+        "build": "shx rm -rf dist && tsc && shx cp -r src/views dist/views && shx cp -r public dist/",
         "start": "node dist/server.js",
         "dev": "nodemon --exec ts-node --swc src/server.ts",
         "test": "echo \"Error: no test specified\" && exit 1"

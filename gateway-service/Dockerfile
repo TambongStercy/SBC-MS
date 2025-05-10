@@ -32,6 +32,9 @@ RUN npm run build
 # --- Production Stage ---
 FROM node:18-alpine AS production
 
+# Set the default NODE_ENV for the production image
+ENV NODE_ENV=production
+
 WORKDIR /usr/src/app
 
 # Copy only necessary files from the builder stage

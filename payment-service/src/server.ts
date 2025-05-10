@@ -37,7 +37,14 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 // Serve Static Files (like CSS)
-app.use(express.static(path.join(__dirname, '../public')));
+let staticPath: string;
+if (config.nodeEnv === 'production') {
+    staticPath = path.join(__dirname, 'public');
+} else {
+    staticPath = path.join(__dirname, '../public');
+}
+app.use(express.static(staticPath));
+logger.info(`[Server] Serving static files from: ${staticPath}`);
 
 // --- Trust Proxy --- 
 // This is important for accurately getting req.ip behind a reverse proxy (like Nginx)

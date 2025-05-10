@@ -9,3 +9,83 @@ services:
     ports:
       - "3000:3000" # Maps port 3000 of the host to port 3000 of the container (as exposed in your Dockerfile)
     container_name: gateway_service_container # Optional: a friendly name for your container 
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    container_name: user_service_container
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    container_name: notification_service_container
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    container_name: payment_service_container
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  product-service:
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    ports:
+      - "3004:3004"
+    container_name: product_service_container
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  advertising-service:
+    build:
+      context: ./advertising-service
+      dockerfile: Dockerfile
+    ports:
+      - "3005:3005"
+    container_name: advertising_service_container
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  tombola-service:
+    build:
+      context: ./tombola-service
+      dockerfile: Dockerfile
+    ports:
+      - "3006:3006"
+    container_name: tombola_service_container
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  settings-service:
+    build:
+      context: ./settings-service
+      dockerfile: Dockerfile
+    ports:
+      - "3007:3007"
+    container_name: settings_service_container
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+
+  admin-frontend-ms:
+    build:
+      context: ./admin-frontend-ms
+      dockerfile: Dockerfile
+    ports:
+      - "8008:80" # Host port 3008 maps to container port 80 (Nginx)
+    container_name: admin_frontend_container
