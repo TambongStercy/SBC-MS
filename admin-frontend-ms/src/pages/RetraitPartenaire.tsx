@@ -3,7 +3,7 @@ import Header from '../components/common/Header';
 import { motion } from 'framer-motion';
 import { BadgeSwissFranc, Check, HandCoins } from 'lucide-react';
 import StatCard from '../components/common/statCard';
-import { userWithdrawal } from '../api'; // Import the API function
+// import { userWithdrawal } from '../api'; // Import the API function
 import { useLocation } from 'react-router-dom';
 
 function RetraitPartenaire() {
@@ -29,8 +29,8 @@ function RetraitPartenaire() {
         amount: parseFloat(amount),
         password,
       };
-      const response = await userWithdrawal(data); // Call the API function
-      alert(`Withdrawal successful: ${response.message}`);
+      // const response = await userWithdrawal(data); // Call the API function
+      // alert(`Withdrawal successful: ${response.message}`);
     } catch (error) {
       console.error('Failed to withdraw:', error);
       alert('Withdrawal failed. Please try again.');
