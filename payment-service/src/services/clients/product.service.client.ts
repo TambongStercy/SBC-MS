@@ -1,6 +1,6 @@
 import axios from 'axios';
-import config from '../config'; // Assuming config holds the product service URL
-import logger from '../utils/logger';
+import config from '../../config'; // Assuming config holds the product service URL
+import logger from '../../utils/logger';
 // Assuming a shared error structure or a simple error handling approach
 // import { AppError } from '../utils/errors'; 
 

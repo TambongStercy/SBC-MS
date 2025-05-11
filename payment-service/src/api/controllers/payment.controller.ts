@@ -8,6 +8,24 @@ import { AppError } from '../../utils/errors';
 
 const log = logger.getLogger('PaymentController');
 
+// Mapping of country codes to dialing codes (copied from payment.service.ts)
+// Ideally, this would be in a shared utility file
+const countryDialingCodes: { [key: string]: string } = {
+    'BJ': '229', // Benin
+    'CI': '225', // Côte d'Ivoire
+    'SN': '221', // Senegal
+    'CG': '242', // Congo Brazzaville
+    'TG': '228', // Togo
+    'CM': '237', // Cameroon
+    'BF': '226', // Burkina Faso
+    'GN': '224', // Guinea
+    'ML': '223', // Mali
+    'NE': '227', // Niger
+    'GA': '241', // Gabon
+    'CD': '243', // DRC
+    'KE': '254', // Kenya
+};
+
 export class PaymentController {
     constructor() {
         // Constructor is empty
@@ -26,19 +44,30 @@ export class PaymentController {
                 return res.status(404).send('Payment session not found.');
             }
 
-            // Allow viewing the page if status is PENDING_USER_INPUT or ERROR (to allow retries)
-            const { status } = paymentIntent;
-            const isAllowedStatus = status === PaymentStatus.PENDING_USER_INPUT || status === PaymentStatus.ERROR;
+            let currentStatus = paymentIntent.status;
+            let errorMessageToShow = '';
 
-            if (!isAllowedStatus) {
-                log.warn(`Attempt to render page for already processed session: ${sessionId}, status: ${status}`);
-                return res.status(404).send('Payment session already processed.');
+            // If status was ERROR, reset to PENDING_USER_INPUT to allow retrying from the page
+            // The view will receive PENDING_USER_INPUT as status and an error message.
+            if (currentStatus === PaymentStatus.ERROR) {
+                await paymentService.resetPaymentIntentStatus(sessionId);
+                currentStatus = PaymentStatus.PENDING_USER_INPUT; // Reflect the change for the view
+                errorMessageToShow = 'Previous payment attempt failed. Please try again.';
+                log.info(`Reset payment intent status from ERROR to PENDING_USER_INPUT for sessionId: ${sessionId}`);
+            } else if (currentStatus === PaymentStatus.FAILED) {
+                // Also reset FAILED to PENDING_USER_INPUT to allow editing and retrying from the form
+                await paymentService.resetPaymentIntentStatus(sessionId);
+                currentStatus = PaymentStatus.PENDING_USER_INPUT; // Reflect the change for the view
+                errorMessageToShow = 'Your payment failed. Please review your details and try again.';
+                log.info(`Reset payment intent status from FAILED to PENDING_USER_INPUT for sessionId: ${sessionId}`);
             }
 
-            // Reset status to PENDING_USER_INPUT if it was ERROR to allow retrying
-            if (status === PaymentStatus.ERROR) {
-                await paymentService.resetPaymentIntentStatus(sessionId);
-                log.info(`Reset payment intent status from ERROR to PENDING_USER_INPUT for sessionId: ${sessionId}`);
+            let displayPhoneNumber = paymentIntent.phoneNumber || '';
+            if (paymentIntent.phoneNumber && paymentIntent.countryCode) {
+                const dialingCode = countryDialingCodes[paymentIntent.countryCode];
+                if (dialingCode && paymentIntent.phoneNumber.startsWith(dialingCode)) {
+                    displayPhoneNumber = paymentIntent.phoneNumber.substring(dialingCode.length);
+                }
             }
 
             res.render('payment', {
@@ -47,8 +76,12 @@ export class PaymentController {
                 subscriptionPlan: paymentIntent.subscriptionPlan,
                 amount: paymentIntent.amount,
                 currency: paymentIntent.currency,
-                errorMessage: status === PaymentStatus.ERROR ? 'Previous payment attempt failed. Please try again.' : '',
-                assetBasePath: '/api/payments/static'
+                paymentStatus: currentStatus, // Pass the current (potentially updated) status
+                errorMessage: errorMessageToShow,
+                assetBasePath: '/api/payments/static',
+                phoneNumber: displayPhoneNumber, // Use the processed national phone number
+                countryCode: paymentIntent.countryCode,
+                operator: paymentIntent.operator
             });
         } catch (error) {
             log.error('Error rendering payment page:', error);
@@ -104,7 +137,9 @@ export class PaymentController {
         try {
             const { sessionId } = req.params;
             // Expect phone, country, and paymentCurrency
-            const { phoneNumber, countryCode, paymentCurrency } = req.body;
+            const { phoneNumber, countryCode, paymentCurrency, operator } = req.body;
+
+            console.log(req.body)
 
             // Validation is handled by middleware, but basic check here is okay too
             if (!countryCode || !paymentCurrency) {
@@ -114,7 +149,7 @@ export class PaymentController {
             const paymentIntent = await paymentService.submitPaymentDetails(
                 sessionId,
                 // Pass all necessary details
-                { phoneNumber, countryCode, paymentCurrency }
+                { phoneNumber, countryCode, paymentCurrency, operator }
             );
 
             res.status(200).json({
@@ -236,6 +271,28 @@ export class PaymentController {
         } catch (error: any) {
             log.error('Error processing CinetPay webhook:', error);
             res.status(500).json({ success: false, message: error.message || 'Webhook processing failed' });
+        }
+    };
+
+    /**
+     * Handle CinetPay Transfer (Payout) webhook notifications
+     */
+    public handleCinetpayTransferWebhook = async (req: Request, res: Response) => {
+        try {
+            const payload = req.body;
+            log.info('Received CinetPay Transfer (Payout) webhook:', payload);
+
+            // TODO: Add signature verification if CinetPay provides one for transfer webhooks
+
+            await paymentService.processCinetpayTransferStatusWebhook(payload);
+            log.info('Successfully acknowledged CinetPay Transfer webhook.');
+            res.status(200).json({ success: true, message: 'Webhook received' });
+        } catch (error: any) {
+            log.error('Error processing CinetPay Transfer webhook:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'CinetPay Transfer webhook processing failed'
+            });
         }
     };
 

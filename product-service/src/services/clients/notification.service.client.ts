@@ -1,6 +1,6 @@
 import axios from 'axios';
-import config from '../config'; // Assuming config holds the notification service URL
-import logger from '../utils/logger';
+import config from '../../config'; // Assuming config holds the notification service URL
+import logger from '../../utils/logger';
 // import { AppError } from '../utils/errors';
 
 const log = logger.getLogger('NotificationServiceClient');

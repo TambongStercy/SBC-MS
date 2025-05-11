@@ -7,6 +7,8 @@ export enum TransactionStatus {
     FAILED = 'failed',
     CANCELLED = 'cancelled',
     REFUNDED = 'refunded',
+    PROCESSING = 'processing',
+    PENDING_OTP_VERIFICATION = 'pending_otp_verification',
 }
 
 // Define Transaction Type
@@ -56,6 +58,9 @@ export interface ITransaction extends Document {
     deletedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
+
+    // Link to pending record for OTP
+    pendingId?: Types.ObjectId | string;
 
     // --- Added Fields --- 
     reference?: string;           // Optional general reference
@@ -156,6 +161,10 @@ const TransactionSchema = new Schema<ITransaction>(
         externalTransactionId: {
             type: String,
             index: true
+        },
+        pendingId: {
+            type: Schema.Types.ObjectId,
+            ref: 'Pending',
         },
     },
     {

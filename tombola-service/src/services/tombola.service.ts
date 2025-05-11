@@ -2,17 +2,17 @@ import { Types, SortOrder } from 'mongoose';
 // import { nanoid } from 'nanoid'; // Import nanoid
 import { tombolaMonthRepository } from '../database/repositories/tombolaMonth.repository';
 import { tombolaTicketRepository } from '../database/repositories/tombolaTicket.repository';
-import { paymentService } from './payment.service.client';
+import { paymentService } from './clients/payment.service.client';
 import logger from '../utils/logger';
 import config from '../config';
 import { AppError } from '../utils/errors'; // Assuming AppError will be created
 import { ITombolaTicket } from '../database/models/tombolaTicket.model';
 import { TombolaStatus } from '../database/models/tombolaMonth.model'; // Import enum
 import { ITombolaMonth, IWinner } from '../database/models/tombolaMonth.model'; // Import interface and IWinner
-import { notificationService } from './notification.service.client'; // Import notification client
+import { notificationService } from './clients/notification.service.client'; // Import notification client
 import { nanoid } from 'nanoid';
 import { PopulatedTombolaTicket, tombolaTicketRepository as ticketRepository } from '../database/repositories/tombolaTicket.repository';
-import { userServiceClient, UserDetails } from './user.service.client'; // <-- Import UserDetails
+import { userServiceClient, UserDetails } from './clients/user.service.client'; // <-- Import UserDetails
 import { FilterQuery } from 'mongoose';
 
 const log = logger.getLogger('TombolaService');
@@ -255,13 +255,13 @@ class TombolaService {
                 // This user is a new winner
                 selectedUserIds.add(userIdString);
                 const rank = winners.length + 1;
-            winners.push({
+                winners.push({
                     userId: potentialTicket.userId,
                     prize: PRIZES[rank as keyof typeof PRIZES],
-                rank: rank,
+                    rank: rank,
                     winningTicketNumber: potentialTicket.ticketNumber // Store the winning ticket number
-            });
-        }
+                });
+            }
             // Move to the next ticket regardless of whether the current one was chosen
             ticketIndex++;
         }

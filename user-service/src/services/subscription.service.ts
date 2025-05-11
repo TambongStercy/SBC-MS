@@ -27,7 +27,7 @@ const AVAILABLE_PLANS: SubscriptionPlan[] = [
         id: SubscriptionType.CLASSIQUE,
         name: 'Abonnement Classique',
         type: SubscriptionType.CLASSIQUE,
-        price: 2000,
+        price: 2070,
         currency: 'XAF',
         description: 'Permet le ciblage des contacts par pays.',
         targetingLevel: 'country',

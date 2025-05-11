@@ -2,8 +2,8 @@ import { TransactionStatus } from '../database/models/transaction.model';
 import { PendingStatus } from '../database/models/pending.model';
 import transactionRepository from '../database/repositories/transaction.repository';
 import pendingRepository from '../database/repositories/pending.repository';
-import { userServiceClient } from '../services/user.service.client';
-import notificationService from '../services/notification.service';
+import { userServiceClient } from '../services/clients/user.service.client';
+import notificationService from '../services/clients/notification.service.client';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('PaymentProcessor');

@@ -1,6 +1,6 @@
 import axios from 'axios';
-import config from '../config';
-import logger from '../utils/logger';
+import config from '../../config';
+import logger from '../../utils/logger';
 
 const log = logger.getLogger('NotificationServiceClient');
 
@@ -44,9 +44,7 @@ class NotificationServiceClient {
         try {
             const headers: { [key: string]: string } = {};
             if (this.serviceSecret) {
-                // Assuming authenticateServiceRequest in notification-service expects a 'x-service-secret' or similar
-                // Adjust if it expects 'Authorization: Bearer <secret>'
-                headers['x-service-secret'] = this.serviceSecret;
+                headers['Authorization'] = `Bearer ${this.serviceSecret}`;
             }
             headers['x-calling-service'] = 'payment-service'; // Good practice to identify caller
 

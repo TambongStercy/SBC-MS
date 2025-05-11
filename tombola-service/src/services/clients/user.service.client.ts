@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import config from '../config'; // Assuming config holds user-service base URL
-import logger from '../utils/logger';
+import config from '../../config'; // Assuming config holds user-service base URL
+import logger from '../../utils/logger';
 
 const log = logger.getLogger('UserServiceClient');
 

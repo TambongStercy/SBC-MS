@@ -8,6 +8,7 @@ export enum PendingStatus {
     PROCESSING = 'processing',
     HOLD = 'hold',
     EXPIRED = 'expired',
+    VERIFIED = 'verified',
 }
 
 // Define Verification Type

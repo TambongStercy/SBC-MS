@@ -1,7 +1,7 @@
 import axios from 'axios';
-import config from '../config';
-import logger from '../utils/logger';
-import { AppError } from '../utils/errors'; // Assuming AppError will be created
+import config from '../../config';
+import logger from '../../utils/logger';
+import { AppError } from '../../utils/errors'; // Assuming AppError will be created
 
 const log = logger.getLogger('PaymentServiceClient');
 

@@ -13,148 +13,218 @@ document.addEventListener('DOMContentLoaded', function () {
     const operatorSelectGroup = document.getElementById('operator-select-group');
     const operatorSelect = document.getElementById('operator');
     const retryContainer = document.getElementById('retry-container');
+    const otpInputGroup = document.getElementById('otp-input-group');
+    const otpInput = document.getElementById('otp');
 
-    // sessionId is defined globally in the EJS template
+    // sessionId, paymentStatus, prefillPhoneNumber, prefillCountryCode, prefillOperator are defined globally by EJS
 
-    if (!form || !countrySelect || !phoneInputGroup || !phoneInput || !submitButton || !operatorSelectGroup || !operatorSelect) {
-        console.error('Essential form elements not found!');
-        return;
-    }
+    const formPresent = !!form; // Check if the form element itself exists on the page
 
-    // Define countries for each gateway
-    const feexpayCountries = ['BJ', 'CI', 'SN', 'CG', 'TG']; // Removed CM
-    const cinetpayCountries = ['CM', 'BF', 'GN', 'ML', 'NE'];
+    // Only run full form setup if the form is actually rendered by EJS
+    if (formPresent) {
+        if (!countrySelect || !phoneInputGroup || !phoneInput || !submitButton || !operatorSelectGroup || !operatorSelect || !otpInputGroup || !otpInput) {
+            console.error('Essential form elements not found, though payment form is present!');
+            // No return here if some elements are missing but form is there, page might be partially usable or in a specific state.
+        }
 
-    // Define Feexpay operators per country (key: country code, value: array of operator slugs used in API endpoints)
+        // Define countries for each gateway based on the new rule
+        // CinetPay is ONLY for CM. All others are FeexPay.
+        const cinetpayCountries = ['CM'];
+        const feexpayCountries = ['BJ', 'CI', 'SN', 'CG', 'TG', 'BF', 'GN', 'ML', 'NE', 'GA', 'CD', 'KE']; // All other supported countries
+
     const feexpayOperators = {
         'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin
-        'CI': ['moov_ci', 'mtn_ci', 'orange_ci', 'wave_ci'], // Côte d'Ivoire
+            'CI': ['mtn_ci', 'moov_ci', 'wave_ci', 'orange_ci'], // Côte d'Ivoire
         'SN': ['orange_sn', 'free_sn'], // Senegal
-        'CG': ['mtn_cg'], // Congo
-        'TG': ['togocom_tg', 'moov_tg'], // Togo
-        // 'CM': ['mtn_cm', 'orange_cm'] // Removed CM as it's handled by CinetPay
-    };
+            'CG': ['mtn_cg'], // Congo Brazzaville
+            'TG': ['togocom_tg', 'moov_tg'], // Togo (Assumed slugs)
+            'BF': ['moov_bf', 'orange_bf'], // Burkina Faso (Assumed s lugs)
+            // TODO: Add operators for GN, ML, NE, GA, CD, KE if they use FeexPay and require operator selection
+            // Check FeexPay documentation for exact slugs for these & confirm assumed ones.
+        };
 
-    // Function to map country code to payment currency
     const getCurrencyForCountry = (countryCode) => {
         const countryCurrencyMap = {
-            'BJ': 'XOF', // Benin
-            'CI': 'XOF', // Côte d'Ivoire
-            'SN': 'XOF', // Senegal
-            'TG': 'XOF', // Togo
-            'ML': 'XOF', // Mali
-            'NE': 'XOF', // Niger
-            'BF': 'XOF', // Burkina Faso
-            'CG': 'XAF', // Congo Brazzaville
-            'CM': 'XAF', // Cameroon
-            'GA': 'XAF', // Gabon
-            'CD': 'CDF', // DRC - Ensure backend/gateway support CDF
-            'KE': 'KES', // Kenya
-            'GN': 'GNF', // Guinea - Ensure backend/gateway support GNF
-            // Add other mappings as needed
+                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'TG': 'XOF', 'ML': 'XOF',
+                'NE': 'XOF', 'BF': 'XOF', 'CG': 'XAF', 'CM': 'XAF', 'GA': 'XAF',
+                'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
+            };
+            return countryCurrencyMap[countryCode] || 'XAF';
         };
-        return countryCurrencyMap[countryCode] || 'XAF'; // Default to XAF if mapping not found
-    };
 
-    // Function to update UI based on country selection
     const updateFormForCountry = () => {
+            if (!countrySelect || !operatorSelect || !phoneInputGroup || !phoneInput || !operatorSelectGroup || !otpInputGroup || !otpInput) return; // Guard if elements are missing
+
         const selectedCountry = countrySelect.value;
         const countryOperators = feexpayOperators[selectedCountry] || [];
+            const selectedOperator = operatorSelect.value; // Get value after potential prefill
 
-        // Reset operator dropdown
         operatorSelect.innerHTML = '<option value="" disabled selected>-- Select Payment Operator --</option>';
         operatorSelect.required = false;
         operatorSelectGroup.classList.add('hidden');
+            otpInputGroup.classList.add('hidden'); // Hide OTP by default
+            otpInput.required = false;
 
-        // If it's a Feexpay country, phone is needed
         if (feexpayCountries.includes(selectedCountry)) {
             phoneInputGroup.classList.remove('hidden');
             phoneInput.required = true;
 
-            // If multiple operators defined, show and populate the operator select
-            if (countryOperators.length > 1) {
+                if (countryOperators.length > 0) {
                 countryOperators.forEach(op => {
                     const option = document.createElement('option');
                     option.value = op;
-                    // Simple formatting for display (replace underscores, capitalize)
                     option.textContent = op.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                     operatorSelect.appendChild(option);
                 });
                 operatorSelectGroup.classList.remove('hidden');
                 operatorSelect.required = true;
-            } // If only one operator or none mapped, we don't show the select (backend will use default/logic)
 
-            // Otherwise (CinetPay countries), phone and operator are not needed on this form
+                    if (typeof prefillOperator !== 'undefined' && prefillOperator && countryOperators.includes(prefillOperator)) {
+                        operatorSelect.value = prefillOperator;
+                    }
+                    // Show/hide OTP field based on selected country and newly set operator value
+                    if (selectedCountry === 'SN' && operatorSelect.value === 'orange_sn') {
+                        otpInputGroup.classList.remove('hidden');
+                        otpInput.required = true;
+                    } else {
+                        otpInputGroup.classList.add('hidden');
+                        otpInput.required = false;
+                        otpInput.value = ''; // Clear OTP if not applicable
+                    }
+                } else {
+                    otpInputGroup.classList.add('hidden'); // Ensure OTP is hidden if no operator selection or not Orange SN
+                    otpInput.required = false;
+                    otpInput.value = '';
+                }
         } else {
             phoneInputGroup.classList.add('hidden');
             phoneInput.required = false;
             phoneInput.value = '';
-            // Operator select remains hidden
+                otpInputGroup.classList.add('hidden'); // Ensure OTP is hidden if FeexPay not applicable
+                otpInput.required = false;
+                otpInput.value = '';
+            }
+        };
+
+        if (countrySelect) { // Ensure countrySelect exists before adding listener or calling update
+            countrySelect.addEventListener('change', () => {
+                updateFormForCountry(); // Call on country change
+                // Additional logic to specifically update OTP field visibility based on operator for the new country
+                // This is because operator selection might not trigger a change event itself if it's auto-selected or has only one option.
+                const currentSelectedOperator = operatorSelect.value;
+                if (countrySelect.value === 'SN' && currentSelectedOperator === 'orange_sn') {
+                    otpInputGroup.classList.remove('hidden');
+                    otpInput.required = true;
+                } else {
+                    otpInputGroup.classList.add('hidden');
+                    otpInput.required = false;
+                    otpInput.value = '';
+                }
+            });
+            updateFormForCountry(); // Initial call to set up form based on pre-selected country/operator
         }
-    };
 
-    // Add event listener for country changes
-    countrySelect.addEventListener('change', updateFormForCountry);
 
-    // Initial check in case a country is pre-selected
-    updateFormForCountry();
+        // Handle page load based on paymentStatus if the form is meant to be interactive
+        if (paymentStatus === 'PENDING_USER_INPUT') {
+            console.log('Status is PENDING_USER_INPUT. Initializing form for user input.');
+            if (prefillCountryCode && countrySelect) {
+                countrySelect.value = prefillCountryCode;
+                // updateFormForCountry(); // This will be called after operator prefill to ensure correct state
+            }
+            if (prefillPhoneNumber && phoneInput) {
+                phoneInput.value = prefillPhoneNumber;
+            }
+            // Operator prefill is handled by updateFormForCountry, now ensure updateFormForCountry is called *after* operator might be prefilled.
+            // If prefillOperator is present, updateFormForCountry inside countrySelect change listener might not have run yet with the prefilled operator.
+            // So, manually call it again if prefillOperator is set to ensure OTP field logic runs based on the prefilled operator.
+            if (prefillOperator && operatorSelect) {
+                // The operator select options are populated within updateFormForCountry, so we need to ensure it runs once to populate,
+                // then potentially again if prefillOperator is set to correctly show/hide OTP based on the prefilled operator.
+                // The initial call to updateFormForCountry() below the event listener handles the initial population.
+                // If prefillOperator is set, the operatorSelect.value will be set within updateFormForCountry if the option exists.
+                // We need a slight adjustment here: updateFormForCountry already handles operator pre-selection if prefillOperator is set.
+                // The key is that updateFormForCountry must run to set the operator value and then decide OTP visibility.
+            }
+            updateFormForCountry(); // This call will handle prefill of operator and OTP field visibility
 
-    // Function to handle submission
+            if (submitButton) submitButton.disabled = false; // Ensure button is enabled
+
+        } else if (paymentStatus === 'PENDING_PROVIDER') {
+            // This case is special: EJS might render a simplified view.
+            // JS here will primarily manage the button state if the button is part of that simplified view.
+            // The EJS for PENDING_PROVIDER now includes the button structure.
+            console.log('Status is PENDING_PROVIDER. Setting up UI (button state).');
+
+            if (submitButton && buttonText && buttonSpinner) {
+                buttonText.textContent = 'Confirm on Phone';
+                buttonSpinner.classList.remove('hidden');
+                submitButton.disabled = true;
+            }
+            // The message "Please check your phone..." is already handled by EJS in its own div.
+            // If form elements were on the page for PENDING_PROVIDER (they are not currently as per EJS),
+            // this is where you'd prefill and disable them.
+            // e.g. if (countrySelect) countrySelect.value = prefillCountryCode; countrySelect.disabled = true; etc.
+        }
+
+
     const handleSubmission = async (e) => {
         if (e) e.preventDefault();
+            if (!form || !countrySelect || !phoneInput || !submitButton || !operatorSelect || !errorMessage) return; // Guard critical elements
         console.log('Payment submission handler triggered');
 
         errorMessage.textContent = '';
-        buttonText.textContent = 'Processing...';
-        buttonSpinner.classList.remove('hidden');
-        submitButton.disabled = true;
+            if (buttonText) buttonText.textContent = 'Processing...';
+            if (buttonSpinner) buttonSpinner.classList.remove('hidden');
+            if (submitButton) submitButton.disabled = true;
         if (retryContainer) retryContainer.classList.add('hidden');
 
         const selectedCountry = countrySelect.value;
         const requiresPhone = feexpayCountries.includes(selectedCountry);
-        // Check if operator selection is currently visible and thus required
         const requiresOperator = !operatorSelectGroup.classList.contains('hidden');
         const determinedCurrency = getCurrencyForCountry(selectedCountry);
+            const selectedOperatorValue = operatorSelect.value; // Get current operator value
 
-        // Basic validation before sending
         if (!selectedCountry) {
             errorMessage.textContent = 'Please select your country.';
-            // Re-enable button etc.
-            buttonSpinner.classList.add('hidden');
-            buttonText.textContent = 'Proceed to Payment';
-            submitButton.disabled = false;
+                if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                if (buttonText) buttonText.textContent = 'Proceed to Payment';
+                if (submitButton) submitButton.disabled = false;
             return;
         }
-        // Validate operator if required
-        if (requiresOperator && !operatorSelect.value) {
+            if (requiresOperator && !selectedOperatorValue) {
             errorMessage.textContent = 'Please select a payment operator.';
-            // Re-enable button etc.
-            buttonSpinner.classList.add('hidden');
-            buttonText.textContent = 'Proceed to Payment';
-            submitButton.disabled = false;
+                if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                if (buttonText) buttonText.textContent = 'Proceed to Payment';
+                if (submitButton) submitButton.disabled = false;
+                return;
+            }
+            if (selectedCountry === 'SN' && selectedOperatorValue === 'orange_sn' && !otpInput.value) {
+                errorMessage.textContent = 'Please enter the OTP for Orange Senegal.';
+                if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                if (buttonText) buttonText.textContent = 'Proceed to Payment';
+                if (submitButton) submitButton.disabled = false;
             return;
         }
-        // Only validate phone if it's required for the selected country
         if (requiresPhone && !phoneInput.value) {
             errorMessage.textContent = 'Please enter your phone number for payment.';
-            // Re-enable button etc.
-            buttonSpinner.classList.add('hidden');
-            buttonText.textContent = 'Proceed to Payment';
-            submitButton.disabled = false;
+                if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                if (buttonText) buttonText.textContent = 'Proceed to Payment';
+                if (submitButton) submitButton.disabled = false;
             return;
         }
 
         console.log(`Determined currency for ${selectedCountry}: ${determinedCurrency}`);
 
-        // Get form data conditionally
         const formData = {
             paymentCurrency: determinedCurrency,
             countryCode: selectedCountry,
-            operator: requiresOperator ? operatorSelect.value : undefined, // Include operator if selected
-            phoneNumber: requiresPhone ? phoneInput.value : undefined, // Include phone if required
+                operator: requiresOperator ? selectedOperatorValue : undefined,
+                phoneNumber: requiresPhone ? phoneInput.value : undefined,
         };
-
-        // Remove undefined fields before sending
+            if (selectedCountry === 'SN' && selectedOperatorValue === 'orange_sn' && otpInput.value) {
+                formData.otp = otpInput.value;
+            }
         Object.keys(formData).forEach(key => formData[key] === undefined && delete formData[key]);
 
         console.log('Submitting payment data:', formData);
@@ -162,12 +232,9 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const response = await fetch(`/api/payments/intents/${sessionId}/submit`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                    headers: { 'Content-Type': 'application/json', },
                 body: JSON.stringify(formData),
             });
-
             const result = await response.json();
             console.log('Payment submission response:', result);
 
@@ -178,38 +245,179 @@ document.addEventListener('DOMContentLoaded', function () {
             if (result.data && result.data.gatewayCheckoutUrl) {
                 console.log('Redirecting to payment gateway:', result.data.gatewayCheckoutUrl);
                 window.location.href = result.data.gatewayCheckoutUrl;
-                buttonText.textContent = 'Redirecting...';
-            } else {
-                // Handle cases where Feexpay request-to-pay doesn't have a URL but expects user phone confirmation
-                // Or if CinetPay redirect URL was missing (which would be an error)
-                if (requiresPhone) { // Likely Feexpay success (no redirect needed)
-                    buttonText.textContent = 'Confirm on Phone';
-                    // Display instructions to user to check their phone
-                    errorMessage.textContent = 'Please check your phone to approve the payment request.';
-                    // Optionally disable button permanently or change UI state
-                } else { // Likely an error if CinetPay had no redirect URL
-                    throw new Error('Payment initiated, but no redirect URL received.');
-                }
-            }
-        } catch (error) {
-            console.error('Payment submission error:', error);
-            errorMessage.textContent = error.message || 'An unexpected error occurred. Please try again.';
-            buttonText.textContent = 'Proceed to Payment';
-            buttonSpinner.classList.add('hidden');
-            submitButton.disabled = false;
+                    if (buttonText) buttonText.textContent = 'Redirecting...';
+                } else {
+                    // This is likely a request-to-pay flow (e.g., FeexPay USSD)
+                    if (requiresPhone) { // Check if it was a flow that involves a phone (most request-to-pay)
+                        if (buttonText) buttonText.textContent = 'Confirm on Phone';
+                        errorMessage.textContent = 'Please check your phone to approve the payment request.';
+                        // Apply yellow styling for this specific message
+                        errorMessage.className = 'text-center mt-4 p-3 bg-yellow-100 text-yellow-800 border border-yellow-300 rounded-md text-base min-h-[2.5rem] font-medium';
 
-            if (retryContainer) {
-                retryContainer.classList.remove('hidden');
+                        // Update global status and start polling if now PENDING_PROVIDER
+                        if (result.data && result.data.status === 'PENDING_PROVIDER') {
+                            paymentStatus = 'PENDING_PROVIDER'; // Update global JS status variable
+                            console.log('Request-to-pay successful, new status PENDING_PROVIDER. Starting polling.');
+                            startPolling();
+                        } else if (result.data && result.data.status === 'PROCESSING') {
+                            paymentStatus = 'PROCESSING';
+                            errorMessage.textContent = 'Your payment is currently processing. Checking for updates...';
+                            // Apply yellow styling for this specific message as well (or a slightly different one for processing)
+                            errorMessage.className = 'text-center mt-4 p-3 bg-blue-100 text-blue-800 border border-blue-300 rounded-md text-base min-h-[2.5rem] font-medium';
+                            console.log('Request-to-pay successful, new status PROCESSING. Starting polling.');
+                            startPolling();
+                        }
+                    } else {
+                        // Should not happen if no redirect and not a phone-based payment
+                        throw new Error('Payment initiated, but no redirect URL received and not a phone payment.');
+                    }
+                }
+            } catch (error) {
+                console.error('Payment submission error:', error);
+                errorMessage.textContent = error.message || 'An unexpected error occurred. Please try again.';
+                // Reset to default red error styling if an actual error occurs during submission
+                errorMessage.className = 'text-red-600 text-sm text-center mt-3 min-h-[1.25rem]';
+                if (buttonText) buttonText.textContent = 'Proceed to Payment';
+                if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                if (submitButton) submitButton.disabled = false;
+                if (retryContainer) retryContainer.classList.remove('hidden');
+            }
+            return false;
+        };
+
+        // Attach listeners only if the form is present and submit button exists
+        if (form) { // The form element itself
+            form.addEventListener('submit', handleSubmission);
+        }
+        if (submitButton && paymentStatus === 'PENDING_USER_INPUT') { // Only allow click submission if form is active
+            submitButton.addEventListener('click', function (e) {
+                e.preventDefault(); // Prevent default form submission via button click
+                handleSubmission(e);
+            });
+        }
+            } else {
+        // Logic for when the payment form is NOT rendered by EJS (e.g. status is SUCCEEDED, FAILED, etc.)
+        // This block can be used to initialize any JS behavior for those non-form pages if needed.
+        // For PENDING_PROVIDER, EJS now includes the button, so JS needs to set its state.
+        if (paymentStatus === 'PENDING_PROVIDER') {
+            console.log('Status is PENDING_PROVIDER (no form). Setting button state if button exists.');
+            // The submitButton, buttonText, buttonSpinner are already potentially grabbed at the top.
+            // EJS for PENDING_PROVIDER should be rendering these button elements.
+            if (submitButton && buttonText && buttonSpinner) {
+                    buttonText.textContent = 'Confirm on Phone';
+                buttonSpinner.classList.remove('hidden');
+                submitButton.disabled = true;
+            }
+            if (errorMessage) { // The div with id 'error-message' is also rendered in this EJS state.
+                    errorMessage.textContent = 'Please check your phone to approve the payment request.';
             }
         }
+        console.log(`Payment page loaded with status: ${paymentStatus}. Form is not active or fully rendered.`);
+    }
 
-        return false;
+    // --- Status Polling Logic ---
+    let pollingIntervalId = null;
+    let pollCount = 0;
+    const maxPolls = 24; // Poll for 2 minutes (24 polls * 5 seconds = 120 seconds)
+    const pollInterval = 5000; // 5 seconds
+
+    const startPolling = () => {
+        if (!sessionId) {
+            console.error('Session ID not available, cannot start polling.');
+            return;
+        }
+        // Clear any existing interval to avoid multiple pollers
+        if (pollingIntervalId) clearInterval(pollingIntervalId);
+
+        console.log(`Starting status polling for sessionId: ${sessionId}`);
+        pollCount = 0; // Reset poll count
+        pollingIntervalId = setInterval(checkPaymentStatus, pollInterval);
+        // Optionally, call it once immediately
+        // checkPaymentStatus(); 
     };
 
-    form.addEventListener('submit', handleSubmission);
+    const checkPaymentStatus = async () => {
+        if (!sessionId) {
+            console.error('Session ID not available for polling.');
+            if (pollingIntervalId) clearInterval(pollingIntervalId);
+            return;
+        }
 
-    submitButton.addEventListener('click', function (e) {
-        e.preventDefault();
-        handleSubmission(e);
-    });
+        pollCount++;
+        console.log(`Polling for payment status (Attempt ${pollCount}/${maxPolls}): ${sessionId}`);
+
+        try {
+            const response = await fetch(`/api/payments/intents/${sessionId}/status`);
+            if (!response.ok) {
+                console.error('Error fetching payment status:', response.statusText);
+                // Optionally stop polling on network errors or specific HTTP error codes
+                if (pollCount >= maxPolls) {
+                    console.log('Max poll attempts reached. Stopping polling.');
+                    if (pollingIntervalId) clearInterval(pollingIntervalId);
+                    // Update UI to inform user polling has stopped, if desired
+                    if (errorMessage && (paymentStatus === 'PENDING_PROVIDER' || paymentStatus === 'PROCESSING')) {
+                        errorMessage.textContent = 'Status check timed out. Please refresh the page to see the latest status.';
+                    }
+                }
+                return;
+            }
+
+            const result = await response.json();
+            if (result.success && result.data) {
+                const newStatus = result.data;
+                console.log('Polled status:', newStatus);
+
+                // Update global paymentStatus if it's different, for other UI elements that might depend on it
+                // Note: This client-side update of `paymentStatus` is for immediate UI reaction. Page reload is the source of truth.
+                // window.paymentStatus = newStatus; // Or however you want to manage this global if needed elsewhere
+
+                if (newStatus === 'SUCCEEDED' || newStatus === 'FAILED' || newStatus === 'CANCELED') {
+                    console.log(`Payment status is final: ${newStatus}. Reloading page.`);
+                    if (pollingIntervalId) clearInterval(pollingIntervalId);
+                    window.location.reload();
+                } else if (newStatus === 'PENDING_PROVIDER' || newStatus === 'PROCESSING') {
+                    // Continue polling
+                    if (paymentStatus !== newStatus && errorMessage) { // If status changed but still pending, update message
+                        paymentStatus = newStatus; // Update local JS variable for consistency
+                        if (newStatus === 'PROCESSING') {
+                            errorMessage.textContent = 'Payment is now processing with the provider...';
+                        } else {
+                            errorMessage.textContent = 'Still waiting for confirmation on your phone...';
+                        }
+                    }
+                    if (pollCount >= maxPolls) {
+                        console.log('Max poll attempts reached. Stopping polling.');
+                        if (pollingIntervalId) clearInterval(pollingIntervalId);
+                        if (errorMessage) {
+                            errorMessage.textContent = 'Still waiting for payment confirmation. You can refresh the page to check or continue waiting.';
+                        }
+                    }
+                } else {
+                    // Unexpected status or PENDING_USER_INPUT (should not happen if polling started correctly)
+                    console.log(`Unexpected status from poll: ${newStatus}. Stopping polling.`);
+                    if (pollingIntervalId) clearInterval(pollingIntervalId);
+                }
+            } else {
+                console.error('Failed to get payment status from poll:', result.message);
+            }
+        } catch (error) {
+            console.error('Error during payment status poll:', error);
+            if (pollCount >= maxPolls) {
+                console.log('Max poll attempts reached due to error. Stopping polling.');
+                if (pollingIntervalId) clearInterval(pollingIntervalId);
+            }
+        }
+    };
+
+    if (paymentStatus === 'PENDING_PROVIDER' || paymentStatus === 'PROCESSING') {
+        console.log(`Initial status is ${paymentStatus}. Starting status polling for sessionId: ${sessionId}`);
+        // Initial message update for PROCESSING if not already set by PENDING_PROVIDER logic
+        if (paymentStatus === 'PROCESSING' && errorMessage) {
+            errorMessage.textContent = 'Your payment is currently processing. Checking for updates...';
+        }
+        // if (pollingIntervalId) clearInterval(pollingIntervalId); // Clear any existing interval - MOVED TO startPolling()
+        // pollingIntervalId = setInterval(checkPaymentStatus, pollInterval); // MOVED TO startPolling()
+        startPolling(); // Call the new function
+    }
+
 });

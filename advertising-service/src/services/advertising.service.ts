@@ -4,9 +4,9 @@ import { AdPackRepository, adPackRepository } from '../database/repositories/adP
 import { AdvertisementRepository, advertisementRepository } from '../database/repositories/advertisement.repository';
 import { IAdPack } from '../database/models/adPack.model';
 import { IAdvertisement, AdStatus } from '../database/models/advertisement.model';
-import { paymentService } from './payment.service.client';
-import { notificationService } from './notification.service.client';
-import { userService } from './user.service.client';
+import { paymentService } from './clients/payment.service.client';
+import { notificationService } from './clients/notification.service.client';
+import { userService } from './clients/user.service.client';
 import logger from '../utils/logger';
 import { AppError } from '../utils/errors';
 import config from '../config';

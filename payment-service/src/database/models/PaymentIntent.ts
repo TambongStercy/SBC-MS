@@ -37,6 +37,10 @@ const PaymentIntentSchema: Schema = new Schema(
         countryCode: {
             type: String, // Store the country code (e.g., 'BJ', 'CM')
         },
+        operator: {
+            type: String, // Store the payment operator slug (e.g., 'mtn', 'orange_ci')
+            index: true, // Optional: index if you query by operator often
+        },
         status: {
             type: String,
             enum: Object.values(PaymentStatus),

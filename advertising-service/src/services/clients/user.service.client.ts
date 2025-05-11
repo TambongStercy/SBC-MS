@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
-import config from '../config';
-import logger from '../utils/logger';
-import { AppError } from '../utils/errors';
+import config from '../../config';
+import logger from '../../utils/logger';
+import { AppError } from '../../utils/errors';
 
 const log = logger.getLogger('UserServiceClient');
 

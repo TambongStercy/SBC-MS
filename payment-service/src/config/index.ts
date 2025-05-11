@@ -47,7 +47,10 @@ interface IConfig {
     logLevel: string;
     cinetpay: {
         baseUrl: string;
+        transferBaseUrl: string;
         apiKey: string;
+        apiSecret: string;
+        apiPassword: string;
         siteId: string;
         notificationKey: string;
         alternateNotifyUrl?: string; // Optional HTTPS webhook URL for production
@@ -97,7 +100,10 @@ const config: IConfig = {
     logLevel: process.env.LOG_LEVEL || 'info',
     cinetpay: {
         baseUrl: process.env.CINETPAY_BASE_URL || 'https://api-checkout.cinetpay.com/v2',
+        transferBaseUrl: process.env.CINETPAY_TRANSFER_BASE_URL || 'https://client.cinetpay.com/v1',
         apiKey: process.env.CINETPAY_API_KEY || '',
+        apiSecret: process.env.CINETPAY_SECRET_KEY || '',
+        apiPassword: process.env.CINETPAY_API_PASSWORD || '',
         siteId: process.env.CINETPAY_SITE_ID || '',
         notificationKey: process.env.CINETPAY_NOTIFICATION_KEY || '',
         alternateNotifyUrl: process.env.CINETPAY_ALTERNATE_NOTIFY_URL || ''

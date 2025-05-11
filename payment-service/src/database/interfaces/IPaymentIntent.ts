@@ -33,6 +33,7 @@ export interface IPaymentIntent extends Document {
     currency?: string; // e.g., 'XOF', 'KES', 'USD' - To be filled when user provides details
     phoneNumber?: string; // To be filled when user provides details
     countryCode?: string; // e.g., 'BJ', 'CM', 'CI' - To be filled, used for gateway selection
+    operator?: string; // Optional: Payment operator slug (e.g., 'mtn', 'orange_ci')
 
     status: PaymentStatus; // Current status of the payment intent
     gateway: PaymentGateway; // Which gateway was used (or NONE initially)

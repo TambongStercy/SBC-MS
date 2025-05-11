@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import paymentService from '../../services/payment.service';
-import { userServiceClient } from '../../services/user.service.client';
+import { userServiceClient } from '../../services/clients/user.service.client';
 import { TransactionType, Currency } from '../../database/models/transaction.model';
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
@@ -117,7 +117,7 @@ export class TransactionController {
                 });
             }
 
-            // Generate a session or redirect URL for the payment gateway
+            // TODO: Generate a session or redirect URL for the payment gateway
             // This is a placeholder for the actual payment gateway integration
             const depositSession = {
                 sessionId: `session_${Date.now()}`,
@@ -469,9 +469,6 @@ export class TransactionController {
             if (isNaN(options.page) || options.page < 1) options.page = 1;
             if (isNaN(options.limit) || options.limit < 1) options.limit = 20;
             if (options.limit > 100) options.limit = 100; // Max limit
-
-            log.debug('Admin list account transactions - Filters:', filters);
-            log.debug('Admin list account transactions - Options:', options);
 
             // Call the service layer method (to be created in paymentService)
             const result = await paymentService.adminGetAllAccountTransactions(filters, options);

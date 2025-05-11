@@ -46,4 +46,7 @@ router.post('/webhooks/feexpay', paymentController.handleFeexpayWebhook);
 // Add route for CinetPay webhook
 router.post('/webhooks/cinetpay', paymentController.handleCinetPayWebhook);
 
+// Webhook for CinetPay Transfer (Payout) status updates
+router.post('/webhooks/cinetpay/transfer-status', paymentController.handleCinetpayTransferWebhook);
+
 export default router; 

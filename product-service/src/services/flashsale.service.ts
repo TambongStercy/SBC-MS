@@ -3,8 +3,8 @@ import { IFlashSale, FlashSaleStatus } from '../database/models/flashsale.model'
 import { IProduct } from '../database/models/product.model';
 import { productRepository } from '../database/repositories/product.repository';
 import { flashSaleRepository } from '../database/repositories/flashsale.repository';
-import { paymentServiceClient } from './payment.service.client'; // To be created/configured
-import { notificationServiceClient } from './notification.service.client'; // Import notification client
+import { paymentServiceClient } from './clients/payment.service.client'; // To be created/configured
+import { notificationServiceClient } from './clients/notification.service.client'; // Import notification client
 import logger from '../utils/logger';
 import { AppError } from '../utils/errors'; // Assuming custom error class exists
 import config from '../config'; // Import config
