@@ -2,17 +2,104 @@ import axios from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
 
-const log = logger.getLogger('NotificationService');
+const log = logger.getLogger('NotificationServiceClient');
 
-class NotificationService {
+// Interfaces for the payloads, mirroring those in notification-service
+interface CommissionEmailPayload {
+    email: string;
+    amount: number | string;
+    level: string | number;
+    name: string;
+    username: string;
+    debt?: number | string;
+}
+
+interface TransactionSuccessPayload {
+    email: string;
+    name: string;
+    transactionType: string;
+    transactionId: string;
+    amount: number | string;
+    currency: string;
+    date: string;
+    productOrServiceName?: string;
+}
+
+class NotificationServiceClient {
     private baseUrl: string;
+    private serviceSecret: string;
 
     constructor() {
-        this.baseUrl = config.services.notificationServiceUrl as string;
+        if (!config.services.notificationServiceUrl) {
+            log.error('NotificationService URL is not configured in payment-service config.');
+            throw new Error('NotificationService URL is not configured.');
+        }
+        this.baseUrl = config.services.notificationServiceUrl;
+        this.serviceSecret = config.services.serviceSecret;
+    }
+
+    private async request(method: 'post', path: string, data?: any): Promise<boolean> {
+        const url = `${this.baseUrl}${path}`; // Path should be relative to notificationServiceUrl
+        log.debug(`Making ${method.toUpperCase()} request to Notification Service: ${url}`, data);
+        try {
+            const headers: { [key: string]: string } = {};
+            if (this.serviceSecret) {
+                // Assuming authenticateServiceRequest in notification-service expects a 'x-service-secret' or similar
+                // Adjust if it expects 'Authorization: Bearer <secret>'
+                headers['x-service-secret'] = this.serviceSecret;
+            }
+            headers['x-calling-service'] = 'payment-service'; // Good practice to identify caller
+
+            const response = await axios({
+                method,
+                url,
+                data,
+                headers,
+                timeout: config.nodeEnv === 'development' ? 30000 : 5000 // Example timeout
+            });
+
+            // Check if the response indicates success (e.g., 2xx status code)
+            // and if the notification service returns a specific success flag in its body.
+            if (response.status >= 200 && response.status < 300 && response.data && response.data.success === true) {
+                log.info(`Notification request to ${path} successful.`);
+                return true;
+            }
+            log.warn(`Notification request to ${path} failed or returned unsuccessful status:`, response.data);
+            return false;
+        } catch (error: any) {
+            log.error(`Error calling Notification Service at ${url}:`, error.response?.data || error.message);
+            // Do not re-throw, just return false to indicate failure to send notification
+            // The calling service can then decide how to handle this (e.g., log and continue)
+            return false;
+        }
+    }
+
+    /**
+     * Calls the new endpoint in notification-service to send a commission earned email.
+     */
+    async sendCommissionEarnedEmail(payload: CommissionEmailPayload): Promise<boolean> {
+        // The path should match the route defined in notification-service's notification.routes.ts
+        // If notificationServiceUrl includes /api/notifications, then path is just /internal/email/commission-earned
+        // If notificationServiceUrl is just http://localhost:PORT, then path includes /api/notifications
+        // Assuming config.services.notificationServiceUrl is the base URL of the notification service (e.g., http://localhost:3004)
+        // and routes in notification-service are mounted under /api/notifications (standard practice)
+        const path = '/api/notifications/internal/email/commission-earned';
+        log.info('Attempting to send commission earned email via Notification Service', payload);
+        return this.request('post', path, payload);
+    }
+
+    /**
+     * Calls the new endpoint in notification-service to send a transaction successful email.
+     */
+    async sendTransactionSuccessEmail(payload: TransactionSuccessPayload): Promise<boolean> {
+        const path = '/api/notifications/internal/email/transaction-successful';
+        log.info('Attempting to send transaction successful email via Notification Service', payload);
+        return this.request('post', path, payload);
     }
 
     /**
      * Send a transaction notification to a user
+     * @deprecated Consider using sendTransactionSuccessEmail for specific success emails.
      */
     async sendTransactionNotification(userId: string, type: string, data: Record<string, any>): Promise<boolean> {
         try {
@@ -87,6 +174,7 @@ class NotificationService {
 
     /**
      * Get auth headers for inter-service communication
+     * @deprecated Centralized in the new `request` method.
      */
     private getAuthHeaders() {
         // Use a service-to-service authentication token
@@ -98,5 +186,5 @@ class NotificationService {
 }
 
 // Export singleton instance
-const notificationService = new NotificationService();
-export default notificationService; 
+const notificationServiceClient = new NotificationServiceClient();
+export default notificationServiceClient; 

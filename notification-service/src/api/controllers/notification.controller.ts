@@ -6,6 +6,7 @@ import {
 } from '../../database/models/notification.model';
 import { isValidObjectId } from 'mongoose';
 import logger from '../../utils/logger';
+import { emailService } from '../../services/email.service';
 
 // Define AuthenticatedRequest interface matching expected structure
 interface AuthenticatedRequest extends Request {
@@ -466,6 +467,93 @@ export class NotificationController {
             });
         }
     }
+
+    // --- NEW EMAIL HANDLERS ---
+
+    /**
+     * Handle request to send a commission earned email.
+     * @route POST /internal/email/commission-earned
+     */
+    async handleCommissionEarnedEmail(req: Request, res: Response, next: Function): Promise<void> {
+        const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
+        log.info(`Received commission earned email request from ${callingService}:`, req.body);
+        try {
+            const { email, amount, level, name, username, debt } = req.body;
+
+            // Basic validation
+            if (!email || !amount || !level || !name || !username) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields for commission email: email, amount, level, name, username'
+                });
+                return;
+            }
+
+            const success = await emailService.sendCommissionEarnedEmail({
+                email,
+                amount,
+                level,
+                name,
+                username,
+                debt
+            });
+
+            if (success) {
+                res.status(200).json({ success: true, message: 'Commission earned email sent successfully.' });
+            } else {
+                // emailService already logs the error, so we send a generic server error
+                res.status(500).json({ success: false, message: 'Failed to send commission earned email.' });
+            }
+
+        } catch (error: any) {
+            log.error(`Error handling commission earned email request from ${callingService}:`, error);
+            next(error); // Pass to global error handler
+        }
+    }
+
+    /**
+     * Handle request to send a transaction successful email.
+     * @route POST /internal/email/transaction-successful
+     */
+    async handleTransactionSuccessEmail(req: Request, res: Response, next: Function): Promise<void> {
+        const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
+        log.info(`Received transaction successful email request from ${callingService}:`, req.body);
+        try {
+            const { email, name, transactionType, transactionId, amount, currency, date, productOrServiceName } = req.body;
+
+            // Basic validation
+            if (!email || !name || !transactionType || !transactionId || !amount || !currency || !date) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields for transaction successful email: email, name, transactionType, transactionId, amount, currency, date'
+                });
+                return;
+            }
+
+            const success = await emailService.sendTransactionSuccessEmail({
+                email,
+                name,
+                transactionType,
+                transactionId,
+                amount,
+                currency,
+                date,
+                productOrServiceName
+            });
+
+            if (success) {
+                res.status(200).json({ success: true, message: 'Transaction successful email sent successfully.' });
+            } else {
+                res.status(500).json({ success: false, message: 'Failed to send transaction successful email.' });
+            }
+
+        } catch (error: any) {
+            log.error(`Error handling transaction successful email request from ${callingService}:`, error);
+            next(error);
+        }
+    }
+
+    // --- END NEW EMAIL HANDLERS ---
 }
 
 // Export an instance of the controller for use in routes

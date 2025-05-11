@@ -15,6 +15,11 @@ router.post('/internal/create', authenticateServiceRequest, (req, res) => notifi
 // NEW internal route for broadcasting
 router.post('/internal/broadcast', authenticateServiceRequest, (req, res, next) => notificationController.handleBroadcastNotification(req, res, next));
 
+// --- NEW EMAIL ROUTES (INTERNAL) ---
+router.post('/internal/email/commission-earned', authenticateServiceRequest, (req, res, next) => notificationController.handleCommissionEarnedEmail(req, res, next));
+router.post('/internal/email/transaction-successful', authenticateServiceRequest, (req, res, next) => notificationController.handleTransactionSuccessEmail(req, res, next));
+// --- END NEW EMAIL ROUTES ---
+
 // Admin-only routes
 router.post('/custom', authenticate, (req, res) => notificationController.sendCustomNotification(req, res));
 router.post('/templated', authenticate, (req, res) => notificationController.sendTemplatedNotification(req, res));

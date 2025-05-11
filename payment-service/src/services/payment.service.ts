@@ -704,9 +704,9 @@ class PaymentService {
      * Handle CinetPay webhook notification
      */
     public async handleCinetPayWebhook(payload: any): Promise<void> {
-        const { cpm_trans_id, cpm_site_id, cpm_trans_status, cpm_payment_token } = payload;
+        const { cpm_trans_id, cpm_site_id, cpm_error_message, cpm_payment_token } = payload;
 
-        if (!cpm_trans_id || !cpm_site_id || !cpm_trans_status) {
+        if (!cpm_trans_id || !cpm_site_id || !cpm_error_message) {
             log.warn('Received CinetPay webhook with missing required fields', payload);
             throw new Error('Webhook payload missing required fields');
         }
@@ -731,9 +731,9 @@ class PaymentService {
         }
 
         let newStatus: PaymentStatus = paymentIntent.status;
-        if (cpm_trans_status === 'ACCEPTED') {
+        if (cpm_error_message === 'SUCCES') {
             newStatus = PaymentStatus.SUCCEEDED;
-        } else if (cpm_trans_status === 'REFUSED') {
+        } else if (cpm_error_message === 'TRANSACTION_CANCEL') {
             newStatus = PaymentStatus.FAILED;
         } else {
             newStatus = PaymentStatus.PROCESSING;
