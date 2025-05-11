@@ -677,24 +677,58 @@ class PaymentService {
         if (fromCurrency === toCurrency) {
             return amount;
         }
-        // --- Placeholder --- 
-        // Replace with actual conversion logic (e.g., using an exchange rate API)
-        // Example: Fetch rate from an API like exchangerate-api.com or openexchangerates.org
-        // For now, use a fixed dummy rate for demonstration
-        let rate = 1;
-        if (fromCurrency === 'XOF' && toCurrency === 'XAF') rate = 1; // Often pegged 1:1
-        if (fromCurrency === 'XAF' && toCurrency === 'XOF') rate = 1;
-        if (fromCurrency === 'XOF' && toCurrency === 'KES') rate = 0.2; // DUMMY RATE
-        if (fromCurrency === 'KES' && toCurrency === 'XOF') rate = 5; // DUMMY RATE
 
-        if (rate === 1 && fromCurrency !== toCurrency) {
-            log.warn(`No dummy conversion rate found for ${fromCurrency} -> ${toCurrency}. Using 1.`);
+        const fromCurrencyLower = fromCurrency.toLowerCase();
+        const toCurrencyLower = toCurrency.toLowerCase();
+
+        const primaryUrl = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${fromCurrencyLower}.json`;
+        const fallbackUrl = `https://latest.currency-api.pages.dev/v1/currencies/${fromCurrencyLower}.json`;
+        let exchangeRate: number | undefined = undefined;
+
+        try {
+            log.debug(`Attempting to fetch exchange rates from: ${primaryUrl}`);
+            const response = await axios.get(primaryUrl, { timeout: 5000 });
+            if (response.data && response.data[fromCurrencyLower] && response.data[fromCurrencyLower][toCurrencyLower]) {
+                exchangeRate = response.data[fromCurrencyLower][toCurrencyLower];
+                log.info(`Fetched rate from primary URL: 1 ${fromCurrency} = ${exchangeRate} ${toCurrency}`);
+            } else {
+                log.warn(`Rate for ${fromCurrency} -> ${toCurrency} not found in primary response.`, response.data);
+            }
+        } catch (error: any) {
+            log.warn(`Failed to fetch from primary URL (${primaryUrl}): ${error.message}. Trying fallback.`);
+            try {
+                log.debug(`Attempting to fetch exchange rates from fallback: ${fallbackUrl}`);
+                const fallbackResponse = await axios.get(fallbackUrl, { timeout: 5000 });
+                if (fallbackResponse.data && fallbackResponse.data[fromCurrencyLower] && fallbackResponse.data[fromCurrencyLower][toCurrencyLower]) {
+                    exchangeRate = fallbackResponse.data[fromCurrencyLower][toCurrencyLower];
+                    log.info(`Fetched rate from fallback URL: 1 ${fromCurrency} = ${exchangeRate} ${toCurrency}`);
+                } else {
+                    log.warn(`Rate for ${fromCurrency} -> ${toCurrency} not found in fallback response.`, fallbackResponse.data);
+                }
+            } catch (fallbackError: any) {
+                log.error(`Failed to fetch from fallback URL (${fallbackUrl}): ${fallbackError.message}.`);
+            }
         }
 
-        const convertedAmount = Math.ceil(amount * rate); // Use Math.ceil to avoid fractional cents/units
-        log.info(`Converted amount: ${convertedAmount} ${toCurrency}`);
+        if (exchangeRate === undefined) {
+            log.warn(`Could not fetch exchange rate for ${fromCurrency} -> ${toCurrency}. Defaulting to 1:1.`);
+            // Fallback to existing dummy rates or a 1:1 conversion if API fails or rate not found
+            // For simplicity, directly defaulting to 1 if API fails, but you could integrate your old dummy logic here.
+            let rate = 1;
+            // You could re-insert your previous dummy rate logic here as a further fallback if desired.
+            // Example:
+            // if (fromCurrency === 'XOF' && toCurrency === 'XAF') rate = 1;
+            // else if (fromCurrency === 'XAF' && toCurrency === 'XOF') rate = 1;
+            // ... etc. ...
+            // else { log.warn(`No dummy conversion rate found for ${fromCurrency} -> ${toCurrency}. Using 1.`); }
+            const convertedAmount = Math.ceil(amount * rate);
+            log.info(`Converted amount (using fallback 1:1 or dummy): ${convertedAmount} ${toCurrency}`);
+            return convertedAmount;
+        }
+
+        const convertedAmount = Math.ceil(amount * exchangeRate);
+        log.info(`Converted amount (using API rate): ${convertedAmount} ${toCurrency}`);
         return convertedAmount;
-        // --- End Placeholder ---
     }
 
     /**
