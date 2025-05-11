@@ -219,7 +219,7 @@ export class PaymentController {
             const payload = req.body;
 
             log.info(`Received CinetPay webhook with transaction ID: ${payload?.cpm_trans_id}`);
-            log.debug('CinetPay webhook payload:', payload);
+            log.info('CinetPay webhook payload:', payload);
 
             if (!payload.cpm_trans_id) {
                 log.warn('CinetPay webhook missing transaction ID');
