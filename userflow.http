@@ -413,7 +413,7 @@ Authorization: Bearer {{userA_AuthToken}}
 # webhook Tests
 # ====================================
 
-@screte = $2y$10$A53ZB.MELP/pmrGXqzYMFOXbX9CE4mw0SVzOIU9MJkuxDZAktNFqK
+@screte = {{$dotenv TEST}} 
 ###
 # WH1. User A (Referrer) creates a webhook
 POST http://217.65.144.32:3000/api/payments/webhooks/feexpay
@@ -421,7 +421,7 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "4AA5ED92-892E-44AB-BA92-8FA4BBF00FD8",
+  "reference": "f32e0252-ea3d-4338-8b73-6b9f583e3a8f",
   "status": "SUCCESSFUL"
 }
 

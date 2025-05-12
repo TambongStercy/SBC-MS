@@ -242,22 +242,22 @@ export class PartnerService {
 
         try {
 
-            await paymentService.recordInternalDeposit({
-                userId: partner.user.toString(),
-                amount: commissionAmount,
-                currency: currency,
-                description: `Partner commission (L${referralLevelInvolved}) from user ${buyerUserId}'s ${sourceSubscriptionType} subscription.`,
-                metadata: {
-                    isPartnerCommission: true,
-                    partnerId: partnerObjectId.toString(),
-                    sourceUserId: buyerUserId,
-                    sourcePaymentSessionId: sourcePaymentSessionId,
-                    sourceSubscriptionType: sourceSubscriptionType,
-                    referralLevelInvolved: referralLevelInvolved,
-                    partnerPack: partner.pack
-                }
-            });
-            log.info(`Successfully recorded internal deposit for partner ${partnerObjectId} via paymentService.`);
+            // await paymentService.recordInternalDeposit({
+            //     userId: partner.user.toString(),
+            //     amount: commissionAmount,
+            //     currency: currency,
+            //     description: `Partner commission (L${referralLevelInvolved}) from user ${buyerUserId}'s ${sourceSubscriptionType} subscription.`,
+            //     metadata: {
+            //         isPartnerCommission: true,
+            //         partnerId: partnerObjectId.toString(),
+            //         sourceUserId: buyerUserId,
+            //         sourcePaymentSessionId: sourcePaymentSessionId,
+            //         sourceSubscriptionType: sourceSubscriptionType,
+            //         referralLevelInvolved: referralLevelInvolved,
+            //         partnerPack: partner.pack
+            //     }
+            // });
+            // log.info(`Successfully recorded internal deposit for partner ${partnerObjectId} via paymentService.`);
 
             const updatedPartner = await this.partnerRepository.addAmount(partnerObjectId, commissionAmount);
             if (!updatedPartner) {
