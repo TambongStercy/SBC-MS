@@ -1131,7 +1131,8 @@ class PaymentService {
             description: description,
             paymentMethod: paymentMethod,
             range: range,
-            expireIn: expireIn
+            expireIn: expireIn,
+            callback_info: paymentIntent.sessionId,
             // No phoneNumber, operator, or otp needed here
         };
 
