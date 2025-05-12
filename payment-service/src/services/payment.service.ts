@@ -177,8 +177,27 @@ class PaymentService {
         },
         description: string
     ) {
+        let userEmail: string | undefined;
         try {
             log.info(`Processing deposit of ${amount} ${currency} for user ${userId}`);
+
+            // Fetch user details to get email *before* proceeding with transaction
+            try {
+                const userDetails = await userServiceClient.getUserDetails(userId.toString());
+                if (!userDetails?.email) {
+                    log.warn(`Could not find email for user ${userId}. Deposit processed, but notification cannot be sent.`);
+                    // Decide if this is a fatal error or just a warning
+                    // throw new Error(`Cannot process deposit: User email not found for ID ${userId}`); 
+                } else {
+                    userEmail = userDetails.email;
+                    log.debug(`Found email ${userEmail} for user ${userId}`);
+                }
+            } catch (userError) {
+                log.error(`Failed to fetch user details for ${userId} during deposit:`, userError);
+                // Decide if this is fatal
+                // throw new Error(`Failed to fetch user details for deposit notification. Aborting.`);
+                log.warn(`Continuing deposit for ${userId} despite failing to fetch user details.`);
+            }
 
             // Create a transaction record
             const transaction = await transactionRepository.create({
@@ -201,16 +220,24 @@ class PaymentService {
             // Update user balance
             await userServiceClient.updateUserBalance(userId.toString(), amount);
 
-            // Send notification
-            await notificationService.sendTransactionSuccessEmail({
-                email: userId.toString(),
-                name: 'deposit_completed',
-                transactionType: 'deposit',
-                transactionId: transaction.transactionId,
-                amount,
-                currency,
-                date: transaction.createdAt.toISOString()
-            });
+            // Send notification only if email was found
+            if (userEmail) {
+                const notificationSent = await notificationService.sendTransactionSuccessEmail({
+                    email: userEmail,
+                    name: 'deposit_completed', // Consider getting user's actual name if available in userDetails
+                    transactionType: 'deposit',
+                    transactionId: transaction.transactionId,
+                    amount,
+                    currency,
+                    date: transaction.createdAt.toISOString()
+                });
+                if (!notificationSent) {
+                    // Log the failure, but don't fail the whole deposit process for a notification issue
+                    log.warn(`Failed to send deposit notification email to ${userEmail} for transaction ${transaction.transactionId}`);
+                }
+            } else {
+                 log.warn(`Skipping deposit notification for transaction ${transaction.transactionId} as user email was not available.`);
+            }
 
             return transaction;
         } catch (error) {

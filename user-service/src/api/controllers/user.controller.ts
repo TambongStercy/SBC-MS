@@ -924,7 +924,7 @@ export class UserController {
 
     /**
      * Get details for multiple users by their IDs
-     * @route POST /internal/users/batch-details
+     * @route POST /api/users/internal/batch-details
      */
     async getUsersDetailsByIds(req: Request, res: Response): Promise<void> {
         try {

@@ -90,24 +90,23 @@ class UserServiceClient {
             log.error('Cannot get user details: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
         }
-        const path = `/users/internal/${userId}/validate`;
+        // Use the batch endpoint even for a single user
+        const path = '/users/internal/batch-details';
         try {
-            log.debug(`Fetching user details for userId: ${userId} via request method`);
-            const response = await this.request<{ success: boolean; data: UserDetails } | null>('get', path);
+            log.debug(`Fetching user details for userId: ${userId} via batch endpoint (request method)`);
+            // Send userId in an array via POST body
+            const response = await this.request<{ success: boolean; data: UserDetails[] } | null>('post', path, { userIds: [userId] });
 
-            if (response?.success && response.data) {
+            if (response?.success && Array.isArray(response.data) && response.data.length > 0) {
                 log.info(`Successfully fetched user details for userId: ${userId}`);
-                return response.data;
+                return response.data[0]; // Return the first user from the array
             } else {
-                log.warn(`User details not found or request unsuccessful for ID: ${userId}`);
+                log.warn(`User details not found or request unsuccessful for ID: ${userId} using batch endpoint`);
                 return null;
             }
         } catch (error: any) {
-            if (error instanceof AppError && error.statusCode === 404) {
-                log.warn(`User not found in user-service for ID: ${userId} (via request method)`);
-                return null;
-            }
-            log.error(`Error fetching user details for user ${userId} (via request method):`, error.message);
+            // Batch endpoint might not return 404 for a specific missing user, but rather success:true, data:[]
+            log.error(`Error fetching user details for user ${userId} (via batch endpoint, request method):`, error.message);
             if (error instanceof AppError) throw error;
             throw new AppError(`Failed to communicate with user service for user details.`, 503);
         }
@@ -118,27 +117,27 @@ class UserServiceClient {
             log.error('Cannot get user details with momo: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
         }
-        const path = `/users/internal/${userId}/validate`;
+        // Use the batch endpoint even for a single user
+        const path = '/users/internal/batch-details';
         try {
-            log.debug(`Fetching user details with momo for userId: ${userId} via request method`);
-            const response = await this.request<{ success: boolean; data: UserDetailsWithMomo } | null>('get', path);
+            log.debug(`Fetching user details with momo for userId: ${userId} via batch endpoint (request method)`);
+            // Send userId in an array via POST body
+            const response = await this.request<{ success: boolean; data: UserDetailsWithMomo[] } | null>('post', path, { userIds: [userId] });
 
-            if (response?.success && response.data) {
-                if (typeof response.data.momoNumber === 'undefined' || typeof response.data.momoOperator === 'undefined') {
-                    log.warn(`User ${userId} details fetched, but momoNumber or momoOperator is missing.`);
+            if (response?.success && Array.isArray(response.data) && response.data.length > 0) {
+                const userDetails = response.data[0];
+                if (typeof userDetails.momoNumber === 'undefined' || typeof userDetails.momoOperator === 'undefined') {
+                    log.warn(`User ${userId} details fetched via batch, but momoNumber or momoOperator is missing.`);
                 }
-                log.info(`Successfully fetched user details with momo for userId: ${userId}`);
-                return response.data;
+                log.info(`Successfully fetched user details with momo for userId: ${userId} via batch endpoint`);
+                return userDetails;
             } else {
-                log.warn(`User details with momo not found or request unsuccessful for ID: ${userId}`);
+                log.warn(`User details with momo not found or request unsuccessful for ID: ${userId} using batch endpoint`);
                 return null;
             }
         } catch (error: any) {
-            if (error instanceof AppError && error.statusCode === 404) {
-                log.warn(`User not found in user-service for ID (momo details): ${userId} (via request method)`);
-                return null;
-            }
-            log.error(`Error calling user service for (momo) details of user ${userId} (via request method):`, error.message);
+            // Batch endpoint might not return 404 for a specific missing user
+            log.error(`Error calling user service for (momo) details of user ${userId} (via batch endpoint, request method):`, error.message);
             if (error instanceof AppError) throw error;
             throw new AppError(`Failed to communicate with user service for momo details.`, 503);
         }
@@ -220,13 +219,19 @@ class UserServiceClient {
     }
 
     async validateUser(userId: string): Promise<boolean> {
-        const path = `/users/internal/${userId}/validate`;
+        const path = `/users/internal/${userId}/validate`; // Correct endpoint for validation
         try {
             log.info(`Validating user ${userId} via request method`);
-            const response = await this.request<{ success: boolean, data: UserValidationResponse } | null>('get', path);
-            return response?.data?.valid ?? false;
+            const response = await this.request<{ success: boolean, data?: { valid?: boolean } } | null>('get', path); // data shape might vary, check user-service controller
+            // Check for success and explicitly true 'valid' property if present
+            return response?.success === true && response.data?.valid === true;
         } catch (error: any) {
-            log.error(`Failed to validate user ${userId} via User Service (request method):`, error.message);
+            // Treat errors (including 404 from AppError) as invalid user
+            if (error instanceof AppError && error.statusCode === 404) {
+                log.warn(`Validation check: User ${userId} not found in user-service.`);
+            } else {
+                log.error(`Failed to validate user ${userId} via User Service (request method):`, error.message);
+            }
             return false;
         }
     }
@@ -252,10 +257,10 @@ class UserServiceClient {
         if (!userIds || userIds.length === 0) {
             return [];
         }
-        const path = '/users/internal/batch-details';
+        const path = '/users/internal/batch-details'; // Correct endpoint
         try {
             log.debug(`Fetching details for ${userIds.length} users via request method.`);
-            const response = await this.request<{ success: boolean, data: UserDetails[] } | null>('post', path, { userIds });
+            const response = await this.request<{ success: boolean, data: UserDetails[] } | null>('post', path, { userIds }); // Correct method and body
 
             if (response?.success && Array.isArray(response.data)) {
                 log.info(`Successfully fetched details for ${response.data.length} users.`);
