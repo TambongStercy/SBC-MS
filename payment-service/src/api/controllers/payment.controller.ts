@@ -192,10 +192,10 @@ export class PaymentController {
             const authHeader = req.headers.authorization;
 
             console.log('payload: ', payload)
-
+            
             log.info(`Received Feexpay webhook for reference: ${payload?.reference}`);
-            log.debug('Feexpay webhook payload:', payload);
-            log.debug(`Feexpay webhook auth header: ${authHeader}`);
+            log.info('Feexpay webhook payload:', payload);
+            log.info(`Feexpay webhook auth header: ${authHeader}`);
 
             if (!this.verifyFeexpayWebhookAuth(authHeader)) {
                 log.warn('Feexpay webhook authorization failed.');
