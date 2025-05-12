@@ -191,6 +191,8 @@ export class PaymentController {
             const payload = req.body;
             const authHeader = req.headers.authorization;
 
+            console.log('payload: ', payload)
+
             log.info(`Received Feexpay webhook for reference: ${payload?.reference}`);
             log.debug('Feexpay webhook payload:', payload);
             log.debug(`Feexpay webhook auth header: ${authHeader}`);

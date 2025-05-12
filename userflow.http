@@ -1,6 +1,6 @@
 # User Flow API Tests (.http file for REST Client)
 # Change the baseUrl if your API Gateway runs on a different host/port
-@baseUrl = http://localhost:3000/api
+@baseUrl = https://sniperbuisnesscenter.com/api
 
 # --- User A (Referrer) --- 
 @userA_Username = referrer_1
@@ -406,3 +406,29 @@ Authorization: Bearer {{userA_AuthToken}}
 # - If CONTACT_PLAN is strictly required -> Forbidden (403) or Bad Request (400)
 GET {{baseUrl}}/contacts/export
 Authorization: Bearer {{userA_AuthToken}}
+
+
+###
+# ====================================
+# webhook Tests
+# ====================================
+
+###
+# WH1. User A (Referrer) creates a webhook
+POST {{baseUrl}}/payments/webhooks/feexpay
+Content-Type: application/json
+
+{
+  "url": "https://example.com/webhook",
+  "events": ["payment.created", "payment.updated"]
+}
+
+
+###
+# WH2. User A (Referrer) gets the webhook
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+
+
+
