@@ -76,12 +76,8 @@ class NotificationServiceClient {
      * Calls the new endpoint in notification-service to send a commission earned email.
      */
     async sendCommissionEarnedEmail(payload: CommissionEmailPayload): Promise<boolean> {
-        // The path should match the route defined in notification-service's notification.routes.ts
-        // If notificationServiceUrl includes /api/notifications, then path is just /internal/email/commission-earned
-        // If notificationServiceUrl is just http://localhost:PORT, then path includes /api/notifications
-        // Assuming config.services.notificationServiceUrl is the base URL of the notification service (e.g., http://localhost:3004)
-        // and routes in notification-service are mounted under /api/notifications (standard practice)
-        const path = '/api/notifications/internal/email/commission-earned';
+        // Assuming notificationServiceUrl includes /api, path should be relative to that.
+        const path = '/notifications/internal/email/commission-earned'; // Removed leading /api
         log.info('Attempting to send commission earned email via Notification Service', payload);
         return this.request('post', path, payload);
     }
@@ -90,7 +86,8 @@ class NotificationServiceClient {
      * Calls the new endpoint in notification-service to send a transaction successful email.
      */
     async sendTransactionSuccessEmail(payload: TransactionSuccessPayload): Promise<boolean> {
-        const path = '/api/notifications/internal/email/transaction-successful';
+        // Assuming notificationServiceUrl includes /api, path should be relative to that.
+        const path = '/notifications/internal/email/transaction-successful'; // Removed leading /api
         log.info('Attempting to send transaction successful email via Notification Service', payload);
         return this.request('post', path, payload);
     }
@@ -101,8 +98,9 @@ class NotificationServiceClient {
      */
     async sendTransactionNotification(userId: string, type: string, data: Record<string, any>): Promise<boolean> {
         try {
+            // This method uses axios directly, path needs adjustment if baseUrl includes /api
             const response = await axios.post(
-                `${this.baseUrl}/api/notifications/send`,
+                `${this.baseUrl}/notifications/send`, // Adjusted path assuming baseUrl has /api
                 {
                     userId,
                     type: 'TRANSACTION',
@@ -126,8 +124,9 @@ class NotificationServiceClient {
      */
     async sendVerificationOTP(userId: string, type: string, data: Record<string, any>): Promise<boolean> {
         try {
+            // This method uses axios directly, path needs adjustment if baseUrl includes /api
             const response = await axios.post(
-                `${this.baseUrl}/api/notifications/send-otp`,
+                `${this.baseUrl}/notifications/send-otp`, // Adjusted path assuming baseUrl has /api
                 {
                     userId,
                     type,
@@ -150,8 +149,9 @@ class NotificationServiceClient {
      */
     async sendSecurityAlert(userId: string, alertType: string, data: Record<string, any>): Promise<boolean> {
         try {
+            // This method uses axios directly, path needs adjustment if baseUrl includes /api
             const response = await axios.post(
-                `${this.baseUrl}/api/notifications/send-alert`,
+                `${this.baseUrl}/notifications/send-alert`, // Adjusted path assuming baseUrl has /api
                 {
                     userId,
                     alertType,
@@ -177,7 +177,7 @@ class NotificationServiceClient {
     private getAuthHeaders() {
         // Use a service-to-service authentication token
         return {
-            'Authorization': `Bearer ${config.jwt.secret}`,
+            'Authorization': `Bearer ${config.services.serviceSecret}`, // Corrected: Use serviceSecret from config
             'X-Service-Name': 'payment-service'
         };
     }
