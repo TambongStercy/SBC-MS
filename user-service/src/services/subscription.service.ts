@@ -36,7 +36,7 @@ const AVAILABLE_PLANS: SubscriptionPlan[] = [
         id: SubscriptionType.CIBLE,
         name: 'Abonnement Ciblé',
         type: SubscriptionType.CIBLE,
-        price: 5000,
+        price: 5140,
         currency: 'XAF',
         description: 'Permet le ciblage avancé par pays, sexe, langue, âge, profession, centres d\'intérêt et ville.',
         targetingLevel: 'all',
@@ -375,7 +375,7 @@ export class SubscriptionService {
         }
 
         // 3. Define upgrade details
-        const upgradePrice = 3000; // Difference: 5000 (CIBLE) - 2000 (CLASSIQUE) ~= 3000
+        const upgradePrice = 3070; // Difference: 5000 (CIBLE) - 2000 (CLASSIQUE) ~= 3000
         const targetPlan = AVAILABLE_PLANS.find(p => p.id === SubscriptionType.CIBLE);
         if (!targetPlan) {
             // This should not happen if AVAILABLE_PLANS is correct
