@@ -52,9 +52,9 @@ class UserServiceClient {
         }
     }
 
-    private async request<T>(method: 'get' | 'post' | 'put' | 'delete', path: string, data?: any): Promise<T> {
+    private async request<T>(method: 'get' | 'post' | 'put' | 'delete', path: string, data?: any, params?: any): Promise<T> {
         const url = `${this.baseUrl}${path}`;
-        log.debug(`Making ${method.toUpperCase()} request to User Service: ${url}`, data);
+        log.debug(`Making ${method.toUpperCase()} request to User Service: ${url}`, { data, params });
         try {
             const headers: { [key: string]: string } = {};
             if (this.serviceSecret) {
@@ -66,25 +66,22 @@ class UserServiceClient {
                 method,
                 url,
                 data,
+                params,
                 headers
             });
 
-            if (response.data && (response.data.success === true || response.status < 300)) {
+            if (response.status < 300 && response.data?.success !== false) {
                 log.debug(`User Service request successful for ${path}`);
-                if (response.data.data !== undefined) {
-                    return response.data.data;
-                } else {
-                    log.warn(`User Service request successful for ${path} but response data payload is missing.`);
-                    throw new Error('User Service response missing expected data payload');
-                }
+                return response.data;
             } else {
                 log.warn(`User Service request failed or returned unsuccessful status for ${path}:`, response.data);
-                throw new Error(response.data?.message || 'User Service request failed');
+                throw new AppError(response.data?.message || 'User Service request failed', response.status || 500);
             }
         } catch (error: any) {
             log.error(`Error calling User Service at ${url}:`, error.response?.data || error.message);
             const errorMessage = error.response?.data?.message || error.message || 'User Service communication error';
-            throw new Error(errorMessage);
+            const errorStatus = error.response?.status;
+            throw new AppError(errorMessage, errorStatus || 503);
         }
     }
 
@@ -93,35 +90,26 @@ class UserServiceClient {
             log.error('Cannot get user details: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
         }
+        const path = `/users/internal/${userId}/validate`;
         try {
-            log.debug(`Fetching user details for userId: ${userId} from ${this.baseUrl}/internal/${userId}/validate`);
-            const response = await axios.get(`${this.baseUrl}/internal/${userId}/validate`, {
-                headers: {
-                    'Authorization': `Bearer ${config.services.serviceSecret}`, // Internal service auth
-                    'Content-Type': 'application/json',
-                    'X-Service-Name': 'payment-service'
-                },
-                timeout: 5000
-            });
+            log.debug(`Fetching user details for userId: ${userId} via request method`);
+            const response = await this.request<{ success: boolean; data: UserDetails } | null>('get', path);
 
-            if (response.status === 200 && response.data && response.data.success) {
-                // Assuming the user data is in response.data.data
+            if (response?.success && response.data) {
                 log.info(`Successfully fetched user details for userId: ${userId}`);
-                return response.data.data as UserDetails; // Adjust based on actual response structure
-            } else if (response.status === 404) {
-                log.warn(`User not found in user-service for ID: ${userId}`);
-                return null;
+                return response.data;
             } else {
-                log.error(`Failed to fetch user details for userId ${userId}: Status ${response.status}`, response.data);
-                return null; // Or throw an error based on how critical this is
+                log.warn(`User details not found or request unsuccessful for ID: ${userId}`);
+                return null;
             }
         } catch (error: any) {
-            log.error(`Error calling user service for details of user ${userId}:`, error.response?.data || error.message);
-            // Consider throwing an AppError for better handling upstream
-            if (error.response?.status === 404) {
+            if (error instanceof AppError && error.statusCode === 404) {
+                log.warn(`User not found in user-service for ID: ${userId} (via request method)`);
                 return null;
             }
-            throw new AppError(`Failed to communicate with user service for user details.`, error.response?.status || 503);
+            log.error(`Error fetching user details for user ${userId} (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for user details.`, 503);
         }
     }
 
@@ -130,46 +118,29 @@ class UserServiceClient {
             log.error('Cannot get user details with momo: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
         }
+        const path = `/users/internal/${userId}/validate`;
         try {
-            // Assuming there's an endpoint in user-service that returns momo details
-            // For now, let's use the /me equivalent or /:userId if available and includes momo details
-            // This might need a new specific internal endpoint in user-service like /internal/:userId/momo-details
-            log.debug(`Fetching user details with momo for userId: ${userId} from user-service`);
+            log.debug(`Fetching user details with momo for userId: ${userId} via request method`);
+            const response = await this.request<{ success: boolean; data: UserDetailsWithMomo } | null>('get', path);
 
-            // Placeholder: Using /validate and assuming it might contain momo details
-            // In a real scenario, this would be a dedicated endpoint or the /me route (if internal call is structured for it)
-            const response = await axios.get(`${this.baseUrl}/internal/${userId}/validate`, { // ADJUST THIS ENDPOINT
-                headers: {
-                    'Authorization': `Bearer ${config.services.serviceSecret}`,
-                    'Content-Type': 'application/json',
-                    'X-Service-Name': 'payment-service'
-                },
-                timeout: 5000
-            });
-
-            if (response.status === 200 && response.data && response.data.success && response.data.data) {
-                // Ensure the data structure matches UserDetailsWithMomo
-                const userData = response.data.data;
-                if (typeof userData.momoNumber !== 'undefined' && typeof userData.momoOperator !== 'undefined') {
-                    log.info(`Successfully fetched user details with momo for userId: ${userId}`);
-                    return userData as UserDetailsWithMomo;
-                } else {
+            if (response?.success && response.data) {
+                if (typeof response.data.momoNumber === 'undefined' || typeof response.data.momoOperator === 'undefined') {
                     log.warn(`User ${userId} details fetched, but momoNumber or momoOperator is missing.`);
-                    return userData as UserDetailsWithMomo; // Return even if momo is missing, service logic handles it
                 }
-            } else if (response.status === 404) {
-                log.warn(`User not found in user-service for ID (momo details): ${userId}`);
-                return null;
+                log.info(`Successfully fetched user details with momo for userId: ${userId}`);
+                return response.data;
             } else {
-                log.error(`Failed to fetch user (momo) details for userId ${userId}: Status ${response.status}`, response.data);
+                log.warn(`User details with momo not found or request unsuccessful for ID: ${userId}`);
                 return null;
             }
         } catch (error: any) {
-            log.error(`Error calling user service for (momo) details of user ${userId}:`, error.response?.data || error.message);
-            if (error.response?.status === 404) {
+            if (error instanceof AppError && error.statusCode === 404) {
+                log.warn(`User not found in user-service for ID (momo details): ${userId} (via request method)`);
                 return null;
             }
-            throw new AppError(`Failed to communicate with user service for momo details.`, error.response?.status || 503);
+            log.error(`Error calling user service for (momo) details of user ${userId} (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for momo details.`, 503);
         }
     }
 
@@ -178,31 +149,21 @@ class UserServiceClient {
             log.error('Cannot update user balance: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
         }
+        const path = `/users/internal/${userId}/balance`;
         try {
-            log.info(`Updating balance for user ${userId} by ${amount} via user-service.`);
-            const response = await axios.post(`${this.baseUrl}/internal/${userId}/balance`,
-                { amount },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.services.serviceSecret}`,
-                        'Content-Type': 'application/json',
-                        'X-Service-Name': 'payment-service'
-                    },
-                    timeout: 7000 // Increased timeout for potentially critical operations
-                }
-            );
+            log.info(`Updating balance for user ${userId} by ${amount} via user-service request method.`);
+            const response = await this.request<{ success: boolean; data?: { newBalance?: number } }>('post', path, { amount });
 
-            if (response.status === 200 && response.data && response.data.success) {
-                log.info(`Successfully updated balance for user ${userId}. New balance: ${response.data.data?.newBalance}`);
+            if (response?.success) {
+                log.info(`Successfully updated balance for user ${userId}. New balance: ${response.data?.newBalance ?? 'N/A'}`);
             } else {
-                log.error(`Failed to update balance for user ${userId}: Status ${response.status}`, response.data);
-                throw new AppError(response.data?.message || 'Failed to update user balance via user-service.', response.status || 500);
+                log.warn(`Update balance call for user ${userId} reported non-success or missing response.`);
+                throw new AppError('Failed to update user balance via user-service (request succeeded but action failed).', 500);
             }
         } catch (error: any) {
-            log.error(`Error calling user-service to update balance for user ${userId}:`, error.response?.data || error.message);
-            const errorMessage = error.response?.data?.message || 'Failed to communicate with user service for balance update.';
-            const errorStatus = error.response?.status || 503;
-            throw new AppError(errorMessage, errorStatus);
+            log.error(`Error updating balance for user ${userId} (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for balance update.`, 503);
         }
     }
 
@@ -211,75 +172,73 @@ class UserServiceClient {
             log.error('Cannot get user balance: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
         }
+        const path = `/users/internal/${userId}/balance`;
         try {
-            log.debug(`Fetching balance for user ${userId} from user-service.`);
-            const response = await axios.get(`${this.baseUrl}/internal/${userId}/balance`, {
-                headers: {
-                    'Authorization': `Bearer ${config.services.serviceSecret}`,
-                    'Content-Type': 'application/json',
-                    'X-Service-Name': 'payment-service'
-                },
-                timeout: 5000
-            });
-            if (response.status === 200 && response.data && response.data.success && typeof response.data.data?.balance === 'number') {
-                log.info(`Successfully fetched balance for user ${userId}: ${response.data.data.balance}`);
-                return response.data.data.balance;
+            log.debug(`Fetching balance for user ${userId} via user-service request method.`);
+            const response = await this.request<{ success: boolean; data: { balance: number } }>('get', path);
+
+            if (response?.success && typeof response.data?.balance === 'number') {
+                log.info(`Successfully fetched balance for user ${userId}: ${response.data.balance}`);
+                return response.data.balance;
             } else {
-                log.error(`Failed to fetch balance for user ${userId}: Status ${response.status}`, response.data);
-                throw new AppError(response.data?.message || 'Failed to fetch user balance from user-service.', response.status || 500);
+                log.error(`Failed to parse balance from user-service response for user ${userId}`, response);
+                throw new AppError('Failed to fetch user balance from user-service (invalid response format).', 500);
             }
         } catch (error: any) {
-            log.error(`Error calling user-service for balance of user ${userId}:`, error.response?.data || error.message);
-            const errorMessage = error.response?.data?.message || 'Failed to communicate with user service for balance.';
-            const errorStatus = error.response?.status || 503;
-            throw new AppError(errorMessage, errorStatus);
+            log.error(`Error fetching balance for user ${userId} (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for balance.`, 503);
         }
     }
 
     async activateSubscription(userId: string, type: string, planIdentifier: string): Promise<any | null> {
+        const path = '/subscriptions/internal/activate';
         try {
-            const path = '/subscriptions/internal/activate';
+            log.info(`Activating subscription for user ${userId} via request method`);
             const response = await this.request<any>('post', path, {
                 userId,
                 subscriptionType: type,
                 planIdentifier
             });
-            return response;
-        } catch (error) {
-            log.error(`Failed to activate subscription for user ${userId} via User Service:`, error);
+            return response.data;
+        } catch (error: any) {
+            log.error(`Failed to activate subscription for user ${userId} via User Service (request method):`, error.message);
             return null;
         }
     }
 
     async getReferrerIds(userId: string): Promise<ReferrerIds | null> {
+        const path = `/users/internal/${userId}/referrers`;
         try {
-            const path = `/users/internal/${userId}/referrers`;
-            const response = await this.request<ReferrerIds>('get', path);
-            return response;
-        } catch (error) {
-            log.error(`Failed to get referrer IDs for user ${userId} from User Service:`, error);
+            log.info(`Getting referrer IDs for user ${userId} via request method`);
+            const response = await this.request<{ success: boolean, data: ReferrerIds } | null>('get', path);
+            return response?.data ?? null;
+        } catch (error: any) {
+            log.error(`Failed to get referrer IDs for user ${userId} from User Service (request method):`, error.message);
             return null;
         }
     }
 
     async validateUser(userId: string): Promise<boolean> {
+        const path = `/users/internal/${userId}/validate`;
         try {
-            const path = `/users/internal/${userId}/validate`;
-            const response = await this.request<UserValidationResponse>('get', path);
-            return response.valid;
-        } catch (error) {
-            log.error(`Failed to validate user ${userId} via User Service:`, error);
+            log.info(`Validating user ${userId} via request method`);
+            const response = await this.request<{ success: boolean, data: UserValidationResponse } | null>('get', path);
+            return response?.data?.valid ?? false;
+        } catch (error: any) {
+            log.error(`Failed to validate user ${userId} via User Service (request method):`, error.message);
             return false;
         }
     }
 
     async checkWithdrawalLimits(userId: string, amount: number): Promise<WithdrawalLimitCheckResponse> {
+        const path = `/users/internal/${userId}/withdrawal-limits/check`;
         try {
-            const path = `/users/internal/${userId}/withdrawal-limits/check`;
-            const response = await this.request<WithdrawalLimitCheckResponse>('post', path, { amount });
-            return response;
-        } catch (error) {
-            log.error(`Failed to check withdrawal limits for user ${userId} via User Service:`, error);
+            log.info(`Checking withdrawal limits for user ${userId} via request method`);
+            const response = await this.request<{ success: boolean, data: WithdrawalLimitCheckResponse } | null>('post', path, { amount });
+            return response?.data ?? { allowed: false, reason: 'Error processing request or invalid response' };
+        } catch (error: any) {
+            log.error(`Failed to check withdrawal limits for user ${userId} via User Service (request method):`, error.message);
             return { allowed: false, reason: 'Error communicating with User Service' };
         }
     }
@@ -293,32 +252,22 @@ class UserServiceClient {
         if (!userIds || userIds.length === 0) {
             return [];
         }
+        const path = '/users/internal/batch-details';
         try {
-            log.debug(`Fetching details for ${userIds.length} users from user-service.`);
-            const response = await axios.post(`${this.baseUrl}/internal/batch-details`,
-                { userIds },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.services.serviceSecret}`,
-                        'Content-Type': 'application/json',
-                        'X-Service-Name': 'payment-service'
-                    },
-                    timeout: 10000 // Potentially longer for batch operations
-                }
-            );
+            log.debug(`Fetching details for ${userIds.length} users via request method.`);
+            const response = await this.request<{ success: boolean, data: UserDetails[] } | null>('post', path, { userIds });
 
-            if (response.status === 200 && response.data && response.data.success) {
-                log.info(`Successfully fetched details for ${response.data.data?.length || 0} users.`);
-                return response.data.data as UserDetails[];
+            if (response?.success && Array.isArray(response.data)) {
+                log.info(`Successfully fetched details for ${response.data.length} users.`);
+                return response.data;
             } else {
-                log.error(`Failed to fetch batch user details: Status ${response.status}`, response.data);
-                throw new AppError(response.data?.message || 'Failed to fetch batch user details from user-service.', response.status || 500);
+                log.warn(`Failed to fetch batch user details or invalid response format.`);
+                return [];
             }
         } catch (error: any) {
-            log.error(`Error calling user-service for batch user details:`, error.response?.data || error.message);
-            const errorMessage = error.response?.data?.message || 'Failed to communicate with user service for batch user details.';
-            const errorStatus = error.response?.status || 503;
-            throw new AppError(errorMessage, errorStatus);
+            log.error(`Error fetching batch user details (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for batch user details.`, 503);
         }
     }
 
@@ -328,28 +277,22 @@ class UserServiceClient {
             log.error('Cannot search user IDs: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
         }
+        const path = '/users/internal/search-ids';
         try {
-            log.debug(`Searching for user IDs with term: "${searchTerm}" in user-service.`);
-            const response = await axios.get(`${this.baseUrl}/internal/search-ids`, {
-                params: { term: searchTerm },
-                headers: {
-                    'Authorization': `Bearer ${config.services.serviceSecret}`,
-                    'Content-Type': 'application/json',
-                    'X-Service-Name': 'payment-service'
-                },
-                timeout: 7000
-            });
+            log.debug(`Searching for user IDs with term: "${searchTerm}" via request method.`);
+            const response = await this.request<{ success: boolean; data: string[] } | null>('get', path, undefined, { term: searchTerm });
 
-            if (response.status === 200 && response.data && response.data.success) {
-                log.info(`Successfully found ${response.data.data?.length || 0} user IDs for term "${searchTerm}".`);
-                return response.data.data as string[]; // Assuming data is an array of string IDs
+            if (response?.success && Array.isArray(response.data)) {
+                log.info(`Successfully found ${response.data.length} user IDs for term "${searchTerm}".`);
+                return response.data;
             } else {
-                log.warn(`User ID search failed or returned no results for term "${searchTerm}": Status ${response.status}`, response.data);
+                log.warn(`User ID search failed or returned no results for term "${searchTerm}".`);
                 return null;
             }
         } catch (error: any) {
-            log.error(`Error calling user-service for user ID search (term: "${searchTerm}"):`, error.response?.data || error.message);
-            throw new AppError(`Failed to communicate with user service for user ID search.`, error.response?.status || 503);
+            log.error(`Error calling user-service for user ID search (term: "${searchTerm}") (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for user ID search.`, 503);
         }
     }
 }
