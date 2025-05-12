@@ -96,36 +96,36 @@
             </p>
 
             <% if (typeof errorMessage !=='undefined' && errorMessage && paymentStatus==='PENDING_USER_INPUT' ) { %>
-                <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 animate-fade-in">
-                    <p class="flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20"
-                            fill="currentColor">
-                            <path fill-rule="evenodd"
-                                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                                clip-rule="evenodd" />
-                        </svg>
-                        <%= errorMessage %>
-                    </p>
-                </div>
-                <% } %>
+            <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 animate-fade-in">
+                <p class="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20"
+                        fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                            clip-rule="evenodd" />
+                    </svg>
+                    <%= errorMessage %>
+                </p>
+            </div>
+            <% } %>
 
-                    <div
-                        class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6 animate-fade-in animation-delay-300">
+                <div
+                    class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6 animate-fade-in animation-delay-300">
                         <p class="text-xl font-bold text-center text-indigo-900 mt-1">
                             Amount Due: <span class="font-semibold">
-                                <%= amount %>
-                                    <%= currency %>
-                            </span></p>
-                    </div>
+                            <%= amount %>
+                                <%= currency %>
+                        </span></p>
+                </div>
 
                     <% if (paymentStatus==='PENDING_USER_INPUT' ) { %>
-                        <form id="payment-form" action="javascript:void(0);" method="post"
-                            class="space-y-4 animate-fade-in animation-delay-400" onsubmit="return false;">
-                            <div>
+                <form id="payment-form" action="javascript:void(0);" method="post"
+                    class="space-y-4 animate-fade-in animation-delay-400" onsubmit="return false;">
+                    <div>
                                 <label for="country"
                                     class="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                                <select id="country" name="country" required
-                                    class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm">
+                        <select id="country" name="country" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm">
                                     <option value="" disabled <%=(typeof countryCode==='undefined' || !countryCode)
                                         ? 'selected' : '' %>>Select
                                         Your Country
@@ -160,35 +160,68 @@
                                     <option value="KE" <%=(typeof countryCode !=='undefined' && countryCode==='KE' )
                                         ? 'selected' : '' %>>Kenya
                                     </option>
-                                    <!-- Add other countries as needed -->
-                                </select>
+                            <!-- Add other countries as needed -->
+                        </select>
+                    </div>
+
+                    <div id="operator-select-group" class="hidden mt-4">
+                        <label for="operator" class="block text-sm font-medium text-gray-700 mb-1">Select
+                            Operator</label>
+                        <select id="operator" name="operator"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm">
+                                    <option value="" disabled selected>-- Select
+                                        Payment Operator --</option>
+                            <!-- Options will be populated by JavaScript -->
+                        </select>
+                    </div>
+
+                    <div id="phone-input-group" class="hidden mt-4">
+                        <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number for
+                            Payment</label>
+                                <input type="tel" id="phone" name="phone"
+                                    placeholder="Enter Phone Number (e.g. 69000000)"
+                                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm"
+                                    pattern="[0-9]{8,}"
+                                    title="Please enter your national phone number (at least 8 digits, without country code)"
+                                    value="<%= (typeof phoneNumber !== 'undefined' && phoneNumber) ? phoneNumber : '' %>">
                             </div>
 
-                            <div class="pt-4 animate-fade-in animation-delay-500">
-                                <button type="button" id="submit-button"
-                                    class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
-                                    <span id="button-text">Proceed to Payment</span>
+                            <div id="otp-input-group" class="hidden mt-4">
+                                <label for="otp" class="block text-sm font-medium text-gray-700 mb-1">OTP Code (Orange
+                                    Senegal)</label>
+                                <input type="text" id="otp" name="otp" placeholder="Enter OTP from #144#391#"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out sm:text-sm"
+                                    pattern="[0-9]{4,8}"
+                                    title="Enter the OTP code (4-8 digits) obtained by dialing #144#391# on your Orange Senegal phone.">
+                                <p class="text-xs text-gray-500 mt-1">Dial #144#391# on your Orange Senegal phone to get
+                                    the OTP.</p>
+                    </div>
+
+                    <div class="pt-4 animate-fade-in animation-delay-500">
+                        <button type="button" id="submit-button"
+                            class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span id="button-text">Proceed to Payment</span>
                                     <svg id="button-loading-spinner"
                                         class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden"
-                                        xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                            stroke-width="4">
-                                        </circle>
-                                        <path class="opacity-75" fill="currentColor"
-                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                                        </path>
-                                    </svg>
-                                </button>
-                            </div>
+                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="4">
+                                </circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
+                            </svg>
+                        </button>
+                    </div>
 
                             <div id="error-message" class="text-red-600 text-sm text-center mt-3 min-h-[1.25rem]">
                             </div>
-                            <!-- Reserve space -->
+                    <!-- Reserve space -->
                             <div id="loading"
                                 class="text-gray-600 text-sm text-center mt-2 hidden animate-subtle-pulse">
-                                Processing your request...
-                            </div>
-                        </form>
+                        Processing your request...
+                    </div>
+                </form>
 
                         <!-- Retry button for errors (only if form was shown due to PENDING_USER_INPUT which might have come from an ERROR reset) -->
                         <% if (errorMessage) { %>
@@ -265,7 +298,7 @@
                                         </div>
                                         <div id="error-message"
                                             class="text-center mt-4 p-3 bg-yellow-100 text-yellow-800 border border-yellow-300 rounded-md text-base min-h-[2.5rem] font-medium">
-                                            If you are not redirected, please click the button above or refresh.
+                                            Please check your phone to approve the payment request.
                                         </div>
                                     </div>
                                     <% } else if (paymentStatus==='SUCCEEDED' ) { %>
@@ -305,21 +338,21 @@
                                                 </div>
                                                 <% } %>
 
-                                                    <!-- Powered By Section -->
+                <!-- Powered By Section -->
                                                     <div
                                                         class="mt-8 text-center border-t pt-4 animate-fade-in animation-delay-500">
                                                         <p class="text-xs text-gray-500 mb-2">
                                                             Secure Payments Powered
                                                             By:</p>
-                                                        <div class="flex justify-center items-center space-x-4">
-                                                            <img src="https://africabusinesscommunities.com/Images/Key%20Logos/FEEXPAY.png"
+                    <div class="flex justify-center items-center space-x-4">
+                        <img src="https://africabusinesscommunities.com/Images/Key%20Logos/FEEXPAY.png"
                                                                 alt="FeexPay Logo"
                                                                 class="h-5 md:h-6 w-auto grayscale opacity-75">
-                                                            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSbHJ_vdJJJtZovlSLFIAv_uVGsbuX6xkH1kA&s"
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSbHJ_vdJJJtZovlSLFIAv_uVGsbuX6xkH1kA&s"
                                                                 alt="CinetPay Logo"
                                                                 class="h-5 md:h-6 w-auto grayscale opacity-75">
-                                                        </div>
-                                                    </div>
+                    </div>
+                </div>
     </div>
 
     <script>

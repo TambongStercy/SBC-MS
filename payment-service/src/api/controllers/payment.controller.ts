@@ -136,34 +136,28 @@ export class PaymentController {
     public submitPaymentDetails = async (req: Request, res: Response) => {
         try {
             const { sessionId } = req.params;
-            // Only expect countryCode and paymentCurrency for FeexLink flow
-            // Phone/operator/otp are handled on the FeexLink page itself.
-            const { countryCode, paymentCurrency, phoneNumber, operator, otp } = req.body;
+            // Expect phone, country, and paymentCurrency
+            const { phoneNumber, countryCode, paymentCurrency, operator } = req.body;
 
-            log.info(`Received submit details request for ${sessionId}: country=${countryCode}, currency=${paymentCurrency}`);
-            if (phoneNumber) log.info(`(Phone number provided but likely unused for FeexLink: ${phoneNumber})`);
-            if (operator) log.info(`(Operator provided but likely unused for FeexLink: ${operator})`);
-            if (otp) log.info(`(OTP provided but likely unused for FeexLink: ${otp})`);
+            console.log(req.body)
 
-            // Basic validation
+            // Validation is handled by middleware, but basic check here is okay too
             if (!countryCode || !paymentCurrency) {
-                return res.status(400).json({ success: false, message: 'Missing required fields: countryCode, paymentCurrency' });
+                return res.status(400).json({ success: false, message: 'Missing required fields: phoneNumber, countryCode, paymentCurrency' });
             }
 
             const paymentIntent = await paymentService.submitPaymentDetails(
                 sessionId,
-                // Pass only the necessary fields for gateway selection and currency
-                // Service layer will decide based on gateway if it needs other details (it won't for FeexLink)
-                { countryCode, paymentCurrency }
-                // Removed phoneNumber, operator, otp from the object passed to the service
+                // Pass all necessary details
+                { phoneNumber, countryCode, paymentCurrency, operator }
             );
 
             res.status(200).json({
                 success: true,
                 data: {
                     sessionId: paymentIntent.sessionId,
-                    gatewayCheckoutUrl: paymentIntent.gatewayCheckoutUrl, // This will be the FeexLink URL
-                    status: paymentIntent.status // Should be PENDING_PROVIDER
+                    gatewayCheckoutUrl: paymentIntent.gatewayCheckoutUrl,
+                    status: paymentIntent.status
                 }
             });
         } catch (error: any) {
