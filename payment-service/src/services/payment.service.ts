@@ -735,23 +735,27 @@ class PaymentService {
      * Handle Feexpay webhook notification
      */
     public async handleFeexpayWebhook(payload: any): Promise<void> {
-        const { reference, amount, status, callback_info } = payload;
-        const sessionId = callback_info?.sessionId;
+        const { reference, status } = payload; // Removed amount and callback_info
 
-        if (!reference || !sessionId) {
-            log.warn('Received Feexpay webhook with missing reference or callback_info.sessionId', payload);
-            throw new Error('Webhook payload missing required fields');
+        if (!reference) {
+            log.warn('Received Feexpay webhook with missing reference', payload);
+            throw new Error('Webhook payload missing required reference field');
         }
 
+        // Find the payment intent using ONLY the reference (which is Feexpay's ID)
         const paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(reference, PaymentGateway.FEEXPAY);
 
         if (!paymentIntent) {
-            log.error(`Payment intent not found for webhook session: ${sessionId}, reference: ${reference}`);
-            throw new Error('Payment intent not found for webhook');
+            // Use reference in the log message as sessionId might not be available
+            log.error(`Payment intent not found for Feexpay webhook reference: ${reference}`);
+            throw new Error('Payment intent not found for Feexpay webhook');
         }
 
+        // Log the sessionId found from the intent for context
+        log.info(`Found PaymentIntent ${paymentIntent.sessionId} for Feexpay reference ${reference}`);
+
         if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
-            log.warn(`Webhook received for already processed payment intent: ${sessionId}, Status: ${paymentIntent.status}`);
+            log.warn(`Webhook received for already processed payment intent: ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
             return;
         }
 
@@ -761,15 +765,19 @@ class PaymentService {
         } else if (status === 'FAILED') {
             newStatus = PaymentStatus.FAILED;
         } else {
+            // If status is not SUCCESSFUL or FAILED, update internal status based on current state
+            // PENDING_PROVIDER -> PROCESSING, otherwise keep current (e.g., might be PROCESSING already)
             newStatus = paymentIntent.status === PaymentStatus.PENDING_PROVIDER ? PaymentStatus.PROCESSING : paymentIntent.status;
+            log.info(`Received non-final Feexpay status: ${status}. Setting internal status to ${newStatus} for ${paymentIntent.sessionId}`);
         }
 
         let updatedIntent: IPaymentIntent | null = paymentIntent;
         if (newStatus !== paymentIntent.status) {
-            updatedIntent = await paymentIntentRepository.addWebhookEvent(sessionId, newStatus, payload);
-            log.info(`PaymentIntent ${sessionId} status updated to ${newStatus} via Feexpay webhook.`);
+            // Use the sessionId from the fetched paymentIntent
+            updatedIntent = await paymentIntentRepository.addWebhookEvent(paymentIntent.sessionId, newStatus, payload);
+            log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to ${newStatus} via Feexpay webhook.`);
             if (!updatedIntent) {
-                log.error(`Failed to update PaymentIntent ${sessionId} after webhook event. Cannot proceed.`);
+                log.error(`Failed to update PaymentIntent ${paymentIntent.sessionId} after webhook event. Cannot proceed.`);
                 return;
             }
         }
