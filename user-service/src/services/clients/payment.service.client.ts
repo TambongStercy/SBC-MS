@@ -127,9 +127,9 @@ class PaymentServiceClient {
             this.log.error(`Error calling payment service ${url}: ${error.message}`);
             if (axios.isAxiosError(error)) {
                 this.log.error('Payment Service Error Response (createIntent):', { status: error.response?.status, data: error.response?.data });
-                throw new Error(error.response?.data?.message || 'Payment service communication error');
+                throw new Error(error.response?.data?.message || 'Payment service communication error (createIntent)');
             }
-            throw new Error('Payment service communication error');
+            throw new Error('Payment service communication error (createIntent)');
         }
     }
 
@@ -157,9 +157,9 @@ class PaymentServiceClient {
             this.log.error(`Error calling payment service ${url}: ${error.message}`);
             if (axios.isAxiosError(error)) {
                 this.log.error('Payment Service Error Response (recordInternalDeposit):', { status: error.response?.status, data: error.response?.data });
-                throw new Error(error.response?.data?.message || 'Payment service communication error');
+                throw new Error(error.response?.data?.message || 'Payment service communication error (recordInternalDeposit)');
             }
-            throw new Error('Payment service communication error');
+            throw new Error('Payment service communication error (recordInternalDeposit)');
         }
     }
 
@@ -355,7 +355,7 @@ class PaymentServiceClient {
         } catch (error: any) {
             this.log.error(`Error calling payment service ${url} for user ${userId}: ${error.message}`);
             if (axios.isAxiosError(error)) {
-                this.log.error('Payment Service Error Response (getUserTotalWithdrawals):', { status: error.response?.status, data: error.response?.data });
+                this.log.error(`Payment Service Error Response (getUserTotalWithdrawals User: ${userId}):`, { status: error.response?.status, data: error.response?.data });
             }
             return 0; // Return 0 on communication error
         }

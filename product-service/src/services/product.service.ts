@@ -77,11 +77,11 @@ export class ProductService {
      * @returns Product object with whatsappLink.
      */
     private async augmentProductWithWhatsappLink(
-        product: IProduct
+        product: IProduct | ProductWithWhatsappLink // Accept either mongoose doc or plain object
     ): Promise<ProductWithWhatsappLink> {
-        // Create a new object from the Mongoose document to avoid directly mutating it
-        // if it's not desired, and to ensure it's a plain object for the whatsappLink.
-        const plainProduct: ProductWithWhatsappLink = product.toObject() as ProductWithWhatsappLink;
+        // No longer need to call .toObject() if product might already be plain
+        // Work with the input object directly, assuming it has IProduct fields
+        const plainProduct: ProductWithWhatsappLink = { ...product } as ProductWithWhatsappLink;
 
         if (!plainProduct.userId) {
             return plainProduct; // Return as is if no userId
@@ -105,14 +105,14 @@ export class ProductService {
      * @returns Array of product objects with whatsappLink.
      */
     private async augmentProductsWithWhatsappLink(
-        products: IProduct[]
+        products: IProduct[] // Assume input is array of plain objects from aggregation
     ): Promise<ProductWithWhatsappLink[]> {
         if (!products || products.length === 0) {
             return [];
         }
 
-        // Convert all products to plain objects first
-        const plainProducts: ProductWithWhatsappLink[] = products.map(p => p.toObject() as ProductWithWhatsappLink);
+        // Work directly with the input array (plain objects)
+        const plainProducts: ProductWithWhatsappLink[] = products.map(p => ({ ...p } as ProductWithWhatsappLink));
         const userIds = Array.from(new Set(plainProducts.map(p => p.userId?.toString()).filter(id => !!id)));
 
         if (userIds.length === 0) {

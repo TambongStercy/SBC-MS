@@ -236,7 +236,7 @@ class PaymentService {
                     log.warn(`Failed to send deposit notification email to ${userEmail} for transaction ${transaction.transactionId}`);
                 }
             } else {
-                 log.warn(`Skipping deposit notification for transaction ${transaction.transactionId} as user email was not available.`);
+                log.warn(`Skipping deposit notification for transaction ${transaction.transactionId} as user email was not available.`);
             }
 
             return transaction;
@@ -988,30 +988,20 @@ class PaymentService {
             gateway: selectedGateway,
             paidCurrency: finalCurrency, // Store the currency user chose to pay with
             paidAmount: finalAmount,    // Store the final amount after potential conversion
-            phoneNumber: fullPhoneNumber, // Store the full international phone number
-            // Keep other fields undefined for now, add conditionally below
+            // phoneNumber is no longer set here for FeexLink flow, it will be cleared by initiateFeexpayPayment
+            // operator is also no longer set here
         };
 
-        // Validate if phone number/operator is required and present *after* selecting gateway
-        if (selectedGateway === PaymentGateway.FEEXPAY) {
-            if (!updateData.phoneNumber) { // Check the potentially modified fullPhoneNumber
-                log.error(`Feexpay requires a phone number, but it was missing or could not be constructed for session ${sessionId}.`);
-                throw new Error('Phone number is required for the selected country.');
-            }
-            // Check if operator selection is required for this country
-            const operatorsForCountry = this.getFeexpayOperatorsForCountry(details.countryCode);
-            if (operatorsForCountry && operatorsForCountry.length > 1 && !details.operator) {
-                log.error(`Feexpay requires an operator selection for country ${details.countryCode}, but it was missing.`);
-                throw new Error('Operator selection is required for the selected country.');
-            }
-            // Add phone and operator to data if they exist (operator might be null if country has only 1)
-            if (details.operator) updateData.operator = details.operator;
+        // Removed the block that validated and set phoneNumber/operator for FEEXPAY
+        // as FeexLink handles this on their page.
 
-        } else if (selectedGateway === PaymentGateway.CINETPAY) {
+        if (selectedGateway === PaymentGateway.CINETPAY) {
             // CinetPay might require phone/email later for card payments, but not for this initial API call
             // We specifically *don't* set phone/operator here, letting them remain undefined in updateData
-            // updateData.phoneNumber = undefined; // No need, default is undefined
-            // updateData.operator = undefined;   // No need, default is undefined
+            // For CinetPay, if a phone number was passed in details, we can still store it if desired,
+            // but it's not strictly needed for the FeexLink equivalent for CinetPay (checkout page).
+            // Let's keep it consistent and not store it in updateData here.
+            updateData.phoneNumber = fullPhoneNumber; // Store only if CinetPay and phone was provided
         }
 
         // Update the intent before initiating payment
@@ -1030,7 +1020,7 @@ class PaymentService {
 
         try {
             if (updatedIntent.gateway === PaymentGateway.FEEXPAY) {
-                finalPaymentIntent = await this.initiateFeexpayPayment(updatedIntent, finalAmount, finalCurrency, details.operator, details.otp);
+                finalPaymentIntent = await this.initiateFeexpayPayment(updatedIntent, finalAmount, finalCurrency);
             } else if (updatedIntent.gateway === PaymentGateway.CINETPAY) {
                 finalPaymentIntent = await this.initiateCinetPayPayment(updatedIntent, finalAmount, finalCurrency);
             } else {
@@ -1108,102 +1098,51 @@ class PaymentService {
         return feexpayOperators[countryCode];
     }
 
+    /**
+     * Initiates a FeexPay payment by generating a FeexLink.
+     * @param paymentIntent The payment intent document.
+     * @param amount The final amount to pay.
+     * @param currency The currency for the payment link.
+     * @returns Updated payment intent with gatewayCheckoutUrl.
+     */
     private async initiateFeexpayPayment(
         paymentIntent: IPaymentIntent,
         amount: number,
-        currency: string, // Currency determined by frontend based on country 
-        operator?: string, // Operator selected by user on frontend if applicable
-        otp?: string // Added for Orange Senegal OTP
+        currency: string // Currency determined by frontend based on country
+        // Removed operator and otp parameters as they are not used for FeexLink API
     ): Promise<IPaymentIntent> {
 
-        let endpointOperator = operator;
-
-        // Determine the operator if not provided explicitly
-        if (!endpointOperator) {
-            const countryOperators = this.getFeexpayOperatorsForCountry(paymentIntent.countryCode!);
-            if (countryOperators && countryOperators.length === 1) {
-                endpointOperator = countryOperators[0];
-                log.info(`Only one Feexpay operator found for ${paymentIntent.countryCode}, using: ${endpointOperator}`);
-            } else {
-                // If multiple operators exist but none selected, we cannot proceed reliably.
-                // The validation in submitPaymentDetails should prevent this case.
-                log.error(`Feexpay operator ambiguity for country ${paymentIntent.countryCode}. Operator selection required but missing.`);
-                throw new Error('Operator selection is required for Feexpay payment in this country.');
-            }
-        }
-
-        // Construct the dynamic endpoint
-        const endpoint = `/transactions/public/requesttopay/${endpointOperator}`;
-        log.info(`Constructed Feexpay endpoint: ${endpoint}`);
-
-        // Simple validation of the operator string format
-        if (!endpointOperator || !/^[a-z0-9_]+$/i.test(endpointOperator)) {
-            log.error(`Invalid Feexpay operator format determined or provided: ${endpointOperator}`);
-            throw new Error('Invalid payment operator specified.');
-        }
-
-        // Ensure phone number exists on the intent (should be validated earlier, but double-check)
-        if (!paymentIntent.phoneNumber) {
-            throw new Error('Internal error: Phone number missing for Feexpay initiation.');
-        }
-
-        // Attempt to parse phone number as integer
-        let phoneNumberAsInt: number | undefined;
-        try {
-            const cleanedPhone = paymentIntent.phoneNumber.replace(/\s+/g, '').replace('+', '');
-            if (cleanedPhone && /^[0-9]+$/.test(cleanedPhone)) {
-                phoneNumberAsInt = parseInt(cleanedPhone, 10);
-            }
-        } catch (parseError) {
-            log.error(`Error parsing Feexpay phoneNumber ${paymentIntent.phoneNumber}: ${parseError}`);
-        }
-
-        if (phoneNumberAsInt === undefined) {
-            log.error(`Could not parse Feexpay phoneNumber to integer: ${paymentIntent.phoneNumber}`);
-            throw new Error('Invalid phone number format provided.');
-        }
+        // Define FeexLink API details
+        const endpoint = '/feexlink/api-create';
+        const description = `Paiement SBC - Session: ${paymentIntent.sessionId}`.substring(0, 100); // Max 100 chars, include sessionId
+        const paymentMethod = 'ALL'; // Allow MOBILE or CARD on FeexLink page
+        const range = 1; // Single use link
+        const expireIn = 15; // Link expires in 15 minutes
 
         // Log details before sending
-        log.info(`Initiating Feexpay payment for sessionId: ${paymentIntent.sessionId}`);
-        log.info(`Feexpay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${phoneNumberAsInt}`);
+        log.info(`Initiating FeexLink generation for sessionId: ${paymentIntent.sessionId}`);
+        log.info(`FeexLink endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, description: ${description}`);
         log.info(`Feexpay config: baseUrl=${config.feexpay.baseUrl}, shopId=${config.feexpay.shopId}`);
 
-        const requestBody: {
-            shop: string;
-            amount: number;
-            phoneNumber: number;
-            description: string;
-            otp?: string; // Added optional otp property
-        } = {
+        // Construct request body for FeexLink API
+        const requestBody = {
             shop: config.feexpay.shopId,
             amount: amount,
-            phoneNumber: phoneNumberAsInt,
-            description: "Subscription Payment", // Simplified
-            // Removed currency, callback_info based on previous analysis
-            // Optional firstName, lastName could be added if user data is available
+            description: description,
+            paymentMethod: paymentMethod,
+            range: range,
+            expireIn: expireIn
+            // No phoneNumber, operator, or otp needed here
         };
 
-        // Add OTP to request body if operator is orange_sn and OTP is provided
-        if (endpointOperator === 'orange_sn' && otp) {
-            requestBody.otp = otp;
-            log.info(`Orange SN: Added OTP to Feexpay request body.`);
-        } else if (endpointOperator === 'orange_sn' && !otp) {
-            log.error(`Feexpay operator is orange_sn but OTP is missing for session ${paymentIntent.sessionId}.`);
-            // This case should ideally be prevented by client-side validation requiring OTP for orange_sn
-            throw new Error('OTP is required for Orange Senegal payments.');
-        }
-
-        log.info(`Feexpay request body: ${JSON.stringify(requestBody)}`);
+        log.debug(`FeexLink request body: ${JSON.stringify(requestBody)}`);
 
         try {
-            // TEMPORARY DEBUG LOGGING - REMOVE AFTER VERIFICATION
-            log.info(`[DEBUG] Using FeexPay API Key: "${config.feexpay.apiKey}"`);
             const authHeader = `Bearer ${config.feexpay.apiKey}`;
-            log.info(`[DEBUG] Constructed FeexPay Authorization Header: "${authHeader}"`);
-            // END TEMPORARY DEBUG LOGGING
+            log.debug(`[DEBUG] FeexLink Authorization Header: "${authHeader}"`);
 
             const response = await axios.post(
-                `${config.feexpay.baseUrl}${endpoint}`, // Use dynamically constructed endpoint
+                `${config.feexpay.baseUrl}${endpoint}`, // Use FeexLink endpoint
                 requestBody,
                 {
                     headers: {
@@ -1213,39 +1152,49 @@ class PaymentService {
                 }
             );
 
-            log.info(`Feexpay response status: ${response.status}`);
-            log.info(`Feexpay response data: ${JSON.stringify(response.data)}`);
+            log.info(`FeexLink generation response status: ${response.status}`);
+            log.info(`FeexLink generation response data: ${JSON.stringify(response.data)}`);
 
-            // Update payment intent with gateway response data
+            // Check for successful response and urlPay
+            if (!response.data || !response.data.urlPay) {
+                log.error(`FeexLink generation failed or urlPay missing in response for sessionId: ${paymentIntent.sessionId}`, response.data);
+                throw new Error('Failed to generate FeexPay payment link.');
+            }
+
+            // Update payment intent with the payment link URL and set status
             const updateData: Partial<IPaymentIntent> = {
-                gatewayPaymentId: response.data.reference,
-                gatewayCheckoutUrl: response.data.payment_url || undefined, // May not exist for request-to-pay
-                status: PaymentStatus.PENDING_PROVIDER, // Assume pending until webhook confirms
-                gatewayRawResponse: response.data
+                gatewayCheckoutUrl: response.data.urlPay,
+                status: PaymentStatus.PENDING_PROVIDER, // Status indicating user needs to be redirected
+                gatewayRawResponse: response.data,
+                // gatewayPaymentId might not be relevant here until webhook provides one?
+                // Clear phone/operator details if they were stored previously from old flow
+                phoneNumber: undefined,
+                operator: undefined
             };
 
-            // Update using repository
             const updatedIntent = await paymentIntentRepository.updateBySessionId(
                 paymentIntent.sessionId,
                 updateData
             );
 
             if (!updatedIntent) {
-                throw new Error('Failed to update payment intent after Feexpay initiation');
+                throw new Error('Failed to update payment intent after FeexLink generation');
             }
 
+            log.info(`Successfully generated FeexLink for ${paymentIntent.sessionId}: ${updatedIntent.gatewayCheckoutUrl}`);
             return updatedIntent;
+
         } catch (error: any) {
-            log.error(`Feexpay payment initiation failed for sessionId: ${paymentIntent.sessionId}`);
+            log.error(`FeexLink generation failed for sessionId: ${paymentIntent.sessionId}`);
             if (error.response) {
-                log.error(`Feexpay API Error: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
+                log.error(`FeexLink API Error: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             } else if (error.request) {
-                log.error(`Feexpay no response received: ${error.message}`);
+                log.error(`FeexLink no response received: ${error.message}`);
             } else {
-                log.error(`Feexpay request setup error: ${error.message}`);
+                log.error(`FeexLink request setup error: ${error.message}`);
             }
-            // Don't set status to ERROR here; let submitPaymentDetails handle it
-            throw new Error('Failed to initiate Feexpay payment');
+            // Let submitPaymentDetails handle setting status to ERROR
+            throw new Error('Failed to generate FeexPay payment link.');
         }
     }
 
