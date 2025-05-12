@@ -415,7 +415,7 @@ Authorization: Bearer {{userA_AuthToken}}
 
 ###
 # WH1. User A (Referrer) creates a webhook
-POST {{baseUrl}}/payments/webhooks/feexpay
+POST https://sniperbuisnesscenter.com/api/payments/webhooks/feexpay
 Content-Type: application/json
 
 {

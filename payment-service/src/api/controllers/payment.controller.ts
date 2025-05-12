@@ -192,7 +192,7 @@ export class PaymentController {
             const authHeader = req.headers.authorization;
 
             console.log('payload: ', payload)
-            
+
             log.info(`Received Feexpay webhook for reference: ${payload?.reference}`);
             log.info('Feexpay webhook payload:', payload);
             log.info(`Feexpay webhook auth header: ${authHeader}`);
@@ -222,30 +222,40 @@ export class PaymentController {
 
     private verifyFeexpayWebhookAuth(authHeader: string | undefined): boolean {
         if (!config.feexpay.webhookSecret) {
-            log.warn('FEEXPAY_WEBHOOK_SECRET is not set. Skipping Basic Auth verification.');
+            log.warn('FEEXPAY_WEBHOOK_SECRET is not set. Skipping Auth verification.');
             return true;
         }
-        if (!authHeader || !authHeader.startsWith('Basic ')) {
-            log.warn('Feexpay webhook missing or invalid Basic Auth header.');
+        if (!authHeader) {
+            log.warn('Feexpay webhook missing Authorization header.');
             return false;
         }
 
-        try {
+        // Accept Bearer token
+        if (authHeader.startsWith('Bearer ')) {
+            const token = authHeader.split(' ')[1];
+            if (token === config.feexpay.webhookSecret) {
+                return true;
+            } else {
+                log.warn('Feexpay webhook Bearer token mismatch.');
+                return false;
+            }
+        }
+
+        // Accept Basic Auth
+        if (authHeader.startsWith('Basic ')) {
             const encodedCredentials = authHeader.split(' ')[1];
             const expectedEncoded = Buffer.from(config.feexpay.webhookSecret).toString('base64');
-
             if (encodedCredentials === expectedEncoded) {
                 return true;
             } else {
                 log.warn('Feexpay webhook Basic Auth credentials mismatch.');
                 // Avoid logging secrets or encoded secrets in production
-                log.debug(`Received: ${encodedCredentials}, Expected Encoded: ${expectedEncoded}`);
                 return false;
             }
-        } catch (e) {
-            log.error('Error decoding/comparing webhook basic auth', e);
-            return false;
         }
+
+        log.warn('Feexpay webhook Authorization header format not recognized.');
+        return false;
     }
 
     /**
