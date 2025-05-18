@@ -1,91 +1,256 @@
-version: '3.8' # Specifies the version of the Docker Compose file format
+# Specifies the version of the Docker Compose file format - THIS LINE WILL BE REMOVED
+
+# Define global environment variables using an extension field
+x-env-vars: &common-env-vars
+  NODE_ENV: development
+  USER_SERVICE_URL: http://user-service:3001
+  NOTIFICATION_SERVICE_URL: http://notification-service:3002
+  PAYMENT_SERVICE_URL: http://payment-service:3003
+  PRODUCT_SERVICE_URL: http://product-service:3004
+  ADVERTISING_SERVICE_URL: http://advertising-service:3005
+  TOMBOLA_SERVICE_URL: http://tombola-service:3006
+  SETTINGS_SERVICE_URL: http://settings-service:3007
+  ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:3009
+  GLOBAL_MONGO_BASE_URI: "mongodb://host.docker.internal:27017" # REMOVED
+
+  # Define common restart policy and healthcheck for Node.js services
+x-node-service-defaults: &node-service-defaults
+  restart: unless-stopped
+  # HEALTHCHECK REMOVED FROM HERE - WILL BE ADDED PER SERVICE
 
 services:
-  gateway-service:
-    # Defines a service named 'gateway-service'
-    build:
-      context: ./gateway-service # Tells Docker Compose to look for a Dockerfile in the ./gateway-service directory
-      dockerfile: Dockerfile # Specifies the name of the Dockerfile
+  nginx:
+    image: nginx:alpine
+    container_name: sbc_nginx_reverse_proxy
     ports:
-      - "3000:3000" # Maps port 3000 of the host to port 3000 of the container (as exposed in your Dockerfile)
-    container_name: gateway_service_container # Optional: a friendly name for your container 
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      user-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      tombola-service:
+        condition: service_healthy
+      settings-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      advertising-service:
+        condition: service_healthy
+      admin-frontend-ms:
+        condition: service_started
+    restart: unless-stopped
 
   user-service:
+    <<: *node-service-defaults
     build:
       context: ./user-service
-      dockerfile: Dockerfile
+      target: development
+    container_name: user_service # User changed this
+    command: npm run dev
+    environment:
+      <<: *common-env-vars
+      PORT: 3001
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_user_dev # Explicit URI
+    healthcheck:
+      # ADDED SPECIFIC HEALTHCHECK
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./user-service:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
     ports:
       - "3001:3001"
-    container_name: user_service_container
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
-
-  notification-service:
-    build:
-      context: ./notification-service
-      dockerfile: Dockerfile
-    ports:
-      - "3002:3002"
-    container_name: notification_service_container
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
 
   payment-service:
+    <<: *node-service-defaults
     build:
       context: ./payment-service
-      dockerfile: Dockerfile
+      target: development
+    container_name: payment_service
+    command: npm run dev
+    environment:
+      <<: *common-env-vars
+      PORT: 3003
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_payment_dev # Explicit URI
+    healthcheck:
+      # ADDED SPECIFIC HEALTHCHECK
+      test: [ "CMD", "curl", "-f", "http://localhost:3003/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./payment-service:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
     ports:
       - "3003:3003"
-    container_name: payment_service_container
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
 
   product-service:
+    <<: *node-service-defaults
     build:
       context: ./product-service
-      dockerfile: Dockerfile
+      target: development
+    container_name: product_service
+    command: npm run dev
+    environment:
+      <<: *common-env-vars
+      PORT: 3004
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_product_dev # Explicit URI
+    healthcheck:
+      # ADDED SPECIFIC HEALTHCHECK
+      test: [ "CMD", "curl", "-f", "http://localhost:3004/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./product-service:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
     ports:
       - "3004:3004"
-    container_name: product_service_container
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
-
-  advertising-service:
-    build:
-      context: ./advertising-service
-      dockerfile: Dockerfile
-    ports:
-      - "3005:3005"
-    container_name: advertising_service_container
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
 
   tombola-service:
+    <<: *node-service-defaults
     build:
       context: ./tombola-service
-      dockerfile: Dockerfile
+      target: development
+    container_name: tombola_service
+    command: npm run dev
+    environment:
+      <<: *common-env-vars
+      PORT: 3006
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_tombola_dev # Explicit URI
+    healthcheck:
+      # ADDED SPECIFIC HEALTHCHECK
+      test: [ "CMD", "curl", "-f", "http://localhost:3006/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./tombola-service:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
     ports:
       - "3006:3006"
-    container_name: tombola_service_container
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
 
   settings-service:
+    <<: *node-service-defaults
     build:
       context: ./settings-service
-      dockerfile: Dockerfile
+      target: development
+    container_name: settings_service
+    command: npm run dev
+    environment:
+      <<: *common-env-vars
+      PORT: 3007
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_settings_dev # Explicit URI
+    healthcheck:
+      # ADDED SPECIFIC HEALTHCHECK
+      test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./settings-service:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
     ports:
       - "3007:3007"
-    container_name: settings_service_container
+    # REMOVED depends_on: - mongo (if it was here)
+
+  notification-service:
+    <<: *node-service-defaults
+    build:
+      context: ./notification-service
+      target: development
+    container_name: notification_service
+    command: npm run dev
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
+      <<: *common-env-vars
+      PORT: 3002
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_notification_dev # Explicit URI
+    healthcheck:
+      # ADDED SPECIFIC HEALTHCHECK
+      test: [ "CMD", "curl", "-f", "http://localhost:3002/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./notification-service:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
+    ports:
+      - "3002:3002"
+
+  advertising-service:
+    <<: *node-service-defaults
+    build:
+      context: ./advertising-service
+      target: development
+    container_name: advertising_service
+    command: npm run dev
+    environment:
+      <<: *common-env-vars
+      PORT: 3005
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_advertising_dev # Explicit URI
+    healthcheck:
+      # ADDED SPECIFIC HEALTHCHECK
+      test: [ "CMD", "curl", "-f", "http://localhost:3005/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./advertising-service:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
+    ports:
+      - "3005:3005"
 
   admin-frontend-ms:
+    restart: unless-stopped
     build:
       context: ./admin-frontend-ms
-      dockerfile: Dockerfile
+    container_name: admin_frontend
+    environment:
+      <<: *common-env-vars
+      PORT: 3009
+    volumes:
+      - ./admin-frontend-ms:/usr/src/app
+      - /usr/src/app/node_modules
+    working_dir: /usr/src/app
     ports:
-      - "8008:80" # Host port 3008 maps to container port 80 (Nginx)
-    container_name: admin_frontend_container
+      - "3009:3009"
+
+# mongo: (Commented out as we use host MongoDB)
+#   image: mongo:latest
+#   container_name: mongo-db
+#   restart: unless-stopped
+#   ports:
+#     - "27017:27017"
+#   volumes:
+#     - mongo-data:/data/db
+#   networks:
+#     - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+# volumes: (mongo-data no longer needed)
+#   mongo-data:
+#     driver: local

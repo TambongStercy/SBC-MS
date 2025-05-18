@@ -1,0 +1,27 @@
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
+WORKDIR /usr/src/app
+
+# Copy package.json and package-lock.json (or yarn.lock)
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy the rest of the application source code
+COPY . .
+
+# Build the application (Vite typically outputs to /dist)
+RUN npm run dev
+
+# Stage 2: Serve the static files with Nginx
+FROM nginx:alpine
+
+# Copy the built static files from the builder stage to Nginx's web root
+COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
+
+# Expose port 80 (Nginx's default port)
+EXPOSE 80
+
+# Nginx will start automatically when the container runs
+# The default CMD for the nginx image is usually sufficient 

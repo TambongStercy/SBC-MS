@@ -5,35 +5,12 @@ import { IProduct, ProductStatus, IProductImage } from '../database/models/produ
 import { IRating } from '../database/models/rating.model';
 import { CustomError } from '../utils/custom-error';
 import { settingsServiceClient } from '../services/clients/settings.service.client';
+import { userServiceClient, UserDetails } from '../services/clients/user.service.client';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('ProductService');
 
-// --- Placeholder for UserServiceClient and UserDetails ---
-// In a real microservice architecture, this client would make HTTP calls
-// to the User Service to fetch user details.
-interface UserDetails {
-    _id: Types.ObjectId | string;
-    phoneNumber?: string;
-    // Add other fields if needed from user-service
-}
 
-// This is a MOCK client. Replace with actual HTTP client implementation.
-const userServiceClient = {
-    async getUsersDetailsByIds(userIds: string[]): Promise<UserDetails[]> {
-        // TODO: Remove this mock and creation functional client
-        log.warn(`(MOCK) userServiceClient.getUsersDetailsByIds called for IDs: ${userIds.join(', ')}`);
-        // Simulate fetching user data. In a real scenario, this would be an API call.
-        // Example: return an empty array or mock data if needed for testing.
-        // This mock is NOT for production.
-        // You would typically use an HTTP client like axios here, configured with the User Service URL.
-        // For the purpose of this example, let's assume it returns some mock data or empty.
-        // Example:
-        // return userIds.map(id => ({ _id: new Types.ObjectId(id), phoneNumber: \`+1234567890${id.slice(-1)}\`}));
-        return []; // Defaulting to empty to avoid breaking logic if not mocked externally
-    }
-};
-// --- End Placeholder ---
 
 // Define a type for the product augmented with a WhatsApp link
 type ProductWithWhatsappLink = IProduct & { whatsappLink?: string };
@@ -87,10 +64,10 @@ export class ProductService {
             return plainProduct; // Return as is if no userId
         }
         try {
-            const userDetailsArray = await userServiceClient.getUsersDetailsByIds([plainProduct.userId.toString()]);
+            const userDetailsArray = await userServiceClient.getUsersByIds([plainProduct.userId.toString()]);
             if (userDetailsArray && userDetailsArray.length > 0) {
                 const user = userDetailsArray[0];
-                plainProduct.whatsappLink = this.generateWhatsAppLink(user.phoneNumber);
+                plainProduct.whatsappLink = this.generateWhatsAppLink(user.phoneNumber?.toString());
             }
         } catch (error) {
             log.error(`Failed to fetch user details for WhatsApp link (product ${plainProduct._id}):`, error);
@@ -121,8 +98,8 @@ export class ProductService {
 
         const userDetailsMap = new Map<string, UserDetails>();
         try {
-            const userDetailsArray = await userServiceClient.getUsersDetailsByIds(userIds as string[]); // Cast to string[] is fine here
-            userDetailsArray.forEach(ud => userDetailsMap.set(ud._id.toString(), ud));
+            const userDetailsArray = await userServiceClient.getUsersByIds(userIds as string[]); // Cast to string[] is fine here
+            userDetailsArray.forEach((ud: UserDetails) => userDetailsMap.set(ud._id.toString(), ud));
         } catch (error) {
             log.error('Failed to fetch user details in batch for WhatsApp links:', error);
         }
