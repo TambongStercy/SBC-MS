@@ -15,6 +15,25 @@ export enum UserSex {
     PREFER_NOT_TO_SAY = 'prefer_not_to_say',
 }
 
+// Simple map for country codes to dialing codes relevant to the User model
+const countryDialingCodesMap: { [key: string]: string } = {
+    CM: '237', // Cameroon
+    BJ: '229', // Benin
+    CG: '242', // Congo
+    GH: '233', // Ghana
+    CI: '225', // Cote d'Ivoire
+    SN: '221', // Senegal
+    TG: '228', // Togo
+    BF: '226', // Burkina Faso
+    GN: '224', // Guinea
+    ML: '223', // Mali
+    NE: '227', // Niger
+    GA: '241', // Gabon
+    CD: '243', // DRC
+    KE: '254', // Kenya
+    // Add other countries supported by your application
+};
+
 // Interface for OTP subdocument
 interface IOtp extends Document {
     code: string;
@@ -135,7 +154,8 @@ const UserSchema = new Schema<IUser>(
         sex: {
             type: String,
             enum: Object.values(UserSex),
-            index: true
+            index: true,
+            lowercase: true
         },
         birthDate: {
             type: Date,
@@ -169,17 +189,95 @@ const UserSchema = new Schema<IUser>(
 
 // --- Middleware --- 
 
-// Password Hashing
+// Consolidated pre('save') hook for password hashing and sex normalization
 UserSchema.pre<IUser>('save', async function (next: any) {
-    if (!this.isModified('password') || !this.password) {
-        return next();
+    // Phone Number Normalization Logic
+    if (this.isModified('phoneNumber') && this.phoneNumber) {
+        let originalPhone = this.phoneNumber;
+        let cleanedPhone = this.phoneNumber.replace(/\D/g, ''); // Remove all non-digits
+        const userCountry = this.country?.toUpperCase(); // Get user's selected country
+        let expectedDialingCode = userCountry ? countryDialingCodesMap[userCountry] : null;
+
+        console.log(`[DEBUG] Phone Normalization: Original: ${originalPhone}, Cleaned: ${cleanedPhone}, Country: ${userCountry}, Expected Code: ${expectedDialingCode}`);
+
+        if (expectedDialingCode) {
+            // Case 1: Cleaned phone starts with the correct dialing code
+            if (cleanedPhone.startsWith(expectedDialingCode)) {
+                // Check for double dialing code (e.g., 237237...)
+                const doubleCode = expectedDialingCode + expectedDialingCode;
+                if (cleanedPhone.startsWith(doubleCode)) {
+                    this.phoneNumber = cleanedPhone.substring(expectedDialingCode.length);
+                    console.log(`[DEBUG] Phone Normalization: Removed duplicate country code. New: ${this.phoneNumber}`);
+                } else {
+                    // Already correctly prefixed, ensure it's just the code + national number
+                    this.phoneNumber = cleanedPhone;
+                    console.log(`[DEBUG] Phone Normalization: Already prefixed correctly. New: ${this.phoneNumber}`);
+                }
+            }
+            // Case 2: Cleaned phone does NOT start with the correct dialing code, so prepend it
+            else {
+                // Before prepending, check if it starts with *any other* known dialing code and remove it
+                // This avoids issues like 229... for CM where user entered Benin number but selected Cameroon
+                for (const code in countryDialingCodesMap) {
+                    const otherDialingCode = countryDialingCodesMap[code];
+                    if (cleanedPhone.startsWith(otherDialingCode) && otherDialingCode !== expectedDialingCode) {
+                        cleanedPhone = cleanedPhone.substring(otherDialingCode.length);
+                        console.log(`[DEBUG] Phone Normalization: Removed incorrect prefix ${otherDialingCode}. Intermediate: ${cleanedPhone}`);
+                        break;
+                    }
+                }
+                this.phoneNumber = expectedDialingCode + cleanedPhone;
+                console.log(`[DEBUG] Phone Normalization: Prepended country code. New: ${this.phoneNumber}`);
+            }
+        } else {
+            // No country selected or country not in map - cannot reliably determine dialing code.
+            // Save cleaned version or implement more complex logic (e.g., try to guess from number).
+            // For now, just save the cleaned version. This might lead to numbers without country codes.
+            this.phoneNumber = cleanedPhone;
+            console.log(`[DEBUG] Phone Normalization: No expected country code. Saved cleaned: ${this.phoneNumber}`);
+        }
+
+        // Final check: ensure it's not empty if original wasn't (though unlikely with replace non-digits)
+        if (originalPhone && !this.phoneNumber) {
+            this.phoneNumber = cleanedPhone; // Fallback to cleaned if somehow became empty
+        }
     }
-    try {
-        const salt = await bcrypt.genSalt(10);
-        this.password = await bcrypt.hash(this.password, salt);
-        next();
-    } catch (err: any) {
-        next(err);
+
+    // Restore Password Hashing Logic
+    if (this.isModified('password') && this.password) {
+        try {
+            const salt = await bcrypt.genSalt(10);
+            this.password = await bcrypt.hash(this.password, salt);
+        } catch (err: any) {
+            return next(err);
+        }
+    }
+
+    next();
+});
+
+// Hash password on update if modified
+UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next: any) {
+    const update = this.getUpdate() as any; // Get the update operations
+
+    // Check if password is being updated and is a string
+    if (update && update.password && typeof update.password === 'string') {
+        try {
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(update.password, salt);
+            // Update the password in the $set operator or directly if not using $set
+            if (update.$set && update.$set.password) {
+                update.$set.password = hashedPassword;
+            } else {
+                update.password = hashedPassword;
+            }
+            this.setUpdate(update); // Apply the modified update
+            next();
+        } catch (err: any) {
+            return next(err);
+        }
+    } else {
+        next(); // No password update or not a string, proceed
     }
 });
 

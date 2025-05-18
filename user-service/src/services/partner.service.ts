@@ -241,7 +241,7 @@ export class PartnerService {
         log.info(`Recording partner commission for partner ${partner.user} (ID: ${partnerObjectId}), amount: ${commissionAmount} ${currency}.`);
 
         try {
-
+            // Removed payments recorded for partners
             // await paymentService.recordInternalDeposit({
             //     userId: partner.user.toString(),
             //     amount: commissionAmount,

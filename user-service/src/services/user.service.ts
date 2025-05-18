@@ -2676,6 +2676,7 @@ export class UserService {
             throw new AppError('Account is inactive.', 403);
         }
 
+
         // 2. Validate the OTP (using the general 'otps' field)
         const now = new Date();
         const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
@@ -2693,7 +2694,21 @@ export class UserService {
         // const hashedPassword = await bcrypt.hash(newPassword, config.saltRounds);
 
         // 5. Update the password in the repository (send plain password, hook will hash)
-        await userRepository.updateById(user._id, { password: newPassword });
+        // await userRepository.updateById(user._id, { password: newPassword });
+
+        // Manually normalize the sex field since pre-save hook is not executing
+        if (user.sex && typeof user.sex === 'string') {
+            const originalSex = user.sex;
+            const lowercasedSex = user.sex.toLowerCase();
+            if (user.sex !== lowercasedSex) {
+                console.log(`[DEBUG] resetPassword: Manually normalizing sex from "${originalSex}" to "${lowercasedSex}"`);
+                user.sex = lowercasedSex as any; // Cast to any to avoid TS errors
+            }
+        }
+
+        // 5. Set the new password and save the user document to trigger the pre-save hook
+        user.password = newPassword;
+        await user.save();
 
         // 6. Optional: Invalidate existing login tokens/sessions if any
         await userRepository.updateById(user._id, { token: undefined });

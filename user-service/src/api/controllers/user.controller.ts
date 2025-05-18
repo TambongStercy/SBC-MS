@@ -9,6 +9,7 @@ import { ContactSearchFilters, UserSex } from '../../types/contact.types';
 import { isValidObjectId, Types } from 'mongoose';
 import { NextFunction, Request as ExpressRequest } from 'express';
 import { AppError } from '../../utils/errors';
+import { normalizePhoneNumber } from '../../utils/phone.utils';
 
 const log = logger.getLogger('UserController');
 
@@ -191,6 +192,24 @@ export class UserController {
                 registrationData.sex = registrationData.sex.toLowerCase();
             }
 
+            // --- Phone Number Normalization ---
+            if (registrationData.phoneNumber && typeof registrationData.phoneNumber === 'string') {
+                const normalizedPhone = normalizePhoneNumber(registrationData.phoneNumber, registrationData.country);
+                if (normalizedPhone) {
+                    registrationData.phoneNumber = normalizedPhone;
+                    log.info(`Phone number normalized during registration to: ${normalizedPhone}`);
+                } else {
+                    log.warn(`Phone number normalization failed for registration. Raw: ${registrationData.phoneNumber}, Country: ${registrationData.country}`);
+                    res.status(400).json({ success: false, message: 'Invalid phone number or country code provided. Please ensure the phone number matches the selected country.' });
+                    return;
+                }
+            } else if (registrationData.phoneNumber) { // If phoneNumber is present but not a string or country missing for normalization
+                log.warn(`Phone number provided for registration but country code missing or phone not a string. Raw: ${registrationData.phoneNumber}, Country: ${registrationData.country}`);
+                res.status(400).json({ success: false, message: 'A valid phone number and country code are required for phone number registration.' });
+                return;
+            }
+            // --- End Phone Number Normalization ---
+
             // Now returns { message, userId }
             const result = await userService.registerUser(registrationData, req.ip);
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
@@ -359,11 +378,49 @@ export class UserController {
             if (region !== undefined) updateData.region = region;
             if (country !== undefined) updateData.country = country;
             if (city !== undefined) updateData.city = city;
-            if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber; // Consider validation
+            if (phoneNumber !== undefined) {
+                // --- Phone Number Normalization for Update ---
+                // For phone number updates, we need the country.
+                // If `country` is also being updated, use that. Otherwise, fetch the user's current country.
+                let countryForNormalization = country; // Country from request body
+                if (!countryForNormalization) {
+                    const currentUser = await userService.getUserProfile(userId); // Fetch current profile
+                    if (currentUser && currentUser.country) {
+                        countryForNormalization = currentUser.country;
+                    }
+                }
+
+                if (phoneNumber && typeof phoneNumber === 'string' && countryForNormalization) {
+                    const normalizedPhone = normalizePhoneNumber(phoneNumber, countryForNormalization);
+                    if (normalizedPhone) {
+                        updateData.phoneNumber = normalizedPhone;
+                        log.info(`Phone number normalized during profile update for user ${userId} to: ${normalizedPhone}`);
+                    } else {
+                        log.warn(`Phone number normalization failed during profile update for user ${userId}. Raw: ${phoneNumber}, Country: ${countryForNormalization}`);
+                        res.status(400).json({ success: false, message: 'Invalid phone number or country code provided for update. Please ensure the phone number matches the selected country.' });
+                        return;
+                    }
+                } else if (phoneNumber && typeof phoneNumber === 'string' && !countryForNormalization) {
+                    // Phone provided but couldn't determine country for normalization
+                    log.warn(`Phone number update for user ${userId} provided, but country code could not be determined for normalization. Raw: ${phoneNumber}`);
+                    res.status(400).json({ success: false, message: 'Country code is required to update the phone number.' });
+                    return;
+                } else if (phoneNumber) { // phone number present but not a string
+                    log.warn(`Invalid phone number format provided for update by user ${userId}: ${phoneNumber}`);
+                    res.status(400).json({ success: false, message: 'Invalid phone number format.' });
+                    return;
+                }
+                // If phoneNumber is explicitly set to null or empty string to remove it, that's handled by the service/model.
+                // Normalization is only for non-empty string inputs.
+                // --- End Phone Number Normalization ---
+            } else {
+                // If phoneNumber is not in updateData, but was included in destructuring, assign it to keep existing logic flow
+                if (req.body.phoneNumber !== undefined) updateData.phoneNumber = req.body.phoneNumber;
+            }
             if (momoNumber !== undefined) updateData.momoNumber = momoNumber;
             if (momoOperator !== undefined) updateData.momoOperator = momoOperator;
             if (avatar !== undefined) updateData.avatar = avatar;
-            if (sex !== undefined) updateData.sex = sex; // Consider validation against enum
+            if (sex !== undefined) updateData.sex = sex.toLowerCase(); // Consider validation against enum
             if (birthDate !== undefined) {
                 // Basic validation: Check if it's a valid date string/number
                 const parsedDate = new Date(birthDate);
@@ -604,14 +661,17 @@ export class UserController {
             // Add the requirement that contacts must have an active subscription
             const finalFilters: ContactSearchFilters = {
                 ...filters,
-                requireActiveSubscription: true // Add flag for service layer
+                requireActiveSubscription: true // Flag to indicate active subscription is required
             };
 
             this.log.debug(`Exporting contacts for user ${userId} with filters:`, finalFilters);
 
             // Call user service to get filtered contacts (without pagination for export)
-            // Assuming a method like `findAllUsersByCriteria` exists or modify `findUsersByCriteria`
-            const contacts: Partial<IUser>[] = await userService.findAllUsersByCriteria(finalFilters);
+            // Pass the requireActiveSubscription flag as the second argument
+            const contacts: Partial<IUser>[] = await userService.findAllUsersByCriteria(
+                finalFilters,
+                finalFilters.requireActiveSubscription // Pass the flag here
+            );
 
             this.log.info(`Found ${contacts.length} contacts to export for user ${userId}`);
 
