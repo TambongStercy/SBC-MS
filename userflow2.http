@@ -6,15 +6,15 @@
 # =========================================
 
 # --- API Gateway ---
-# @gateway_url = http://localhost:3000/api
-@gateway_url = https://sniperbuisnesscenter.com/api
+@gateway_url = http://localhost:3000/api
+# @gateway_url = https://sniperbuisnesscenter.com/api
 
 # --- User Credentials ---
 @test_email = tambongsterling@gmail.com
 @test_password = 123456
 # @user_id = 65d2b0344a7e2b9efbf6205d
 @user_id = {{loginUser.response.body.$.data.userId}}
-@otp_code = XHTs8e
+@otp_code = xSrj4e
 
 # --- Admin Credentials ---
 @admin_email = test1@example.com # Assuming this admin exists
@@ -23,7 +23,7 @@
 @admin_otp_code = # Set manually if needed for OTP verification
 
 # --- Tokens (Set by Login/Verify OTP requests) ---
-@auth_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0NjE4OTE3OCwiZXhwIjoxNzQ2Mjc1NTc4fQ.QW7vFz9X9GPZb0VenpYiO32C21pvG9eyJUdI6xlMzhU
+@auth_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0NzczMDc0OSwiZXhwIjoxNzQ3ODE3MTQ5fQ.9kUSAuOafGdYBawaTFxWwO9t8HBhJ-gUrdd0455v0_Q
 @auth_fabs = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2Nzg2NjBhODU1MDNkNjgzNDEzMGVhOGMiLCJpZCI6IjY3ODY2MGE4NTUwM2Q2ODM0MTMwZWE4YyIsImVtYWlsIjoidHNhZmFja2ZhYmlvbGEwMEBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc0NjA4NzA5MSwiZXhwIjoxNzQ2MTczNDkxfQ.63sibgFHOVn8wmVAJTHoUBKa_VCIoblm7aIjUL5KrZs
 @admin_auth_token = # Admin's JWT
 
@@ -104,7 +104,7 @@ Content-Type: application/json
 
 {
   "email": "{{test_email}}",
-  "purpose": "login" # Or 'register', 'forgotPassword', 'changeEmail'
+  "purpose": "login" 
 }
 
 ### 1.3.2 Request Password Reset OTP (Public)

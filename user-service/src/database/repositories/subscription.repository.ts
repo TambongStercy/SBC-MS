@@ -154,7 +154,7 @@ export class SubscriptionRepository {
         try {
             const result = await SubscriptionModel.aggregate([
                 { $match: { status: SubscriptionStatus.ACTIVE, endDate: { $gt: new Date() } } },
-                { $group: { _id: '$userId' } },
+                { $group: { _id: '$user' } },
                 { $project: { _id: 1 } }
             ]);
             return result.map(item => item._id);

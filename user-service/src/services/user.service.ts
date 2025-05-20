@@ -1452,6 +1452,15 @@ export class UserService {
                 query.birthDate.$gte = minBirthDate;
             }
         }
+        if (filters.registrationDateStart || filters.registrationDateEnd) {
+            query.createdAt = {};
+            if (filters.registrationDateStart) {
+                query.createdAt.$gte = filters.registrationDateStart;
+            }
+            if (filters.registrationDateEnd) {
+                query.createdAt.$lte = filters.registrationDateEnd;
+            }
+        }
         // --- End build query ---
 
         // --- Add filter for active subscribers --- 
@@ -1541,6 +1550,15 @@ export class UserService {
                 query.birthDate.$gte = minBirthDate;
             }
         }
+        if (filters.registrationDateStart || filters.registrationDateEnd) {
+            query.createdAt = {};
+            if (filters.registrationDateStart) {
+                query.createdAt.$gte = filters.registrationDateStart;
+            }
+            if (filters.registrationDateEnd) {
+                query.createdAt.$lte = filters.registrationDateEnd;
+            }
+        }
         // --- End build query ---
 
         // --- Add filter for active subscribers (same as findUsersByCriteria) ---
@@ -1563,7 +1581,6 @@ export class UserService {
 
         // --- Perform Search (No Pagination) ---
         try {
-            log.debug(`Finding ALL users with criteria: ${JSON.stringify(query)}`);
             const users = await userRepository.find(query, {
                 // No skip/limit
                 sort: { createdAt: -1 },

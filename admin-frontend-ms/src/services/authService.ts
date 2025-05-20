@@ -20,7 +20,7 @@ const loginAdmin = async (email: string, password: string): Promise<AdminLoginRe
     try {
         console.log('Sending admin login request to:', `${apiClient.defaults.baseURL}/admin/login`);
 
-        const response = await apiClient.post<AdminLoginResponse>('/admin/login', {
+        const response = await apiClient.post<AdminLoginResponse>('/users/admin/login', {
             email,
             password,
         });
@@ -46,7 +46,7 @@ const checkAuth = async (): Promise<boolean> => {
     try {
         // Call a simple admin endpoint to verify the token works
         // Using '/admin/users' with limit 1 as a stable endpoint for auth check
-        const response = await apiClient.get('/admin/users', { params: { limit: 1 } });
+        const response = await apiClient.get('users/admin/users', { params: { limit: 1 } });
         return response.status === 200;
     } catch (error: any) {
         console.error('Auth check failed:', error.response?.data || error.message);

@@ -658,19 +658,19 @@ export class UserController {
             // Extract and format filters (same logic as search)
             const filters: ContactSearchFilters = this.extractContactFilters(queryFilters);
 
+            console.log('Filter: ',filters)
             // Add the requirement that contacts must have an active subscription
             const finalFilters: ContactSearchFilters = {
-                ...filters,
-                requireActiveSubscription: true // Flag to indicate active subscription is required
+                ...filters
             };
 
-            this.log.debug(`Exporting contacts for user ${userId} with filters:`, finalFilters);
+            this.log.info(`Exporting contacts for user ${userId} with filters: ${JSON.stringify(finalFilters)}`);
 
             // Call user service to get filtered contacts (without pagination for export)
             // Pass the requireActiveSubscription flag as the second argument
             const contacts: Partial<IUser>[] = await userService.findAllUsersByCriteria(
                 finalFilters,
-                finalFilters.requireActiveSubscription // Pass the flag here
+                true // Pass the flag here
             );
 
             this.log.info(`Found ${contacts.length} contacts to export for user ${userId}`);

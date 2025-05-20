@@ -1,0 +1,133 @@
+version: '3.8'
+
+x-env-vars-prod: &common-env-vars-prod
+  NODE_ENV: production
+  USER_SERVICE_URL: http://user-service:3001
+  NOTIFICATION_SERVICE_URL: http://notification-service:3002
+  PAYMENT_SERVICE_URL: http://payment-service:3003
+  PRODUCT_SERVICE_URL: http://product-service:3004
+  ADVERTISING_SERVICE_URL: http://advertising-service:3005
+  TOMBOLA_SERVICE_URL: http://tombola-service:3006
+  SETTINGS_SERVICE_URL: http://settings-service:3007
+  ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
+  # Example: Replace with your actual production MongoDB connection string
+  # You might use different databases per service or a different prefix.
+  GLOBAL_MONGO_BASE_URI_PROD: ${GLOBAL_MONGO_BASE_URI_PROD}
+
+services:
+  user-service:
+    build:
+      target: production
+    command: node dist/server.js
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3001
+      # Example for production MongoDB URI for user-service
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_users"
+    volumes: [] # No source code mounted in production
+
+  payment-service:
+    build:
+      target: production
+    command: node dist/server.js # Assuming payment-service also uses 'node dist/server.js' for prod
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3003
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_payment"
+    volumes: []
+
+  product-service:
+    build:
+      target: production
+    command: node dist/server.js
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3004
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_products"
+    volumes: []
+
+  tombola-service:
+    build:
+      target: production
+    command: node dist/server.js
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3006
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_tombola"
+    volumes: []
+
+  settings-service:
+    build:
+      target: production
+    command: node dist/server.js
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3007
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_settings"
+    volumes: []
+
+  notification-service:
+    build:
+      target: production
+    command: node dist/server.js
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3002
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_notification"
+    volumes: []
+
+  advertising-service:
+    build:
+      target: production
+    command: node dist/server.js
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3005
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_advertising"
+    volumes: []
+
+  # admin-frontend-ms - Review its Dockerfile's production stage
+  # If it builds static assets and uses nginx to serve them, the 'command' might not change,
+  # but 'build.target' should point to its final production stage.
+  # Volumes that mount source code should also be removed.
+  admin-frontend-ms:
+    build:
+      # Assuming 'production' or similar is the target stage in its Dockerfile
+      # that contains the built frontend assets and production nginx config.
+      target: production # Replace 'production' if its stage is named differently
+    environment:
+      <<: *common-env-vars-prod
+      # Add any production specific env vars for admin-frontend-ms if needed
+    ports:
+      - "3030:80"
+    volumes: [] # Typically no source code volumes in production
+
+  # nginx service itself might not need many changes if its configuration is already production-ready
+  # and doesn't rely on development-specific environment variables.
+  # Its 'depends_on' conditions might need adjustment if healthchecks behave differently or start periods are longer.
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443" # Added port 443 for SSL
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+      - ./frontend:/usr/share/nginx/flutter_app:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro # Mount Let's Encrypt directory
+    environment:
+      NODE_ENV: production # Good to set for consistency if nginx uses it 
+      USER_SERVICE_HOST: user-service
+      USER_SERVICE_PORT: 3001
+      NOTIFICATION_SERVICE_HOST: notification-service
+      NOTIFICATION_SERVICE_PORT: 3002
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 3003
+      PRODUCT_SERVICE_HOST: product-service
+      PRODUCT_SERVICE_PORT: 3004
+      ADVERTISING_SERVICE_HOST: advertising-service
+      ADVERTISING_SERVICE_PORT: 3005
+      TOMBOLA_SERVICE_HOST: tombola-service
+      TOMBola_SERVICE_PORT: 3006
+      SETTINGS_SERVICE_HOST: settings-service
+      SETTINGS_SERVICE_PORT: 3007
+      ADMIN_FRONTEND_MS_HOST: admin-frontend-ms
+      ADMIN_FRONTEND_MS_PORT: 80

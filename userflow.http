@@ -412,7 +412,7 @@ Authorization: Bearer {{userA_AuthToken}}
 # ====================================
 # webhook Tests
 # ====================================
-
+@ok = [7ox9ApctFtyp]
 @screte = {{$dotenv TEST}} 
 ###
 # WH1. User A (Referrer) creates a webhook
@@ -421,7 +421,7 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "f32e0252-ea3d-4338-8b73-6b9f583e3a8f",
+  "reference": "c8d19668-1443-4f8f-8669-01bc8956ed9c",
   "status": "SUCCESSFUL"
 }
 
@@ -430,6 +430,8 @@ Content-Type: application/json
 # WH2. User A (Referrer) gets the webhook
 GET {{baseUrl}}/health
 Content-Type: application/json
+
+
 
 
 

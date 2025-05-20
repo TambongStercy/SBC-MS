@@ -3,16 +3,31 @@
 # Define global environment variables using an extension field
 x-env-vars: &common-env-vars
   NODE_ENV: development
+  USER_SERVICE_HOST: user-service
+  USER_SERVICE_PORT: 3001
   USER_SERVICE_URL: http://user-service:3001
+  NOTIFICATION_SERVICE_HOST: notification-service
+  NOTIFICATION_SERVICE_PORT: 3002
   NOTIFICATION_SERVICE_URL: http://notification-service:3002
+  PAYMENT_SERVICE_HOST: payment-service
+  PAYMENT_SERVICE_PORT: 3003
   PAYMENT_SERVICE_URL: http://payment-service:3003
+  PRODUCT_SERVICE_HOST: product-service
+  PRODUCT_SERVICE_PORT: 3004
   PRODUCT_SERVICE_URL: http://product-service:3004
+  ADVERTISING_SERVICE_HOST: advertising-service
+  ADVERTISING_SERVICE_PORT: 3005
   ADVERTISING_SERVICE_URL: http://advertising-service:3005
+  TOMBOLA_SERVICE_HOST: tombola-service
+  TOMBOLA_SERVICE_PORT: 3006
   TOMBOLA_SERVICE_URL: http://tombola-service:3006
+  SETTINGS_SERVICE_HOST: settings-service
+  SETTINGS_SERVICE_PORT: 3007
   SETTINGS_SERVICE_URL: http://settings-service:3007
-  ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:3009
+  ADMIN_FRONTEND_MS_HOST: admin-frontend-ms
+  ADMIN_FRONTEND_MS_PORT: 80
+  ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
   GLOBAL_MONGO_BASE_URI: "mongodb://host.docker.internal:27017" # REMOVED
-
   # Define common restart policy and healthcheck for Node.js services
 x-node-service-defaults: &node-service-defaults
   restart: unless-stopped
@@ -25,7 +40,27 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+      - ./frontend:/usr/share/nginx/flutter_app:ro
+    environment:
+      USER_SERVICE_HOST: user-service
+      USER_SERVICE_PORT: 3001
+      NOTIFICATION_SERVICE_HOST: notification-service
+      NOTIFICATION_SERVICE_PORT: 3002
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 3003
+      PRODUCT_SERVICE_HOST: product-service
+      PRODUCT_SERVICE_PORT: 3004
+      ADVERTISING_SERVICE_HOST: advertising-service
+      ADVERTISING_SERVICE_PORT: 3005
+      TOMBOLA_SERVICE_HOST: tombola-service
+      TOMBOLA_SERVICE_PORT: 3006
+      SETTINGS_SERVICE_HOST: settings-service
+      SETTINGS_SERVICE_PORT: 3007
+      ADMIN_FRONTEND_MS_HOST: admin-frontend-ms
+      ADMIN_FRONTEND_MS_PORT: 80
+    command: >
+      /bin/sh -c "envsubst < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
     depends_on:
       user-service:
         condition: service_healthy
@@ -228,13 +263,12 @@ services:
     container_name: admin_frontend
     environment:
       <<: *common-env-vars
-      PORT: 3009
     volumes:
       - ./admin-frontend-ms:/usr/src/app
       - /usr/src/app/node_modules
     working_dir: /usr/src/app
     ports:
-      - "3009:3009"
+      - "3030:80"
 
 # mongo: (Commented out as we use host MongoDB)
 #   image: mongo:latest

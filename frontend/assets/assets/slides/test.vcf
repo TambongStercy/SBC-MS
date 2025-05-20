@@ -1,0 +1,27 @@
+BEGIN:VCARD
+VERSION:2.1
+N:Smith;John;Mr.;
+FN:John Smith
+TEL;WORK:+1 (555) 123-4567
+EMAIL;WORK:john.smith@example.com
+ORG:Example Company
+ADR;WORK:;;123 Main St.;Anytown;CA;12345;USA
+END:VCARD
+
+BEGIN:VCARD
+VERSION:2.1
+N:Doe;Jane;Ms.;
+FN:Jane Doe
+TEL;HOME:+1 (555) 789-0123
+EMAIL;HOME:jane.doe@example.com
+ORG:Another Company
+ADR;HOME:;;456 Elm St.;Anytown;NY;54321;USA
+END:VCARD
+
+BEGIN:VCARD
+VERSION:2.1
+N:Lee;Peter;Dr.;
+FN:Dr. Peter Lee
+TEL;MOBILE:+1 (555) 333-5555
+EMAIL;MOBILE:peter.lee@example.com
+END:VCARD
