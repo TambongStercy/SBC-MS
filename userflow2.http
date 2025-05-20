@@ -28,7 +28,7 @@
 @admin_auth_token = # Admin's JWT
 
 # --- Dynamic IDs (Set during flows) ---
-@product_id = 6814cbb07c9ad3312608c050
+@product_id = 681dc90a7e610a7519c3b99a
 @rating_id = # Set after creating a rating
 @payment_session_id = # Set after initiating a payment intent
 @ad_pack_id = # (Advertising - Lower Priority)
@@ -398,7 +398,7 @@ Authorization: Bearer {{auth_token}}
 # @name searchProductsPublic
 # Hits: Product Service via Gateway
 # Example: Search for 'widget' in name/desc/category, filter by category
-GET {{gateway_url}}/products/search?page=1&limit=10&search=widget&category=Widgets
+GET {{gateway_url}}/products/search
 
 ### 4.4 Get Specific Product Details (Public)
 # @name getProductById

@@ -58,7 +58,7 @@ export class ProductRepository {
             query.where({ $or: [{ deleted: false }, { deleted: true }] });
         }
 
-        return await query.exec();
+        return await query.lean().exec();
     }
 
     /**
