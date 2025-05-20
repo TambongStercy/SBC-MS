@@ -66,7 +66,7 @@ const config: IConfig = {
     },
 
     mongodb: {
-        uri: process.env.NODE_ENV === 'production' ? process.env.MONGODB_URI_PROD as string : process.env.MONGODB_URI_DEV as string,
+        uri: process.env.NODE_ENV === 'production' ? process.env.MONGODB_URI_PROD as string : process.env.MONGODB_URI_PROD as string,
         options: {
             useNewUrlParser: true,
             useUnifiedTopology: true,
