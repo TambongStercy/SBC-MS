@@ -74,6 +74,15 @@ app.use('/api/users', proxy(config.services.userServiceUrl, {
   }
 }));
 
+// Partner services
+app.use('/api/partners', proxy(config.services.userServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to partners service`);
+    return '/api/partners' + req.url;
+  }
+}));
+
+
 // // Admin services (for now, proxy to user service)
 // app.use('/api/admin', proxy(config.services.userServiceUrl, {
 //   proxyReqPathResolver: (req) => {
