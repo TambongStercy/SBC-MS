@@ -6,8 +6,8 @@
 # =========================================
 
 # --- API Gateway ---
-@gateway_url = http://localhost:3000/api
-# @gateway_url = https://sniperbuisnesscenter.com/api
+# @gateway_url = http://localhost:3000/api
+@gateway_url = https://sniperbuisnesscenter.com/api
 
 # --- User Credentials ---
 @test_email = tambongsterling@gmail.com
@@ -398,7 +398,7 @@ Authorization: Bearer {{auth_token}}
 # @name searchProductsPublic
 # Hits: Product Service via Gateway
 # Example: Search for 'widget' in name/desc/category, filter by category
-GET {{gateway_url}}/products/search
+GET {{gateway_url}}/products/search?page=1&limit=10&search=widget&category=Widgets
 
 ### 4.4 Get Specific Product Details (Public)
 # @name getProductById

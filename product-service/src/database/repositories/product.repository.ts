@@ -388,6 +388,7 @@ export class ProductRepository {
                 .skip(skip)
                 .limit(limit)
                 // .populate('userId', 'name')
+                .lean()
                 .exec();
 
             const totalPages = Math.ceil(totalCount / limit);
