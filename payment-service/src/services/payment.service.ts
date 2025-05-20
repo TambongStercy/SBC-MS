@@ -545,7 +545,7 @@ class PaymentService {
             startDate?: Date;
             endDate?: Date;
             limit?: number;
-            skip?: number;
+            page?: number;
             sortBy?: string;
             sortOrder?: 'asc' | 'desc';
         } = {}

@@ -125,7 +125,7 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             startDate?: Date;
             endDate?: Date;
             limit?: number;
-            skip?: number;
+            page?: number;
             sortBy?: string;
             sortOrder?: 'asc' | 'desc';
         } = {}
@@ -137,7 +137,7 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                 startDate,
                 endDate,
                 limit = 50,
-                skip = 0,
+                page = 0,
                 sortBy = 'createdAt',
                 sortOrder = 'desc'
             } = options;
@@ -153,6 +153,8 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                 if (startDate) query.createdAt.$gte = startDate;
                 if (endDate) query.createdAt.$lte = endDate;
             }
+
+            const skip = (page - 1) * limit;
 
             // Find transactions
             const transactions = await this.model.find(query)

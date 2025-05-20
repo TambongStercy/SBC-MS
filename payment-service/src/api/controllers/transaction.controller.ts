@@ -10,6 +10,8 @@ import { PaginationOptions } from '../../types/pagination';
 const log = logger.getLogger('TransactionController');
 
 export class TransactionController {
+
+
     /**
      * Get transaction history for the authenticated user
      * @route GET /api/transactions/history
@@ -23,14 +25,15 @@ export class TransactionController {
 
             const {
                 type, status, startDate, endDate,
-                limit = '50', skip = '0',
+                page = '1',
+                limit = '50',
                 sortBy = 'createdAt', sortOrder = 'desc'
             } = req.query;
 
             // Convert and validate query params
             const options: any = {
                 limit: parseInt(limit as string, 10),
-                skip: parseInt(skip as string, 10),
+                page: parseInt(page as string, 10),
                 sortBy: sortBy as string,
                 sortOrder: sortOrder as 'asc' | 'desc',
             };
@@ -49,6 +52,7 @@ export class TransactionController {
                     total: result.total,
                     limit: options.limit,
                     skip: options.skip,
+                    page: options.page,
                 }
             });
         } catch (error) {
