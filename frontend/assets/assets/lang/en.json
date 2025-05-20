@@ -156,6 +156,7 @@
   "accept_terms_conditions": "I accept the terms and conditions",
   "sign_up": "Sign Up",
   "already_have_account_login": "Already have an account",
+  "already_have_account": "Already have an account",
   "otp_sent_message": "OTP sent to {email}",
   "password_confirmation_error": "The confirmation password does not match the password",
   "false_confirmation": "False Confirmation",
@@ -368,5 +369,6 @@
   "fill_all_fields_correctly": "Please fill in all fields correctly and ensure OTP is 6 digits.",
   "verification_required": "Verification Required",
   "no_affiliation_code": "No affiliation code found",
-  "sponsor_link": "Sponsor Link"
+  "sponsor_link": "Sponsor Link",
+  "partner_dashboard": "Partner Dashboard"
 }

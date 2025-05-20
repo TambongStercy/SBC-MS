@@ -155,6 +155,7 @@
   "accept_terms_conditions": "J'accepte les termes et conditions",
   "sign_up": "Inscription",
   "already_have_account_login": "Déja un compte",
+  "already_have_account": "Déja un compte",
   "password_confirmation_error": "Le mot de passe de confirmation ne correspond pas au mot de passe",
   "false_confirmation": "Fausse confirmation",
   "transaction_history": "Transaction history",
@@ -365,5 +366,6 @@
   "password_reset_failed": "La réinitialisation du mot de passe a échoué. Veuillez réessayer.",
   "verification_required": "Vérification Requise",
   "no_affiliation_code": "Aucun code de parrainage trouvé",
-  "sponsor_link": "Lien de Parrain"
+  "sponsor_link": "Lien de Parrain",
+  "partner_dashboard": "Tableau de bord Partenaire"
 }
