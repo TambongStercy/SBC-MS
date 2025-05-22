@@ -11,7 +11,7 @@ const connectDB = async () => {
     }
 
     try {
-        const conn = await mongoose.connect(config.mongodb.uri);
+        const conn = await mongoose.connect(config.mongodb.uri, config.mongodb.options);
 
         log.info(`MongoDB Connected: ${conn.connection.host}`);
 

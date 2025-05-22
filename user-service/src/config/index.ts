@@ -21,9 +21,9 @@ interface IConfig {
     mongodb: {
         uri: string;
         options: {
-            useNewUrlParser: boolean;
-            useUnifiedTopology: boolean;
             serverSelectionTimeoutMS: number;
+            socketTimeoutMS?: number;
+            family?: number;
         };
     };
     jwt: {
@@ -66,11 +66,10 @@ const config: IConfig = {
     },
 
     mongodb: {
-        uri: process.env.NODE_ENV === 'production' ? process.env.MONGODB_URI_PROD as string : process.env.MONGODB_URI_PROD as string,
+        uri: process.env.NODE_ENV === 'production' ? process.env.MONGODB_URI_PROD as string : process.env.MONGODB_URI_DEV as string,
         options: {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000
+            serverSelectionTimeoutMS: 60000,
+            socketTimeoutMS: 45000,
         }
     },
 
