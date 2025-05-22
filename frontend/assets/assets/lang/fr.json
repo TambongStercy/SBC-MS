@@ -158,7 +158,7 @@
   "already_have_account": "Déja un compte",
   "password_confirmation_error": "Le mot de passe de confirmation ne correspond pas au mot de passe",
   "false_confirmation": "Fausse confirmation",
-  "transaction_history": "Transaction history",
+  "transaction_history": "Historique des transactions",
   "contact_sheet": "Fiche de contact",
   "january": "Janvier",
   "december": "Décembre",
@@ -367,5 +367,9 @@
   "verification_required": "Vérification Requise",
   "no_affiliation_code": "Aucun code de parrainage trouvé",
   "sponsor_link": "Lien de Parrain",
-  "partner_dashboard": "Tableau de bord Partenaire"
+  "partner_dashboard": "Tableau de bord Partenaire",
+  "app_name_web": "Sniper Business Center - Votre Réseau d'Affaires en Afrique",
+  "app_description_web": "Rejoignez Sniper Business Center, la communauté d'affaires la plus dynamique d'Afrique. Connectez-vous, vendez, investissez et développez votre réseau professionnel.",
+  "app_keywords_web": "business, networking, afrique, marketplace, investissement, communauté, professionnel, sniper business center, sbc",
+  "app_author_web": "Simb Technologies"
 }

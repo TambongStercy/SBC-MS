@@ -30,6 +30,8 @@ router.use('/admin', adminRouter);
 
 // Render the custom payment page
 router.get('/page/:sessionId', paymentController.renderPaymentPage);
+// Same as above due to errors in the frontend
+router.get('/process/:sessionId', paymentController.renderPaymentPage);
 
 // Create a new payment intent (returns URL to custom payment page)
 router.post('/intents', validatePaymentIntent, paymentController.createPaymentIntent);

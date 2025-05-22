@@ -581,7 +581,7 @@ Authorization: Bearer {{auth_token}}
 # @name getTransactionById
 # Hits: Payment Service via Gateway
 # Requires: @auth_token, @transaction_id (must belong to the user)
-# Note: Set the transaction_id variable first, e.g., from history or payment response.
+# Note: Set the transaction_id variable first, e.g., from history or payment response.il
 GET {{gateway_url}}/transactions/{{transaction_id}}
 Authorization: Bearer {{auth_token}}
 
