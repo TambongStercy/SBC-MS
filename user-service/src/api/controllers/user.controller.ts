@@ -928,7 +928,7 @@ export class UserController {
         if (query.city) filters.city = query.city as string;
         if (query.minAge) filters.minAge = parseInt(query.minAge as string, 10);
         if (query.maxAge) filters.maxAge = parseInt(query.maxAge as string, 10);
-        if (query.sex && Object.values(UserSex).includes(query.sex as UserSex)) filters.sex = query.sex as UserSex;
+        if (query.sex && Object.values(UserSex).includes(query.sex.toLowerCase() as UserSex)) filters.sex = query.sex.toLowerCase() as UserSex;
         if (query.language) filters.language = query.language as string;
         if (query.profession) filters.profession = query.profession as string;
         // Handle interests which can be a single value or an array
