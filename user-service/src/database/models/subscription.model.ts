@@ -77,6 +77,9 @@ SubscriptionSchema.index({ status: 1, endDate: 1 });
 // Add index for user and subscriptionType for faster lookups of specific user subscriptions
 SubscriptionSchema.index({ user: 1, subscriptionType: 1 });
 
+// Add compound index for user, status, and endDate for countActiveSubs in ReferralRepository
+SubscriptionSchema.index({ user: 1, status: 1, endDate: 1 });
+
 const SubscriptionModel = model<ISubscription>('Subscription', SubscriptionSchema);
 
 export default SubscriptionModel; 

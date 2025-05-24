@@ -421,7 +421,7 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "c8d19668-1443-4f8f-8669-01bc8956ed9c",
+  "reference": "7hTTNFfCcmAv",
   "status": "SUCCESSFUL"
 }
 
