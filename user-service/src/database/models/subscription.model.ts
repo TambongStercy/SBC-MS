@@ -71,6 +71,12 @@ const SubscriptionSchema = new Schema<ISubscription>(
     }
 );
 
+// Add compound index for status and endDate for querying active subscriptions
+SubscriptionSchema.index({ status: 1, endDate: 1 });
+
+// Add index for user and subscriptionType for faster lookups of specific user subscriptions
+SubscriptionSchema.index({ user: 1, subscriptionType: 1 });
+
 const SubscriptionModel = model<ISubscription>('Subscription', SubscriptionSchema);
 
 export default SubscriptionModel; 
