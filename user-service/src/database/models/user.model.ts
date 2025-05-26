@@ -149,7 +149,7 @@ const UserSchema = new Schema<IUser>(
         ipLocation: { type: String },
         ipOrg: { type: String },
         ipLastUpdated: { type: Date },
-        referralCode: { type: String, unique: true, sparse: true, index: true },
+        referralCode: { type: String, unique: true, sparse: true, index: true, lowercase: true },
         balance: { type: Number, default: 0, required: true },
         sex: {
             type: String,

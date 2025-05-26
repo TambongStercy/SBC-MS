@@ -559,17 +559,19 @@ export class UserService {
 
         // --- Referral Code Uniqueness Check --- 
         if (allowedFields.referralCode) {
+            const codeToCheck = allowedFields.referralCode.toLowerCase(); // Explicitly lowercase here
             // Basic validation: check length, characters if needed (e.g., alphanumeric)
-            if (typeof allowedFields.referralCode !== 'string' || allowedFields.referralCode.length < 4) { // Example: min length 4
+            if (typeof codeToCheck !== 'string' || codeToCheck.length < 4) { // Example: min length 4
                 throw new AppError('Referral code must be at least 4 characters long.', 400);
             }
             // Check if the code is already taken by ANOTHER user
-            const existingUserWithCode = await userRepository.findByReferralCode(allowedFields.referralCode);
+            const existingUserWithCode = await userRepository.findByReferralCode(codeToCheck); // Pass lowercased code
             if (existingUserWithCode && existingUserWithCode._id.toString() !== userId.toString()) {
-                log.warn(`User ${userId} attempted to update referral code to ${allowedFields.referralCode}, but it's already taken by user ${existingUserWithCode._id}`);
+                log.warn(`User ${userId} attempted to update referral code to ${codeToCheck}, but it's already taken by user ${existingUserWithCode._id}`);
                 throw new AppError('Referral code is already in use by another user.', 409); // 409 Conflict
             }
-            log.info(`Referral code ${allowedFields.referralCode} is available for user ${userId}.`);
+            log.info(`Referral code ${codeToCheck} is available for user ${userId}.`);
+            allowedFields.referralCode = codeToCheck; // Ensure the lowercase version is what gets saved
         }
         // --- End Referral Code Check --- 
 
