@@ -1518,6 +1518,101 @@ export class UserService {
     }
 
     /**
+    * Find ALL users matching criteria, processing them in batches.
+    * Used for large exports to avoid high memory usage.
+    * @param filters Search criteria (ContactSearchFilters).
+    * @param filterByActiveSubscription If true, only return users with active subscriptions.
+    * @param batchSize The number of users to fetch in each batch.
+    * @param processBatch A callback function to process each batch of users.
+    */
+    async findAllUsersByCriteriaInBatches(
+        filters: ContactSearchFilters,
+        filterByActiveSubscription: boolean = false,
+        batchSize: number = 1000, // Default batch size
+        processBatch: (users: Partial<IUser>[]) => Promise<void> // Ensure this returns Promise<void>
+    ): Promise<void> { // Ensure the main function also returns Promise<void>
+        const query: FilterQuery<IUser> = {};
+
+        // --- Build query from filters (same logic as findAllUsersByCriteria) ---
+        if (filters.country) query.country = { $regex: `^${filters.country}$`, $options: 'i' };
+        if (filters.region) query.region = { $regex: `^${filters.region}$`, $options: 'i' };
+        if (filters.city) query.city = { $regex: `^${filters.city}$`, $options: 'i' };
+        if (filters.sex) query.sex = filters.sex;
+        if (filters.language) {
+            query.language = { $elemMatch: { $regex: `^${filters.language}`, $options: 'i' } };
+        }
+        if (filters.profession) query.profession = { $regex: `^${filters.profession}`, $options: 'i' };
+        if (filters.interests && filters.interests.length > 0) {
+            query.interests = {
+                $in: filters.interests.map(i => new RegExp(`^${i}`, 'i'))
+            };
+        }
+        if (filters.minAge || filters.maxAge) {
+            query.birthDate = {};
+            const now = new Date();
+            if (filters.minAge) {
+                const maxBirthDate = new Date(now.getFullYear() - filters.minAge, now.getMonth(), now.getDate());
+                query.birthDate.$lte = maxBirthDate;
+            }
+            if (filters.maxAge) {
+                const minBirthDate = new Date(now.getFullYear() - filters.maxAge - 1, now.getMonth(), now.getDate() + 1);
+                query.birthDate.$gte = minBirthDate;
+            }
+        }
+        if (filters.registrationDateStart || filters.registrationDateEnd) {
+            query.createdAt = {};
+            if (filters.registrationDateStart) {
+                query.createdAt.$gte = filters.registrationDateStart;
+            }
+            if (filters.registrationDateEnd) {
+                query.createdAt.$lte = filters.registrationDateEnd;
+            }
+        }
+        // --- End build query ---
+
+        if (filterByActiveSubscription) {
+            try {
+                const activeUserIds = await this.subscriptionRepository.findAllUserIdsWithActiveSubscriptions();
+                if (activeUserIds.length === 0) {
+                    log.info('findAllUsersByCriteriaInBatches: No users found with active subscriptions.');
+                    return; // No users to process
+                }
+                query._id = { $in: activeUserIds };
+            } catch (subError) {
+                log.error('Error fetching active subscriber IDs in findAllUsersByCriteriaInBatches:', subError);
+                throw subError; // Rethrow to indicate failure
+            }
+        }
+        query.blocked = { $ne: true };
+
+        let skip = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+            log.info(`Fetching batch of users: skip=${skip}, limit=${batchSize}`);
+            const users = await userRepository.find(query, {
+                skip: skip,
+                limit: batchSize,
+                sort: { _id: 1 }, // Consistent sort order for pagination (use _id for performance)
+                select: '_id name email phoneNumber country region city birthDate sex language profession interests avatar createdAt'
+            });
+
+            if (users.length > 0) {
+                await processBatch(users.map(user => this.mapUserToResponse(user)));
+                skip += users.length;
+                if (users.length < batchSize) {
+                    hasMore = false; // Last batch fetched
+                }
+            } else {
+                hasMore = false; // No more users found
+            }
+        }
+        log.info('Finished processing all batches.');
+        // Explicitly return if all paths don't guarantee a void return due to async nature or conditional returns
+        return;
+    }
+
+    /**
     * Find ALL users matching criteria, without pagination.
     * Used for export.
     * @param filters Search criteria (ContactSearchFilters).
@@ -1535,10 +1630,16 @@ export class UserService {
         if (filters.region) query.region = { $regex: `^${filters.region}$`, $options: 'i' };
         if (filters.city) query.city = { $regex: `^${filters.city}$`, $options: 'i' };
         if (filters.sex) query.sex = filters.sex;
-        if (filters.language) query.language = { $in: [new RegExp(filters.language, 'i')] };
-        if (filters.profession) query.profession = { $regex: filters.profession, $options: 'i' };
+        if (filters.language) {
+            // Assuming filters.language is a single string to search for as a prefix in the array elements
+            query.language = { $elemMatch: { $regex: `^${filters.language}`, $options: 'i' } };
+        }
+        if (filters.profession) query.profession = { $regex: `^${filters.profession}`, $options: 'i' }; // Anchored regex
         if (filters.interests && filters.interests.length > 0) {
-            query.interests = { $in: filters.interests.map(i => new RegExp(i, 'i')) };
+            // Assuming filters.interests is an array of strings, match any interest starting with the given terms
+            query.interests = {
+                $in: filters.interests.map(i => new RegExp(`^${i}`, 'i'))
+            };
         }
         if (filters.minAge || filters.maxAge) {
             query.birthDate = {};

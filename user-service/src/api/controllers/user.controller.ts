@@ -658,7 +658,7 @@ export class UserController {
             // Extract and format filters (same logic as search)
             const filters: ContactSearchFilters = this.extractContactFilters(queryFilters);
 
-            console.log('Filter: ',filters)
+            console.log('Filter: ', filters)
             // Add the requirement that contacts must have an active subscription
             const finalFilters: ContactSearchFilters = {
                 ...filters
@@ -666,16 +666,19 @@ export class UserController {
 
             this.log.info(`Exporting contacts for user ${userId} with filters: ${JSON.stringify(finalFilters)}`);
 
-            // Call user service to get filtered contacts (without pagination for export)
-            // Pass the requireActiveSubscription flag as the second argument
-            const contacts: Partial<IUser>[] = await userService.findAllUsersByCriteria(
+            const allContacts: Partial<IUser>[] = [];
+            await userService.findAllUsersByCriteriaInBatches(
                 finalFilters,
-                true // Pass the flag here
+                true, // Pass the flag here for active subscriptions
+                500,  // Example batch size, can be configured
+                async (batch) => {
+                    allContacts.push(...batch);
+                }
             );
 
-            this.log.info(`Found ${contacts.length} contacts to export for user ${userId}`);
+            this.log.info(`Found ${allContacts.length} contacts to export for user ${userId}`);
 
-            if (contacts.length === 0) {
+            if (allContacts.length === 0) {
                 // Send an empty VCF file
                 res.setHeader('Content-Type', 'text/vcard');
                 res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
@@ -687,7 +690,7 @@ export class UserController {
             let vcfString = '';
             const filtersApplied = req.query; // Get the original query params
 
-            for (const userContact of contacts) {
+            for (const userContact of allContacts) {
                 // Cast the contact to IUser here to access properties safely
                 const contact = userContact as IUser;
 
