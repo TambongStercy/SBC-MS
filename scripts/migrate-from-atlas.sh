@@ -10,10 +10,10 @@ BACKUP_DIR="/tmp/mongodb_migration"
 
 # Database names from your microservices
 DATABASES=(
-    "sbc_user"
+    "sbc_users"
     "sbc_payment" 
-    "sbc_product"
-    "sbc_notification"
+    "sbc_products"
+    "sbc_notifications"
     "sbc_advertising"
     "sbc_tombola"
     "sbc_settings"

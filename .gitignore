@@ -30,5 +30,7 @@ Thumbs.db
 *.sln
 *.sw?
 
+service-account.json
+
 # Ignore node_modules in all subdirectories (microservices)
 */node_modules/ 
