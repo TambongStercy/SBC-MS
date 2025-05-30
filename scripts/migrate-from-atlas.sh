@@ -36,6 +36,10 @@ migrate_database() {
     if [ $? -eq 0 ]; then
         echo "Export successful for $db_name"
         
+        # Drop existing local database before import
+        echo "Dropping existing local database $db_name..."
+        mongo "$LOCAL_URI/$db_name" --eval "db.dropDatabase()"
+        
         # Import to local MongoDB
         echo "Importing $db_name to local MongoDB..."
         mongorestore --uri="$LOCAL_URI" --db="$db_name" "$BACKUP_DIR/$db_name"
