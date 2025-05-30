@@ -27,13 +27,14 @@ update_env_file() {
         # Backup original
         cp "$env_file" "$env_file.backup"
         
-        # Update MongoDB URI (remove Atlas, use local)
-        sed -i 's|mongodb+srv://.*|mongodb://localhost:27017|g' "$env_file"
-        sed -i 's|MONGODB_URI=.*|MONGODB_URI=mongodb://localhost:27017|g' "$env_file"
-        sed -i 's|MONGODB_URI_DEV=.*|MONGODB_URI_DEV=mongodb://localhost:27017|g' "$env_file"
-        sed -i 's|MONGODB_URI_PROD=.*|MONGODB_URI_PROD=mongodb://localhost:27017|g' "$env_file"
+        # Update MongoDB URI to use authentication, preserving the db name
+        sed -i -E 's|MONGO_URI=(mongodb(\+srv)?://)?[^@]+@[^/]+/([^?&]+).*|MONGO_URI=mongodb://serviceuser:servicepassword@localhost:27017/\3|g' "$env_file"
+        sed -i -E 's|MONGODB_URI=(mongodb(\+srv)?://)?[^@]+@[^/]+/([^?&]+).*|MONGODB_URI=mongodb://serviceuser:servicepassword@localhost:27017/\3|g' "$env_file"
+        sed -i -E 's|MONGODB_URI_DEV=(mongodb(\+srv)?://)?[^@]+@[^/]+/([^?&]+).*|MONGODB_URI_DEV=mongodb://serviceuser:servicepassword@localhost:27017/\3|g' "$env_file"
+        sed -i -E 's|MONGODB_URI_PROD=(mongodb(\+srv)?://)?[^@]+@[^/]+/([^?&]+).*|MONGODB_URI_PROD=mongodb://serviceuser:servicepassword@localhost:27017/\3|g' "$env_file"
         
         echo "Updated $env_file (backup saved as $env_file.backup)"
+        echo "NOTE: Please update 'serviceuser' and 'servicepassword' in $env_file to the correct values for this service."
     else
         echo "No .env file found in $service_dir"
     fi
