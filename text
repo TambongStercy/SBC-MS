@@ -1,163 +1,45 @@
-worker_processes 1;
+mongodb://serviceuser:servicepassword@localhost:27017/your_db
 
-events {
-    worker_connections 1024;
-}
+MONGODB_URI_DEV=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_users_dev
+MONGODB_URI_PROD=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_users
 
-http {
-    sendfile on;
-    server_names_hash_bucket_size 64;
 
-    # Define upstreams for all backend services pointing to environment variables
-    upstream user_service {
-        server ${USER_SERVICE_HOST}:${USER_SERVICE_PORT};
-    }
-    upstream notification_service {
-        server ${NOTIFICATION_SERVICE_HOST}:${NOTIFICATION_SERVICE_PORT};
-    }
-    upstream payment_service {
-        server ${PAYMENT_SERVICE_HOST}:${PAYMENT_SERVICE_PORT};
-    }
-    upstream product_service {
-        server ${PRODUCT_SERVICE_HOST}:${PRODUCT_SERVICE_PORT};
-    }
-    upstream advertising_service {
-        server ${ADVERTISING_SERVICE_HOST}:${ADVERTISING_SERVICE_PORT};
-    }
-    upstream tombola_service {
-        server ${TOMBOLA_SERVICE_HOST}:${TOMBOLA_SERVICE_PORT};
-    }
-    upstream settings_service {
-        server ${SETTINGS_SERVICE_HOST}:${SETTINGS_SERVICE_PORT};
-    }
-    upstream admin_frontend_ms {
-        server ${ADMIN_FRONTEND_MS_HOST}:${ADMIN_FRONTEND_MS_PORT};
-    }
 
-    # Common proxy settings
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_cache_bypass $http_upgrade;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 300s;
-    proxy_connect_timeout 75s;
+MONGODB_URI_DEV=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_payment_dev
+MONGODB_URI_PROD=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_payment
 
-    # --- HTTPS Server for sniperbuisnesscenter.com ---
-    server {
-        listen 443 ssl http2;
-        listen [::]:443 ssl http2;
-        server_name sniperbuisnesscenter.com www.sniperbuisnesscenter.com;
 
-        # SSL Configuration
-        ssl_certificate /etc/letsencrypt/live/sniperbuisnesscenter.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/sniperbuisnesscenter.com/privkey.pem;
-        include /etc/letsencrypt/options-ssl-nginx.conf;
-        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+MONGODB_URI_DEV=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_products_dev
+MONGODB_URI_PROD=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_products
 
-        # ACME challenge location (for renewals if needed by client)
-        location /.well-known/acme-challenge/ {
-            allow all;
-            root /usr/share/nginx/flutter_app; # Should align with Flutter app root
-        }
 
-        # Logging
-        access_log /var/log/nginx/sniperbuisnesscenter.ssl.access.log;
-        error_log /var/log/nginx/sniperbuisnesscenter.ssl.error.log;
+MONGODB_URI_DEV=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_notifications_dev
+MONGODB_URI_PROD=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_notifications
 
-        # API Locations
-        location /api/users/ { proxy_pass http://user_service; }
-        location /api/notifications/ { proxy_pass http://notification_service; }
-        location /api/payments/ { proxy_pass http://payment_service; }
-        location /api/products/ { proxy_pass http://product_service; }
-        location /api/advertising/ { proxy_pass http://advertising_service; }
-        location /api/tombola/ { proxy_pass http://tombola_service; }
-        location /api/settings/ { proxy_pass http://settings_service; }
 
-        # Location for Flutter Web App
-        location / {
-            root /usr/share/nginx/flutter_app;
-            try_files $uri $uri/ /index.html;
-        }
+MONGODB_URI_DEV=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_advertising_dev
+MONGODB_URI_PROD=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_advertising
 
-        # Health check endpoint
-        location /nginx_health {
-            return 200 'Nginx for sniperbuisnesscenter.com (HTTPS) is healthy';
-            add_header Content-Type text/plain;
-        }
-    }
 
-    # --- HTTPS Server for admin.sniperbuisnesscenter.com ---
-    server {
-        listen 443 ssl http2;
-        listen [::]:443 ssl http2;
-        server_name admin.sniperbuisnesscenter.com;
+MONGODB_URI_DEV=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_tombola_dev
+MONGODB_URI_PROD=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_tombola
 
-        # SSL Configuration (assuming same cert covers the subdomain, or adjust path if different)
-        ssl_certificate /etc/letsencrypt/live/sniperbuisnesscenter.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/sniperbuisnesscenter.com/privkey.pem;
-        include /etc/letsencrypt/options-ssl-nginx.conf;
-        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-        
-        # ACME challenge location
-        location /.well-known/acme-challenge/ {
-            allow all;
-            root /usr/share/nginx/html; # Generic root, or specific if admin_frontend_ms serves it
-        }
 
-        # Logging
-        access_log /var/log/nginx/admin.sniperbuisnesscenter.ssl.access.log;
-        error_log /var/log/nginx/admin.sniperbuisnesscenter.ssl.error.log;
+MONGODB_URI_DEV=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_settings_dev
+MONGODB_URI_PROD=mongodb://stercytambong:w23N0S5Qb6kMUwTi@localhost:27017/sbc_settings
 
-        location / {
-            proxy_pass http://admin_frontend_ms;
-        }
 
-        # Health check endpoint
-        location /nginx_health_admin {
-            return 200 'Nginx for admin.sniperbuisnesscenter.com (HTTPS) is healthy';
-            add_header Content-Type text/plain;
-        }
-    }
 
-    # --- HTTP to HTTPS Redirect for sniperbuisnesscenter.com ---
-    server {
-        listen 80;
-        listen [::]:80;
-        server_name sniperbuisnesscenter.com www.sniperbuisnesscenter.com;
+# use admin
+# db.createUser({
+#   user: "admin",
+#   pwd: "admin1234",
+#   roles: [ { role: "userAdminAnyDatabase", db: "admin" }, "readWriteAnyDatabase" ]
+# })
 
-        location /.well-known/acme-challenge/ {
-            allow all;
-            root /usr/share/nginx/flutter_app; # Align with where certbot expects to write challenges
-        }
-        location /nginx_health { # Keep health check accessible on HTTP for initial checks
-            return 200 'Nginx for sniperbuisnesscenter.com (HTTP) is healthy - redirecting to HTTPS';
-            add_header Content-Type text/plain;
-        }
-        location / {
-            return 301 https://$host$request_uri;
-        }
-    }
+# mongosh -u admin -p admin1234 --authenticationDatabase admin
 
-    # --- HTTP to HTTPS Redirect for admin.sniperbuisnesscenter.com ---
-    server {
-        listen 80;
-        listen [::]:80;
-        server_name admin.sniperbuisnesscenter.com;
+# // or, if the user exists:
+# db.changeUserPassword("stercytambong", "w23N0S5Qb6kMUwTi")
 
-        location /.well-known/acme-challenge/ {
-            allow all;
-            root /usr/share/nginx/html; # Generic root for challenges
-        }
-         location /nginx_health_admin { # Keep health check accessible on HTTP
-            return 200 'Nginx for admin.sniperbuisnesscenter.com (HTTP) is healthy - redirecting to HTTPS';
-            add_header Content-Type text/plain;
-        }
-        location / {
-            return 301 https://$host$request_uri;
-        }
-    }
-}
+  mongodump --uri="mongodb+srv://stercytambong:w23N0S5Qb6kMUwTi@simbtech0.ljkwg8k.mongodb.net/sbc_notifications" --collection users --out=/tmp/test_dump
