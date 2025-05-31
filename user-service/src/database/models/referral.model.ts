@@ -48,8 +48,6 @@ const ReferralSchema = new Schema<IReferral>(
 // Compound index for querying referrals by referrer and level, including archived status
 ReferralSchema.index({ referrer: 1, referralLevel: 1, archived: 1 });
 
-// Optional: Index for referredUser if you frequently look up who referred a specific user
-ReferralSchema.index({ referredUser: 1 });
 
 const ReferralModel = model<IReferral>('Referral', ReferralSchema);
 

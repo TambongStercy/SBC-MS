@@ -67,7 +67,7 @@ export class ProductRepository {
      * @returns Array of products
      */
     async findByUserId(userId: string | Types.ObjectId): Promise<IProduct[]> {
-        return await ProductModel.find({ userId }).exec();
+        return await ProductModel.find({ userId }).lean().exec();
     }
 
     /**
@@ -81,7 +81,7 @@ export class ProductRepository {
             productId,
             updateData,
             { new: true }
-        ).exec();
+        ).lean().exec();
     }
 
     /**
@@ -118,7 +118,7 @@ export class ProductRepository {
                 deletedAt: new Date()
             },
             { new: true }
-        ).exec();
+        ).lean().exec();
     }
 
     /**
@@ -134,7 +134,7 @@ export class ProductRepository {
                 deletedAt: undefined
             },
             { new: true }
-        ).where({ deleted: true }).exec();
+        ).where({ deleted: true }).lean().exec();
     }
 
     /**
@@ -148,7 +148,7 @@ export class ProductRepository {
             productId,
             { $push: { ratings: ratingId } },
             { new: true }
-        ).exec();
+        ).lean().exec();
     }
 
     /**
@@ -162,7 +162,7 @@ export class ProductRepository {
             productId,
             { $pull: { ratings: ratingId } },
             { new: true }
-        ).exec();
+        ).lean().exec();
     }
 
     /**
@@ -176,7 +176,7 @@ export class ProductRepository {
             productId,
             { overallRating },
             { new: true }
-        ).exec();
+        ).lean().exec();
     }
 
     /**
