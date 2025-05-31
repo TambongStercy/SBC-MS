@@ -7,6 +7,7 @@ import config from './config';
 // Import the main router
 import apiRoutes from './api/routes/index';
 import logger from './utils/logger';
+import { vcfCacheScheduler } from './jobs/vcf-cache-scheduler';
 
 // Create Express server
 const app: Express = express();
@@ -19,7 +20,7 @@ app.use(cors()); // Cross-origin resource sharing
 app.use(express.json()); // Parse JSON request body
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request body
 
-// --- Trust Proxy --- 
+// --- Trust Proxy ---
 // This is important for accurately getting req.ip behind a reverse proxy (like Nginx)
 if (config.nodeEnv === 'production') {
     app.set('trust proxy', 1); // Trust the first proxy hop
@@ -75,6 +76,10 @@ async function startServer() {
         // Connect to MongoDB
         await connectDB();
 
+        // Start VCF cache scheduler
+        vcfCacheScheduler.start();
+        logger.info('[Server] VCF cache scheduler started');
+
         // Start Express server
         app.listen(PORT, () => {
             logger.info(`[Server] User service running on port ${PORT}`);
@@ -84,6 +89,8 @@ async function startServer() {
         // Handle shutdown
         const gracefulShutdown = () => {
             logger.info('[Server] Shutting down gracefully...');
+            vcfCacheScheduler.stop();
+            logger.info('[Server] VCF cache scheduler stopped');
             process.exit(0);
         };
 
@@ -102,4 +109,4 @@ if (require.main === module) {
 }
 
 // Export for testing
-export default app; 
+export default app;

@@ -1,6 +1,7 @@
 # User Flow API Tests (.http file for REST Client)
 # Change the baseUrl if your API Gateway runs on a different host/port
 @baseUrl = https://sniperbuisnesscenter.com/api
+@local = http://localhost:3001/api
 
 # --- User A (Referrer) --- 
 @userA_Username = referrer_1
@@ -8,7 +9,7 @@
 @userA_Password = StrongPassword123!
 @userA_Region = Center
 @userA_PhoneNumber = 0700000000
-@userA_AuthToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2N2ZiODAwNjU0NzZlODE3MjUyNjJiYjEiLCJlbWFpbCI6InRlc3QxQGV4YW1wbGUuY29tIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NDQ3NTQyMzcsImV4cCI6MTc0NDg0MDYzN30.T0jnJTAy6xZFu4wD8b_pHK8woBDzvr3CTuCjVoV69FQ
+@userA_AuthToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0ODY4MzU0OSwiZXhwIjoxNzQ4NzY5OTQ5fQ.yNTw1m_6XNecnMukSxA5HmlGz1yO8I6KidXZ224FPDI
 @userA_ReferralCode = thQuxq5p
 @userA_Id = 67fb80065476e81725262bb1
 @userA_Otp = GAoug5
@@ -436,3 +437,14 @@ Content-Type: application/json
 
 
 
+### Unfiltered (fast)
+GET {{local}}/contacts/export 
+Authorization: Bearer {{userA_AuthToken}}
+
+### Country filter
+GET {{local}}/contacts/export?country=CM
+Authorization: Bearer {{userA_AuthToken}}
+
+### Advanced targeting
+GET {{local}}/contacts/export?country=CM&sex=male&minAge=25&maxAge=35&profession=Engineer
+Authorization: Bearer {{userA_AuthToken}}

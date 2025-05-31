@@ -7,6 +7,10 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Cache
+cache/
+storage/*
+
 # Build outputs
 dist/
 build/

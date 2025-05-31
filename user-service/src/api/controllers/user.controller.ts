@@ -342,7 +342,7 @@ export class UserController {
     /**
      * Modify user profile (Protected Route)
      * Allows users to update their own profile information.
-     * @route PUT /api/users/me 
+     * @route PUT /api/users/me
      */
     async modify(req: AuthenticatedRequest, res: Response): Promise<void> {
         try {
@@ -600,12 +600,12 @@ export class UserController {
     }
 
     /**
-     * Export filtered contacts as CSV
+     * Export filtered contacts as VCF (blazingly fast using cached file)
      * Access controlled by subscription type.
      * @route GET /api/contacts/export
      */
     async exportContacts(req: AuthenticatedRequest, res: Response): Promise<void> {
-        this.log.info('Request received for exporting contacts');
+        this.log.info('Request received for exporting contacts (cached VCF)');
         if (!req.user || !req.user.userId) {
             this.log.warn('Export contacts failed: Missing user ID in authenticated request');
             res.status(401).json({ success: false, message: 'Authentication error' });
@@ -624,6 +624,87 @@ export class UserController {
             const hasCible = activeSubTypes.includes(SubscriptionType.CIBLE);
             const hasClassique = activeSubTypes.includes(SubscriptionType.CLASSIQUE);
             // --- End Subscription Check ---
+
+            // Import VCF cache service
+            const { vcfCacheService } = await import('../../services/vcf-cache.service');
+
+            // --- Check for query parameters (filters) ---
+            const hasFilters = Object.keys(req.query).length > 0;
+
+            if (hasFilters) {
+                // If user provided filters, fall back to the old dynamic generation method
+                this.log.info(`User ${userId} requested filtered export, using dynamic generation`);
+                return this.exportContactsWithFilters(req, res);
+            }
+
+            // --- Use Cached VCF File for unfiltered exports ---
+            this.log.info(`User ${userId} requested unfiltered export, using cached VCF file`);
+
+            try {
+                // Ensure we have a fresh VCF file (regenerate if older than 60 minutes)
+                await vcfCacheService.ensureFreshVCFFile(60);
+
+                // Get the cached VCF content
+                const vcfContent = await vcfCacheService.getVCFContent();
+
+                if (!vcfContent || vcfContent.trim().length === 0) {
+                    this.log.warn('Cached VCF file is empty, falling back to dynamic generation');
+                    return this.exportContactsWithFilters(req, res);
+                }
+
+                // Get file stats for logging
+                const stats = await vcfCacheService.getFileStats();
+                this.log.info(`Serving cached VCF file to user ${userId}. Contacts: ${stats.contactCount}, Size: ${stats.size} bytes`);
+
+                // Set headers for VCF download
+                res.setHeader('Content-Type', 'text/vcard');
+                res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
+                res.setHeader('Content-Length', Buffer.byteLength(vcfContent, 'utf8'));
+                res.status(200).send(vcfContent);
+                return;
+
+            } catch (cacheError: any) {
+                this.log.error(`Error using cached VCF file for user ${userId}:`, cacheError);
+                this.log.info('Falling back to dynamic generation');
+                return this.exportContactsWithFilters(req, res);
+            }
+
+        } catch (error: any) {
+            this.log.error(`Error in exportContacts for user ${userId}:`, error);
+            res.status(500).json({ success: false, message: 'Failed to export contacts.' });
+        }
+    }
+
+    /**
+     * Export contacts with filters (optimized with popular filter cache)
+     * Used as fallback when filters are applied or cached file is unavailable
+     */
+    private async exportContactsWithFilters(req: AuthenticatedRequest, res: Response): Promise<void> {
+        const userId = req.user!.userId;
+
+        try {
+            // Get subscription types (already validated in main method)
+            const activeSubTypes = await this.subscriptionService.getActiveSubscriptionTypes(userId);
+            const hasCible = activeSubTypes.includes(SubscriptionType.CIBLE);
+            const hasClassique = activeSubTypes.includes(SubscriptionType.CLASSIQUE);
+
+            // Extract and format filters (same logic as search)
+            const extractedFilters: ContactSearchFilters = this.extractContactFilters(req.query);
+
+            // Try to get cached result for popular filter combinations
+            const { popularFiltersCacheService } = await import('../../services/popular-filters-cache.service');
+            const cachedResult = await popularFiltersCacheService.getCachedResult(extractedFilters);
+
+            if (cachedResult) {
+                this.log.info(`Serving cached filter result to user ${userId}. Filter: ${JSON.stringify(extractedFilters)}`);
+
+                // Set headers for VCF download
+                res.setHeader('Content-Type', 'text/vcard');
+                res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
+                res.setHeader('Content-Length', Buffer.byteLength(cachedResult, 'utf8'));
+                res.status(200).send(cachedResult);
+                return;
+            }
 
             // --- Filter Validation ---
             const queryFilters = req.query;
@@ -655,13 +736,10 @@ export class UserController {
             // --- End Filter Validation ---
 
 
-            // Extract and format filters (same logic as search)
-            const filters: ContactSearchFilters = this.extractContactFilters(queryFilters);
-
-            console.log('Filter: ', filters)
+            console.log('Filter: ', extractedFilters)
             // Add the requirement that contacts must have an active subscription
             const finalFilters: ContactSearchFilters = {
-                ...filters
+                ...extractedFilters
             };
 
             this.log.info(`Exporting contacts for user ${userId} with filters: ${JSON.stringify(finalFilters)}`);
@@ -761,6 +839,14 @@ export class UserController {
 
                 vCardLines.push('END:VCARD');
                 vcfString += vCardLines.join('\r\n') + '\r\n'; // Use CRLF line endings for VCF
+            }
+
+            // Cache the result for popular filter combinations
+            try {
+                await popularFiltersCacheService.cacheResult(extractedFilters, vcfString, allContacts.length);
+            } catch (cacheError: any) {
+                this.log.warn('Failed to cache filter result:', cacheError);
+                // Don't fail the request if caching fails
             }
 
             // Set headers for VCF download
@@ -1308,4 +1394,4 @@ export class UserController {
 }
 
 // Export singleton instance
-export const userController = new UserController(); 
+export const userController = new UserController();

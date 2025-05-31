@@ -461,7 +461,7 @@ export class SubscriptionService {
             throw new Error(`Failed to activate subscription after successful payment. Please contact support. Details: ${error.message}`);
         }
 
-        // --- 3. Distribute Commissions (Only for CIBLE or Upgrade) --- 
+        // --- 3. Distribute Commissions (Only for CIBLE or Upgrade) ---
         if (targetSubscriptionType === SubscriptionType.CIBLE || isUpgrade || targetSubscriptionType === SubscriptionType.CLASSIQUE) {
             // Using .catch() here so commission failure doesn't break the main webhook acknowledgment
             this.distributeSubscriptionCommission(userId, targetSubscriptionType, isUpgrade, paymentSessionId, planName)
@@ -472,7 +472,7 @@ export class SubscriptionService {
         } else {
             this.log.info(`Skipping commission distribution for non-CIBLE/non-Upgrade plan: ${targetSubscriptionType}`);
         }
-        // --- End Commission Distribution --- 
+        // --- End Commission Distribution ---
 
         return activatedSubscription;
     }
@@ -685,8 +685,11 @@ export class SubscriptionService {
             // 2. If no active CIBLE sub exists, check for active CLASSIQUE
             const activeClassiqueSub = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CLASSIQUE);
 
+            let result: ISubscription | null = null;
+            let subscriptionChanged = false;
+
             if (type === SubscriptionType.CIBLE) {
-                // Activating CIBLE: 
+                // Activating CIBLE:
                 if (activeClassiqueSub) {
                     // Has active CLASSIQUE, no active CIBLE -> Upgrade CLASSIQUE
                     this.log.info(`Upgrading existing CLASSIQUE subscription ${activeClassiqueSub._id} to CIBLE for user ${userId}.`);
@@ -697,7 +700,8 @@ export class SubscriptionService {
                         // Add metadata if needed: metadata: { upgradedFrom: 'CLASSIQUE' }
                     };
                     // Use updateById from the repository
-                    return await this.subscriptionRepository.updateById(activeClassiqueSub._id, updateData);
+                    result = await this.subscriptionRepository.updateById(activeClassiqueSub._id, updateData);
+                    subscriptionChanged = true;
                 } else {
                     // No active CIBLE or CLASSIQUE exists - Create new CIBLE
                     this.log.info(`Creating new lifetime CIBLE subscription for user ${userId}.`);
@@ -708,7 +712,8 @@ export class SubscriptionService {
                         endDate: LIFETIME_END_DATE, // Lifetime
                         status: SubscriptionStatus.ACTIVE,
                     };
-                    return await this.subscriptionRepository.create(newSubscriptionData as any);
+                    result = await this.subscriptionRepository.create(newSubscriptionData as any);
+                    subscriptionChanged = true;
                 }
 
             } else if (type === SubscriptionType.CLASSIQUE) {
@@ -716,7 +721,7 @@ export class SubscriptionService {
                 if (activeClassiqueSub) {
                     // CLASSIQUE already exists (and CIBLE doesn't), do nothing.
                     this.log.info(`User ${userId} already has an active CLASSIQUE subscription. No changes needed.`);
-                    return activeClassiqueSub;
+                    result = activeClassiqueSub;
                 } else {
                     // No active CIBLE or CLASSIQUE exists, create new CLASSIQUE.
                     this.log.info(`Creating new lifetime CLASSIQUE subscription for user ${userId}.`);
@@ -727,20 +732,50 @@ export class SubscriptionService {
                         endDate: LIFETIME_END_DATE, // Lifetime
                         status: SubscriptionStatus.ACTIVE,
                     };
-                    return await this.subscriptionRepository.create(newSubscriptionData as any);
+                    result = await this.subscriptionRepository.create(newSubscriptionData as any);
+                    subscriptionChanged = true;
                 }
             }
 
-            // Fallback - should not be reached
-            this.log.error(`Unhandled subscription type in activateSubscription: ${type}`);
-            return null;
+            // Trigger VCF cache regeneration if subscription changed
+            if (subscriptionChanged && result) {
+                this.log.info(`Subscription changed for user ${userId}, triggering VCF cache regeneration`);
+                this.triggerVCFCacheRegeneration();
+            }
+
+            if (!result) {
+                // Fallback - should not be reached
+                this.log.error(`Unhandled subscription type in activateSubscription: ${type}`);
+                return null;
+            }
+
+            return result;
 
         } catch (error) {
             this.log.error(`Error activating subscription type ${type} for user ${userId}:`, error);
             throw error; // Re-throw original error
         }
     }
+
+    /**
+     * Triggers VCF cache regeneration in the background
+     * This is called when subscriptions are created, updated, or expired
+     */
+    private triggerVCFCacheRegeneration(): void {
+        // Use setImmediate to trigger regeneration in the next tick (non-blocking)
+        setImmediate(async () => {
+            try {
+                this.log.info('Starting background VCF cache regeneration...');
+                const { vcfCacheService } = await import('./vcf-cache.service');
+                await vcfCacheService.generateVCFFile();
+                this.log.info('Background VCF cache regeneration completed successfully');
+            } catch (error: any) {
+                this.log.error('Error during background VCF cache regeneration:', error);
+                // Don't throw error as this is a background operation
+            }
+        });
+    }
 }
 
 // Export an instance if using singleton pattern
-export const subscriptionService = new SubscriptionService(); 
+export const subscriptionService = new SubscriptionService();
