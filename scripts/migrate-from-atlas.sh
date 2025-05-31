@@ -4,8 +4,8 @@
 # Usage: bash migrate-from-atlas.sh
 
 # Configuration
-ATLAS_URI="mongodb+srv://username:password@cluster.mongodb.net"
-LOCAL_URI="mongodb://localhost:27017"
+ATLAS_URI="mongodb+srv://stercytambong:w23N0S5Qb6kMUwTi@simbtech0.ljkwg8k.mongodb.net"
+LOCAL_URI="mongodb://admin:admin1234@localhost:27017"
 BACKUP_DIR="/tmp/mongodb_migration"
 
 
