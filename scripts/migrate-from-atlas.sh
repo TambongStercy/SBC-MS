@@ -8,6 +8,8 @@ ATLAS_URI="mongodb+srv://username:password@cluster.mongodb.net"
 LOCAL_URI="mongodb://localhost:27017"
 BACKUP_DIR="/tmp/mongodb_migration"
 
+
+
 # Database names from your microservices
 DATABASES=(
     "sbc_users"
