@@ -44,7 +44,7 @@ migrate_database() {
         
         # Import to local MongoDB
         echo "Importing $db_name to local MongoDB..."
-        mongorestore --uri="$LOCAL_URI" --db="$db_name" "$BACKUP_DIR/$db_name"
+        mongorestore --uri="mongodb://admin:admin1234@localhost:27017/$db_name?authSource=admin" "$BACKUP_DIR/$db_name"
         
         if [ $? -eq 0 ]; then
             echo "Import successful for $db_name"
