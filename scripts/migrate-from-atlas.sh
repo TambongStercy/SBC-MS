@@ -38,7 +38,7 @@ migrate_database() {
         
         # Drop existing local database before import
         echo "Dropping existing local database $db_name..."
-        mongosh "$LOCAL_URI/$db_name" --eval "db.dropDatabase()"
+        mongosh "$LOCAL_URI/$db_name" -u admin -p admin1234 --authenticationDatabase admin --eval "db.dropDatabase()"
         
         # Import to local MongoDB
         echo "Importing $db_name to local MongoDB..."
