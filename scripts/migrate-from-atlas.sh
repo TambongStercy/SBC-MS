@@ -4,8 +4,8 @@
 # Usage: bash migrate-from-atlas.sh
 
 # Configuration
-ATLAS_URI="mongodb+srv://stercytambong:w23N0S5Qb6kMUwTi@simbtech0.ljkwg8k.mongodb.net"
-LOCAL_URI="mongodb://admin:admin1234@localhost:27017"
+ATLAS_URI="mongodb+srv://atlasuser:atlaspassword@simbtech0.ljkwg8k.mongodb.net"
+LOCAL_URI="mongodb://restoreuser:restorepassword@localhost:27017"
 BACKUP_DIR="/tmp/mongodb_migration"
 
 
@@ -38,13 +38,9 @@ migrate_database() {
     if [ $? -eq 0 ]; then
         echo "Export successful for $db_name"
         
-        # Drop existing local database before import
-        echo "Dropping existing local database $db_name..."
-        mongosh "$LOCAL_URI/$db_name" -u admin -p admin1234 --authenticationDatabase admin --eval "db.dropDatabase()"
-        
         # Import to local MongoDB
         echo "Importing $db_name to local MongoDB..."
-        mongorestore --uri="mongodb://admin:admin1234@localhost:27017/$db_name?authSource=admin" "$BACKUP_DIR/$db_name"
+        mongorestore --uri="$LOCAL_URI/$db_name" "$BACKUP_DIR/$db_name"
         
         if [ $? -eq 0 ]; then
             echo "Import successful for $db_name"
