@@ -98,4 +98,187 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
     // Mandatory phone number check is moved to the service layer
 
     next();
-}; 
+};
+
+/**
+ * Validate user withdrawal request
+ */
+export const validateWithdrawal = (req: Request, res: Response, next: NextFunction) => {
+    const { amount } = req.body;
+
+    if (!amount) {
+        log.warn('Validation failed for user withdrawal: Missing amount');
+        return res.status(400).json({
+            success: false,
+            message: 'Amount is required'
+        });
+    }
+
+    if (typeof amount !== 'number' || amount <= 0) {
+        log.warn('Validation failed for user withdrawal: Invalid amount', { amount });
+        return res.status(400).json({
+            success: false,
+            message: 'Amount must be a positive number'
+        });
+    }
+
+    // Check minimum withdrawal amount (500 for most countries)
+    if (amount < 500) {
+        return res.status(400).json({
+            success: false,
+            message: 'Minimum withdrawal amount is 500'
+        });
+    }
+
+    // Check if amount is multiple of 5 (CinetPay requirement)
+    if (amount % 5 !== 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Amount must be a multiple of 5'
+        });
+    }
+
+    next();
+};
+
+/**
+ * Validate admin user withdrawal request
+ */
+export const validateAdminUserWithdrawal = (req: Request, res: Response, next: NextFunction) => {
+    const { userId, amount, phoneNumber, countryCode, paymentMethod } = req.body;
+
+    if (!userId) {
+        log.warn('Validation failed for admin user withdrawal: Missing userId');
+        return res.status(400).json({
+            success: false,
+            message: 'userId is required'
+        });
+    }
+
+    if (!amount) {
+        log.warn('Validation failed for admin user withdrawal: Missing amount');
+        return res.status(400).json({
+            success: false,
+            message: 'Amount is required'
+        });
+    }
+
+    if (typeof amount !== 'number' || amount <= 0) {
+        log.warn('Validation failed for admin user withdrawal: Invalid amount', { amount });
+        return res.status(400).json({
+            success: false,
+            message: 'Amount must be a positive number'
+        });
+    }
+
+    if (amount < 500) {
+        return res.status(400).json({
+            success: false,
+            message: 'Minimum withdrawal amount is 500'
+        });
+    }
+
+    if (amount % 5 !== 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Amount must be a multiple of 5'
+        });
+    }
+
+    // Validate override parameters if provided
+    const hasOverridePhone = phoneNumber !== undefined;
+    const hasOverrideCountry = countryCode !== undefined;
+
+    if (hasOverridePhone || hasOverrideCountry) {
+        // If any override parameter is provided, both phoneNumber and countryCode are required
+        if (!phoneNumber || !countryCode) {
+            return res.status(400).json({
+                success: false,
+                message: 'When using override parameters, both phoneNumber and countryCode are required'
+            });
+        }
+
+        // Validate country code
+        const validCountries = ['CI', 'SN', 'CM', 'TG', 'BJ', 'ML', 'BF', 'GN', 'CD'];
+        if (!validCountries.includes(countryCode)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid or unsupported country code for override'
+            });
+        }
+
+        // Validate phone number format
+        const cleanPhone = phoneNumber.replace(/\D/g, '');
+        if (cleanPhone.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid phone number format for override'
+            });
+        }
+    }
+
+    next();
+};
+
+/**
+ * Validate admin direct payout request
+ */
+export const validateAdminDirectPayout = (req: Request, res: Response, next: NextFunction) => {
+    const { amount, phoneNumber, countryCode, recipientName } = req.body;
+
+    const missingFields = [];
+    if (!amount) missingFields.push('amount');
+    if (!phoneNumber) missingFields.push('phoneNumber');
+    if (!countryCode) missingFields.push('countryCode');
+    if (!recipientName) missingFields.push('recipientName');
+
+    if (missingFields.length > 0) {
+        log.warn('Validation failed for admin direct payout: Missing fields', { missingFields });
+        return res.status(400).json({
+            success: false,
+            message: `Missing required fields: ${missingFields.join(', ')}`
+        });
+    }
+
+    if (typeof amount !== 'number' || amount <= 0) {
+        log.warn('Validation failed for admin direct payout: Invalid amount', { amount });
+        return res.status(400).json({
+            success: false,
+            message: 'Amount must be a positive number'
+        });
+    }
+
+    if (amount < 500) {
+        return res.status(400).json({
+            success: false,
+            message: 'Minimum payout amount is 500'
+        });
+    }
+
+    if (amount % 5 !== 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Amount must be a multiple of 5'
+        });
+    }
+
+    // Validate country code
+    const validCountries = ['CI', 'SN', 'CM', 'TG', 'BJ', 'ML', 'BF', 'GN', 'CD'];
+    if (!validCountries.includes(countryCode)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid or unsupported country code'
+        });
+    }
+
+    // Validate phone number format
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (cleanPhone.length < 8) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid phone number format'
+        });
+    }
+
+    next();
+};
