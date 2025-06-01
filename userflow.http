@@ -1,7 +1,7 @@
 # User Flow API Tests (.http file for REST Client)
 # Change the baseUrl if your API Gateway runs on a different host/port
 @baseUrl = https://sniperbuisnesscenter.com/api
-@local = http://localhost:3001/api
+@local = http://localhost:3000/api
 
 # --- User A (Referrer) --- 
 @userA_Username = referrer_1
@@ -447,4 +447,27 @@ Authorization: Bearer {{userA_AuthToken}}
 
 ### Advanced targeting
 GET {{local}}/contacts/export?country=CM&sex=male&minAge=25&maxAge=35&profession=Engineer
+Authorization: Bearer {{userA_AuthToken}}
+
+
+### Initiate a payout to Cameroon MTN
+POST {{local}}/payouts/initiate
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+  "targetUserId": "65d2b0344a7e2b9efbf6205d",
+  "amount": 500,
+  "phoneNumber": "675080477",
+  "countryCode": "CM",
+  "recipientName": "Tambong Stercy",
+  "paymentMethod": "MTNCM"
+}
+
+### Get the balance of the user
+GET {{local}}/payouts/balance
+Authorization: Bearer {{userA_AuthToken}}
+
+### Get the status of a payout
+GET {{local}}/payouts/status/SBC_65d2b0344a7e2b9efbf6205d_1748737200428
 Authorization: Bearer {{userA_AuthToken}}

@@ -135,6 +135,13 @@ app.use('/api/transactions', proxy(config.services.paymentServiceUrl, {
   }
 }));
 
+app.use('/api/payouts', proxy(config.services.paymentServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to payouts service`);
+    return '/api/payouts' + req.url;
+  }
+}));
+
 // Product service
 app.use('/api/products', proxy(config.services.productServiceUrl, {
   proxyReqPathResolver: (req) => {

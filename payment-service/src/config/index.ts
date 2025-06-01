@@ -51,10 +51,12 @@ interface IConfig {
         apiKey: string;
         apiSecret: string;
         apiPassword: string;
+        transferPassword: string; // Password for transfer API
         siteId: string;
         notificationKey: string;
         alternateNotifyUrl?: string; // Optional HTTPS webhook URL for production
     };
+    selfBaseUrl: string; // Base URL of this service for webhooks
 }
 
 // Configuration object
@@ -104,10 +106,12 @@ const config: IConfig = {
         apiKey: process.env.CINETPAY_API_KEY || '',
         apiSecret: process.env.CINETPAY_SECRET_KEY || '',
         apiPassword: process.env.CINETPAY_API_PASSWORD || '',
+        transferPassword: process.env.CINETPAY_TRANSFER_PASSWORD || '',
         siteId: process.env.CINETPAY_SITE_ID || '',
         notificationKey: process.env.CINETPAY_NOTIFICATION_KEY || '',
         alternateNotifyUrl: process.env.CINETPAY_ALTERNATE_NOTIFY_URL || ''
     },
+    selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3003',
 };
 
 // Validation function
@@ -143,4 +147,4 @@ const validateConfig = (): void => {
 // Run validation (consider if logger is initialized before this)
 validateConfig();
 
-export default config; // Export as default following user-service pattern 
+export default config; // Export as default following user-service pattern
