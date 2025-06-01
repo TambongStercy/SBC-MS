@@ -98,9 +98,9 @@ app.use('/api/subscriptions', proxy(config.services.userServiceUrl, {
   }
 }));
 
-app.use('/api/withdrawals', proxy(config.services.userServiceUrl, {
+app.use('/api/withdrawals', proxy(config.services.paymentServiceUrl, {
   proxyReqPathResolver: (req) => {
-    log.debug(`Proxying ${req.method} ${req.originalUrl} to withdrawals service`);
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to withdrawals service (payment service)`);
     return '/api/withdrawals' + req.url;
   }
 }));
@@ -225,4 +225,4 @@ process.on('SIGTERM', () => {
   });
 });
 
-export default app; 
+export default app;
