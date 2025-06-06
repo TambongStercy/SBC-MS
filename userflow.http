@@ -422,7 +422,7 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "b5ca9d18-dd6a-416f-a65e-f249f2bc9dad",
+  "reference": "10ab3627-fc1e-48e1-ac3a-8455aac7e95e",
   "status": "SUCCESSFUL"
 }
 

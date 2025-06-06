@@ -23,6 +23,7 @@ import { UserDetails } from '../database/repositories/user.repository';
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
 import { AppError } from '../utils/errors'; // Consolidated AppError import
+import { normalizePhoneNumber } from '../utils/phone.utils'; // Import normalizePhoneNumber
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -2890,6 +2891,40 @@ export class UserService {
 
         // Optional: Send confirmation to the *old* email address?
         // await notificationService.sendEmailChangeConfirmation(user.id, user.email /* old email */, newEmail, user.name);
+    }
+
+    /**
+     * Check if a user exists by email or phone number.
+     * Used for registration forms to check availability.
+     * @param email - Optional email address.
+     * @param phoneNumber - Optional phone number.
+     * @returns True if a user with either the email or phone exists, false otherwise.
+     */
+    async checkExistence(
+        email?: string,
+        phoneNumber?: string
+    ): Promise<boolean> {
+        log.info(`Checking user existence for email: ${email}, phone: ${phoneNumber}`);
+        if (!email && !phoneNumber) {
+            throw new AppError('Email or phone number must be provided.', 400);
+        }
+
+        try {
+            let normalizedEmail = email?.trim();
+            let cleanedPhoneNumber = phoneNumber ? phoneNumber.replace(/\D/g, '') : undefined;
+
+            // Call the repository method that checks for both email or phone
+            const user = await userRepository.findByEmailOrPhone(normalizedEmail, cleanedPhoneNumber);
+
+            const exists = !!user; // Convert user object existence to boolean
+            log.info(`Existence check result for email: ${email}, phone: ${phoneNumber} is ${exists}`);
+            return exists;
+
+        } catch (error: any) {
+            log.error(`Error during existence check: ${error.message}`, { email, phoneNumber });
+            // Rethrow database errors or unexpected errors as an AppError
+            throw new AppError('An error occurred during the existence check.', 500);
+        }
     }
 }
 

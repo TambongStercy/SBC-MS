@@ -43,6 +43,7 @@ serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsB
 router.use('/internal', serviceRouter);
 
 // === Public routes ===
+router.post('/check-existence', mediumLimiter, (req, res) => userController.checkExistence(req, res));
 router.post('/register', mediumLimiter, (req, res) => userController.register(req, res));
 router.post('/login', strictLimiter, (req, res) => userController.login(req, res));
 router.post('/verify-otp', strictLimiter, (req, res) => userController.verifyOtp(req, res));

@@ -1391,6 +1391,30 @@ export class UserController {
         }
     }
 
+    /**
+     * Check user existence
+     * @route POST /api/users/check-existence
+     */
+    async checkExistence(req: Request, res: Response): Promise<void> {
+        try {
+            const { email, phoneNumber } = req.body;
+
+            // Validate input
+            if (!email && !phoneNumber) {
+                res.status(400).json({ success: false, message: 'Either email or phoneNumber must be provided' });
+                return;
+            }
+
+            // Call the service method
+            const exists = await userService.checkExistence(email, phoneNumber);
+
+            res.status(200).json({ success: true, data: { exists } });
+        } catch (error: any) {
+            log.error(`Error checking user existence: ${error.message}`);
+            res.status(500).json({ success: false, message: 'Internal server error' });
+        }
+    }
+
 }
 
 // Export singleton instance
