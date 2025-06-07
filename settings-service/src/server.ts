@@ -15,7 +15,7 @@ connectDB();
 
 // Middleware
 app.use(helmet({ crossOriginOpenerPolicy: false })); // Basic security headers
-// app.use(cors({ origin: config.cors.allowedOrigins }));
+app.use(cors({ origin: config.cors.allowedOrigins }));
 app.use(morgan('dev')); // HTTP request logger
 
 // Apply body parsers BEFORE API routes with increased limit for file uploads

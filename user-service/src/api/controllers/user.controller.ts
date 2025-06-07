@@ -491,10 +491,29 @@ export class UserController {
             }
 
             // Extract query parameters
-            const { level: levelQuery, name: nameFilter, page: pageQuery = '1', limit: limitQuery = '10' } = req.query;
+            const { level: levelQuery, name: nameFilter, page: pageQuery = '1', limit: limitQuery = '10', type: typeQuery = undefined } = req.query;
 
-            // Validate level
-            const level = levelQuery ? parseInt(levelQuery as string, 10) : undefined;
+            // Validate level and type
+            let level = levelQuery ? parseInt(levelQuery as string, 10) : undefined;
+
+            // Validate type parameter and set level accordingly
+            if (typeQuery) {
+                if (!['direct', 'indirect', 'all'].includes(typeQuery as string)) {
+                    res.status(400).json({ success: false, message: 'Invalid type parameter. Must be direct, indirect, or all.' });
+                    return;
+                }
+
+                // Set level based on type if not explicitly provided
+                if (!levelQuery) {
+                    if (typeQuery === 'direct') {
+                        level = 1;
+                    } else if (typeQuery === 'indirect') {
+                        level = 2; // Will include both level 2 and 3 in the service
+                    }
+                }
+            }
+
+            // Validate level if explicitly provided
             if (level !== undefined && (isNaN(level) || ![1, 2, 3].includes(level))) {
                 res.status(400).json({ success: false, message: 'Invalid level parameter. Must be 1, 2, or 3.' });
                 return;

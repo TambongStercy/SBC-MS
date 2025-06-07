@@ -92,7 +92,7 @@ export class UserRepository {
      * @param phoneNumber - The phone number.
      * @returns The user document or null if none found.
      */
-    async findByEmailOrPhone(email: string, phoneNumber: string): Promise<IUser | null> {
+    async findByEmailOrPhone(email: string | undefined, phoneNumber: string | undefined): Promise<IUser | null> {
         return UserModel.findOne({ $or: [{ email }, { phoneNumber }] }).exec();
     }
 

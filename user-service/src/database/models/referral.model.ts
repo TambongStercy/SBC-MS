@@ -51,4 +51,4 @@ ReferralSchema.index({ referrer: 1, referralLevel: 1, archived: 1 });
 
 const ReferralModel = model<IReferral>('Referral', ReferralSchema);
 
-export default ReferralModel; 
+export default ReferralModel;

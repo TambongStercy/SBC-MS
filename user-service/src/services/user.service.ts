@@ -737,13 +737,15 @@ export class UserService {
      * @param nameFilter - Optional name fragment to filter referred users (case-insensitive).
      * @param page - Page number for pagination (default: 1).
      * @param limit - Items per page (default: 10).
+     * @param type - Optional type filter (cible or classique).
      */
     async getReferredUsersInfoPaginated( // <<< ADDED METHOD NAME HERE
         referrerId: string | Types.ObjectId,
         level?: number, // Optional
         nameFilter?: string, // Optional
         page: number = 1,
-        limit: number = 10
+        limit: number = 10,
+        type: string = 'all'
     ): Promise<{ // Return type updated
         referredUsers: IReferredUserInfo[];
         totalCount: number;
