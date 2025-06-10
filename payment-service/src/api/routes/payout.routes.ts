@@ -42,12 +42,22 @@ router.get('/status/:transactionId', authenticate as any, generalLimiter, (req, 
 });
 
 /**
- * @route   POST /api/payouts/cinetpay/webhook
- * @desc    Handle CinetPay webhook notifications
+ * @route   POST /api/payouts/webhooks/cinetpay
+ * @desc    Handle CinetPay webhook notifications (for actual status updates)
  * @access  Public (webhook endpoint)
  */
-router.post('/cinetpay/webhook', (req, res) => {
+router.post('/webhooks/cinetpay', (req, res) => {
     payoutController.handleCinetPayWebhook(req, res);
+});
+
+/**
+ * @route   GET /api/payouts/webhooks/cinetpay
+ * @desc    CinetPay sends a GET request to verify webhook URL availability.
+ * @access  Public (webhook endpoint)
+ */
+router.get('/webhooks/cinetpay', (req, res) => {
+    // Respond with 200 OK to acknowledge receipt of the ping
+    res.status(200).send('OK');
 });
 
 /**

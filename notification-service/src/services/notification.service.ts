@@ -240,13 +240,15 @@ class NotificationService {
         code: string,
         expireMinutes: number,
         isRegistration: boolean = false,
-        userName?: string
+        userName?: string,
+        purpose?: string,
     ): Promise<INotification> {
-        const templateId = isRegistration ? 'verify-registration' : 'verify-login';
+        const templateId = purpose === 'withdrawal_verification' ? 'withdrawal-verification' : isRegistration ? 'verify-registration' : 'verify-login';
 
         const variables: Record<string, any> = {
             code,
             expireMinutes: expireMinutes.toString(),
+            purpose
         };
 
         if (userName) {

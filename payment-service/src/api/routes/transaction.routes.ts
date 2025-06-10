@@ -27,6 +27,7 @@ router.post('/deposit/callback', authenticateServiceRequest, (req, res) => trans
 // Withdrawal routes
 router.post('/withdrawal/initiate', authenticate, (req, res) => transactionController.initiateWithdrawal(req, res));
 router.post('/withdrawal/verify', authenticate, (req, res) => transactionController.verifyWithdrawal(req, res));
+router.delete('/withdrawal/:transactionId/cancel', authenticate, (req, res) => transactionController.cancelWithdrawal(req, res));
 
 // Payment routes
 router.post('/payment', authenticate, (req, res) => transactionController.processPayment(req, res));

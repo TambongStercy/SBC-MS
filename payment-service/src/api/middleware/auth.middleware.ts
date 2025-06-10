@@ -9,14 +9,33 @@ const log = logger.getLogger('AuthMiddleware');
 declare global {
     namespace Express {
         interface Request {
-            user?: {
-                userId: string;
-                email: string;
-                role: string;
-            };
+            user?: JwtPayload;
         }
     }
 }
+
+// Define User Roles
+export enum UserRole {
+    USER = 'user',
+    ADMIN = 'admin', // Consider if admin users are stored here or in a separate AdminModel
+}
+
+// Define the expected structure of the JWT payload
+interface JwtPayload {
+    id: string;
+    userId: string; // userId same as id
+    email: string;
+    role: UserRole; // Added role
+    iat?: number;
+    exp?: number;
+}
+
+// Extend Express Request interface to include typed user payload
+// Export this interface so other modules can use it
+export interface AuthenticatedRequest extends Request {
+    user?: JwtPayload; // Use the specific JwtPayload interface
+}
+
 
 /**
  * Middleware to authenticate user requests with JWT
@@ -36,11 +55,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
         const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
 
         // Verify token
-        const decoded = jwt.verify(token, config.jwt.secret) as {
-            userId: string;
-            email: string;
-            role: string;
-        };
+        const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
         // Set user information on the request object
         req.user = decoded;

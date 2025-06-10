@@ -10,6 +10,23 @@ interface Template {
 const TEMPLATES: Record<NotificationType, Record<string, Template>> = {
     // OTP Templates
     [NotificationType.OTP]: {
+        'withdrawal-verification': {
+            subject: 'Withdrawal Verification',
+            body: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333;">Withdrawal Verification</h2>
+          <p>Hello {{name}},</p>
+          <p>Your withdrawal verification code is:</p>
+          <div style="background-color: #f4f4f4; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 2px; margin: 15px 0;">
+            {{code}}
+          </div>
+          <p>Please enter it to complete your withdrawal.</p>
+          <p>This code will expire in {{expireMinutes}} minutes.</p>
+          <p>If you didn't request this code, please ignore this message.</p>
+          <p>Regards,<br>Sniper Business Center Team</p>
+        </div>
+      `,
+        },
         'verify-login': {
             subject: 'Your Login Verification Code',
             body: `

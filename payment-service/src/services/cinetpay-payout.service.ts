@@ -102,8 +102,10 @@ export interface PayoutRequest {
     countryCode: string;
     recipientName: string;
     recipientEmail?: string;
+    notifyUrl?: string;
     paymentMethod?: string;
     description?: string;
+    client_transaction_id?: string;
 }
 
 export interface PayoutResult {
@@ -450,8 +452,8 @@ export class CinetPayPayoutService {
                 prefix: prefix,
                 phone: formattedPhone,
                 amount: request.amount,
-                notify_url: `${config.selfBaseUrl}/api/payouts/cinetpay/webhook`,
-                client_transaction_id: `SBC_${request.userId}_${Date.now()}`
+                notify_url: request.notifyUrl || `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`,
+                client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
             };
 
             // Only add payment_method if specifically provided and valid
@@ -624,7 +626,7 @@ export class CinetPayPayoutService {
         comment?: string;
     } {
         return {
-            transactionId: payload.client_transaction_id,
+            transactionId: payload.cpm_trans_id,
             cinetpayTransactionId: payload.transaction_id,
             status: this.mapTreatmentStatus(payload.treatment_status),
             amount: parseFloat(payload.amount),

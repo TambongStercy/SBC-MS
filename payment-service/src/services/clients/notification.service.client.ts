@@ -4,6 +4,38 @@ import logger from '../../utils/logger';
 
 const log = logger.getLogger('NotificationServiceClient');
 
+// Interface for OTP notification request
+interface OtpNotificationRequest {
+    userId: string;
+    recipient: string;
+    channel: DeliveryChannel;
+    code: string;
+    expireMinutes: number;
+    isRegistration: boolean;
+    userName?: string;
+    purpose?: string;
+    description?: string;
+}
+
+// Define notification types
+export enum NotificationType {
+    OTP = 'otp',
+    TRANSACTION = 'transaction',
+    SYSTEM = 'system',
+    MARKETING = 'marketing',
+    REFERRAL = 'referral',
+    ACCOUNT = 'account',
+}
+
+// Define delivery channels
+export enum DeliveryChannel {
+    EMAIL = 'email',
+    SMS = 'sms',
+    WHATSAPP = 'whatsapp',
+    PUSH = 'push',
+}
+
+
 // Interfaces for the payloads, mirroring those in notification-service
 interface CommissionEmailPayload {
     email: string;
@@ -23,6 +55,11 @@ interface TransactionSuccessPayload {
     currency: string;
     date: string;
     productOrServiceName?: string;
+}
+
+// NEW: Interface for Transaction Failure Payload
+interface TransactionFailurePayload extends TransactionSuccessPayload {
+    reason?: string; // The reason for the failure
 }
 
 class NotificationServiceClient {
@@ -92,6 +129,13 @@ class NotificationServiceClient {
         return this.request('post', path, payload);
     }
 
+    // NEW: Method to send transaction failure emails
+    async sendTransactionFailureEmail(payload: TransactionFailurePayload): Promise<boolean> {
+        const path = '/notifications/internal/email/transaction-failed'; // Assuming a new endpoint for failures
+        log.info('Attempting to send transaction failure email via Notification Service', payload);
+        return this.request('post', path, payload);
+    }
+
     /**
      * Send a transaction notification to a user
      * @deprecated Consider using sendTransactionSuccessEmail for specific success emails.
@@ -122,21 +166,16 @@ class NotificationServiceClient {
     /**
      * Send verification OTP for sensitive operations
      */
-    async sendVerificationOTP(userId: string, type: string, data: Record<string, any>): Promise<boolean> {
+    async sendVerificationOTP(data: OtpNotificationRequest): Promise<boolean> {
         try {
             // This method uses axios directly, path needs adjustment if baseUrl includes /api
             const response = await axios.post(
-                `${this.baseUrl}/notifications/send-otp`, // Adjusted path assuming baseUrl has /api
-                {
-                    userId,
-                    type,
-                    channel: 'SMS', // Can be configured to use EMAIL or both
-                    data
-                },
+                `${this.baseUrl}/notifications/otp`, // Adjusted path assuming baseUrl has /api
+                data,
                 { headers: this.getAuthHeaders() }
             );
 
-            log.info(`Sent verification OTP to user ${userId} for ${type}`);
+            log.info(`Sent verification OTP to user ${data.userId} for ${data.purpose}`);
             return response.data.success;
         } catch (error) {
             log.error(`Error sending verification OTP: ${error}`);

@@ -1,437 +1,177 @@
 import { Request, Response } from 'express';
-import { cinetpayPayoutService } from '../../services/cinetpay-payout.service';
+// Removed cinetpayPayoutService import as paymentService will handle direct interaction
+import paymentService from '../../services/payment.service'; // Import paymentService
+import { userServiceClient, UserDetailsWithMomo } from '../../services/clients/user.service.client'; // Adjusted import for UserDetailsWithMomo
 import logger from '../../utils/logger';
-import axios from 'axios';
-import config from '../../config';
+import { AppError } from '../../utils/errors'; // Import AppError for consistent error handling
+import { Currency } from '../../database/models/transaction.model'; // Import Currency enum
+import { countryCodeToDialingPrefix, momoOperatorToCinetpayPaymentMethod, momoOperatorToCountryCode } from '../../utils/operatorMaps'; // Import necessary maps
+import { Types } from 'mongoose';
+
 
 // Use the global Express.Request interface that's extended by auth middleware
-type AuthenticatedRequest = Request;
+type AuthenticatedRequest = Request & { user?: { userId: string; email: string; role: string } };
 
 const log = logger.getLogger('WithdrawalController');
 
 export class WithdrawalController {
-    /**
-     * User withdrawal - only requires amount
-     * Uses user's momoNumber and momoOperator from their profile
-     */
-    async initiateUserWithdrawal(req: AuthenticatedRequest, res: Response) {
-        try {
-            const { amount } = req.body;
-            const userId = req.user?.userId;
-
-            if (!userId) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'User authentication required'
-                });
-            }
-
-            if (!amount || amount <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Valid withdrawal amount is required'
-                });
-            }
-
-            log.info(`User ${userId} initiating withdrawal: ${amount}`);
-
-            // Get user details from user service
-            const userDetails = await this.getUserDetails(userId);
-            if (!userDetails) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'User not found'
-                });
-            }
-
-            // Validate user has sufficient balance
-            if (userDetails.balance < amount) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Insufficient balance. Available: ${userDetails.balance}, Requested: ${amount}`
-                });
-            }
-
-            // Validate user has momo details
-            if (!userDetails.momoNumber || !userDetails.momoOperator) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Mobile money details not configured. Please update your profile with momoNumber and momoOperator.'
-                });
-            }
-
-            // Extract country code from momoNumber
-            const countryCode = this.extractCountryCode(userDetails.momoNumber);
-            if (!countryCode) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid mobile money number format. Country code not detected.'
-                });
-            }
-
-            // Extract phone number without country code
-            const phoneNumber = this.extractPhoneNumber(userDetails.momoNumber, countryCode);
-
-            // Initiate payout
-            const payoutResult = await cinetpayPayoutService.initiatePayout({
-                userId: userId,
-                amount: amount,
-                phoneNumber: phoneNumber,
-                countryCode: countryCode,
-                recipientName: userDetails.name,
-                recipientEmail: userDetails.email,
-                paymentMethod: this.mapOperatorToPaymentMethod(userDetails.momoOperator, countryCode),
-                description: `User withdrawal - ${userDetails.name}`
-            });
-
-            if (payoutResult.success) {
-                // Deduct amount from user balance
-                await this.updateUserBalance(userId, -amount);
-
-                log.info(`User withdrawal successful: ${payoutResult.transactionId}`);
-
-                return res.status(200).json({
-                    success: true,
-                    message: 'Withdrawal initiated successfully',
-                    data: {
-                        transactionId: payoutResult.transactionId,
-                        cinetpayTransactionId: payoutResult.cinetpayTransactionId,
-                        amount: payoutResult.amount,
-                        recipient: payoutResult.recipient,
-                        status: payoutResult.status,
-                        estimatedCompletion: payoutResult.estimatedCompletion
-                    }
-                });
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    message: payoutResult.message,
-                    error: 'Payout initiation failed'
-                });
-            }
-
-        } catch (error: any) {
-            log.error('User withdrawal failed:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Internal server error during withdrawal',
-                error: error.message
-            });
-        }
-    }
 
     /**
-     * Admin withdrawal for specific user
+     * Admin withdrawal for specific user (bypasses OTP, creates transaction directly)
      * Requires userId and amount, optionally allows override of recipient details
      */
     async initiateAdminUserWithdrawal(req: AuthenticatedRequest, res: Response) {
+        log.info('Admin initiating user withdrawal request.');
         try {
-            const {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                return res.status(401).json({ success: false, message: 'Admin not authenticated' });
+            }
+
+            const { userId, amount, currency, method, accountInfo } = req.body;
+
+            if (!userId || !amount || !currency || !method || !accountInfo) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'User ID, amount, currency, method, and account information are required.'
+                });
+            }
+            if (amount <= 0) {
+                return res.status(400).json({ success: false, message: 'Amount must be positive.' });
+            }
+
+            // Ensure accountInfo has necessary fields for the service layer
+            if (!accountInfo.fullMomoNumber || !accountInfo.momoOperator || !accountInfo.countryCode) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Account info must include fullMomoNumber, momoOperator, and countryCode.'
+                });
+            }
+
+            const withdrawalResult = await paymentService.adminInitiateUserWithdrawal(
                 userId,
                 amount,
-                phoneNumber: overridePhoneNumber,
-                countryCode: overrideCountryCode,
-                paymentMethod: overridePaymentMethod,
-                recipientName: overrideRecipientName
-            } = req.body;
+                { method, accountInfo },
+                adminId,
+                req.ip,
+                req.get('User-Agent')
+            );
 
-            if (!req.user || req.user.role !== 'admin') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Admin access required'
-                });
-            }
-
-            if (!userId || !amount || amount <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Valid userId and amount are required'
-                });
-            }
-
-            const isOverride = overridePhoneNumber || overrideCountryCode || overridePaymentMethod;
-
-            log.info(`Admin ${req.user.userId} initiating ${isOverride ? 'override ' : ''}withdrawal for user ${userId}: ${amount}`);
-            if (isOverride) {
-                log.info(`Override details - Phone: ${overridePhoneNumber}, Country: ${overrideCountryCode}, Payment: ${overridePaymentMethod}`);
-            }
-
-            // Get user details
-            const userDetails = await this.getUserDetails(userId);
-            if (!userDetails) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Target user not found'
-                });
-            }
-
-            log.debug(`Retrieved user details for ${userId}:`, {
-                name: userDetails.name,
-                email: userDetails.email,
-                balance: userDetails.balance,
-                momoNumber: userDetails.momoNumber ? 'configured' : 'missing',
-                momoOperator: userDetails.momoOperator ? 'configured' : 'missing'
+            return res.status(200).json({
+                success: true,
+                message: withdrawalResult.message,
+                transactionId: withdrawalResult.transactionId,
+                amount: withdrawalResult.amount,
+                fee: withdrawalResult.fee,
+                total: withdrawalResult.total,
+                status: withdrawalResult.status,
             });
-
-            // Validate user has sufficient balance
-            if (userDetails.balance < amount) {
-                return res.status(400).json({
-                    success: false,
-                    message: `User has insufficient balance. Available: ${userDetails.balance}, Requested: ${amount}`
-                });
-            }
-
-            let phoneNumber, countryCode, paymentMethod, recipientName;
-
-            if (isOverride) {
-                // Use override parameters
-                if (overridePhoneNumber && overrideCountryCode) {
-                    phoneNumber = overridePhoneNumber;
-                    countryCode = overrideCountryCode;
-                    paymentMethod = overridePaymentMethod; // Can be undefined for auto-detection
-                    recipientName = overrideRecipientName || userDetails.name;
-
-                    log.info(`Using override recipient: +${this.getCountryPrefix(countryCode)}${phoneNumber}`);
-                } else {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'When using override, both phoneNumber and countryCode are required'
-                    });
-                }
-            } else {
-                // Use user's stored momo details
-                if (!userDetails.momoNumber || !userDetails.momoOperator) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'User mobile money details not configured. Use override parameters or configure user momo details.'
-                    });
-                }
-
-                // Extract country and phone details from user's momo
-                countryCode = this.extractCountryCode(userDetails.momoNumber);
-                if (!countryCode) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Invalid user mobile money number format. Use override parameters.'
-                    });
-                }
-
-                phoneNumber = this.extractPhoneNumber(userDetails.momoNumber, countryCode);
-                paymentMethod = this.mapOperatorToPaymentMethod(userDetails.momoOperator, countryCode);
-                recipientName = userDetails.name;
-
-                log.info(`Using user's momo details: +${this.getCountryPrefix(countryCode)}${phoneNumber}`);
-            }
-
-            // Initiate payout
-            const payoutResult = await cinetpayPayoutService.initiatePayout({
-                userId: userId,
-                amount: amount,
-                phoneNumber: phoneNumber,
-                countryCode: countryCode,
-                recipientName: recipientName,
-                recipientEmail: userDetails.email,
-                paymentMethod: paymentMethod,
-                description: `Admin ${isOverride ? 'override ' : ''}withdrawal for ${userDetails.name} by ${req.user.email}${isOverride ? ` to +${this.getCountryPrefix(countryCode)}${phoneNumber}` : ''}`
-            });
-
-            if (payoutResult.success) {
-                // Deduct amount from user balance
-                await this.updateUserBalance(userId, -amount);
-
-                log.info(`Admin withdrawal successful: ${payoutResult.transactionId}`);
-
-                return res.status(200).json({
-                    success: true,
-                    message: `Admin ${isOverride ? 'override ' : ''}withdrawal initiated successfully`,
-                    data: {
-                        transactionId: payoutResult.transactionId,
-                        cinetpayTransactionId: payoutResult.cinetpayTransactionId,
-                        amount: payoutResult.amount,
-                        recipient: payoutResult.recipient,
-                        targetUser: {
-                            id: userId,
-                            name: userDetails.name,
-                            email: userDetails.email
-                        },
-                        status: payoutResult.status,
-                        estimatedCompletion: payoutResult.estimatedCompletion,
-                        isOverride: isOverride,
-                        overrideDetails: isOverride ? {
-                            originalMomo: userDetails.momoNumber,
-                            overrideRecipient: `+${this.getCountryPrefix(countryCode)}${phoneNumber}`,
-                            reason: 'Admin override for problem resolution'
-                        } : undefined
-                    }
-                });
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    message: payoutResult.message,
-                    error: 'Admin withdrawal failed'
-                });
-            }
 
         } catch (error: any) {
-            log.error('Admin user withdrawal failed:', error);
+            log.error(`Error in initiateAdminUserWithdrawal: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
             return res.status(500).json({
                 success: false,
-                message: 'Internal server error during admin withdrawal',
-                error: error.message
+                message: 'Failed to initiate admin user withdrawal'
             });
         }
     }
 
     /**
-     * Admin direct payout - no user account involved
-     * Affects only API balance, not user balances
+     * Admin direct payout - no user account balance involved.
+     * Logs a transaction and initiates external payout.
      */
     async initiateAdminDirectPayout(req: AuthenticatedRequest, res: Response) {
+        log.info('Admin initiating direct payout request.');
         try {
-            const { amount, phoneNumber, countryCode, recipientName, recipientEmail, paymentMethod, description } = req.body;
-
-            if (!req.user || req.user.role !== 'admin') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Admin access required'
-                });
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                return res.status(401).json({ success: false, message: 'Admin not authenticated' });
             }
 
-            if (!amount || !phoneNumber || !countryCode || !recipientName) {
+            const { amount, currency, recipientDetails, description } = req.body;
+
+            if (!amount || !currency || !recipientDetails || !description) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Amount, phoneNumber, countryCode, and recipientName are required'
+                    message: 'Amount, currency, recipient details, and description are required.'
+                });
+            }
+            if (amount <= 0) {
+                return res.status(400).json({ success: false, message: 'Amount must be positive.' });
+            }
+            if (!recipientDetails.phoneNumber || !recipientDetails.countryCode || !recipientDetails.recipientName) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Recipient details must include phoneNumber, countryCode, and recipientName.'
                 });
             }
 
-            log.info(`Admin ${req.user.userId} initiating direct payout: ${amount} to ${phoneNumber}`);
+            const payoutResult = await paymentService.adminInitiateDirectPayout(
+                amount,
+                recipientDetails,
+                adminId,
+                description,
+                req.ip,
+                req.get('User-Agent')
+            );
 
-            // Initiate payout without userId (admin transaction)
-            const payoutResult = await cinetpayPayoutService.initiatePayout({
-                userId: `admin_${req.user.userId}`, // Special admin transaction ID
-                amount: amount,
-                phoneNumber: phoneNumber,
-                countryCode: countryCode,
-                recipientName: recipientName,
-                recipientEmail: recipientEmail || `admin-payout@sbc.com`,
-                paymentMethod: paymentMethod,
-                description: description || `Admin direct payout by ${req.user.email}`
+            return res.status(200).json({
+                success: true,
+                message: payoutResult.message,
+                transactionId: payoutResult.transactionId,
+                cinetpayTransactionId: payoutResult.cinetpayTransactionId,
+                amount: payoutResult.amount,
+                recipient: payoutResult.recipient,
+                status: payoutResult.status,
+                estimatedCompletion: payoutResult.estimatedCompletion,
             });
 
-            if (payoutResult.success) {
-                log.info(`Admin direct payout successful: ${payoutResult.transactionId}`);
-
-                return res.status(200).json({
-                    success: true,
-                    message: 'Admin direct payout initiated successfully',
-                    data: {
-                        transactionId: payoutResult.transactionId,
-                        cinetpayTransactionId: payoutResult.cinetpayTransactionId,
-                        amount: payoutResult.amount,
-                        recipient: payoutResult.recipient,
-                        status: payoutResult.status,
-                        estimatedCompletion: payoutResult.estimatedCompletion,
-                        note: 'This is a direct admin payout - no user balance affected'
-                    }
-                });
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    message: payoutResult.message,
-                    error: 'Admin direct payout failed'
-                });
-            }
-
         } catch (error: any) {
-            log.error('Admin direct payout failed:', error);
+            log.error(`Error in initiateAdminDirectPayout: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
             return res.status(500).json({
                 success: false,
-                message: 'Internal server error during admin payout',
-                error: error.message
+                message: 'Failed to initiate admin direct payout'
             });
         }
     }
 
-    /**
-     * Get user details from user service
-     */
-    private async getUserDetails(userId: string): Promise<any> {
-        try {
-            // Use the batch-details endpoint with a single user ID
-            const response = await axios.post(`${config.services.userServiceUrl}/users/internal/batch-details`,
-                { userIds: [userId] },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.services.serviceSecret}`,
-                        'X-Service-Name': 'payment-service',
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-
-            // The batch-details endpoint returns an array, so get the first user
-            const users = response.data.data;
-            if (users && users.length > 0) {
-                return users[0];
-            }
-
-            log.warn(`User ${userId} not found in batch-details response`);
-            return null;
-        } catch (error: any) {
-            log.error(`Failed to get user details for ${userId}:`, error.message);
-            if (error.response) {
-                log.error(`Response status: ${error.response.status}`);
-                log.error(`Response data:`, error.response.data);
-            }
-            return null;
-        }
-    }
+    // Removed private helper methods getUserDetails and updateUserBalance as they are now handled by paymentService.
 
     /**
-     * Update user balance
-     */
-    private async updateUserBalance(userId: string, amountChange: number): Promise<void> {
-        try {
-            await axios.post(`${config.services.userServiceUrl}/users/internal/${userId}/balance`,
-                { amount: amountChange },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.services.serviceSecret}`,
-                        'X-Service-Name': 'payment-service',
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-            log.info(`Updated user ${userId} balance by ${amountChange}`);
-        } catch (error: any) {
-            log.error(`Failed to update user balance for ${userId}:`, error.message);
-            if (error.response) {
-                log.error(`Balance update response status: ${error.response.status}`);
-                log.error(`Balance update response data:`, error.response.data);
-            }
-            throw new Error('Failed to update user balance');
-        }
-    }
-
-    /**
-     * Get country prefix from country code
+     * Get country prefix from country code (utility method, still useful here)
      */
     private getCountryPrefix(countryCode: string): string {
-        const countryPrefixes: Record<string, string> = {
-            'CI': '225', 'SN': '221', 'CM': '237', 'TG': '228',
-            'BJ': '229', 'ML': '223', 'BF': '226', 'GN': '224', 'CD': '243'
+        // This mapping should ideally be centralized or fetched from a config
+        const prefixes: { [key: string]: string } = {
+            'CM': '237', // Cameroon
+            'CI': '225', // Côte d'Ivoire
+            'SN': '221', // Senegal
+            'TG': '228', // Togo
+            'BJ': '229', // Benin
+            'ML': '223', // Mali
+            'BF': '226', // Burkina Faso
+            'GN': '224', // Guinea
+            'CD': '243', // Congo (RDC)
         };
-        return countryPrefixes[countryCode] || '';
+        return prefixes[countryCode] || '';
     }
 
     /**
-     * Extract country code from momoNumber
+     * Extract country code from momoNumber (utility method, still useful here for initial parsing/validation in controller)
      */
     private extractCountryCode(momoNumber: string): string | null {
-        const countryPrefixes: Record<string, string> = {
+        // This is a simplified example, in a real system you'd use a more robust library
+        // to determine country code from a phone number, or rely on user input.
+        const knownPrefixes: { [key: string]: string } = {
+            '237': 'CM', // Cameroon
             '225': 'CI', // Côte d'Ivoire
-            '221': 'SN', // Sénégal
-            '237': 'CM', // Cameroun
+            '221': 'SN', // Senegal
             '228': 'TG', // Togo
             '229': 'BJ', // Benin
             '223': 'ML', // Mali
@@ -440,75 +180,37 @@ export class WithdrawalController {
             '243': 'CD', // Congo (RDC)
         };
 
-        // Remove any non-digit characters
-        const cleanNumber = momoNumber.replace(/\D/g, '');
-
-        // Check for country prefixes
-        for (const [prefix, code] of Object.entries(countryPrefixes)) {
-            if (cleanNumber.startsWith(prefix)) {
-                return code;
+        for (const prefix in knownPrefixes) {
+            if (momoNumber.startsWith(prefix)) {
+                return knownPrefixes[prefix];
             }
         }
-
         return null;
     }
 
     /**
-     * Extract phone number without country code
+     * Extract phone number without country code (utility method, kept for consistency if needed, though paymentService handles full number parsing)
      */
     private extractPhoneNumber(momoNumber: string, countryCode: string): string {
-        const countryPrefixes: Record<string, string> = {
-            'CI': '225', 'SN': '221', 'CM': '237', 'TG': '228',
-            'BJ': '229', 'ML': '223', 'BF': '226', 'GN': '224', 'CD': '243'
-        };
-
-        const prefix = countryPrefixes[countryCode];
-        const cleanNumber = momoNumber.replace(/\D/g, '');
-
-        if (prefix && cleanNumber.startsWith(prefix)) {
-            return cleanNumber.substring(prefix.length);
+        const prefix = this.getCountryPrefix(countryCode);
+        if (momoNumber.startsWith(prefix)) {
+            return momoNumber.substring(prefix.length);
         }
-
-        return cleanNumber;
+        return momoNumber; // Return as is if prefix not found or applicable
     }
 
     /**
-     * Map momoOperator to CinetPay payment method
+     * Map momoOperator to CinetPay payment method (utility method, kept for consistency if needed, though paymentService handles full mapping)
      */
     private mapOperatorToPaymentMethod(momoOperator: string, countryCode: string): string | undefined {
-        const operatorMap: Record<string, Record<string, string>> = {
-            'CM': {
-                'MTN': 'MTNCM',
-                'ORANGE': 'OMCM',
-                'mtn': 'MTNCM',
-                'orange': 'OMCM'
-            },
-            'CI': {
-                'ORANGE': 'OM',
-                'MTN': 'MOMO',
-                'MOOV': 'FLOOZ',
-                'WAVE': 'WAVECI',
-                'orange': 'OM',
-                'mtn': 'MOMO',
-                'moov': 'FLOOZ',
-                'wave': 'WAVECI'
-            },
-            'SN': {
-                'ORANGE': 'OMSN',
-                'FREE': 'FREESN',
-                'WAVE': 'WAVESN',
-                'orange': 'OMSN',
-                'free': 'FREESN',
-                'wave': 'WAVESN'
-            }
-        };
-
-        const countryOperators = operatorMap[countryCode];
-        if (countryOperators) {
-            return countryOperators[momoOperator] || countryOperators[momoOperator.toLowerCase()];
+        // This mapping needs to be precise based on CinetPay's requirements
+        // Example for CM:
+        if (countryCode === 'CM') {
+            if (momoOperator.toLowerCase().includes('mtn')) return 'MTN_MOMO_CMR';
+            if (momoOperator.toLowerCase().includes('orange')) return 'ORANGE_MONEY_CMR';
         }
-
-        return undefined; // Let CinetPay auto-detect
+        // Add other country-specific mappings here
+        return undefined; // Or throw an error if no mapping is found
     }
 }
 

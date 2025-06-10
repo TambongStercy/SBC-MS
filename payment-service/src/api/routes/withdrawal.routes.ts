@@ -2,45 +2,31 @@ import { Router } from 'express';
 import { withdrawalController } from '../controllers/withdrawal.controller';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { validateWithdrawal, validateAdminUserWithdrawal, validateAdminDirectPayout } from '../middleware/validation';
+import { generalLimiter } from '../middleware/rate-limit.middleware';
 
 const router = Router();
 
-/**
- * @route POST /api/withdrawals/user
- * @desc User withdrawal - only requires amount
- * @access Private (User)
- * @body { amount: number }
- */
-router.post('/user',
-    authenticate,
-    validateWithdrawal,
-    withdrawalController.initiateUserWithdrawal.bind(withdrawalController)
-);
+// Admin-only withdrawal routes
+router.use(authenticate as any); // Apply authentication middleware
+router.use(requireAdmin);       // Ensure only admins can access these routes
+router.use(generalLimiter);     // Apply general rate limiting
 
 /**
- * @route POST /api/withdrawals/admin/user
- * @desc Admin withdrawal for specific user (with optional override parameters)
- * @access Private (Admin)
- * @body { userId: string, amount: number, phoneNumber?: string, countryCode?: string, paymentMethod?: string, recipientName?: string }
+ * @route   POST /api/withdrawals/admin/user
+ * @desc    [ADMIN] Initiate a withdrawal for a specific user's balance, bypassing OTP.
+ * @access  Private (Admin only)
  */
-router.post('/admin/user',
-    authenticate,
-    requireAdmin,
-    validateAdminUserWithdrawal,
-    withdrawalController.initiateAdminUserWithdrawal.bind(withdrawalController)
-);
+router.post('/admin/user', (req, res) => {
+    withdrawalController.initiateAdminUserWithdrawal(req, res);
+});
 
 /**
- * @route POST /api/withdrawals/admin/direct
- * @desc Admin direct payout (no user account involved)
- * @access Private (Admin)
- * @body { amount: number, phoneNumber: string, countryCode: string, recipientName: string, recipientEmail?: string, paymentMethod?: string, description?: string }
+ * @route   POST /api/withdrawals/admin/direct
+ * @desc    [ADMIN] Initiate a direct payout (e.g., from system balance), not linked to a user's wallet.
+ * @access  Private (Admin only)
  */
-router.post('/admin/direct',
-    authenticate,
-    requireAdmin,
-    validateAdminDirectPayout,
-    withdrawalController.initiateAdminDirectPayout.bind(withdrawalController)
-);
+router.post('/admin/direct', (req, res) => {
+    withdrawalController.initiateAdminDirectPayout(req, res);
+});
 
 export default router;

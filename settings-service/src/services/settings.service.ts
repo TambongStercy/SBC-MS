@@ -2,7 +2,8 @@
 import SettingsRepository from '../database/repositories/settings.repository';
 import {
     ISettings,
-    IFileReference
+    IFileReference,
+    IFormation
 } from '../database/models/settings.model';
 import GoogleDriveService from './googleDrive.service'; // Import Google Drive Service
 // Remove S3 related imports if they exist
@@ -230,9 +231,118 @@ class SettingsService {
         return fileInfo;
     }
 
-    // Removed getCompanyLogo method if it only returned a URL,
-    // as getSettings now handles URL generation.
-    // If it did more, it would need adjustment.
+    // --- Formations Management Methods ---
+
+    /**
+     * Retrieves all formations from the settings document.
+     */
+    async getFormations(): Promise<IFormation[]> {
+        log.info('Fetching formations...');
+        try {
+            const settings = await this.repository.findSingle();
+            log.info('Formations fetched successfully.');
+            return settings?.formations || []; // Return empty array if no settings or formations
+        } catch (dbError: any) {
+            log.error('Database error fetching formations:', dbError);
+            throw new AppError('Failed to retrieve formations due to database issue.', 500);
+        }
+    }
+
+    /**
+     * Adds a new formation to the settings document.
+     * @param data The formation data (title, link).
+     * @returns The newly added formation with its _id.
+     */
+    async addFormation(data: { title: string; link: string }): Promise<IFormation> {
+        log.info('Adding new formation...', data);
+        try {
+            let settings = await this.repository.findSingle();
+
+            if (!settings) {
+                // If no settings document exists, create a minimal one
+                settings = await this.repository.upsert({});
+                log.info('No settings document found, created a new one for formations.');
+            }
+
+            // Mongoose will automatically assign an _id to the subdocument
+            settings.formations.push(data);
+            const updatedSettings = await settings.save(); // Save the document to persist changes
+            log.info('Formation added successfully.');
+
+            // Return the last added formation, which should be the new one
+            return updatedSettings.formations[updatedSettings.formations.length - 1];
+        } catch (error: any) {
+            log.error('Error adding formation:', error);
+            throw new AppError('Failed to add formation.', 500);
+        }
+    }
+
+    /**
+     * Updates an existing formation in the settings document.
+     * @param formationId The _id of the formation to update.
+     * @param updates The partial formation data to update.
+     * @returns The updated formation.
+     */
+    async updateFormation(formationId: string, updates: Partial<Omit<IFormation, '_id'>>): Promise<IFormation> {
+        log.info(`Updating formation with ID: ${formationId}`, updates);
+        try {
+            const settings = await this.repository.findSingle();
+
+            if (!settings) {
+                log.warn('Settings document not found for formation update.');
+                throw new NotFoundError('Settings document not found.');
+            }
+
+            const formation = settings.formations.id(formationId);
+            if (!formation) {
+                log.warn(`Formation with ID ${formationId} not found.`);
+                throw new NotFoundError(`Formation with ID ${formationId} not found.`);
+            }
+
+            // Apply updates
+            if (updates.title !== undefined) formation.title = updates.title;
+            if (updates.link !== undefined) formation.link = updates.link;
+
+            await settings.save(); // Save the document to persist changes
+            log.info(`Formation with ID ${formationId} updated successfully.`);
+            return formation;
+        } catch (error: any) {
+            log.error(`Error updating formation with ID ${formationId}:`, error);
+            if (error instanceof NotFoundError) throw error;
+            throw new AppError('Failed to update formation.', 500);
+        }
+    }
+
+    /**
+     * Removes a formation from the settings document.
+     * @param formationId The _id of the formation to remove.
+     */
+    async removeFormation(formationId: string): Promise<void> {
+        log.info(`Removing formation with ID: ${formationId}`);
+        try {
+            const settings = await this.repository.findSingle();
+
+            if (!settings) {
+                log.warn('Settings document not found for formation removal.');
+                throw new NotFoundError('Settings document not found.');
+            }
+
+            const initialLength = settings.formations.length;
+            settings.formations.pull(formationId); // Mongoose method to remove subdocument by ID
+
+            if (settings.formations.length === initialLength) {
+                log.warn(`Formation with ID ${formationId} not found for removal.`);
+                throw new NotFoundError(`Formation with ID ${formationId} not found.`);
+            }
+
+            await settings.save(); // Save the document to persist changes
+            log.info(`Formation with ID ${formationId} removed successfully.`);
+        } catch (error: any) {
+            log.error(`Error removing formation with ID ${formationId}:`, error);
+            if (error instanceof NotFoundError) throw error;
+            throw new AppError('Failed to remove formation.', 500);
+        }
+    }
 }
 
 export default new SettingsService(); 

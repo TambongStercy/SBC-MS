@@ -105,7 +105,8 @@ export class NotificationController {
                 code,
                 expireMinutes = 10,
                 isRegistration = false,
-                userName
+                userName,
+                purpose
             } = req.body;
 
             // Validate required fields
@@ -143,7 +144,8 @@ export class NotificationController {
                 code,
                 expireMinutes,
                 isRegistration,
-                userName
+                userName,
+                purpose
             );
 
             res.status(200).json({
@@ -549,6 +551,42 @@ export class NotificationController {
 
         } catch (error: any) {
             log.error(`Error handling transaction successful email request from ${callingService}:`, error);
+            next(error);
+        }
+    }
+
+    async handleTransactionFailureEmail(req: Request, res: Response, next: Function): Promise<void> {
+        const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
+        log.info(`Received transaction failure email request from ${callingService}:`, req.body);
+        try {
+            const { email, name, transactionId, amount, currency, date, reason, transactionType, productOrServiceName } = req.body;
+
+            // Basic validation
+            if (!email || !name || !transactionId || !amount || !currency || !date || !reason) {
+                res.status(400).json({ success: false, message: 'Missing required fields for transaction failure email: email, name, transactionId, amount, currency, date, reason' });
+                return;
+            }
+
+            const success = await emailService.sendTransactionFailureEmail({
+                email,
+                name,
+                transactionId,
+                amount,
+                currency,
+                date,
+                reason,
+                transactionType,
+                productOrServiceName
+            });
+
+            if (success) {
+                res.status(200).json({ success: true, message: 'Transaction failure email sent successfully.' });
+            } else {
+                res.status(500).json({ success: false, message: 'Failed to send transaction failure email.' });
+            }
+
+        } catch (error: any) {
+            log.error(`Error handling transaction failure email request from ${callingService}:`, error);
             next(error);
         }
     }

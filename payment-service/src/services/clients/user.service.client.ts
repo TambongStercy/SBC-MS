@@ -123,7 +123,6 @@ class UserServiceClient {
             log.debug(`Fetching user details with momo for userId: ${userId} via batch endpoint (request method)`);
             // Send userId in an array via POST body
             const response = await this.request<{ success: boolean; data: UserDetailsWithMomo[] } | null>('post', path, { userIds: [userId] });
-
             if (response?.success && Array.isArray(response.data) && response.data.length > 0) {
                 const userDetails = response.data[0];
                 if (typeof userDetails.momoNumber === 'undefined' || typeof userDetails.momoOperator === 'undefined') {

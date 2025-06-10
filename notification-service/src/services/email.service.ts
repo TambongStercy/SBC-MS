@@ -34,6 +34,18 @@ interface TransactionSuccessEmailData {
     productOrServiceName?: string;
 }
 
+interface TransactionFailureEmailData {
+    email: string;
+    name: string;
+    transactionId: string;
+    amount: number | string;
+    currency: string;
+    date: string;
+    reason?: string;
+    transactionType: string;
+    productOrServiceName?: string;
+}
+
 class EmailService {
     private transporter!: nodemailer.Transporter;
     private isInitialized: boolean = false;
@@ -236,20 +248,59 @@ class EmailService {
     }
 
     /**
-     * Verify email connection (for health checks)
+     * Send Transaction Failure Email
      */
-    async verifyConnection(): Promise<boolean> {
-        if (!this.isInitialized) {
-            return false;
-        }
+    async sendTransactionFailureEmail(data: TransactionFailureEmailData): Promise<boolean> {
+        log.info('Attempting to send transaction failure email', { recipient: data.email });
+        const formattedDate = new Date(data.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+        const emailHtml = `
+        <div style="font-family: Helvetica, Arial, sans-serif; min-width: 1000px; overflow: auto; line-height: 2;">
+            <div style="margin: 50px auto; width: 70%; padding: 20px 0;">
+                <div style="border-bottom: 1px solid #eee;">
+                    <a href="https://sniperbuisnesscenter.com" style="font-size: 1.4em; color: #92b127; text-decoration: none; font-weight: 600;">
+                        Sniper Business Center
+                    </a>
+                </div>
+                <p style="font-size: 1.1em;">Bonjour/Bonsoir ${data.name},</p>
+                <p>
+                    Votre transaction de type "<strong>${data.transactionType}</strong>" d\'un montant de 
+                    <strong>${data.amount} ${data.currency}</strong>, effectuée le ${formattedDate}, a échoué.
+                    ${data.reason ? `<p>Raison: ${data.reason}</p>` : ''}
+                </p>
+                ${data.productOrServiceName ? `<p>Produit/Service: ${data.productOrServiceName}</p>` : ''}
+                <p>Identifiant de la transaction: ${data.transactionId}</p>
+                <p>
+                    Merci d\'utiliser nos services.
+                </p>
+                <p style="font-size: 0.9em;">
+                    Cordialement,<br />L\'équipe SBC
+                </p>
+                <hr style="border: none; border-top: 1px solid #eee;" />
+                <div style="float: right; padding: 8px 0; color: #aaa; font-size: 0.8em; line-height: 1; font-weight: 300;">
+                    <p>Sniper Business Center Inc</p>
+                    <p>Développé par Simbtech,<br />© ${new Date().getFullYear()}</p>
+                    <p>Cameroun - Yaoundé</p>
+                </div>
+            </div>
+        </div>
+        `;
 
         try {
-            await this.transporter.verify();
-            log.info('Email service connection verified');
+            await this.sendEmail({
+                to: data.email,
+                subject: `Transaction Failed: ${data.transactionType}`,
+                html: emailHtml,
+                from: '"Sniper Business Center" <info@sniperbuisnesscenter.com>'
+            });
+            log.info('Transaction failure email sent successfully to:', { recipient: data.email });
             return true;
-        } catch (error) {
-            log.error('Connection verification failed', { error });
-            return false;
+        } catch (error: any) {
+            log.error('Error sending transaction failure email:', {
+                error: error.message,
+                recipient: data.email,
+                data
+            });
+            return false; // Or rethrow error to be handled by controller
         }
     }
 }

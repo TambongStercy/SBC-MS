@@ -10,6 +10,13 @@ export interface IFileReference {
     size?: number;       // File size in bytes
 }
 
+// New Interface for Formations
+export interface IFormation extends Types.Subdocument { // Use Subdocument for array elements
+    _id: Types.ObjectId; // Mongoose adds _id by default to subdocuments
+    title: string;
+    link: string;
+}
+
 // Remove IEventItem interface - moved to event.model.ts
 // export interface IEventItem extends Document { ... }
 
@@ -25,6 +32,9 @@ export interface ISettings extends Document {
     termsAndConditionsPdf?: IFileReference;
     presentationVideo?: IFileReference;
     presentationPdf?: IFileReference;
+
+    // New Formations field
+    formations: Types.DocumentArray<IFormation>; // Array of formation objects
 
     // Remove Events array - moved to separate EventModel
     // events: Types.DocumentArray<IEventItem>;
@@ -45,6 +55,12 @@ export const FileReferenceSchema: Schema = new Schema({
 // Remove EventItemSchema - moved to event.model.ts
 // const EventItemSchema: Schema = new Schema({ ... });
 
+// New Schema for Formation
+export const FormationSchema: Schema = new Schema({
+    title: { type: String, required: true, trim: true },
+    link: { type: String, required: true, trim: true },
+}, { _id: true }); // Mongoose adds _id by default, but explicitly setting it to true for clarity
+
 const SettingsSchema: Schema = new Schema(
     {
         // Social Group Links
@@ -58,8 +74,8 @@ const SettingsSchema: Schema = new Schema(
         presentationVideo: { type: FileReferenceSchema, required: false },
         presentationPdf: { type: FileReferenceSchema, required: false },
 
-        // Remove Events array
-        // events: [EventItemSchema],
+        // New Formations array
+        formations: [FormationSchema], // Array of FormationSchema subdocuments
     },
     {
         timestamps: true, // Automatically adds createdAt and updatedAt

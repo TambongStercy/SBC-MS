@@ -6,15 +6,15 @@
 # =========================================
 
 # --- API Gateway ---
-# @gateway_url = http://localhost:3000/api
-@gateway_url = https://sniperbuisnesscenter.com/api
+@gateway_url = http://localhost:3000/api
+# @gateway_url = https://sniperbuisnesscenter.com/api
 
 # --- User Credentials ---
 @test_email = tambongsterling@gmail.com
 @test_password = 123456
 # @user_id = 65d2b0344a7e2b9efbf6205d
 @user_id = {{loginUser.response.body.$.data.userId}}
-@otp_code = xSrj4e
+@otp_code = 9PjRES
 
 # --- Admin Credentials ---
 @admin_email = test1@example.com # Assuming this admin exists

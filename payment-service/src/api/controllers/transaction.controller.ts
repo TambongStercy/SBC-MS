@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import paymentService from '../../services/payment.service';
 import { userServiceClient } from '../../services/clients/user.service.client';
-import { TransactionType, Currency } from '../../database/models/transaction.model';
+import { TransactionType, Currency, TransactionStatus } from '../../database/models/transaction.model';
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { PaginationOptions } from '../../types/pagination';
@@ -112,7 +112,7 @@ export class TransactionController {
                 return res.status(401).json({ success: false, message: 'User not authenticated' });
             }
 
-            const { amount, currency, paymentMethod } = req.body;
+            const { amount, currency, paymentMethod, description } = req.body;
 
             if (!amount || !currency || !paymentMethod) {
                 return res.status(400).json({
@@ -123,20 +123,30 @@ export class TransactionController {
 
             // TODO: Generate a session or redirect URL for the payment gateway
             // This is a placeholder for the actual payment gateway integration
-            const depositSession = {
-                sessionId: `session_${Date.now()}`,
+            // For now, this is directly processing, which might not be how payment gateways work.
+            // If payment gateways give a URL, the `processDeposit` should be called via webhook.
+            // For demo, let's keep it simple.
+            const transaction = await paymentService.processDeposit(
+                userId,
                 amount,
-                currency,
-                paymentUrl: `https://payment-gateway.com/pay?session=${Date.now()}&amount=${amount}`,
-                expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes
-            };
+                currency as Currency,
+                { provider: paymentMethod, transactionId: `gateway_${Date.now()}` }, // Mock gateway details
+                description || `Deposit via ${paymentMethod}` // Pass description
+            );
 
             return res.status(200).json({
                 success: true,
-                depositSession
+                message: 'Deposit processed successfully',
+                transactionId: transaction.transactionId,
+                amount: transaction.amount,
+                currency: transaction.currency,
+                status: transaction.status
             });
-        } catch (error) {
-            log.error(`Error in initiateDeposit: ${error}`);
+        } catch (error: any) {
+            log.error(`Error in initiateDeposit: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
             return res.status(500).json({
                 success: false,
                 message: 'Failed to initiate deposit'
@@ -151,7 +161,7 @@ export class TransactionController {
     async processDepositCallback(req: Request, res: Response) {
         try {
             // This would be called by the payment gateway with transaction details
-            const { userId, amount, currency, transactionId, status, metadata } = req.body;
+            const { userId, amount, currency, transactionId, status, metadata, description } = req.body;
 
             if (!userId || !amount || !currency || !transactionId || !status) {
                 return res.status(400).json({
@@ -170,11 +180,11 @@ export class TransactionController {
                     amount,
                     currency as Currency,
                     {
-                        provider: 'payment_gateway_name',
+                        provider: metadata?.provider || 'payment_gateway_name',
                         transactionId,
                         metadata
                     },
-                    req.ip as string
+                    description || 'Payment gateway deposit' // Pass description
                 );
 
                 return res.status(200).json({
@@ -190,8 +200,11 @@ export class TransactionController {
                     reason: metadata?.failureReason
                 });
             }
-        } catch (error) {
-            log.error(`Error in processDepositCallback: ${error}`);
+        } catch (error: any) {
+            log.error(`Error in processDepositCallback: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
             return res.status(500).json({
                 success: false,
                 message: 'Failed to process deposit callback'
@@ -200,7 +213,8 @@ export class TransactionController {
     }
 
     /**
-     * Initiate a withdrawal transaction
+     * Initiate a withdrawal transaction for the authenticated user.
+     * The method and account information will be derived from the user's registered MoMo details.
      * @route POST /api/transactions/withdrawal/initiate
      */
     async initiateWithdrawal(req: Request, res: Response) {
@@ -210,52 +224,56 @@ export class TransactionController {
                 return res.status(401).json({ success: false, message: 'User not authenticated' });
             }
 
-            const { amount, currency, method, accountInfo } = req.body;
+            const { amount } = req.body; // Only amount and currency are required in the request
 
-            if (!amount || !currency || !method || !accountInfo) {
+            if (!amount) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Amount, currency, method, and account information are required'
+                    message: 'Amount and currency are required'
                 });
             }
 
-            // TODO: Use rabbitmq to check withdrawal limits
-            const limitCheck = await userServiceClient.checkWithdrawalLimits(userId, amount);
-
-            if (!limitCheck.allowed) {
-                return res.status(400).json({
-                    success: false,
-                    message: limitCheck.reason || 'Withdrawal limit exceeded'
-                });
-            }
-
-            // Initiate the withdrawal process
-            const withdrawal = await paymentService.initiateWithdrawal(
+            // The paymentService will now fetch the user's MoMo details internally
+            const withdrawalResult = await paymentService.initiateWithdrawal(
                 userId,
                 amount,
-                currency as Currency,
-                { method, accountInfo },
-                req.ip,
-                req.get('User-Agent')
+                req.ip || '',
+                req.get('User-Agent') || ''
             );
+
+            log.info(`Withdrawal result: ${JSON.stringify(withdrawalResult)}`);
+
+            // If a message about existing pending withdrawal is returned, include it
+            if (withdrawalResult.message) {
+                return res.status(200).json({
+                    success: true,
+                    data: withdrawalResult,
+                    message: withdrawalResult.message,
+                    transactionId: withdrawalResult.transactionId,
+                    amount: withdrawalResult.amount,
+                    fee: withdrawalResult.fee,
+                    total: withdrawalResult.total,
+                    status: withdrawalResult.status,
+                    expiresAt: withdrawalResult.expiresAt
+                });
+            }
 
             return res.status(200).json({
                 success: true,
-                withdrawal
+                data: withdrawalResult,
+                message: 'Withdrawal initiation successful. Please check your registered contact for an OTP.',
+                transactionId: withdrawalResult.transactionId,
+                amount: withdrawalResult.amount,
+                fee: withdrawalResult.fee,
+                total: withdrawalResult.total,
+                status: withdrawalResult.status,
+                expiresAt: withdrawalResult.expiresAt
             });
-        } catch (error) {
-            log.error(`Error in initiateWithdrawal: ${error}`);
-
-            // Handle specific error cases
-            if (error instanceof Error) {
-                if (error.message === 'Insufficient balance') {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Insufficient balance for this withdrawal'
-                    });
-                }
+        } catch (error: any) {
+            log.error(`Error in initiateWithdrawal: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
             }
-
             return res.status(500).json({
                 success: false,
                 message: 'Failed to initiate withdrawal'
@@ -274,31 +292,37 @@ export class TransactionController {
                 return res.status(401).json({ success: false, message: 'User not authenticated' });
             }
 
-            const { pendingId, verificationCode } = req.body;
+            const { transactionId, verificationCode } = req.body;
 
-            if (!pendingId || !verificationCode) {
+            if (!transactionId || !verificationCode) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Pending ID and verification code are required'
+                    message: 'Transaction ID and verification code are required'
                 });
             }
 
-            // Verify and process the withdrawal
-            const result = await paymentService.verifyWithdrawal(pendingId, verificationCode);
+            // Verify and process the withdrawal using transactionId
+            const result = await paymentService.verifyWithdrawal(transactionId, verificationCode);
 
             if (!result.success) {
+                // The service will throw AppError for specific failures now.
+                // This path might be for unexpected non-AppError failures from service.
                 return res.status(400).json({
                     success: false,
-                    message: result.message
+                    message: result.transaction?.message || 'Withdrawal verification failed'
                 });
             }
 
             return res.status(200).json({
                 success: true,
-                transaction: result.transaction
+                transaction: result.transaction,
+                message: result.transaction?.message || 'Withdrawal verified and processing.'
             });
-        } catch (error) {
-            log.error(`Error in verifyWithdrawal: ${error}`);
+        } catch (error: any) {
+            log.error(`Error in verifyWithdrawal: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
             return res.status(500).json({
                 success: false,
                 message: 'Failed to verify withdrawal'
@@ -490,6 +514,44 @@ export class TransactionController {
                 return res.status(error.statusCode).json({ success: false, message: error.message });
             }
             return res.status(500).json({ success: false, message: 'Failed to retrieve account transactions' });
+        }
+    }
+
+    /**
+     * [NEW] Cancel a pending withdrawal request.
+     * @route DELETE /api/transactions/withdrawal/:transactionId/cancel
+     */
+    async cancelWithdrawal(req: Request, res: Response) {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'User not authenticated' });
+            }
+
+            const { transactionId } = req.params;
+
+            if (!transactionId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Transaction ID is required to cancel a withdrawal.'
+                });
+            }
+
+            await paymentService.cancelWithdrawal(userId, transactionId);
+
+            return res.status(200).json({
+                success: true,
+                message: `Withdrawal request ${transactionId} cancelled successfully.`
+            });
+        } catch (error: any) {
+            log.error(`Error in cancelWithdrawal for transaction ${req.params.transactionId}: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to cancel withdrawal'
+            });
         }
     }
 }

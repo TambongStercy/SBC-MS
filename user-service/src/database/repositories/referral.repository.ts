@@ -84,7 +84,7 @@ export interface ReferralStatsResponse {
 export class ReferralRepository {
 
     // Fields to select when populating user data
-    private userPopulationFields = 'name email phoneNumber region country avatar _id';
+    private userPopulationFields = 'name email phoneNumber region country avatar avatarId _id';
 
     /**
      * Creates a single new referral record.

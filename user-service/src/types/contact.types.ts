@@ -12,6 +12,7 @@ export interface ContactSearchFilters {
     region?: string; // Filters the existing `region` field
     city?: string; // Added city filter
     sex?: UserSex;
+    name?: string; // Added name filter
     minAge?: number;
     maxAge?: number;
     language?: string; // Added language filter (assuming single string for now)

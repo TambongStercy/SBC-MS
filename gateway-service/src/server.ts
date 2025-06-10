@@ -129,6 +129,7 @@ app.use('/api/payouts', proxy(config.services.paymentServiceUrl, {
 
 // Product service
 app.use('/api/products', proxy(config.services.productServiceUrl, {
+  limit: '50mb',
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to products service`);
     return '/api/products' + req.url;
@@ -165,7 +166,7 @@ app.use('/api/advertising', proxy(config.services.advertisingServiceUrl, {
 app.use('/api/settings', proxy(config.services.settingsServiceUrl, {
   parseReqBody: false,
   proxyReqPathResolver: (req) => {
-    log.debug(`Proxying ${req.method} ${req.originalUrl} to event service`);
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to settings service`);
     return '/api/settings' + req.url;
   }
 }));
@@ -180,8 +181,8 @@ app.use('/api/events', proxy(config.services.settingsServiceUrl, {
 
 // --- GLOBAL MIDDLEWARE ---
 // Apply body parsers AFTER proxy routes
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 404 handler
 app.use((req, res) => {

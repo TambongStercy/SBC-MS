@@ -1,21 +1,19 @@
 import { Types, Aggregate } from 'mongoose';
 import transactionRepository, { CreateTransactionInput } from '../database/repositories/transaction.repository';
-import pendingRepository, { CreatePendingInput } from '../database/repositories/pending.repository';
 import paymentIntentRepository, { CreatePaymentIntentInput, UpdatePaymentIntentInput } from '../database/repositories/paymentIntent.repository';
 import { TransactionStatus, TransactionType, Currency, ITransaction } from '../database/models/transaction.model';
 import TransactionModel from '../database/models/transaction.model';
-import { PendingStatus, VerificationType } from '../database/models/pending.model';
-import { userServiceClient, UserDetails } from './clients/user.service.client';
+import { userServiceClient, UserDetails, UserDetailsWithMomo } from './clients/user.service.client';
 import { productServiceClient } from './clients/product.service.client';
-import notificationService from './clients/notification.service.client';
+import notificationService, { DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import axios from 'axios';
 import { IPaymentIntent, PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
 import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
-import { getPrefixFromOperator, momoOperatorToCinetpayPaymentMethod } from '../utils/operatorMaps';
-import { UserDetailsWithMomo } from './clients/user.service.client'; // Assuming this will be defined
+import { countryCodeToDialingPrefix, momoOperatorToCinetpayPaymentMethod, momoOperatorToCountryCode, getPrefixFromOperator, momoOperatorToCurrency } from '../utils/operatorMaps'; // NEW: Import all necessary maps and helper
+import { cinetpayPayoutService, PayoutRequest, PayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -173,30 +171,29 @@ class PaymentService {
         paymentDetails: {
             provider: string;
             transactionId: string;
+            status?: string; // Optional: status from payment provider
             metadata?: Record<string, any>;
         },
         description: string
     ) {
         let userEmail: string | undefined;
+        let userName: string | undefined; // Added for notification
         try {
             log.info(`Processing deposit of ${amount} ${currency} for user ${userId}`);
 
-            // Fetch user details to get email *before* proceeding with transaction
+            // Fetch user details to get email and name *before* proceeding with transaction
             try {
                 const userDetails = await userServiceClient.getUserDetails(userId.toString());
                 if (!userDetails?.email) {
                     log.warn(`Could not find email for user ${userId}. Deposit processed, but notification cannot be sent.`);
-                    // Decide if this is a fatal error or just a warning
-                    // throw new Error(`Cannot process deposit: User email not found for ID ${userId}`); 
                 } else {
                     userEmail = userDetails.email;
-                    log.debug(`Found email ${userEmail} for user ${userId}`);
+                    userName = userDetails.name; // Get user's name
+                    log.debug(`Found email ${userEmail} and name ${userName} for user ${userId}`);
                 }
-            } catch (userError) {
-                log.error(`Failed to fetch user details for ${userId} during deposit:`, userError);
-                // Decide if this is fatal
-                // throw new Error(`Failed to fetch user details for deposit notification. Aborting.`);
-                log.warn(`Continuing deposit for ${userId} despite failing to fetch user details.`);
+            } catch (userError: any) {
+                log.error(`Failed to fetch user details for ${userId} during deposit: ${userError.message}`);
+                log.warn(`Continuing deposit for ${userId} despite failing to fetch user details for notification.`);
             }
 
             // Create a transaction record
@@ -209,7 +206,7 @@ class PaymentService {
                 paymentProvider: {
                     provider: paymentDetails.provider,
                     transactionId: paymentDetails.transactionId,
-                    status: 'completed',
+                    status: paymentDetails.status || 'completed', // Use status from paymentDetails or default
                     metadata: paymentDetails.metadata
                 },
             });
@@ -224,7 +221,7 @@ class PaymentService {
             if (userEmail) {
                 const notificationSent = await notificationService.sendTransactionSuccessEmail({
                     email: userEmail,
-                    name: 'deposit_completed', // Consider getting user's actual name if available in userDetails
+                    name: userName || 'Customer', // Use fetched name or default
                     transactionType: 'deposit',
                     transactionId: transaction.transactionId,
                     amount,
@@ -232,7 +229,6 @@ class PaymentService {
                     date: transaction.createdAt.toISOString()
                 });
                 if (!notificationSent) {
-                    // Log the failure, but don't fail the whole deposit process for a notification issue
                     log.warn(`Failed to send deposit notification email to ${userEmail} for transaction ${transaction.transactionId}`);
                 }
             } else {
@@ -240,8 +236,8 @@ class PaymentService {
             }
 
             return transaction;
-        } catch (error) {
-            log.error(`Error processing deposit: ${error}`);
+        } catch (error: any) {
+            log.error(`Error processing deposit: ${error.message}`, error);
             throw error;
         }
     }
@@ -309,132 +305,443 @@ class PaymentService {
     }
 
     /**
-     * Initiate a withdrawal for a user
+     * Initiate a withdrawal for a user.
+     * The 'amount' in the request is considered the NET amount the user wants to receive
+     * in the TARGET CURRENCY (derived from their MoMo operator).
+     * Implements soft lock and daily limits.
+     * User's balance is debited in XAF upon successful external payout.
      */
-    async initiateWithdrawal(
+    public async initiateWithdrawal(
         userId: string | Types.ObjectId,
-        amount: number,
-        currency: Currency,
-        withdrawalDetails: {
-            method: string;
-            accountInfo: Record<string, any>;
-        },
+        netAmountDesired: number, // Renamed 'amount' to 'netAmountDesired' for clarity (this is in the target currency)
+        // Removed `currency` from input, as it will be derived from momoOperator
         ipAddress?: string,
         deviceInfo?: string
     ) {
-        try {
-            log.info(`Initiating withdrawal of ${amount} ${currency} for user ${userId}`);
+        log.info(`Initiating withdrawal request for user ${userId}: NET ${netAmountDesired} (target currency will be derived)`);
 
-            // Check if user has sufficient balance
-            const userBalance = await userServiceClient.getBalance(userId.toString());
-            if (userBalance < amount) {
-                throw new Error('Insufficient balance');
+        // --- Daily Withdrawal Limit Check ---
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0); // Start of today in UTC
+        const tomorrow = new Date(today);
+        tomorrow.setUTCDate(today.getUTCDate() + 1); // Start of tomorrow in UTC
+
+        const dailyWithdrawalsCount = await TransactionModel.countDocuments({
+            userId: new Types.ObjectId(userId.toString()),
+            type: TransactionType.WITHDRAWAL,
+            status: { $in: [TransactionStatus.COMPLETED, TransactionStatus.PENDING, TransactionStatus.PROCESSING, TransactionStatus.PENDING_OTP_VERIFICATION] },
+            createdAt: { $gte: today, $lt: tomorrow }
+        });
+
+        if (dailyWithdrawalsCount >= 3) {
+            log.warn(`User ${userId} has reached daily withdrawal limit (${dailyWithdrawalsCount} withdrawals today).`);
+            throw new AppError('You have reached your daily limit of 3 withdrawals. Please try again tomorrow.', 429); // 429 Too Many Requests
+        }
+        // --- End Daily Withdrawal Limit Check ---
+
+        // --- Soft Lock / Check for existing PENDING_OTP_VERIFICATION, PENDING, or PROCESSING withdrawal ---
+        const existingActiveWithdrawal = await transactionRepository.findOneByFilters({
+            userId: new Types.ObjectId(userId.toString()),
+            type: TransactionType.WITHDRAWAL,
+            status: { $in: [TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
+        });
+
+        if (existingActiveWithdrawal) {
+            log.warn(`User ${userId} has an existing active withdrawal (Tx ID: ${existingActiveWithdrawal.transactionId}, Status: ${existingActiveWithdrawal.status}).`);
+
+            let message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) that is currently ${existingActiveWithdrawal.status.replace(/_/g, ' ')}. Please complete or cancel it before initiating a new one.`;
+            let otpExpiresAt = existingActiveWithdrawal.verificationExpiry; // Default to existing expiry
+
+            // If the existing withdrawal is still awaiting OTP, re-send it and update expiry
+            if (existingActiveWithdrawal.status === TransactionStatus.PENDING_OTP_VERIFICATION) {
+                log.info(`Re-sending OTP for existing PENDING_OTP_VERIFICATION withdrawal (Tx ID: ${existingActiveWithdrawal.transactionId}).`);
+                const { verificationExpiry } = await this.sendWithdrawalOTP(existingActiveWithdrawal.transactionId);
+                otpExpiresAt = verificationExpiry; // Use the new expiry from re-send
+                message += " An OTP has been re-sent to your registered contact for this existing request.";
             }
 
-            // Calculate fee (if any)
-            const fee = this.calculateWithdrawalFee(amount, currency, withdrawalDetails.method);
+            return {
+                transactionId: existingActiveWithdrawal.transactionId,
+                amount: existingActiveWithdrawal.amount, // This is the gross amount stored in XAF
+                fee: existingActiveWithdrawal.fee, // Fee stored in XAF
+                // total: This should ideally represent the net amount in the *payout* currency.
+                // Assuming `netAmountRequested` in metadata stores this.
+                total: existingActiveWithdrawal.metadata?.netAmountRequested, // Net amount in target currency
+                status: existingActiveWithdrawal.status,
+                expiresAt: otpExpiresAt,
+                message: message
+            };
+        }
+        // --- End Soft Lock ---
 
-            // Create a pending withdrawal
-            const pending = await pendingRepository.create({
-                userId,
-                transactionType: TransactionType.WITHDRAWAL,
-                amount,
-                currency,
-                verificationType: VerificationType.OTP,
-                description: `Withdrawal of ${amount} ${currency}`,
+        try {
+            // Fetch user's MoMo details from user-service
+            const userMomoDetails = await userServiceClient.getUserDetailsWithMomo(userId.toString());
+
+            // Check for essential MoMo details
+            if (!userMomoDetails || !userMomoDetails.momoNumber || !userMomoDetails.momoOperator) {
+                log.error(`User ${userId} has no registered Mobile Money number or operator for withdrawal.`);
+                throw new AppError('Your account does not have registered Mobile Money details for withdrawals. Please update your profile.', 400);
+            }
+
+            const fullMomoNumber = userMomoDetails.momoNumber;
+            const momoOperator = userMomoDetails.momoOperator;
+
+            // NEW: Derive countryCode and TARGET CURRENCY from momoOperator using the utility maps
+            const countryCode = momoOperatorToCountryCode[momoOperator];
+            const targetPayoutCurrency = momoOperatorToCurrency[momoOperator] as Currency; // Determine payout currency
+
+            if (!countryCode) {
+                log.error(`No country code found for momoOperator: ${momoOperator}. User ID: ${userId}`);
+                throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} or missing country mapping for it. Please contact support.`, 400);
+            }
+            if (!targetPayoutCurrency) {
+                log.error(`No target payout currency found for momoOperator: ${momoOperator}. User ID: ${userId}`);
+                throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} or missing currency mapping for it. Please contact support.`, 400);
+            }
+
+            // Derive the specific payment method slug for CinetPay
+            const method = momoOperatorToCinetpayPaymentMethod[momoOperator];
+            if (!method) {
+                log.error(`No CinetPay payment method found for operator ${momoOperator} in country ${countryCode}. User ID: ${userId}`);
+                throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} for withdrawal.`, 400);
+            }
+
+            // Construct withdrawalDetails object internally
+            const withdrawalDetails = {
+                method: method,
+                accountInfo: {
+                    fullMomoNumber: fullMomoNumber,
+                    momoOperator: momoOperator,
+                    countryCode: countryCode,
+                }
+            };
+
+            let grossAmountToDebitInXAF: number;
+            let feeInXAF: number;
+
+            // Perform currency conversion if target payout currency is not XAF
+            if (targetPayoutCurrency !== Currency.XAF) {
+                log.info(`Converting NET amount from ${targetPayoutCurrency} to XAF for balance debit.`);
+                const netAmountInXAF = await this.convertCurrency(netAmountDesired, targetPayoutCurrency, Currency.XAF);
+                feeInXAF = this.calculateWithdrawalFee(netAmountInXAF, Currency.XAF, withdrawalDetails.method);
+                grossAmountToDebitInXAF = netAmountInXAF + feeInXAF;
+                log.info(`Converted NET ${netAmountDesired} ${targetPayoutCurrency} to ${netAmountInXAF} XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
+            } else {
+                // If target currency is XAF, no conversion needed for initial calculation
+                feeInXAF = this.calculateWithdrawalFee(netAmountDesired, Currency.XAF, withdrawalDetails.method);
+                grossAmountToDebitInXAF = netAmountDesired + feeInXAF;
+                log.info(`Target currency is XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
+            }
+
+            // Check if user has sufficient balance (important to do upfront) against the GROSS amount in XAF
+            const userBalance = await userServiceClient.getBalance(userId.toString());
+            if (userBalance < grossAmountToDebitInXAF) {
+                throw new AppError('Insufficient balance', 400);
+            }
+
+            const withdrawalTransaction = await transactionRepository.create({
+                userId: new Types.ObjectId(userId.toString()), // Ensure ObjectId
+                type: TransactionType.WITHDRAWAL,
+                amount: grossAmountToDebitInXAF, // Store the GROSS amount in XAF that will be debited
+                fee: feeInXAF, // Fee stored in XAF
+                currency: Currency.XAF, // Transaction currency is always XAF for balance debits
+                status: TransactionStatus.PENDING_OTP_VERIFICATION,
+                description: `Withdrawal request for NET ${netAmountDesired} ${targetPayoutCurrency}. Gross debit: ${grossAmountToDebitInXAF} XAF.`,
                 metadata: {
-                    fee,
                     method: withdrawalDetails.method,
-                    accountInfo: withdrawalDetails.accountInfo
+                    accountInfo: withdrawalDetails.accountInfo, // Store derived account info
+                    netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
+                    payoutCurrency: targetPayoutCurrency, // Store the target payout currency
                 },
                 ipAddress,
                 deviceInfo
             });
 
-            // Send OTP for verification
-            await this.sendWithdrawalOTP(userId.toString(), pending.pendingId);
+            // Send OTP for verification, linking it to the newly created transaction
+            const { verificationCode, verificationExpiry } = await this.sendWithdrawalOTP(withdrawalTransaction.transactionId);
+
+            // Update the transaction with OTP details
+            const updatedTransaction = await transactionRepository.update(
+                withdrawalTransaction._id,
+                {
+                    verificationCode,
+                    verificationExpiry
+                }
+            );
+
+            if (!updatedTransaction) {
+                log.error(`Failed to update transaction ${withdrawalTransaction.transactionId} with OTP details after creation.`);
+                throw new AppError('Failed to process withdrawal request.', 500);
+            }
 
             return {
-                pendingId: pending.pendingId,
-                amount,
-                fee,
-                total: amount - fee,
-                status: pending.status,
-                expiresAt: pending.expiresAt
+                transactionId: updatedTransaction.transactionId,
+                amount: updatedTransaction.amount, // This is the gross amount debited in XAF
+                fee: updatedTransaction.fee, // Fee in XAF
+                total: netAmountDesired, // Display the NET amount the user requested (in target payout currency)
+                status: updatedTransaction.status,
+                expiresAt: updatedTransaction.verificationExpiry,
+                message: "Withdrawal initiation successful. Please check your registered contact for an OTP."
             };
-        } catch (error) {
-            log.error(`Error initiating withdrawal: ${error}`);
-            throw error;
+        } catch (error: any) {
+            log.error(`Error initiating withdrawal for user ${userId}: ${error.message}`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(`Failed to initiate withdrawal: ${error.message}`, 500);
         }
     }
 
     /**
-     * Verify and process a withdrawal
+     * Verify and process a withdrawal.
+     * Now operates directly on the Transaction model.
+     * Removed balance debit here.
      */
-    async verifyWithdrawal(pendingId: string, verificationCode: string) {
+    async verifyWithdrawal(transactionId: string, verificationCode: string) {
+        log.info(`Verifying withdrawal transaction ${transactionId}`);
+
         try {
-            log.info(`Verifying withdrawal ${pendingId}`);
+            const transaction = await transactionRepository.findByTransactionId(transactionId, { select: '+verificationCode +verificationExpiry' });
 
-            // Verify the OTP
-            const { verified, pending } = await pendingRepository.verify(pendingId, verificationCode);
-
-            if (!verified || !pending) {
-                return { success: false, message: 'Invalid or expired verification code' };
+            if (!transaction) {
+                throw new AppError('Withdrawal transaction not found.', 404);
             }
 
-            // Get withdrawal details from pending record
-            const { userId, amount, currency, metadata } = pending;
-            const fee = metadata?.fee || 0;
-            const finalAmount = amount - fee;
+            if (transaction.type !== TransactionType.WITHDRAWAL) {
+                throw new AppError('Transaction is not a withdrawal type.', 400);
+            }
 
-            // Create withdrawal transaction
-            const transaction = await transactionRepository.create({
-                userId,
-                type: TransactionType.WITHDRAWAL,
-                amount: finalAmount,
-                fee,
-                currency,
-                description: `Withdrawal of ${finalAmount} ${currency}`,
+            if (transaction.status !== TransactionStatus.PENDING_OTP_VERIFICATION) {
+                log.warn(`Transaction ${transactionId} is not in PENDING_OTP_VERIFICATION status. Current status: ${transaction.status}`);
+                throw new AppError(`Withdrawal transaction is not awaiting OTP verification. Current status: ${transaction.status}.`, 400);
+            }
+
+            // Check OTP and expiry
+            if (!transaction.verificationCode || !transaction.verificationExpiry) {
+                log.error(`Transaction ${transactionId} missing OTP details for verification.`);
+                throw new AppError('Internal error: Missing OTP details for verification.', 500);
+            }
+
+            if (transaction.verificationExpiry < new Date()) {
+                // OTP Expired
+                await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, { failureReason: 'OTP Expired' });
+                throw new AppError('Verification code expired. Please re-initiate withdrawal.', 400);
+            }
+
+            if (transaction.verificationCode !== verificationCode) {
+                // Invalid OTP
+                throw new AppError('Invalid verification code.', 400);
+            }
+
+            // OTP is valid and not expired. Proceed with processing.
+            log.info(`OTP for transaction ${transactionId} verified successfully.`);
+
+            // Get withdrawal details from transaction metadata
+            const { userId, amount, fee, currency, metadata } = transaction; // amount here is already in XAF
+
+            // Update transaction status to PENDING (ready for external payout)
+            // Clear OTP fields now that verification is complete
+            const updatedTransaction = await transactionRepository.update(transaction._id, {
+                status: TransactionStatus.PENDING, // Now PENDING, awaiting external payout success
+                verificationCode: undefined,
+                verificationExpiry: undefined,
                 metadata: {
-                    method: metadata?.method,
-                    accountInfo: metadata?.accountInfo
-                },
-                ipAddress: pending.ipAddress,
-                deviceInfo: pending.deviceInfo
+                    ...(metadata || {}),
+                    statusDetails: 'OTP verified, external payout initiated (pending provider confirmation)' // Updated message
+                }
             });
 
-            // Update user balance
-            await userServiceClient.updateUserBalance(userId.toString(), -amount);
+            if (!updatedTransaction) {
+                log.error(`Failed to update transaction ${transactionId} status to PENDING after OTP verification.`);
+                throw new AppError('Failed to finalize withdrawal verification.', 500);
+            }
 
-            // Update transaction status (initially pending until external processing)
-            await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.PENDING);
+            // Fetch user details for notification
+            let userEmail: string | undefined;
+            let userName: string | undefined;
+            try {
+                const userDetails = await userServiceClient.getUserDetails(userId.toString());
+                if (!userDetails?.email) {
+                    log.warn(`Could not find email for user ${userId} for withdrawal notification.`);
+                } else {
+                    userEmail = userDetails.email;
+                    userName = userDetails.name;
+                }
+            } catch (userError: any) {
+                log.error(`Failed to fetch user details for ${userId} during withdrawal verification for notification: ${userError.message}`);
+                log.warn(`Continuing withdrawal processing for ${userId} despite failing to fetch user details.`);
+            }
 
-            // Send notification
-            await notificationService.sendTransactionSuccessEmail({
-                email: userId.toString(),
-                name: 'withdrawal_initiated',
-                transactionType: 'withdrawal',
-                transactionId: transaction.transactionId,
-                amount: finalAmount,
-                currency,
-                date: transaction.createdAt.toISOString()
+            // Get net amount for notification from metadata
+            const netAmountForPayout = updatedTransaction.metadata?.netAmountRequested;
+            const targetPayoutCurrency = updatedTransaction.metadata?.payoutCurrency as Currency;
+
+            if (netAmountForPayout === undefined || targetPayoutCurrency === undefined) {
+                log.error(`Transaction ${updatedTransaction.transactionId} missing netAmountRequested or payoutCurrency in metadata. Cannot initiate external payout.`);
+                await transactionRepository.update(updatedTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(updatedTransaction.metadata || {}),
+                        failureReason: 'Missing net amount or payout currency for external payout.',
+                        statusDetails: 'Payout could not be initiated due to incomplete amount/currency info in transaction record.'
+                    }
+                });
+                throw new AppError('Incomplete transaction details for payout. Cannot proceed.', 500);
+            }
+
+
+            // Send initial notification (user's balance is not yet debited, but transaction is "in progress")
+            if (userEmail) {
+                await notificationService.sendTransactionSuccessEmail({ // Maybe a specific "Withdrawal Initiated" email
+                    email: userEmail,
+                    name: userName || 'Customer',
+                    transactionType: 'withdrawal_initiated', // More accurate type
+                    transactionId: updatedTransaction.transactionId,
+                    amount: netAmountForPayout, // Send net amount in its target currency for notification
+                    currency: targetPayoutCurrency, // Send target currency for notification
+                    date: updatedTransaction.createdAt.toISOString()
+                });
+                log.info(`Initial notification sent for withdrawal transaction ${transactionId}.`);
+            } else {
+                log.warn(`Skipping initial withdrawal notification for transaction ${transactionId} as user email was not available.`);
+            }
+
+            // CRITICAL - Trigger the actual asynchronous payout process.
+            log.info(`Triggering asynchronous payout process for transaction ${updatedTransaction.transactionId}.`);
+
+            // Extract required details for payout service from transaction metadata
+            const withdrawalAccountInfo = updatedTransaction.metadata?.accountInfo as { fullMomoNumber: string; momoOperator: string; countryCode: string; };
+            if (!withdrawalAccountInfo || !withdrawalAccountInfo.fullMomoNumber || !withdrawalAccountInfo.momoOperator || !withdrawalAccountInfo.countryCode) {
+                log.error(`Transaction ${updatedTransaction.transactionId} missing complete account info in metadata for payout.`);
+                await transactionRepository.update(updatedTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(updatedTransaction.metadata || {}),
+                        failureReason: 'Missing or incomplete account details for external payout.',
+                        statusDetails: 'Payout could not be initiated due to incomplete MoMo info in transaction record.'
+                    }
+                });
+                throw new AppError('Incomplete Mobile Money details in transaction record. Cannot proceed with payout.', 500);
+            }
+
+            const dialingPrefix = countryCodeToDialingPrefix[withdrawalAccountInfo.countryCode];
+            if (!dialingPrefix) {
+                log.error(`Could not derive dialing prefix for country code ${withdrawalAccountInfo.countryCode} (from transaction metadata) for transaction ${updatedTransaction.transactionId}.`);
+                await transactionRepository.update(updatedTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(updatedTransaction.metadata || {}),
+                        failureReason: 'Invalid country dialing prefix configuration derived from transaction record. Cannot proceed with payout.',
+                        statusDetails: 'Payout could not be initiated due to invalid country configuration.'
+                    }
+                });
+                throw new AppError('Invalid country configuration for Mobile Money payout. Cannot proceed.', 500);
+            }
+
+            // Format phone number for CinetPay: remove prefix if already present and any non-digits
+            const nationalPhoneNumber = withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '').startsWith(dialingPrefix)
+                ? withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '').substring(dialingPrefix.length)
+                : withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '');
+
+            const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalAccountInfo.momoOperator];
+
+            // Trigger the actual payout using CinetPayPayoutService
+            // This should be done asynchronously or via a job queue for robustness
+            // Crucially, it passes our internal transactionId so the webhook can link back.
+            cinetpayPayoutService.initiatePayout({
+                userId: updatedTransaction.userId.toString(), // Pass user ID for internal tracking in payout service
+                amount: netAmountForPayout, // Pass the NET amount in TARGET payout currency
+                phoneNumber: nationalPhoneNumber,
+                countryCode: withdrawalAccountInfo.countryCode,
+                recipientName: userName || 'SBC User', // Use userDetails fetched for notification
+                recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
+                paymentMethod: cinetpayPaymentMethod,
+                description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
+                client_transaction_id: updatedTransaction.transactionId, // Pass our internal transaction ID to CinetPay
+                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
+            }).then(payoutRes => {
+                if (payoutRes.success) {
+                    log.info(`CinetPay payout initiated for transaction ${updatedTransaction.transactionId}. Provider Tx ID: ${payoutRes.cinetpayTransactionId}`);
+                    // Update transaction with external details (status will be updated by webhook later)
+                    transactionRepository.update(updatedTransaction._id, {
+                        externalTransactionId: payoutRes.cinetpayTransactionId,
+                        serviceProvider: 'CinetPay',
+                        paymentMethod: cinetpayPaymentMethod,
+                        status: TransactionStatus.PROCESSING, // Mark as processing externally
+                        metadata: {
+                            ...(updatedTransaction.metadata || {}),
+                            payoutInitiationStatus: payoutRes.status,
+                            payoutMessage: payoutRes.message,
+                            cinetpayLot: payoutRes.transactionId // Store CinetPay specific lot ID if available, or client_transaction_id
+                        }
+                    }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} with CinetPay payout details:`, err));
+                } else {
+                    log.error(`CinetPay payout initiation failed for transaction ${updatedTransaction.transactionId}: ${payoutRes.message}`);
+                    // Mark transaction as failed, no refund needed as balance wasn't debited.
+                    transactionRepository.update(updatedTransaction._id, {
+                        status: TransactionStatus.FAILED,
+                        metadata: {
+                            ...(updatedTransaction.metadata || {}),
+                            failureReason: `External payout initiation failed: ${payoutRes.message}`,
+                            payoutError: payoutRes.message
+                        }
+                    }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} status to FAILED after payout failure:`, err));
+                    // Send notification for failed payout initiation
+                    if (userEmail) {
+                        notificationService.sendTransactionFailureEmail({
+                            email: userEmail,
+                            name: userName || 'Customer',
+                            transactionType: 'withdrawal',
+                            transactionId: updatedTransaction.transactionId,
+                            amount: netAmountForPayout, // Net amount for notification
+                            currency: targetPayoutCurrency, // Target currency for notification
+                            date: new Date().toISOString(),
+                            reason: payoutRes.message
+                        }).catch(err => log.error(`Failed to send failure notification for transaction ${updatedTransaction.transactionId}:`, err));
+                    }
+                }
+            }).catch(err => {
+                log.error(`Unhandled error during CinetPay payout initiation for transaction ${updatedTransaction.transactionId}:`, err);
+                transactionRepository.update(updatedTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(updatedTransaction.metadata || {}),
+                        failureReason: `Internal payout system error during initiation: ${err.message}`
+                    }
+                }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} status to FAILED after system error:`, err));
+                // Send notification for system error during payout initiation
+                if (userEmail) {
+                    notificationService.sendTransactionFailureEmail({
+                        email: userEmail,
+                        name: userName || 'Customer',
+                        transactionId: updatedTransaction.transactionId,
+                        transactionType: 'withdrawal',
+                        amount: netAmountForPayout, // Net amount for notification
+                        currency: targetPayoutCurrency, // Target currency for notification
+                        date: new Date().toISOString(),
+                        reason: `System error during payout initiation: ${err.message}`
+                    }).catch(err => log.error(`Failed to send failure notification for transaction ${updatedTransaction.transactionId}:`, err));
+                }
             });
-
-            // Now the withdrawal will be processed by a background job or admin approval
 
             return {
                 success: true,
                 transaction: {
-                    transactionId: transaction.transactionId,
-                    amount: finalAmount,
-                    fee,
-                    total: amount,
-                    status: transaction.status
+                    transactionId: updatedTransaction.transactionId,
+                    amount: updatedTransaction.amount, // Gross amount in XAF
+                    fee: updatedTransaction.fee, // Fee in XAF
+                    total: netAmountForPayout, // Net amount in target payout currency
+                    status: updatedTransaction.status,
+                    message: "Withdrawal verified. Your payout is now being processed."
                 }
             };
-        } catch (error) {
-            log.error(`Error verifying withdrawal: ${error}`);
-            throw error;
+        } catch (error: any) {
+            log.error(`Error verifying withdrawal transaction ${transactionId}: ${error.message}`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(`Failed to verify withdrawal: ${error.message}`, 500);
         }
     }
 
@@ -457,7 +764,18 @@ class PaymentService {
             // Check if sender has sufficient balance
             const senderBalance = await userServiceClient.getBalance(fromUserId.toString());
             if (senderBalance < amount) {
-                throw new Error('Insufficient balance');
+                throw new AppError('Insufficient balance', 400); // Use AppError
+            }
+
+            // Fetch sender details for notification
+            let senderEmail: string | undefined;
+            let senderName: string | undefined;
+            try {
+                const senderDetails = await userServiceClient.getUserDetails(fromUserId.toString());
+                senderEmail = senderDetails?.email;
+                senderName = senderDetails?.name;
+            } catch (error: any) {
+                log.warn(`Could not fetch sender details for ${fromUserId} for payment notification: ${error.message}`);
             }
 
             // Create outgoing transaction for sender
@@ -474,6 +792,17 @@ class PaymentService {
                 ipAddress,
                 deviceInfo
             });
+
+            // Fetch recipient details for notification
+            let recipientEmail: string | undefined;
+            let recipientName: string | undefined;
+            try {
+                const recipientDetails = await userServiceClient.getUserDetails(toUserId.toString());
+                recipientEmail = recipientDetails?.email;
+                recipientName = recipientDetails?.name;
+            } catch (error: any) {
+                log.warn(`Could not fetch recipient details for ${toUserId} for payment notification: ${error.message}`);
+            }
 
             // Create incoming transaction for recipient
             const recipientTransaction = await transactionRepository.create({
@@ -503,34 +832,45 @@ class PaymentService {
             await userServiceClient.updateUserBalance(toUserId.toString(), amount);
 
             // Send notifications to both users
-            await notificationService.sendTransactionSuccessEmail({
-                email: fromUserId.toString(),
-                name: 'payment_sent',
-                transactionType: 'payment',
-                transactionId: senderTransaction.transactionId,
-                amount,
-                currency,
-                date: senderTransaction.createdAt.toISOString()
-            });
+            if (senderEmail) {
+                await notificationService.sendTransactionSuccessEmail({
+                    email: senderEmail,
+                    name: senderName || 'Customer',
+                    transactionType: 'payment_sent', // Specific type for sender
+                    transactionId: senderTransaction.transactionId,
+                    amount,
+                    currency,
+                    date: senderTransaction.createdAt.toISOString()
+                });
+            } else {
+                log.warn(`Skipping sender notification for payment ${senderTransaction.transactionId} as email was not available.`);
+            }
 
-            await notificationService.sendTransactionSuccessEmail({
-                email: toUserId.toString(),
-                name: 'payment_received',
-                transactionType: 'payment',
-                transactionId: recipientTransaction.transactionId,
-                amount,
-                currency,
-                date: recipientTransaction.createdAt.toISOString()
-            });
+            if (recipientEmail) {
+                await notificationService.sendTransactionSuccessEmail({
+                    email: recipientEmail,
+                    name: recipientName || 'Customer',
+                    transactionType: 'payment_received', // Specific type for recipient
+                    transactionId: recipientTransaction.transactionId,
+                    amount,
+                    currency,
+                    date: recipientTransaction.createdAt.toISOString()
+                });
+            } else {
+                log.warn(`Skipping recipient notification for payment ${recipientTransaction.transactionId} as email was not available.`);
+            }
 
 
             return {
                 senderTransaction,
                 recipientTransaction
             };
-        } catch (error) {
-            log.error(`Error processing payment: ${error}`);
-            throw error;
+        } catch (error: any) {
+            log.error(`Error processing payment: ${error.message}`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(`Failed to process payment: ${error.message}`, 500);
         }
     }
 
@@ -583,44 +923,130 @@ class PaymentService {
     }
 
     /**
-     * Calculate withdrawal fee (can be customized based on business rules)
+     * Calculate withdrawal fee.
+     * The fee is calculated as a percentage of the NET amount in the specified currency.
+     * Note: This fee is calculated in the currency *of the transaction record*, which is XAF.
      */
-    private calculateWithdrawalFee(amount: number, currency: Currency, method: string): number {
-        // Simple example with flat percentage fee
-        const feePercentage = 0.015; // 1.5%
-        const fee = amount * feePercentage;
+    private calculateWithdrawalFee(netAmount: number, currency: Currency, method: string): number {
+        // Assume fee calculation is always on XAF amount for now,
+        // and that conversion to XAF already happened before this call.
+        // If different fee structures exist per currency, this would need to change.
+        if (currency !== Currency.XAF) {
+            log.warn(`calculateWithdrawalFee called with non-XAF currency (${currency}). Assuming amount is equivalent XAF for fee calculation.`);
+            // Potentially throw an error or handle conversion if this function is meant for diverse currencies.
+        }
 
-        // You might have different fee structures based on method, amount tier, or currency
-        return fee;
+        const feePercentage = 0.015; // 1.5%
+        const fee = netAmount * feePercentage;
+        return parseFloat(fee.toFixed(2));
     }
 
     /**
-     * Send OTP for withdrawal verification
+     * Send OTP for withdrawal verification.
+     * Now directly updates the Transaction record with OTP details.
      */
-    private async sendWithdrawalOTP(userId: string, pendingId: string) {
+    private async sendWithdrawalOTP(transactionId: string): Promise<{ verificationCode: string; verificationExpiry: Date }> {
+        log.info(`Generating and sending OTP for withdrawal transaction: ${transactionId}`);
+        const transaction = await transactionRepository.findByTransactionId(transactionId, { select: '+verificationCode +verificationExpiry' });
+
+        if (!transaction) {
+            log.error(`Transaction ${transactionId} not found for OTP generation.`);
+            throw new AppError('Transaction not found.', 404);
+        }
+
+        // Generate OTP
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+        const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
+
+        // Update transaction with OTP details
+        await transactionRepository.update(transaction._id, {
+            verificationCode: otpCode,
+            verificationExpiry: otpExpiry
+        });
+
+        // Fetch user details for notification
+        let userEmail: string | undefined;
+        let userName: string | undefined;
         try {
-            // Get the pending transaction with verification code
-            const pending = await pendingRepository.findByPendingId(pendingId);
-
-            if (!pending || pending.verificationType !== VerificationType.OTP) {
-                throw new Error('Invalid pending transaction or verification type');
+            const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+            if (!userDetails?.email) {
+                log.warn(`Could not find email for user ${transaction.userId} for OTP notification.`);
+            } else {
+                userEmail = userDetails.email;
+                userName = userDetails.name;
             }
+        } catch (userError: any) {
+            log.error(`Failed to fetch user details for ${transaction.userId} during OTP generation for notification: ${userError.message}`);
+            log.warn(`Continuing OTP generation for ${transaction.userId} despite failing to fetch user details.`);
+        }
 
-            // Send notification with OTP
+        // Get net amount for notification from metadata
+        const netAmountForNotification = transaction.metadata?.netAmountRequested;
+        const targetPayoutCurrency = transaction.metadata?.payoutCurrency;
+
+        // Send notification with OTP (e.g., via SMS or email)
+        if (userEmail && netAmountForNotification !== undefined && targetPayoutCurrency !== undefined) {
             await notificationService.sendVerificationOTP(
-                userId,
-                'withdrawal_verification',
                 {
-                    amount: pending.amount,
-                    currency: pending.currency,
-                    pendingId
+                    userId: transaction.userId.toString(),
+                    recipient: userEmail,
+                    channel: DeliveryChannel.EMAIL,
+                    code: otpCode,
+                    expireMinutes: 10,
+                    isRegistration: false,
+                    userName: userName || 'Customer',
+                    purpose: 'withdrawal_verification',
+                    // Pass the net amount for notification as that's what the user expects to receive
+                    description: `Withdrawal verification code for ${netAmountForNotification} ${targetPayoutCurrency} for transaction ${transaction.transactionId}.`,
                 }
             );
+        } else {
+            log.warn(`Skipping OTP notification for transaction ${transactionId} as user email, net amount or payout currency was not available.`);
+        }
 
-            log.info(`Sent withdrawal verification OTP for user ${userId}`);
-        } catch (error) {
-            log.error(`Error sending withdrawal OTP: ${error}`);
-            throw error;
+        log.info(`OTP (code: ${otpCode}) generated and sent for transaction ${transactionId}. Expires at ${otpExpiry.toISOString()}`);
+        return { verificationCode: otpCode, verificationExpiry: otpExpiry };
+    }
+
+    /**
+     * [NEW] Allows a user to cancel a pending withdrawal request.
+     * This applies only to withdrawals in PENDING_OTP_VERIFICATION status.
+     * Once verified and balance is debited, cancellation means refund.
+     */
+    async cancelWithdrawal(userId: string | Types.ObjectId, transactionId: string): Promise<void> {
+        log.info(`Attempting to cancel withdrawal transaction ${transactionId} for user ${userId}.`);
+
+        const transaction = await transactionRepository.findByTransactionId(transactionId);
+
+        if (!transaction) {
+            throw new AppError('Withdrawal transaction not found.', 404);
+        }
+
+        if (transaction.userId.toString() !== userId.toString()) {
+            throw new AppError('Access denied: You can only cancel your own withdrawals.', 403);
+        }
+
+        if (transaction.type !== TransactionType.WITHDRAWAL) {
+            throw new AppError('This transaction is not a withdrawal and cannot be cancelled this way.', 400);
+        }
+
+        // Only allow cancellation if in PENDING_OTP_VERIFICATION status
+        if (transaction.status === TransactionStatus.PENDING_OTP_VERIFICATION) {
+            await transactionRepository.update(transaction._id, {
+                status: TransactionStatus.CANCELLED,
+                verificationCode: undefined,
+                verificationExpiry: undefined,
+                metadata: {
+                    ...(transaction.metadata || {}),
+                    cancellationReason: 'User cancelled OTP verification'
+                }
+            });
+            log.info(`Withdrawal transaction ${transactionId} for user ${userId} successfully cancelled (OTP stage).`);
+
+            // No balance refund needed here as balance is only debited *after* OTP verification.
+        } else {
+            log.warn(`Withdrawal transaction ${transactionId} cannot be cancelled at its current status: ${transaction.status}.`);
+            throw new AppError(`Withdrawal cannot be cancelled. It is currently in "${transaction.status}" status.`, 400);
         }
     }
 
@@ -2189,6 +2615,542 @@ class PaymentService {
     }
 
     // --- END NEW CINTPAY TRANSFER/PAYOUT METHODS ---
+
+    // --- NEW ADMIN TRANSFER/PAYOUT METHODS ---
+
+    /**
+     * [ADMIN] Initiates a withdrawal for a user, bypassing OTP verification.
+     * The 'amount' in the request is considered the NET amount the user wants to receive
+     * in the TARGET CURRENCY (derived from their MoMo operator).
+     * This affects the user's internal balance.
+     */
+    public async adminInitiateUserWithdrawal(
+        targetUserId: string | Types.ObjectId,
+        netAmountDesired: number, // Renamed 'amount' to 'netAmountDesired' for clarity (this is in the target currency)
+        // Removed `currency` from input, as it will be derived from momoOperator
+        withdrawalDetails: {
+            method: string; // e.g., 'MTNCM', 'OM'
+            accountInfo: { // Details to store about the recipient
+                fullMomoNumber: string; // Full international or national number from user's profile
+                momoOperator: string;   // Operator slug from user's profile
+                countryCode: string;    // Country code from user's profile (CM, CI, etc.)
+                recipientName?: string;
+                recipientEmail?: string;
+            };
+        },
+        adminId: string, // ID of the admin performing the action
+        ipAddress?: string,
+        deviceInfo?: string
+    ) {
+        log.info(`Admin ${adminId} initiating direct withdrawal for user ${targetUserId}: NET ${netAmountDesired} (target currency will be derived)`);
+
+        try {
+            // Fetch user's details for current balance and for notification
+            const userDetails = await userServiceClient.getUserDetails(targetUserId.toString());
+            if (!userDetails) {
+                throw new AppError('Target user not found for withdrawal.', 404);
+            }
+
+            // NEW: Derive TARGET CURRENCY from momoOperator for admin-initiated user withdrawal
+            const targetPayoutCurrency = momoOperatorToCurrency[withdrawalDetails.accountInfo.momoOperator] as Currency;
+            if (!targetPayoutCurrency) {
+                log.error(`No target payout currency found for momoOperator: ${withdrawalDetails.accountInfo.momoOperator}. User ID: ${targetUserId}`);
+                throw new AppError(`Unsupported Mobile Money operator: ${withdrawalDetails.accountInfo.momoOperator} or missing currency mapping for it. Please contact support.`, 400);
+            }
+
+            let grossAmountToDebitInXAF: number;
+            let feeInXAF: number;
+
+            // Perform currency conversion if target payout currency is not XAF
+            if (targetPayoutCurrency !== Currency.XAF) {
+                log.info(`Converting NET amount from ${targetPayoutCurrency} to XAF for balance debit (Admin User Withdrawal).`);
+                const netAmountInXAF = await this.convertCurrency(netAmountDesired, targetPayoutCurrency, Currency.XAF);
+                feeInXAF = this.calculateWithdrawalFee(netAmountInXAF, Currency.XAF, withdrawalDetails.method);
+                grossAmountToDebitInXAF = netAmountInXAF + feeInXAF;
+                log.info(`Converted NET ${netAmountDesired} ${targetPayoutCurrency} to ${netAmountInXAF} XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
+            } else {
+                // If target currency is XAF, no conversion needed for initial calculation
+                feeInXAF = this.calculateWithdrawalFee(netAmountDesired, Currency.XAF, withdrawalDetails.method);
+                grossAmountToDebitInXAF = netAmountDesired + feeInXAF;
+                log.info(`Target currency is XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
+            }
+
+            const userBalance = await userServiceClient.getBalance(targetUserId.toString());
+            if (userBalance && userBalance < grossAmountToDebitInXAF) {
+                throw new AppError('Insufficient balance for this user.', 400);
+            }
+
+            // Create a transaction record directly in PENDING status (no OTP verification needed for admin)
+            const withdrawalTransaction = await transactionRepository.create({
+                userId: new Types.ObjectId(targetUserId.toString()),
+                type: TransactionType.WITHDRAWAL,
+                amount: grossAmountToDebitInXAF, // Store the GROSS amount in XAF that will be debited
+                fee: feeInXAF, // Fee stored in XAF
+                currency: Currency.XAF, // Transaction currency is always XAF for balance debits
+                status: TransactionStatus.PENDING, // Directly move to pending (awaiting external payout)
+                description: `Admin-initiated withdrawal for ${userDetails.name}: NET ${netAmountDesired} ${targetPayoutCurrency}. Gross debit: ${grossAmountToDebitInXAF} XAF.`,
+                metadata: {
+                    method: withdrawalDetails.method,
+                    accountInfo: withdrawalDetails.accountInfo,
+                    initiatedByAdminId: adminId,
+                    adminAction: true,
+                    statusDetails: 'Admin-initiated, awaiting external payout',
+                    netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
+                    payoutCurrency: targetPayoutCurrency, // Store the target payout currency
+                },
+                ipAddress,
+                deviceInfo
+            });
+
+            // Trigger the actual asynchronous payout process
+            log.info(`Triggering asynchronous payout process for admin-initiated transaction ${withdrawalTransaction.transactionId}.`);
+
+            const dialingPrefix = countryCodeToDialingPrefix[withdrawalDetails.accountInfo.countryCode];
+            if (!dialingPrefix) {
+                log.error(`Could not derive dialing prefix for country code ${withdrawalDetails.accountInfo.countryCode} for admin-initiated transaction ${withdrawalTransaction.transactionId}.`);
+                await transactionRepository.update(withdrawalTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(withdrawalTransaction.metadata || {}),
+                        failureReason: 'Invalid country dialing prefix configuration for external payout.',
+                        statusDetails: 'Payout could not be initiated due1 to invalid country configuration.'
+                    }
+                });
+                throw new AppError('Invalid country configuration for Mobile Money payout. Cannot proceed.', 500);
+            }
+
+            // Format phone number for CinetPay
+            const nationalPhoneNumber = withdrawalDetails.accountInfo.fullMomoNumber.replace(/\D/g, '').startsWith(dialingPrefix)
+                ? withdrawalDetails.accountInfo.fullMomoNumber.replace(/\D/g, '').substring(dialingPrefix.length)
+                : withdrawalDetails.accountInfo.fullMomoNumber.replace(/\D/g, '');
+
+            // Use the PayoutRequest interface directly for clarity
+            const payoutRequest: PayoutRequest = {
+                userId: targetUserId.toString(),
+                amount: netAmountDesired, // Pass the NET amount in TARGET payout currency
+                phoneNumber: nationalPhoneNumber,
+                countryCode: withdrawalDetails.accountInfo.countryCode,
+                recipientName: withdrawalDetails.accountInfo.recipientName || userDetails.name || 'SBC User',
+                recipientEmail: withdrawalDetails.accountInfo.recipientEmail || userDetails.email || `${targetUserId}@sbc.com`,
+                paymentMethod: withdrawalDetails.method,
+                description: `Admin-initiated withdrawal for ${userDetails.name} (Tx: ${withdrawalTransaction.transactionId})`,
+                client_transaction_id: withdrawalTransaction.transactionId, // Pass our internal transaction ID to CinetPay
+                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
+            };
+
+            cinetpayPayoutService.initiatePayout(payoutRequest)
+                .then(payoutRes => {
+                    if (payoutRes.success) {
+                        log.info(`CinetPay payout initiated for admin-Tx ${withdrawalTransaction.transactionId}. Provider Tx ID: ${payoutRes.cinetpayTransactionId}`);
+                        transactionRepository.update(withdrawalTransaction._id, {
+                            externalTransactionId: payoutRes.cinetpayTransactionId,
+                            serviceProvider: 'CinetPay',
+                            paymentMethod: payoutRequest.paymentMethod,
+                            status: TransactionStatus.PROCESSING, // Mark as processing externally
+                            metadata: {
+                                ...(withdrawalTransaction.metadata || {}),
+                                payoutInitiationStatus: payoutRes.status,
+                                payoutMessage: payoutRes.message,
+                                cinetpayLot: payoutRes.transactionId // CinetPay's client_transaction_id or internal lot
+                            }
+                        }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} with CinetPay payout details:`, err));
+                    } else {
+                        log.error(`CinetPay payout initiation failed for admin-Tx ${withdrawalTransaction.transactionId}: ${payoutRes.message}`);
+                        // Mark transaction as failed, no refund needed as balance wasn't debited.
+                        transactionRepository.update(withdrawalTransaction._id, {
+                            status: TransactionStatus.FAILED,
+                            metadata: {
+                                ...(withdrawalTransaction.metadata || {}),
+                                failureReason: `External payout failed (Admin): ${payoutRes.message}`,
+                                payoutError: payoutRes.message
+                            }
+                        }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} status to FAILED after payout failure:`, err));
+                        // Send notification for failed payout initiation
+                        if (userDetails?.email) {
+                            notificationService.sendTransactionFailureEmail({
+                                email: userDetails.email,
+                                name: userDetails.name || 'Customer',
+                                transactionId: withdrawalTransaction.transactionId,
+                                transactionType: 'withdrawal',
+                                amount: netAmountDesired, // Net amount for notification
+                                currency: targetPayoutCurrency, // Target currency for notification
+                                date: new Date().toISOString(),
+                                reason: payoutRes.message
+                            }).catch(err => log.error(`Failed to send failure notification for admin-Tx ${withdrawalTransaction.transactionId}:`, err));
+                        }
+                    }
+                })
+                .catch(err => {
+                    log.error(`Unhandled error during CinetPay payout for admin-Tx ${withdrawalTransaction.transactionId}:`, err);
+                    transactionRepository.update(withdrawalTransaction._id, {
+                        status: TransactionStatus.FAILED,
+                        metadata: {
+                            ...(withdrawalTransaction.metadata || {}),
+                            failureReason: `Internal payout system error (Admin): ${err.message}`
+                        }
+                    }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} status to FAILED after system error:`, err));
+                    // Send notification for system error during payout initiation
+                    if (userDetails?.email) {
+                        notificationService.sendTransactionFailureEmail({
+                            email: userDetails.email,
+                            name: userDetails.name || 'Customer',
+                            transactionId: withdrawalTransaction.transactionId,
+                            transactionType: 'withdrawal',
+                            amount: netAmountDesired, // Net amount for notification
+                            currency: targetPayoutCurrency, // Target currency for notification
+                            date: new Date().toISOString(),
+                            reason: `System error during payout initiation (Admin): ${err.message}`
+                        }).catch(err => log.error(`Failed to send failure notification for admin-Tx ${withdrawalTransaction.transactionId}:`, err));
+                    }
+                });
+
+            // Return details of the created transaction
+            return {
+                transactionId: withdrawalTransaction.transactionId,
+                amount: withdrawalTransaction.amount, // Gross amount in XAF
+                fee: withdrawalTransaction.fee, // Fee in XAF
+                total: netAmountDesired, // Net amount in target payout currency
+                status: withdrawalTransaction.status,
+                message: "Admin-initiated withdrawal successfully processed and payout initiated."
+            };
+
+        } catch (error: any) {
+            log.error(`Error in adminInitiateUserWithdrawal for user ${targetUserId}: ${error.message}`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(`Failed to process admin-initiated withdrawal: ${error.message}`, 500);
+        }
+    }
+
+    /**
+     * [ADMIN] Initiates a direct payout not associated with an existing user balance.
+     * The 'amount' in the request is considered the NET amount the recipient should receive
+     * in the TARGET CURRENCY (provided in recipientDetails).
+     * This affects the CinetPay API balance directly, and logs a transaction for audit.
+     */
+    public async adminInitiateDirectPayout(
+        netAmountDesired: number, // Renamed 'amount' to 'netAmountDesired' for clarity (this is in the target currency)
+        // Removed `currency` from input, as it's now in recipientDetails.
+        recipientDetails: {
+            phoneNumber: string;
+            countryCode: string;
+            recipientName: string;
+            recipientEmail?: string;
+            paymentMethod?: string;
+            // NEW: Add currency here, as it's a direct payout not tied to user's momoOperator
+            currency: Currency; // Required: The target currency for the payout
+        },
+        adminId: string, // ID of the admin performing the action
+        description: string,
+        ipAddress?: string,
+        deviceInfo?: string
+    ) {
+        log.info(`Admin ${adminId} initiating direct payout: NET ${netAmountDesired} ${recipientDetails.currency} to ${recipientDetails.phoneNumber}`);
+
+        try {
+            const targetPayoutCurrency = recipientDetails.currency; // Use currency from recipientDetails
+
+            let grossAmountToDebitInXAF: number;
+            let feeInXAF: number;
+
+            // Perform currency conversion if target payout currency is not XAF
+            if (targetPayoutCurrency !== Currency.XAF) {
+                log.info(`Converting NET amount from ${targetPayoutCurrency} to XAF for direct payout debit.`);
+                const netAmountInXAF = await this.convertCurrency(netAmountDesired, targetPayoutCurrency, Currency.XAF);
+                feeInXAF = this.calculateWithdrawalFee(netAmountInXAF, Currency.XAF, recipientDetails.paymentMethod || 'UNKNOWN');
+                grossAmountToDebitInXAF = netAmountInXAF + feeInXAF;
+                log.info(`Converted NET ${netAmountDesired} ${targetPayoutCurrency} to ${netAmountInXAF} XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
+            } else {
+                // If target currency is XAF, no conversion needed for initial calculation
+                feeInXAF = this.calculateWithdrawalFee(netAmountDesired, Currency.XAF, recipientDetails.paymentMethod || 'UNKNOWN');
+                grossAmountToDebitInXAF = netAmountDesired + feeInXAF;
+                log.info(`Target currency is XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
+            }
+
+            // Create a transaction record for auditing the direct payout
+            const directPayoutTransaction = await transactionRepository.create({
+                userId: new Types.ObjectId(adminId), // Link to the admin performing the action for audit
+                type: TransactionType.WITHDRAWAL, // Treat as a system-initiated withdrawal for now
+                amount: grossAmountToDebitInXAF, // Store the GROSS amount in XAF that will be debited from CinetPay
+                currency: Currency.XAF, // Transaction currency is always XAF for balance debits
+                fee: feeInXAF, // Store the calculated fee in XAF
+                status: TransactionStatus.PROCESSING, // It's immediately processing externally
+                description: `Admin-initiated direct payout: ${description}. NET: ${netAmountDesired} ${targetPayoutCurrency}. Gross: ${grossAmountToDebitInXAF} XAF.`,
+                metadata: {
+                    recipientPhoneNumber: recipientDetails.phoneNumber,
+                    recipientCountryCode: recipientDetails.countryCode,
+                    recipientName: recipientDetails.recipientName,
+                    recipientEmail: recipientDetails.recipientEmail,
+                    paymentMethod: recipientDetails.paymentMethod,
+                    initiatedByAdminId: adminId,
+                    adminDirectPayout: true,
+                    netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
+                    payoutCurrency: targetPayoutCurrency, // Store the target payout currency
+                },
+                ipAddress,
+                deviceInfo
+            });
+
+            // Trigger the actual external payout via CinetPayPayoutService
+            const dialingPrefix = countryCodeToDialingPrefix[recipientDetails.countryCode];
+            if (!dialingPrefix) {
+                log.error(`Could not derive dialing prefix for country code ${recipientDetails.countryCode} for admin direct payout transaction ${directPayoutTransaction.transactionId}.`);
+                await transactionRepository.update(directPayoutTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(directPayoutTransaction.metadata || {}),
+                        failureReason: 'Invalid country dialing prefix configuration for external payout.',
+                        statusDetails: 'Payout could not be initiated due to invalid country configuration.'
+                    }
+                });
+                throw new AppError('Invalid country configuration for Mobile Money payout. Cannot proceed.', 500);
+            }
+
+            const nationalPhoneNumber = recipientDetails.phoneNumber.replace(/\D/g, '').startsWith(dialingPrefix)
+                ? recipientDetails.phoneNumber.replace(/\D/g, '').substring(dialingPrefix.length)
+                : recipientDetails.phoneNumber.replace(/\D/g, '');
+
+            const payoutResult = await cinetpayPayoutService.initiatePayout({
+                userId: adminId, // Use admin's ID as userId for CinetPay's internal tracking
+                amount: netAmountDesired, // Pass the NET amount in TARGET payout currency
+                phoneNumber: nationalPhoneNumber,
+                countryCode: recipientDetails.countryCode,
+                recipientName: recipientDetails.recipientName,
+                recipientEmail: recipientDetails.recipientEmail || `${adminId}@sbc.com`,
+                paymentMethod: recipientDetails.paymentMethod,
+                description: description,
+                client_transaction_id: directPayoutTransaction.transactionId, // Use our internal transaction ID
+                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
+            });
+
+            // Update the internal transaction status based on CinetPay's immediate response
+            let finalStatusForAudit: TransactionStatus;
+            let failureReason: string | undefined;
+
+            if (payoutResult.success) {
+                finalStatusForAudit = TransactionStatus.PENDING; // External provider initiated, awaiting webhook
+                // Link the CinetPay transaction ID to our internal one
+                await transactionRepository.update(directPayoutTransaction._id, {
+                    externalTransactionId: payoutResult.cinetpayTransactionId,
+                    serviceProvider: 'CinetPay',
+                    paymentMethod: recipientDetails.paymentMethod,
+                    status: TransactionStatus.PROCESSING, // Mark as processing externally
+                    metadata: {
+                        ...(directPayoutTransaction.metadata || {}),
+                        payoutInitiationStatus: payoutResult.status, // e.g., 'pending', 'processing'
+                        payoutMessage: payoutResult.message,
+                        cinetpayLot: payoutResult.transactionId // CinetPay's client_transaction_id or internal lot
+                    }
+                });
+            } else {
+                finalStatusForAudit = TransactionStatus.FAILED;
+                failureReason = payoutResult.message;
+                await transactionRepository.update(directPayoutTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(directPayoutTransaction.metadata || {}),
+                        payoutInitiationStatus: payoutResult.status, // e.g., 'failed'
+                        payoutMessage: payoutResult.message,
+                        payoutError: payoutResult.message
+                    }
+                });
+            }
+
+            // We return the immediate result of the payout initiation
+            return {
+                transactionId: directPayoutTransaction.transactionId,
+                cinetpayTransactionId: payoutResult.cinetpayTransactionId,
+                amount: netAmountDesired, // Return the net amount in TARGET payout currency
+                recipient: recipientDetails.phoneNumber,
+                status: finalStatusForAudit,
+                message: payoutResult.message || (payoutResult.success ? 'Direct payout initiated successfully.' : 'Direct payout initiation failed.'),
+                estimatedCompletion: payoutResult.estimatedCompletion,
+                success: payoutResult.success,
+                error: payoutResult.message,
+                failureReason: failureReason
+            };
+
+        } catch (error: any) {
+            log.error(`Error in adminInitiateDirectPayout for admin ${adminId}: ${error.message}`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(`Failed to process admin direct payout: ${error.message}`, 500);
+        }
+    }
+
+    /**
+     * Processes incoming webhook notifications for CinetPay Transfer (Payout) status changes.
+     * This method is called by the PayoutController when a webhook is received.
+     * It updates the internal transaction status and debits user balance on success.
+     *
+     * IMPORTANT: This method now includes a server-to-server validation step.
+     */
+    public async processConfirmedPayoutWebhook(
+        internalTransactionId: string, // This is our client_transaction_id (cpm_trans_id from webhook)
+        providerStatusMessage: string, // CinetPay's cpm_error_message from webhook
+        fullProviderPayload: any // The raw webhook payload
+    ): Promise<void> {
+        log.info(`Processing CinetPay Payout Webhook for internal transaction: ${internalTransactionId}.`);
+        log.debug('Raw Webhook Payload:', fullProviderPayload);
+
+        const transaction = await transactionRepository.findByTransactionId(internalTransactionId);
+
+        if (!transaction) {
+            log.error(`Payout webhook: Transaction ${internalTransactionId} not found in DB. Cannot process.`);
+            throw new AppError('Internal transaction not found for webhook processing.', 404);
+        }
+
+        if (transaction.type !== TransactionType.WITHDRAWAL) {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
+        }
+
+        // Prevent processing if already completed/failed
+        if (transaction.status === TransactionStatus.COMPLETED || transaction.status === TransactionStatus.FAILED) {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} already in final status (${transaction.status}). Skipping update.`);
+            return;
+        }
+
+        // Extract CinetPay's transaction_id from the webhook payload for server-to-server check
+        const cinetpayTransactionId = fullProviderPayload.transaction_id; // This is CinetPay's internal transaction ID
+
+        if (!cinetpayTransactionId) {
+            log.error(`CinetPay Payout Webhook: Missing CinetPay's transaction_id in payload for internalTxId ${internalTransactionId}. Cannot verify.`);
+            throw new AppError('Missing CinetPay transaction ID in webhook payload. Verification failed.', 400);
+        }
+
+        let verifiedPayoutStatus: PayoutStatus | null = null;
+        try {
+            // CRITICAL: Perform server-to-server validation with CinetPay's API
+            log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId})`);
+            verifiedPayoutStatus = await cinetpayPayoutService.checkPayoutStatus(cinetpayTransactionId);
+
+            if (!verifiedPayoutStatus) {
+                log.error(`CinetPay Payout Webhook: No status found from CinetPay API for Tx ID: ${cinetpayTransactionId}. Marking internal transaction ${internalTransactionId} as FAILED due to verification failure.`);
+                throw new AppError('Failed to verify payout status with CinetPay API. Transaction will be marked as failed.', 500);
+            }
+
+            log.info(`Verified CinetPay Payout Status for ${cinetpayTransactionId}: ${verifiedPayoutStatus.status}`);
+
+            // Compare webhook status with API-confirmed status (optional but good for auditing/debugging)
+            const webhookStatus = cinetpayPayoutService.processWebhookNotification(fullProviderPayload).status;
+            if (webhookStatus !== verifiedPayoutStatus.status) {
+                log.warn(`CinetPay Payout Webhook: Status mismatch for ${internalTransactionId}. Webhook: ${webhookStatus}, API: ${verifiedPayoutStatus.status}. Proceeding with API-confirmed status.`);
+            }
+
+        } catch (apiError: any) {
+            log.error(`Error during CinetPay API verification for ${internalTransactionId}: ${apiError.message}. Marking internal transaction as FAILED.`, apiError);
+            // If API call itself fails, treat the transaction as failed internally due to unconfirmable status
+            await transactionRepository.update(transaction._id, {
+                status: TransactionStatus.FAILED,
+                metadata: {
+                    ...(transaction.metadata || {}),
+                    webhookFailureReason: `API verification failed: ${apiError.message}`,
+                    providerRawWebhookData: fullProviderPayload // Still store the raw webhook payload
+                }
+            });
+            throw new AppError(`Payout status verification failed for ${internalTransactionId}.`, 500);
+        }
+
+        // Determine final status based on the *API-confirmed* status
+        let finalStatus: TransactionStatus;
+        switch (verifiedPayoutStatus.status) {
+            case 'completed':
+                finalStatus = TransactionStatus.COMPLETED;
+                break;
+            case 'failed':
+                finalStatus = TransactionStatus.FAILED;
+                break;
+            case 'processing':
+            case 'pending':
+            default:
+                // If CinetPay API says it's still pending/processing, we keep our internal status as such.
+                // We shouldn't receive 'pending'/'processing' on a final webhook, but handle defensively.
+                log.warn(`Webhook received for non-final API status (${verifiedPayoutStatus.status}) for ${internalTransactionId}. Keeping transaction as PROCESSING.`);
+                finalStatus = TransactionStatus.PROCESSING; // Or whatever represents "in progress"
+                break;
+        }
+
+        // The gross amount debited from the user's balance is stored in the transaction in XAF
+        const grossAmountToDebitInXAF = Math.abs(transaction.amount);
+        // The net amount and target currency for notification are in metadata
+        const netAmountForNotification = transaction.metadata?.netAmountRequested || (grossAmountToDebitInXAF - (transaction.fee || 0));
+        const targetCurrencyForNotification = transaction.metadata?.payoutCurrency || transaction.currency;
+
+
+        let updateStatus: TransactionStatus = finalStatus;
+        let updateMetadata: Record<string, any> = {
+            ...(transaction.metadata || {}),
+            providerWebhookStatus: finalStatus, // Reflects the *API-confirmed* status mapped to our enum
+            providerWebhookMessage: verifiedPayoutStatus.comment || providerStatusMessage, // Use API comment, fallback to webhook message
+            providerRawWebhookData: fullProviderPayload, // Still store full raw data for audit
+            cinetpayApiStatus: verifiedPayoutStatus.status, // Store the exact API status
+            cinetpayApiComment: verifiedPayoutStatus.comment, // Store API comment
+            cinetpayOperator: verifiedPayoutStatus.operator, // Store operator from API
+        };
+
+        if (finalStatus === TransactionStatus.COMPLETED) {
+            log.info(`Payout for transaction ${internalTransactionId} is COMPLETED. Debiting user balance.`);
+            try {
+                // Debit user's balance ONLY IF it's a successful withdrawal and has not been debited yet.
+                await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
+                log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
+
+                // Send success notification
+                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                if (userDetails?.email) {
+                    await notificationService.sendTransactionSuccessEmail({
+                        email: userDetails.email,
+                        name: userDetails.name || 'Customer',
+                        transactionType: 'withdrawal',
+                        transactionId: transaction.transactionId,
+                        amount: netAmountForNotification,
+                        currency: targetCurrencyForNotification,
+                        date: new Date().toISOString(),
+                    });
+                    log.info(`Success notification sent for transaction ${internalTransactionId}.`);
+                }
+
+            } catch (balanceError: any) {
+                log.error(`CRITICAL: Failed to debit user balance for completed payout ${internalTransactionId}: ${balanceError.message}. Marking transaction as FAILED.`, balanceError);
+                updateStatus = TransactionStatus.FAILED;
+                updateMetadata.internalFailureReason = `Balance debit failed after provider success: ${balanceError.message}`;
+            }
+        } else if (finalStatus === TransactionStatus.FAILED) {
+            log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit/refund needed.`);
+            updateMetadata.failureReason = `External payout failed: ${verifiedPayoutStatus.comment || providerStatusMessage}`;
+
+            // Send failure notification (only if it's a regular user withdrawal)
+            // For admin-initiated direct payouts, the admin might get a different notification or none.
+            if (transaction.metadata?.adminAction !== true) { // If it's a user's withdrawal (not admin-initiated user withdrawal or direct payout)
+                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                if (userDetails?.email) {
+                    await notificationService.sendTransactionFailureEmail({
+                        email: userDetails.email,
+                        name: userDetails.name || 'Customer',
+                        transactionId: transaction.transactionId,
+                        transactionType: 'withdrawal',
+                        amount: netAmountForNotification,
+                        currency: targetCurrencyForNotification,
+                        date: new Date().toISOString(),
+                        reason: verifiedPayoutStatus.comment || providerStatusMessage || 'External payout failed.'
+                    });
+                    log.info(`Failure notification sent for transaction ${internalTransactionId}.`);
+                }
+            } else {
+                log.info(`Skipping user failure notification for admin-initiated transaction ${internalTransactionId}.`);
+                // Optionally notify admin here about the direct payout failure
+            }
+        }
+
+        // Update the transaction record with the final status and metadata
+        await transactionRepository.update(transaction._id, {
+            status: updateStatus,
+            metadata: updateMetadata
+        });
+        log.info(`Transaction ${internalTransactionId} status updated to ${updateStatus} based on webhook.`);
+    }
 }
 
 // Export singleton instance

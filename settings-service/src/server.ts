@@ -14,7 +14,10 @@ const app: Express = express();
 connectDB();
 
 // Middleware
-app.use(helmet({ crossOriginOpenerPolicy: false })); // Basic security headers
+app.use(helmet({
+    crossOriginOpenerPolicy: false,
+    // crossOriginResourcePolicy: { policy: "cross-origin" }
+})); // Basic security headers
 app.use(cors({ origin: config.cors.allowedOrigins }));
 app.use(morgan('dev')); // HTTP request logger
 

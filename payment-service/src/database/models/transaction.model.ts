@@ -59,8 +59,12 @@ export interface ITransaction extends Document {
     createdAt: Date;
     updatedAt: Date;
 
-    // Link to pending record for OTP
+    // Link to pending record for OTP (retained, but no longer used for withdrawals directly)
     pendingId?: Types.ObjectId | string;
+
+    // --- Added Fields for OTP/Verification directly on Transaction ---
+    verificationCode?: string;     // Store OTP for this transaction
+    verificationExpiry?: Date;     // Expiry for the OTP
 
     // --- Added Fields --- 
     reference?: string;           // Optional general reference
@@ -162,9 +166,17 @@ const TransactionSchema = new Schema<ITransaction>(
             type: String,
             index: true
         },
-        pendingId: {
+        pendingId: { // This field is no longer directly used for withdrawals but kept for other flows.
             type: Schema.Types.ObjectId,
             ref: 'Pending',
+        },
+        // New fields for OTP management directly on transaction
+        verificationCode: { // Store OTP for this transaction
+            type: String,
+            select: false, // Do not return by default for security
+        },
+        verificationExpiry: { // Expiry for the OTP
+            type: Date,
         },
     },
     {

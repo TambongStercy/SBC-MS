@@ -781,6 +781,8 @@ export class UserService {
                         email: user?.email ?? 'N/A',
                         phoneNumber: user?.phoneNumber?.toString() ?? '', // Ensure string
                         referralLevel: ref.referralLevel,
+                        avatar: user?.avatar ?? '',
+                        avatarId: user?.avatarId ?? '',
                         createdAt: ref.createdAt,
                         // activeSubscriptions will be added later
                     };
@@ -1436,14 +1438,23 @@ export class UserService {
         const query: FilterQuery<IUser> = {};
 
         // --- Build query from filters ---
-        if (filters.country) query.country = { $regex: `^${filters.country}$`, $options: 'i' };
-        if (filters.region) query.region = { $regex: `^${filters.region}$`, $options: 'i' };
-        if (filters.city) query.city = { $regex: `^${filters.city}$`, $options: 'i' };
+        if (filters.country) query.country = { $regex: `^${filters.country.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+        if (filters.region) query.region = { $regex: `^${filters.region.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+        if (filters.city) query.city = { $regex: `^${filters.city.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
         if (filters.sex) query.sex = filters.sex;
-        if (filters.language) query.language = { $in: [new RegExp(filters.language, 'i')] };
-        if (filters.profession) query.profession = { $regex: filters.profession, $options: 'i' };
+        if (filters.language) query.language = { $in: [new RegExp(filters.language.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')] };
+        if (filters.profession) query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
         if (filters.interests && filters.interests.length > 0) {
-            query.interests = { $in: filters.interests.map(i => new RegExp(i, 'i')) };
+            query.interests = { $in: filters.interests.map(i => new RegExp(i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')) };
+        }
+        // MODIFIED: Apply search filter to name, email, or phoneNumber fields using $or
+        if (filters.name) { // Assuming 'name' filter is now used for generic search
+            const searchRegex = new RegExp(filters.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
+            query.$or = [
+                { name: searchRegex },
+                { email: searchRegex },
+                { phoneNumber: searchRegex } // Added phoneNumber to the search
+            ];
         }
         if (filters.minAge || filters.maxAge) {
             query.birthDate = {};
@@ -1504,7 +1515,7 @@ export class UserService {
                 limit,
                 sort: { createdAt: -1 }, // Example sort
                 // Select specific fields to return (exclude sensitive ones)
-                select: 'name email phoneNumber country region city sex language profession interests avatar createdAt'
+                select: 'name email phoneNumber country region city sex language profession interests avatar avatarId createdAt'
             });
 
             return {
@@ -1537,18 +1548,27 @@ export class UserService {
         const query: FilterQuery<IUser> = {};
 
         // --- Build query from filters (same logic as findAllUsersByCriteria) ---
-        if (filters.country) query.country = { $regex: `^${filters.country}$`, $options: 'i' };
-        if (filters.region) query.region = { $regex: `^${filters.region}$`, $options: 'i' };
-        if (filters.city) query.city = { $regex: `^${filters.city}$`, $options: 'i' };
+        if (filters.country) query.country = { $regex: `^${filters.country.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+        if (filters.region) query.region = { $regex: `^${filters.region.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+        if (filters.city) query.city = { $regex: `^${filters.city.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
         if (filters.sex) query.sex = filters.sex;
         if (filters.language) {
-            query.language = { $elemMatch: { $regex: `^${filters.language}`, $options: 'i' } };
+            query.language = { $elemMatch: { $regex: `^${filters.language.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, $options: 'i' } };
         }
-        if (filters.profession) query.profession = { $regex: `^${filters.profession}`, $options: 'i' };
+        if (filters.profession) query.profession = { $regex: `^${filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, $options: 'i' };
         if (filters.interests && filters.interests.length > 0) {
             query.interests = {
-                $in: filters.interests.map(i => new RegExp(`^${i}`, 'i'))
+                $in: filters.interests.map(i => new RegExp(`^${i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, 'i'))
             };
+        }
+        // MODIFIED: Apply search filter to name, email, or phoneNumber fields using $or
+        if (filters.name) { // Assuming 'name' filter is now used for generic search
+            const searchRegex = new RegExp(filters.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
+            query.$or = [
+                { name: searchRegex },
+                { email: searchRegex },
+                { phoneNumber: searchRegex } // Added phoneNumber to the search
+            ];
         }
         if (filters.minAge || filters.maxAge) {
             query.birthDate = {};
@@ -1629,20 +1649,29 @@ export class UserService {
         const query: FilterQuery<IUser> = {};
 
         // --- Build query from filters (same as findUsersByCriteria) ---
-        if (filters.country) query.country = { $regex: `^${filters.country}$`, $options: 'i' };
-        if (filters.region) query.region = { $regex: `^${filters.region}$`, $options: 'i' };
-        if (filters.city) query.city = { $regex: `^${filters.city}$`, $options: 'i' };
+        if (filters.country) query.country = { $regex: `^${filters.country.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+        if (filters.region) query.region = { $regex: `^${filters.region.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+        if (filters.city) query.city = { $regex: `^${filters.city.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
         if (filters.sex) query.sex = filters.sex;
         if (filters.language) {
             // Assuming filters.language is a single string to search for as a prefix in the array elements
-            query.language = { $elemMatch: { $regex: `^${filters.language}`, $options: 'i' } };
+            query.language = { $elemMatch: { $regex: `^${filters.language.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, $options: 'i' } };
         }
-        if (filters.profession) query.profession = { $regex: `^${filters.profession}`, $options: 'i' }; // Anchored regex
+        if (filters.profession) query.profession = { $regex: `^${filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, $options: 'i' }; // Anchored regex
         if (filters.interests && filters.interests.length > 0) {
             // Assuming filters.interests is an array of strings, match any interest starting with the given terms
             query.interests = {
-                $in: filters.interests.map(i => new RegExp(`^${i}`, 'i'))
+                $in: filters.interests.map(i => new RegExp(`^${i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, 'i'))
             };
+        }
+        // MODIFIED: Apply search filter to name, email, or phoneNumber fields using $or
+        if (filters.name) { // Assuming 'name' filter is now used for generic search
+            const searchRegex = new RegExp(filters.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
+            query.$or = [
+                { name: searchRegex },
+                { email: searchRegex },
+                { phoneNumber: searchRegex } // Added phoneNumber to the search
+            ];
         }
         if (filters.minAge || filters.maxAge) {
             query.birthDate = {};

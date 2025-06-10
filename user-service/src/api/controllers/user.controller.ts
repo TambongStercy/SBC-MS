@@ -60,7 +60,9 @@ export class UserController {
 
             res.status(200).json({
                 success: true,
-                balance: user.balance
+                data: {
+                    balance: user.balance
+                }
             });
         } catch (error: any) {
             log.error(`Error getting user balance: ${error.message}`);
@@ -154,7 +156,12 @@ export class UserController {
                 res.status(400).json({
                     success: false,
                     message: 'Valid amount is required',
-                    allowed: false
+                    allowed: false,
+                    // data: {
+                    //     amount: 0,
+                    //     dailyLimit: 0,
+                    //     dailyRemaining: 0
+                    // }
                 });
                 return;
             }
@@ -166,14 +173,21 @@ export class UserController {
 
             res.status(200).json({
                 success: true,
-                ...result
+                data: {
+                    ...result
+                }
             });
         } catch (error: any) {
             log.error(`Error checking withdrawal limits: ${error.message}`);
             res.status(500).json({
                 success: false,
                 message: 'Error checking withdrawal limits',
-                allowed: false
+                allowed: false,
+                // data: {
+                //     amount: 0,
+                //     dailyLimit: 0,
+                //     dailyRemaining: 0
+                // }
             });
         }
     }
@@ -965,7 +979,7 @@ export class UserController {
 
             // --- Filter Validation ---
             const queryFilters = req.query;
-            const allowedFilters = ['country', 'page', 'limit', 'startDate', 'endDate']; // Base allowed for CLASSIQUE + pagination
+            const allowedFilters = ['country', 'page', 'limit', 'startDate', 'endDate', 'name', 'search']; // Base allowed for CLASSIQUE + pagination
             let useAdvancedFilters = false;
 
             if (hasCible) {
@@ -1043,6 +1057,8 @@ export class UserController {
         if (query.interests) {
             filters.interests = Array.isArray(query.interests) ? query.interests : [query.interests];
         }
+        if (query.name) filters.name = query.name as string;
+        if (query.search) filters.name = query.search as string;
 
         // Add date filters
         if (query.startDate) { // Accept startDate

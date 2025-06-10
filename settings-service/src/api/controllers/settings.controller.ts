@@ -236,4 +236,77 @@ export const getThumbnailFromDrive = async (req: Request, res: Response, next: N
     }
 };
 
+// --- Formations Controllers ---
+
+export const getFormations = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling GET /settings/formations request');
+    try {
+        const formations = await settingsService.getFormations();
+        log.info('Formations retrieved successfully');
+        res.status(200).json({ success: true, data: formations });
+    } catch (error) {
+        log.error('Error fetching formations:', error);
+        next(new AppError('Failed to retrieve formations', 500));
+    }
+};
+
+export const addFormation = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling POST /settings/formations request', req.body);
+    const { title, link } = req.body;
+
+    if (!title || !link) {
+        log.warn('Missing title or link for adding formation.');
+        return next(new BadRequestError('Title and link are required to add a formation.'));
+    }
+
+    try {
+        const newFormation = await settingsService.addFormation({ title, link });
+        log.info('Formation added successfully.', newFormation);
+        res.status(201).json({ success: true, data: newFormation, message: 'Formation added successfully.' });
+    } catch (error) {
+        log.error('Error adding formation:', error);
+        next(new AppError('Failed to add formation', 500));
+    }
+};
+
+export const updateFormation = async (req: Request, res: Response, next: NextFunction) => {
+    const { formationId } = req.params;
+    const { title, link } = req.body;
+    log.info(`Handling PUT /settings/formations/${formationId} request`, req.body);
+
+    if (!title && !link) {
+        log.warn('No update data provided for formation.');
+        return next(new BadRequestError('At least one field (title or link) is required for update.'));
+    }
+
+    try {
+        const updatedFormation = await settingsService.updateFormation(formationId, { title, link });
+        log.info(`Formation with ID ${formationId} updated successfully.`, updatedFormation);
+        res.status(200).json({ success: true, data: updatedFormation, message: 'Formation updated successfully.' });
+    } catch (error) {
+        log.error(`Error updating formation with ID ${formationId}:`, error);
+        if (error instanceof NotFoundError) {
+            return next(error);
+        }
+        next(new AppError('Failed to update formation', 500));
+    }
+};
+
+export const removeFormation = async (req: Request, res: Response, next: NextFunction) => {
+    const { formationId } = req.params;
+    log.info(`Handling DELETE /settings/formations/${formationId} request`);
+
+    try {
+        await settingsService.removeFormation(formationId);
+        log.info(`Formation with ID ${formationId} removed successfully.`);
+        res.status(200).json({ success: true, message: 'Formation removed successfully.' });
+    } catch (error) {
+        log.error(`Error removing formation with ID ${formationId}:`, error);
+        if (error instanceof NotFoundError) {
+            return next(error);
+        }
+        next(new AppError('Failed to remove formation', 500));
+    }
+};
+
 

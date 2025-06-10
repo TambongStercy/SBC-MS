@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { cinetpayPayoutService, PayoutRequest } from '../../services/cinetpay-payout.service';
+import paymentService from '../../services/payment.service';
 import logger from '../../utils/logger';
+import { TransactionStatus } from '../../database/models/transaction.model';
 
 // Use the global Express.Request interface that's extended by auth middleware
 type AuthenticatedRequest = Request;
@@ -173,33 +175,57 @@ export class PayoutController {
     }
 
     /**
-     * Handle CinetPay webhook notifications
-     * @route POST /api/payouts/cinetpay/webhook
+     * Handle CinetPay webhook notifications for Payouts/Transfers.
+     * @route POST /api/payouts/webhooks/cinetpay
      */
     async handleCinetPayWebhook(req: Request, res: Response): Promise<void> {
         try {
             log.info('Received CinetPay payout webhook notification');
             log.debug('Webhook payload:', req.body);
 
+            // Process the raw webhook payload to extract key information
             const notification = cinetpayPayoutService.processWebhookNotification(req.body);
 
-            log.info(`Payout status update: ${notification.transactionId} -> ${notification.status}`);
+            log.info(`Payout status update received: CinetPay Client Tx ID: ${notification.transactionId} -> Status: ${notification.status}`);
 
-            // TODO: Update your database with the new status
-            // You might want to:
-            // 1. Update the payout record in your database
-            // 2. Notify the user about the status change
-            // 3. Update user balance if the payout was completed
-            // 4. Log the transaction for audit purposes
+            // Map CinetPay's status to our internal TransactionStatus enum
+            let internalStatus: TransactionStatus;
+            switch (notification.status) {
+                case 'completed':
+                    internalStatus = TransactionStatus.COMPLETED;
+                    break;
+                case 'failed':
+                    internalStatus = TransactionStatus.FAILED;
+                    break;
+                case 'pending':
+                case 'processing': // CinetPay status can be processing too
+                default:
+                    // If it's anything other than complete or failed, we consider it still processing
+                    // For our webhook, we only process final statuses, so anything else would be a no-op or error.
+                    log.warn(`Received non-final or unrecognized CinetPay payout status for Tx ID ${notification.transactionId}: ${notification.status}.`);
+                    // We can choose to return 200 OK without further processing if we only care about final states.
+                    res.status(200).json({
+                        success: true,
+                        message: 'Webhook processed, status not final or unrecognized',
+                        status: notification.status
+                    });
+                    return;
+            }
 
-            // For now, just acknowledge the webhook
+            // Call paymentService to process the confirmed payout status
+            await paymentService.processConfirmedPayoutWebhook(
+                notification.transactionId, // This is our internal transaction ID
+                notification.comment || notification.status, // Use comment or status as providerStatusMessage
+                req.body // Pass the full original payload for audit
+            );
+
             res.status(200).json({
                 success: true,
                 message: 'Webhook processed successfully'
             });
 
         } catch (error: any) {
-            log.error('Error processing CinetPay webhook:', error);
+            log.error('Error processing CinetPay payout webhook:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to process webhook',

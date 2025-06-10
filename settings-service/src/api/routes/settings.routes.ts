@@ -11,7 +11,11 @@ import {
     getFileFromDrive,
     getThumbnailFromDrive,
     uploadGenericFile,
-    internalUploadFile
+    internalUploadFile,
+    getFormations,
+    addFormation,
+    updateFormation,
+    removeFormation
 } from '../controllers/settings.controller';
 import { upload } from '../middleware/multer.config'; // Import the configured Multer instance
 import authenticate from '../middleware/auth.middleware'; // Standard auth for settings management
@@ -80,9 +84,11 @@ router.post('/presentation-video', upload.single('presentationVideo'), uploadPre
 // Multer middleware processes the 'presentationPdf' field from the form-data
 router.post('/presentation-pdf', upload.single('presentationPdf'), uploadPresentationPdf);
 
-// POST /settings/files/upload - Upload a generic file
-// Uses the same authentication for now, but could use specific service auth later.
-router.post('/files/upload', upload.single('file'), uploadGenericFile);
+// --- Formations Routes ---
+router.get('/formations', getFormations);
+router.post('/formations', addFormation);
+router.put('/formations/:formationId', updateFormation);
+router.delete('/formations/:formationId', removeFormation);
 
 // Other routes (e.g., PUT /settings for updating other fields) can be added here
 // router.put('/', updateSettings); // Example
