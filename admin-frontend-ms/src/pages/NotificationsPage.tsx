@@ -104,9 +104,7 @@ const NotificationsPage: React.FC = () => {
         setIsLoadingSuggestions(true);
         setError(null);
         try {
-            // TODO: Replace with actual API call
             const results = await searchUsers(manualSearchTerm.trim());
-            // Filter out users already selected
             const newSuggestions = results.filter(
                 suggested => !selectedUsers.some(selected => selected.id === suggested.id)
             );
@@ -123,9 +121,9 @@ const NotificationsPage: React.FC = () => {
 
     useEffect(() => {
         if (sendMode === 'manual' && !manualSearchTerm) {
-            setSuggestedUsers([]); // Clear suggestions if search term is empty or mode changes
+            setSuggestedUsers([]);
         }
-    }, [manualSearchTerm, sendMode, handleSearchUsers]);
+    }, [manualSearchTerm, sendMode]);
 
     const handleAddUser = (user: UserOption) => {
         if (!selectedUsers.some(u => u.id === user.id)) {

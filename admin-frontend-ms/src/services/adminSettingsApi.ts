@@ -9,6 +9,12 @@ interface IFileReference {
     size?: number;
 }
 
+export interface IFormation {
+    _id: string; // Mongoose adds _id to subdocuments
+    title: string;
+    link: string;
+}
+
 export interface ISettings {
     _id?: string; // Assuming _id might exist
     whatsappGroupUrl?: string;
@@ -18,6 +24,8 @@ export interface ISettings {
     termsAndConditionsPdf?: IFileReference;
     presentationVideo?: IFileReference;
     presentationPdf?: IFileReference;
+    formations: IFormation[]; // Array of formation objects
+    events: IEvent[]; // Assuming IEvent is defined elsewhere or will be
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -26,9 +34,9 @@ export interface IEvent {
     _id: string;
     title: string;
     description: string;
-    timestamp: Date;
-    image: IFileReference;
-    video?: IFileReference;
+    image?: IFileReference; // Make image optional for updates
+    video?: IFileReference; // Make video optional for updates
+    timestamp?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -39,6 +47,13 @@ interface PaginatedEventsResponse {
     currentPage: number;
     totalPages: number;
     limit: number;
+}
+
+// Add this interface definition
+interface ApiResponse<T> {
+    success: boolean;
+    data: T;
+    message?: string;
 }
 
 // --- API Response Types ---
@@ -209,6 +224,47 @@ export const deleteEvent = async (eventId: string): Promise<void> => {
         await apiClient.delete<GenericSuccessResponse>(`${EVENTS_API_URL}/${eventId}`);
     } catch (error) {
         console.error(`API Error deleting event ${eventId}:`, error);
+        throw error;
+    }
+};
+
+// --- NEW: Formation Management API Calls ---
+
+export const getFormations = async (): Promise<IFormation[]> => {
+    try {
+        const response = await apiClient.get<ApiResponse<IFormation[]>>('/settings/formations');
+        return response.data.success ? response.data.data : [];
+    } catch (error) {
+        console.error('API Error fetching formations:', error);
+        throw error;
+    }
+};
+
+export const addFormation = async (formationData: { title: string; link: string }): Promise<IFormation> => {
+    try {
+        const response = await apiClient.post<ApiResponse<IFormation>>('/settings/formations', formationData);
+        return response.data.data;
+    } catch (error) {
+        console.error('API Error adding formation:', error);
+        throw error;
+    }
+};
+
+export const updateFormation = async (formationId: string, formationData: Partial<Omit<IFormation, '_id'>>): Promise<IFormation> => {
+    try {
+        const response = await apiClient.put<ApiResponse<IFormation>>(`/settings/formations/${formationId}`, formationData);
+        return response.data.data;
+    } catch (error) {
+        console.error(`API Error updating formation ${formationId}:`, error);
+        throw error;
+    }
+};
+
+export const removeFormation = async (formationId: string): Promise<void> => {
+    try {
+        await apiClient.delete(`/settings/formations/${formationId}`);
+    } catch (error) {
+        console.error(`API Error removing formation ${formationId}:`, error);
         throw error;
     }
 }; 

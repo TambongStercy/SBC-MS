@@ -422,7 +422,7 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "b3627-fc1le-48el1-acll3a-8455aacl7e95e",
+  "reference": "ffafeeda-4aab-43ae-8294-67edbe71ce08",
   "status": "SUCCESSFUL"
 }
 
@@ -589,3 +589,12 @@ Authorization: {{ADMIN_AUTH_TOKEN}}
     },
     "description": "Direct payment to a vendor for services rendered."
 }
+
+
+###
+@screte2 = {{$dotenv FP_SECRET}} 
+
+
+###
+GET https://api.feexpay.me/api/transactions/public/single/status/DD549FC6-1D1E-48A8-80F2-390100F396B9
+Authorization: Bearer {{screte2}}

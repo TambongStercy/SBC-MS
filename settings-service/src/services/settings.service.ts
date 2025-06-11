@@ -12,6 +12,7 @@ import logger from '../utils/logger';
 import { AppError, NotFoundError } from '../utils/errors'; // Import NotFoundError if needed
 import { Types } from 'mongoose';
 import config from '../config'; // Import config to access folder IDs
+import paymentService from './clients/payment.service.client'; // NEW: Import the new payment service client
 
 const log = logger.getLogger('SettingsService');
 
@@ -341,6 +342,21 @@ class SettingsService {
             log.error(`Error removing formation with ID ${formationId}:`, error);
             if (error instanceof NotFoundError) throw error;
             throw new AppError('Failed to remove formation.', 500);
+        }
+    }
+
+    /**
+     * Fetches the admin balance from the Payment Service.
+     */
+    async getAdminBalance(): Promise<number> {
+        log.info('Fetching admin balance from payment service...');
+        try {
+            const balance = await paymentService.getAdminBalance();
+            log.info(`Admin balance fetched successfully: ${balance}`);
+            return balance;
+        } catch (error: any) {
+            log.error(`Failed to fetch admin balance from payment service: ${error.message}`, error);
+            throw new AppError('Failed to retrieve admin balance from payment service.', 500);
         }
     }
 }

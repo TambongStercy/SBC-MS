@@ -236,6 +236,18 @@ export const getThumbnailFromDrive = async (req: Request, res: Response, next: N
     }
 };
 
+// NEW: Controller for fetching admin balance
+export const getAdminBalance = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling GET /settings/stats/admin-balance request');
+    try {
+        const balance = await settingsService.getAdminBalance();
+        res.status(200).json({ success: true, data: balance, message: 'Admin balance retrieved successfully.' });
+    } catch (error) {
+        log.error('Error fetching admin balance:', error);
+        next(error); // Pass to error handler middleware
+    }
+};
+
 // --- Formations Controllers ---
 
 export const getFormations = async (req: Request, res: Response, next: NextFunction) => {

@@ -5,7 +5,8 @@ import {
 import {
     getSettings, updateSettings, uploadCompanyLogo, uploadTermsPdf, uploadPresentationVideo,
     uploadPresentationPdf, getEvents, createEvent, deleteEvent, ISettings, IEvent,
-    updateEvent // <--- Import updateEvent
+    updateEvent, // <--- Import updateEvent
+    IFormation, getFormations, addFormation, updateFormation, removeFormation // <--- NEW: Import formation APIs and interface
 } from '../services/adminSettingsApi'; // USE RELATIVE PATH for service
 import apiClient from '../api/apiClient'; // <--- Import apiClient
 import { useDropzone, FileRejection } from 'react-dropzone';
@@ -237,9 +238,6 @@ const SettingsManagementPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // State for General Settings form
-    const [groupUrls, setGroupUrls] = useState({ whatsapp: '', telegram: '', discord: '' });
-
     // State for Create Event form
     const [newEventTitle, setNewEventTitle] = useState('');
     const [newEventDesc, setNewEventDesc] = useState('');
@@ -254,10 +252,23 @@ const SettingsManagementPage: React.FC = () => {
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
-    // State for Delete Confirmation Modal
+    // State for Delete Confirmation Modal (Events)
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
     const [eventToDeleteId, setEventToDeleteId] = useState<string | null>(null);
     const [isDeletingEvent, setIsDeletingEvent] = useState<boolean>(false); // Loading state for delete
+
+    // NEW: State for Formations
+    const [formations, setFormations] = useState<IFormation[]>([]);
+    const [isLoadingFormations, setIsLoadingFormations] = useState(false);
+    const [newFormationTitle, setNewFormationTitle] = useState('');
+    const [newFormationLink, setNewFormationLink] = useState('');
+    const [isCreatingOrUpdatingFormation, setIsCreatingOrUpdatingFormation] = useState(false);
+    const [formationCreateOrUpdateError, setFormationCreateOrUpdateError] = useState<string | null>(null);
+    const [isEditingFormation, setIsEditingFormation] = useState<boolean>(false);
+    const [editingFormationId, setEditingFormationId] = useState<string | null>(null);
+    const [isFormationDeleteModalOpen, setIsFormationDeleteModalOpen] = useState<boolean>(false);
+    const [formationToDeleteId, setFormationToDeleteId] = useState<string | null>(null);
+    const [isDeletingFormation, setIsDeletingFormation] = useState<boolean>(false);
 
     // --- Helper to get absolute URL for event files --- 
     const getEventFileUrl = (fileId?: string): string | null => {
@@ -274,13 +285,6 @@ const SettingsManagementPage: React.FC = () => {
         try {
             const fetchedSettings = await getSettings();
             setSettings(fetchedSettings);
-            if (fetchedSettings) {
-                setGroupUrls({
-                    whatsapp: fetchedSettings.whatsappGroupUrl || '',
-                    telegram: fetchedSettings.telegramGroupUrl || '',
-                    discord: fetchedSettings.discordGroupUrl || '',
-                });
-            }
         } catch (err: any) {
             console.error('Failed to fetch settings:', err);
             const errMsg = err.response?.data?.message || err.message || 'Failed to load settings.';
@@ -309,10 +313,27 @@ const SettingsManagementPage: React.FC = () => {
         }
     }, [eventLimit]);
 
+    // NEW: Fetch Formations
+    const fetchFormations = useCallback(async () => {
+        setIsLoadingFormations(true);
+        try {
+            const fetchedFormations = await getFormations();
+            setFormations(fetchedFormations);
+        } catch (err: any) {
+            console.error('Failed to fetch formations:', err);
+            const errMsg = err.response?.data?.message || err.message || 'Failed to load formations.';
+            toast.error(errMsg);
+            setError(errMsg); // Set main error state
+        } finally {
+            setIsLoadingFormations(false);
+        }
+    }, []);
+
     useEffect(() => {
         fetchSettings();
         fetchEvents(1);
-    }, [fetchSettings, fetchEvents]);
+        fetchFormations(); // NEW: Fetch formations on component mount
+    }, [fetchSettings, fetchEvents, fetchFormations]); // Add fetchFormations to dependencies
 
     // --- Cleanup Object URLs --- 
     useEffect(() => {
@@ -325,32 +346,6 @@ const SettingsManagementPage: React.FC = () => {
     // --- Handlers --- 
     const handleTabChange = (value: string) => {
         setTabValue(value);
-    };
-
-    const handleGroupUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setGroupUrls({ ...groupUrls, [e.target.name]: e.target.value });
-    };
-
-    const handleSaveGroupUrls = async () => {
-        setIsSaving(true);
-        setError(null);
-        const toastId = toast.loading('Saving links...');
-        try {
-            const updatedSettings = await updateSettings({
-                whatsappGroupUrl: groupUrls.whatsapp.trim() || undefined,
-                telegramGroupUrl: groupUrls.telegram.trim() || undefined,
-                discordGroupUrl: groupUrls.discord.trim() || undefined,
-            });
-            setSettings(updatedSettings);
-            toast.success('Group links updated successfully.', { id: toastId });
-        } catch (err: any) {
-            console.error('Failed to save group URLs:', err);
-            const errMsg = err.response?.data?.message || err.message || 'Failed to save settings.';
-            setError(errMsg);
-            toast.error(errMsg, { id: toastId });
-        } finally {
-            setIsSaving(false);
-        }
     };
 
     const handleFileUploadSuccess = (updatedSettings: ISettings) => {
@@ -534,6 +529,95 @@ const SettingsManagementPage: React.FC = () => {
         }
     };
 
+    // NEW: Formation Handlers
+    const resetFormationForm = () => {
+        setNewFormationTitle('');
+        setNewFormationLink('');
+        setIsEditingFormation(false);
+        setEditingFormationId(null);
+        setFormationCreateOrUpdateError(null);
+    };
+
+    const handleFormationFormSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newFormationTitle.trim() || !newFormationLink.trim()) {
+            setFormationCreateOrUpdateError('Title and Link are required for a formation.');
+            toast.error('Formation Title and Link are required.');
+            return;
+        }
+
+        setIsCreatingOrUpdatingFormation(true);
+        setFormationCreateOrUpdateError(null);
+        const toastId = toast.loading(isEditingFormation ? 'Updating formation...' : 'Creating formation...');
+
+        const formationData = {
+            title: newFormationTitle.trim(),
+            link: newFormationLink.trim(),
+        };
+
+        try {
+            if (isEditingFormation && editingFormationId) {
+                await updateFormation(editingFormationId, formationData);
+                toast.success('Formation updated successfully.', { id: toastId });
+            } else {
+                await addFormation(formationData);
+                toast.success('Formation created successfully.', { id: toastId });
+            }
+            resetFormationForm();
+            fetchFormations(); // Refresh formation list
+        } catch (err: any) {
+            console.error(isEditingFormation ? 'Failed to update formation:' : 'Failed to create formation:', err);
+            const errMsg = err.response?.data?.message || err.message || (isEditingFormation ? 'Failed to update formation.' : 'Failed to create formation.');
+            setFormationCreateOrUpdateError(errMsg);
+            toast.error(errMsg, { id: toastId });
+        } finally {
+            setIsCreatingOrUpdatingFormation(false);
+        }
+    };
+
+    const handleEditFormationClick = (formation: IFormation) => {
+        setIsEditingFormation(true);
+        setEditingFormationId(formation._id);
+        setNewFormationTitle(formation.title);
+        setNewFormationLink(formation.link);
+        setFormationCreateOrUpdateError(null);
+        setTabValue('general'); // Ensure we are on the correct tab
+    };
+
+    const handleCancelEditFormation = () => {
+        resetFormationForm();
+    };
+
+    const handleDeleteFormationClick = (formationId: string) => {
+        setFormationToDeleteId(formationId);
+        setIsFormationDeleteModalOpen(true);
+    };
+
+    const closeFormationDeleteModal = () => {
+        setIsFormationDeleteModalOpen(false);
+        setFormationToDeleteId(null);
+    };
+
+    const confirmDeleteFormationHandler = async () => {
+        if (!formationToDeleteId) return;
+
+        setIsDeletingFormation(true);
+        const toastId = toast.loading('Deleting formation...');
+
+        try {
+            await removeFormation(formationToDeleteId);
+            toast.success('Formation removed successfully.', { id: toastId });
+            setFormations(prev => prev.filter(f => f._id !== formationToDeleteId));
+            closeFormationDeleteModal();
+        } catch (err: any) {
+            console.error(`Failed to remove formation ${formationToDeleteId}:`, err);
+            const errMsg = err.response?.data?.message || err.message || 'Failed to remove formation.';
+            toast.error(errMsg, { id: toastId });
+        } finally {
+            setIsDeletingFormation(false);
+        }
+    };
+
     // --- Render Logic --- 
     if (isLoadingSettings) {
         return (
@@ -585,58 +669,113 @@ const SettingsManagementPage: React.FC = () => {
 
             {/* Tab Content */}
             <div>
-                {/* General Settings Tab */}
+                {/* General Settings Tab - Now for Formations */}
                 <div hidden={tabValue !== 'general'}>
-                    <div className="bg-gray-800 shadow rounded-lg p-6">
-                        <h3 className="text-lg font-semibold mb-4 text-white">Group Links</h3>
-                        <p className="text-sm text-gray-400 mb-4">Set the public URLs for your community groups.</p>
-                        <div className="space-y-4">
-                            <div>
-                                <label htmlFor="whatsapp" className="block text-sm font-medium text-gray-300 mb-1">WhatsApp Group URL</label>
-                                <input
-                                    type="url"
-                                    id="whatsapp"
-                                    name="whatsapp"
-                                    placeholder="https://chat.whatsapp.com/..."
-                                    value={groupUrls.whatsapp}
-                                    onChange={handleGroupUrlChange}
-                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="telegram" className="block text-sm font-medium text-gray-300 mb-1">Telegram Group URL</label>
-                                <input
-                                    type="url"
-                                    id="telegram"
-                                    name="telegram"
-                                    placeholder="https://t.me/..."
-                                    value={groupUrls.telegram}
-                                    onChange={handleGroupUrlChange}
-                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="discord" className="block text-sm font-medium text-gray-300 mb-1">Discord Invite URL</label>
-                                <input
-                                    type="url"
-                                    id="discord"
-                                    name="discord"
-                                    placeholder="https://discord.gg/..."
-                                    value={groupUrls.discord}
-                                    onChange={handleGroupUrlChange}
-                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
-                                />
-                            </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Formation Form (Create/Update) */}
+                        <div className="lg:col-span-1">
+                            <form onSubmit={handleFormationFormSubmit} className="bg-gray-800 shadow rounded-lg p-6 space-y-4">
+                                <h3 className="text-lg font-semibold mb-4 text-white">
+                                    {isEditingFormation ? 'Update Formation' : 'Create New Formation'}
+                                </h3>
+
+                                {/* Formation Title Input */}
+                                <div>
+                                    <label htmlFor="formationTitle" className="block text-sm font-medium text-gray-300 mb-1">Title</label>
+                                    <input
+                                        type="text"
+                                        id="formationTitle"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
+                                        value={newFormationTitle}
+                                        onChange={(e) => setNewFormationTitle(e.target.value)}
+                                        required
+                                    />
+                                </div>
+
+                                {/* Formation Link Input */}
+                                <div>
+                                    <label htmlFor="formationLink" className="block text-sm font-medium text-gray-300 mb-1">Link</label>
+                                    <input
+                                        type="url"
+                                        id="formationLink"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
+                                        value={newFormationLink}
+                                        onChange={(e) => setNewFormationLink(e.target.value)}
+                                        required
+                                    />
+                                </div>
+
+                                {/* Error Display */}
+                                {formationCreateOrUpdateError && (
+                                    <div className="p-3 bg-red-900 border border-red-700 rounded-md text-red-100 text-sm">
+                                        {formationCreateOrUpdateError}
+                                    </div>
+                                )}
+
+                                {/* Submit Button */}
+                                <button
+                                    type="submit"
+                                    disabled={isCreatingOrUpdatingFormation}
+                                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 disabled:opacity-50"
+                                >
+                                    {isCreatingOrUpdatingFormation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    {isEditingFormation ? 'Update Formation' : 'Create Formation'}
+                                </button>
+                                {/* Cancel Edit Button */}
+                                {isEditingFormation && (
+                                    <button
+                                        type="button"
+                                        onClick={handleCancelEditFormation}
+                                        className="w-full mt-2 inline-flex justify-center items-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
+                                    >
+                                        Cancel Edit
+                                    </button>
+                                )}
+                            </form>
                         </div>
-                        <div className="mt-6">
-                            <button
-                                onClick={handleSaveGroupUrls}
-                                disabled={isSaving}
-                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50"
-                            >
-                                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                Save Links
-                            </button>
+
+                        {/* Formation List */}
+                        <div className="lg:col-span-2">
+                            <div className="bg-gray-800 shadow rounded-lg p-6">
+                                <h3 className="text-lg font-semibold mb-4 text-white">Existing Formations</h3>
+                                {isLoadingFormations ? (
+                                    <div className="flex justify-center items-center p-8">
+                                        <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
+                                    </div>
+                                ) : formations.length === 0 ? (
+                                    <p className="text-gray-400 italic">No formations found.</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {formations.map((formation) => (
+                                            <div key={formation._id} className="flex items-start space-x-4 p-4 bg-gray-700 rounded-md">
+                                                <div className="flex-grow">
+                                                    <p className="text-md font-semibold text-white mb-1 line-clamp-2">{formation.title}</p>
+                                                    <a href={formation.link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline break-all">
+                                                        {formation.link}
+                                                        <ExternalLink className="inline h-3 w-3 ml-1" />
+                                                    </a>
+                                                </div>
+                                                <div className="flex flex-col space-y-1 flex-shrink-0">
+                                                    <button
+                                                        onClick={() => handleEditFormationClick(formation)}
+                                                        className="p-1 text-blue-400 hover:text-blue-300 focus:outline-none"
+                                                        title="Edit Formation"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteFormationClick(formation._id)}
+                                                        className="p-1 text-red-400 hover:text-red-300 focus:outline-none"
+                                                        title="Delete Formation"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -822,7 +961,7 @@ const SettingsManagementPage: React.FC = () => {
                                                                 src={imageUrl}
                                                                 alt={`Event ${event._id} image`}
                                                                 className="h-16 w-16 object-cover rounded bg-gray-600"
-                                                                // onError={(e) => { /* fallback */ }}
+                                                            // onError={(e) => { /* fallback */ }}
                                                             />
                                                         )}
                                                         {/* Optional Event Video Preview - Use absolute URL */}
@@ -893,7 +1032,7 @@ const SettingsManagementPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Delete Confirmation Modal */}
+            {/* Delete Confirmation Modal (Events) */}
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
                     <div className="relative bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
@@ -928,6 +1067,49 @@ const SettingsManagementPage: React.FC = () => {
                                 type="button"
                                 className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-600 shadow-sm px-4 py-2 bg-gray-800 text-base font-medium text-gray-300 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                                 onClick={closeDeleteModal}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* NEW: Delete Confirmation Modal (Formations) */}
+            {isFormationDeleteModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 transition-opacity duration-300 ease-in-out" aria-labelledby="formation-modal-title" role="dialog" aria-modal="true">
+                    <div className="relative bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+                        <div className="bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                            <div className="sm:flex sm:items-start">
+                                <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-900 sm:mx-0 sm:h-10 sm:w-10">
+                                    <AlertTriangle className="h-6 w-6 text-red-400" aria-hidden="true" />
+                                </div>
+                                <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                                    <h3 className="text-lg leading-6 font-medium text-white" id="formation-modal-title">
+                                        Delete Formation
+                                    </h3>
+                                    <div className="mt-2">
+                                        <p className="text-sm text-gray-400">
+                                            Are you sure you want to delete this formation? This action cannot be undone.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                            <button
+                                type="button"
+                                disabled={isDeletingFormation}
+                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                                onClick={confirmDeleteFormationHandler}
+                            >
+                                {isDeletingFormation ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : null}
+                                Delete
+                            </button>
+                            <button
+                                type="button"
+                                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-600 shadow-sm px-4 py-2 bg-gray-800 text-base font-medium text-gray-300 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                                onClick={closeFormationDeleteModal}
                             >
                                 Cancel
                             </button>

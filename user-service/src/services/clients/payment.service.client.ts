@@ -2,6 +2,7 @@ import axios from 'axios';
 import config from '../../config';
 import logger from '../../utils/logger';
 import { AxiosInstance } from 'axios';
+import { AppError } from '../../utils/errors';
 
 const log = logger.getLogger('PaymentServiceClient');
 
@@ -51,7 +52,7 @@ interface CountResponse {
 // Define response for methods returning a single numeric value (e.g., total revenue)
 interface ValueResponse {
     success: boolean;
-    data?: { value: number };
+    data?: number;
     message?: string;
 }
 
@@ -87,21 +88,43 @@ interface PaymentServiceResponse<T> {
     message?: string;
 }
 
+interface ApiResponse<T> {
+    success: boolean;
+    data: T;
+    message?: string;
+}
+
+interface TotalTransactionsResponseData {
+    totalTransactionCount: number; // Assuming this is the key name
+}
+
+interface MonthlyRevenueResponseData {
+    month: string;
+    totalAmount: number;
+}
+
+interface ActivityOverviewResponseData {
+    month: string;
+    deposits: number;
+    withdrawals: number;
+    payments: number;
+}
+
 class PaymentServiceClient {
     private apiClient: AxiosInstance;
     private log = logger.getLogger('PaymentServiceClient');
 
     constructor() {
         this.apiClient = axios.create({
-            baseURL: config.services.paymentService, // Use URL from user-service config
-            timeout: 5000, // Set a reasonable timeout
+            baseURL: config.services.paymentService,
+            timeout: 15000, // Increased timeout to 15 seconds
             headers: {
                 'Content-Type': 'application/json',
-                // Service-to-Service Authentication (using shared secret)
-                'Authorization': `Bearer ${config.services.serviceSecret}`,
-                'X-Service-Name': 'user-service', // Identify this service
+                'X-Internal-Service': 'user-service',
+                'Authorization': `Bearer ${config.services.serviceSecret}` // Your internal service token
             },
         });
+        this.log.info(`Payment service client initialized. Base URL: ${config.services.paymentService}`);
     }
 
     /**
@@ -164,30 +187,28 @@ class PaymentServiceClient {
     }
 
     /**
-     * Fetches the total count of transactions.
-     * Assumes endpoint: GET /api/stats/total-transactions
+     * Fetches the total number of transactions from the payment service.
+     * Calls endpoint: GET /api/internal/stats/transactions
      */
     async getTotalTransactions(): Promise<number> {
-        const url = '/internal/stats/transactions';
-        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}${url}`);
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/transactions`);
         try {
-            const response = await this.apiClient.get<CountResponse>(url);
-            if (response.status === 200 && response.data?.success && typeof response.data.data?.count === 'number') {
-                log.info(`Successfully fetched total transactions: ${response.data.data.count}`);
-                return response.data.data.count;
+            // Expect ApiResponse with data: { totalTransactionCount: number }
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/transactions');
+            if (response.data.success && typeof response.data.data === 'number') {
+                this.log.info(`Successfully fetched total transactions: ${response.data.data}`);
+                return response.data.data;
             } else {
-                log.warn('Payment service responded with failure or unexpected structure for total transaction count.', {
-                    status: response.status,
-                    responseData: response.data
-                });
-                return 0; // Return 0 on API error/unexpected response
+                const errMsg = response.data.message || `Payment service responded with failure or unexpected structure for total transactions. Data: ${JSON.stringify(response.data.data)}`;
+                this.log.warn(errMsg);
+                throw new AppError(errMsg, response.status);
             }
         } catch (error: any) {
-            log.error(`Error calling payment service ${url}: ${error.message}`);
-            if (axios.isAxiosError(error)) {
-                log.error('Payment Service Error Response (getTotalTransactions):', { status: error.response?.status, data: error.response?.data });
+            this.log.error(`Error calling payment service /internal/stats/transactions: ${error.message}`, error);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(`Failed to retrieve total transactions from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
             }
-            return 0; // Return 0 on communication error
+            throw new AppError(`Failed to retrieve total transactions from payment service.`, 500);
         }
     }
 
@@ -201,49 +222,47 @@ class PaymentServiceClient {
         try {
             const response = await this.apiClient.get<RecentTransactionsResponse>(url);
             if (response.status === 200 && response.data?.success && Array.isArray(response.data.data)) {
-                log.info(`Successfully fetched ${response.data.data.length} recent transactions.`);
+                this.log.info(`Successfully fetched ${response.data.data.length} recent transactions.`);
                 return response.data.data;
             } else {
-                log.warn('Payment service responded with failure or unexpected structure for recent transactions.', {
+                this.log.warn('Payment service responded with failure or unexpected structure for recent transactions.', {
                     status: response.status,
                     responseData: response.data
                 });
                 return []; // Return empty array on API error/unexpected response
             }
         } catch (error: any) {
-            log.error(`Error calling payment service ${url}: ${error.message}`);
+            this.log.error(`Error calling payment service ${url}: ${error.message}`);
             if (axios.isAxiosError(error)) {
-                log.error('Payment Service Error Response (getRecentTransactions):', { status: error.response?.status, data: error.response?.data });
+                this.log.error('Payment Service Error Response (getRecentTransactions):', { status: error.response?.status, data: error.response?.data });
             }
             return []; // Return empty array on communication error
         }
     }
 
     /**
-     * Fetches the total withdrawal amount from the payment service.
-     * Calls endpoint: GET /api/payments/internal/stats/total-withdrawals
+     * Fetches the total withdrawals amount from the payment service.
+     * Calls endpoint: GET /api/internal/stats/total-withdrawals
      */
     async getTotalWithdrawals(): Promise<number> {
-        const url = '/internal/stats/total-withdrawals';
-        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}${url}`);
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/total-withdrawals`);
         try {
-            const response = await this.apiClient.get<ValueResponse>(url);
-            if (response.status === 200 && response.data?.success && typeof response.data.data?.value === 'number') {
-                this.log.info(`Successfully fetched total withdrawals: ${response.data.data.value}`);
-                return response.data.data.value;
+            // Expect ApiResponse with data: number
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-withdrawals');
+            if (response.data.success && typeof response.data.data === 'number') {
+                this.log.info(`Successfully fetched total withdrawals: ${response.data.data}`);
+                return response.data.data;
             } else {
-                this.log.warn('Payment service responded with failure or unexpected structure for total withdrawal amount.', {
-                    status: response.status,
-                    responseData: response.data
-                });
-                return 0; // Return 0 on API error/unexpected response
+                const errMsg = response.data.message || `Payment service responded with failure or unexpected structure for total withdrawals. Data: ${JSON.stringify(response.data.data)}`;
+                this.log.warn(errMsg);
+                throw new AppError(errMsg, response.status);
             }
         } catch (error: any) {
-            this.log.error(`Error calling payment service ${url}: ${error.message}`);
-            if (axios.isAxiosError(error)) {
-                this.log.error('Payment Service Error Response (getTotalWithdrawals):', { status: error.response?.status, data: error.response?.data });
+            this.log.error(`Error calling payment service /internal/stats/total-withdrawals: ${error.message}`, error);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(`Failed to retrieve total withdrawals from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
             }
-            return 0; // Return 0 on communication error
+            throw new AppError(`Failed to retrieve total withdrawals from payment service.`, 500);
         }
     }
 
@@ -252,26 +271,24 @@ class PaymentServiceClient {
      * Calls endpoint: GET /api/internal/stats/total-revenue
      */
     async getTotalRevenue(): Promise<number> {
-        const url = '/internal/stats/total-revenue';
-        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}${url}`);
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/total-revenue`);
         try {
-            const response = await this.apiClient.get<ValueResponse>(url);
-            if (response.status === 200 && response.data?.success && typeof response.data.data?.value === 'number') {
-                this.log.info(`Successfully fetched total revenue: ${response.data.data.value}`);
-                return response.data.data.value;
+            // Expect ApiResponse with data: number
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-revenue');
+            if (response.data.success && typeof response.data.data === 'number') {
+                this.log.info(`Successfully fetched total revenue: ${response.data.data}`);
+                return response.data.data;
             } else {
-                this.log.warn('Payment service responded with failure or unexpected structure for total revenue amount.', {
-                    status: response.status,
-                    responseData: response.data
-                });
-                return 0; // Return 0 on API error/unexpected response
+                const errMsg = response.data.message || `Payment service responded with failure or unexpected structure for total revenue. Data: ${JSON.stringify(response.data.data)}`;
+                this.log.warn(errMsg);
+                throw new AppError(errMsg, response.status);
             }
         } catch (error: any) {
-            this.log.error(`Error calling payment service ${url}: ${error.message}`);
-            if (axios.isAxiosError(error)) {
-                this.log.error('Payment Service Error Response (getTotalRevenue):', { status: error.response?.status, data: error.response?.data });
+            this.log.error(`Error calling payment service /internal/stats/total-revenue: ${error.message}`, error);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(`Failed to retrieve total revenue from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
             }
-            return 0; // Return 0 on communication error
+            throw new AppError(`Failed to retrieve total revenue from payment service.`, 500);
         }
     }
 
@@ -279,27 +296,25 @@ class PaymentServiceClient {
      * Fetches monthly revenue data from the payment service.
      * Calls endpoint: GET /api/internal/stats/monthly-revenue
      */
-    async getMonthlyRevenue(): Promise<any[]> {
-        const url = '/internal/stats/monthly-revenue';
-        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}${url}`);
+    async getMonthlyRevenue(): Promise<MonthlyRevenueResponseData[]> {
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/monthly-revenue`);
         try {
-            const response = await this.apiClient.get<ArrayResponse>(url);
-            if (response.status === 200 && response.data?.success && Array.isArray(response.data.data)) {
+            // Expect ApiResponse with data: MonthlyRevenueResponseData[]
+            const response = await this.apiClient.get<ApiResponse<MonthlyRevenueResponseData[]>>('/internal/stats/monthly-revenue');
+            if (response.data.success && Array.isArray(response.data.data)) {
                 this.log.info(`Successfully fetched monthly revenue data. Count: ${response.data.data.length}`);
                 return response.data.data;
             } else {
-                this.log.warn('Payment service responded with failure or unexpected structure for monthly revenue data.', {
-                    status: response.status,
-                    responseData: response.data
-                });
-                return []; // Return empty array on API error/unexpected response
+                const errMsg = response.data.message || `Payment service responded with failure or unexpected structure for monthly revenue. Data: ${JSON.stringify(response.data.data)}`;
+                this.log.warn(errMsg);
+                throw new AppError(errMsg, response.status);
             }
         } catch (error: any) {
-            this.log.error(`Error calling payment service ${url}: ${error.message}`);
-            if (axios.isAxiosError(error)) {
-                this.log.error('Payment Service Error Response (getMonthlyRevenue):', { status: error.response?.status, data: error.response?.data });
+            this.log.error(`Error calling payment service /internal/stats/monthly-revenue: ${error.message}`, error);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(`Failed to retrieve monthly revenue from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
             }
-            return []; // Return empty array on communication error
+            throw new AppError(`Failed to retrieve monthly revenue from payment service.`, 500);
         }
     }
 
@@ -307,27 +322,25 @@ class PaymentServiceClient {
      * Fetches activity overview data from the payment service.
      * Calls endpoint: GET /api/internal/stats/activity-overview
      */
-    async getActivityOverview(): Promise<any[]> {
-        const url = '/internal/stats/activity-overview';
-        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}${url}`);
+    async getActivityOverview(): Promise<ActivityOverviewResponseData[]> {
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/activity-overview`);
         try {
-            const response = await this.apiClient.get<ArrayResponse>(url);
-            if (response.status === 200 && response.data?.success && Array.isArray(response.data.data)) {
+            // Expect ApiResponse with data: ActivityOverviewResponseData[]
+            const response = await this.apiClient.get<ApiResponse<ActivityOverviewResponseData[]>>('/internal/stats/activity-overview');
+            if (response.data.success && Array.isArray(response.data.data)) {
                 this.log.info(`Successfully fetched activity overview data. Count: ${response.data.data.length}`);
                 return response.data.data;
             } else {
-                this.log.warn('Payment service responded with failure or unexpected structure for activity overview data.', {
-                    status: response.status,
-                    responseData: response.data
-                });
-                return []; // Return empty array on API error/unexpected response
+                const errMsg = response.data.message || `Payment service responded with failure or unexpected structure for activity overview. Data: ${JSON.stringify(response.data.data)}`;
+                this.log.warn(errMsg);
+                throw new AppError(errMsg, response.status);
             }
         } catch (error: any) {
-            this.log.error(`Error calling payment service ${url}: ${error.message}`);
-            if (axios.isAxiosError(error)) {
-                this.log.error('Payment Service Error Response (getActivityOverview):', { status: error.response?.status, data: error.response?.data });
+            this.log.error(`Error calling payment service /internal/stats/activity-overview: ${error.message}`, error);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(`Failed to retrieve activity overview from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
             }
-            return []; // Return empty array on communication error
+            throw new AppError(`Failed to retrieve activity overview from payment service.`, 500);
         }
     }
 
@@ -341,7 +354,8 @@ class PaymentServiceClient {
         const url = `/internal/stats/user/${userId}/total-withdrawals`;
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}${url}`);
         try {
-            const response = await this.apiClient.get<ValueResponse>(url); // Assuming same ValueResponse structure
+            const response = await this.apiClient.get<ApiResponse<{ value: number }>>(url); // Assuming same ValueResponse structure
+
             if (response.status === 200 && response.data?.success && typeof response.data.data?.value === 'number') {
                 this.log.info(`Successfully fetched total withdrawals for user ${userId}: ${response.data.data.value}`);
                 return response.data.data.value;
@@ -358,6 +372,29 @@ class PaymentServiceClient {
                 this.log.error(`Payment Service Error Response (getUserTotalWithdrawals User: ${userId}):`, { status: error.response?.status, data: error.response?.data });
             }
             return 0; // Return 0 on communication error
+        }
+    }
+
+    // This method is called by settings-service to get admin balance from payment-service.
+    async getAdminBalance(): Promise<number> {
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/admin-balance`);
+        try {
+            // Expect ApiResponse with data: number
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/admin-balance');
+            if (response.data.success && typeof response.data.data === 'number') {
+                this.log.info(`Successfully fetched admin balance: ${response.data.data}`);
+                return response.data.data;
+            } else {
+                const errMsg = response.data.message || `Payment service responded with failure or unexpected structure for admin balance. Data: ${JSON.stringify(response.data.data)}`;
+                this.log.warn(errMsg);
+                throw new AppError(errMsg, response.status);
+            }
+        } catch (error: any) {
+            this.log.error(`Error calling payment service /internal/stats/admin-balance: ${error.message}`, error);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(`Failed to retrieve admin balance from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
+            }
+            throw new AppError(`Failed to retrieve admin balance from payment service.`, 500);
         }
     }
 }

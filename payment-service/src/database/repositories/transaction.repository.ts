@@ -473,6 +473,11 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
         }
     }
 
+    async countAllTransactions(): Promise<number> {
+        const count = await this.model.countDocuments({ deleted: { $ne: true } }).exec();
+        return count;
+    }
+
     /**
      * Finds transactions matching the given filters with pagination.
      */

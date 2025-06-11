@@ -15,7 +15,8 @@ import {
     getFormations,
     addFormation,
     updateFormation,
-    removeFormation
+    removeFormation,
+    getAdminBalance
 } from '../controllers/settings.controller';
 import { upload } from '../middleware/multer.config'; // Import the configured Multer instance
 import authenticate from '../middleware/auth.middleware'; // Standard auth for settings management
@@ -89,6 +90,10 @@ router.get('/formations', getFormations);
 router.post('/formations', addFormation);
 router.put('/formations/:formationId', updateFormation);
 router.delete('/formations/:formationId', removeFormation);
+
+// --- Add Admin Balance Route ---
+// This route should be behind authentication for admin users.
+router.get('/stats/admin-balance', getAdminBalance);
 
 // Other routes (e.g., PUT /settings for updating other fields) can be added here
 // router.put('/', updateSettings); // Example

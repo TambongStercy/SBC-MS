@@ -22,7 +22,6 @@ import RecentTransactionsList from "../components/common/RecentTransactionsList"
 import { fetchDashboard, fetchRecentTransactions } from "../api"; // Import the API functions
 import { AccountTransaction } from "../services/adminAccountTransactionApi"; // Import the shared AccountTransaction type
 
-import { convertDatesToMonthlyData } from "../utils/dateUtils"; // Utility function
 import Loader from "../components/common/loader";
 import { getCountryName } from "../utils/countryUtils"; // Import the new helper
 
@@ -30,6 +29,12 @@ import { getCountryName } from "../utils/countryUtils"; // Import the new helper
 export interface MonthlyRevenueData {
   month: string;      // e.g., "2024-5"
   totalAmount: number;
+}
+
+// New interface for monthly aggregated counts
+export interface MonthlyCountData {
+  month: string; // e.g., "2024-02"
+  count: number;
 }
 
 // Export the interface so other components can import it
@@ -44,9 +49,9 @@ interface AdminDashboardData {
   adminBalance: number;
   count: number;
   subCount: number;
-  classiqueSubStartDates: string[];
-  cibleSubStartDates: string[];
-  allUsersDates: string[];
+  monthlyAllUsers: MonthlyCountData[];
+  monthlyClassiqueSubs: MonthlyCountData[];
+  monthlyCibleSubs: MonthlyCountData[];
   totalTransactions: number;
   totalWithdrawals: number;
   totalRevenue: number;
@@ -94,54 +99,38 @@ const OverViewPage = () => {
       setLoading(true);
       setError(null);
       try {
-        // Fetch dashboard data and recent transactions in parallel
         const [dashboardResponse, recentTransactionsResponse] = await Promise.all([
           fetchDashboard(),
-          fetchRecentTransactions(5) // Fetch top 5 recent transactions
+          fetchRecentTransactions(5)
         ]);
 
-        console.log("Raw Dashboard Response:", dashboardResponse); // Log the raw response
+        console.log("Raw Dashboard Response:", dashboardResponse);
 
-        // Access the actual dashboard data from the nested 'data' property
         const actualDashboardData = dashboardResponse.data;
 
-        // Check if the data seems valid (e.g., check for a known property)
         if (!actualDashboardData || typeof actualDashboardData.adminBalance === 'undefined') {
           console.error("Dashboard data seems invalid or missing key properties.", actualDashboardData);
           throw new Error("Received invalid dashboard data structure from API.");
         }
 
-        setDashboardData(actualDashboardData); // Should already be the correct data object
-        setRecentTransactions(recentTransactionsResponse); // Set the recent transactions state
+        setDashboardData(actualDashboardData);
+        setRecentTransactions(recentTransactionsResponse);
 
-        // Set the default selected country if balances exist
         if (actualDashboardData.balancesByCountry && Object.keys(actualDashboardData.balancesByCountry).length > 0) {
           setSelectedCountryCode(Object.keys(actualDashboardData.balancesByCountry)[0]);
         }
 
-        // Extract all relevant data from the dashboard response
-        // Destructure from the verified actualDashboardData
-        const {
-          // adminBalance,
-          // count,
-          // subCount,
-          classiqueSubStartDates,
-          cibleSubStartDates,
-          allUsersDates,
-          // totalTransactions,
-          // totalWithdrawals,
-          // totalRevenue,
-          // monthlyRevenue,
-          // balancesByCountry,
-          // activityOverview
-        } = actualDashboardData;
-
-        // Convert dates for the UsersOverViewChart
-        const formattedUsersData = convertDatesToMonthlyData(
-          allUsersDates,
-          classiqueSubStartDates,
-          cibleSubStartDates
-        );
+        // Now directly use the pre-aggregated monthly data from the <backend></backend>
+        const formattedUsersData = actualDashboardData.monthlyAllUsers.map((allUserMonth: MonthlyCountData) => {
+          const classiqueMonth = actualDashboardData.monthlyClassiqueSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
+          const cibleMonth = actualDashboardData.monthlyCibleSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
+          return {
+            month: allUserMonth.month,
+            allUsers: allUserMonth.count,
+            classique: classiqueMonth?.count || 0,
+            cible: cibleMonth?.count || 0,
+          };
+        });
         setMonthlyData(formattedUsersData);
 
         setLoading(false);

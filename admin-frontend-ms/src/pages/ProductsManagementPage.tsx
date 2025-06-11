@@ -122,7 +122,7 @@ const ProductsManagementPage: React.FC = () => {
     useEffect(() => {
         console.log("useEffect triggered by page/limit/trigger change");
         fetchProducts();
-    }, [currentPage, limit, fetchTrigger]);
+    }, [currentPage, limit, fetchTrigger, fetchProducts]);
 
     // Filter input handlers ONLY update state, don't trigger fetch or reset page
     const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {

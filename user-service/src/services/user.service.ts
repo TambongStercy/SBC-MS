@@ -13,7 +13,7 @@ import { dailyWithdrawalRepository } from '../database/repositories/daily-withdr
 import SubscriptionModel, { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model';
 import UserModel from '../database/models/user.model';
 import { subscriptionService } from './subscription.service';
-import { partnerService } from './partner.service'; // Corrected and consolidated
+import { partnerService } from './partner.service';
 import { subscriptionRepository } from '../database/repositories/subscription.repository';
 import { ContactSearchFilters } from '../types/contact.types';
 import { PaginationOptions } from '../types/express';
@@ -22,8 +22,8 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError } from '../utils/errors'; // Consolidated AppError import
-import { normalizePhoneNumber } from '../utils/phone.utils'; // Import normalizePhoneNumber
+import { AppError } from '../utils/errors';
+import { normalizePhoneNumber } from '../utils/phone.utils';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -87,14 +87,26 @@ interface ITargetCriteria {
 // Create a component-specific logger
 const log = logger.getLogger('UserService');
 
-// Interface for the dashboard response
+// Define the structure for monthly aggregated counts
+interface MonthlyCount {
+    month: string; // e.g., "2024-02"
+    count: number;
+}
+
+// Interface for the dashboard response - UPDATED
 interface AdminDashboardData {
     adminBalance: number;
     count: number; // Total Users
     subCount: number; // Total Active Subscribers
-    allUsersDates: Date[]; // Dates of user registrations
-    classiqueSubStartDates: Date[]; // NEW: Start dates for CLASSIQUE subs
-    cibleSubStartDates: Date[]; // NEW: Start dates for CIBLE subs
+    // Removed raw date arrays:
+    // allUsersDates: Date[];
+    // classiqueSubStartDates: Date[];
+    // cibleSubStartDates: Date[];
+    // Added aggregated monthly data:
+    monthlyAllUsers: MonthlyCount[];
+    monthlyClassiqueSubs: MonthlyCount[];
+    monthlyCibleSubs: MonthlyCount[];
+
     totalTransactions: number;
     totalWithdrawals: number;
     totalRevenue: number;
@@ -2382,61 +2394,20 @@ export class UserService {
             log.info('Fetching admin dashboard data...');
 
             const countryCodePrefixes: { [key: string]: string[] } = {
-                'DZ': ['+213'], // Algeria
-                'AO': ['+244'], // Angola
-                'BJ': ['+229'], // Benin
-                'BW': ['+267'], // Botswana
-                'BF': ['+226'], // Burkina Faso
-                'BI': ['+257'], // Burundi
-                'CV': ['+238'], // Cabo Verde (Cape Verde)
-                'CM': ['+237'], // Cameroon
-                'CF': ['+236'], // Central African Republic
-                'TD': ['+235'], // Chad
-                'KM': ['+269'], // Comoros
-                'CD': ['+243'], // Congo, Democratic Republic of the (DRC)
-                'CG': ['+242'], // Congo, Republic of the (Brazzaville)
-                'CI': ['+225'], // Cote d'Ivoire (Ivory Coast)
-                'DJ': ['+253'], // Djibouti
-                'EG': ['+20'],  // Egypt
-                'GQ': ['+240'], // Equatorial Guinea
-                'ER': ['+291'], // Eritrea
-                'SZ': ['+268'], // Eswatini (formerly Swaziland)
-                'ET': ['+251'], // Ethiopia
-                'GA': ['+241'], // Gabon
-                'GM': ['+220'], // Gambia
-                'GH': ['+233'], // Ghana
-                'GN': ['+224'], // Guinea
-                'GW': ['+245'], // Guinea-Bissau
-                'KE': ['+254'], // Kenya
-                'LS': ['+266'], // Lesotho
-                'LR': ['+231'], // Liberia
-                'LY': ['+218'], // Libya
-                'MG': ['+261'], // Madagascar
-                'MW': ['+265'], // Malawi
-                'ML': ['+223'], // Mali
-                'MR': ['+222'], // Mauritania
-                'MU': ['+230'], // Mauritius
-                'MA': ['+212'], // Morocco (Note: Also used for Western Sahara - EH)
-                'MZ': ['+258'], // Mozambique
-                'NA': ['+264'], // Namibia
-                'NE': ['+227'], // Niger
-                'NG': ['+234'], // Nigeria
-                'RW': ['+250'], // Rwanda
-                'ST': ['+239'], // Sao Tome and Principe
-                'SN': ['+221'], // Senegal
-                'SC': ['+248'], // Seychelles
-                'SL': ['+232'], // Sierra Leone
-                'SO': ['+252'], // Somalia
-                'ZA': ['+27'],  // South Africa
-                'SS': ['+211'], // South Sudan
-                'SD': ['+249'], // Sudan
-                'TZ': ['+255'], // Tanzania
-                'TG': ['+228'], // Togo
-                'TN': ['+216'], // Tunisia
-                'UG': ['+256'], // Uganda
-                'ZM': ['+260'], // Zambia
-                'ZW': ['+263'], // Zimbabwe
-                // Add other non-African country codes and prefixes below if needed
+                'DZ': ['+213'], 'AO': ['+244'], 'BJ': ['+229'], 'BW': ['+267'],
+                'BF': ['+226'], 'BI': ['+257'], 'CV': ['+238'], 'CM': ['+237'],
+                'CF': ['+236'], 'TD': ['+235'], 'KM': ['+269'], 'CD': ['+243'],
+                'CG': ['+242'], 'CI': ['+225'], 'DJ': ['+20'], 'EG': ['+240'],
+                'GQ': ['+291'], 'ER': ['+268'], 'SZ': ['+251'], 'ET': ['+241'],
+                'GA': ['+220'], 'GM': ['+233'], 'GH': ['+224'], 'GN': ['+245'],
+                'GW': ['+254'], 'KE': ['+266'], 'LS': ['+231'], 'LR': ['+218'],
+                'LY': ['+261'], 'MG': ['+265'], 'MW': ['+223'], 'ML': ['+222'],
+                'MR': ['+230'], 'MU': ['+212'], 'MA': ['+258'], 'MZ': ['+264'],
+                'NA': ['+227'], 'NE': ['+234'], 'NG': ['+250'], 'RW': ['+239'],
+                'ST': ['+221'], 'SN': ['+248'], 'SC': ['+232'], 'SL': ['+252'],
+                'SO': ['+27'], 'ZA': ['+211'], 'SS': ['+249'], 'SD': ['+255'],
+                'TZ': ['+228'], 'TG': ['+216'], 'TN': ['+256'], 'UG': ['+260'],
+                'ZM': ['+263'], 'ZW': ['+225']
             };
 
             const prefixToCountryCode: { [key: string]: string } = {};
@@ -2446,33 +2417,123 @@ export class UserService {
                 });
             }
 
+            log.info('Step 1: Fetching all users and other dashboard data');
+
 
             // --- Start Parallel Fetch ---
-            const [ // Local Data
-                allUsers, // Use UserModel.find with select and lean
-                totalSubCount, // Use SubscriptionModel.countDocuments for ACTIVE subs
-                allSubscriptions, // Fetch ALL subscriptions (start date + type)
-                // External Data
-                adminBalance,
+            const [
+                // Local Data
+                allUsers, // Still fetch for total count and balance by country
+                totalSubCount, // Still count active subs
+
+                // NEW: Aggregation for monthly user registrations
+                monthlyAllUsersAgg,
+                // NEW: Aggregation for monthly Classique subscriptions
+                monthlyClassiqueSubsAgg,
+                // NEW: Aggregation for monthly Cible subscriptions
+                monthlyCibleSubsAgg,
+
+                // External Data (unchanged, but now settingsService is used for adminBalance)
+                adminBalance, // This will now come from settingsService
                 totalTransactions,
                 totalWithdrawals,
                 totalRevenue,
                 monthlyRevenue,
                 activityOverviewData,
             ] = await Promise.all([
-                // Local User/Sub Data using Mongoose Models directly
+                // Fetch basic user data for counts and balances
                 UserModel.find({ deleted: { $ne: true } })
-                    .select('createdAt balance country phoneNumber _id') // Select necessary fields + _id
-                    .lean() // Get plain JS objects
-                    .exec(), // Execute the query
-                SubscriptionModel.countDocuments({ status: SubscriptionStatus.ACTIVE }).exec(), // Count ACTIVE subs
-                // Fetch ALL subscriptions, selecting startDate and subscriptionType
-                SubscriptionModel.find({})
-                    .select('startDate subscriptionType _id')
-                    .lean() // Get plain JS objects
-                    .exec(), // Execute the query
+                    .select('createdAt balance country phoneNumber _id')
+                    .lean()
+                    .exec(),
+                SubscriptionModel.countDocuments({ status: SubscriptionStatus.ACTIVE }).exec(),
+
+                // Aggregation for all monthly user registrations
+                UserModel.aggregate([
+                    { $match: { deleted: { $ne: true } } }, // Only count non-deleted users
+                    {
+                        $group: {
+                            _id: {
+                                year: { $year: '$createdAt' },
+                                month: { $month: '$createdAt' }
+                            },
+                            count: { $sum: 1 }
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            month: {
+                                $concat: [
+                                    { $toString: '$_id.year' },
+                                    '-',
+                                    { $cond: { if: { $lt: ['$_id.month', 10] }, then: { $concat: ['0', { $toString: '$_id.month' }] }, else: { $toString: '$_id.month' } } }
+                                ]
+                            },
+                            count: 1
+                        }
+                    },
+                    { $sort: { month: 1 } }
+                ]).exec(),
+
+                // Aggregation for monthly Classique subscriptions
+                SubscriptionModel.aggregate([
+                    { $match: { subscriptionType: SubscriptionType.CLASSIQUE } }, // Filter by type
+                    {
+                        $group: {
+                            _id: {
+                                year: { $year: '$startDate' }, // Group by subscription start date
+                                month: { $month: '$startDate' }
+                            },
+                            count: { $sum: 1 }
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            month: {
+                                $concat: [
+                                    { $toString: '$_id.year' },
+                                    '-',
+                                    { $cond: { if: { $lt: ['$_id.month', 10] }, then: { $concat: ['0', { $toString: '$_id.month' }] }, else: { $toString: '$_id.month' } } }
+                                ]
+                            },
+                            count: 1
+                        }
+                    },
+                    { $sort: { month: 1 } }
+                ]).exec(),
+
+                // Aggregation for monthly Cible subscriptions
+                SubscriptionModel.aggregate([
+                    { $match: { subscriptionType: SubscriptionType.CIBLE } }, // Filter by type
+                    {
+                        $group: {
+                            _id: {
+                                year: { $year: '$startDate' }, // Group by subscription start date
+                                month: { $month: '$startDate' }
+                            },
+                            count: { $sum: 1 }
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            month: {
+                                $concat: [
+                                    { $toString: '$_id.year' },
+                                    '-',
+                                    { $cond: { if: { $lt: ['$_id.month', 10] }, then: { $concat: ['0', { $toString: '$_id.month' }] }, else: { $toString: '$_id.month' } } }
+                                ]
+                            },
+                            count: 1
+                        }
+                    },
+                    { $sort: { month: 1 } }
+                ]).exec(),
+
                 // External Service Calls
-                settingsService.getAdminBalance(),
+                settingsService.getAdminBalance(), // NEW: Fetch admin balance from settings-service
                 paymentService.getTotalTransactions(),
                 paymentService.getTotalWithdrawals(),
                 paymentService.getTotalRevenue(),
@@ -2482,28 +2543,18 @@ export class UserService {
             // --- End Parallel Fetch ---
 
 
+
+            log.info('Step 2: Processing fetched data');
+
+
             // --- Process Fetched Data ---
             const totalUsersCount = allUsers.length;
 
-            // Map user creation dates using correct type after lean()
-            const allUsersDates = allUsers.map((u: Pick<FlattenMaps<IUser>, '_id' | 'createdAt'>) => u.createdAt);
+            // `allUsersDates`, `classiqueSubStartDates`, `cibleSubStartDates` are no longer needed here,
+            // as the aggregated data is used directly.
 
-            // Process ALL subscriptions to separate start dates by type
-            const classiqueSubStartDates: Date[] = [];
-            const cibleSubStartDates: Date[] = [];
-            // Use correct type for lean results, including subscriptionType
-            allSubscriptions.forEach((sub: Pick<FlattenMaps<ISubscription>, '_id' | 'startDate' | 'subscriptionType'>) => {
-                if (sub.subscriptionType === SubscriptionType.CLASSIQUE) {
-                    classiqueSubStartDates.push(sub.startDate);
-                } else if (sub.subscriptionType === SubscriptionType.CIBLE) {
-                    cibleSubStartDates.push(sub.startDate);
-                }
-                // Ignore other types if they exist
-            });
-
-            // Calculate Balances by Country
+            // Calculate Balances by Country (unchanged logic)
             const balancesByCountry: { [countryCode: string]: number } = {};
-            // Use correct type for user object after lean()
             allUsers.forEach((user: Pick<FlattenMaps<IUser>, '_id' | 'balance' | 'country' | 'phoneNumber'>) => {
                 let countryCode = 'Autres'; // Default
                 const userCountryUpper = typeof user.country === 'string' ? user.country.toUpperCase() : undefined;
@@ -2528,9 +2579,9 @@ export class UserService {
                 adminBalance,
                 count: totalUsersCount,
                 subCount: totalSubCount,
-                allUsersDates: allUsersDates,
-                classiqueSubStartDates: classiqueSubStartDates,
-                cibleSubStartDates: cibleSubStartDates,
+                monthlyAllUsers: monthlyAllUsersAgg,
+                monthlyClassiqueSubs: monthlyClassiqueSubsAgg,
+                monthlyCibleSubs: monthlyCibleSubsAgg,
                 totalTransactions,
                 totalWithdrawals,
                 totalRevenue,
@@ -2540,12 +2591,18 @@ export class UserService {
             };
             // --- End Data Processing ---
 
+            log.info('Step 3: Dashboard data processed successfully');
+
+
             log.info('Successfully gathered admin dashboard data.');
             return dashboardData;
 
         } catch (error: any) {
             log.error('Error fetching admin dashboard data:', error);
-            // Return a default/error structure or re-throw
+            // Re-throw specific errors if they are AppErrors, otherwise create a new one
+            if (error instanceof AppError) {
+                throw error;
+            }
             throw new Error(`Failed to fetch admin dashboard data: ${error.message}`);
         }
     }
@@ -2749,9 +2806,11 @@ export class UserService {
                 log.info(`Password reset OTP sent successfully for email: ${email}`);
             } catch (error) {
                 log.error(`Failed to send password reset OTP for email ${email}:`, error);
+                throw error;
             }
         } else {
             log.warn(`Password reset OTP requested for non-existent or inactive user: ${email}. No action taken.`);
+            throw new AppError('User not found or inactive.', 404);
         }
     }
 

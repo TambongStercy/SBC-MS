@@ -373,7 +373,6 @@ class PaymentService {
             };
         }
         // --- End Soft Lock ---
-
         try {
             // Fetch user's MoMo details from user-service
             const userMomoDetails = await userServiceClient.getUserDetailsWithMomo(userId.toString());
@@ -398,6 +397,15 @@ class PaymentService {
             if (!targetPayoutCurrency) {
                 log.error(`No target payout currency found for momoOperator: ${momoOperator}. User ID: ${userId}`);
                 throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} or missing currency mapping for it. Please contact support.`, 400);
+            }
+
+            // Check if country is supported for withdrawals
+            if (countryCode !== 'CM') {
+                log.error(`Withdrawals are currently only supported for Cameroon (CM). User attempted from country: ${countryCode}, operator: ${momoOperator}. User ID: ${userId}`);
+                throw new AppError(
+                    `Withdrawals are currently only available for Mobile Money accounts in Cameroon. Your registered operator (${momoOperator}) is from a different country. Please contact support for assistance.`, 
+                    400
+                );
             }
 
             // Derive the specific payment method slug for CinetPay
@@ -3150,6 +3158,203 @@ class PaymentService {
             metadata: updateMetadata
         });
         log.info(`Transaction ${internalTransactionId} status updated to ${updateStatus} based on webhook.`);
+    }
+
+    // This new or modified method would fetch the total count
+    async getTotalTransactionsCount(): Promise<number> {
+        // Call a method in your transaction repository to get the count
+        const count = await transactionRepository.countAllTransactions(); // New method in repository
+        return count;
+    }
+
+    /**
+     * Check the status of a FeexPay transaction using its gatewayPaymentId (FeexPay's reference).
+     * This method fetches the latest status from FeexPay and updates the internal PaymentIntent.
+     * @param gatewayPaymentId The transaction reference ID provided by FeexPay.
+     * @returns The updated PaymentIntent object.
+     * @throws AppError if the payment intent is not found, or if the FeexPay API call fails.
+     */
+    public async checkFeexpayTransactionStatus(gatewayPaymentId: string): Promise<IPaymentIntent> {
+        log.info(`Checking FeexPay transaction status for gatewayPaymentId: ${gatewayPaymentId}`);
+
+        const paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(gatewayPaymentId, PaymentGateway.FEEXPAY);
+
+        if (!paymentIntent) {
+            throw new AppError('Payment intent not found for this FeexPay reference.', 404);
+        }
+
+        // If status is already final, no need to call FeexPay
+        if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
+            log.info(`PaymentIntent ${paymentIntent.sessionId} is already in final status: ${paymentIntent.status}. Returning current state.`);
+            return paymentIntent;
+        }
+
+        try {
+            const response = await axios.get(
+                `${config.feexpay.baseUrl}/transactions/public/single/status/${gatewayPaymentId}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${config.feexpay.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 10000 // Add a timeout for the external API call
+                }
+            );
+
+            const feexpayResponse = response.data;
+            log.info(`FeexPay status response for ${gatewayPaymentId}:`, feexpayResponse);
+
+            let newStatus: PaymentStatus = paymentIntent.status; // Default to current status
+            const feexpayStatus = feexpayResponse.status;
+
+            if (feexpayStatus === 'SUCCESSFUL') {
+                newStatus = PaymentStatus.SUCCEEDED;
+            } else if (feexpayStatus === 'FAILED') {
+                newStatus = PaymentStatus.FAILED;
+            } else {
+                // If FeexPay status is still intermediate (e.g., "PENDING" or other intermediate states)
+                // We update our status to PROCESSING if it was PENDING_PROVIDER, or keep it as is.
+                newStatus = paymentIntent.status === PaymentStatus.PENDING_PROVIDER ? PaymentStatus.PROCESSING : paymentIntent.status;
+                log.info(`FeexPay status is intermediate (${feexpayStatus}). Keeping internal status as ${newStatus} for ${paymentIntent.sessionId}`);
+            }
+
+            let updatedIntent: IPaymentIntent | null = paymentIntent;
+            if (newStatus !== paymentIntent.status) {
+                updatedIntent = await paymentIntentRepository.addWebhookEvent(
+                    paymentIntent.sessionId,
+                    newStatus,
+                    feexpayResponse // Store the full FeexPay response
+                );
+                if (!updatedIntent) {
+                    log.error(`Failed to update PaymentIntent ${paymentIntent.sessionId} after FeexPay status check.`);
+                    throw new AppError('Failed to update payment intent status.', 500);
+                }
+                log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to ${newStatus} via FeexPay status check.`);
+
+                // If the status became final (SUCCEEDED or FAILED), trigger completion logic
+                if (updatedIntent.status === PaymentStatus.SUCCEEDED || updatedIntent.status === PaymentStatus.FAILED) {
+                    await this.handlePaymentCompletion(updatedIntent);
+                }
+            }
+            return updatedIntent || paymentIntent; // Return the updated intent or original if no status change
+        } catch (error: any) {
+            log.error(`Error checking FeexPay status for ${gatewayPaymentId}:`, error.response?.data || error.message);
+            // If API call fails, update status to ERROR and log the error for debugging
+            await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+                status: PaymentStatus.ERROR,
+                metadata: {
+                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
+                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
+                }
+            });
+            throw new AppError('Failed to retrieve or update FeexPay transaction status.', error.response?.status || 500);
+        }
+    }
+
+    /**
+     * Check the status of a FeexPay transaction for a given PaymentIntent sessionId.
+     * This method fetches the latest status from FeexPay and updates the internal PaymentIntent.
+     * It includes checks to ensure the intent is eligible for external status querying.
+     * @param sessionId The internal session ID of the PaymentIntent.
+     * @returns The updated PaymentIntent object.
+     * @throws AppError if the payment intent is not found, not a FeexPay transaction,
+     *         missing gatewayPaymentId, or if the FeexPay API call fails.
+     */
+    public async getAndProcessFeexpayStatusBySessionId(sessionId: string): Promise<IPaymentIntent> {
+        log.info(`Attempting to get and process FeexPay status for sessionId: ${sessionId}`);
+
+        const paymentIntent = await paymentIntentRepository.findBySessionId(sessionId);
+
+        if (!paymentIntent) {
+            throw new AppError('Payment intent not found.', 404);
+        }
+
+        // 1. Check if the payment intent is a FeexPay transaction
+        if (paymentIntent.gateway !== PaymentGateway.FEEXPAY) {
+            log.warn(`PaymentIntent ${sessionId} is not a FeexPay transaction (gateway: ${paymentIntent.gateway}).`);
+            throw new AppError(`This payment intent is not associated with FeexPay. Current gateway: ${paymentIntent.gateway}.`, 400);
+        }
+
+        // 2. Check if it has a gatewayPaymentId
+        if (!paymentIntent.gatewayPaymentId) {
+            log.warn(`PaymentIntent ${sessionId} (FeexPay) is missing gatewayPaymentId. Status: ${paymentIntent.status}`);
+            throw new AppError('FeexPay transaction ID not found for this payment intent. Payment may not have been initiated externally yet.', 400);
+        }
+
+        // 3. Check if current status allows querying (not PENDING_USER_INPUT, SUCCEEDED, or FAILED)
+        if (paymentIntent.status === PaymentStatus.PENDING_USER_INPUT) {
+            log.warn(`PaymentIntent ${sessionId} is PENDING_USER_INPUT. External status check is not applicable.`);
+            throw new AppError('This payment is awaiting your input. Please proceed with payment initiation first.', 400);
+        }
+
+        if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
+            log.info(`PaymentIntent ${sessionId} is already in final status: ${paymentIntent.status}. Returning current state.`);
+            return paymentIntent;
+        }
+
+        const feexpayReference = paymentIntent.gatewayPaymentId;
+
+        try {
+            log.info(`Calling FeexPay API for status check for reference: ${feexpayReference}`);
+            const response = await axios.get(
+                `${config.feexpay.baseUrl}/transactions/public/single/status/${feexpayReference}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${config.feexpay.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 10000 // Add a timeout for the external API call
+                }
+            );
+
+            const feexpayResponse = response.data;
+            log.info(`FeexPay status response for ${feexpayReference}:`, feexpayResponse);
+
+            let newStatus: PaymentStatus = paymentIntent.status; // Default to current status
+            const feexpayStatus = feexpayResponse.status;
+
+            if (feexpayStatus === 'SUCCESSFUL') {
+                newStatus = PaymentStatus.SUCCEEDED;
+            } else if (feexpayStatus === 'FAILED') {
+                newStatus = PaymentStatus.FAILED;
+            } else {
+                // If FeexPay status is still intermediate (e.g., "PENDING" or other intermediate states)
+                // We update our status to PROCESSING if it was PENDING_PROVIDER, or keep it as is.
+                newStatus = paymentIntent.status === PaymentStatus.PENDING_PROVIDER ? PaymentStatus.PROCESSING : paymentIntent.status;
+                log.info(`FeexPay status is intermediate (${feexpayStatus}). Keeping internal status as ${newStatus} for ${paymentIntent.sessionId}`);
+            }
+
+            let updatedIntent: IPaymentIntent | null = paymentIntent;
+            if (newStatus !== paymentIntent.status) {
+                updatedIntent = await paymentIntentRepository.addWebhookEvent(
+                    paymentIntent.sessionId,
+                    newStatus,
+                    feexpayResponse // Store the full FeexPay response
+                );
+                if (!updatedIntent) {
+                    log.error(`Failed to update PaymentIntent ${paymentIntent.sessionId} after FeexPay status check.`);
+                    throw new AppError('Failed to update payment intent status internally.', 500);
+                }
+                log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to ${newStatus} via FeexPay status check.`);
+
+                // If the status became final (SUCCEEDED or FAILED), trigger completion logic
+                if (updatedIntent.status === PaymentStatus.SUCCEEDED || updatedIntent.status === PaymentStatus.FAILED) {
+                    await this.handlePaymentCompletion(updatedIntent);
+                }
+            }
+            return updatedIntent || paymentIntent; // Return the updated intent or original if no status change
+        } catch (error: any) {
+            log.error(`Error checking FeexPay status for ${feexpayReference} (session ${sessionId}):`, error.response?.data || error.message);
+            // If API call fails, update status to ERROR and log the error for debugging
+            await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+                status: PaymentStatus.ERROR,
+                metadata: {
+                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
+                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
+                }
+            });
+            throw new AppError('Failed to retrieve or update FeexPay transaction status. Please try again later.', error.response?.status || 500);
+        }
     }
 }
 

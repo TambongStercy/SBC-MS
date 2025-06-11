@@ -42,6 +42,9 @@ router.post('/intents/:sessionId/submit', validatePaymentDetails, paymentControl
 // Check payment status (useful especially for Lygos polling)
 router.get('/intents/:sessionId/status', paymentController.getPaymentStatus);
 
+// NEW Public FeexPay Status Endpoint (using sessionId)
+router.get('/intents/:sessionId/feexpay-status', paymentController.getUserFeexpayStatus);
+
 // Feexpay webhook endpoint
 router.post('/webhooks/feexpay', paymentController.handleFeexpayWebhook);
 

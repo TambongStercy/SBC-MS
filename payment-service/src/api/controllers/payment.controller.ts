@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import paymentService from '../../services/payment.service';
-import { PaymentStatus } from '../../database/interfaces/IPaymentIntent';
+import { IPaymentIntent, PaymentStatus } from '../../database/interfaces/IPaymentIntent';
 import logger from '../../utils/logger';
 import config from '../../config';
 import { Currency } from '../../database/models/transaction.model';
@@ -35,57 +35,52 @@ export class PaymentController {
      * Render the custom payment page
      */
     public renderPaymentPage = async (req: Request, res: Response) => {
+        const { sessionId } = req.params;
+        let paymentIntent: IPaymentIntent | null = null;
+        let errorMessage: string | undefined;
+
         try {
-            const { sessionId } = req.params;
-            const paymentIntent = await paymentService.getPaymentIntentDetails(sessionId);
+            paymentIntent = await paymentService.getPaymentIntentDetails(sessionId);
 
             if (!paymentIntent) {
-                log.warn(`Attempt to render page for invalid session: ${sessionId}`);
-                return res.status(404).send('Payment session not found.');
+                log.warn(`Payment intent not found for session ID: ${sessionId}`);
+                // Render a generic error page or redirect
+                return res.status(404).render('error', { message: 'Payment session not found.' });
             }
 
-            let currentStatus = paymentIntent.status;
-            let errorMessageToShow = '';
-
-            // If status was ERROR, reset to PENDING_USER_INPUT to allow retrying from the page
-            // The view will receive PENDING_USER_INPUT as status and an error message.
-            if (currentStatus === PaymentStatus.ERROR) {
-                await paymentService.resetPaymentIntentStatus(sessionId);
-                currentStatus = PaymentStatus.PENDING_USER_INPUT; // Reflect the change for the view
-                errorMessageToShow = 'Previous payment attempt failed. Please try again.';
-                log.info(`Reset payment intent status from ERROR to PENDING_USER_INPUT for sessionId: ${sessionId}`);
-            } else if (currentStatus === PaymentStatus.FAILED) {
-                // Also reset FAILED to PENDING_USER_INPUT to allow editing and retrying from the form
-                await paymentService.resetPaymentIntentStatus(sessionId);
-                currentStatus = PaymentStatus.PENDING_USER_INPUT; // Reflect the change for the view
-                errorMessageToShow = 'Your payment failed. Please review your details and try again.';
-                log.info(`Reset payment intent status from FAILED to PENDING_USER_INPUT for sessionId: ${sessionId}`);
-            }
-
-            let displayPhoneNumber = paymentIntent.phoneNumber || '';
-            if (paymentIntent.phoneNumber && paymentIntent.countryCode) {
-                const dialingCode = countryDialingCodes[paymentIntent.countryCode];
-                if (dialingCode && paymentIntent.phoneNumber.startsWith(dialingCode)) {
-                    displayPhoneNumber = paymentIntent.phoneNumber.substring(dialingCode.length);
+            // If status is ERROR, try to reset it to PENDING_USER_INPUT to allow re-entry
+            if (paymentIntent.status === PaymentStatus.ERROR) {
+                log.info(`PaymentIntent ${sessionId} is in ERROR status. Attempting to reset for user input.`);
+                paymentIntent = await paymentService.resetPaymentIntentStatus(sessionId);
+                // If reset successful, set a user-friendly error message to display on the form
+                if (paymentIntent && paymentIntent.status === PaymentStatus.PENDING_USER_INPUT) {
+                    errorMessage = 'An error occurred with your previous attempt. Please review your details and try again.';
+                } else {
+                    // If reset failed or not applicable, keep the original error status
+                    log.error(`Failed to reset PaymentIntent ${sessionId} from ERROR status.`);
+                    errorMessage = 'An unrecoverable error occurred with your payment. Please contact support.';
                 }
             }
 
-            res.render('payment', {
-                sessionId: paymentIntent.sessionId,
-                subscriptionType: paymentIntent.subscriptionType,
-                subscriptionPlan: paymentIntent.subscriptionPlan,
-                amount: paymentIntent.amount,
-                currency: paymentIntent.currency,
-                paymentStatus: currentStatus, // Pass the current (potentially updated) status
-                errorMessage: errorMessageToShow,
-                assetBasePath: '/api/payments/static',
-                phoneNumber: displayPhoneNumber, // Use the processed national phone number
-                countryCode: paymentIntent.countryCode,
-                operator: paymentIntent.operator
-            });
-        } catch (error) {
-            log.error('Error rendering payment page:', error);
-            res.status(500).send('Error loading payment page');
+            const viewData = {
+                sessionId: paymentIntent?.sessionId,
+                amount: paymentIntent?.amount,
+                currency: paymentIntent?.currency || 'XAF', // Default to XAF if not set
+                paymentStatus: paymentIntent?.status,
+                phoneNumber: paymentIntent?.phoneNumber,
+                countryCode: paymentIntent?.countryCode,
+                operator: paymentIntent?.operator,
+                errorMessage: errorMessage,
+                assetBasePath: '/api/payments/static', // Path to static assets
+                // NEW: Add gateway and gatewayPaymentId
+                gateway: paymentIntent?.gateway || '',
+                gatewayPaymentId: paymentIntent?.gatewayPaymentId || '',
+            };
+
+            res.render('payment', viewData);
+        } catch (error: any) {
+            log.error(`Error rendering payment page for session ${sessionId}:`, error);
+            res.status(500).render('error', { message: 'An internal server error occurred.', error: error.message });
         }
     };
 
@@ -496,7 +491,7 @@ export class PaymentController {
         log.info('Admin request: Get total withdrawals');
         try {
             const totalWithdrawals = await paymentService.getTotalWithdrawalsAmount();
-            return res.status(200).json({ success: true, data: { value: totalWithdrawals } });
+            return res.status(200).json({ success: true, data: totalWithdrawals });
         } catch (error) {
             log.error('Error in adminGetTotalWithdrawals:', error);
             next(error);
@@ -513,7 +508,7 @@ export class PaymentController {
         // Requires clarification on what constitutes revenue
         try {
             const totalRevenue = await paymentService.getTotalRevenueAmount();
-            return res.status(200).json({ success: true, data: { value: totalRevenue } });
+            return res.status(200).json({ success: true, data: totalRevenue });
         } catch (error) {
             log.error('Error in adminGetTotalRevenue:', error);
             next(error);
@@ -575,7 +570,69 @@ export class PaymentController {
         }
     }
 
+    /**
+     * [ADMIN] Get Total Transactions Count
+     * @route GET /api/payments/admin/stats/transactions
+     * @access Admin
+     */
+    public adminGetTotalTransactionsCount = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        log.info('Admin request: Get total transactions count');
+        try {
+            const totalTransactions = await paymentService.getTotalTransactionsCount();
+            return res.status(200).json({ success: true, data: totalTransactions, message: 'Total transactions count retrieved successfully.' });
+        } catch (error) {
+            log.error('Error in adminGetTotalTransactionsCount:', error);
+            next(error);
+        }
+    }
+
     // --- END NEW STATS METHODS ---
+
+    /**
+     * [USER-FACING] Requests the latest status of a specific FeexPay transaction
+     * using the payment intent's sessionId.
+     * @route GET /api/payments/intents/:sessionId/feexpay-status
+     * @access Public (intended for users to check their own transaction status)
+     */
+    public getUserFeexpayStatus = async (req: Request, res: Response) => {
+        try {
+            const { sessionId } = req.params;
+
+            if (!sessionId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Payment intent session ID is required.'
+                });
+            }
+
+            // Call the service method to get and process the FeexPay status
+            const paymentIntent = await paymentService.getAndProcessFeexpayStatusBySessionId(sessionId);
+
+            return res.status(200).json({
+                success: true,
+                message: 'FeexPay transaction status retrieved and payment intent updated.',
+                data: {
+                    sessionId: paymentIntent.sessionId,
+                    status: paymentIntent.status,
+                    gatewayPaymentId: paymentIntent.gatewayPaymentId,
+                    amount: paymentIntent.amount,
+                    currency: paymentIntent.currency,
+                    updatedAt: paymentIntent.updatedAt,
+                    // You can include more fields from paymentIntent as needed
+                }
+            });
+
+        } catch (error: any) {
+            log.error(`Error checking FeexPay status for session ${req.params.sessionId}: ${error.message}`, error);
+            const statusCode = error.statusCode || 500;
+            return res.status(statusCode).json({
+                success: false,
+                message: error.message || 'An unexpected error occurred while checking FeexPay status.',
+                // Only expose stack in development for debugging
+                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
+        }
+    }
 }
 
 // Export singleton instance
