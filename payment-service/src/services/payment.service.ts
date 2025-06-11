@@ -455,7 +455,7 @@ class PaymentService {
                 fee: feeInXAF, // Fee stored in XAF
                 currency: Currency.XAF, // Transaction currency is always XAF for balance debits
                 status: TransactionStatus.PENDING_OTP_VERIFICATION,
-                description: `Withdrawal request for NET ${netAmountDesired} ${targetPayoutCurrency}. Gross debit: ${grossAmountToDebitInXAF} XAF.`,
+                description: `Demande de retrait pour NET ${netAmountDesired} ${targetPayoutCurrency}. Débit brut: ${grossAmountToDebitInXAF} FCFA.`,
                 metadata: {
                     method: withdrawalDetails.method,
                     accountInfo: withdrawalDetails.accountInfo, // Store derived account info
