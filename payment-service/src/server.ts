@@ -49,6 +49,11 @@ if (config.nodeEnv === 'production') {
 app.use(assetServingPath, express.static(diskStaticPath));
 logger.info(`[Server] Serving static files from disk path: ${diskStaticPath} at URL path: ${assetServingPath}`);
 
+// NEW: Add middleware to serve static files for the payment page
+// This tells Express to look for files in the 'public' directory
+// when a request comes in with the URL path starting with '/api/payments/static'.
+app.use('/api/payments/static', express.static(path.join(__dirname, '../public')));
+
 // --- Trust Proxy --- 
 // This is important for accurately getting req.ip behind a reverse proxy (like Nginx)
 if (config.nodeEnv === 'production') {
