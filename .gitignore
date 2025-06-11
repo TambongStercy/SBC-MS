@@ -37,4 +37,6 @@ Thumbs.db
 service-account.json
 
 # Ignore node_modules in all subdirectories (microservices)
-*/node_modules/ 
+*/node_modules/
+
+user-service/storage/ 
