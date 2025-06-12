@@ -479,14 +479,14 @@ GET {{baseUrl}}/settings/files/1mGB6QAxea_mDHHeKGCSWlBscXIeKZC2p
 ####====================================
 # Withdrawal Tests
 ####====================================
-@host = http://localhost:3000
+@host = http://localhost:3000/api
 
 ### Getting Authentication Tokens
 # Before you can test any protected endpoints, you need to log in to get a JWT token.
 # Replace `user@example.com` and `admin@example.com` with actual user/admin credentials.
 
 ### Get User Auth Token (Login)
-POST {{host}}/api/users/login
+POST {{host}}/users/login
 Content-Type: application/json
 
 {
@@ -495,7 +495,7 @@ Content-Type: application/json
 }
 
 ### Get Admin Auth Token (Login)
-POST {{host}}/api/users/login
+POST {{host}}/users/login
 Content-Type: application/json
 
 {
@@ -505,8 +505,8 @@ Content-Type: application/json
 
 # --- IMPORTANT: Copy the Bearer token from the successful login response above ---
 # Store them in your environment variables or manually replace below
-@AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0OTUyMTMyOSwiZXhwIjoxNzQ5NjA3NzI5fQ.LUIsBVaUH6XlaCax6pVvYZLZCEOgR3XqJIt359Kz1oc
-@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0OTUyMTMyOSwiZXhwIjoxNzQ5NjA3NzI5fQ.LUIsBVaUH6XlaCax6pVvYZLZCEOgR3XqJIt359Kz1oc
+@AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0OTcxMDk5MSwiZXhwIjoxNzQ5Nzk3MzkxfQ.qBMyK3shypwQTAbtiLlCi7QoCgTw2WYPY6s9S1acV4Y
+@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0OTcxMDk5MSwiZXhwIjoxNzQ5Nzk3MzkxfQ.qBMyK3shypwQTAbtiLlCi7QoCgTw2WYPY6s9S1acV4Y
 
 
 ### USER WITHDRAWAL ENDPOINTS
@@ -517,34 +517,34 @@ Content-Type: application/json
 # IMPORTANT: This assumes the authenticated user has pre-registered their
 # Mobile Money details (momoNumber, momoOperator, country) in the user-service.
 # The payment service will fetch these details.
-POST {{host}}/api/transactions/withdrawal/initiate
+POST {{host}}/transactions/withdrawal/initiate
 Content-Type: application/json
-Authorization: {{AUTH_TOKEN}}
+Authorization: Bearer {{AUTH_TOKEN}}
 
 {
-    "amount": 500,
-    "currency": "XAF"
-    // No "method" or "accountInfo" needed here in the request body
+    "amount": 500
 }
+
+
 
 ### 2. User Withdrawal Verification (Requires AUTH_TOKEN)
 # Use the `transactionId` from the "User Withdrawal Initiation" response.
 # Use the OTP code received (simulated as "123456" in development).
-POST {{host}}/api/transactions/withdrawal/verify
+POST {{host}}/transactions/withdrawal/verify
 Content-Type: application/json
-Authorization: {{AUTH_TOKEN}}
+Authorization: Bearer {{AUTH_TOKEN}}
 
 {
-    "transactionId": "JK3sxulqg_dPUqGM",
-    "verificationCode": "204007"
+    "transactionId": "5-X4mGMeZJQuzLj4",
+    "verificationCode": "273141"
 }
 
 ### 3. User Withdrawal Cancellation (Requires AUTH_TOKEN)
 # This cancels a withdrawal request if it's still in the `pending_otp_verification` state.
 # Replace `TRANSACTION_ID_TO_CANCEL` with the actual transaction ID.
-DELETE {{host}}/api/transactions/withdrawal/JK3sxulqg_dPUqGM/cancel
+DELETE {{host}}/transactions/withdrawal/cKNPu-_fvRogCm1R/cancel
 Content-Type: application/json
-Authorization: {{AUTH_TOKEN}}
+Authorization: Bearer {{AUTH_TOKEN}}
 
 ### ADMIN WITHDRAWAL / PAYOUT ENDPOINTS
 
@@ -552,9 +552,9 @@ Authorization: {{AUTH_TOKEN}}
 # This endpoint allows an admin to initiate a withdrawal for a specific user.
 # It debits the user's balance and triggers the external payout without OTP.
 # Replace `USER_ID_TO_DEBIT` with the actual MongoDB `_id` of the target user.
-POST {{host}}/api/withdrawals/admin/user
+POST {{host}}/withdrawals/admin/user
 Content-Type: application/json
-Authorization: {{ADMIN_AUTH_TOKEN}}
+Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 
 {
     "userId": "65d2b0344a7e2b9efbf6205d",
@@ -573,9 +573,9 @@ Authorization: {{ADMIN_AUTH_TOKEN}}
 ### 5. Admin-initiated Direct Payout (Requires ADMIN_AUTH_TOKEN)
 # This endpoint initiates an external payout directly from the system's CinetPay balance,
 # NOT from a specific user's balance. It's for system-level payments or refunds.
-POST {{host}}/api/withdrawals/admin/direct
+POST {{host}}/withdrawals/admin/direct
 Content-Type: application/json
-Authorization: {{ADMIN_AUTH_TOKEN}}
+Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 
 {
     "amount": 500,

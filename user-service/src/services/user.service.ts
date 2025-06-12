@@ -156,6 +156,8 @@ export class UserService {
         // No longer returns token directly
     ): Promise<{ message: string; userId: string }> {
         const { referrerCode, ...userData } = registrationData;
+        console.log("referrerCode", referrerCode);
+        console.log("userData", userData);
 
         if (!userData.email || !userData.password || !userData.name || !userData.sex || !userData.birthDate || !userData.country || !userData.region || !userData.phoneNumber) {
             throw new Error('Missing required registration fields');
@@ -190,9 +192,12 @@ export class UserService {
             }
             // Optional: Check if referrer is allowed to refer (e.g., not blocked)
             if (referrer.blocked) { throw new Error('Referrer is blocked'); }
+            console.log("referrer", referrer);
         } else if (defaultAffiliator) {
+            console.log(`Using default affiliator: ${defaultAffiliator}`);
             referrer = await userRepository.findById(defaultAffiliator);
         }
+
 
         // 3. Generate a unique referral code for the new user
         let uniqueReferralCode = generateReferralCode();
@@ -749,7 +754,7 @@ export class UserService {
      * @param nameFilter - Optional name fragment to filter referred users (case-insensitive).
      * @param page - Page number for pagination (default: 1).
      * @param limit - Items per page (default: 10).
-     * @param type - Optional type filter (cible or classique).
+     * @param subType - Optional subType filter ('none', 'all', 'CLASSIQUE', 'CIBLE').
      */
     async getReferredUsersInfoPaginated( // <<< ADDED METHOD NAME HERE
         referrerId: string | Types.ObjectId,
@@ -757,7 +762,7 @@ export class UserService {
         nameFilter?: string, // Optional
         page: number = 1,
         limit: number = 10,
-        type: string = 'all'
+        subType?: string // NEW PARAMETER
     ): Promise<{ // Return type updated
         referredUsers: IReferredUserInfo[];
         totalCount: number;
@@ -828,7 +833,7 @@ export class UserService {
             }
 
             // 4. Map final data, adding subscription info
-            const mappedUsers: IReferredUserInfo[] = referredUsersData.map((user) => {
+            let mappedUsers: IReferredUserInfo[] = referredUsersData.map((user) => {
                 const userIdStr = user._id.toString();
                 const subscriptions = activeSubscriptionsMap.get(userIdStr);
                 return {
@@ -837,11 +842,31 @@ export class UserService {
                 };
             });
 
-            // 5. Return combined data with pagination
+            // 5. Apply subType filter AFTER mapping
+            if (subType) {
+                log.info(`Applying subType filter: ${subType}`);
+                mappedUsers = mappedUsers.filter(user => {
+                    if (subType === 'none') {
+                        return !user.activeSubscriptions || user.activeSubscriptions.length === 0;
+                    } else if (subType === 'all') {
+                        return user.activeSubscriptions && user.activeSubscriptions.length > 0;
+                    } else { // Specific type: 'CLASSIQUE' or 'CIBLE'
+                        return user.activeSubscriptions?.includes(subType as SubscriptionType);
+                    }
+                });
+            }
+
+            // IMPORTANT: The totalCount and totalPages returned here reflect the UNFILTERED count from the
+            // initial repository query. If the subType filter significantly reduces the results on a page,
+            // 'referredUsers.length' might be less than 'limit', but 'totalCount' will remain the original total.
+            // If you need totalCount/totalPages to reflect the *filtered* count, the filtering logic
+            // would need to be integrated into the initial database query for referred users.
+
+            // 6. Return combined data with pagination
             return {
                 referredUsers: mappedUsers,
-                totalCount: totalCount,
-                totalPages: Math.ceil(totalCount / limit),
+                totalCount: totalCount, // This is the total from the initial unfiltered query
+                totalPages: Math.ceil(totalCount / limit), // This is based on unfiltered total
                 page: page
             };
         } catch (error) {

@@ -226,6 +226,7 @@ export class UserController {
 
             // Now returns { message, userId }
             const result = await userService.registerUser(registrationData, req.ip);
+
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
         } catch (error: any) {
             log.error('Error registering a new user', error);
@@ -505,7 +506,7 @@ export class UserController {
             }
 
             // Extract query parameters
-            const { level: levelQuery, name: nameFilter, page: pageQuery = '1', limit: limitQuery = '10', type: typeQuery = undefined } = req.query;
+            const { level: levelQuery, name: nameFilter, page: pageQuery = '1', limit: limitQuery = '10', type: typeQuery = undefined, subType: subTypeQuery = undefined } = req.query;
 
             // Validate level and type
             let level = levelQuery ? parseInt(levelQuery as string, 10) : undefined;
@@ -533,6 +534,18 @@ export class UserController {
                 return;
             }
 
+            // Validate subType parameter
+            let subType: string | undefined = undefined;
+            if (subTypeQuery) {
+                // Use spread operator to correctly combine string literals with enum values
+                const validSubTypes: string[] = [...Object.values(SubscriptionType), 'all', 'none'];
+                if (!validSubTypes.includes(subTypeQuery as string)) {
+                    res.status(400).json({ success: false, message: `Invalid subType parameter. Must be one of: ${validSubTypes.join(', ')}.` });
+                    return;
+                }
+                subType = subTypeQuery as string;
+            }
+
             // Validate pagination
             const page = parseInt(pageQuery as string, 10) || 1;
             const limit = parseInt(limitQuery as string, 10) || 10;
@@ -543,7 +556,8 @@ export class UserController {
                 level,
                 nameFilter as string | undefined, // Pass name filter
                 page,
-                limit
+                limit,
+                subType // Pass subType
             );
             res.status(200).json({ success: true, data: result });
         } catch (error: any) {
