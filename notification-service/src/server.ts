@@ -14,8 +14,8 @@ const app = express();
 // Apply middleware
 app.use(helmet()); // Security headers
 app.use(cors()); // Cross-origin resource sharing
-app.use(express.json()); // Parse JSON request body
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request body
+app.use(express.json({ limit: '50mb' })); // Parse JSON request body with increased limit
+app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Parse URL-encoded request body with increased limit
 
 // Set up logging
 if (config.nodeEnv !== 'test') {
