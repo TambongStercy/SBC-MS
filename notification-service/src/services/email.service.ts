@@ -107,13 +107,17 @@ class EmailService {
         if (!this.isInitialized) {
             if (config.nodeEnv === 'development') {
                 // In development, just log the email instead of sending
-                log.info('----- DEV MODE EMAIL -----');
+                log.info('----- DEV MODE EMAIL (Not sent due to uninitialized service) -----');
                 log.info(`To: ${options.to}`);
                 log.info(`Subject: ${options.subject}`);
                 log.info(`Body: ${options.text || options.html}`);
+                if (options.attachments && options.attachments.length > 0) {
+                    log.info(`Attachments: ${options.attachments.map(a => a.filename).join(', ')}`);
+                }
                 log.info('--------------------------');
                 return true;
             } else {
+                log.error('Email service not initialized, cannot send email in production.');
                 throw new Error('Email service not initialized');
             }
         }
@@ -126,6 +130,7 @@ class EmailService {
                 subject: options.subject,
                 text: options.text,
                 html: options.html,
+                attachments: options.attachments,
             };
 
             // Send email
