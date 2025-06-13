@@ -655,12 +655,14 @@ export class UserController {
      */
     async exportContacts(req: AuthenticatedRequest, res: Response): Promise<void> {
         this.log.info('Request received for exporting contacts (cached VCF)');
-        if (!req.user || !req.user.userId) {
-            this.log.warn('Export contacts failed: Missing user ID in authenticated request');
+        // Ensure email is available in the authenticated request for sending emails
+        if (!req.user || !req.user.userId || !req.user.email) {
+            this.log.warn('Export contacts failed: Missing user ID or email in authenticated request');
             res.status(401).json({ success: false, message: 'Authentication error' });
             return;
         }
         const userId = req.user.userId;
+        const userEmail = req.user.email; // Get user's email from authenticated request
 
         try {
             // --- Subscription Check ---
@@ -705,7 +707,14 @@ export class UserController {
                 const stats = await vcfCacheService.getFileStats();
                 this.log.info(`Serving cached VCF file to user ${userId}. Contacts: ${stats.contactCount}, Size: ${stats.size} bytes`);
 
-                // Set headers for VCF download
+                // ASYNC: Send the VCF file as an email attachment in the background
+                // This call is not awaited so it doesn't block the HTTP response for the download.
+                // Any errors here are logged but do not prevent the file from being downloaded.
+                userService.sendContactsVcfEmail(userId, userEmail, vcfContent, 'SBC_all_contacts.vcf')
+                    .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
+
+
+                // Set headers for VCF download (original behavior)
                 res.setHeader('Content-Type', 'text/vcard');
                 res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
                 res.setHeader('Content-Length', Buffer.byteLength(vcfContent, 'utf8'));
@@ -729,7 +738,9 @@ export class UserController {
      * Used as fallback when filters are applied or cached file is unavailable
      */
     private async exportContactsWithFilters(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Ensure email is available in the authenticated request
         const userId = req.user!.userId;
+        const userEmail = req.user!.email;
 
         try {
             // Get subscription types (already validated in main method)
@@ -747,7 +758,11 @@ export class UserController {
             if (cachedResult) {
                 this.log.info(`Serving cached filter result to user ${userId}. Filter: ${JSON.stringify(extractedFilters)}`);
 
-                // Set headers for VCF download
+                // ASYNC: Send the VCF file as an email attachment in the background
+                userService.sendContactsVcfEmail(userId, userEmail, cachedResult, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+                    .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
+
+                // Set headers for VCF download (original behavior)
                 res.setHeader('Content-Type', 'text/vcard');
                 res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
                 res.setHeader('Content-Length', Buffer.byteLength(cachedResult, 'utf8'));
@@ -806,7 +821,10 @@ export class UserController {
             this.log.info(`Found ${allContacts.length} contacts to export for user ${userId}`);
 
             if (allContacts.length === 0) {
-                // Send an empty VCF file
+                // ASYNC: Send an email even if no contacts were found, indicating an empty file.
+                userService.sendContactsVcfEmail(userId, userEmail, '', `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+                    .catch(emailError => log.error(`Background VCF email send failed for user ${userId} (empty result):`, emailError));
+
                 res.setHeader('Content-Type', 'text/vcard');
                 res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
                 res.status(200).send('');
@@ -815,7 +833,7 @@ export class UserController {
 
             // Generate VCF string
             let vcfString = '';
-            const filtersApplied = req.query; // Get the original query params
+            const filtersApplied = req.query;
 
             for (const userContact of allContacts) {
                 // Cast the contact to IUser here to access properties safely
@@ -895,12 +913,16 @@ export class UserController {
                 await popularFiltersCacheService.cacheResult(extractedFilters, vcfString, allContacts.length);
             } catch (cacheError: any) {
                 this.log.warn('Failed to cache filter result:', cacheError);
-                // Don't fail the request if caching fails
             }
 
-            // Set headers for VCF download
+            // ASYNC: Send the VCF file as an email attachment in the background
+            userService.sendContactsVcfEmail(userId, userEmail, vcfString, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+                .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
+
+            // Set headers for VCF download (original behavior)
             res.setHeader('Content-Type', 'text/vcard');
             res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
+            res.setHeader('Content-Length', Buffer.byteLength(vcfString, 'utf8'));
             res.status(200).send(vcfString);
 
         } catch (error: any) {

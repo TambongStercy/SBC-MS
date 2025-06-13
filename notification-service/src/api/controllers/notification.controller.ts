@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { notificationService } from '../../services/notification.service';
 import {
     NotificationType,
@@ -7,6 +7,7 @@ import {
 import { isValidObjectId } from 'mongoose';
 import logger from '../../utils/logger';
 import { emailService } from '../../services/email.service';
+import { AppError } from '../../utils/errors';
 
 // Define AuthenticatedRequest interface matching expected structure
 interface AuthenticatedRequest extends Request {
@@ -20,6 +21,12 @@ interface AuthenticatedRequest extends Request {
 const log = logger.getLogger('NotificationController');
 
 export class NotificationController {
+    private notificationService: typeof notificationService; // Use typeof for type inference
+
+    constructor() {
+        this.notificationService = notificationService;
+    }
+
     /**
      * Get notifications for the authenticated user
      * @route GET /api/notifications/me
@@ -36,7 +43,7 @@ export class NotificationController {
             const limit = parseInt(req.query.limit as string) || 50;
             const skip = parseInt(req.query.skip as string) || 0;
 
-            const notifications = await notificationService.getUserNotifications(
+            const notifications = await this.notificationService.getUserNotifications(
                 userId,
                 limit,
                 skip
@@ -74,7 +81,7 @@ export class NotificationController {
                 return;
             }
 
-            const stats = await notificationService.getUserNotificationStats(userId);
+            const stats = await this.notificationService.getUserNotificationStats(userId);
 
             res.status(200).json({
                 success: true,
@@ -137,7 +144,7 @@ export class NotificationController {
             }
 
             // Send OTP notification
-            const notification = await notificationService.sendOtpNotification(
+            const notification = await this.notificationService.sendOtpNotification(
                 userId,
                 recipient,
                 channel as DeliveryChannel,
@@ -236,7 +243,7 @@ export class NotificationController {
             }
 
             // Send notification
-            const notification = await notificationService.createAndSendNotification({
+            const notification = await this.notificationService.createAndSendNotification({
                 userId,
                 recipient,
                 type,
@@ -316,7 +323,7 @@ export class NotificationController {
             }
 
             // Send notification
-            const notification = await notificationService.createAndSendNotification({
+            const notification = await this.notificationService.createAndSendNotification({
                 userId,
                 recipient,
                 type,
@@ -376,7 +383,7 @@ export class NotificationController {
 
             // Call the service to create the notification
             // Pass the validated (or whole) body - ensure service handles optional recipient
-            const notification = await notificationService.createNotification(req.body);
+            const notification = await this.notificationService.createNotification(req.body);
 
             res.status(201).json({ success: true, message: 'Notification created', data: notification });
         } catch (error: any) {
@@ -393,7 +400,7 @@ export class NotificationController {
             // Add basic security check (e.g., service key, IP check) here in real implementation
 
             // Process the broadcast notification request
-            await notificationService.queueBroadcastNotification(req.body);
+            await this.notificationService.queueBroadcastNotification(req.body);
 
             res.status(202).json({ success: true, message: 'Broadcast notification request accepted.' });
         } catch (error: any) {
@@ -440,7 +447,7 @@ export class NotificationController {
 
             // Call the service method asynchronously (don't wait for it to finish)
             // Let the client know the process has started.
-            notificationService.sendFollowUp(
+            this.notificationService.sendFollowUp(
                 criteria,
                 emailSubject,
                 emailBodyHtml,
@@ -592,6 +599,47 @@ export class NotificationController {
     }
 
     // --- END NEW EMAIL HANDLERS ---
+
+    /**
+     * Endpoint to send an email with an attachment.
+     * @route POST /send-email-attachment
+     * @param req
+     * @param res
+     * @param next
+     */
+    async sendEmailWithAttachment(req: Request, res: Response, next: NextFunction): Promise<void> {
+        const { userId, recipientEmail, subject, body, attachmentContent, attachmentFileName, attachmentContentType } = req.body;
+        log.info(`Received request to send email with attachment to ${recipientEmail} for user ${userId}.`);
+
+        // Basic validation
+        if (!userId || !recipientEmail || !subject || !body || !attachmentContent || !attachmentFileName || !attachmentContentType) {
+            log.warn('Missing required fields for sendEmailWithAttachment', { userId: !!userId, recipientEmail: !!recipientEmail, subject: !!subject, body: !!body, attachmentContent: !!attachmentContent, attachmentFileName: !!attachmentFileName, attachmentContentType: !!attachmentContentType });
+            res.status(400).json({ success: false, message: 'Missing required email fields or attachment data.' });
+            return;
+        }
+
+        try {
+            // Call service method to handle the actual sending
+            await this.notificationService.sendEmailWithAttachment({
+                userId,
+                recipient: recipientEmail,
+                subject,
+                body,
+                attachmentContent: attachmentContent, // This is expected to be base64
+                attachmentFileName,
+                attachmentContentType,
+            });
+
+            res.status(200).json({ success: true, message: 'Email with attachment sent successfully.' });
+        } catch (error: any) {
+            log.error(`Error sending email with attachment to ${recipientEmail}: ${error.message}`, error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                res.status(500).json({ success: false, message: 'Failed to send email with attachment.' });
+            }
+        }
+    }
 }
 
 // Export an instance of the controller for use in routes

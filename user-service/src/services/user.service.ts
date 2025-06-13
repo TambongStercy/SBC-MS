@@ -3372,6 +3372,41 @@ export class UserService {
             throw error; // Re-throw to be caught by the calling method
         }
     }
+
+    /**
+     * Sends the generated VCF file as an email attachment to the user.
+     * This method is called after the VCF content is ready.
+     * @param userId The ID of the user to send the email to.
+     * @param userEmail The email address of the user.
+     * @param vcfContent The content of the VCF file as a string.
+     * @param fileName The desired file name for the attachment.
+     */
+    public async sendContactsVcfEmail(
+        userId: string | Types.ObjectId,
+        userEmail: string,
+        vcfContent: string,
+        fileName: string = 'contacts.vcf'
+    ): Promise<void> {
+        log.info(`Attempting to send VCF file as email attachment to user ${userId} (${userEmail})`);
+        try {
+            const subject = 'Your Exported Contacts from SBC';
+            const body = `Dear User,\n\nHere are your requested contacts from SBC, attached as a VCF file.\n\nThank you for using our service.\n\nBest regards,\nSBC Team`;
+
+            await notificationService.sendEmailWithAttachment({
+                userId: userId.toString(),
+                recipientEmail: userEmail,
+                subject: subject,
+                body: body,
+                attachmentContent: Buffer.from(vcfContent).toString('base64'), // Base64 encode for sending
+                attachmentFileName: fileName,
+                attachmentContentType: 'text/vcard', // Explicitly set content type
+            });
+            log.info(`VCF email successfully scheduled for user ${userId}.`);
+        } catch (error) {
+            log.error(`Failed to send VCF email to user ${userId} (${userEmail}):`, error);
+            // Log the error but don't re-throw, as the primary request (download) should still succeed.
+        }
+    }
 }
 
 // Export an instance

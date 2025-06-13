@@ -479,7 +479,7 @@ GET {{baseUrl}}/settings/files/1mGB6QAxea_mDHHeKGCSWlBscXIeKZC2p
 ####====================================
 # Withdrawal Tests
 ####====================================
-@host = http://localhost:3000/api
+@host = https://sniperbuisnesscenter.com/api
 
 ### Getting Authentication Tokens
 # Before you can test any protected endpoints, you need to log in to get a JWT token.
@@ -615,14 +615,10 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 {
   "usersToFix": [
     {
-      "userIdentifier": "user_who_was_bugged@example.com",
-      "correctReferrerIdentifier": "real_sponsor@example.com"
-    },
-    {
-      "userIdentifier": "0701234567",
-      "correctReferrerIdentifier": "0709876543"
+      "userIdentifier": "williamsgankeu@gmail.com",
+      "correctReferrerIdentifier": "assimeziojamelleesmeralda@gmail.com"
     }
   ],
-  "bugStartDate": "2023-01-01T00:00:00Z",  
-  "bugEndDate": "2023-06-30T23:59:59Z"    
+  "bugStartDate": "2025-06-09T00:00:00Z",  
+  "bugEndDate": "2025-06-13T23:59:59Z"    
 }

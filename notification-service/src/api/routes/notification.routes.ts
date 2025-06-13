@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { notificationController } from '../controllers/notification.controller';
 import { authenticate, authenticateServiceRequest } from '../middleware/auth.middleware';
 
@@ -27,5 +27,10 @@ router.post('/templated', authenticate, (req, res) => notificationController.sen
 
 // Route for initiating follow-up campaigns (Admin only)
 router.post('/follow-up', authenticate, (req, res) => notificationController.sendFollowUpNotifications(req, res));
+
+// NEW ROUTE: Send email with attachment
+router.post('/send-email-attachment', (req: Request, res: Response, next: NextFunction) =>
+    notificationController.sendEmailWithAttachment(req, res, next)
+);
 
 export default router; 

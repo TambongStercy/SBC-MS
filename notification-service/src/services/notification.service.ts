@@ -14,6 +14,7 @@ import * as amqp from 'amqplib';
 import type { Connection, Channel } from 'amqplib';
 import config from '../config';
 import { userServiceClient } from './clients/user.service.client';
+import { AppError } from '../utils/errors';
 
 // Create a component-specific logger
 const log = logger.getLogger('NotificationService');
@@ -52,6 +53,17 @@ interface ITargetCriteria {
     professions?: string[];
     language?: string[];
     city?: string[];
+}
+
+// NEW INTERFACE for the service method payload
+interface SendAttachmentEmailInput {
+    userId: string | Types.ObjectId;
+    recipient: string;
+    subject: string;
+    body: string;
+    attachmentContent: string; // Base64 encoded string
+    attachmentFileName: string;
+    attachmentContentType: string;
 }
 
 class NotificationService {
@@ -550,6 +562,56 @@ class NotificationService {
 
         log.info(`Follow-up process completed. Total Targets: ${totalTargets}, Sent (at least one channel): ${sentCount}, Failed/Skipped: ${failedCount}`);
         return { sentCount, failedCount, totalTargets };
+    }
+
+    /**
+     * Sends an email with a file attachment.
+     * @param input The details for sending the email with attachment.
+     * @returns Promise<void>
+     */
+    async sendEmailWithAttachment(input: SendAttachmentEmailInput): Promise<void> {
+        log.info(`Preparing to send email with attachment to ${input.recipient} for user ${input.userId}`);
+        try {
+            // Decode base64 content
+            const attachmentBuffer = Buffer.from(input.attachmentContent, 'base64');
+
+            const mailOptions = {
+                from: 'no-reply@sbcmicroservices.com', // **IMPORTANT: Replace with your configured sender email**
+                to: input.recipient,
+                subject: input.subject,
+                html: `<p>${input.body.replace(/\n/g, '<br>')}</p>`, // Basic HTML, replace newlines with <br>
+                attachments: [
+                    {
+                        filename: input.attachmentFileName,
+                        content: attachmentBuffer,
+                        contentType: input.attachmentContentType,
+                    },
+                ],
+            };
+
+            await emailService.sendEmail(mailOptions);
+            log.info(`Email with attachment successfully sent to ${input.recipient}`);
+
+            // Optionally, create a notification record for audit/user history
+            await this.createNotification({
+                userId: input.userId,
+                type: NotificationType.ACCOUNT, // Or a specific type like 'document_export'
+                channel: DeliveryChannel.EMAIL,
+                recipient: input.recipient,
+                data: {
+                    subject: input.subject,
+                    body: `Your requested file '${input.attachmentFileName}' has been sent to your email.`,
+                    templateId: 'email_with_attachment', // Custom template ID
+                    variables: {
+                        fileName: input.attachmentFileName,
+                    }
+                }
+            });
+
+        } catch (error: any) {
+            log.error(`Failed to send email with attachment to ${input.recipient}: ${error.message}`, error);
+            throw new AppError(`Failed to send email with attachment: ${error.message}`, 500);
+        }
     }
 }
 

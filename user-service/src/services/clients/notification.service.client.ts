@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import config from '../../config';
 import logger from '../../utils/logger';
 
@@ -15,6 +15,17 @@ interface OtpNotificationRequest {
     isRegistration: boolean;
     userName?: string;
     purpose?: string;
+}
+
+// NEW INTERFACE for attachment email request
+interface AttachmentEmailRequest {
+    userId: string;
+    recipientEmail: string;
+    subject: string;
+    body: string;
+    attachmentContent: string; // Base64 encoded string
+    attachmentFileName: string;
+    attachmentContentType: string;
 }
 
 // Define notification types
@@ -37,7 +48,7 @@ export enum DeliveryChannel {
 
 
 class NotificationService {
-    private apiClient;
+    private apiClient: AxiosInstance;
 
     constructor() {
         // Create axios instance with base URL
@@ -119,6 +130,28 @@ class NotificationService {
             isRegistration,
             userName,
         });
+    }
+
+    /**
+     * Sends an email with a file attachment via the notification service.
+     * @param data The payload for the email with attachment.
+     * @returns Promise<boolean> indicating success.
+     */
+    async sendEmailWithAttachment(data: AttachmentEmailRequest): Promise<boolean> {
+        log.info(`Attempting to send email with attachment to ${data.recipientEmail}`);
+        try {
+            const response = await this.apiClient.post('/notifications/send-email-attachment', data);
+            if (response.data.success) {
+                log.info(`Email with attachment successfully sent to ${data.recipientEmail}`);
+                return true;
+            } else {
+                log.warn(`Failed to send email with attachment to ${data.recipientEmail}: ${response.data.message}`);
+                return false;
+            }
+        } catch (error) {
+            log.error(`Error sending email with attachment to ${data.recipientEmail}:`, error);
+            return false;
+        }
     }
 }
 
