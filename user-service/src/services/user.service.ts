@@ -145,6 +145,28 @@ interface IPublicUserProfileResponse {
     // Add other fields considered safe for public view
 }
 
+// Define the structure for monthly aggregated counts
+interface MonthlyCount {
+    month: string; // e.g., "2024-02"
+    count: number;
+}
+
+// Interface for the input payload for the fix endpoint
+interface IFixReferralEntry {
+    userIdentifier: string; // Email or phoneNumber of the user whose referral needs fixing
+    correctReferrerIdentifier: string; // Email or phoneNumber of the correct referrer
+}
+
+// Define the commission rates (aligned with distributeSubscriptionCommission)
+const COMMISSION_RATES = {
+    level1: 0.50, // 50%
+    level2: 0.25, // 25%
+    level3: 0.125, // 12.5%
+};
+
+// Define partner commission rates (aligned with distributeSubscriptionCommission)
+const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
+
 export class UserService {
     private subscriptionRepository = subscriptionRepository; // Inject repository
 
@@ -3049,6 +3071,305 @@ export class UserService {
             log.error(`Error during existence check: ${error.message}`, { email, phoneNumber });
             // Rethrow database errors or unexpected errors as an AppError
             throw new AppError('An error occurred during the existence check.', 500);
+        }
+    }
+
+    /**
+     * Admin method to fix referral hierarchy for specific users and retroactively distribute commissions
+     * for past payments within a defined bug period.
+     * @param fixData An array of objects, each containing user and their correct referrer identifiers.
+     * @param bugStartDate Optional: Start date of the bug period (only process subscriptions after this date).
+     * @param bugEndDate Optional: End date of the bug period (only process subscriptions before this date).
+     * @param adminUserId The ID of the admin performing the fix (for logging).
+     * @returns A summary of the fix operation.
+     */
+    async fixReferralAndCommissions(
+        fixData: IFixReferralEntry[],
+        bugStartDate: Date | undefined,
+        bugEndDate: Date | undefined,
+        adminUserId: string | Types.ObjectId
+    ): Promise<{ success: boolean; message: string; details: any[] }> {
+        log.info(`Admin ${adminUserId} initiated retroactive referral and commission fix.`, { fixData, bugStartDate, bugEndDate });
+
+        const fixResults: any[] = [];
+
+        for (const entry of fixData) {
+            const result: any = {
+                userIdentifier: entry.userIdentifier,
+                correctReferrerIdentifier: entry.correctReferrerIdentifier,
+                status: 'failed',
+                reason: 'Unknown error',
+                commissionsProcessed: 0,
+            };
+
+            try {
+                // 1. Find the user to fix
+                const userToFix = await userRepository.findByEmailOrPhone(entry.userIdentifier, entry.userIdentifier);
+                if (!userToFix) {
+                    result.reason = `User to fix not found: ${entry.userIdentifier}`;
+                    fixResults.push(result);
+                    log.warn(result.reason);
+                    continue;
+                }
+
+                // 2. Find the correct referrer
+                const correctReferrer = await userRepository.findByEmailOrPhone(entry.correctReferrerIdentifier, entry.correctReferrerIdentifier);
+                if (!correctReferrer) {
+                    result.reason = `Correct referrer not found: ${entry.correctReferrerIdentifier}`;
+                    fixResults.push(result);
+                    log.warn(result.reason);
+                    continue;
+                }
+
+                if (userToFix._id.equals(correctReferrer._id)) {
+                    result.reason = `User and referrer cannot be the same: ${entry.userIdentifier}`;
+                    fixResults.push(result);
+                    log.warn(result.reason);
+                    continue;
+                }
+
+                // 3. Establish / Re-establish Referral Hierarchy
+                // This method ensures the new user is linked to the direct referrer,
+                // and the direct referrer's referrers are linked at levels 2 and 3.
+                // It handles creation and updates.
+                log.info(`Attempting to create/update referral hierarchy for ${userToFix.email} with referrer ${correctReferrer.email}`);
+                await this.createReferralHierarchy(correctReferrer, userToFix);
+                result.referralHierarchyFixed = true;
+
+                // 4. Retrieve past eligible subscriptions for commission distribution
+                const subscriptionQuery: any = { user: userToFix._id, status: SubscriptionStatus.ACTIVE }; // Only active subscriptions are relevant for payments
+                if (bugStartDate) {
+                    subscriptionQuery.createdAt = { $gte: bugStartDate };
+                }
+                if (bugEndDate) {
+                    subscriptionQuery.createdAt = { ...(subscriptionQuery.createdAt || {}), $lte: bugEndDate };
+                }
+
+                // Fetch subscriptions that were active/paid during the bug period
+                const pastSubscriptions = await SubscriptionModel.find(subscriptionQuery).lean();
+                log.info(`Found ${pastSubscriptions.length} past subscriptions for user ${userToFix.email} within bug period.`);
+
+                // 5. Distribute retroactive commissions
+                for (const sub of pastSubscriptions) {
+                    try {
+                        const commissionApplied = await this._distributeRetroactiveCommission(
+                            userToFix, // The user who paid
+                            sub, // The subscription object
+                            adminUserId // For audit logging
+                        );
+                        if (commissionApplied) {
+                            result.commissionsProcessed++;
+                            log.info(`Successfully applied retroactive commission for subscription ${sub._id} (type: ${sub.subscriptionType}) to user ${userToFix.email}`);
+                        }
+                    } catch (commissionError: any) {
+                        log.error(`Failed to apply retroactive commission for subscription ${sub._id} of user ${userToFix.email}: ${commissionError.message}`);
+                        // Continue to next subscription even if one fails
+                    }
+                }
+
+                result.status = 'success';
+                result.reason = 'Referral fixed and commissions processed.';
+            } catch (error: any) {
+                log.error(`Error processing fix for ${entry.userIdentifier}: ${error.message}`, error);
+                result.reason = error.message;
+            } finally {
+                fixResults.push(result);
+            }
+        }
+
+        log.info(`Retroactive referral and commission fix operation completed. Summary:`, fixResults);
+        return {
+            success: true,
+            message: 'Retroactive referral and commission fix operation completed. Check details for outcomes.',
+            details: fixResults,
+        };
+    }
+
+    /**
+     * Private helper to distribute retroactive commission for a single subscription.
+     * This method is now aligned with `distributeSubscriptionCommission` in terms of commission logic and deposit recording.
+     * @param payingUser The user who made the payment.
+     * @param subscription The subscription document.
+     * @param adminUserId The ID of the admin performing the fix.
+     * @returns True if commission was applied, false otherwise (e.g., no referrer, no commission).
+     */
+    private async _distributeRetroactiveCommission(
+        payingUser: IUser,
+        subscription: ISubscription,
+        adminUserId: string | Types.ObjectId
+    ): Promise<boolean> {
+        if (!payingUser || !subscription) {
+            log.warn(`_distributeRetroactiveCommission called with invalid user or subscription.`);
+            return false;
+        }
+
+        const logContext = {
+            payingUserId: payingUser._id.toString(),
+            subscriptionId: subscription._id.toString(),
+            subscriptionType: subscription.subscriptionType,
+            adminUserId: adminUserId.toString(),
+        };
+
+        try {
+            // Re-fetch referrer hierarchy based on the now-fixed referral links
+            const referrers = await this.getReferrerIds(payingUser._id);
+
+            if (!referrers || Object.keys(referrers).length === 0) {
+                log.info(`No referrers found for user ${payingUser.email}, no retroactive commission to distribute for subscription ${subscription._id}.`, logContext);
+                return false;
+            }
+
+            let commissionBaseAmount = 0;
+            const currency = 'XAF'; // Assuming XAF for commissions
+
+            switch (subscription.subscriptionType) {
+                case SubscriptionType.CLASSIQUE:
+                    commissionBaseAmount = 2000; // Base amount for CLASSIQUE (from distributeSubscriptionCommission)
+                    break;
+                case SubscriptionType.CIBLE:
+                    commissionBaseAmount = 5000; // Base amount for CIBLE (from distributeSubscriptionCommission)
+                    break;
+                default:
+                    log.warn(`Unknown subscription type ${subscription.subscriptionType}, no retroactive commission rules defined.`, logContext);
+                    return false;
+            }
+
+            if (commissionBaseAmount <= 0) {
+                log.warn(`Retroactive commission base amount is zero or negative (${commissionBaseAmount}). Skipping distribution.`, logContext);
+                return false;
+            }
+
+            let commissionsPaidCount = 0;
+            const payoutPromises: Promise<any>[] = [];
+            const partnerPayoutPromises: Promise<any>[] = [];
+
+            // Description for deposit
+            const descriptionBase = `Retroactive commission from ${subscription.subscriptionType} subscription purchase by user ${payingUser.email}`;
+
+            let l1Amount = 0, l2Amount = 0, l3Amount = 0;
+
+            // Level 1 commission
+            if (referrers.level1) {
+                l1Amount = commissionBaseAmount * COMMISSION_RATES.level1;
+                payoutPromises.push(paymentService.recordInternalDeposit({
+                    userId: referrers.level1,
+                    amount: l1Amount,
+                    currency: currency,
+                    description: `Level 1 (50%) ${descriptionBase}`,
+                    metadata: {
+                        commissionLevel: 1,
+                        sourceUserId: payingUser._id.toString(),
+                        sourceSubscriptionId: subscription._id.toString(),
+                        sourcePlanType: subscription.subscriptionType,
+                        // Add other metadata as needed for auditing.
+                        adminFixing: adminUserId.toString()
+                    }
+                }));
+                commissionsPaidCount++;
+                log.info(`Scheduled L1 commission deposit of ${l1Amount} ${currency} for referrer ${referrers.level1}`, logContext);
+            }
+
+            // Level 2 commission
+            if (referrers.level2) {
+                l2Amount = commissionBaseAmount * COMMISSION_RATES.level2;
+                payoutPromises.push(paymentService.recordInternalDeposit({
+                    userId: referrers.level2,
+                    amount: l2Amount,
+                    currency: currency,
+                    description: `Level 2 (25%) ${descriptionBase}`,
+                    metadata: {
+                        commissionLevel: 2,
+                        sourceUserId: payingUser._id.toString(),
+                        sourceSubscriptionId: subscription._id.toString(),
+                        sourcePlanType: subscription.subscriptionType,
+                        adminFixing: adminUserId.toString()
+                    }
+                }));
+                commissionsPaidCount++;
+                log.info(`Scheduled L2 commission deposit of ${l2Amount} ${currency} for referrer ${referrers.level2}`, logContext);
+            }
+
+            // Level 3 commission
+            if (referrers.level3) {
+                l3Amount = commissionBaseAmount * COMMISSION_RATES.level3;
+                payoutPromises.push(paymentService.recordInternalDeposit({
+                    userId: referrers.level3,
+                    amount: l3Amount,
+                    currency: currency,
+                    description: `Level 3 (12.5%) ${descriptionBase}`,
+                    metadata: {
+                        commissionLevel: 3,
+                        sourceUserId: payingUser._id.toString(),
+                        sourceSubscriptionId: subscription._id.toString(),
+                        sourcePlanType: subscription.subscriptionType,
+                        adminFixing: adminUserId.toString()
+                    }
+                }));
+                commissionsPaidCount++;
+                log.info(`Scheduled L3 commission deposit of ${l3Amount} ${currency} for referrer ${referrers.level3}`, logContext);
+            }
+
+            // Calculate remaining commission for partners
+            const totalReferralPayout = l1Amount + l2Amount + l3Amount;
+            const remainingForPartners = commissionBaseAmount - totalReferralPayout;
+
+            log.info(`Total referral payout: ${totalReferralPayout} ${currency}. Remaining for partners: ${remainingForPartners} ${currency}.`, logContext);
+
+            if (remainingForPartners > 0) {
+                const processPartnerCommission = async (referrerId: string, referralLevel: 1 | 2 | 3) => {
+                    const partnerDetails = await partnerService.getActivePartnerByUserId(referrerId);
+                    if (partnerDetails) {
+                        const partnerRate = PARTNER_RATES[partnerDetails.pack];
+                        const partnerCommissionShare = remainingForPartners * partnerRate;
+
+                        if (partnerCommissionShare > 0) {
+                            log.info(`Referrer ${referrerId} (L${referralLevel}) is a ${partnerDetails.pack} partner. Recording retroactive partner commission: ${partnerCommissionShare} ${currency}.`, logContext);
+                            partnerPayoutPromises.push(
+                                partnerService.recordPartnerCommission({
+                                    partner: partnerDetails,
+                                    commissionAmount: partnerCommissionShare,
+                                    sourcePaymentSessionId: `retroactive-fix-${subscription._id.toString()}`, // Unique ID for retroactive fix
+                                    sourceSubscriptionType: subscription.subscriptionType,
+                                    referralLevelInvolved: referralLevel,
+                                    buyerUserId: payingUser._id.toString(),
+                                    currency: currency,
+                                })
+                            );
+                        } else {
+                            log.info(`Partner commission share for L${referralLevel} partner ${referrerId} is zero or less. Skipping.`, logContext);
+                        }
+                    } else {
+                        log.info(`Referrer ${referrerId} (L${referralLevel}) is not an active partner. No partner commission.`, logContext);
+                    }
+                };
+
+                // Check L1 referrer for partner commission
+                if (referrers.level1) {
+                    await processPartnerCommission(referrers.level1, 1);
+                }
+                // Check L2 referrer for partner commission
+                if (referrers.level2) {
+                    await processPartnerCommission(referrers.level2, 2);
+                }
+                // Check L3 referrer for partner commission
+                if (referrers.level3) {
+                    await processPartnerCommission(referrers.level3, 3);
+                }
+            }
+
+            // Execute all deposit and partner commission promises
+            await Promise.allSettled([...payoutPromises, ...partnerPayoutPromises]);
+
+            if (commissionsPaidCount > 0 || partnerPayoutPromises.length > 0) {
+                log.info(`Retroactive commissions distribution initiated/processed for subscription ${subscription._id}.`, logContext);
+                return true;
+            } else {
+                return false;
+            }
+
+        } catch (error: any) {
+            log.error(`Error during retroactive commission distribution for subscription ${subscription._id}: ${error.message}`, { ...logContext, error });
+            throw error; // Re-throw to be caught by the calling method
         }
     }
 }

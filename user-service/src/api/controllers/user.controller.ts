@@ -10,6 +10,8 @@ import { isValidObjectId, Types } from 'mongoose';
 import { NextFunction, Request as ExpressRequest } from 'express';
 import { AppError } from '../../utils/errors';
 import { normalizePhoneNumber } from '../../utils/phone.utils';
+import { UserRole } from '../../database/models/user.model';
+import { authorize } from '../middleware/rbac.middleware';
 
 const log = logger.getLogger('UserController');
 
@@ -1461,6 +1463,76 @@ export class UserController {
         } catch (error: any) {
             log.error(`Error checking user existence: ${error.message}`);
             res.status(500).json({ success: false, message: 'Internal server error' });
+        }
+    }
+
+    /**
+     * [ADMIN] Fixes referral hierarchy for specified users and retroactively distributes commissions.
+     * This is a sensitive operation and should be restricted to ADMINs.
+     * @route POST /api/users/admin/fix-referrals
+     * @access Admin Only
+     */
+    async adminFixReferrals(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            // Ensure only admins can access this endpoint
+            if (!req.user || req.user.role !== UserRole.ADMIN) {
+                res.status(403).json({ success: false, message: 'Access Denied: Admin role required.' });
+                return;
+            }
+
+            const { usersToFix, bugStartDate, bugEndDate } = req.body; // usersToFix is an array of { userIdentifier, correctReferrerIdentifier }
+
+            if (!Array.isArray(usersToFix) || usersToFix.length === 0) {
+                res.status(400).json({ success: false, message: '`usersToFix` (array of user-referrer pairs) is required.' });
+                return;
+            }
+
+            // Optional: Validate individual entries in usersToFix array (e.g., both identifiers are strings)
+            for (const entry of usersToFix) {
+                if (typeof entry.userIdentifier !== 'string' || typeof entry.correctReferrerIdentifier !== 'string') {
+                    res.status(400).json({ success: false, message: 'Each `usersToFix` entry must contain `userIdentifier` and `correctReferrerIdentifier` as strings.' });
+                    return;
+                }
+            }
+
+            let parsedBugStartDate: Date | undefined;
+            if (bugStartDate) {
+                parsedBugStartDate = new Date(bugStartDate);
+                if (isNaN(parsedBugStartDate.getTime())) {
+                    res.status(400).json({ success: false, message: 'Invalid `bugStartDate` format.' });
+                    return;
+                }
+            }
+
+            let parsedBugEndDate: Date | undefined;
+            if (bugEndDate) {
+                parsedBugEndDate = new Date(bugEndDate);
+                if (isNaN(parsedBugEndDate.getTime())) {
+                    res.status(400).json({ success: false, message: 'Invalid `bugEndDate` format.' });
+                    return;
+                }
+                // Make end date inclusive of the entire day
+                parsedBugEndDate.setHours(23, 59, 59, 999);
+            }
+
+
+            log.info(`Admin ${req.user.userId} calling fixReferralAndCommissions with ${usersToFix.length} entries.`);
+            const result = await userService.fixReferralAndCommissions(
+                usersToFix,
+                parsedBugStartDate,
+                parsedBugEndDate,
+                req.user.userId // Pass admin's ID for logging/auditing
+            );
+
+            res.status(200).json(result);
+
+        } catch (error: any) {
+            log.error(`[Controller] Error in adminFixReferrals:`, error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                res.status(500).json({ success: false, message: 'An internal error occurred during the referral fix operation.' });
+            }
         }
     }
 

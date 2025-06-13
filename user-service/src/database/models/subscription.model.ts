@@ -16,6 +16,7 @@ export enum SubscriptionStatus {
 
 // Interface defining the Subscription document structure
 export interface ISubscription extends Document {
+    _id: Types.ObjectId;
     user: Types.ObjectId; // Ref to 'User'
     subscriptionType: SubscriptionType;
     // planIdentifier: string; // Remove this field

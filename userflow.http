@@ -598,3 +598,31 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 ###
 GET https://api.feexpay.me/api/transactions/public/single/status/DD549FC6-1D1E-48A8-80F2-390100F396B9
 Authorization: Bearer {{screte2}}
+
+####====================================
+# Admin Referral Fix Endpoint
+####====================================
+
+### 6. Admin Fix Referral and Commissions
+# This endpoint allows an admin to fix referral hierarchy for specific users
+# and retroactively distribute commissions for past payments.
+# Replace user identifiers with actual emails or phone numbers.
+# Adjust bugStartDate and bugEndDate to the actual period of the bug.
+POST {{host}}/users/admin/fix-referrals
+Content-Type: application/json
+Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
+
+{
+  "usersToFix": [
+    {
+      "userIdentifier": "user_who_was_bugged@example.com",
+      "correctReferrerIdentifier": "real_sponsor@example.com"
+    },
+    {
+      "userIdentifier": "0701234567",
+      "correctReferrerIdentifier": "0709876543"
+    }
+  ],
+  "bugStartDate": "2023-01-01T00:00:00Z",  
+  "bugEndDate": "2023-06-30T23:59:59Z"    
+}
