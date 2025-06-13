@@ -576,7 +576,6 @@ class NotificationService {
             const attachmentBuffer = Buffer.from(input.attachmentContent, 'base64');
 
             const mailOptions = {
-                from: 'no-reply@sbcmicroservices.com', // **IMPORTANT: Replace with your configured sender email**
                 to: input.recipient,
                 subject: input.subject,
                 html: `<p>${input.body.replace(/\n/g, '<br>')}</p>`, // Basic HTML, replace newlines with <br>

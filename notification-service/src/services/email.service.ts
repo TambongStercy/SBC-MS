@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import config from '../config';
 import logger from '../utils/logger';
+import { Attachment } from 'nodemailer/lib/mailer';
 
 // Create a component-specific logger
 const log = logger.getLogger('EmailService');
@@ -12,6 +13,7 @@ interface EmailOptions {
     html: string;
     text?: string;
     from?: string;
+    attachments?: Attachment[];
 }
 
 interface CommissionEmailData {
