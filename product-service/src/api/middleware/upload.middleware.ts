@@ -22,9 +22,10 @@ const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFil
     }
 };
 
-// Configure limits (e.g., 5MB per image)
+// Configure limits (e.g., 20MB per image, max 10 files)
 const limits = {
-    fileSize: 1024 * 1024 * 5, // 5 MB
+    fileSize: 20 * 1024 * 1024, // 20 MB
+    files: 10,                 // Max 10 files
 };
 
 // Create Multer instance

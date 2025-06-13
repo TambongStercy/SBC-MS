@@ -130,6 +130,7 @@ app.use('/api/payouts', proxy(config.services.paymentServiceUrl, {
 // Product service
 app.use('/api/products', proxy(config.services.productServiceUrl, {
   limit: '50mb',
+  parseReqBody: false,
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to products service`);
     return '/api/products' + req.url;
