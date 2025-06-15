@@ -62,4 +62,11 @@ apiClient.interceptors.response.use(
     }
 );
 
+export const getAvatarUrl = (avatarId?: string | null): string => {
+    if (!avatarId) return '';
+    const baseUrl = apiClient.defaults.baseURL || '';
+    const path = `/users/files/${avatarId}`; // Assuming backend path for user avatars
+    return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+};
+
 export default apiClient;

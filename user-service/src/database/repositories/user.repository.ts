@@ -159,14 +159,40 @@ export class UserRepository {
      * @returns The updated user document or null.
      */
     async clearExpiredOtps(userId: string | Types.ObjectId): Promise<IUser | null> {
-        const now = new Date();
-        const update = {
-            $pull: {
-                otps: { expiration: { $lte: now } },
-                contactsOtps: { expiration: { $lte: now } },
-            }
-        };
-        return UserModel.findByIdAndUpdate(userId, update, { new: true }).exec();
+        // Pulls (removes) any OTPs from the array that have expired
+        return await UserModel.findByIdAndUpdate(
+            userId,
+            { $pull: { otps: { expiration: { $lte: new Date() } }, contactsOtps: { expiration: { $lte: new Date() } } } },
+            { new: true }
+        );
+    }
+
+    /**
+     * Sets the password reset token and its expiration for a user.
+     * @param userId The ID of the user.
+     * @param token The password reset token.
+     * @param expiration The expiration date of the token.
+     * @returns The updated user document or null if not found.
+     */
+    async setPasswordResetToken(userId: string | Types.ObjectId, token: string, expiration: Date): Promise<IUser | null> {
+        return await UserModel.findByIdAndUpdate(
+            userId,
+            { passwordResetToken: token, passwordResetTokenExpiration: expiration },
+            { new: true, runValidators: true }
+        );
+    }
+
+    /**
+     * Clears the password reset token and its expiration for a user.
+     * @param userId The ID of the user.
+     * @returns The updated user document or null if not found.
+     */
+    async clearPasswordResetToken(userId: string | Types.ObjectId): Promise<IUser | null> {
+        return await UserModel.findByIdAndUpdate(
+            userId,
+            { $unset: { passwordResetToken: 1, passwordResetTokenExpiration: 1 } },
+            { new: true }
+        );
     }
 
     /**

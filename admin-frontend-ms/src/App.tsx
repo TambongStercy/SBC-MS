@@ -14,6 +14,7 @@ import AccountTransactionsManagementPage from './pages/AccountTransactionsManage
 import SettingsManagementPage from './pages/SettingsManagementPage';
 import NotificationsPage from './pages/NotificationsPage';
 import Partners from './pages/Partners';
+import FixFeexpayPaymentsPage from './pages/FixFeexpayPaymentsPage';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -63,6 +64,7 @@ function App() {
             <Route path="/logout" element={<Deconnexion />} />
             <Route path="/userpage/:userId" element={<UsersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/fix-feexpay-payments" element={<FixFeexpayPaymentsPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

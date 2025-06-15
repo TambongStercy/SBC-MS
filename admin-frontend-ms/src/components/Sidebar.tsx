@@ -12,7 +12,8 @@ import {
   Settings,
   Wallet,
   Send,
-  Bell
+  Bell,
+  Hammer
 } from "lucide-react";
 import { Link, NavLink } from "react-router-dom";
 
@@ -22,6 +23,12 @@ const SIDEBAR_ITEMS = [
     icon: BarChart2,
     color: "#6366f1",
     path: "/",
+  },
+  {
+    name: "Fix FeexPay Payments",
+    icon: Hammer,
+    color: "#f59e0b",
+    path: "/fix-feexpay-payments",
   },
   {
     name: "Utilisateurs",
@@ -131,12 +138,6 @@ function Sidebar() {
               </motion.div>
             </Link>
           ))}
-          <li>
-            <NavLink to="/admin/notifications" className={({ isActive }) => linkClasses(isActive)}>
-              <Bell className="mr-3 h-5 w-5" />
-              Notifications
-            </NavLink>
-          </li>
         </nav>
       </div>
     </motion.div>

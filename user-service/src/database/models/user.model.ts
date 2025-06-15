@@ -85,6 +85,8 @@ export interface IUser extends Document {
     shareContactInfo: boolean;
     createdAt: Date;
     updatedAt: Date;
+    passwordResetToken?: string | null;
+    passwordResetTokenExpiration?: Date | null;
 
     // NO METHODS DEFINED HERE - Moved to Repository/Service
 }
@@ -181,9 +183,13 @@ const UserSchema = new Schema<IUser>(
             index: true
         },
         shareContactInfo: { type: Boolean, default: true },
+        updatedAt: { type: Date, default: Date.now },
+        passwordResetToken: { type: String, default: null },
+        passwordResetTokenExpiration: { type: Date, default: null },
     },
     {
         timestamps: true,
+        toJSON: { virtuals: true },
     }
 );
 

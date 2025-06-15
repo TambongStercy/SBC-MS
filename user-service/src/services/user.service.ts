@@ -541,7 +541,7 @@ export class UserService {
                     // For now, log and continue, but the user might have issues later.
                 }
             }
-            // --- End Token Generation ---
+            // --- End Token Generation --- 
 
         } else {
             log.warn(`OTP validation failed for user ${user.email}, type: ${otpType}. Code: ${providedCode}`);
@@ -552,6 +552,48 @@ export class UserService {
         await userRepository.clearExpiredOtps(userId);
 
         return { isValid, newToken }; // Return validation status and new token
+    }
+
+    /**
+     * Verifies the provided OTP for password reset and generates a special, short-lived password reset token.
+     * This token is then returned to the user for the actual password reset step.
+     * @param email The user's email address.
+     * @param otpCode The OTP code received.
+     * @returns The generated password reset token, or throws an error if verification fails.
+     */
+    async verifyPasswordResetOtpAndGenerateToken(
+        email: string,
+        otpCode: string
+    ): Promise<{ passwordResetToken: string }> {
+        log.info(`Attempting to verify password reset OTP for email: ${email}`);
+
+        const user = await userRepository.findByEmail(email);
+        if (!user || user.blocked || user.deleted) {
+            log.warn(`Password reset OTP verification failed: User not found or inactive for email ${email}`);
+            throw new AppError('Invalid email or OTP.', 400); // Generic error to prevent enumeration
+        }
+
+        const now = new Date();
+        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+
+        if (!matchingOtp) {
+            log.warn(`Invalid or expired password reset OTP provided for email: ${email}`);
+            throw new AppError('Invalid or expired OTP.', 400);
+        }
+
+        // OTP is valid. Clear all general OTPs for security.
+        await userRepository.clearOtps(user._id, 'otps');
+
+        // Generate a new, short-lived password reset token (e.g., 5 minutes)
+        const resetToken = generateSecureOTP(20); // Generate a longer, more complex token
+        const resetTokenExpiration = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes from now
+
+        // Store this token in the user's document
+        await userRepository.setPasswordResetToken(user._id, resetToken, resetTokenExpiration);
+
+        log.info(`Password reset OTP verified and new password reset token generated for user ${user.email}.`);
+
+        return { passwordResetToken: resetToken };
     }
 
     /**
@@ -2922,47 +2964,64 @@ export class UserService {
     /**
      * Resets the user's password after verifying the forgot password OTP.
      * @param email - The user's email address.
-     * @param otpCode - The OTP code received for password reset.
      * @param newPassword - The new password to set.
+     * @param otpCode - The OTP code received for password reset (optional, for existing flow).
+     * @param passwordResetToken - The special token received after OTP verification (optional, for new flow).
      * @returns Promise<void>
      */
-    async resetPassword(email: string, otpCode: string, newPassword: string): Promise<void> {
+    async resetPassword(
+        email: string,
+        newPassword: string,
+        otpCode?: string,
+        passwordResetToken?: string
+    ): Promise<void> {
         log.info(`Password reset attempt for email: ${email}`);
 
-        if (!email || !otpCode || !newPassword) {
-            throw new AppError('Email, OTP, and new password are required.', 400);
+        if (!email || !newPassword || (!otpCode && !passwordResetToken)) {
+            throw new AppError('Email, new password, and either OTP or password reset token are required.', 400);
         }
 
         // 1. Find user by email
-        // Note: Unlike request, here we NEED the user to exist to reset the password.
         const user = await userRepository.findByEmail(email);
         if (!user) {
-            // Still use a generic error to avoid confirming email existence
-            throw new AppError('Invalid OTP or email.', 400);
+            throw new AppError('Invalid request. User not found or inactive.', 400); // Generic error
         }
         if (user.blocked || user.deleted) {
             throw new AppError('Account is inactive.', 403);
         }
 
-
-        // 2. Validate the OTP (using the general 'otps' field)
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+        let validationSuccess = false;
 
-        if (!matchingOtp) {
-            log.warn(`Invalid or expired password reset OTP for email: ${email}`);
-            // Optional: Implement attempt limiting logic here
-            throw new AppError('Invalid or expired OTP.', 400);
+        // 2. Prioritize validating the passwordResetToken if provided
+        if (passwordResetToken) {
+            if (user.passwordResetToken === passwordResetToken && user.passwordResetTokenExpiration && user.passwordResetTokenExpiration > now) {
+                log.info(`Password reset token validated successfully for user ${user.email}.`);
+                validationSuccess = true;
+                // Clear the password reset token immediately after successful validation
+                await userRepository.clearPasswordResetToken(user._id);
+            } else {
+                log.warn(`Invalid or expired password reset token provided for email: ${email}`);
+                throw new AppError('Invalid or expired password reset token.', 400);
+            }
+        } else if (otpCode) {
+            // 3. Fallback to validating the OTP if no passwordResetToken is provided
+            const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+            if (matchingOtp) {
+                log.info(`OTP validated successfully for user ${user.email}.`);
+                validationSuccess = true;
+                // Clear all general OTPs for security
+                await userRepository.clearOtps(user._id, 'otps');
+            } else {
+                log.warn(`Invalid or expired password reset OTP for email: ${email}`);
+                throw new AppError('Invalid or expired OTP.', 400);
+            }
         }
 
-        // 3. OTP is valid, clear *all* general OTPs for security
-        await userRepository.clearOtps(user._id, 'otps');
-
-        // 4. REMOVED: Hash the new password (Handled by pre-save hook)
-        // const hashedPassword = await bcrypt.hash(newPassword, config.saltRounds);
-
-        // 5. Update the password in the repository (send plain password, hook will hash)
-        // await userRepository.updateById(user._id, { password: newPassword });
+        if (!validationSuccess) {
+            // This case should ideally not be reached due to initial checks and specific error throws
+            throw new AppError('Validation failed for password reset.', 500);
+        }
 
         // Manually normalize the sex field since pre-save hook is not executing
         if (user.sex && typeof user.sex === 'string') {
@@ -2974,11 +3033,11 @@ export class UserService {
             }
         }
 
-        // 5. Set the new password and save the user document to trigger the pre-save hook
+        // Set the new password and save the user document to trigger the pre-save hook
         user.password = newPassword;
         await user.save();
 
-        // 6. Optional: Invalidate existing login tokens/sessions if any
+        // Optional: Invalidate existing login tokens/sessions if any
         await userRepository.updateById(user._id, { token: undefined });
 
         log.info(`Password successfully reset for email: ${email}`);

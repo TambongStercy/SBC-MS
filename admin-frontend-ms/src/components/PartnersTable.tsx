@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Search, Pencil, BadgeSwissFranc } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getAvatarUrl } from '../api/apiClient';
 
 interface Partner {
     id: string;
@@ -9,7 +10,7 @@ interface Partner {
     email: string;
     phoneNumber: string;
     pack: string;
-    avatar: string;
+    avatar?: string;
 }
 
 interface PartnersTableProps {
@@ -100,7 +101,7 @@ const PartnersTable: React.FC<PartnersTableProps> = ({ partners }) => {
                             >
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100 flex gap-2 items-center">
                                     <img
-                                        src={user.avatar}
+                                        src={user.avatar ? getAvatarUrl(user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'Partner')}&background=random`}
                                         alt={user.name}
                                         className="size-8 rounded-full object-cover"
                                         loading="lazy"

@@ -13,6 +13,7 @@ import Loader from "../components/common/loader";
 import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats } from '../services/adminUserApi';
 import { PaginationOptions } from '../services/adminUserApi'; // Import PaginationOptions if needed elsewhere or keep local
 import toast from 'react-hot-toast'; // Import react-hot-toast
+import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
 
 // Define props for UserTablePlaceholder to include handlers
 interface UserTablePlaceholderProps {
@@ -30,6 +31,7 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
     <table className="min-w-full divide-y divide-gray-700">
       <thead className="bg-gray-800">
         <tr>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Avatar</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Phone Number</th>
@@ -42,6 +44,13 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
       <tbody className="bg-gray-900 divide-y divide-gray-700">
         {users.map((user) => (
           <tr key={user._id} className="hover:bg-gray-800">
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+              <img
+                src={user.avatar ? getAvatarUrl(user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
+                alt={`${user.name}'s avatar`}
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100">{user.name}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.email}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.phoneNumber || 'N/A'}</td>
@@ -64,7 +73,7 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
         ))}
         {users.length === 0 && (
           <tr>
-            <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-400">No users match the current filters.</td>
+            <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-400">No users match the current filters.</td>
           </tr>
         )}
       </tbody>

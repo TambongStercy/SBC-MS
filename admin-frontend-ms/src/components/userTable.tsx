@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { fetchUsers } from "../api"; // Import the API functions
 import Loader from "./common/loader";
 import Pagination from './Pagination'; // Import the Pagination component
+import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
 
 function UserTable() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -93,6 +94,9 @@ function UserTable() {
           <thead>
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Avatar
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Noms
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -138,8 +142,8 @@ function UserTable() {
                 >
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100 flex gap-2 items-center">
                     <img
-                      src={user.avatar}
-                      alt={user.name}
+                      src={getAvatarUrl(user.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
+                      alt={`${user.name}'s avatar`}
                       className="size-8 rounded-full object-cover"
                       loading="lazy"
                     />

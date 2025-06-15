@@ -1354,21 +1354,32 @@ export class UserController {
     async requestPasswordResetOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { email } = req.body;
-            if (!email || typeof email !== 'string' || !email.includes('@')) {
-                res.status(400).json({ success: false, message: 'Valid email address is required.' });
-                return;
+            if (!email) {
+                throw new AppError('Email is required for password reset OTP.', 400);
+            }
+            await userService.requestPasswordResetOtp(email);
+            res.status(200).json({ success: true, message: 'If your email is registered, a password reset OTP has been sent.' });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * @route POST /users/verify-password-reset-otp
+     * @description Verifies the password reset OTP and returns a temporary password reset token.
+     * @access Public
+     */
+    async verifyPasswordResetOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { email, otpCode } = req.body;
+            if (!email || !otpCode) {
+                throw new AppError('Email and OTP code are required.', 400);
             }
 
-            await userService.requestPasswordResetOtp(email);
-
-            // Always return success to prevent email enumeration
-            res.status(200).json({ success: true, message: 'If an account exists for this email, a password reset OTP has been sent.' });
-
-        } catch (error: any) {
-            log.error('[Controller] Error requesting password reset OTP:', error);
-            // Send generic error to client, details logged internally
-            res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
-            // Note: No need to call next(error) unless you have a dedicated error middleware
+            const { passwordResetToken } = await userService.verifyPasswordResetOtpAndGenerateToken(email, otpCode);
+            res.status(200).json({ success: true, message: 'OTP verified. Use the provided token to reset your password.', data: { passwordResetToken } });
+        } catch (error) {
+            next(error);
         }
     }
 
@@ -1407,28 +1418,25 @@ export class UserController {
     }
 
     /**
-     * Handles the password reset request.
+     * @route POST /users/reset-password
+     * @description Resets the user's password using either OTP or a temporary password reset token.
+     * @access Public
      */
     async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { email, otpCode, newPassword } = req.body;
+            const { email, otpCode, passwordResetToken, newPassword } = req.body;
 
-            if (!email || !otpCode || !newPassword) {
-                res.status(400).json({ success: false, message: 'Email, OTP, and new password are required.' });
-                return;
+            if (!email || !newPassword) {
+                throw new AppError('Email and new password are required.', 400);
+            }
+            if (!otpCode && !passwordResetToken) {
+                throw new AppError('Either OTP code or password reset token is required.', 400);
             }
 
-            await userService.resetPassword(email, otpCode, newPassword);
-
-            res.status(200).json({ success: true, message: 'Password reset successful.' });
-
+            await userService.resetPassword(email, newPassword, otpCode, passwordResetToken);
+            res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
         } catch (error) {
-            log.error('Password reset failed:', error);
-            if (error instanceof AppError) {
-                res.status(error.statusCode).json({ success: false, message: error.message });
-            } else {
-                res.status(500).json({ success: false, message: 'An internal error occurred during password reset.' });
-            }
+            next(error);
         }
     }
 

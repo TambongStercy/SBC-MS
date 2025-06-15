@@ -1,5 +1,6 @@
 import apiClient from '../api/apiClient';
 import { AxiosError } from 'axios';
+import { AdminUserListResponse, listUsers, AdminUserListFilters, AdminUserData } from './adminUserApi'; // Import listUsers and types
 
 // --- Enums & Interfaces (match backend models/interfaces) ---
 
@@ -123,5 +124,44 @@ export const listAdminTransactions = async (
             throw new Error(`Failed to fetch transactions: ${error.message}`);
         }
         throw new Error('Failed to fetch transactions due to an unknown error.');
+    }
+};
+
+export interface ReprocessFeexpayResult {
+    sessionId: string;
+    status: string; // Use string for display, actual enum is PaymentStatus
+    message: string;
+}
+
+/**
+ * [ADMIN] Calls the backend endpoint to reprocess FeexPay payment statuses for a specific user.
+ * @param userId The ID of the user whose payment intents to reprocess.
+ * @returns A promise resolving to an array of reprocessing results.
+ */
+export const reprocessFeexpayPaymentsForUser = async (userId: string): Promise<ReprocessFeexpayResult[]> => {
+    try {
+        const response = await apiClient.post(`/payments/admin/reprocess-feexpay-payments/user/${userId}`);
+        return response.data.data as ReprocessFeexpayResult[];
+    } catch (error) {
+        console.error(`Error reprocessing FeexPay payments for user ${userId}:`, error);
+        throw new Error(`Failed to reprocess payments.`);
+    }
+};
+
+/**
+ * [ADMIN] Searches for users based on a search term, reusing the existing adminUserApi listUsers function.
+ * This function is specifically for the Fix FeexPay Payments page to select a user.
+ * @param searchTerm The search query (name, email, phone number).
+ * @returns A promise resolving to an array of AdminUserData.
+ */
+export const searchUsersForFeexPayFix = async (searchTerm: string): Promise<AdminUserData[]> => {
+    try {
+        const filters: AdminUserListFilters = searchTerm ? { search: searchTerm } : {};
+        const pagination = { page: 1, limit: 20 }; // Always fetch first page with a reasonable limit for search
+        const response: AdminUserListResponse = await listUsers(filters, pagination);
+        return response.data || [];
+    } catch (error) {
+        console.error('Error searching users for FeexPay fix:', error);
+        throw new Error('Failed to search users.');
     }
 }; 

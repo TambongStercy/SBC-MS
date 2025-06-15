@@ -7,6 +7,7 @@ import { getUserDetails, AdminUserData, adminUpdateUserSubscription, adminUpdate
 import { useEffect, useState } from 'react';
 import Loader from '../components/common/loader';
 import toast from 'react-hot-toast'; // Import toast for errors
+import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
 
 // Define SubscriptionType locally if not imported
 enum SubscriptionType {
@@ -133,7 +134,7 @@ function UsersPage() {
               role: userData.role || 'USER',
               phoneNumber: userData.phoneNumber?.toString() || 'N/A',
               registeredAt: new Date(userData.createdAt || Date.now()).toLocaleDateString(),
-              avatar: userData.avatar || 'https://via.placeholder.com/150',
+              avatar: userData.avatar ? getAvatarUrl(userData.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || 'User')}&background=random`,
               momoNumber: userData.momoNumber?.toString() || 'N/A',
               momoOperator: userData.momoOperator || 'N/A',
               city: userData.city || 'N/A',

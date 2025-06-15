@@ -5,6 +5,7 @@ import { listPartners, PartnerData, PartnerListResponse, getPartnerSummary, Part
 import Loader from '../components/common/loader';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import { getAvatarUrl } from '../api/apiClient';
 
 function Partners() {
     const [partners, setPartners] = useState<PartnerData[]>([]);
@@ -136,7 +137,7 @@ function Partners() {
                                                 <div className="flex-shrink-0 h-10 w-10">
                                                     <img
                                                         className="h-10 w-10 rounded-full"
-                                                        src={partner.user?.avatar || 'https://via.placeholder.com/150'}
+                                                        src={partner.user?.avatar ? getAvatarUrl(partner.user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(partner.user?.name || 'Partner')}&background=random`}
                                                         alt={partner.user?.name || 'Partner'}
                                                     />
                                                 </div>
