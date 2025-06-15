@@ -48,18 +48,19 @@ function FixFeexpayPaymentsPage() {
     const handleReprocessPayments = useCallback(async (userId: string) => {
         setReprocessingUserId(userId); // Set the user being reprocessed
         setReprocessingResults(prev => ({ ...prev, [userId]: [] })); // Clear previous results for this user
-        toast.loading('Initiating payment fix... This might take up to 5 minutes.', { duration: 300000 }); // 5 minutes duration
+        const toastId = toast.loading('Initiating payment fix... This might take up to 5 minutes.', { duration: 300000 }); // 5 minutes duration
 
         try {
             const results = await reprocessFeexpayPaymentsForUser(userId);
             setReprocessingResults(prev => ({ ...prev, [userId]: results }));
-            toast.success('Payment fix initiated. Check results.');
+            toast.success('Payment fix initiated. Check results.', { id: toastId }); // Dismiss and show success
         } catch (error) {
-            toast.error("Failed to initiate payment fix.");
             console.error("Error during reprocessing:", error);
+            toast.error("Failed to initiate payment fix.", { id: toastId }); // Dismiss and show error
             setReprocessingResults(prev => ({ ...prev, [userId]: [{ sessionId: '', status: '', message: 'Failed to reprocess.' }] }));
         } finally {
             setReprocessingUserId(null); // Reset after completion
+            toast.dismiss(toastId); // Ensure the loading toast is always dismissed
         }
     }, []);
 
@@ -159,15 +160,19 @@ function FixFeexpayPaymentsPage() {
                         {Object.entries(reprocessingResults).map(([userId, results]) => (
                             <div key={userId} className="mb-6 p-4 border border-gray-700 rounded-lg">
                                 <h3 className="text-md font-medium text-gray-100 mb-2">Results for User ID: {userId}</h3>
-                                <ul className="list-disc list-inside text-gray-300">
-                                    {results.map((result, index) => (
-                                        <li key={index} className="mb-1">
-                                            <span className="font-semibold">Session ID:</span> {result.sessionId} -
-                                            <span className={`font-semibold ${result.status === 'SUCCEEDED' ? 'text-green-400' : result.status === 'FAILED' ? 'text-red-400' : 'text-yellow-400'}`}>Status: {result.status}</span> -
-                                            Message: {result.message}
-                                        </li>
-                                    ))}
-                                </ul>
+                                {results.length === 0 ? (
+                                    <p className="text-gray-400">No errors to fix found for this user.</p>
+                                ) : (
+                                    <ul className="list-disc list-inside text-gray-300">
+                                        {results.map((result, index) => (
+                                            <li key={index} className="mb-1">
+                                                <span className="font-semibold">Session ID:</span> {result.sessionId} -
+                                                <span className={`font-semibold ${result.status === 'SUCCEEDED' ? 'text-green-400' : result.status === 'FAILED' ? 'text-red-400' : 'text-yellow-400'}`}>Status: {result.status}</span> -
+                                                Message: {result.message}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
                         ))}
                     </motion.div>
