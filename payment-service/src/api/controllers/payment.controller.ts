@@ -633,6 +633,34 @@ export class PaymentController {
             });
         }
     }
+
+    /**
+     * [ADMIN] Reprocesses FeexPay payment statuses for a specific user.
+     * Looks for payment intents that are PENDING_PROVIDER, PROCESSING, or ERROR and re-checks their status.
+     * @route POST /api/payments/admin/reprocess-feexpay-payments/user/:userId
+     * @access Admin
+     */
+    public adminReprocessFeexpayUserPayments = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { userId } = req.params;
+        log.info(`Admin request: Reprocessing FeexPay user payments for userId: ${userId}`);
+
+        try {
+            if (!userId) {
+                return res.status(400).json({ success: false, message: 'User ID parameter is required.' });
+            }
+
+            const results = await paymentService.reprocessFeexpayPendingStatusByUserId(userId);
+
+            return res.status(200).json({
+                success: true,
+                message: 'FeexPay payment reprocessing initiated. See results for details.',
+                data: results
+            });
+        } catch (error: any) {
+            log.error(`Error in adminReprocessFeexpayUserPayments for user ${userId}:`, error);
+            next(error); // Pass error to central error handler
+        }
+    }
 }
 
 // Export singleton instance

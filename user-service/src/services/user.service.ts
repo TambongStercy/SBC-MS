@@ -1919,7 +1919,7 @@ export class UserService {
                 skip,
                 limit,
                 sort: { createdAt: -1 },
-                select: '_id name email role balance blocked isVerified createdAt ipAddress referralCode phoneNumber region country city'
+                select: '_id name email role balance blocked isVerified createdAt ipAddress referralCode phoneNumber region country city avatar avatarId'
             });
 
             // Extract user IDs to fetch partner statuses

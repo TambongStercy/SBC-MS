@@ -417,12 +417,12 @@ Authorization: Bearer {{userA_AuthToken}}
 @screte = {{$dotenv TEST}} 
 ###
 # WH1. User A (Referrer) creates a webhook
-POST http://217.65.144.32:3000/api/payments/webhooks/feexpay
+POST {{baseUrl}}/payments/webhooks/feexpay
 Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "ffafeeda-4aab-43ae-8294-67edbe71ce08",
+  "reference": "0bTX2aFIJBLE",
   "status": "SUCCESSFUL"
 }
 
@@ -431,7 +431,6 @@ Content-Type: application/json
 # WH2. User A (Referrer) gets the webhook
 GET {{baseUrl}}/health
 Content-Type: application/json
-
 
 
 
@@ -596,7 +595,7 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 
 
 ###
-GET https://api.feexpay.me/api/transactions/public/single/status/DD549FC6-1D1E-48A8-80F2-390100F396B9
+GET https://api.feexpay.me/api/transactions/public/single/status/0bTX2aFIJBLE
 Authorization: Bearer {{screte2}}
 
 ####====================================
@@ -615,8 +614,8 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 {
   "usersToFix": [
     {
-      "userIdentifier": "22890517395",
-      "correctReferrerIdentifier": "22953876853"
+      "userIdentifier": "adamoutchousso876@gmail.com",
+      "correctReferrerIdentifier": "mathieuandreacademie@gmail.com"
     }
   ],
   "bugStartDate": "2025-06-09T00:00:00Z",  

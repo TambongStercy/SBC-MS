@@ -403,7 +403,7 @@ class PaymentService {
             if (countryCode !== 'CM') {
                 log.error(`Withdrawals are currently only supported for Cameroon (CM). User attempted from country: ${countryCode}, operator: ${momoOperator}. User ID: ${userId}`);
                 throw new AppError(
-                    `Withdrawals are currently only available for Mobile Money accounts in Cameroon. Your registered operator (${momoOperator}) is from a different country. Please contact support for assistance.`, 
+                    `Withdrawals are currently only available for Mobile Money accounts in Cameroon. Your registered operator (${momoOperator}) is from a different country. Please contact support for assistance.`,
                     400
                 );
             }
@@ -1602,17 +1602,33 @@ class PaymentService {
         log.info(`Feexpay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${phoneNumberAsInt}`);
         log.info(`Feexpay config: baseUrl=${config.feexpay.baseUrl}, shopId=${config.feexpay.shopId}`);
 
+        const userDetails = await userServiceClient.getUserDetails(paymentIntent.userId);
+
         const requestBody: {
             shop: string;
             amount: number;
             phoneNumber: number;
             description: string;
+            firstName: string;
+            lastName: string;
+            callback_info: any;
             otp?: string; // Added optional otp property
         } = {
             shop: config.feexpay.shopId,
             amount: amount,
             phoneNumber: phoneNumberAsInt,
-            description: "Subscription Payment", // Simplified
+            description: `Subscription Payment for user ${paymentIntent.userId}`, // Simplified
+            firstName: userDetails?.name || "User",
+            lastName: userDetails?.phoneNumber?.toString() || "SBC",
+            callback_info: {
+                sessionId: paymentIntent.sessionId,
+                userId: paymentIntent.userId,
+                userName: userDetails?.name || "User",
+                userPhoneNumber: userDetails?.phoneNumber?.toString() || "SBC",
+                userEmail: userDetails?.email || "no-email@sbc.com",
+                userCountry: userDetails?.country || "N/A",
+                userCity: userDetails?.city || "Unknown",
+            },
             // Removed currency, callback_info based on previous analysis
             // Optional firstName, lastName could be added if user data is available
         };
@@ -3303,7 +3319,7 @@ class PaymentService {
                         Authorization: `Bearer ${config.feexpay.apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 10000 // Add a timeout for the external API call
+                    timeout: 180000 // Increased timeout to 3 minutes (180,000 milliseconds)
                 }
             );
 
@@ -3356,6 +3372,94 @@ class PaymentService {
             throw new AppError('Failed to retrieve or update FeexPay transaction status. Please try again later.', error.response?.status || 500);
         }
     }
+
+    /**
+     * [ADMIN] Finds FeexPay payment intents for a given user that are stuck in
+     * intermediate or error states (PENDING_PROVIDER, PROCESSING, ERROR) and
+     * re-requests their status from FeexPay to update their internal state.
+     * @param userId The ID of the user whose payment intents to reprocess.
+     * @returns A summary of the reprocessing attempt for each relevant payment intent.
+     */
+    public async reprocessFeexpayPendingStatusByUserId(userId: string): Promise<{ sessionId: string; status: PaymentStatus; message: string; }[]> {
+        log.info(`Admin request: Reprocessing FeexPay payment statuses for user: ${userId}`);
+
+        const results: { sessionId: string; status: PaymentStatus; message: string; }[] = [];
+
+        try {
+            // 1. Find all relevant payment intents for the user
+            const paymentIntentsToReprocess = await paymentIntentRepository.findAllWithFilters(
+                {
+                    userId: userId,
+                    gateway: PaymentGateway.FEEXPAY,
+                    gatewayPaymentId: { $exists: true, $ne: null }, // Must have a gatewayPaymentId
+                    status: { $in: [PaymentStatus.PENDING_PROVIDER, PaymentStatus.PROCESSING, PaymentStatus.ERROR] }
+                },
+                { limit: 1000, page: 1 } // Added page: 1
+            );
+
+            if (paymentIntentsToReprocess.intents.length === 0) {
+                log.info(`No FeexPay payment intents found for user ${userId} in PENDING_PROVIDER, PROCESSING, or ERROR status.`);
+                return []; // Return an empty array if no eligible intents are found
+            }
+
+            log.info(`Found ${paymentIntentsToReprocess.intents.length} FeexPay payment intents for user ${userId} to reprocess.`);
+
+            // Define a priority for sorting statuses
+            const statusPriority: Record<PaymentStatus, number> = {
+                [PaymentStatus.PENDING_PROVIDER]: 1,
+                [PaymentStatus.ERROR]: 2,
+                [PaymentStatus.PROCESSING]: 3,
+                // Other statuses not in the filter can be given a high number if they somehow appear
+                [PaymentStatus.SUCCEEDED]: 99,
+                [PaymentStatus.FAILED]: 99,
+                [PaymentStatus.PENDING_USER_INPUT]: 99,
+                [PaymentStatus.CANCELED]: 99,
+                [PaymentStatus.REQUIRES_ACTION]: 99
+            };
+
+            // Sort the intents based on the defined priority and then by creation date
+            paymentIntentsToReprocess.intents.sort((a, b) => {
+                const priorityA = statusPriority[a.status];
+                const priorityB = statusPriority[b.status];
+
+                if (priorityA !== priorityB) {
+                    return priorityA - priorityB;
+                }
+                // If priorities are the same, sort by oldest first (createdAt ascending)
+                return a.createdAt.getTime() - b.createdAt.getTime();
+            });
+
+            // 2. Iterate and re-process each payment intent
+            for (const intent of paymentIntentsToReprocess.intents) {
+                try {
+                    const updatedIntent = await this.getAndProcessFeexpayStatusBySessionId(intent.sessionId);
+                    results.push({
+                        sessionId: updatedIntent.sessionId,
+                        status: updatedIntent.status,
+                        message: `Reprocessing successful. New status: ${updatedIntent.status}.`
+                    });
+                    // Stop loop if a successful payment is found
+                    if (updatedIntent.status === PaymentStatus.SUCCEEDED) {
+                        log.info(`Reprocessing for user ${userId} stopped early as a SUCCEEDED payment intent was found: ${updatedIntent.sessionId}`);
+                        break;
+                    }
+                } catch (error: any) {
+                    log.error(`Failed to reprocess FeexPay payment for sessionId ${intent.sessionId}: ${error.message}`, error);
+                    results.push({
+                        sessionId: intent.sessionId,
+                        status: intent.status, // Keep original status if reprocessing failed
+                        message: `Reprocessing failed: ${error.message || 'Unknown error'}.`
+                    });
+                }
+            }
+        } catch (error: any) {
+            log.error(`Error in reprocessFeexpayPendingStatusByUserId for user ${userId}: ${error.message}`, error);
+            throw new AppError(`Failed to reprocess FeexPay payments: ${error.message}`, 500);
+        }
+
+        return results;
+    }
+
 }
 
 // Export singleton instance

@@ -23,6 +23,7 @@ statsRouter.get('/activity-overview', paymentController.adminGetActivityOverview
 adminRouter.use('/stats', statsRouter); // Mount stats routes under /admin/stats
 // --- End Admin Stats ---
 
+adminRouter.post('/reprocess-feexpay-payments/user/:userId', paymentController.adminReprocessFeexpayUserPayments);
 
 router.use('/admin', adminRouter);
 
