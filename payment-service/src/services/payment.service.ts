@@ -1196,15 +1196,20 @@ class PaymentService {
      * Handle Feexpay webhook notification
      */
     public async handleFeexpayWebhook(payload: any): Promise<void> {
-        const { reference, status } = payload; // Removed amount and callback_info
+        const { reference, status, callback_info } = payload; 
+        const { sessionId } = callback_info || {};
 
         if (!reference) {
-            log.warn('Received Feexpay webhook with missing reference', payload);
-            throw new Error('Webhook payload missing required reference field');
+            if (sessionId) {
+                log.warn(`Received Feexpay webhook with missing reference but with sessionId: ${sessionId}.`);
+            }else{
+                log.warn('Received Feexpay webhook with missing reference and no sessionId in callback_info. Ignoring webhook.', payload);
+                throw new Error('Webhook payload missing required reference field');
+            }
         }
 
-        // Find the payment intent using ONLY the reference (which is Feexpay's ID)
-        const paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(reference, PaymentGateway.FEEXPAY);
+        // Find the payment intent using ONLY the reference (which is Feexpay's ID) or sessionId if provided
+        const paymentIntent = reference ? await paymentIntentRepository.findByGatewayPaymentId(reference, PaymentGateway.FEEXPAY) : await paymentIntentRepository.findBySessionId(sessionId);
 
         if (!paymentIntent) {
             // Use reference in the log message as sessionId might not be available
