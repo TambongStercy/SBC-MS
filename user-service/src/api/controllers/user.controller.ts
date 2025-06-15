@@ -12,6 +12,7 @@ import { AppError } from '../../utils/errors';
 import { normalizePhoneNumber } from '../../utils/phone.utils';
 import { UserRole } from '../../database/models/user.model';
 import { authorize } from '../middleware/rbac.middleware';
+import { notificationService, DeliveryChannel } from '../../services/clients/notification.service.client';
 
 const log = logger.getLogger('UserController');
 
@@ -40,10 +41,12 @@ interface ITargetCriteria {
 
 export class UserController {
     private log = logger.getLogger('UserController');
-    // Inject SubscriptionService - assumes singleton export
     private subscriptionService = subscriptionService;
+    private userService = userService;
 
-
+    constructor() {
+        // Constructor body if any
+    }
 
     /**
      * Get user balance
@@ -54,7 +57,7 @@ export class UserController {
             const userId = req.params.userId;
 
             // Verify the user exists
-            const user = await userService.getUserProfile(userId);
+            const user = await this.userService.getUserProfile(userId);
             if (!user) {
                 res.status(404).json({ success: false, message: 'User not found' });
                 return;
@@ -96,7 +99,7 @@ export class UserController {
             const numericAmount = Number(amount);
 
             // Update balance
-            const newBalance = await userService.updateBalance(userId, numericAmount);
+            const newBalance = await this.userService.updateBalance(userId, numericAmount);
 
             if (newBalance === null) {
                 res.status(404).json({
@@ -128,7 +131,7 @@ export class UserController {
             const userId = req.params.userId;
 
             // Temporary implementation until service method is properly implemented
-            const isValid = await userService.validateUser(userId); // Assume user is valid for now
+            const isValid = await this.userService.validateUser(userId); // Assume user is valid for now
 
             res.status(200).json({
                 success: true,
@@ -171,7 +174,7 @@ export class UserController {
             const numericAmount = Number(amount);
 
             // Temporary implementation until service method is properly implemented
-            const result = await userService.checkWithdrawalLimits(userId, numericAmount);
+            const result = await this.userService.checkWithdrawalLimits(userId, numericAmount);
 
             res.status(200).json({
                 success: true,
@@ -227,7 +230,7 @@ export class UserController {
             // --- End Phone Number Normalization ---
 
             // Now returns { message, userId }
-            const result = await userService.registerUser(registrationData, req.ip);
+            const result = await this.userService.registerUser(registrationData, req.ip);
 
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
         } catch (error: any) {
@@ -244,7 +247,7 @@ export class UserController {
         try {
             const { email, password } = req.body;
             // Now returns { message, userId }
-            const result = await userService.loginUser(email, password, req.ip);
+            const result = await this.userService.loginUser(email, password, req.ip);
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
         } catch (error: any) {
             res.status(401).json({ success: false, message: error.message });
@@ -264,9 +267,9 @@ export class UserController {
             }
 
             // Use 'otps' type for general login/registration verification
-            const result = await userService.validateOtp(userId, 'otps', otpCode);
+            const result = await this.userService.validateOtp(userId, 'otps', otpCode);
             // Ensure userId is a string before passing
-            const userProfile = await userService.getUserProfile(userId.toString());
+            const userProfile = await this.userService.getUserProfile(userId.toString());
 
             if (result.isValid && result.newToken) {
                 // If valid and a new token was generated, return it
@@ -298,7 +301,7 @@ export class UserController {
 
             const userId = req.user.userId;
             // Ensure userId is a string before passing
-            const userProfile = await userService.getUserProfile(userId.toString());
+            const userProfile = await this.userService.getUserProfile(userId.toString());
 
             if (!userProfile) {
                 res.status(404).json({ success: false, message: 'User profile not found' });
@@ -322,7 +325,7 @@ export class UserController {
                 res.status(401).json({ success: false, message: 'Authentication required' });
                 return;
             }
-            await userService.logoutUser(req.user.userId);
+            await this.userService.logoutUser(req.user.userId);
             res.status(200).json({ success: true, message: 'Logout successful' });
         } catch (error: any) {
             log.error("Error in logout", error);
@@ -342,7 +345,7 @@ export class UserController {
                 return;
             }
 
-            const affiliator = await userService.getAffiliator(userId);
+            const affiliator = await this.userService.getAffiliator(userId);
 
             if (!affiliator) {
                 res.status(404).json({ success: false, message: 'Affiliator not found for this user' });
@@ -401,7 +404,7 @@ export class UserController {
                 // If `country` is also being updated, use that. Otherwise, fetch the user's current country.
                 let countryForNormalization = country; // Country from request body
                 if (!countryForNormalization) {
-                    const currentUser = await userService.getUserProfile(userId); // Fetch current profile
+                    const currentUser = await this.userService.getUserProfile(userId); // Fetch current profile
                     if (currentUser && currentUser.country) {
                         countryForNormalization = currentUser.country;
                     }
@@ -473,7 +476,7 @@ export class UserController {
             log.info(`Updating user profile for userId: ${userId} with data: ${JSON.stringify(updateData)}`);
 
             // Call the service to perform the update
-            const updatedUser = await userService.updateUserProfile(userId, updateData);
+            const updatedUser = await this.userService.updateUserProfile(userId, updateData);
 
             if (!updatedUser) {
                 // This might happen if the user was deleted between token validation and update
@@ -553,7 +556,7 @@ export class UserController {
             const limit = parseInt(limitQuery as string, 10) || 10;
 
             // Call the CORRECT service method with filters
-            const result = await userService.getReferredUsersInfoPaginated(
+            const result = await this.userService.getReferredUsersInfoPaginated(
                 userId,
                 level,
                 nameFilter as string | undefined, // Pass name filter
@@ -581,7 +584,7 @@ export class UserController {
             }
 
             // Get referral statistics for the user
-            const referralStats = await userService.getReferralStats(userId);
+            const referralStats = await this.userService.getReferralStats(userId);
 
             res.status(200).json({
                 success: true,
@@ -627,7 +630,7 @@ export class UserController {
                 return;
             }
 
-            const user = await userService.getUserByReferralCode(referralCode);
+            const user = await this.userService.getUserByReferralCode(referralCode);
 
             if (!user) {
                 res.status(404).json({ success: false, message: 'No user found with this referral code' });
@@ -710,7 +713,7 @@ export class UserController {
                 // ASYNC: Send the VCF file as an email attachment in the background
                 // This call is not awaited so it doesn't block the HTTP response for the download.
                 // Any errors here are logged but do not prevent the file from being downloaded.
-                userService.sendContactsVcfEmail(userId, userEmail, vcfContent, 'SBC_all_contacts.vcf')
+                this.userService.sendContactsVcfEmail(userId, userEmail, vcfContent, 'SBC_all_contacts.vcf')
                     .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
 
 
@@ -759,7 +762,7 @@ export class UserController {
                 this.log.info(`Serving cached filter result to user ${userId}. Filter: ${JSON.stringify(extractedFilters)}`);
 
                 // ASYNC: Send the VCF file as an email attachment in the background
-                userService.sendContactsVcfEmail(userId, userEmail, cachedResult, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+                this.userService.sendContactsVcfEmail(userId, userEmail, cachedResult, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
                     .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
 
                 // Set headers for VCF download (original behavior)
@@ -809,7 +812,7 @@ export class UserController {
             this.log.info(`Exporting contacts for user ${userId} with filters: ${JSON.stringify(finalFilters)}`);
 
             const allContacts: Partial<IUser>[] = [];
-            await userService.findAllUsersByCriteriaInBatches(
+            await this.userService.findAllUsersByCriteriaInBatches(
                 finalFilters,
                 true, // Pass the flag here for active subscriptions
                 500,  // Example batch size, can be configured
@@ -822,7 +825,7 @@ export class UserController {
 
             if (allContacts.length === 0) {
                 // ASYNC: Send an email even if no contacts were found, indicating an empty file.
-                userService.sendContactsVcfEmail(userId, userEmail, '', `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+                this.userService.sendContactsVcfEmail(userId, userEmail, '', `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
                     .catch(emailError => log.error(`Background VCF email send failed for user ${userId} (empty result):`, emailError));
 
                 res.setHeader('Content-Type', 'text/vcard');
@@ -916,7 +919,7 @@ export class UserController {
             }
 
             // ASYNC: Send the VCF file as an email attachment in the background
-            userService.sendContactsVcfEmail(userId, userEmail, vcfString, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+            this.userService.sendContactsVcfEmail(userId, userEmail, vcfString, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
                 .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
 
             // Set headers for VCF download (original behavior)
@@ -943,7 +946,7 @@ export class UserController {
         }
 
         try {
-            const referrers = await userService.getReferrerIds(userId);
+            const referrers = await this.userService.getReferrerIds(userId);
             res.status(200).json({ success: true, data: referrers });
         } catch (error) {
             log.error(`Error getting referrer IDs for user ${userId}:`, error);
@@ -972,7 +975,7 @@ export class UserController {
         try {
             // Limit results internally to prevent excessively large responses
             const MAX_RESULTS = 10000; // Example limit, adjust as needed
-            const userIds = await userService.findUserIdsByCriteria(criteria, MAX_RESULTS);
+            const userIds = await this.userService.findUserIdsByCriteria(criteria, MAX_RESULTS);
 
             log.info(`Found ${userIds.length} user IDs matching criteria for ${callingService}.`);
             res.status(200).json({
@@ -1059,7 +1062,7 @@ export class UserController {
             this.log.debug(`Searching contacts for user ${userId} with filters: ${JSON.stringify(finalFilters)}, pagination: ${JSON.stringify(pagination)}`);
 
             // Call service to find users based on criteria
-            const result = await userService.findUsersByCriteria(finalFilters, pagination);
+            const result = await this.userService.findUsersByCriteria(finalFilters, pagination);
 
             res.status(200).json({
                 success: true,
@@ -1171,7 +1174,7 @@ export class UserController {
             }
 
             // Convert valid string IDs to ObjectIds if needed by the service (service handles this now)
-            const usersDetails = await userService.getUsersByIds(userIds);
+            const usersDetails = await this.userService.getUsersByIds(userIds);
 
             res.status(200).json({
                 success: true,
@@ -1200,7 +1203,7 @@ export class UserController {
 
         this.log.info(`Internal request to find user IDs matching search term: "${searchTerm}"`);
         try {
-            const userIds = await userService.findUserIdsBySearchTerm(searchTerm.trim());
+            const userIds = await this.userService.findUserIdsBySearchTerm(searchTerm.trim());
             res.status(200).json({ success: true, data: { userIds } });
         } catch (error) {
             this.log.error(`Error finding user IDs by search term '${searchTerm}':`, error);
@@ -1227,7 +1230,7 @@ export class UserController {
             const userId = req.user.userId;
 
             // Call the service method to handle upload and update
-            const updatedUser = await userService.updateAvatar(
+            const updatedUser = await this.userService.updateAvatar(
                 userId,
                 file.buffer,
                 file.mimetype,
@@ -1257,7 +1260,7 @@ export class UserController {
                 throw new AppError('File ID is required', 400);
             }
             // Get the stream from settings service via user service
-            const { stream, contentType } = await userService.getAvatarStream(fileId);
+            const { stream, contentType } = await this.userService.getAvatarStream(fileId);
 
             // Set content type header
             if (contentType) {
@@ -1298,7 +1301,7 @@ export class UserController {
                 return;
             }
 
-            const profile = await userService.getPublicUserProfile(userId);
+            const profile = await this.userService.getPublicUserProfile(userId);
 
             if (!profile) {
                 // Could be not found, deleted, blocked, or sharing disabled
@@ -1334,7 +1337,7 @@ export class UserController {
             }
 
             // Call the service method. It handles logic internally and doesn't throw errors based on user existence.
-            await userService.resendOtp(email, purpose);
+            await this.userService.resendOtp(email, purpose);
 
             // Send a generic success response to prevent leaking information about account existence.
             res.status(200).json({ success: true, message: 'If an account with this email exists, an OTP has been sent.' });
@@ -1357,7 +1360,7 @@ export class UserController {
             if (!email) {
                 throw new AppError('Email is required for password reset OTP.', 400);
             }
-            await userService.requestPasswordResetOtp(email);
+            await this.userService.requestPasswordResetOtp(email);
             res.status(200).json({ success: true, message: 'If your email is registered, a password reset OTP has been sent.' });
         } catch (error) {
             next(error);
@@ -1376,7 +1379,7 @@ export class UserController {
                 throw new AppError('Email and OTP code are required.', 400);
             }
 
-            const { passwordResetToken } = await userService.verifyPasswordResetOtpAndGenerateToken(email, otpCode);
+            const { passwordResetToken } = await this.userService.verifyPasswordResetOtpAndGenerateToken(email, otpCode);
             res.status(200).json({ success: true, message: 'OTP verified. Use the provided token to reset your password.', data: { passwordResetToken } });
         } catch (error) {
             next(error);
@@ -1401,7 +1404,7 @@ export class UserController {
                 return;
             }
 
-            await userService.requestChangeEmailOtp(userId, newEmail);
+            await this.userService.requestChangeEmailOtp(userId, newEmail);
 
             // Return success message indicating OTP sent to the NEW email
             res.status(200).json({ success: true, message: `An OTP has been sent to ${newEmail} to verify the change.` });
@@ -1433,7 +1436,7 @@ export class UserController {
                 throw new AppError('Either OTP code or password reset token is required.', 400);
             }
 
-            await userService.resetPassword(email, newPassword, otpCode, passwordResetToken);
+            await this.userService.resetPassword(email, newPassword, otpCode, passwordResetToken);
             res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
         } catch (error) {
             next(error);
@@ -1458,7 +1461,7 @@ export class UserController {
                 return;
             }
 
-            await userService.confirmChangeEmail(userId, newEmail, otpCode);
+            await this.userService.confirmChangeEmail(userId, newEmail, otpCode);
 
             res.status(200).json({ success: true, message: 'Email change confirmed successfully.' });
 
@@ -1487,7 +1490,7 @@ export class UserController {
             }
 
             // Call the service method
-            const exists = await userService.checkExistence(email, phoneNumber);
+            const exists = await this.userService.checkExistence(email, phoneNumber);
 
             res.status(200).json({ success: true, data: { exists } });
         } catch (error: any) {
@@ -1547,7 +1550,7 @@ export class UserController {
 
 
             log.info(`Admin ${req.user.userId} calling fixReferralAndCommissions with ${usersToFix.length} entries.`);
-            const result = await userService.fixReferralAndCommissions(
+            const result = await this.userService.fixReferralAndCommissions(
                 usersToFix,
                 parsedBugStartDate,
                 parsedBugEndDate,
@@ -1563,6 +1566,22 @@ export class UserController {
             } else {
                 res.status(500).json({ success: false, message: 'An internal error occurred during the referral fix operation.' });
             }
+        }
+    }
+
+    // NEW: Get User Active Subscriptions (Internal Route)
+    async getUserActiveSubscriptions(req: Request, res: Response): Promise<void> {
+        const { userId } = req.params;
+        try {
+            if (!userId) {
+                res.status(400).json({ success: false, message: 'User ID is required.' });
+                return;
+            }
+            const activeSubscriptions = await this.userService.getUserSubscriptionInfo(userId);
+            res.status(200).json({ success: true, data: activeSubscriptions });
+        } catch (error: any) {
+            this.log.error(`Error getting active subscriptions for user ${userId}:`, error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Failed to retrieve active subscriptions.' });
         }
     }
 

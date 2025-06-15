@@ -3304,8 +3304,19 @@ class PaymentService {
         }
 
         if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
-            log.info(`PaymentIntent ${sessionId} is already in final status: ${paymentIntent.status}. Returning current state.`);
-            return paymentIntent;
+            const userSub = await userServiceClient.getUserActiveSubscriptions(paymentIntent.userId);
+            if (userSub.length === 0 && paymentIntent.status === PaymentStatus.SUCCEEDED) {
+                paymentIntent.status = PaymentStatus.PENDING_PROVIDER;
+                log.info(`User ${paymentIntent.userId} has no active subscription. Continueing in order to active user account and share commission.`);
+                log.warn('This might be a user who has not yet activated their account. We will continue to share commission with his god parent.');
+            } else {
+                log.info(`User ${paymentIntent.userId} has an active subscription. Updating payment intent status to SUCCEEDED.`);
+                await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+                    status: PaymentStatus.SUCCEEDED
+                });
+                log.info(`PaymentIntent ${sessionId} is already in final status: ${paymentIntent.status}. Returning current state.`);
+                return paymentIntent;
+            }
         }
 
         const feexpayReference = paymentIntent.gatewayPaymentId;

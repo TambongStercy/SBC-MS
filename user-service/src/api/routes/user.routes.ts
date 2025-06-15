@@ -39,6 +39,9 @@ serviceRouter.post('/batch-details', (req, res) => userController.getUsersDetail
 // Internal route to search user IDs by name/email/phone
 serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsBySearchTerm(req, res, next));
 
+// NEW: Internal route to get active subscriptions for a user
+serviceRouter.get('/:userId/active-subscriptions', (req, res) => userController.getUserActiveSubscriptions(req, res));
+
 // Mount the service router under a dedicated path *before* user auth middleware
 router.use('/internal', serviceRouter);
 

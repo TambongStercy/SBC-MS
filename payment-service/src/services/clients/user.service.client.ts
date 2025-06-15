@@ -41,6 +41,9 @@ interface UserValidationResponse {
     valid: boolean;
 }
 
+// Locally define SubscriptionType to avoid direct dependency on user-service model
+type SubscriptionType = 'CLASSIQUE' | 'CIBLE' | 'NONE';
+
 class UserServiceClient {
     private baseUrl = config.services.userServiceUrl;
     private serviceSecret = config.services.serviceSecret;
@@ -297,6 +300,30 @@ class UserServiceClient {
             log.error(`Error calling user-service for user ID search (term: "${searchTerm}") (via request method):`, error.message);
             if (error instanceof AppError) throw error;
             throw new AppError(`Failed to communicate with user service for user ID search.`, 503);
+        }
+    }
+
+    async getUserActiveSubscriptions(userId: string): Promise<SubscriptionType[]> {
+        if (!this.baseUrl) {
+            log.error('Cannot get active subscriptions: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/${userId}/active-subscriptions`;
+        try {
+            log.debug(`Fetching active subscriptions for user ${userId} via request method.`);
+            const response = await this.request<{ success: boolean; data: SubscriptionType[] }>('get', path);
+
+            if (response?.success && Array.isArray(response.data)) {
+                log.info(`Successfully fetched active subscriptions for user ${userId}.`);
+                return response.data;
+            } else {
+                log.warn(`Failed to fetch active subscriptions or invalid response format for user ${userId}.`);
+                return []; // Return empty array on non-success or invalid data
+            }
+        } catch (error: any) {
+            log.error(`Error getting active subscriptions for user ${userId} (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for active subscriptions.`, 503);
         }
     }
 }
