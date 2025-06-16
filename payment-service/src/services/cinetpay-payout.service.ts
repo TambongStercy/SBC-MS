@@ -178,6 +178,18 @@ export class CinetPayPayoutService {
         'CD': 1000, // CDF
     };
 
+    private readonly nationalPhoneLengths: Record<string, number> = {
+        'CI': 8, // Côte d'Ivoire (e.g., 01020304)
+        'SN': 9, // Sénégal (e.g., 771234567)
+        'CM': 8, // Cameroun (e.g., 67508047, not 675080477)
+        'TG': 8, // Togo
+        'BJ': 8, // Benin
+        'ML': 8, // Mali
+        'BF': 8, // Burkina Faso
+        'GN': 8, // Guinea (Note: some operators may use 9 digits, verify if issues persist)
+        'CD': 9, // Congo (RDC)
+    };
+
     constructor() {
         this.apiClient = axios.create({
             baseURL: this.baseUrl,
@@ -287,19 +299,24 @@ export class CinetPayPayoutService {
         try {
             const token = await this.authenticate();
 
-            log.debug(`Adding contact to CinetPay:`, contact);
+            log.debug(`Preparing to add contact to CinetPay:`, contact);
+
+            const params = new URLSearchParams();
+            params.append('data', JSON.stringify([contact]));
+
+            log.debug(`URLSearchParams for addContact:`, params.toString());
 
             const response = await this.apiClient.post<CinetPayContactResponse>(
                 `/transfer/contact?token=${token}&lang=fr`,
-                `data=${JSON.stringify([contact])}`
+                params // Send URLSearchParams object directly
             );
 
-            log.debug(`CinetPay add contact response:`, response.data);
+            log.debug(`CinetPay add contact raw response:`, response.data);
 
             if (response.data.code !== 0) {
                 // Check if contact already exists
                 if (response.data.message && response.data.message.includes('ALREADY_MY_CONTACT')) {
-                    log.info(`Contact ${contact.phone} already exists`);
+                    log.info(`Contact ${contact.phone} already exists (message: ALREADY_MY_CONTACT)`);
                     return true;
                 }
                 // Check for specific error code 726
@@ -315,37 +332,31 @@ export class CinetPayPayoutService {
                 throw new Error('Invalid response format: missing data array');
             }
 
-            // CinetPay returns nested arrays: data[0][0] instead of data[0]
-            let contactResult;
-            if (Array.isArray(response.data.data[0])) {
-                // Nested array format: data[0][0]
-                contactResult = response.data.data[0][0];
-            } else {
-                // Direct format: data[0]
-                contactResult = response.data.data[0];
-            }
+            // CinetPay documentation shows data as an array of contact results, so data[0] is correct
+            // No need for nested array check (response.data.data[0][0]) unless documented otherwise
+            const contactResult = response.data.data[0];
 
-            log.debug(`Contact result:`, contactResult);
+            log.debug(`Processed contact result:`, contactResult);
 
             if (contactResult.code !== 0) {
-                // Check if contact already exists (code 726)
+                // Check if contact already exists (code 726) or other specific statuses
                 if (contactResult.code === 726 || contactResult.status === 'ERROR_PHONE_ALREADY_MY_CONTACT') {
-                    log.info(`Contact ${contact.phone} already exists in CinetPay contacts`);
+                    log.info(`Contact ${contact.phone} already exists in CinetPay contacts (result code/status)`);
                     return true; // This is not an error, contact exists and can be used
                 }
 
-                const errorMessage = contactResult.status || 'Unknown contact error';
+                const errorMessage = contactResult.status || 'Unknown contact error from result';
                 throw new Error(`Failed to add contact: ${errorMessage}`);
             }
 
-            log.info(`Successfully added contact: ${contact.phone}`);
+            log.info(`Successfully added/verified contact: ${contact.phone}`);
             return true;
 
         } catch (error: any) {
-            log.error('Failed to add contact:', error);
+            log.error('Failed to add contact:', error.message);
             // Log the full error details for debugging
             if (error.response) {
-                log.error('CinetPay API Error Response:', {
+                log.error('CinetPay API Error Response (addContact):', {
                     status: error.response.status,
                     data: error.response.data,
                     headers: error.response.headers
@@ -395,27 +406,28 @@ export class CinetPayPayoutService {
      * Format phone number for CinetPay
      */
     private formatPhoneNumber(phoneNumber: string, countryCode: string): string {
-        // Remove any non-digit characters
-        let cleanPhone = phoneNumber.replace(/\D/g, '');
+        let cleanPhone = phoneNumber.replace(/\D/g, ''); // Remove all non-digits
 
-        log.debug(`Formatting phone number: ${phoneNumber} for country ${countryCode}`);
-        log.debug(`Clean phone after removing non-digits: ${cleanPhone}`);
-
-        // Remove country prefix if present
         const prefix = this.countryPrefixes[countryCode];
-        if (cleanPhone.startsWith(prefix)) {
+        if (prefix && cleanPhone.startsWith(prefix)) { // Ensure prefix exists before trying to remove
             cleanPhone = cleanPhone.substring(prefix.length);
-            log.debug(`Removed country prefix ${prefix}, result: ${cleanPhone}`);
         }
 
-        // Remove leading zeros
-        const beforeZeroRemoval = cleanPhone;
-        cleanPhone = cleanPhone.replace(/^0+/, '');
-        if (beforeZeroRemoval !== cleanPhone) {
-            log.debug(`Removed leading zeros, result: ${cleanPhone}`);
+        cleanPhone = cleanPhone.replace(/^0+/, ''); // Remove leading zeros (e.g., 07895086 -> 7895086)
+
+        const expectedLength = this.nationalPhoneLengths[countryCode];
+        if (expectedLength) {
+            if (cleanPhone.length > expectedLength) {
+                // Truncate from the beginning if longer than expected, taking the last `expectedLength` digits
+                log.warn(`Phone number for ${countryCode} was truncated from ${cleanPhone.length} to expected national length ${expectedLength}. Original: ${phoneNumber}, Result: ${cleanPhone.substring(cleanPhone.length - expectedLength)}`);
+                cleanPhone = cleanPhone.substring(cleanPhone.length - expectedLength);
+            } else if (cleanPhone.length < expectedLength) {
+                // Log a warning if too short, as this might still be an issue for CinetPay
+                log.warn(`Phone number for ${countryCode} is shorter (${cleanPhone.length}) than expected national length ${expectedLength}. Original: ${phoneNumber}, Result: ${cleanPhone}`);
+                // Consider throwing an error here for stricter validation if necessary
+            }
         }
 
-        log.debug(`Final formatted phone number: ${cleanPhone}`);
         return cleanPhone;
     }
 
@@ -435,22 +447,41 @@ export class CinetPayPayoutService {
             log.debug(`Country prefix for ${request.countryCode}: ${prefix}`);
             log.debug(`Formatted phone: ${formattedPhone}`);
 
+            // Refine name and surname
+            const firstName = (request.recipientName.split(' ')[0] || 'User').trim();
+            const lastName = (request.recipientName.split(' ').slice(1).join(' ') || 'SBC').trim();
+
+            // Refine email
+            let contactEmail = request.recipientEmail;
+            if (!contactEmail) {
+                // Use a shorter, simpler ID for email if recipientEmail is not provided
+                const simpleUserId = String(request.userId).substring(0, 10); // Take first 10 chars of ObjectId or string ID
+                contactEmail = `user_${simpleUserId}@sbc.com`;
+            }
+            // Basic validation: ensure it has an @ and a domain, if it's just a username, append sbc.com
+            if (!contactEmail.includes('@') && contactEmail.length > 0) {
+                contactEmail = `${contactEmail}@sbc.com`;
+            }
+
+            // Ensure the formattedPhone is purely numeric after all processing
+            const finalFormattedPhone = formattedPhone.replace(/\D/g, '');
+
             // Step 1: Add contact
             const contact: CinetPayContact = {
                 prefix: prefix,
-                phone: formattedPhone,
-                name: request.recipientName.split(' ')[0] || 'User',
-                surname: request.recipientName.split(' ').slice(1).join(' ') || 'SBC',
-                email: request.recipientEmail || `${request.userId}@sbc.com`
+                phone: finalFormattedPhone,
+                name: firstName || 'User',
+                surname: lastName || 'SBC',
+                email: contactEmail
             };
 
-            log.info(`Adding contact to CinetPay: +${prefix}${formattedPhone} (${contact.name} ${contact.surname})`);
+            log.info(`Adding contact to CinetPay: +${prefix}${finalFormattedPhone} (${contact.name} ${contact.surname})`);
             await this.addContact(contact);
 
             // Step 2: Initiate transfer
             const transferRequest: CinetPayTransferRequest = {
                 prefix: prefix,
-                phone: formattedPhone,
+                phone: finalFormattedPhone,
                 amount: request.amount,
                 notify_url: request.notifyUrl || `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`,
                 client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
