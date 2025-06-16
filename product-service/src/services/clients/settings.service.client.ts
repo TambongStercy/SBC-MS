@@ -33,7 +33,7 @@ class SettingsServiceClient {
     constructor() {
         this.apiClient = axios.create({
             baseURL: config.services.settingsServiceUrl, // Use URL from product-service config
-            timeout: 15000,
+            timeout: 60000, // Increased timeout for file uploads
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${config.services.serviceSecret}`,

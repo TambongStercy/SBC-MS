@@ -1196,13 +1196,13 @@ class PaymentService {
      * Handle Feexpay webhook notification
      */
     public async handleFeexpayWebhook(payload: any): Promise<void> {
-        const { reference, status, callback_info } = payload; 
+        const { reference, status, callback_info } = payload;
         const { sessionId } = callback_info || {};
 
         if (!reference) {
             if (sessionId) {
                 log.warn(`Received Feexpay webhook with missing reference but with sessionId: ${sessionId}.`);
-            }else{
+            } else {
                 log.warn('Received Feexpay webhook with missing reference and no sessionId in callback_info. Ignoring webhook.', payload);
                 throw new Error('Webhook payload missing required reference field');
             }
@@ -2390,6 +2390,7 @@ class PaymentService {
         }
     ): Promise<boolean> {
         log.info(`Attempting to add/verify CinetPay contact: ${contactDetails.prefix}${contactDetails.phone}`);
+        log.info('Contact details received:', contactDetails);
         try {
             const contactDataArray = [{
                 prefix: contactDetails.prefix,
@@ -2399,8 +2400,11 @@ class PaymentService {
                 email: contactDetails.email,
             }];
 
+            log.info('Contact data array for CinetPay:', contactDataArray);
             const params = new URLSearchParams();
             params.append('data', JSON.stringify(contactDataArray));
+
+            log.info('URLSearchParams before sending:', params.toString());
 
             const response = await axios.post(
                 `${config.cinetpay.transferBaseUrl}/transfer/contact?token=${token}&lang=en`,
@@ -2409,17 +2413,14 @@ class PaymentService {
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     }
-                    // No 'data' field in the config object itself
                 }
             );
 
             if (response.data && response.data.code === 0 && response.data.data && response.data.data.length > 0) {
-                // We can check response.data.data[0].status (e.g., "SAVED", "INVALID")
                 log.info(`CinetPay contact processed for ${contactDetails.prefix}${contactDetails.phone}. Response:`, response.data.data[0]);
-                // For simplicity, returning true if API call succeeded. Robust check would inspect individual contact status.
                 if (response.data.data[0].status === 'INVALID_PHONE_NUMBER') {
                     log.warn(`Cinetpay says: Invalid phone number for contact ${contactDetails.prefix}${contactDetails.phone}`);
-                    return false; // Explicitly return false for invalid phone
+                    return false;
                 }
                 return true;
             } else {
@@ -2428,7 +2429,6 @@ class PaymentService {
             }
         } catch (error: any) {
             log.error(`Error adding CinetPay contact ${contactDetails.prefix}${contactDetails.phone}:`, error.response?.data || error.message);
-            // Don't throw, allow transfer attempt anyway, CinetPay might handle it if contact exists or error was transient.
             return false;
         }
     }

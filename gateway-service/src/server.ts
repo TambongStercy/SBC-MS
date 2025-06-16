@@ -53,6 +53,7 @@ app.get('/version', (req, res) => {
 
 // User services
 app.use('/api/users', proxy(config.services.userServiceUrl, {
+  parseReqBody: false,
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to users service`);
     return '/api/users' + req.url;
@@ -182,8 +183,8 @@ app.use('/api/events', proxy(config.services.settingsServiceUrl, {
 
 // --- GLOBAL MIDDLEWARE ---
 // Apply body parsers AFTER proxy routes
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
 // 404 handler
 app.use((req, res) => {
