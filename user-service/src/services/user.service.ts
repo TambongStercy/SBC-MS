@@ -224,10 +224,13 @@ export class UserService {
             }
             // Optional: Check if referrer is allowed to refer (e.g., not blocked)
             if (referrer.blocked) { throw new Error('Referrer is blocked'); }
-            console.log("referrer", referrer);
-        } else if (defaultAffiliator) {
-            console.log(`Using default affiliator: ${defaultAffiliator}`);
-            referrer = await userRepository.findById(defaultAffiliator);
+        }
+        // else if (defaultAffiliator) {
+        //     console.log(`Using default affiliator: ${defaultAffiliator}`);
+        //     referrer = await userRepository.findById(defaultAffiliator);
+        // }
+        else {
+            throw new Error('No referrer code provided');
         }
 
 
