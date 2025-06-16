@@ -299,19 +299,19 @@ export class CinetPayPayoutService {
         try {
             const token = await this.authenticate();
 
-            log.info(`[DEBUG]: Preparing to add contact to CinetPay:`, contact);
+            log.info(`Preparing to add contact to CinetPay:`, contact);
 
             const params = new URLSearchParams();
             params.append('data', JSON.stringify([contact]));
 
-            log.info(`[DEBUG]: URLSearchParams for addContact:`, params.toString());
+            log.info(`URLSearchParams for addContact:`, params.toString());
 
             const response = await this.apiClient.post<CinetPayContactResponse>(
                 `/transfer/contact?token=${token}&lang=fr`,
                 params // Send URLSearchParams object directly
             );
 
-            log.info(`[DEBUG]: CinetPay add contact raw response:`, response.data);
+            log.info(`CinetPay add contact raw response:`, response.data);
 
             if (response.data.code !== 0) {
                 // Check if contact already exists
@@ -332,11 +332,9 @@ export class CinetPayPayoutService {
                 throw new Error('Invalid response format: missing data array');
             }
 
-            // CinetPay documentation shows data as an array of contact results, so data[0] is correct
-            // No need for nested array check (response.data.data[0][0]) unless documented otherwise
             const contactResult = response.data.data[0];
 
-            log.info(`[DEBUG]: Processed contact result:`, contactResult);
+            log.info(`Processed contact result:`, contactResult);
 
             if (contactResult.code !== 0) {
                 // Check if contact already exists (code 726) or other specific statuses
@@ -444,8 +442,8 @@ export class CinetPayPayoutService {
             const prefix = this.countryPrefixes[request.countryCode];
             const formattedPhone = this.formatPhoneNumber(request.phoneNumber, request.countryCode);
 
-            log.debug(`Country prefix for ${request.countryCode}: ${prefix}`);
-            log.debug(`Formatted phone: ${formattedPhone}`);
+            log.info(`Country prefix for ${request.countryCode}: ${prefix}`);
+            log.info(`Formatted phone: ${formattedPhone}`);
 
             // Refine name and surname
             const firstName = (request.recipientName.split(' ')[0] || 'User').trim();
@@ -454,16 +452,13 @@ export class CinetPayPayoutService {
             // Refine email
             let contactEmail = request.recipientEmail;
             if (!contactEmail) {
-                // Use a shorter, simpler ID for email if recipientEmail is not provided
-                const simpleUserId = String(request.userId).substring(0, 10); // Take first 10 chars of ObjectId or string ID
+                const simpleUserId = String(request.userId).substring(0, 10);
                 contactEmail = `user_${simpleUserId}@sbc.com`;
             }
-            // Basic validation: ensure it has an @ and a domain, if it's just a username, append sbc.com
             if (!contactEmail.includes('@') && contactEmail.length > 0) {
                 contactEmail = `${contactEmail}@sbc.com`;
             }
 
-            // Ensure the formattedPhone is purely numeric after all processing
             const finalFormattedPhone = formattedPhone.replace(/\D/g, '');
 
             // Step 1: Add contact
@@ -487,29 +482,27 @@ export class CinetPayPayoutService {
                 client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
             };
 
-            // Only add payment_method if specifically provided and valid
-            // CinetPay auto-detects operator from phone number if omitted
             if (request.paymentMethod && this.isValidPaymentMethod(request.paymentMethod, request.countryCode)) {
                 transferRequest.payment_method = request.paymentMethod;
-                log.debug(`Using specified payment method: ${request.paymentMethod}`);
+                log.info(`Using specified payment method: ${request.paymentMethod}`);
             } else {
-                log.debug(`Using auto-detection for operator (no payment_method specified)`);
+                log.info(`Using auto-detection for operator (no payment_method specified)`);
             }
 
             const token = await this.authenticate();
 
             log.info(`Initiating transfer with CinetPay:`);
-            log.debug(`Transfer request:`, transferRequest);
-            log.debug(`Transfer URL: /transfer/money/send/contact?token=${token.substring(0, 20)}...&lang=fr`);
-            log.debug(`Transfer payload: data=${JSON.stringify([transferRequest])}`);
+            log.info(`Transfer request:`, transferRequest);
+            log.info(`Transfer URL: /transfer/money/send/contact?token=${token.substring(0, 20)}...&lang=fr`);
+            log.info(`Transfer payload: data=${JSON.stringify([transferRequest])}`);
 
             const response = await this.apiClient.post<CinetPayTransferResponse>(
                 `/transfer/money/send/contact?token=${token}&lang=fr`,
                 `data=${JSON.stringify([transferRequest])}`
             );
 
-            log.debug(`Transfer response status: ${response.status}`);
-            log.debug(`Transfer response data:`, response.data);
+            log.info(`Transfer response status: ${response.status}`);
+            log.info(`Transfer response data:`, response.data);
 
             if (response.data.code !== 0) {
                 throw new Error(`Transfer initiation failed: ${response.data.message}`);

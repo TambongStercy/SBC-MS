@@ -13,7 +13,23 @@ const consoleFormat = winston.format.combine(
     winston.format.colorize(),
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.printf(
-        (info) => `[${info.timestamp}] [${info.level}] [${info.service || 'payment-service'}]: ${info.message}`
+        (info) => {
+            const message = info.message;
+            // Access additional arguments passed to the log function
+            const splat = info[Symbol.for('splat')];
+            let metaString = '';
+
+            // Check if splat exists and has elements, then stringify the first element (which is typically the meta object)
+            if (Array.isArray(splat) && splat.length > 0) {
+                try {
+                    metaString = JSON.stringify(splat[0], null, 2); // Pretty print the meta object
+                } catch (e: any) {
+                    metaString = `[Unserializable meta: ${e.message}]`;
+                }
+            }
+
+            return `[${info.timestamp}] [${info.level}] [${info.service || 'payment-service'}]: ${message}${metaString ? '\n' + metaString : ''}`;
+        }
     )
 );
 
