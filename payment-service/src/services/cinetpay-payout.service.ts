@@ -299,19 +299,19 @@ export class CinetPayPayoutService {
         try {
             const token = await this.authenticate();
 
-            log.debug(`Preparing to add contact to CinetPay:`, contact);
+            log.info(`[DEBUG]: Preparing to add contact to CinetPay:`, contact);
 
             const params = new URLSearchParams();
             params.append('data', JSON.stringify([contact]));
 
-            log.debug(`URLSearchParams for addContact:`, params.toString());
+            log.info(`[DEBUG]: URLSearchParams for addContact:`, params.toString());
 
             const response = await this.apiClient.post<CinetPayContactResponse>(
                 `/transfer/contact?token=${token}&lang=fr`,
                 params // Send URLSearchParams object directly
             );
 
-            log.debug(`CinetPay add contact raw response:`, response.data);
+            log.info(`[DEBUG]: CinetPay add contact raw response:`, response.data);
 
             if (response.data.code !== 0) {
                 // Check if contact already exists
@@ -336,7 +336,7 @@ export class CinetPayPayoutService {
             // No need for nested array check (response.data.data[0][0]) unless documented otherwise
             const contactResult = response.data.data[0];
 
-            log.debug(`Processed contact result:`, contactResult);
+            log.info(`[DEBUG]: Processed contact result:`, contactResult);
 
             if (contactResult.code !== 0) {
                 // Check if contact already exists (code 726) or other specific statuses
