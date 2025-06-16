@@ -1336,6 +1336,7 @@ export class UserController {
                 return;
             }
 
+
             // Call the service method. It handles logic internally and doesn't throw errors based on user existence.
             await this.userService.resendOtp(email, purpose);
 

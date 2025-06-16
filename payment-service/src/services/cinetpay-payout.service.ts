@@ -178,18 +178,6 @@ export class CinetPayPayoutService {
         'CD': 1000, // CDF
     };
 
-    private readonly nationalPhoneLengths: Record<string, number> = {
-        'CI': 8, // Côte d'Ivoire (e.g., 01020304)
-        'SN': 9, // Sénégal (e.g., 771234567)
-        'CM': 8, // Cameroun (e.g., 67508047, not 675080477)
-        'TG': 8, // Togo
-        'BJ': 8, // Benin
-        'ML': 8, // Mali
-        'BF': 8, // Burkina Faso
-        'GN': 8, // Guinea (Note: some operators may use 9 digits, verify if issues persist)
-        'CD': 9, // Congo (RDC)
-    };
-
     constructor() {
         this.apiClient = axios.create({
             baseURL: this.baseUrl,
@@ -412,19 +400,6 @@ export class CinetPayPayoutService {
         }
 
         cleanPhone = cleanPhone.replace(/^0+/, ''); // Remove leading zeros (e.g., 07895086 -> 7895086)
-
-        const expectedLength = this.nationalPhoneLengths[countryCode];
-        if (expectedLength) {
-            if (cleanPhone.length > expectedLength) {
-                // Truncate from the beginning if longer than expected, taking the last `expectedLength` digits
-                log.warn(`Phone number for ${countryCode} was truncated from ${cleanPhone.length} to expected national length ${expectedLength}. Original: ${phoneNumber}, Result: ${cleanPhone.substring(cleanPhone.length - expectedLength)}`);
-                cleanPhone = cleanPhone.substring(cleanPhone.length - expectedLength);
-            } else if (cleanPhone.length < expectedLength) {
-                // Log a warning if too short, as this might still be an issue for CinetPay
-                log.warn(`Phone number for ${countryCode} is shorter (${cleanPhone.length}) than expected national length ${expectedLength}. Original: ${phoneNumber}, Result: ${cleanPhone}`);
-                // Consider throwing an error here for stricter validation if necessary
-            }
-        }
 
         return cleanPhone;
     }
