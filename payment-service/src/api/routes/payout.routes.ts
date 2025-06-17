@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { payoutController } from '../controllers/payout.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { requireAdmin, authenticate } from '../middleware/auth.middleware';
 import { generalLimiter } from '../middleware/rate-limit.middleware';
 
 const router = Router();
@@ -19,7 +19,7 @@ router.get('/countries', generalLimiter, (req, res) => {
  * @desc    Get CinetPay account balance for payouts
  * @access  Private (Admin only)
  */
-router.get('/balance', authenticate as any, generalLimiter, (req, res) => {
+router.get('/balance', authenticate as any, requireAdmin, generalLimiter, (req, res) => {
     payoutController.getBalance(req, res);
 });
 
@@ -28,7 +28,7 @@ router.get('/balance', authenticate as any, generalLimiter, (req, res) => {
  * @desc    Initiate a payout to a user
  * @access  Private (Admin only)
  */
-router.post('/initiate', authenticate as any, generalLimiter, (req, res) => {
+router.post('/initiate', authenticate as any, requireAdmin, generalLimiter, (req, res) => {
     payoutController.initiatePayout(req, res);
 });
 
@@ -37,7 +37,7 @@ router.post('/initiate', authenticate as any, generalLimiter, (req, res) => {
  * @desc    Check the status of a payout
  * @access  Private (Admin only)
  */
-router.get('/status/:transactionId', authenticate as any, generalLimiter, (req, res) => {
+router.get('/status/:transactionId', authenticate as any, requireAdmin, generalLimiter, (req, res) => {
     payoutController.checkPayoutStatus(req, res);
 });
 
@@ -65,7 +65,7 @@ router.get('/webhooks/cinetpay', (req, res) => {
  * @desc    Test payout functionality (development only)
  * @access  Private (Admin only)
  */
-router.post('/test', authenticate as any, generalLimiter, (req, res) => {
+router.post('/test', authenticate as any, requireAdmin, generalLimiter, (req, res) => {
     payoutController.testPayout(req, res);
 });
 

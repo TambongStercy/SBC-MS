@@ -320,7 +320,17 @@ export class CinetPayPayoutService {
                 throw new Error('Invalid response format: missing data array');
             }
 
-            const contactResult = response.data.data[0];
+            let contactResult;
+            if (Array.isArray(response.data.data[0])) {
+                // Handle case where data is double-nested (e.g., [[{...}]])
+                if (response.data.data[0].length === 0) {
+                    throw new Error('Invalid response format: empty nested data array.');
+                }
+                contactResult = response.data.data[0][0];
+            } else {
+                // Handle case where data is single-nested (e.g., [{...}])
+                contactResult = response.data.data[0];
+            }
 
             log.info(`Processed contact result:`, contactResult);
 
@@ -331,7 +341,7 @@ export class CinetPayPayoutService {
                     return true; // This is not an error, contact exists and can be used
                 }
 
-                const errorMessage = contactResult.status || 'Unknown contact error from result';
+                const errorMessage = contactResult.status || contactResult.message || 'Unknown contact error from result';
                 throw new Error(`Failed to add contact: ${errorMessage}`);
             }
 
