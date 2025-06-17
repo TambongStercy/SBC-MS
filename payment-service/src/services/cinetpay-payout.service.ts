@@ -535,12 +535,12 @@ export class CinetPayPayoutService {
     /**
      * Check the status of a payout
      */
-    async checkPayoutStatus(transactionId: string): Promise<PayoutStatus | null> {
+    async checkPayoutStatus(clientTransactionId: string): Promise<PayoutStatus | null> {
         try {
             const token = await this.authenticate();
 
             const response = await this.apiClient.get<CinetPayStatusResponse>(
-                `/transfer/check/money?token=${token}&lang=fr&client_transaction_id=${transactionId}`
+                `/transfer/check/money?token=${token}&lang=fr&client_transaction_id=${clientTransactionId}`
             );
 
             if (response.data.code !== 0) {
@@ -635,7 +635,7 @@ export class CinetPayPayoutService {
         comment?: string;
     } {
         return {
-            transactionId: payload.cpm_trans_id,
+            transactionId: payload.client_transaction_id,
             cinetpayTransactionId: payload.transaction_id,
             status: this.mapTreatmentStatus(payload.treatment_status),
             amount: parseFloat(payload.amount),

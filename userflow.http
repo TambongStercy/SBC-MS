@@ -621,3 +621,18 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
   "bugStartDate": "2025-06-09T00:00:00Z",  
   "bugEndDate": "2025-06-13T23:59:59Z"    
 }
+
+### Simulate CinetPay Webhook Notification (Success)
+# This simulates a POST request from CinetPay to your webhook endpoint.
+# Replace values with actual transaction data as needed for testing.
+POST {{host}}/payouts/webhooks/cinetpay
+Content-Type: application/json
+
+{
+    "cpm_trans_id": "Xd4j5df50rz9q7d_",
+    "transaction_id": "EA250617.094310.R778467",
+    "treatment_status": "VAL",
+    "amount": 550,
+    "receiver": "675080477",
+    "comment": "Successful payout notification"
+}

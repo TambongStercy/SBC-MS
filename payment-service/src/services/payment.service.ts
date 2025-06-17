@@ -3053,7 +3053,7 @@ class PaymentService {
         try {
             // CRITICAL: Perform server-to-server validation with CinetPay's API
             log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId})`);
-            verifiedPayoutStatus = await cinetpayPayoutService.checkPayoutStatus(cinetpayTransactionId);
+            verifiedPayoutStatus = await cinetpayPayoutService.checkPayoutStatus(internalTransactionId);
 
             if (!verifiedPayoutStatus) {
                 log.error(`CinetPay Payout Webhook: No status found from CinetPay API for Tx ID: ${cinetpayTransactionId}. Marking internal transaction ${internalTransactionId} as FAILED due to verification failure.`);
