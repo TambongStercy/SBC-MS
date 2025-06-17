@@ -46,10 +46,10 @@ router.get('/intents/:sessionId/status', paymentController.getPaymentStatus);
 // NEW Public FeexPay Status Endpoint (using sessionId)
 router.get('/intents/:sessionId/feexpay-status', paymentController.getUserFeexpayStatus);
 
-// Feexpay webhook endpoint
+// Route for Feexpay payment webhook endpoint
 router.post('/webhooks/feexpay', paymentController.handleFeexpayWebhook);
 
-// Add route for CinetPay webhook
+// Route for CinetPay payment webhook endpoint
 router.post('/webhooks/cinetpay', paymentController.handleCinetPayWebhook);
 
 // Webhook for CinetPay Transfer (Payout) status updates

@@ -6,6 +6,7 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     // Cameroon (CM)
     'MTN_MOMO_CMR': 'CM',
     'ORANGE_CMR': 'CM',
+    'ORANGE_MOMO_CMR': 'CM',
     // Burkina Faso (BF)
     'MOOV_BFA': 'BF',
     'ORANGE_BFA': 'BF',
@@ -65,7 +66,7 @@ export const correspondents = {
         'currencies': ['XOF']
     },
     'CM': {
-        'operators': ['MTN_MOMO_CMR', 'ORANGE_CMR'], // Cameroon
+        'operators': ['MTN_MOMO_CMR', 'ORANGE_CMR', 'ORANGE_MOMO_CMR'], // Cameroon
         'currencies': ['XAF']
     },
     'BF': {
@@ -108,6 +109,7 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     'MOOV_BEN': 'XOF',
     'MTN_MOMO_CMR': 'XAF',
     'ORANGE_CMR': 'XAF',
+    'ORANGE_MOMO_CMR': 'XAF',
     'MOOV_BFA': 'XOF',
     'ORANGE_BFA': 'XOF',
     'VODACOM_MPESA_COD': 'CDF',
@@ -134,6 +136,7 @@ export const momoOperatorToCinetpayPaymentMethod: { [key: string]: string } = {
     // Cameroon (CM)
     'MTN_MOMO_CMR': 'MTNCM',
     'ORANGE_CMR': 'OMCM',
+    'ORANGE_MOMO_CMR': 'OMCM',
     // Burkina Faso (BF)
     'MOOV_BFA': 'MOOVBF',
     'ORANGE_BFA': 'OMBF',
