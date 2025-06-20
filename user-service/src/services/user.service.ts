@@ -195,6 +195,10 @@ export class UserService {
             throw new Error('Missing required registration fields');
         }
 
+        if (!actualReferrerCode) {
+            throw new Error('Vous ne pouvez pas vous inscrire sans un code de parrainage');
+        }
+
         if (!this.isValidEmailDomain(userToCreate.email)) {
             throw new Error('Invalid email domain');
         }
