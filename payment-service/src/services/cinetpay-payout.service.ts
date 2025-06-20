@@ -481,13 +481,18 @@ export class CinetPayPayoutService {
             log.info(`Transfer URL: /transfer/money/send/contact?token=${token.substring(0, 20)}...&lang=fr`);
             log.info(`Transfer payload: data=${JSON.stringify([transferRequest])}`);
 
+            const payload = `data=${JSON.stringify([transferRequest])}`;
+            const headers = {
+                'Expect': '',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(payload)
+            };
+
             const response = await this.apiClient.post<CinetPayTransferResponse>(
                 `/transfer/money/send/contact?token=${token}&lang=fr`,
-                `data=${JSON.stringify([transferRequest])}`,
+                payload,
                 {
-                    headers: {
-                        'Expect': ''
-                    }
+                    headers
                 }
             );
 
