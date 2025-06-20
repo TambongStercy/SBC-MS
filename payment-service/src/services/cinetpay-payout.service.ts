@@ -483,7 +483,12 @@ export class CinetPayPayoutService {
 
             const response = await this.apiClient.post<CinetPayTransferResponse>(
                 `/transfer/money/send/contact?token=${token}&lang=fr`,
-                `data=${JSON.stringify([transferRequest])}`
+                `data=${JSON.stringify([transferRequest])}`,
+                {
+                    headers: {
+                        'Expect': ''
+                    }
+                }
             );
 
             log.info(`Transfer response status: ${response.status}`);
