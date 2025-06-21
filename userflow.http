@@ -629,10 +629,102 @@ POST {{host}}/payouts/webhooks/cinetpay
 Content-Type: application/json
 
 {
-    "cpm_trans_id": "Xd4j5df50rz9q7d_",
-    "transaction_id": "EA250617.094310.R778467",
+    "transaction_id": "EA250612.091242.N514725",
+    "client_transaction_id": "RTVNHZSHPkr0OLaX",
     "treatment_status": "VAL",
-    "amount": 550,
+    "amount": 4000,
     "receiver": "675080477",
     "comment": "Successful payout notification"
 }
+
+
+# ####
+# POST {{host}}/payouts/webhooks/cinetpay
+# Content-Type: application/json
+# Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
+
+####====================================
+# CinetPay API Direct Tests
+####====================================
+
+
+# ###
+# @CINETPAY_API_KEY = {{$dotenv CINETPAY_API_KEY}}
+# @CINETPAY_API_PASSWORD = {{$dotenv CINETPAY_API_PASSWORD}}
+
+
+# ### Get CinetPay Transfer Information
+# # This endpoint allows you to check the status of a transfer directly with CinetPay.
+# # You need a valid CinetPay API token and one of the transaction IDs (CinetPay's or your client_transaction_id).
+# GET https://client.cinetpay.com/v1/transfer/check/money?token={{loginCinetPay.response.body.$.data.token}}&lang=fr&client_transaction_id=Xd4j5df50rz9q7d_
+
+# ### Or use CinetPay's transaction_id:
+# # GET https://client.cinetpay.com/v1/transfer/check/money?token=YOUR_CINETPAY_TOKEN&lang=fr&transaction_id=YOUR_CINETPAY_TRANSACTION_ID
+
+# ### Or use CinetPay's lot number:
+# # GET https://client.cinetpay.com/v1/transfer/check/money?token=YOUR_CINETPAY_TOKEN&lang=fr&lot=YOUR_CINETPAY_LOT_NUMBER
+
+# ### Get CinetPay API Token
+# # This endpoint allows you to generate an authentication token for CinetPay's API.
+# # Replace YOUR_CINETPAY_API_KEY and YOUR_CINETPAY_PASSWORD with your actual credentials.
+# # @name loginCinetPay
+# POST https://client.cinetpay.com/v1/auth/login
+# Content-Type: application/x-www-form-urlencoded
+
+# apikey=YOUR_DUMMY_API_KEY&
+# password=YOUR_DUMMY_PASSWORD
+
+# ### Extract the token from the response if you need it for subsequent requests
+# # > {% client.global.set("cinetpay_token", response.body.data.token); %}
+
+# ### Get CinetPay Account Transfer Balance
+# # This endpoint allows you to check your available balance for transfers with CinetPay.
+# # You need a valid CinetPay API token.
+# GET https://client.cinetpay.com/v1/transfer/check/balance?token=YOUR_CINETPAY_TOKEN&lang=fr
+
+# ### Send Money to a CinetPay Wallet
+# # This endpoint allows you to send money to a specific wallet (e.g., MTN, Orange).
+# # You need a valid CinetPay API token.
+# POST https://client.cinetpay.com/v1/transfer/money/send/wallet?lang=fr
+# Content-Type: application/x-www-form-urlencoded
+
+# token=YOUR_CINETPAY_TOKEN&
+# prefix=YOUR_COUNTRY_CODE_PREFIX&
+# phone=YOUR_PHONE_NUMBER&
+# amount=YOUR_AMOUNT&
+# client_transaction_id=YOUR_CLIENT_TRANSACTION_ID&
+# payment_method=YOUR_PAYMENT_METHOD_SLUG&
+# notify_url=YOUR_NOTIFY_URL&
+# description=YOUR_DESCRIPTION
+
+# ### Add One or More Contacts on CinetPay
+# # This endpoint allows you to add new contacts to your CinetPay account.
+# # You need a valid CinetPay API token.
+# POST https://client.cinetpay.com/v1/transfer/contact?lang=fr
+# Content-Type: application/x-www-form-urlencoded
+
+# token=YOUR_CINETPAY_TOKEN&
+# data=[{
+#     "prefix": "CONTACT_PREFIX",
+#     "phone": "CONTACT_PHONE",
+#     "name": "CONTACT_NAME",
+#     "surname": "CONTACT_SURNAME",
+#     "email": "CONTACT_EMAIL"
+# }]
+
+# ### Send Money from One or More CinetPay Contacts
+# # This endpoint allows you to send money to contacts already registered on CinetPay.
+# # You need a valid CinetPay API token.
+# POST https://client.cinetpay.com/v1/transfer/money/send/contact?lang=fr
+# Content-Type: application/x-www-form-urlencoded
+
+# token=YOUR_CINETPAY_TOKEN&
+# data=[{
+#     "prefix": "CONTACT_PREFIX_TO_SEND",
+#     "phone": "CONTACT_PHONE_TO_SEND",
+#     "amount": YOUR_AMOUNT_TO_SEND,
+#     "client_transaction_id": "YOUR_CLIENT_TRANSACTION_ID_FOR_TRANSFER",
+#     "payment_method": "YOUR_PAYMENT_METHOD_SLUG_FOR_TRANSFER",
+#     "notify_url": "YOUR_NOTIFY_URL_FOR_TRANSFER",
+#     "description": "DESCRIPTION_OF_TRANSFER"
+# }]

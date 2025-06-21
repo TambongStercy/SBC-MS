@@ -1,0 +1,2 @@
+# Ignore .wwebjs_auth/ directory which contains session data and cache
+.wwebjs_auth/ 
