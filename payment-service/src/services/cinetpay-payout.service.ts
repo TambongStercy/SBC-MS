@@ -467,11 +467,17 @@ export class CinetPayPayoutService {
                 client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
             };
 
-            if (request.paymentMethod && this.isValidPaymentMethod(request.paymentMethod, request.countryCode)) {
+            // Do NOT send a specific payment_method if it's OMCM, let CinetPay auto-detect
+            // or if it's not explicitly valid in our list (which might not be exhaustive for transfers)
+            if (request.paymentMethod && request.paymentMethod !== 'OMCM' && this.isValidPaymentMethod(request.paymentMethod, request.countryCode)) {
                 transferRequest.payment_method = request.paymentMethod;
                 log.info(`Using specified payment method: ${request.paymentMethod}`);
-            } else {
-                log.info(`Using auto-detection for operator (no payment_method specified)`);
+            } else if (request.paymentMethod === 'OMCM') {
+                log.warn(`Explicitly not setting payment_method 'OMCM' for CinetPay transfer due to API rejection. Relying on auto-detection.`);
+            }
+            else {
+                log.info(`Using auto-detection for operator (no payment_method specified or invalid)`);
+                // No need to explicitly delete, as it's not set if this path is taken
             }
 
             const token = await this.authenticate();

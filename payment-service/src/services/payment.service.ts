@@ -664,7 +664,7 @@ class PaymentService {
                 countryCode: withdrawalAccountInfo.countryCode,
                 recipientName: userName || 'SBC User', // Use userDetails fetched for notification
                 recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
-                paymentMethod: cinetpayPaymentMethod,
+                // paymentMethod: cinetpayPaymentMethod, // Removed as per auto-detection strategy
                 description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                 client_transaction_id: updatedTransaction.transactionId, // Pass our internal transaction ID to CinetPay
                 notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
@@ -675,7 +675,7 @@ class PaymentService {
                     transactionRepository.update(updatedTransaction._id, {
                         externalTransactionId: payoutRes.cinetpayTransactionId,
                         serviceProvider: 'CinetPay',
-                        paymentMethod: cinetpayPaymentMethod,
+                        // paymentMethod: cinetpayPaymentMethod, // Removed as per auto-detection strategy
                         status: TransactionStatus.PROCESSING, // Mark as processing externally
                         metadata: {
                             ...(updatedTransaction.metadata || {}),
@@ -2761,7 +2761,7 @@ class PaymentService {
                 countryCode: withdrawalDetails.accountInfo.countryCode,
                 recipientName: withdrawalDetails.accountInfo.recipientName || userDetails.name || 'SBC User',
                 recipientEmail: withdrawalDetails.accountInfo.recipientEmail || userDetails.email || `${targetUserId}@sbc.com`,
-                paymentMethod: withdrawalDetails.method,
+                // paymentMethod: withdrawalDetails.method, // Removed as per auto-detection strategy
                 description: `Admin-initiated withdrawal for ${userDetails.name} (Tx: ${withdrawalTransaction.transactionId})`,
                 client_transaction_id: withdrawalTransaction.transactionId, // Pass our internal transaction ID to CinetPay
                 notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
@@ -2774,7 +2774,7 @@ class PaymentService {
                         transactionRepository.update(withdrawalTransaction._id, {
                             externalTransactionId: payoutRes.cinetpayTransactionId,
                             serviceProvider: 'CinetPay',
-                            paymentMethod: payoutRequest.paymentMethod,
+                            // paymentMethod: payoutRequest.paymentMethod, // Removed as per auto-detection strategy
                             status: TransactionStatus.PROCESSING, // Mark as processing externally
                             metadata: {
                                 ...(withdrawalTransaction.metadata || {}),
@@ -2963,7 +2963,7 @@ class PaymentService {
                 await transactionRepository.update(directPayoutTransaction._id, {
                     externalTransactionId: payoutResult.cinetpayTransactionId,
                     serviceProvider: 'CinetPay',
-                    paymentMethod: recipientDetails.paymentMethod,
+                    // paymentMethod: recipientDetails.paymentMethod, // Removed as per auto-detection strategy
                     status: TransactionStatus.PROCESSING, // Mark as processing externally
                     metadata: {
                         ...(directPayoutTransaction.metadata || {}),

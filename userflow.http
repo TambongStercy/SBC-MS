@@ -422,7 +422,7 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "0bTX2aFIJBLE",
+  "reference": "9r2WUucyrWii",
   "status": "SUCCESSFUL"
 }
 
@@ -504,8 +504,8 @@ Content-Type: application/json
 
 # --- IMPORTANT: Copy the Bearer token from the successful login response above ---
 # Store them in your environment variables or manually replace below
-@AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0OTg5MzUxNCwiZXhwIjoxNzQ5OTc5OTE0fQ.4k2P8zrZJp6q7-iU9_Sag-tqbylzNBvQjdanhKHuRpo
-@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0OTg5MzUxNCwiZXhwIjoxNzQ5OTc5OTE0fQ.4k2P8zrZJp6q7-iU9_Sag-tqbylzNBvQjdanhKHuRpo
+@AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MDU0NDkyNywiZXhwIjoxNzUwNjMxMzI3fQ.OoEAz1CPGoZl5VDvPvcfnSOEX9tX-BGzZDBZFTYyg1Y
+@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MDU0NDkyNywiZXhwIjoxNzUwNjMxMzI3fQ.OoEAz1CPGoZl5VDvPvcfnSOEX9tX-BGzZDBZFTYyg1Y
 
 
 ### USER WITHDRAWAL ENDPOINTS
@@ -614,12 +614,12 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 {
   "usersToFix": [
     {
-      "userIdentifier": "adamoutchousso876@gmail.com",
-      "correctReferrerIdentifier": "mathieuandreacademie@gmail.com"
+      "userIdentifier": "alibabasen221@gmail.com",
+      "correctReferrerIdentifier": "josephdema33@gmail.com"
     }
   ],
-  "bugStartDate": "2025-06-09T00:00:00Z",  
-  "bugEndDate": "2025-06-13T23:59:59Z"    
+  "bugStartDate": "2024-06-09T00:00:00Z",  
+  "bugEndDate": "2026-06-13T23:59:59Z"    
 }
 
 ### Simulate CinetPay Webhook Notification (Success)
