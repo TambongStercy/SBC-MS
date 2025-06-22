@@ -13,7 +13,8 @@ import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
 import { countryCodeToDialingPrefix, momoOperatorToCinetpayPaymentMethod, momoOperatorToCountryCode, getPrefixFromOperator, momoOperatorToCurrency } from '../utils/operatorMaps'; // NEW: Import all necessary maps and helper
-import { cinetpayPayoutService, PayoutRequest, PayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
+import { cinetpayPayoutService, PayoutRequest, PayoutResult, PayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
+import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -399,25 +400,41 @@ class PaymentService {
                 throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} or missing currency mapping for it. Please contact support.`, 400);
             }
 
-            // Check if country is supported for withdrawals
-            if (countryCode !== 'CM') {
-                log.error(`Withdrawals are currently only supported for Cameroon (CM). User attempted from country: ${countryCode}, operator: ${momoOperator}. User ID: ${userId}`);
-                throw new AppError(
-                    `Withdrawals are currently only available for Mobile Money accounts in Cameroon. Your registered operator (${momoOperator}) is from a different country. Please contact support for assistance.`,
-                    400
-                );
+            // Determine which payout service to use based on country code
+            let payoutService;
+            let payoutNotificationUrl: string;
+            let providerName: 'CinetPay' | 'FeexPay';
+
+            if (countryCode === 'CM') {
+                payoutService = cinetpayPayoutService;
+                providerName = 'CinetPay';
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`;
+                log.info(`Using CinetPay for payout to Cameroon (${countryCode}).`);
+            } else {
+                // For all other supported countries, use FeexPay
+                payoutService = feexPayPayoutService;
+                providerName = 'FeexPay';
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}`; // Assuming a FeexPay webhook endpoint
+                log.info(`Using FeexPay for payout to ${countryCode}.`);
             }
 
-            // Derive the specific payment method slug for CinetPay
-            const method = momoOperatorToCinetpayPaymentMethod[momoOperator];
-            if (!method) {
-                log.error(`No CinetPay payment method found for operator ${momoOperator} in country ${countryCode}. User ID: ${userId}`);
-                throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} for withdrawal.`, 400);
+            // Derive the specific payment method slug for CinetPay OR ensure it's not explicitly passed to FeexPay
+            let methodForFeeCalculation: string;
+            if (providerName === 'CinetPay') {
+                const cinetpayMethod = momoOperatorToCinetpayPaymentMethod[momoOperator];
+                if (!cinetpayMethod) {
+                    log.error(`No CinetPay payment method found for operator ${momoOperator} in country ${countryCode}. User ID: ${userId}`);
+                    throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} for withdrawal.`, 400);
+                }
+                methodForFeeCalculation = cinetpayMethod;
+            } else {
+                // For FeexPay, we might not use a 'method' string for fee calculation, or use a generic one
+                methodForFeeCalculation = momoOperator; // Use the momoOperator directly for fee calculation
             }
 
             // Construct withdrawalDetails object internally
             const withdrawalDetails = {
-                method: method,
+                method: methodForFeeCalculation, // Use for fee calculation
                 accountInfo: {
                     fullMomoNumber: fullMomoNumber,
                     momoOperator: momoOperator,
@@ -461,6 +478,7 @@ class PaymentService {
                     accountInfo: withdrawalDetails.accountInfo, // Store derived account info
                     netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
                     payoutCurrency: targetPayoutCurrency, // Store the target payout currency
+                    selectedPayoutService: providerName // Store which service was selected
                 },
                 ipAddress,
                 deviceInfo
@@ -584,15 +602,16 @@ class PaymentService {
             // Get net amount for notification from metadata
             const netAmountForPayout = updatedTransaction.metadata?.netAmountRequested;
             const targetPayoutCurrency = updatedTransaction.metadata?.payoutCurrency as Currency;
+            const selectedPayoutService = updatedTransaction.metadata?.selectedPayoutService as 'CinetPay' | 'FeexPay';
 
-            if (netAmountForPayout === undefined || targetPayoutCurrency === undefined) {
-                log.error(`Transaction ${updatedTransaction.transactionId} missing netAmountRequested or payoutCurrency in metadata. Cannot initiate external payout.`);
+            if (netAmountForPayout === undefined || targetPayoutCurrency === undefined || !selectedPayoutService) {
+                log.error(`Transaction ${updatedTransaction.transactionId} missing netAmountRequested, payoutCurrency or selectedPayoutService in metadata. Cannot initiate external payout.`);
                 await transactionRepository.update(updatedTransaction._id, {
                     status: TransactionStatus.FAILED,
                     metadata: {
                         ...(updatedTransaction.metadata || {}),
-                        failureReason: 'Missing net amount or payout currency for external payout.',
-                        statusDetails: 'Payout could not be initiated due to incomplete amount/currency info in transaction record.'
+                        failureReason: 'Missing net amount, payout currency or service info for external payout.',
+                        statusDetails: 'Payout could not be initiated due to incomplete amount/currency/service info in transaction record.'
                     }
                 });
                 throw new AppError('Incomplete transaction details for payout. Cannot proceed.', 500);
@@ -647,70 +666,101 @@ class PaymentService {
                 throw new AppError('Invalid country configuration for Mobile Money payout. Cannot proceed.', 500);
             }
 
-            // Format phone number for CinetPay: remove prefix if already present and any non-digits
+            // Format phone number: remove prefix if already present and any non-digits
             const nationalPhoneNumber = withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '').startsWith(dialingPrefix)
                 ? withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '');
 
-            const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalAccountInfo.momoOperator];
+            let payoutPromise: Promise<PayoutResult | FeexPayPayoutResult>;
 
-            // Trigger the actual payout using CinetPayPayoutService
-            // This should be done asynchronously or via a job queue for robustness
-            // Crucially, it passes our internal transactionId so the webhook can link back.
-            cinetpayPayoutService.initiatePayout({
-                userId: updatedTransaction.userId.toString(), // Pass user ID for internal tracking in payout service
-                amount: netAmountForPayout, // Pass the NET amount in TARGET payout currency
-                phoneNumber: nationalPhoneNumber,
-                countryCode: withdrawalAccountInfo.countryCode,
-                recipientName: userName || 'SBC User', // Use userDetails fetched for notification
-                recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
-                // paymentMethod: cinetpayPaymentMethod, // Removed as per auto-detection strategy
-                description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
-                client_transaction_id: updatedTransaction.transactionId, // Pass our internal transaction ID to CinetPay
-                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
-            }).then(payoutRes => {
+            if (selectedPayoutService === 'CinetPay') {
+                const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalAccountInfo.momoOperator];
+                payoutPromise = cinetpayPayoutService.initiatePayout({
+                    userId: updatedTransaction.userId.toString(),
+                    amount: netAmountForPayout,
+                    phoneNumber: nationalPhoneNumber,
+                    countryCode: withdrawalAccountInfo.countryCode,
+                    recipientName: userName || 'SBC User',
+                    recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
+                    // paymentMethod: cinetpayPaymentMethod, // Removed as per auto-detection strategy
+                    description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
+                    client_transaction_id: updatedTransaction.transactionId,
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`
+                });
+            } else if (selectedPayoutService === 'FeexPay') {
+                payoutPromise = feexPayPayoutService.initiatePayout({
+                    userId: updatedTransaction.userId.toString(),
+                    amount: netAmountForPayout,
+                    phoneNumber: nationalPhoneNumber, // FeexPay may require national or full, depends on endpoint
+                    countryCode: withdrawalAccountInfo.countryCode,
+                    momoOperator: withdrawalAccountInfo.momoOperator, // FeexPay uses this to pick endpoint
+                    recipientName: userName || 'SBC User',
+                    recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
+                    description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
+                    client_transaction_id: updatedTransaction.transactionId,
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}` // Assuming FeexPay webhook
+                });
+            } else {
+                log.error(`Unknown payout service selected for transaction ${updatedTransaction.transactionId}: ${selectedPayoutService}`);
+                throw new AppError('Unknown payout service configured. Cannot proceed.', 500);
+            }
+
+
+            payoutPromise.then(payoutRes => {
+                let providerTxId: string | undefined;
+                let finalProviderName: string | undefined;
+                let payoutMessage: string | undefined;
+
+                if (selectedPayoutService === 'CinetPay') {
+                    const cinetpayRes = payoutRes as PayoutResult; // Cast to CinetPay's result type
+                    providerTxId = cinetpayRes.cinetpayTransactionId;
+                    finalProviderName = 'CinetPay';
+                    payoutMessage = cinetpayRes.message;
+                } else if (selectedPayoutService === 'FeexPay') {
+                    const feexpayRes = payoutRes as FeexPayPayoutResult; // Cast to FeexPay's result type
+                    providerTxId = feexpayRes.feexpayReference;
+                    finalProviderName = 'FeexPay';
+                    payoutMessage = feexpayRes.message;
+                }
+
                 if (payoutRes.success) {
-                    log.info(`CinetPay payout initiated for transaction ${updatedTransaction.transactionId}. Provider Tx ID: ${payoutRes.cinetpayTransactionId}`);
-                    // Update transaction with external details (status will be updated by webhook later)
+                    log.info(`${finalProviderName} payout initiated for transaction ${updatedTransaction.transactionId}. Provider Tx ID: ${providerTxId}`);
                     transactionRepository.update(updatedTransaction._id, {
-                        externalTransactionId: payoutRes.cinetpayTransactionId,
-                        serviceProvider: 'CinetPay',
-                        // paymentMethod: cinetpayPaymentMethod, // Removed as per auto-detection strategy
-                        status: TransactionStatus.PROCESSING, // Mark as processing externally
+                        externalTransactionId: providerTxId,
+                        serviceProvider: finalProviderName,
+                        status: TransactionStatus.PROCESSING,
                         metadata: {
                             ...(updatedTransaction.metadata || {}),
                             payoutInitiationStatus: payoutRes.status,
-                            payoutMessage: payoutRes.message,
-                            cinetpayLot: payoutRes.transactionId // Store CinetPay specific lot ID if available, or client_transaction_id
+                            payoutMessage: payoutMessage,
+                            providerSpecificId: (payoutRes as any).lot // Store CinetPay specific lot ID if available, or client_transaction_id
                         }
-                    }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} with CinetPay payout details:`, err));
+                    }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} with ${finalProviderName} payout details:`, err));
                 } else {
-                    log.error(`CinetPay payout initiation failed for transaction ${updatedTransaction.transactionId}: ${payoutRes.message}`);
-                    // Mark transaction as failed, no refund needed as balance wasn't debited.
+                    log.error(`${finalProviderName} payout initiation failed for transaction ${updatedTransaction.transactionId}: ${payoutMessage}`);
                     transactionRepository.update(updatedTransaction._id, {
                         status: TransactionStatus.FAILED,
                         metadata: {
                             ...(updatedTransaction.metadata || {}),
-                            failureReason: `External payout initiation failed: ${payoutRes.message}`,
-                            payoutError: payoutRes.message
+                            failureReason: `External payout initiation failed: ${payoutMessage}`,
+                            payoutError: payoutMessage
                         }
                     }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} status to FAILED after payout failure:`, err));
-                    // Send notification for failed payout initiation
                     if (userEmail) {
                         notificationService.sendTransactionFailureEmail({
                             email: userEmail,
                             name: userName || 'Customer',
                             transactionType: 'withdrawal',
                             transactionId: updatedTransaction.transactionId,
-                            amount: netAmountForPayout, // Net amount for notification
-                            currency: targetPayoutCurrency, // Target currency for notification
+                            amount: netAmountForPayout,
+                            currency: targetPayoutCurrency,
                             date: new Date().toISOString(),
-                            reason: payoutRes.message
+                            reason: payoutMessage
                         }).catch(err => log.error(`Failed to send failure notification for transaction ${updatedTransaction.transactionId}:`, err));
                     }
                 }
             }).catch(err => {
-                log.error(`Unhandled error during CinetPay payout initiation for transaction ${updatedTransaction.transactionId}:`, err);
+                log.error(`Unhandled error during payout initiation for transaction ${updatedTransaction.transactionId}:`, err);
                 transactionRepository.update(updatedTransaction._id, {
                     status: TransactionStatus.FAILED,
                     metadata: {
@@ -718,15 +768,14 @@ class PaymentService {
                         failureReason: `Internal payout system error during initiation: ${err.message}`
                     }
                 }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} status to FAILED after system error:`, err));
-                // Send notification for system error during payout initiation
                 if (userEmail) {
                     notificationService.sendTransactionFailureEmail({
                         email: userEmail,
                         name: userName || 'Customer',
                         transactionId: updatedTransaction.transactionId,
                         transactionType: 'withdrawal',
-                        amount: netAmountForPayout, // Net amount for notification
-                        currency: targetPayoutCurrency, // Target currency for notification
+                        amount: netAmountForPayout,
+                        currency: targetPayoutCurrency,
                         date: new Date().toISOString(),
                         reason: `System error during payout initiation: ${err.message}`
                     }).catch(err => log.error(`Failed to send failure notification for transaction ${updatedTransaction.transactionId}:`, err));
@@ -1594,18 +1643,18 @@ class PaymentService {
                 phoneNumberAsInt = parseInt(cleanedPhone, 10);
             }
         } catch (parseError) {
-            log.error(`Error parsing Feexpay phoneNumber ${paymentIntent.phoneNumber}: ${parseError}`);
+            log.error(`Error parsing FeexPay phoneNumber ${paymentIntent.phoneNumber}: ${parseError}`);
         }
 
         if (phoneNumberAsInt === undefined) {
-            log.error(`Could not parse Feexpay phoneNumber to integer: ${paymentIntent.phoneNumber}`);
+            log.error(`Could not parse FeexPay phoneNumber to integer: ${paymentIntent.phoneNumber}`);
             throw new Error('Invalid phone number format provided.');
         }
 
         // Log details before sending
-        log.info(`Initiating Feexpay payment for sessionId: ${paymentIntent.sessionId}`);
-        log.info(`Feexpay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${phoneNumberAsInt}`);
-        log.info(`Feexpay config: baseUrl=${config.feexpay.baseUrl}, shopId=${config.feexpay.shopId}`);
+        log.info(`Initiating FeexPay payment for sessionId: ${paymentIntent.sessionId}`);
+        log.info(`FeexPay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${phoneNumberAsInt}`);
+        log.info(`FeexPay config: baseUrl=${config.feexpay.baseUrl}, shopId=${config.feexpay.shopId}`);
 
         const userDetails = await userServiceClient.getUserDetails(paymentIntent.userId);
 
@@ -1641,14 +1690,14 @@ class PaymentService {
         // Add OTP to request body if operator is orange_sn and OTP is provided
         if (endpointOperator === 'orange_sn' && otp) {
             requestBody.otp = otp;
-            log.info(`Orange SN: Added OTP to Feexpay request body.`);
+            log.info(`Orange SN: Added OTP to FeexPay request body.`);
         } else if (endpointOperator === 'orange_sn' && !otp) {
-            log.error(`Feexpay operator is orange_sn but OTP is missing for session ${paymentIntent.sessionId}.`);
+            log.error(`FeexPay operator is orange_sn but OTP is missing for session ${paymentIntent.sessionId}.`);
             // This case should ideally be prevented by client-side validation requiring OTP for orange_sn
             throw new Error('OTP is required for Orange Senegal payments.');
         }
 
-        log.info(`Feexpay request body: ${JSON.stringify(requestBody)}`);
+        log.info(`FeexPay request body: ${JSON.stringify(requestBody)}`);
 
         try {
             // TEMPORARY DEBUG LOGGING - REMOVE AFTER VERIFICATION
@@ -1668,8 +1717,8 @@ class PaymentService {
                 }
             );
 
-            log.info(`Feexpay response status: ${response.status}`);
-            log.info(`Feexpay response data: ${JSON.stringify(response.data)}`);
+            log.info(`FeexPay response status: ${response.status}`);
+            log.info(`FeexPay response data: ${JSON.stringify(response.data)}`);
 
             // Update payment intent with gateway response data
             const updateData: Partial<IPaymentIntent> = {
@@ -1686,21 +1735,21 @@ class PaymentService {
             );
 
             if (!updatedIntent) {
-                throw new Error('Failed to update payment intent after Feexpay initiation');
+                throw new Error('Failed to update payment intent after FeexPay initiation');
             }
 
             return updatedIntent;
         } catch (error: any) {
-            log.error(`Feexpay payment initiation failed for sessionId: ${paymentIntent.sessionId}`);
+            log.error(`FeexPay payment initiation failed for sessionId: ${paymentIntent.sessionId}`);
             if (error.response) {
-                log.error(`Feexpay API Error: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
+                log.error(`FeexPay API Error: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             } else if (error.request) {
-                log.error(`Feexpay no response received: ${error.message}`);
+                log.error(`FeexPay no response received: ${error.message}`);
             } else {
-                log.error(`Feexpay request setup error: ${error.message}`);
+                log.error(`FeexPay request setup error: ${error.message}`);
             }
             // Don't set status to ERROR here; let submitPaymentDetails handle it
-            throw new Error('Failed to initiate Feexpay payment');
+            throw new Error('Failed to initiate FeexPay payment');
         }
     }
 
@@ -2329,8 +2378,6 @@ class PaymentService {
         }
     }
 
-    // --- END NEW ADMIN STATS METHODS ---
-
     // --- NEW CINTPAY TRANSFER/PAYOUT METHODS ---
 
     /**
@@ -2726,6 +2773,7 @@ class PaymentService {
                     statusDetails: 'Admin-initiated, awaiting external payout',
                     netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
                     payoutCurrency: targetPayoutCurrency, // Store the target payout currency
+                    selectedPayoutService: undefined, // Will be set below
                 },
                 ipAddress,
                 deviceInfo
@@ -2742,75 +2790,133 @@ class PaymentService {
                     metadata: {
                         ...(withdrawalTransaction.metadata || {}),
                         failureReason: 'Invalid country dialing prefix configuration for external payout.',
-                        statusDetails: 'Payout could not be initiated due1 to invalid country configuration.'
+                        statusDetails: 'Payout could not be initiated due to invalid country configuration.'
                     }
                 });
                 throw new AppError('Invalid country configuration for Mobile Money payout. Cannot proceed.', 500);
             }
 
-            // Format phone number for CinetPay
             const nationalPhoneNumber = withdrawalDetails.accountInfo.fullMomoNumber.replace(/\D/g, '').startsWith(dialingPrefix)
                 ? withdrawalDetails.accountInfo.fullMomoNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : withdrawalDetails.accountInfo.fullMomoNumber.replace(/\D/g, '');
 
-            // Use the PayoutRequest interface directly for clarity
-            const payoutRequest: PayoutRequest = {
-                userId: targetUserId.toString(),
-                amount: netAmountDesired, // Pass the NET amount in TARGET payout currency
-                phoneNumber: nationalPhoneNumber,
-                countryCode: withdrawalDetails.accountInfo.countryCode,
-                recipientName: withdrawalDetails.accountInfo.recipientName || userDetails.name || 'SBC User',
-                recipientEmail: withdrawalDetails.accountInfo.recipientEmail || userDetails.email || `${targetUserId}@sbc.com`,
-                // paymentMethod: withdrawalDetails.method, // Removed as per auto-detection strategy
-                description: `Admin-initiated withdrawal for ${userDetails.name} (Tx: ${withdrawalTransaction.transactionId})`,
-                client_transaction_id: withdrawalTransaction.transactionId, // Pass our internal transaction ID to CinetPay
-                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
-            };
+            let payoutService;
+            let payoutNotificationUrl: string;
+            let providerName: 'CinetPay' | 'FeexPay';
 
-            cinetpayPayoutService.initiatePayout(payoutRequest)
-                .then(payoutRes => {
-                    if (payoutRes.success) {
-                        log.info(`CinetPay payout initiated for admin-Tx ${withdrawalTransaction.transactionId}. Provider Tx ID: ${payoutRes.cinetpayTransactionId}`);
-                        transactionRepository.update(withdrawalTransaction._id, {
-                            externalTransactionId: payoutRes.cinetpayTransactionId,
-                            serviceProvider: 'CinetPay',
-                            // paymentMethod: payoutRequest.paymentMethod, // Removed as per auto-detection strategy
-                            status: TransactionStatus.PROCESSING, // Mark as processing externally
-                            metadata: {
-                                ...(withdrawalTransaction.metadata || {}),
-                                payoutInitiationStatus: payoutRes.status,
-                                payoutMessage: payoutRes.message,
-                                cinetpayLot: payoutRes.transactionId // CinetPay's client_transaction_id or internal lot
-                            }
-                        }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} with CinetPay payout details:`, err));
-                    } else {
-                        log.error(`CinetPay payout initiation failed for admin-Tx ${withdrawalTransaction.transactionId}: ${payoutRes.message}`);
-                        // Mark transaction as failed, no refund needed as balance wasn't debited.
-                        transactionRepository.update(withdrawalTransaction._id, {
-                            status: TransactionStatus.FAILED,
-                            metadata: {
-                                ...(withdrawalTransaction.metadata || {}),
-                                failureReason: `External payout failed (Admin): ${payoutRes.message}`,
-                                payoutError: payoutRes.message
-                            }
-                        }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} status to FAILED after payout failure:`, err));
-                        // Send notification for failed payout initiation
-                        if (userDetails?.email) {
-                            notificationService.sendTransactionFailureEmail({
-                                email: userDetails.email,
-                                name: userDetails.name || 'Customer',
-                                transactionId: withdrawalTransaction.transactionId,
-                                transactionType: 'withdrawal',
-                                amount: netAmountDesired, // Net amount for notification
-                                currency: targetPayoutCurrency, // Target currency for notification
-                                date: new Date().toISOString(),
-                                reason: payoutRes.message
-                            }).catch(err => log.error(`Failed to send failure notification for admin-Tx ${withdrawalTransaction.transactionId}:`, err));
+            if (withdrawalDetails.accountInfo.countryCode === 'CM') {
+                payoutService = cinetpayPayoutService;
+                providerName = 'CinetPay';
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`;
+                log.info(`Using CinetPay for admin payout to Cameroon (${withdrawalDetails.accountInfo.countryCode}).`);
+            } else {
+                // For all other supported countries, use FeexPay
+                payoutService = feexPayPayoutService;
+                providerName = 'FeexPay';
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}`;
+                log.info(`Using FeexPay for admin payout to ${withdrawalDetails.accountInfo.countryCode}.`);
+            }
+
+            // Update the transaction with the selected providerName
+            await transactionRepository.update(withdrawalTransaction._id, {
+                metadata: {
+                    ...(withdrawalTransaction.metadata || {}),
+                    selectedPayoutService: providerName
+                }
+            });
+
+            let payoutPromise: Promise<PayoutResult | FeexPayPayoutResult>;
+
+            if (providerName === 'CinetPay') {
+                const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalDetails.accountInfo.momoOperator];
+                payoutPromise = (payoutService as typeof cinetpayPayoutService).initiatePayout({
+                    userId: targetUserId.toString(),
+                    amount: netAmountDesired, // Pass the NET amount in TARGET payout currency
+                    phoneNumber: nationalPhoneNumber,
+                    countryCode: withdrawalDetails.accountInfo.countryCode,
+                    recipientName: withdrawalDetails.accountInfo.recipientName || userDetails.name || 'SBC User',
+                    recipientEmail: withdrawalDetails.accountInfo.recipientEmail || userDetails.email || `${targetUserId}@sbc.com`,
+                    description: `Admin-initiated withdrawal for ${userDetails.name} (Tx: ${withdrawalTransaction.transactionId})`,
+                    client_transaction_id: withdrawalTransaction.transactionId, // Pass our internal transaction ID to CinetPay
+                    notifyUrl: payoutNotificationUrl
+                });
+            } else if (providerName === 'FeexPay') {
+                payoutPromise = (payoutService as typeof feexPayPayoutService).initiatePayout({
+                    userId: targetUserId.toString(),
+                    amount: netAmountDesired,
+                    phoneNumber: nationalPhoneNumber, // FeexPay may require national or full, depends on endpoint
+                    countryCode: withdrawalDetails.accountInfo.countryCode,
+                    momoOperator: withdrawalDetails.accountInfo.momoOperator, // FeexPay uses this to pick endpoint
+                    recipientName: withdrawalDetails.accountInfo.recipientName || userDetails.name || 'SBC User',
+                    recipientEmail: withdrawalDetails.accountInfo.recipientEmail || userDetails.email || `${targetUserId}@sbc.com`,
+                    description: `Admin-initiated withdrawal for ${userDetails.name} (Tx: ${withdrawalTransaction.transactionId})`,
+                    client_transaction_id: withdrawalTransaction.transactionId,
+                    notifyUrl: payoutNotificationUrl
+                });
+            } else {
+                log.error(`Unknown payout service selected for admin-initiated transaction ${withdrawalTransaction.transactionId}: ${providerName}`);
+                throw new AppError('Unknown payout service configured for admin. Cannot proceed.', 500);
+            }
+
+            payoutPromise.then(payoutRes => {
+                let providerTxId: string | undefined;
+                let finalProviderName: 'CinetPay' | 'FeexPay' | undefined;
+                let payoutMessage: string | undefined;
+
+                if (providerName === 'CinetPay') {
+                    const cinetpayRes = payoutRes as PayoutResult; // Cast to CinetPay's result type
+                    providerTxId = cinetpayRes.cinetpayTransactionId;
+                    finalProviderName = 'CinetPay';
+                    payoutMessage = cinetpayRes.message;
+                } else if (providerName === 'FeexPay') {
+                    const feexpayRes = payoutRes as FeexPayPayoutResult; // Cast to FeexPay's result type
+                    providerTxId = feexpayRes.feexpayReference;
+                    finalProviderName = 'FeexPay';
+                    payoutMessage = feexpayRes.message;
+                }
+
+                if (payoutRes.success) {
+                    log.info(`${finalProviderName} payout initiated for admin-Tx ${withdrawalTransaction.transactionId}. Provider Tx ID: ${providerTxId}`);
+                    transactionRepository.update(withdrawalTransaction._id, {
+                        externalTransactionId: providerTxId,
+                        serviceProvider: finalProviderName,
+                        status: TransactionStatus.PROCESSING, // Mark as processing externally
+                        metadata: {
+                            ...(withdrawalTransaction.metadata || {}),
+                            payoutInitiationStatus: payoutRes.status,
+                            payoutMessage: payoutMessage,
+                            // Store provider specific lot/reference if available
+                            providerSpecificRef: (payoutRes as any).lot || (payoutRes as any).feexpayReference
                         }
+                    }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} with ${finalProviderName} payout details:`, err));
+                } else {
+                    log.error(`${finalProviderName} payout initiation failed for admin-Tx ${withdrawalTransaction.transactionId}: ${payoutMessage}`);
+                    // Mark transaction as failed, no refund needed as balance wasn't debited.
+                    transactionRepository.update(withdrawalTransaction._id, {
+                        status: TransactionStatus.FAILED,
+                        metadata: {
+                            ...(withdrawalTransaction.metadata || {}),
+                            failureReason: `External payout failed (Admin): ${payoutMessage}`,
+                            payoutError: payoutMessage
+                        }
+                    }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} status to FAILED after payout failure:`, err));
+                    // Send notification for failed payout initiation
+                    if (userDetails?.email) {
+                        notificationService.sendTransactionFailureEmail({
+                            email: userDetails.email,
+                            name: userDetails.name || 'Customer',
+                            transactionId: withdrawalTransaction.transactionId,
+                            transactionType: 'withdrawal',
+                            amount: netAmountDesired, // Net amount for notification
+                            currency: targetPayoutCurrency, // Target currency for notification
+                            date: new Date().toISOString(),
+                            reason: payoutMessage
+                        }).catch(err => log.error(`Failed to send failure notification for admin-Tx ${withdrawalTransaction.transactionId}:`, err));
                     }
-                })
+                }
+            })
                 .catch(err => {
-                    log.error(`Unhandled error during CinetPay payout for admin-Tx ${withdrawalTransaction.transactionId}:`, err);
+                    log.error(`Unhandled error during payout for admin-Tx ${withdrawalTransaction.transactionId}:`, err);
                     transactionRepository.update(withdrawalTransaction._id, {
                         status: TransactionStatus.FAILED,
                         metadata: {
@@ -2950,7 +3056,7 @@ class PaymentService {
                 paymentMethod: recipientDetails.paymentMethod,
                 description: description,
                 client_transaction_id: directPayoutTransaction.transactionId, // Use our internal transaction ID
-                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
+                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}` // Use the dedicated payout webhook
             });
 
             // Update the internal transaction status based on CinetPay's immediate response
@@ -3049,7 +3155,7 @@ class PaymentService {
             throw new AppError('Missing CinetPay transaction ID in webhook payload. Verification failed.', 400);
         }
 
-        let verifiedPayoutStatus: PayoutStatus | null = null;
+        let verifiedPayoutStatus: PayoutStatus | null = null; // Declare outside try block
         try {
             // CRITICAL: Perform server-to-server validation with CinetPay's API
             log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId})`);
@@ -3096,7 +3202,7 @@ class PaymentService {
             default:
                 // If CinetPay API says it's still pending/processing, we keep our internal status as such.
                 // We shouldn't receive 'pending'/'processing' on a final webhook, but handle defensively.
-                log.warn(`Webhook received for non-final API status (${verifiedPayoutStatus.status}) for ${internalTransactionId}. Keeping transaction as PROCESSING.`);
+                log.warn(`Webhook received for non-final API status (${verifiedPayoutStatus.status}). Keeping transaction as PROCESSING.`);
                 finalStatus = TransactionStatus.PROCESSING; // Or whatever represents "in progress"
                 break;
         }
@@ -3112,12 +3218,14 @@ class PaymentService {
         let updateMetadata: Record<string, any> = {
             ...(transaction.metadata || {}),
             providerWebhookStatus: finalStatus, // Reflects the *API-confirmed* status mapped to our enum
-            providerWebhookMessage: verifiedPayoutStatus.comment || providerStatusMessage, // Use API comment, fallback to webhook message
+            providerWebhookMessage: verifiedPayoutStatus?.comment || providerStatusMessage, // Use API comment, fallback to webhook message
             providerRawWebhookData: fullProviderPayload, // Still store full raw data for audit
-            cinetpayApiStatus: verifiedPayoutStatus.status, // Store the exact API status
-            cinetpayApiComment: verifiedPayoutStatus.comment, // Store API comment
-            cinetpayOperator: verifiedPayoutStatus.operator, // Store operator from API
+            cinetpayApiStatus: verifiedPayoutStatus?.status, // Store the exact API status
+            cinetpayApiComment: verifiedPayoutStatus?.comment, // Store API comment
+            cinetpayOperator: verifiedPayoutStatus?.operator, // Store operator from API
         };
+
+        const providerName = 'CinetPay'; // This webhook is specifically for CinetPay
 
         if (finalStatus === TransactionStatus.COMPLETED) {
             log.info(`Payout for transaction ${internalTransactionId} is COMPLETED. Debiting user balance.`);
@@ -3148,7 +3256,7 @@ class PaymentService {
             }
         } else if (finalStatus === TransactionStatus.FAILED) {
             log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit/refund needed.`);
-            updateMetadata.failureReason = `External payout failed: ${verifiedPayoutStatus.comment || providerStatusMessage}`;
+            updateMetadata.failureReason = `External payout failed: ${verifiedPayoutStatus?.comment || providerStatusMessage}`;
 
             // Send failure notification (only if it's a regular user withdrawal)
             // For admin-initiated direct payouts, the admin might get a different notification or none.
@@ -3163,7 +3271,7 @@ class PaymentService {
                         amount: netAmountForNotification,
                         currency: targetCurrencyForNotification,
                         date: new Date().toISOString(),
-                        reason: verifiedPayoutStatus.comment || providerStatusMessage || 'External payout failed.'
+                        reason: verifiedPayoutStatus?.comment || providerStatusMessage || 'External payout failed.'
                     });
                     log.info(`Failure notification sent for transaction ${internalTransactionId}.`);
                 }
@@ -3475,7 +3583,6 @@ class PaymentService {
 
         return results;
     }
-
 }
 
 // Export singleton instance
