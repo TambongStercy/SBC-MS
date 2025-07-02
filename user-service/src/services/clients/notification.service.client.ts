@@ -153,6 +153,55 @@ class NotificationService {
             return false;
         }
     }
+
+    /**
+     * Send a WhatsApp message with a file attachment via the notification service
+     */
+    async sendWhatsappWithAttachment({
+        userId,
+        recipient,
+        body,
+        attachmentContent,
+        attachmentFileName,
+        attachmentContentType,
+    }: {
+        userId: string;
+        recipient: string;
+        body?: string;
+        attachmentContent: string;
+        attachmentFileName?: string;
+        attachmentContentType: string;
+    }): Promise<boolean> {
+        try {
+            log.info(`Sending WhatsApp file attachment to ${recipient}`);
+            const response = await this.apiClient.post('/notifications/internal/create', {
+                userId,
+                type: NotificationType.ACCOUNT, // Or another type if more appropriate
+                channel: DeliveryChannel.WHATSAPP,
+                recipient,
+                data: {
+                    body: body || '',
+                    attachmentContent,
+                    attachmentFileName,
+                    attachmentContentType,
+                },
+            });
+            if (response.status === 201 && response.data.success) {
+                log.info(`WhatsApp file attachment sent successfully to ${recipient}`);
+                return true;
+            } else {
+                log.warn(`Failed to send WhatsApp file attachment: ${response.data.message}`);
+                return false;
+            }
+        } catch (error: any) {
+            log.error(`Error sending WhatsApp file attachment: ${error.message}`, {
+                userId,
+                recipient,
+                error: error.response?.data || error.message,
+            });
+            return false;
+        }
+    }
 }
 
 // Export singleton instance

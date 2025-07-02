@@ -380,6 +380,8 @@ export class UserService {
                 isRegistration: false,
                 userName: user.name
             });
+
+
         } catch (otpError) {
             log.error(`Failed to generate OTP during login for ${user.email}`, otpError);
             throw new Error('Login failed: Could not send OTP verification code.');
@@ -3488,6 +3490,50 @@ export class UserService {
         } catch (error) {
             log.error(`Failed to send VCF email to user ${userId} (${userEmail}):`, error);
             // Log the error but don't re-throw, as the primary request (download) should still succeed.
+        }
+    }
+
+    /**
+     * Sends the generated VCF file as a WhatsApp attachment, falling back to email if WhatsApp fails.
+     * @param userId The ID of the user to send to.
+     * @param userEmail The user's email address.
+     * @param vcfContent The VCF file content as a string.
+     * @param fileName The file name for the attachment.
+     */
+    public async sendContactsVcfWhatsappOrEmail(
+        userId: string | Types.ObjectId,
+        userEmail: string,
+        vcfContent: string,
+        fileName: string = 'contacts.vcf'
+    ): Promise<void> {
+        log.info(`Attempting to send VCF file to user ${userId} via WhatsApp, fallback to email if needed.`);
+        log.info(`[DEBUG] VCF content length for WhatsApp: ${vcfContent.length}`);
+        try {
+            // Fetch user details to get phone number
+            const user = await userRepository.findById(userId);
+            const phoneNumber = user?.phoneNumber;
+            if (phoneNumber) {
+                const whatsappSuccess = await notificationService.sendWhatsappWithAttachment({
+                    userId: userId.toString(),
+                    recipient: phoneNumber,
+                    body: 'Voici vos contacts SBC exportés. Le fichier VCF est en pièce jointe.',
+                    attachmentContent: Buffer.from(vcfContent).toString('base64'),
+                    attachmentFileName: fileName,
+                    attachmentContentType: 'text/vcard',
+                });
+                if (whatsappSuccess) {
+                    log.info(`VCF file sent successfully to user ${userId} via WhatsApp.`);
+                    return;
+                } else {
+                    log.warn(`Failed to send VCF via WhatsApp to user ${userId}, will try email.`);
+                }
+            } else {
+                log.warn(`User ${userId} has no phone number, skipping WhatsApp and using email.`);
+            }
+            // Fallback to email
+            await this.sendContactsVcfEmail(userId, userEmail, vcfContent, fileName);
+        } catch (error) {
+            log.error(`Failed to send VCF via WhatsApp and email for user ${userId}:`, error);
         }
     }
 }

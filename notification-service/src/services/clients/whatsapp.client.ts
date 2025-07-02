@@ -1,24 +1,39 @@
-import { Client, LocalAuth } from 'whatsapp-web.js';
-import qrcode from 'qrcode-terminal';
+import logger from '../../utils/logger';
 
-const whatsappClient = new Client({
-    authStrategy: new LocalAuth()
-});
+const log = logger.getLogger('WhatsAppClient');
 
-whatsappClient.on('qr', (qr) => qrcode.generate(qr, { small: true }));
-whatsappClient.on('ready', () => console.log('WhatsApp client is ready'));
-whatsappClient.on('message', async (msg) => {
-    try {
-        if (msg.from !== 'status@broadcast') {
-            const contact = await msg.getContact();
-            console.log(`Message from ${contact.name}: ${msg.body}`);
-            await msg.reply('hi');
-        }
-    } catch (err) {
-        console.log(err);
+interface PlaceholderClient {
+    sendMessage: (to: string, message: string) => Promise<boolean>;
+    initialize: () => void;
+    isReady: () => boolean;
+}
+
+class WhatsAppClientPlaceholder implements PlaceholderClient {
+    private ready = false;
+
+    constructor() {
+        log.info('WhatsApp client placeholder initialized');
     }
-});
 
-whatsappClient.initialize();
+    initialize(): void {
+        log.info('WhatsApp client placeholder initialized (no actual connection)');
+        this.ready = true;
+    }
 
+    isReady(): boolean {
+        return this.ready;
+    }
+
+    async sendMessage(to: string, message: string): Promise<boolean> {
+        try {
+            log.info(`WhatsApp message sent (placeholder)`, { to, message });
+            return true;
+        } catch (error) {
+            log.error('Failed to send WhatsApp message (placeholder)', error);
+            return false;
+        }
+    }
+}
+
+const whatsappClient = new WhatsAppClientPlaceholder();
 export default whatsappClient;

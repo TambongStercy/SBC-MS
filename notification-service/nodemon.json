@@ -1,0 +1,6 @@
+{
+    "ignore": [
+        "whatsapp_auth/*",
+        "logs/*"
+    ]
+}

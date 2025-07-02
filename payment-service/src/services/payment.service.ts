@@ -13,7 +13,7 @@ import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
 import { countryCodeToDialingPrefix, momoOperatorToCinetpayPaymentMethod, momoOperatorToCountryCode, getPrefixFromOperator, momoOperatorToCurrency } from '../utils/operatorMaps'; // NEW: Import all necessary maps and helper
-import { cinetpayPayoutService, PayoutRequest, PayoutResult, PayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
+import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 
 const host = 'https://sniperbuisnesscenter.com';
@@ -671,7 +671,7 @@ class PaymentService {
                 ? withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '');
 
-            let payoutPromise: Promise<PayoutResult | FeexPayPayoutResult>;
+            let payoutPromise: Promise<CinetPayPayoutResult | FeexPayPayoutResult>;
 
             if (selectedPayoutService === 'CinetPay') {
                 const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalAccountInfo.momoOperator];
@@ -712,7 +712,7 @@ class PaymentService {
                 let payoutMessage: string | undefined;
 
                 if (selectedPayoutService === 'CinetPay') {
-                    const cinetpayRes = payoutRes as PayoutResult; // Cast to CinetPay's result type
+                    const cinetpayRes = payoutRes as CinetPayPayoutResult; // Cast to CinetPay's result type
                     providerTxId = cinetpayRes.cinetpayTransactionId;
                     finalProviderName = 'CinetPay';
                     payoutMessage = cinetpayRes.message;
@@ -2825,7 +2825,7 @@ class PaymentService {
                 }
             });
 
-            let payoutPromise: Promise<PayoutResult | FeexPayPayoutResult>;
+            let payoutPromise: Promise<CinetPayPayoutResult | FeexPayPayoutResult>;
 
             if (providerName === 'CinetPay') {
                 const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalDetails.accountInfo.momoOperator];
@@ -2864,7 +2864,7 @@ class PaymentService {
                 let payoutMessage: string | undefined;
 
                 if (providerName === 'CinetPay') {
-                    const cinetpayRes = payoutRes as PayoutResult; // Cast to CinetPay's result type
+                    const cinetpayRes = payoutRes as CinetPayPayoutResult; // Cast to CinetPay's result type
                     providerTxId = cinetpayRes.cinetpayTransactionId;
                     finalProviderName = 'CinetPay';
                     payoutMessage = cinetpayRes.message;
@@ -3155,7 +3155,7 @@ class PaymentService {
             throw new AppError('Missing CinetPay transaction ID in webhook payload. Verification failed.', 400);
         }
 
-        let verifiedPayoutStatus: PayoutStatus | null = null; // Declare outside try block
+        let verifiedPayoutStatus: CinetPayPayoutStatus | null = null; // Declare outside try block
         try {
             // CRITICAL: Perform server-to-server validation with CinetPay's API
             log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId})`);
@@ -3233,21 +3233,6 @@ class PaymentService {
                 // Debit user's balance ONLY IF it's a successful withdrawal and has not been debited yet.
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
-
-                // Send success notification
-                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
-                if (userDetails?.email) {
-                    await notificationService.sendTransactionSuccessEmail({
-                        email: userDetails.email,
-                        name: userDetails.name || 'Customer',
-                        transactionType: 'withdrawal',
-                        transactionId: transaction.transactionId,
-                        amount: netAmountForNotification,
-                        currency: targetCurrencyForNotification,
-                        date: new Date().toISOString(),
-                    });
-                    log.info(`Success notification sent for transaction ${internalTransactionId}.`);
-                }
 
             } catch (balanceError: any) {
                 log.error(`CRITICAL: Failed to debit user balance for completed payout ${internalTransactionId}: ${balanceError.message}. Marking transaction as FAILED.`, balanceError);
@@ -3582,6 +3567,124 @@ class PaymentService {
         }
 
         return results;
+    }
+
+    /**
+     * Processes incoming webhook notifications for FeexPay Payout status changes.
+     * This method is called by the PayoutController when a webhook is received.
+     * It updates the internal transaction status and debits user balance on success.
+     */
+    public async processFeexPayPayoutWebhook(payload: any): Promise<void> {
+        log.info('Processing FeexPay Payout Webhook via PaymentService.');
+
+        // Use the FeexPayPayoutService to parse and validate the payload first
+        const notification = feexPayPayoutService.processWebhookNotification(payload);
+
+        const {
+            transactionId: internalTransactionId,
+            feexpayReference,
+            status: providerStatus, // This is our internal mapped status ('completed', 'failed', etc.)
+            comment: providerMessage
+        } = notification;
+
+        log.info(`Webhook details from service: internalTxId=${internalTransactionId}, feexpayRef=${feexpayReference}, status="${providerStatus}"`);
+
+        const transaction = await transactionRepository.findByTransactionId(internalTransactionId);
+
+        if (!transaction) {
+            log.error(`Payout webhook: Transaction ${internalTransactionId} not found in DB. Cannot process.`);
+            throw new AppError('Internal transaction not found for webhook processing.', 404);
+        }
+
+        if (transaction.type !== TransactionType.WITHDRAWAL) {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
+        }
+
+        // Prevent processing if already completed/failed
+        if (transaction.status === TransactionStatus.COMPLETED || transaction.status === TransactionStatus.FAILED) {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} already in final status (${transaction.status}). Skipping update.`);
+            return;
+        }
+
+        // The status from feexPayPayoutService is already mapped to our internal 'completed'/'failed' etc.
+        let finalStatus: TransactionStatus;
+        if (providerStatus === 'completed') {
+            finalStatus = TransactionStatus.COMPLETED;
+        } else if (providerStatus === 'failed') {
+            finalStatus = TransactionStatus.FAILED;
+        } else {
+            log.warn(`Received non-final FeexPay payout status for Tx ID ${internalTransactionId}: ${providerStatus}. Ignoring.`);
+            return; // Only process final states
+        }
+
+
+        const grossAmountToDebitInXAF = Math.abs(transaction.amount);
+        const netAmountForNotification = transaction.metadata?.netAmountRequested || (grossAmountToDebitInXAF - (transaction.fee || 0));
+        const targetCurrencyForNotification = transaction.metadata?.payoutCurrency || transaction.currency;
+
+        let updateStatus: TransactionStatus = finalStatus;
+        let updateMetadata: Record<string, any> = {
+            ...(transaction.metadata || {}),
+            providerWebhookStatus: providerStatus,
+            providerWebhookMessage: providerMessage,
+            providerRawWebhookData: payload,
+        };
+
+        if (finalStatus === TransactionStatus.COMPLETED) {
+            log.info(`Payout for transaction ${internalTransactionId} is COMPLETED. Debiting user balance.`);
+            try {
+                // Debit user's balance ONLY IF it's a successful withdrawal.
+                await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
+                log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
+
+                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                if (userDetails?.email) {
+                    await notificationService.sendTransactionSuccessEmail({
+                        email: userDetails.email,
+                        name: userDetails.name || 'Customer',
+                        transactionType: 'withdrawal',
+                        transactionId: transaction.transactionId,
+                        amount: netAmountForNotification,
+                        currency: targetCurrencyForNotification,
+                        date: new Date().toISOString(),
+                    });
+                    log.info(`Success notification sent for transaction ${internalTransactionId}.`);
+                }
+            } catch (balanceError: any) {
+                log.error(`CRITICAL: Failed to debit user balance for completed payout ${internalTransactionId}: ${balanceError.message}. Marking transaction as FAILED.`, balanceError);
+                updateStatus = TransactionStatus.FAILED;
+                updateMetadata.internalFailureReason = `Balance debit failed after provider success: ${balanceError.message}`;
+            }
+        } else if (finalStatus === TransactionStatus.FAILED) {
+            log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
+            updateMetadata.failureReason = `External payout failed: ${providerMessage}`;
+
+            if (transaction.metadata?.adminAction !== true) {
+                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                if (userDetails?.email) {
+                    await notificationService.sendTransactionFailureEmail({
+                        email: userDetails.email,
+                        name: userDetails.name || 'Customer',
+                        transactionId: transaction.transactionId,
+                        transactionType: 'withdrawal',
+                        amount: netAmountForNotification,
+                        currency: targetCurrencyForNotification,
+                        date: new Date().toISOString(),
+                        reason: providerMessage || 'External payout failed.'
+                    });
+                    log.info(`Failure notification sent for transaction ${internalTransactionId}.`);
+                }
+            }
+        }
+
+        // Update the transaction record with the final status and metadata
+        await transactionRepository.update(transaction._id, {
+            status: updateStatus,
+            serviceProvider: transaction.serviceProvider || 'FeexPay', // Set provider if not already set
+            externalTransactionId: transaction.externalTransactionId || feexpayReference,
+            metadata: updateMetadata
+        });
+        log.info(`Transaction ${internalTransactionId} status updated to ${updateStatus} based on FeexPay webhook.`);
     }
 }
 

@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { notificationController } from '../controllers/notification.controller';
 import { authenticate, authenticateServiceRequest } from '../middleware/auth.middleware';
+import whatsappService from '../../services/whatsapp.service';
 
 const router = Router();
 
@@ -32,5 +33,50 @@ router.post('/follow-up', authenticate, (req, res) => notificationController.sen
 router.post('/send-email-attachment', (req: Request, res: Response, next: NextFunction) =>
     notificationController.sendEmailWithAttachment(req, res, next)
 );
+
+// Queue monitoring route (admin/internal use)
+router.get('/queue/stats', authenticateServiceRequest, (req, res) => notificationController.getQueueStats(req, res));
+
+// WhatsApp QR code endpoint
+router.get('/whatsapp/qr', (req, res) => {
+    const { qr, timestamp } = whatsappService.getLatestQr();
+    if (!qr) {
+        return res.status(404).json({ success: false, message: 'No QR code available' });
+    }
+    // Return as image/png
+    const base64 = qr.replace(/^data:image\/png;base64,/, '');
+    const img = Buffer.from(base64, 'base64');
+    res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': img.length,
+        'Cache-Control': 'no-cache',
+        'X-QR-Timestamp': timestamp.toString(),
+    });
+    res.end(img);
+});
+
+// WhatsApp QR code SSE stream
+router.get('/whatsapp/qr/stream', (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+    });
+    // Send the latest QR immediately if available
+    const { qr, timestamp } = whatsappService.getLatestQr();
+    if (qr) {
+        res.write(`event: qr\ndata: ${JSON.stringify({ qr, timestamp })}\n\n`);
+    }
+    // Listen for new QR codes
+    const onQr = (newQr: string) => {
+        res.write(`event: qr\ndata: ${JSON.stringify({ qr: newQr, timestamp: Date.now() })}\n\n`);
+    };
+    whatsappService.on('qr', onQr);
+    // Clean up on client disconnect
+    req.on('close', () => {
+        whatsappService.off('qr', onQr);
+    });
+});
 
 export default router; 

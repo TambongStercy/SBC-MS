@@ -235,6 +235,33 @@ export class PayoutController {
     }
 
     /**
+     * Handle FeexPay webhook notifications for Payouts/Transfers.
+     * @route POST /api/payouts/webhooks/feexpay
+     */
+    async handleFeexPayWebhook(req: Request, res: Response): Promise<void> {
+        try {
+            log.info('Received FeexPay payout webhook notification');
+            log.debug('FeexPay Payout Webhook payload:', req.body);
+
+            // Call paymentService to process the FeexPay payout webhook
+            await paymentService.processFeexPayPayoutWebhook(req.body);
+
+            res.status(200).json({
+                success: true,
+                message: 'Webhook processed successfully'
+            });
+
+        } catch (error: any) {
+            log.error('Error processing FeexPay payout webhook:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to process webhook',
+                error: error.message
+            });
+        }
+    }
+
+    /**
      * Test payout functionality (development only)
      * @route POST /api/payouts/test
      */

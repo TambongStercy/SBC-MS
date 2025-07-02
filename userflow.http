@@ -504,8 +504,8 @@ Content-Type: application/json
 
 # --- IMPORTANT: Copy the Bearer token from the successful login response above ---
 # Store them in your environment variables or manually replace below
-@AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MDU0NDkyNywiZXhwIjoxNzUwNjMxMzI3fQ.OoEAz1CPGoZl5VDvPvcfnSOEX9tX-BGzZDBZFTYyg1Y
-@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MDU0NDkyNywiZXhwIjoxNzUwNjMxMzI3fQ.OoEAz1CPGoZl5VDvPvcfnSOEX9tX-BGzZDBZFTYyg1Y
+@AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MTA1MzI4OCwiZXhwIjoxNzUxMTM5Njg4fQ.hSV9OU9iForB03--qBHSUtI4fqkBf9tAMKYgi49KcO8
+@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MTA1MzI4OCwiZXhwIjoxNzUxMTM5Njg4fQ.hSV9OU9iForB03--qBHSUtI4fqkBf9tAMKYgi49KcO8
 
 
 ### USER WITHDRAWAL ENDPOINTS
@@ -614,8 +614,8 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 {
   "usersToFix": [
     {
-      "userIdentifier": "alibabasen221@gmail.com",
-      "correctReferrerIdentifier": "josephdema33@gmail.com"
+      "userIdentifier": "koulekpo@gmail.com",
+      "correctReferrerIdentifier": "kaiserxlenoir@gmail.com"
     }
   ],
   "bugStartDate": "2024-06-09T00:00:00Z",  

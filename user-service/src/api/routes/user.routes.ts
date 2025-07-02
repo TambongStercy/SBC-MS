@@ -52,10 +52,10 @@ router.post('/login', strictLimiter, (req, res) => userController.login(req, res
 router.post('/verify-otp', strictLimiter, (req, res) => userController.verifyOtp(req, res));
 // Resend OTP Route (Public, but rate limited)
 router.post('/resend-otp', mediumLimiter, (req, res, next) => userController.resendOtp(req, res, next));
+// Lagacy route for password reset(same as request-password-reset-otp)
+router.post('/request-password-reset', mediumLimiter, (req, res, next) => userController.requestPasswordResetOtp(req, res, next));
 // Request OTP for Password Reset (Public, but rate limited)
 router.post('/request-password-reset-otp', mediumLimiter, (req, res, next) => userController.requestPasswordResetOtp(req, res, next));
-// Lagacy route for password reset
-router.post('/request-password-reset', mediumLimiter, (req, res, next) => userController.requestPasswordResetOtp(req, res, next));
 // NEW: Verify OTP for Password Reset and get token (Public, rate limited)
 router.post('/verify-password-reset-otp', strictLimiter, (req, res, next) => userController.verifyPasswordResetOtp(req, res, next));
 // COMPLETE Password Reset (Public, rate limited)

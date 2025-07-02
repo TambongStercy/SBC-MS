@@ -61,6 +61,25 @@ router.get('/webhooks/cinetpay', (req, res) => {
 });
 
 /**
+ * @route   POST /api/payouts/webhooks/feexpay
+ * @desc    Handle FeexPay webhook notifications for Payouts/Transfers.
+ * @access  Public (webhook endpoint)
+ */
+router.post('/webhooks/feexpay', (req, res) => {
+    payoutController.handleFeexPayWebhook(req, res);
+});
+
+/**
+ * @route   GET /api/payouts/webhooks/feexpay
+ * @desc    FeexPay might send a GET request to verify webhook URL availability.
+ * @access  Public (webhook endpoint)
+ */
+router.get('/webhooks/feexpay', (req, res) => {
+    // Respond with 200 OK to acknowledge receipt of the ping
+    res.status(200).send('OK');
+});
+
+/**
  * @route   POST /api/payouts/test
  * @desc    Test payout functionality (development only)
  * @access  Private (Admin only)

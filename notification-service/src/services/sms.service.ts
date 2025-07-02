@@ -1,4 +1,5 @@
-import { Twilio } from 'twilio';
+const twilio = require('twilio');
+type TwilioClient = ReturnType<typeof twilio>;
 import axios from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
@@ -14,7 +15,7 @@ interface SmsOptions {
 type SmsProvider = 'twilio' | 'queensms' | 'none';
 
 class SmsService {
-    private twilioClient: Twilio | null = null;
+    private twilioClient: TwilioClient | null = null;
     private queenSmsApiKey: string | null = null;
     private queenSmsSenderId: string | null = null;
     private queenSmsApiUrl: string | null = null;
@@ -34,7 +35,7 @@ class SmsService {
                 const accountSid = config.sms?.twilioAccountSid;
                 const authToken = config.sms?.twilioAuthToken;
                 if (accountSid && authToken) {
-                    this.twilioClient = new Twilio(accountSid, authToken);
+                    this.twilioClient = twilio(accountSid, authToken);
                     this.activeProvider = 'twilio';
                     this.isInitialized = true;
                     log.info('SMS Service initialized successfully with Twilio provider.');

@@ -15,6 +15,8 @@ import type { Connection, Channel } from 'amqplib';
 import config from '../config';
 import { userServiceClient } from './clients/user.service.client';
 import { AppError } from '../utils/errors';
+import { queueService } from './queue.service';
+import whatsappService from './whatsapp.service';
 
 // Create a component-specific logger
 const log = logger.getLogger('NotificationService');
@@ -67,19 +69,41 @@ interface SendAttachmentEmailInput {
 }
 
 class NotificationService {
+    constructor() {
+        // Listen for WhatsApp disconnects
+        whatsappService.onDisconnect(async (qrUrl) => {
+            const adminEmail = config.email?.from || 'admin@example.com';
+            const baseUrl = process.env.SERVER_URL || process.env.PUBLIC_URL || 'http://localhost:3002';
+            const qrEndpoint = `${baseUrl}/api/notifications/whatsapp/qr`;
+            const subject = 'WhatsApp Service Disconnected';
+            const body = `WhatsApp service has been disconnected. Please scan the new QR code to restore service.\n\nQR Code: ${qrEndpoint}`;
+            try {
+                await emailService.sendEmail({
+                    to: adminEmail,
+                    subject,
+                    text: body,
+                    html: `<p>WhatsApp service has been <b>disconnected</b>.<br>Please <a href="${qrEndpoint}">scan the new QR code</a> to restore service.</p><img src="${qrEndpoint}" alt="QR Code" style="max-width:300px;">`,
+                });
+            } catch (err) {
+                logger.error('Failed to send WhatsApp disconnect email:', err);
+            }
+        });
+    }
+
     /**
      * Create and send a notification
      */
     async createAndSendNotification(data: CreateNotificationData): Promise<INotification> {
         // Prepare notification data
-        let notificationData = {
+        let notificationData: any = {
             userId: data.userId,
             recipient: data.recipient,
             type: data.type,
             channel: data.channel,
             data: {
                 body: data.body || '',
-            } as any
+                plainText: data.body ? data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '',
+            }
         };
 
         // If a template ID is provided, process the template
@@ -94,7 +118,8 @@ class NotificationService {
                 templateId: data.templateId,
                 variables: data.variables,
                 subject: processedTemplate.subject,
-                body: processedTemplate.body
+                body: processedTemplate.body,
+                plainText: processedTemplate.plainText,
             };
         } else if (data.subject) {
             // If no template but subject provided
@@ -104,13 +129,26 @@ class NotificationService {
         // Create notification in database VIA REPOSITORY
         const notification = await notificationRepository.create(notificationData as any);
 
-        // Send notification immediately
+        // Try to queue notification, with fallback to immediate sending for critical notifications
+        let queueSuccess = false;
         try {
-            await this.sendNotification(notification);
+            await queueService.queueNotification(notification);
+            log.info(`Notification ${notification._id} queued successfully for ${notification.recipient}`);
+            queueSuccess = true;
         } catch (error) {
-            log.error(`Failed to send notification ${notification._id}`, { error });
-            // The notification is already saved with PENDING status,
-            // it will be picked up by the background processor later
+            log.error(`Failed to queue notification ${notification._id}`, { error });
+
+            // For critical notifications (like OTP and account-related), attempt immediate sending as fallback
+            if (data.type === NotificationType.OTP || data.type === NotificationType.ACCOUNT) {
+                log.warn(`Attempting immediate send for critical notification ${notification._id} due to queue failure`);
+                try {
+                    await this.sendNotification(notification);
+                    log.info(`Critical notification ${notification._id} sent immediately as fallback`);
+                } catch (sendError) {
+                    log.error(`Failed to send critical notification ${notification._id} immediately:`, sendError);
+                    // The notification remains PENDING for the background processor to retry
+                }
+            }
         }
 
         return notification;
@@ -176,18 +214,34 @@ class NotificationService {
      * Send an SMS notification using the consolidated smsService
      */
     private async sendSmsNotification(notification: INotification): Promise<boolean> {
+        // Always strip HTML tags for SMS
+        let body = '';
+        if (typeof notification.data.plainText === 'string' && notification.data.plainText.trim()) {
+            // Remove any HTML tags from plainText just in case
+            body = notification.data.plainText.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        } else if (notification.data.body) {
+            body = notification.data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        }
         return smsService.sendSms({
             to: notification.recipient,
-            body: notification.data.body,
+            body,
         });
     }
 
     /**
-     * Send a WhatsApp notification
+     * Send a WhatsApp notification using the same plainText as SMS
      */
     private async sendWhatsappNotification(notification: INotification): Promise<boolean> {
-        //TODO: Implement WhatsApp notification
-        return false;
+        // Always strip HTML tags for WhatsApp
+        let body = '';
+        if (typeof notification.data.plainText === 'string' && notification.data.plainText.trim()) {
+            body = notification.data.plainText.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        } else if (notification.data.body) {
+            body = notification.data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        }
+        log.info(`[WhatsApp] Final message to send: ${body}`);
+        // Actually send the message
+        return whatsappService.sendTextMessage({ phoneNumber: notification.recipient, message: body });
     }
 
     /**
@@ -366,17 +420,13 @@ class NotificationService {
         try {
             let success = false;
             if (notification.channel === DeliveryChannel.EMAIL) {
-                // success = await sendEmail(notification.recipient, notification.data.subject || 'Notification', notification.data.body);
                 log.warn('Email sending logic not implemented'); success = true; // Placeholder success
             } else if (notification.channel === DeliveryChannel.SMS) {
-                // success = await sendSMS(notification.recipient, notification.data.body);
                 log.warn('SMS sending logic not implemented'); success = true; // Placeholder success
             } else if (notification.channel === DeliveryChannel.PUSH) {
-                // TODO: Implement push notification logic
                 log.warn('Push notification logic not implemented'); success = true; // Placeholder success
             } else if (notification.channel === DeliveryChannel.WHATSAPP) {
-                // TODO: Implement WhatsApp notification logic
-                log.warn('WhatsApp notification logic not implemented'); success = true; // Placeholder success
+                success = await this.sendWhatsappNotification(notification);
             }
 
             // Update status based on sending result VIA REPOSITORY
@@ -610,6 +660,58 @@ class NotificationService {
         } catch (error: any) {
             log.error(`Failed to send email with attachment to ${input.recipient}: ${error.message}`, error);
             throw new AppError(`Failed to send email with attachment: ${error.message}`, 500);
+        }
+    }
+
+    /**
+     * Sends a WhatsApp message with a file attachment.
+     * @param input The details for sending the WhatsApp file message.
+     * @returns Promise<void>
+     */
+    async sendWhatsappWithAttachment(input: {
+        userId: string | Types.ObjectId,
+        recipient: string,
+        body?: string,
+        attachmentContent: string, // base64
+        attachmentFileName?: string,
+        attachmentContentType: string,
+    }): Promise<void> {
+        log.info(`Preparing to send WhatsApp file message to ${input.recipient} for user ${input.userId}`);
+        try {
+            // Decode base64 content
+            const fileBuffer = Buffer.from(input.attachmentContent, 'base64');
+            const caption = input.body || '';
+            const mimetype = input.attachmentContentType;
+            const fileName = input.attachmentFileName;
+
+            const success = await whatsappService.sendFileMessage({
+                phoneNumber: input.recipient,
+                buffer: fileBuffer,
+                mimetype,
+                fileName,
+                caption,
+            });
+
+            if (success) {
+                log.info(`WhatsApp file message successfully sent to ${input.recipient}`);
+            } else {
+                log.warn(`Failed to send WhatsApp file message to ${input.recipient}`);
+            }
+
+            // Optionally, create a notification record for audit/user history
+            const metaSummary = `File: ${fileName || 'N/A'}, Type: ${mimetype}, Status: ${success ? 'SENT' : 'FAILED'}`;
+            await this.createNotification({
+                userId: input.userId,
+                type: NotificationType.ACCOUNT, // Or a specific type like 'document_export'
+                channel: DeliveryChannel.WHATSAPP,
+                recipient: input.recipient,
+                data: {
+                    body: `${caption}\n${metaSummary}`,
+                }
+            });
+        } catch (error: any) {
+            log.error(`Failed to send WhatsApp file message to ${input.recipient}: ${error.message}`, error);
+            throw new AppError(`Failed to send WhatsApp file message: ${error.message}`, 500);
         }
     }
 }

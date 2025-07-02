@@ -4,8 +4,9 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import connectDB from './database/connection';
 import config from './config';
-import notificationRoutes from './api/routes/notification.routes';
+import apiRoutes from './api/routes';
 import { notificationProcessor } from './jobs/notificationProcessor';
+import { queueService } from './services/queue.service';
 import logger from './utils/logger';
 
 // Create Express server
@@ -22,8 +23,9 @@ if (config.nodeEnv !== 'test') {
     app.use(morgan(config.nodeEnv === 'development' ? 'dev' : 'combined'));
 }
 
-// Set up routes
-app.use('/api/notifications', notificationRoutes);
+// API Routes
+// Mount the main router
+app.use('/api', apiRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -76,11 +78,14 @@ async function startServer() {
         });
 
         // Handle shutdown
-        const gracefulShutdown = () => {
+        const gracefulShutdown = async () => {
             logger.info('[Server] Shutting down gracefully...');
 
             // Stop notification processor
             notificationProcessor.stop();
+
+            // Shutdown queue service
+            await queueService.shutdown();
 
             // Close server
             process.exit(0);

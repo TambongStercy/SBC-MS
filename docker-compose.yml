@@ -217,6 +217,9 @@ services:
       <<: *common-env-vars
       PORT: 3002
       MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_notification_dev # Explicit URI
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
     healthcheck:
       # ADDED SPECIFIC HEALTHCHECK
       test: [ "CMD", "curl", "-f", "http://localhost:3002/api/health" ]
@@ -230,6 +233,8 @@ services:
     working_dir: /usr/src/app
     ports:
       - "3002:3002"
+    depends_on:
+      - redis
 
   advertising-service:
     <<: *node-service-defaults
@@ -270,6 +275,21 @@ services:
     ports:
       - "3030:80"
 
+  redis:
+    image: redis:7-alpine
+    container_name: sbc_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 # mongo: (Commented out as we use host MongoDB)
 #   image: mongo:latest
 #   container_name: mongo-db
@@ -285,6 +305,6 @@ networks:
   app-network:
     driver: bridge
 
-# volumes: (mongo-data no longer needed)
-#   mongo-data:
-#     driver: local
+volumes:
+  redis-data:
+    driver: local

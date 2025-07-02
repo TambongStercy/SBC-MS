@@ -61,7 +61,9 @@ class NotificationProcessor {
      */
     private async processNotifications(): Promise<void> {
         try {
+            log.info('[DEBUG] Starting processPendingNotifications');
             const processedCount = await notificationService.processPendingNotifications(BATCH_SIZE);
+            log.info(`[DEBUG] Finished processPendingNotifications. Processed count: ${processedCount}`);
 
             if (processedCount > 0) {
                 log.info(`Processed ${processedCount} notifications`);

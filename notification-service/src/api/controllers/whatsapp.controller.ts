@@ -1,15 +1,15 @@
 import { Request, Response } from 'express';
-import whatsappService from '../../../src/services/whatsapp.service';
-import logger from '../../../src/utils/logger';
+import whatsappService from '../../services/whatsapp.service';
+import logger from '../../utils/logger';
 
 export const testWhatsAppNotification = async (req: Request, res: Response) => {
     try {
         const transactionData = req.body;
-        
+
         // Validate required fields
         const requiredFields = ['phoneNumber', 'name', 'transactionType', 'transactionId', 'amount', 'currency', 'date'];
         const missingFields = requiredFields.filter(field => !transactionData[field]);
-        
+
         if (missingFields.length > 0) {
             return res.status(400).json({
                 success: false,
@@ -18,7 +18,7 @@ export const testWhatsAppNotification = async (req: Request, res: Response) => {
         }
 
         await whatsappService.sendTransactionNotification(transactionData);
-        
+
         res.status(200).json({
             success: true,
             message: 'WhatsApp notification sent successfully'
@@ -31,4 +31,44 @@ export const testWhatsAppNotification = async (req: Request, res: Response) => {
             error: error instanceof Error ? error.message : 'Unknown error'
         });
     }
+};
+
+export const getWhatsAppQr = (req: Request, res: Response) => {
+    const { qr, timestamp } = whatsappService.getLatestQr();
+    if (!qr) {
+        return res.status(404).json({ success: false, message: 'No QR code available' });
+    }
+    // Return as image/png
+    const base64 = qr.replace(/^data:image\/png;base64,/, '');
+    const img = Buffer.from(base64, 'base64');
+    res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': img.length,
+        'Cache-Control': 'no-cache',
+        'X-QR-Timestamp': timestamp.toString(),
+    });
+    res.end(img);
+};
+
+export const streamWhatsAppQr = (req: Request, res: Response) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+    });
+    // Send the latest QR immediately if available
+    const { qr, timestamp } = whatsappService.getLatestQr();
+    if (qr) {
+        res.write(`event: qr\ndata: ${JSON.stringify({ qr, timestamp })}\n\n`);
+    }
+    // Listen for new QR codes
+    const onQr = (newQr: string) => {
+        res.write(`event: qr\ndata: ${JSON.stringify({ qr: newQr, timestamp: Date.now() })}\n\n`);
+    };
+    whatsappService.on('qr', onQr);
+    // Clean up on client disconnect
+    req.on('close', () => {
+        whatsappService.off('qr', onQr);
+    });
 }; 

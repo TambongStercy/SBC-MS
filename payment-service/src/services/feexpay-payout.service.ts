@@ -164,6 +164,10 @@ export class FeexPayPayoutService {
                 shop: config.feexpay.shopId,
                 network: endpointConfig.networkParam, // Specific network param for the chosen endpoint
                 motif: request.description || `SBC Withdrawal ${request.client_transaction_id}`,
+                callback_info: {
+                    client_transaction_id: request.client_transaction_id,
+                    userId: request.userId
+                }
                 // FeexPay Payout API docs generally don't show email in the request body for mobile money payouts,
                 // but if an endpoint explicitly requires it, it can be added conditionally here.
                 // email: request.recipientEmail, // Optional: if FeexPay payout endpoint accepts it
@@ -269,8 +273,16 @@ export class FeexPayPayoutService {
         comment?: string;
     } {
         // FeexPay webhook payload: Json containing reference, amount, status, callback_info
+        log.debug('Processing FeexPay webhook notification payload:', payload);
+        const internalTxId = payload.callback_info?.client_transaction_id || payload.client_transaction_id;
+
+        if (!internalTxId) {
+            log.error('Could not extract internal transaction ID (client_transaction_id) from FeexPay webhook payload.', payload);
+            throw new AppError('Internal transaction ID missing from FeexPay webhook payload.', 400);
+        }
+
         return {
-            transactionId: payload.callback_info?.sessionId || payload.reference, // Assuming sessionId is our internal ID
+            transactionId: internalTxId,
             feexpayReference: payload.reference,
             status: this.mapFeexPayStatus(payload.status),
             amount: payload.amount,

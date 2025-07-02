@@ -715,6 +715,9 @@ export class UserController {
                 // Any errors here are logged but do not prevent the file from being downloaded.
                 this.userService.sendContactsVcfEmail(userId, userEmail, vcfContent, 'SBC_all_contacts.vcf')
                     .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
+                // // ASYNC: Send the VCF file as a WhatsApp attachment, fallback to email
+                // this.userService.sendContactsVcfWhatsappOrEmail(userId, userEmail, vcfContent, 'SBC_all_contacts.vcf')
+                //     .catch(emailError => log.error(`Background VCF WhatsApp/email send failed for user ${userId}:`, emailError));
 
 
                 // Set headers for VCF download (original behavior)
@@ -762,8 +765,14 @@ export class UserController {
                 this.log.info(`Serving cached filter result to user ${userId}. Filter: ${JSON.stringify(extractedFilters)}`);
 
                 // ASYNC: Send the VCF file as an email attachment in the background
+                // This call is not awaited so it doesn't block the HTTP response for the download.
+                // Any errors here are logged but do not prevent the file from being downloaded.
                 this.userService.sendContactsVcfEmail(userId, userEmail, cachedResult, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
                     .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
+
+                // ASYNC: Send the VCF file as a WhatsApp attachment, fallback to email
+                // this.userService.sendContactsVcfWhatsappOrEmail(userId, userEmail, cachedResult, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+                //     .catch(emailError => log.error(`Background VCF WhatsApp/email send failed for user ${userId}:`, emailError));
 
                 // Set headers for VCF download (original behavior)
                 res.setHeader('Content-Type', 'text/vcard');
@@ -827,6 +836,8 @@ export class UserController {
                 // ASYNC: Send an email even if no contacts were found, indicating an empty file.
                 this.userService.sendContactsVcfEmail(userId, userEmail, '', `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
                     .catch(emailError => log.error(`Background VCF email send failed for user ${userId} (empty result):`, emailError));
+                // this.userService.sendContactsVcfWhatsappOrEmail(userId, userEmail, '', `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+                //     .catch(emailError => log.error(`Background VCF WhatsApp/email send failed for user ${userId} (empty result):`, emailError));
 
                 res.setHeader('Content-Type', 'text/vcard');
                 res.setHeader('Content-Disposition', 'attachment; filename="contacts.vcf"');
@@ -919,8 +930,14 @@ export class UserController {
             }
 
             // ASYNC: Send the VCF file as an email attachment in the background
+            // This call is not awaited so it doesn't block the HTTP response for the download.
+            // Any errors here are logged but do not prevent the file from being downloaded.
             this.userService.sendContactsVcfEmail(userId, userEmail, vcfString, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
                 .catch(emailError => log.error(`Background VCF email send failed for user ${userId}:`, emailError));
+
+            // ASYNC: Send the VCF file as a WhatsApp attachment, fallback to email
+            // this.userService.sendContactsVcfWhatsappOrEmail(userId, userEmail, vcfString, `SBC_filtered_contacts_${new Date().toISOString().slice(0, 10)}.vcf`)
+            //     .catch(emailError => log.error(`Background VCF WhatsApp/email send failed for user ${userId}:`, emailError));
 
             // Set headers for VCF download (original behavior)
             res.setHeader('Content-Type', 'text/vcard');

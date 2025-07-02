@@ -32,6 +32,10 @@ interface INotificationData {
     variables?: Record<string, any>;
     subject?: string;
     body: string;
+    plainText?: string;
+    attachmentContent?: string;
+    attachmentFileName?: string;
+    attachmentContentType?: string;
 }
 
 // Interface for notification document
@@ -57,6 +61,10 @@ const NotificationDataSchema = new Schema({
     variables: { type: Schema.Types.Mixed },
     subject: { type: String },
     body: { type: String, required: true },
+    plainText: { type: String },
+    attachmentContent: { type: String },
+    attachmentFileName: { type: String },
+    attachmentContentType: { type: String },
 }, { _id: false });
 
 // Create notification schema

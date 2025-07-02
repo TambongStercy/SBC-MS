@@ -1,5 +1,5 @@
-import dotenv from 'dotenv';
-import path from 'path';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
 import logger from '../utils/logger';
 
 // Load environment variables from .env file
@@ -67,6 +67,12 @@ interface IConfig {
     notification: {
         processingIntervalMs: number;
         processingBatchSize: number;
+    };
+    redis: {
+        host: string;
+        port: number;
+        password?: string;
+        db: number;
     };
 }
 
@@ -139,6 +145,13 @@ const config: IConfig = {
     notification: {
         processingIntervalMs: parseInt(process.env.NOTIFICATION_PROCESSING_INTERVAL_MS || '60000', 10),
         processingBatchSize: parseInt(process.env.NOTIFICATION_PROCESSING_BATCH_SIZE || '50', 10)
+    },
+
+    redis: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379', 10),
+        password: process.env.REDIS_PASSWORD,
+        db: parseInt(process.env.REDIS_DB || '0', 10)
     },
 
 };

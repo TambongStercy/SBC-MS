@@ -8,6 +8,7 @@ import { isValidObjectId } from 'mongoose';
 import logger from '../../utils/logger';
 import { emailService } from '../../services/email.service';
 import { AppError } from '../../utils/errors';
+import { queueService } from '../../services/queue.service';
 
 // Define AuthenticatedRequest interface matching expected structure
 interface AuthenticatedRequest extends Request {
@@ -638,6 +639,28 @@ export class NotificationController {
             } else {
                 res.status(500).json({ success: false, message: 'Failed to send email with attachment.' });
             }
+        }
+    }
+
+    /**
+     * Get queue statistics for monitoring
+     * @route GET /api/notifications/queue/stats
+     */
+    async getQueueStats(req: Request, res: Response): Promise<void> {
+        try {
+            const stats = await queueService.getQueueStats();
+            res.status(200).json({
+                success: true,
+                data: stats,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error: any) {
+            log.error('Error fetching queue stats:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch queue statistics',
+                error: error.message
+            });
         }
     }
 }
