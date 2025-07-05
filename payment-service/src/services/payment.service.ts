@@ -1194,6 +1194,13 @@ class PaymentService {
             return amount;
         }
 
+        // Handle CFA Franc currencies (XAF and XOF) as equivalent with 1:1 rate
+        const cfaFrancs = ['XAF', 'XOF'];
+        if (cfaFrancs.includes(fromCurrency.toUpperCase()) && cfaFrancs.includes(toCurrency.toUpperCase())) {
+            log.info(`Converting between CFA francs (${fromCurrency} -> ${toCurrency}): Using 1:1 rate`);
+            return amount; // No conversion needed for CFA francs
+        }
+
         const fromCurrencyLower = fromCurrency.toLowerCase();
         const toCurrencyLower = toCurrency.toLowerCase();
 
@@ -1228,21 +1235,19 @@ class PaymentService {
 
         if (exchangeRate === undefined) {
             log.warn(`Could not fetch exchange rate for ${fromCurrency} -> ${toCurrency}. Defaulting to 1:1.`);
-            // Fallback to existing dummy rates or a 1:1 conversion if API fails or rate not found
-            // For simplicity, directly defaulting to 1 if API fails, but you could integrate your old dummy logic here.
+            // Fallback to 1:1 conversion if API fails
             let rate = 1;
-            // You could re-insert your previous dummy rate logic here as a further fallback if desired.
-            // Example:
-            // if (fromCurrency === 'XOF' && toCurrency === 'XAF') rate = 1;
-            // else if (fromCurrency === 'XAF' && toCurrency === 'XOF') rate = 1;
-            // ... etc. ...
-            // else { log.warn(`No dummy conversion rate found for ${fromCurrency} -> ${toCurrency}. Using 1.`); }
-            const convertedAmount = Math.ceil(amount * rate);
-            log.info(`Converted amount (using fallback 1:1 or dummy): ${convertedAmount} ${toCurrency}`);
+            // For CFA francs, ensure 1:1 conversion
+            if (cfaFrancs.includes(fromCurrency.toUpperCase()) && cfaFrancs.includes(toCurrency.toUpperCase())) {
+                rate = 1;
+                log.info(`CFA franc fallback: Using 1:1 rate for ${fromCurrency} -> ${toCurrency}`);
+            }
+            const convertedAmount = Math.round(amount * rate); // Use Math.round instead of Math.ceil
+            log.info(`Converted amount (using fallback rate): ${convertedAmount} ${toCurrency}`);
             return convertedAmount;
         }
 
-        const convertedAmount = Math.ceil(amount * exchangeRate);
+        const convertedAmount = Math.round(amount * exchangeRate); // Use Math.round instead of Math.ceil
         log.info(`Converted amount (using API rate): ${convertedAmount} ${toCurrency}`);
         return convertedAmount;
     }
@@ -1313,7 +1318,7 @@ class PaymentService {
      * Handle CinetPay webhook notification
      */
     public async handleCinetPayWebhook(payload: any): Promise<void> {
-        const { cpm_trans_id, cpm_site_id, cpm_error_message, cpm_payment_token } = payload;
+        const { cpm_trans_id, cpm_site_id, cpm_error_message, cpm_payment_token, cpm_amount, cpm_currency } = payload;
 
         if (!cpm_trans_id || !cpm_site_id || !cpm_error_message) {
             log.warn('Received CinetPay webhook with missing required fields', payload);
@@ -1337,6 +1342,19 @@ class PaymentService {
         if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
             log.warn(`Webhook received for already processed payment intent: ${cpm_trans_id}, Status: ${paymentIntent.status}`);
             return;
+        }
+
+        // Log amount comparison for fee analysis
+        if (cpm_amount && paymentIntent.paidAmount) {
+            const expectedAmount = paymentIntent.paidAmount;
+            const receivedAmount = parseFloat(cpm_amount);
+            const feeDifference = expectedAmount - receivedAmount;
+            const feePercentage = ((feeDifference / expectedAmount) * 100).toFixed(2);
+
+            log.info(`CinetPay Fee Analysis for ${cpm_trans_id}:`);
+            log.info(`Expected Amount: ${expectedAmount} ${cpm_currency || paymentIntent.paidCurrency}`);
+            log.info(`Received Amount: ${receivedAmount} ${cpm_currency || paymentIntent.paidCurrency}`);
+            log.info(`Fee Deducted: ${feeDifference} (${feePercentage}%)`);
         }
 
         let newStatus: PaymentStatus = paymentIntent.status;
