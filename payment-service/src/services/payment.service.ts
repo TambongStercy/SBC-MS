@@ -1845,11 +1845,18 @@ class PaymentService {
                 ? paymentIntent.sessionId
                 : `TEST_${paymentIntent.sessionId}`;
 
+            // Calculate total amount including 3.5% processing fee
+            // User pays: originalAmount + 3.5% fee, Merchant receives: ~originalAmount after CinetPay deducts fees
+            const processingFeePercentage = 0.035; // 3.5%
+            const totalAmountWithFees = Math.round(amount * (1 + processingFeePercentage));
+
+            log.info(`CinetPay fee calculation: Original=${amount} ${currency}, With 3.5% fee=${totalAmountWithFees} ${currency}`);
+
             const requestBody = {
                 apikey: config.cinetpay.apiKey,
                 site_id: config.cinetpay.siteId,
                 transaction_id: transactionId,
-                amount: amount,
+                amount: totalAmountWithFees, // Send amount + 3.5% fee
                 currency: currency,
                 description: `${paymentIntent.subscriptionType} - ${paymentIntent.subscriptionPlan}`,
                 // Use actual user data if available, otherwise placeholders
@@ -1866,11 +1873,16 @@ class PaymentService {
                 return_url: `${host}`,
                 channels: "ALL",
                 metadata: JSON.stringify({ sessionId: paymentIntent.sessionId }),
-                lang: 'en' // Or 'fr' based on preference
+                lang: 'en', // Or 'fr' based on preference
+                invoice_data: {
+                    "Subscription": `${paymentIntent.subscriptionType}`,
+                    "Plan": `${paymentIntent.subscriptionPlan}`,
+                    "Processing Fee": `${Math.round(amount * processingFeePercentage)} ${currency}`
+                }
             };
 
             // Log request
-            log.info(`CinetPay request: endpoint=${config.cinetpay.baseUrl}/payment, transaction_id=${transactionId}, amount=${amount}, currency=${currency}`);
+            log.info(`CinetPay request: endpoint=${config.cinetpay.baseUrl}/payment, transaction_id=${transactionId}, amount=${totalAmountWithFees}, currency=${currency}`);
 
             const response = await axios.post(
                 `${config.cinetpay.baseUrl}/payment`,
