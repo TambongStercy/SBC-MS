@@ -7,6 +7,7 @@ import config from './config/index';
 import apiRoutes from './api/routes';
 import logger from './utils/logger';
 import { paymentProcessor } from './jobs/paymentProcessor';
+import { transactionStatusChecker } from './jobs/transaction-status-checker.job';
 import path from 'path';
 
 // Create Express server
@@ -112,6 +113,9 @@ async function startServer() {
         // Start payment processor
         paymentProcessor.start();
 
+        // Start transaction status checker
+        transactionStatusChecker.start();
+
         // Start Express server
         app.listen(PORT, () => {
             logger.info(`[Server] Payment service running on port ${PORT}`);
@@ -124,6 +128,9 @@ async function startServer() {
 
             // Stop payment processor
             paymentProcessor.stop();
+
+            // Stop transaction status checker
+            transactionStatusChecker.stop();
 
             process.exit(0);
         };

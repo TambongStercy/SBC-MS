@@ -582,6 +582,29 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             throw error;
         }
     }
+
+    /**
+     * Find all processing withdrawal transactions for status checking
+     */
+    async findProcessingWithdrawals(limit: number = 100): Promise<ITransaction[]> {
+        try {
+            const query = {
+                type: TransactionType.WITHDRAWAL,
+                status: TransactionStatus.PROCESSING,
+                deleted: { $ne: true }
+            };
+
+            return await this.model
+                .find(query)
+                .sort({ createdAt: 1 }) // Oldest first
+                .limit(limit)
+                .lean<ITransaction[]>()
+                .exec();
+        } catch (error) {
+            log.error(`Error finding processing withdrawal transactions: ${error}`);
+            throw error;
+        }
+    }
 }
 
 // Export singleton instance

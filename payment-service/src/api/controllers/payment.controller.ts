@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from 'express';
 import paymentService from '../../services/payment.service';
+import { Request, Response, NextFunction } from 'express';
 import { IPaymentIntent, PaymentStatus } from '../../database/interfaces/IPaymentIntent';
 import logger from '../../utils/logger';
 import config from '../../config';

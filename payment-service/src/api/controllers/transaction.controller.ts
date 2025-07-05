@@ -330,6 +330,32 @@ export class TransactionController {
         }
     }
 
+    async test(req: Request, res: Response) {
+        try {
+            const userId = '65d2b0344a7e2b9efbf6205d';
+
+            const transaction = await paymentService.processDeposit(
+                userId,
+                5000,
+                Currency.XAF,
+                { provider: 'test', transactionId: 'test' },
+                'Test deposit'
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: 'Test successful',
+                transaction
+            });
+        } catch (error: any) {
+            log.error(`Error in test: ${error.message}`, error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to test'
+            });
+        }
+    }
+
     /**
      * Process a payment to another user
      * @route POST /api/transactions/payment

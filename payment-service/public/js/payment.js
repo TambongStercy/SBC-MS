@@ -31,19 +31,36 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Define countries for each gateway based on the new rule
-        // CinetPay is ONLY for CM. All others are FeexPay.
-        const cinetpayCountries = ['CM'];
-        const feexpayCountries = ['BJ', 'CI', 'SN', 'CG', 'TG', 'BF', 'GN', 'ML', 'NE', 'GA', 'CD', 'KE']; // All other supported countries
+        // Countries that use CinetPay
+        const cinetpayCountries = [
+            'BF', // Burkina Faso
+            'TG', // Togo
+            'ML', // Mali
+            'NE', // Niger
+            'BJ', // Bénin
+            'CI', // Côte d'Ivoire
+            'CM', // Cameroun
+            'SN'  // Sénégal
+        ];
 
+        // Countries that use FeexPay
+        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Remaining countries
+
+        // Only include FeexPay operators for countries that still use FeexPay
         const feexpayOperators = {
-            'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin
-            'CI': ['mtn_ci', 'moov_ci', 'wave_ci', 'orange_ci'], // Côte d'Ivoire
-            'SN': ['orange_sn', 'free_sn'], // Senegal
             'CG': ['mtn_cg'], // Congo Brazzaville
-            'TG': ['togocom_tg', 'moov_tg'], // Togo (Assumed slugs)
-            'BF': ['moov_bf', 'orange_bf'], // Burkina Faso (Assumed s lugs)
-            // TODO: Add operators for GN, ML, NE, GA, CD, KE if they use FeexPay and require operator selection
-            // Check FeexPay documentation for exact slugs for these & confirm assumed ones.
+            'GN': [], // Guinea (operators TBD)
+            'GA': [], // Gabon (operators TBD)
+            'CD': [], // Democratic Republic of Congo (operators TBD)
+            'KE': [], // Kenya (operators TBD)
+            // Removed operators for countries that now use CinetPay:
+            // 'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin - now uses CinetPay
+            // 'CI': ['mtn_ci', 'moov_ci', 'wave_ci', 'orange_ci'], // Côte d'Ivoire - now uses CinetPay
+            // 'SN': ['orange_sn', 'free_sn'], // Senegal - now uses CinetPay
+            // 'TG': ['togocom_tg', 'moov_tg'], // Togo - now uses CinetPay
+            // 'BF': ['moov_bf', 'orange_bf'], // Burkina Faso - now uses CinetPay
+            // TODO: Add operators for GN, GA, CD, KE if they use FeexPay and require operator selection
+            // Check FeexPay documentation for exact slugs for these countries.
         };
 
         const getCurrencyForCountry = (countryCode) => {
@@ -85,25 +102,29 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (typeof prefillOperator !== 'undefined' && prefillOperator && countryOperators.includes(prefillOperator)) {
                         operatorSelect.value = prefillOperator;
                     }
+                    // Removed Orange Senegal OTP logic since SN now uses CinetPay
                     // Show/hide OTP field based on selected country and newly set operator value
-                    if (selectedCountry === 'SN' && operatorSelect.value === 'orange_sn') {
-                        otpInputGroup.classList.remove('hidden');
-                        otpInput.required = true;
-                    } else {
-                        otpInputGroup.classList.add('hidden');
-                        otpInput.required = false;
-                        otpInput.value = ''; // Clear OTP if not applicable
-                    }
+                    // if (selectedCountry === 'SN' && operatorSelect.value === 'orange_sn') {
+                    //     otpInputGroup.classList.remove('hidden');
+                    //     otpInput.required = true;
+                    // } else {
+                    //     otpInputGroup.classList.add('hidden');
+                    //     otpInput.required = false;
+                    //     otpInput.value = ''; // Clear OTP if not applicable
+                    // }
                 } else {
-                    otpInputGroup.classList.add('hidden'); // Ensure OTP is hidden if no operator selection or not Orange SN
+                    // Hide OTP field if no operator selection or not applicable
+                    otpInputGroup.classList.add('hidden');
                     otpInput.required = false;
                     otpInput.value = '';
                 }
             } else {
+                // CinetPay countries don't require phone number or operator selection
                 phoneInputGroup.classList.add('hidden');
                 phoneInput.required = false;
                 phoneInput.value = '';
-                otpInputGroup.classList.add('hidden'); // Ensure OTP is hidden if FeexPay not applicable
+                // Hide OTP field for CinetPay countries
+                otpInputGroup.classList.add('hidden');
                 otpInput.required = false;
                 otpInput.value = '';
             }
@@ -112,17 +133,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (countrySelect) { // Ensure countrySelect exists before adding listener or calling update
             countrySelect.addEventListener('change', () => {
                 updateFormForCountry(); // Call on country change
+                // Removed Orange Senegal OTP logic since SN now uses CinetPay
                 // Additional logic to specifically update OTP field visibility based on operator for the new country
                 // This is because operator selection might not trigger a change event itself if it's auto-selected or has only one option.
-                const currentSelectedOperator = operatorSelect.value;
-                if (countrySelect.value === 'SN' && currentSelectedOperator === 'orange_sn') {
-                    otpInputGroup.classList.remove('hidden');
-                    otpInput.required = true;
-                } else {
-                    otpInputGroup.classList.add('hidden');
-                    otpInput.required = false;
-                    otpInput.value = '';
-                }
+                // const currentSelectedOperator = operatorSelect.value;
+                // if (countrySelect.value === 'SN' && currentSelectedOperator === 'orange_sn') {
+                //     otpInputGroup.classList.remove('hidden');
+                //     otpInput.required = true;
+                // } else {
+                //     otpInputGroup.classList.add('hidden');
+                //     otpInput.required = false;
+                //     otpInput.value = '';
+                // }
             });
             updateFormForCountry(); // Initial call to set up form based on pre-selected country/operator
         }
@@ -202,13 +224,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (submitButton) submitButton.disabled = false;
                 return;
             }
-            if (selectedCountry === 'SN' && selectedOperatorValue === 'orange_sn' && !otpInput.value) {
-                errorMessage.textContent = 'Veuillez entrer le code OTP pour Orange Sénégal.';
-                if (buttonSpinner) buttonSpinner.classList.add('hidden');
-                if (buttonText) buttonText.textContent = 'Procéder au paiement';
-                if (submitButton) submitButton.disabled = false;
-                return;
-            }
             if (requiresPhone && !phoneInput.value) {
                 errorMessage.textContent = 'Veuillez entrer votre numéro de téléphone pour le paiement.';
                 if (buttonSpinner) buttonSpinner.classList.add('hidden');
@@ -225,9 +240,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 operator: requiresOperator ? selectedOperatorValue : undefined,
                 phoneNumber: requiresPhone ? phoneInput.value : undefined,
             };
-            if (selectedCountry === 'SN' && selectedOperatorValue === 'orange_sn' && otpInput.value) {
-                formData.otp = otpInput.value;
-            }
+            // Removed Orange Senegal OTP logic since SN now uses CinetPay
+            // if (selectedCountry === 'SN' && selectedOperatorValue === 'orange_sn' && otpInput.value) {
+            //     formData.otp = otpInput.value;
+            // }
             Object.keys(formData).forEach(key => formData[key] === undefined && delete formData[key]);
 
             console.log('Soumission des données de paiement:', formData);

@@ -32,4 +32,6 @@ router.delete('/withdrawal/:transactionId/cancel', authenticate, (req, res) => t
 // Payment routes
 router.post('/payment', authenticate, (req, res) => transactionController.processPayment(req, res));
 
+router.post('/test', authenticate, (req, res) => transactionController.test(req, res));
+
 export default router; 

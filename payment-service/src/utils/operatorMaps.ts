@@ -10,6 +10,15 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     // Burkina Faso (BF)
     'MOOV_BFA': 'BF',
     'ORANGE_BFA': 'BF',
+    // Togo (TG) - Added for CinetPay support
+    'TOGOCOM_TGO': 'TG',
+    'MOOV_TGO': 'TG',
+    // Mali (ML) - Added for CinetPay support
+    'ORANGE_MLI': 'ML',
+    'MOOV_MLI': 'ML',
+    // Niger (NE) - Added for CinetPay support
+    'ORANGE_NER': 'NE',
+    'MOOV_NER': 'NE',
     // DRC (CD)
     'VODACOM_MPESA_COD': 'CD',
     'AIRTEL_COD': 'CD',
@@ -73,6 +82,18 @@ export const correspondents = {
         'operators': ['MOOV_BFA', 'ORANGE_BFA'], // Burkina Faso
         'currencies': ['XOF']
     },
+    'TG': {
+        'operators': ['TOGOCOM_TGO', 'MOOV_TGO'], // Togo
+        'currencies': ['XOF']
+    },
+    'ML': {
+        'operators': ['ORANGE_MLI', 'MOOV_MLI'], // Mali
+        'currencies': ['XOF']
+    },
+    'NE': {
+        'operators': ['ORANGE_NER', 'MOOV_NER'], // Niger
+        'currencies': ['XOF']
+    },
     'CD': {
         'operators': ['VODACOM_MPESA_COD', 'AIRTEL_COD', 'ORANGE_COD'], // DRC
         'currencies': ['CDF']
@@ -112,6 +133,15 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     'ORANGE_MOMO_CMR': 'XAF',
     'MOOV_BFA': 'XOF',
     'ORANGE_BFA': 'XOF',
+    // Togo (TG) - XOF
+    'TOGOCOM_TGO': 'XOF',
+    'MOOV_TGO': 'XOF',
+    // Mali (ML) - XOF
+    'ORANGE_MLI': 'XOF',
+    'MOOV_MLI': 'XOF',
+    // Niger (NE) - XOF
+    'ORANGE_NER': 'XOF',
+    'MOOV_NER': 'XOF',
     'VODACOM_MPESA_COD': 'CDF',
     'AIRTEL_COD': 'CDF',
     'ORANGE_COD': 'CDF',
@@ -140,6 +170,15 @@ export const momoOperatorToCinetpayPaymentMethod: { [key: string]: string } = {
     // Burkina Faso (BF)
     'MOOV_BFA': 'MOOVBF',
     'ORANGE_BFA': 'OMBF',
+    // Togo (TG) - Added for CinetPay support
+    'TOGOCOM_TGO': 'TOGOCOM',
+    'MOOV_TGO': 'MOOVTG',
+    // Mali (ML) - Added for CinetPay support
+    'ORANGE_MLI': 'OMML',
+    'MOOV_MLI': 'MOOVML',
+    // Niger (NE) - Added for CinetPay support
+    'ORANGE_NER': 'OMNE',
+    'MOOV_NER': 'MOOVNE',
     // DRC (CD) - assuming CDF currency for these as per docs
     'VODACOM_MPESA_COD': 'MPESACD',
     'AIRTEL_COD': 'AIRTELCD',

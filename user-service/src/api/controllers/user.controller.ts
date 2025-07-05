@@ -795,8 +795,8 @@ export class UserController {
                 // CLASSIQUE only allows 'country'
                 for (const key in queryFilters) {
                     if (Object.prototype.hasOwnProperty.call(queryFilters, key)) {
-                        // Allow pagination/sorting fields if you add them later
-                        const allowedKeys = ['country', 'page', 'limit', 'sortBy', 'sortOrder', 'startDate', 'endDate'];
+                        // Allow same keys as search endpoint for CLASSIQUE users
+                        const allowedKeys = ['country', 'page', 'limit', 'sortBy', 'sortOrder', 'startDate', 'endDate', 'name', 'search'];
                         if (!allowedKeys.includes(key)) {
                             this.log.warn(`User ${userId} (CLASSIQUE) attempted export with disallowed filter: ${key}`);
                             res.status(403).json({ success: false, message: `Your current plan only allows filtering by country. Filter '${key}' is not permitted.` });

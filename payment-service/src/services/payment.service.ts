@@ -400,22 +400,28 @@ class PaymentService {
                 throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} or missing currency mapping for it. Please contact support.`, 400);
             }
 
-            // Determine which payout service to use based on country code
+            // Determine which payout service to use based on country code using the same logic as payments
             let payoutService;
             let payoutNotificationUrl: string;
             let providerName: 'CinetPay' | 'FeexPay';
 
-            if (countryCode === 'CM') {
+            // Use the same gateway selection logic as payments
+            const selectedGateway = this.selectGateway(countryCode);
+
+            if (selectedGateway === PaymentGateway.CINETPAY) {
                 payoutService = cinetpayPayoutService;
                 providerName = 'CinetPay';
                 payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`;
-                log.info(`Using CinetPay for payout to Cameroon (${countryCode}).`);
-            } else {
-                // For all other supported countries, use FeexPay
+                log.info(`Using CinetPay for payout to ${countryCode} based on gateway selection.`);
+            } else if (selectedGateway === PaymentGateway.FEEXPAY) {
+                // For countries that use FeexPay
                 payoutService = feexPayPayoutService;
                 providerName = 'FeexPay';
                 payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}`; // Assuming a FeexPay webhook endpoint
-                log.info(`Using FeexPay for payout to ${countryCode}.`);
+                log.info(`Using FeexPay for payout to ${countryCode} based on gateway selection.`);
+            } else {
+                log.error(`Unsupported gateway selected for withdrawal: ${selectedGateway} for country ${countryCode}`);
+                throw new AppError(`Unsupported country for withdrawals: ${countryCode}`, 400);
             }
 
             // Derive the specific payment method slug for CinetPay OR ensure it's not explicitly passed to FeexPay
@@ -1565,14 +1571,24 @@ class PaymentService {
     }
 
     private selectGateway(countryCode: string): PaymentGateway {
-        // New Rule: CinetPay is ONLY for CM. All others are FeexPay.
-        if (countryCode === 'CM') {
-            log.info(`Country CM selected, using CINETPAY.`);
+        // Countries that use CinetPay
+        const cinetpaySupportedCountries = [
+            'BF', // Burkina Faso
+            'TG', // Togo
+            'ML', // Mali
+            'NE', // Niger
+            'BJ', // Bénin
+            'CI', // Côte d'Ivoire
+            'CM', // Cameroun
+            'SN'  // Sénégal
+        ];
+
+        if (cinetpaySupportedCountries.includes(countryCode)) {
+            log.info(`Country ${countryCode} selected, using CINETPAY.`);
             return PaymentGateway.CINETPAY;
         } else {
-            // List of all countries that should use FeexPay
-            // This list should ideally be comprehensive for all supported countries other than CM
-            const feexpaySupportedCountries = ['BJ', 'CI', 'SN', 'CG', 'TG', 'BF', 'GN', 'ML', 'NE', 'GA', 'CD', 'KE']; // Add any other non-CM countries here
+            // List of remaining countries that should use FeexPay
+            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Remaining countries
             if (feexpaySupportedCountries.includes(countryCode)) {
                 log.info(`Country ${countryCode} selected, using FEEXPAY.`);
                 return PaymentGateway.FEEXPAY;
@@ -2804,17 +2820,23 @@ class PaymentService {
             let payoutNotificationUrl: string;
             let providerName: 'CinetPay' | 'FeexPay';
 
-            if (withdrawalDetails.accountInfo.countryCode === 'CM') {
+            // Use the same gateway selection logic as payments
+            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode);
+
+            if (selectedGateway === PaymentGateway.CINETPAY) {
                 payoutService = cinetpayPayoutService;
                 providerName = 'CinetPay';
                 payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`;
-                log.info(`Using CinetPay for admin payout to Cameroon (${withdrawalDetails.accountInfo.countryCode}).`);
-            } else {
-                // For all other supported countries, use FeexPay
+                log.info(`Using CinetPay for admin payout to ${withdrawalDetails.accountInfo.countryCode} based on gateway selection.`);
+            } else if (selectedGateway === PaymentGateway.FEEXPAY) {
+                // For countries that use FeexPay
                 payoutService = feexPayPayoutService;
                 providerName = 'FeexPay';
                 payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}`;
-                log.info(`Using FeexPay for admin payout to ${withdrawalDetails.accountInfo.countryCode}.`);
+                log.info(`Using FeexPay for admin payout to ${withdrawalDetails.accountInfo.countryCode} based on gateway selection.`);
+            } else {
+                log.error(`Unsupported gateway selected for admin withdrawal: ${selectedGateway} for country ${withdrawalDetails.accountInfo.countryCode}`);
+                throw new AppError(`Unsupported country for admin withdrawals: ${withdrawalDetails.accountInfo.countryCode}`, 400);
             }
 
             // Update the transaction with the selected providerName
@@ -3046,18 +3068,46 @@ class PaymentService {
                 ? recipientDetails.phoneNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : recipientDetails.phoneNumber.replace(/\D/g, '');
 
-            const payoutResult = await cinetpayPayoutService.initiatePayout({
-                userId: adminId, // Use admin's ID as userId for CinetPay's internal tracking
-                amount: netAmountDesired, // Pass the NET amount in TARGET payout currency
-                phoneNumber: nationalPhoneNumber,
-                countryCode: recipientDetails.countryCode,
-                recipientName: recipientDetails.recipientName,
-                recipientEmail: recipientDetails.recipientEmail || `${adminId}@sbc.com`,
-                paymentMethod: recipientDetails.paymentMethod,
-                description: description,
-                client_transaction_id: directPayoutTransaction.transactionId, // Use our internal transaction ID
-                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}` // Use the dedicated payout webhook
-            });
+            // Use the same gateway selection logic as other withdrawal methods
+            const selectedGateway = this.selectGateway(recipientDetails.countryCode);
+            let payoutResult: any;
+
+            if (selectedGateway === PaymentGateway.CINETPAY) {
+                log.info(`Using CinetPay for admin direct payout to ${recipientDetails.countryCode} based on gateway selection.`);
+                payoutResult = await cinetpayPayoutService.initiatePayout({
+                    userId: adminId, // Use admin's ID as userId for CinetPay's internal tracking
+                    amount: netAmountDesired, // Pass the NET amount in TARGET payout currency
+                    phoneNumber: nationalPhoneNumber,
+                    countryCode: recipientDetails.countryCode,
+                    recipientName: recipientDetails.recipientName,
+                    recipientEmail: recipientDetails.recipientEmail || `${adminId}@sbc.com`,
+                    paymentMethod: recipientDetails.paymentMethod,
+                    description: description,
+                    client_transaction_id: directPayoutTransaction.transactionId, // Use our internal transaction ID
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}` // Use the dedicated payout webhook
+                });
+            } else if (selectedGateway === PaymentGateway.FEEXPAY) {
+                log.info(`Using FeexPay for admin direct payout to ${recipientDetails.countryCode} based on gateway selection.`);
+                const fullInternationalPhoneNumber = `${dialingPrefix}${nationalPhoneNumber}`;
+                payoutResult = await this.processFeexpayPayout(
+                    directPayoutTransaction.transactionId,
+                    fullInternationalPhoneNumber,
+                    recipientDetails.paymentMethod || 'default', // Use provided payment method or default
+                    netAmountDesired,
+                    recipientDetails.currency
+                );
+                // Convert FeexPay result format to match CinetPay format for consistency
+                payoutResult = {
+                    success: payoutResult.success,
+                    cinetpayTransactionId: payoutResult.providerTransactionId, // Map to common field
+                    transactionId: directPayoutTransaction.transactionId,
+                    message: payoutResult.message,
+                    status: payoutResult.success ? 'processing' : 'failed'
+                };
+            } else {
+                log.error(`Unsupported gateway selected for admin direct payout: ${selectedGateway} for country ${recipientDetails.countryCode}`);
+                throw new AppError(`Unsupported country for admin direct payouts: ${recipientDetails.countryCode}`, 400);
+            }
 
             // Update the internal transaction status based on CinetPay's immediate response
             let finalStatusForAudit: TransactionStatus;
@@ -3147,12 +3197,22 @@ class PaymentService {
             return;
         }
 
-        // Extract CinetPay's transaction_id from the webhook payload for server-to-server check
-        const cinetpayTransactionId = fullProviderPayload.transaction_id; // This is CinetPay's internal transaction ID
+        const isFromJob = fullProviderPayload?.fromJob === true;
+        let cinetpayTransactionId: string | undefined;
+
+        if (isFromJob) {
+            cinetpayTransactionId = transaction.externalTransactionId;
+            log.info(`Reconciliation job: Using externalTransactionId from DB: ${cinetpayTransactionId}`);
+        } else {
+            cinetpayTransactionId = fullProviderPayload.transaction_id;
+        }
 
         if (!cinetpayTransactionId) {
-            log.error(`CinetPay Payout Webhook: Missing CinetPay's transaction_id in payload for internalTxId ${internalTransactionId}. Cannot verify.`);
-            throw new AppError('Missing CinetPay transaction ID in webhook payload. Verification failed.', 400);
+            const errorMsg = isFromJob
+                ? `Reconciliation job: Missing 'externalTransactionId' on transaction record ${internalTransactionId}. Cannot verify.`
+                : `CinetPay Payout Webhook: Missing CinetPay's 'transaction_id' in payload for internalTxId ${internalTransactionId}. Cannot verify.`;
+            log.error(errorMsg);
+            throw new AppError(errorMsg, 400);
         }
 
         let verifiedPayoutStatus: CinetPayPayoutStatus | null = null; // Declare outside try block
@@ -3175,17 +3235,14 @@ class PaymentService {
             }
 
         } catch (apiError: any) {
-            log.error(`Error during CinetPay API verification for ${internalTransactionId}: ${apiError.message}. Marking internal transaction as FAILED.`, apiError);
-            // If API call itself fails, treat the transaction as failed internally due to unconfirmable status
-            await transactionRepository.update(transaction._id, {
-                status: TransactionStatus.FAILED,
-                metadata: {
-                    ...(transaction.metadata || {}),
-                    webhookFailureReason: `API verification failed: ${apiError.message}`,
-                    providerRawWebhookData: fullProviderPayload // Still store the raw webhook payload
-                }
-            });
-            throw new AppError(`Payout status verification failed for ${internalTransactionId}.`, 500);
+            // If the API verification fails (e.g., timeout), we DO NOT mark the transaction as FAILED.
+            // We log the error and re-throw it. The background job will catch this and retry later.
+            // The transaction status remains 'PROCESSING'.
+            log.error(`Error during CinetPay API verification for ${internalTransactionId}: ${apiError.message}. The transaction status will NOT be changed, and the check will be retried.`, apiError);
+
+            // Re-throw the error to be caught by the calling job. This prevents any further
+            // processing in this method and signals the job that this particular check failed.
+            throw new AppError(`Payout status verification failed for ${internalTransactionId}. The check will be retried.`, 503); // 503 is appropriate for a temporary failure.
         }
 
         // Determine final status based on the *API-confirmed* status
@@ -3235,9 +3292,15 @@ class PaymentService {
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
 
             } catch (balanceError: any) {
-                log.error(`CRITICAL: Failed to debit user balance for completed payout ${internalTransactionId}: ${balanceError.message}. Marking transaction as FAILED.`, balanceError);
-                updateStatus = TransactionStatus.FAILED;
+                // DO NOT change the transaction status to FAILED. The payout was successful.
+                // This is a critical internal error that needs to be resolved separately.
+                log.error(`CRITICAL: The payout for transaction ${internalTransactionId} was SUCCESSFUL with the provider, but failed to debit the user's balance. Manual intervention required.`, balanceError);
+
+                // Add metadata to flag the issue without changing the transaction's final status.
                 updateMetadata.internalFailureReason = `Balance debit failed after provider success: ${balanceError.message}`;
+                updateMetadata.balanceUpdateFailed = true; // Add a specific flag for this issue.
+
+                // NOTE: updateStatus is NOT changed here. It remains COMPLETED.
             }
         } else if (finalStatus === TransactionStatus.FAILED) {
             log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit/refund needed.`);

@@ -53,31 +53,49 @@ export class FeexPayPayoutService {
         minAmount: number; // Minimum amount for this endpoint/network
     }> = {
             // Benin
-            'MTN_BJ': { endpoint: '/payouts/public/transfer/global', networkParam: 'MTN', minAmount: 50 }, // For general MTN/MOOV global endpoint
-            'MOOV_BJ': { endpoint: '/payouts/public/transfer/global', networkParam: 'MOOV', minAmount: 50 },
-            'CELTIIS_BJ': { endpoint: '/payouts/public/celtiis_bj', networkParam: 'CELTIIS BJ', minAmount: 50 },
+            'MTN_MOMO_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MTN', minAmount: 50 }, // For general MTN/MOOV global endpoint
+            'MOOV_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MOOV', minAmount: 50 },
+            // Removed CELTIIS_BJ if it's not in your correspondents map or not supported by FeexPay's global endpoint
             // Côte d'Ivoire
-            'MTN_CI': { endpoint: '/payouts/public/mtn_ci', networkParam: 'MTN CI', minAmount: 100 },
-            'ORANGE_CI': { endpoint: '/payouts/public/orange_ci', networkParam: 'ORANGE CI', minAmount: 100 },
-            'MOOV_CI': { endpoint: '/payouts/public/moov_ci', networkParam: 'MOOV CI', minAmount: 100 },
-            'WAVE_CI': { endpoint: '/payouts/public/wave_ci', networkParam: 'WAVE CI', minAmount: 100 }, // Assuming this exists or falls back to generic
+            'MTN_MOMO_CIV': { endpoint: '/payouts/public/mtn_ci', networkParam: 'MTN CI', minAmount: 100 },
+            'ORANGE_CIV': { endpoint: '/payouts/public/orange_ci', networkParam: 'ORANGE CI', minAmount: 100 },
+            // Removed MOOV_CI and WAVE_CI if not supported or not in correspondents, replaced with the ones from correspondents map
             // Senegal
-            'ORANGE_SN': { endpoint: '/payouts/public/orange_sn', networkParam: 'ORANGE SN', minAmount: 100 },
-            'FREE_SN': { endpoint: '/payouts/public/free_sn', networkParam: 'FREE SN', minAmount: 100 },
-            // Congo Brazzaville
-            'MTN_CG': { endpoint: '/payouts/public/mtn_cg', networkParam: 'MTN CG', minAmount: 100 },
-            // Togo
+            'ORANGE_SEN': { endpoint: '/payouts/public/orange_sn', networkParam: 'ORANGE SN', minAmount: 100 },
+            'FREE_SEN': { endpoint: '/payouts/public/free_sn', networkParam: 'FREE SN', minAmount: 100 },
+            // Congo Brazzaville (Republic of the Congo)
+            'MTN_MOMO_COG': { endpoint: '/payouts/public/mtn_cg', networkParam: 'MTN CG', minAmount: 100 },
+            'AIRTEL_COG': { endpoint: '/payouts/public/airtel_cg', networkParam: 'AIRTEL CG', minAmount: 100 },
+            // Togo - Keeping as is assuming FeexPay still uses these
             'TOGOCOM_TG': { endpoint: '/payouts/public/togo', networkParam: 'TOGOCOM TG', minAmount: 100 },
             'MOOV_TG': { endpoint: '/payouts/public/togo', networkParam: 'MOOV TG', minAmount: 100 },
             // Burkina Faso
-            'MOOV_BF': { endpoint: '/payouts/public/moov_bf', networkParam: 'MOOV BF', minAmount: 100 },
-            'ORANGE_BF': { endpoint: '/payouts/public/orange_bf', networkParam: 'ORANGE BF', minAmount: 100 },
-            // Add other countries as needed based on FeexPay docs
+            'MOOV_BFA': { endpoint: '/payouts/public/moov_bf', networkParam: 'MOOV BF', minAmount: 100 },
+            'ORANGE_BFA': { endpoint: '/payouts/public/orange_bf', networkParam: 'ORANGE BF', minAmount: 100 },
+            // New additions based on correspondents map
+            // Cameroon (CM) - Assuming CinetPay is used, but adding if FeexPay supports directly
+            // 'MTN_MOMO_CMR': { endpoint: '/payouts/public/mtn_cm', networkParam: 'MTN CM', minAmount: 100 },
+            // 'ORANGE_CMR': { endpoint: '/payouts/public/orange_cm', networkParam: 'ORANGE CM', minAmount: 100 },
+            // DRC (CD)
+            'VODACOM_MPESA_COD': { endpoint: '/payouts/public/vodacom_cd', networkParam: 'VODACOM CD', minAmount: 100 },
+            'AIRTEL_COD': { endpoint: '/payouts/public/airtel_cd', networkParam: 'AIRTEL CD', minAmount: 100 },
+            'ORANGE_COD': { endpoint: '/payouts/public/orange_cd', networkParam: 'ORANGE CD', minAmount: 100 },
+            // Kenya (KE)
+            'MPESA_KEN': { endpoint: '/payouts/public/mpesa_ke', networkParam: 'MPESA KE', minAmount: 100 },
+            // Nigeria (NG)
+            'MTN_MOMO_NGA': { endpoint: '/payouts/public/mtn_ng', networkParam: 'MTN NG', minAmount: 100 },
+            'AIRTEL_NGA': { endpoint: '/payouts/public/airtel_ng', networkParam: 'AIRTEL NG', minAmount: 100 },
+            // Gabon (GA)
+            'AIRTEL_GAB': { endpoint: '/payouts/public/airtel_ga', networkParam: 'AIRTEL GA', minAmount: 100 },
+            // Guinea (GN), Mali (ML), Niger (NE) - If FeexPay supports, add similarly
+            // 'ORANGE_GN': { endpoint: '/payouts/public/orange_gn', networkParam: 'ORANGE GN', minAmount: 100 },
+            // 'MOOV_ML': { endpoint: '/payouts/public/moov_ml', networkParam: 'MOOV ML', minAmount: 100 },
+            // 'ORANGE_NE': { endpoint: '/payouts/public/orange_ne', networkParam: 'ORANGE NE', minAmount: 100 },
         };
 
     private readonly countryDialingCodes: Record<string, string> = {
         'BJ': '229', // Benin
-        'CI': '225', // Côte d\'Ivoire
+        'CI': '225', // Côte d'Ivoire
         'SN': '221', // Senegal
         'CG': '242', // Congo Brazzaville
         'TG': '228', // Togo
@@ -87,7 +105,8 @@ export class FeexPayPayoutService {
         'NE': '227', // Niger
         'GA': '241', // Gabon
         'CD': '243', // DRC
-        'KE': '254', // Kenya (Not yet in FeexPay docs for payout, but in current system)
+        'KE': '254', // Kenya
+        'NG': '234', // Nigeria
         // Note: CM (Cameroon) is handled by CinetPay
     };
 
