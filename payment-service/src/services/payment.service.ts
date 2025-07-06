@@ -999,7 +999,7 @@ class PaymentService {
             // Potentially throw an error or handle conversion if this function is meant for diverse currencies.
         }
 
-        const feePercentage = 0.015; // 1.5%
+        const feePercentage = 0.025; // 2.5%
         const fee = netAmount * feePercentage;
         return parseFloat(fee.toFixed(2));
     }
