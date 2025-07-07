@@ -416,14 +416,21 @@ Authorization: Bearer {{userA_AuthToken}}
 @ok = [7ox9ApctFtyp]
 @screte = {{$dotenv TEST}} 
 ###
-# WH1. User A (Referrer) creates a webhook
+# WH1. FeexPay Webhook Test (Official Format)
+# This simulates a POST request from FeexPay to your webhook endpoint.
+# Official webhook payload structure according to FeexPay documentation.
 POST {{baseUrl}}/payments/webhooks/feexpay
 Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
   "reference": "99b186bd-d69e-4f90-8080-c9e50b747518",
-  "status": "SUCCESSFUL"
+  "amount": 500,
+  "status": "SUCCESSFUL",
+  "callback_info": {
+    "client_transaction_id": "SBC_TX_123456789",
+    "userId": "65d2b0344a7e2b9efbf6205d"
+  }
 }
 
 ####====================================
@@ -439,7 +446,7 @@ Content-Type: application/json
 
 {
   "cpm_site_id": "5876842",
-  "cpm_trans_id": "Gq9VXQn9rqy8",
+  "cpm_trans_id": "UTK8-nCHlnz9",
   "cpm_trans_date": "2025-06-22 21:16:16",
   "cpm_amount": "2070",
   "cpm_currency": "XAF",
@@ -451,7 +458,7 @@ Content-Type: application/json
   "cpm_version": "V3",
   "cpm_payment_config": "SINGLE",
   "cpm_page_action": "PAYMENT",
-  "cpm_custom": "{\"sessionId\":\"Gq9VXQn9rqy8\"}",
+  "cpm_custom": "{\"sessionId\":\"0yjLUkC-1o5V\"}",
   "cpm_designation": "undefined - undefined",
   "cpm_error_message": "SUCCES"
 }
@@ -676,6 +683,22 @@ Content-Type: application/json
     "amount": 4000,
     "receiver": "675080477",
     "comment": "Successful payout notification"
+}
+
+### Simulate FeexPay Payout Webhook Notification (Success)
+# This simulates a POST request from FeexPay to your payout webhook endpoint.
+# Official webhook payload structure for FeexPay payouts (Togo example).
+POST {{host}}/payouts/webhooks/feexpay
+Content-Type: application/json
+
+{
+    "reference": "FXP_TG_20241220_001",
+    "amount": 500,
+    "status": "SUCCESSFUL",
+    "callback_info": {
+        "client_transaction_id": "SBC_WD_20241220_001",
+        "userId": "65d2b0344a7e2b9efbf6205d"
+    }
 }
 
 

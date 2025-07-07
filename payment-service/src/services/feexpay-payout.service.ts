@@ -6,6 +6,37 @@ import { AppError } from '../utils/errors';
 
 const log = logger.getLogger('FeexPayPayoutService');
 
+/**
+ * FeexPay Payout Service
+ * 
+ * This service handles FeexPay payout operations for Togo and other supported countries.
+ * 
+ * IMPORTANT: This implementation follows the official FeexPay Togo Payout API documentation:
+ * - URL: https://api.feexpay.me/api/payouts/public/togo
+ * - Required fields: phoneNumber, amount, shop, network, motif
+ * - Optional fields: email, callback_info
+ * - Response: amount, reference, status (SUCCESSFUL/FAILED/PENDING)
+ * - Status check: GET /payouts/status/public/{reference}
+ * 
+ * WEBHOOK INTEGRATION:
+ * FeexPay webhooks are POST requests with JSON payload containing:
+ * - reference: FeexPay transaction reference
+ * - amount: Transaction amount
+ * - status: Transaction status
+ * - callback_info: Custom data (includes our client_transaction_id)
+ * 
+ * The callback_info field in the payout request will be returned in webhook payload,
+ * allowing us to maintain internal transaction ID mapping.
+ * 
+ * For Togo specifically:
+ * - Network values: "TOGOCOM TG" or "MOOV TG" 
+ * - Phone format: 22871000000 (country code + number)
+ * - Minimum amount: 100 FCFA
+ * - Currency: XOF (West African CFA franc)
+ * 
+ * @see https://api.feexpay.me/api/payouts/public/togo
+ */
+
 // Internal types for FeexPay Payout Service
 export interface PayoutRequest {
     userId: string;
@@ -176,23 +207,41 @@ export class FeexPayPayoutService {
                 formattedPhoneNumber = formattedPhoneNumber.replace(/\D/g, ''); // Ensure no spaces/dashes if prefix already there or not needed
             }
 
+            // Validate and prepare motif (description) according to FeexPay documentation
+            // Minimum 5 characters, no special characters
+            let motif = request.description || `SBC Withdrawal ${request.client_transaction_id}`;
 
-            const requestBody = {
-                phoneNumber: formattedPhoneNumber, // As per FeexPay docs, some endpoints expect full number
-                amount: request.amount,
-                shop: config.feexpay.shopId,
-                network: endpointConfig.networkParam, // Specific network param for the chosen endpoint
-                motif: request.description || `SBC Withdrawal ${request.client_transaction_id}`,
+            // Remove special characters (keep only alphanumeric and spaces)
+            motif = motif.replace(/[^a-zA-Z0-9\s]/g, '');
+
+            // Ensure minimum 5 characters
+            if (motif.length < 5) {
+                motif = `SBC Withdrawal ${request.client_transaction_id || Date.now()}`.replace(/[^a-zA-Z0-9\s]/g, '');
+            }
+
+            // Prepare request body according to official FeexPay Togo API documentation
+            const requestBody: any = {
+                phoneNumber: formattedPhoneNumber, // e.g., 22871000000
+                amount: request.amount, // Minimum 100
+                shop: config.feexpay.shopId, // Shop ID from FeexPay developer menu
+                network: endpointConfig.networkParam, // TOGOCOM TG or MOOV TG
+                motif: motif, // Description (min 5 chars, no special characters)
+                // Include callback_info for webhook processing (this will be returned in webhook payload)
                 callback_info: {
                     client_transaction_id: request.client_transaction_id,
                     userId: request.userId
                 }
-                // FeexPay Payout API docs generally don't show email in the request body for mobile money payouts,
-                // but if an endpoint explicitly requires it, it can be added conditionally here.
-                // email: request.recipientEmail, // Optional: if FeexPay payout endpoint accepts it
             };
 
-            log.info(`Sending FeexPay payout request to ${endpointConfig.endpoint} with body:`, requestBody);
+            // Add optional email field if available
+            if (request.recipientEmail) {
+                requestBody.email = request.recipientEmail;
+            }
+
+            log.info(`Sending FeexPay payout request to ${endpointConfig.endpoint} with body:`, {
+                ...requestBody,
+                phoneNumber: '***' + requestBody.phoneNumber.slice(-4) // Hide phone number in logs
+            });
 
             const response = await this.apiClient.post(endpointConfig.endpoint, requestBody);
 
@@ -281,7 +330,42 @@ export class FeexPayPayoutService {
     }
 
     /**
+     * Helper method to extract transaction ID from webhook payload.
+     * Updated to handle official FeexPay webhook structure with callback_info.
+     * 
+     * @param payload - The webhook payload from FeexPay
+     * @returns Object containing transaction ID and reference for mapping
+     */
+    public extractTransactionIdentifiers(payload: any): {
+        internalTransactionId: string | null;
+        feexpayReference: string | null;
+        requiresLookup: boolean;
+    } {
+        const feexpayReference = payload.reference;
+        // According to official webhook docs, callback_info is included in webhook payload
+        const internalTxId = payload.callback_info?.client_transaction_id;
+
+        return {
+            internalTransactionId: internalTxId || null,
+            feexpayReference: feexpayReference || null,
+            requiresLookup: !internalTxId && !!feexpayReference
+        };
+    }
+
+    /**
      * Processes incoming webhook notifications for FeexPay payout status changes.
+     * Updated to handle official FeexPay webhook payload structure.
+     * 
+     * Official webhook payload structure:
+     * {
+     *   "reference": "transaction_reference",
+     *   "amount": transaction_amount,
+     *   "status": "transaction_status",
+     *   "callback_info": {
+     *     "client_transaction_id": "our_internal_id",
+     *     "userId": "user_id"
+     *   }
+     * }
      */
     public processWebhookNotification(payload: any): {
         transactionId: string;
@@ -293,19 +377,28 @@ export class FeexPayPayoutService {
     } {
         // FeexPay webhook payload: Json containing reference, amount, status, callback_info
         log.debug('Processing FeexPay webhook notification payload:', payload);
-        const internalTxId = payload.callback_info?.client_transaction_id || payload.client_transaction_id;
 
-        if (!internalTxId) {
-            log.error('Could not extract internal transaction ID (client_transaction_id) from FeexPay webhook payload.', payload);
+        // Use the helper method to extract transaction identifiers
+        const { internalTransactionId, feexpayReference, requiresLookup } = this.extractTransactionIdentifiers(payload);
+
+        if (!feexpayReference) {
+            log.error('Could not extract FeexPay reference from webhook payload.', payload);
+            throw new AppError('FeexPay reference missing from webhook payload.', 400);
+        }
+
+        if (!internalTransactionId) {
+            log.error('Could not extract internal transaction ID from FeexPay webhook callback_info.', payload);
             throw new AppError('Internal transaction ID missing from FeexPay webhook payload.', 400);
         }
 
+        log.info(`Processing FeexPay webhook: internal ID ${internalTransactionId}, FeexPay reference ${feexpayReference}, status ${payload.status}`);
+
         return {
-            transactionId: internalTxId,
-            feexpayReference: payload.reference,
+            transactionId: internalTransactionId,
+            feexpayReference: feexpayReference,
             status: this.mapFeexPayStatus(payload.status),
             amount: payload.amount,
-            recipient: payload.phoneNumber || 'N/A', // Assuming phoneNumber is in payload
+            recipient: payload.phoneNumber || 'N/A', // May not always be in webhook payload
             comment: payload.message || payload.status // Use message if available, else status
         };
     }

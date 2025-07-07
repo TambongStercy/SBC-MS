@@ -1592,7 +1592,6 @@ class PaymentService {
         // Countries that use CinetPay
         const cinetpaySupportedCountries = [
             'BF', // Burkina Faso
-            'TG', // Togo
             'ML', // Mali
             'NE', // Niger
             'BJ', // Bénin
@@ -1606,7 +1605,7 @@ class PaymentService {
             return PaymentGateway.CINETPAY;
         } else {
             // List of remaining countries that should use FeexPay
-            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Remaining countries
+            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'TG']; // Added Togo
             if (feexpaySupportedCountries.includes(countryCode)) {
                 log.info(`Country ${countryCode} selected, using FEEXPAY.`);
                 return PaymentGateway.FEEXPAY;
@@ -2228,7 +2227,7 @@ class PaymentService {
             const positiveAmountCount = data.positiveAmounts;
 
             log.info(`Total withdrawal calculation: ${count} transactions, ${total} F total`);
-            
+
             if (positiveAmountCount > 0) {
                 log.warn(`Found ${positiveAmountCount} withdrawal transactions with positive amounts. These may indicate data issues.`);
             }
@@ -2236,7 +2235,7 @@ class PaymentService {
             // Additional validation: check if result seems unreasonable
             if (total > 100000000) { // > 100M F seems unreasonable
                 log.warn(`Total withdrawal amount (${total} F) seems unusually high. This may indicate data issues.`);
-                
+
                 // Get a sample of large transactions for investigation
                 const largeTxs = await TransactionModel.find({
                     type: TransactionType.WITHDRAWAL,
@@ -2247,7 +2246,7 @@ class PaymentService {
                         { amount: { $lt: -1000000 } }
                     ]
                 }).select('transactionId amount createdAt').limit(5).lean();
-                
+
                 if (largeTxs.length > 0) {
                     log.warn(`Sample large withdrawal transactions:`, largeTxs.map(tx => ({
                         id: tx.transactionId,
@@ -2717,17 +2716,83 @@ class PaymentService {
     public async processFeexpayPayout(
         internalTransactionId: string,
         fullInternationalPhoneNumber: string, // e.g., "237676746210"
-        operatorSlug: string,           // e.g., "mtn_cmr"
+        operatorSlug: string,           // e.g., "mtn_cmr" or "togocom_tg"
         amount: number,
-        currency: string // e.g., "XAF"
+        currency: string // e.g., "XAF" or "XOF"
     ): Promise<{ success: boolean; providerTransactionId?: string; message?: string; error?: any }> {
-        log.warn(`processFeexpayPayout is a placeholder and not yet implemented. Called for tx: ${internalTransactionId}`);
-        // TODO: Implement actual FeexPay Payout API call
-        // 1. Get FeexPay Auth Token (if they use a similar system to CinetPay or a static API key for payouts)
-        // 2. Prepare Payout Request Body (phoneNumber, operator, amount, currency, callback_url etc.)
-        // 3. Make API Call to FeexPay Payout Endpoint
-        // 4. Handle Response
-        return { success: true, providerTransactionId: `feexpay_placeholder_${Date.now()}`, message: 'FeexPay Payout Simulated' };
+        log.info(`Processing FeexPay payout for transaction ${internalTransactionId}: ${amount} ${currency} to ${fullInternationalPhoneNumber} via ${operatorSlug}`);
+
+        try {
+            // Parse the phone number to get country code and national number
+            const phoneMatch = fullInternationalPhoneNumber.match(/^(\d{3})(\d+)$/);
+            if (!phoneMatch) {
+                throw new Error(`Invalid phone number format: ${fullInternationalPhoneNumber}`);
+            }
+
+            const dialingCode = phoneMatch[1]; // e.g., "228"
+            const nationalPhoneNumber = phoneMatch[2]; // e.g., "12345678"
+
+            // Map dialing code to country code
+            const countryCodeMap: Record<string, string> = {
+                '228': 'TG', // Togo
+                '225': 'CI', // Côte d'Ivoire
+                '221': 'SN', // Senegal
+                '242': 'CG', // Congo
+                '224': 'GN', // Guinea
+                '241': 'GA', // Gabon
+                '243': 'CD', // DRC
+                '254': 'KE', // Kenya
+            };
+
+            const countryCode = countryCodeMap[dialingCode];
+            if (!countryCode) {
+                throw new Error(`Unsupported country for FeexPay payout. Dialing code: ${dialingCode}`);
+            }
+
+            log.info(`Detected country: ${countryCode} for FeexPay payout`);
+
+            // Prepare the payout request
+            const payoutRequest: FeexPayPayoutRequest = {
+                userId: internalTransactionId, // Use transaction ID as user identifier for this context
+                amount: amount,
+                phoneNumber: nationalPhoneNumber, // FeexPay expects national format
+                countryCode: countryCode,
+                momoOperator: operatorSlug,
+                description: `Withdrawal payout for transaction ${internalTransactionId}`,
+                client_transaction_id: internalTransactionId,
+                notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`
+            };
+
+            log.info(`Initiating FeexPay payout with request:`, {
+                ...payoutRequest,
+                phoneNumber: '***' + payoutRequest.phoneNumber.slice(-4) // Hide phone number in logs
+            });
+
+            // Call the FeexPay payout service
+            const result = await feexPayPayoutService.initiatePayout(payoutRequest);
+
+            log.info(`FeexPay payout result for ${internalTransactionId}:`, {
+                success: result.success,
+                status: result.status,
+                message: result.message,
+                feexpayReference: result.feexpayReference
+            });
+
+            return {
+                success: result.success,
+                providerTransactionId: result.feexpayReference,
+                message: result.message,
+                error: result.success ? undefined : result.error
+            };
+
+        } catch (error: any) {
+            log.error(`Error in FeexPay payout for transaction ${internalTransactionId}:`, error);
+            return {
+                success: false,
+                message: `FeexPay payout failed: ${error.message}`,
+                error: error
+            };
+        }
     }
 
     /**
