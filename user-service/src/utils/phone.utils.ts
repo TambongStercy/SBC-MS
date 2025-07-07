@@ -7,7 +7,7 @@ const countryDialingCodes: { [key: string]: string } = {
     CM: '237', BJ: '229', CG: '242', GH: '233',
     CI: '225', SN: '221', TG: '228', BF: '226',
     GN: '224', ML: '223', NE: '227', GA: '241',
-    CD: '243', KE: '254',
+    CD: '243', KE: '254', NG: '234',
     // Add all countries your application supports
 };
 
@@ -16,21 +16,55 @@ const countryNameVariations: { [key: string]: string } = {
     // Cameroon variations
     'cameroon': 'CM', 'cameroun': 'CM', 'camerun': 'CM', 'kamerun': 'CM',
 
-    // Other common variations
-    'benin': 'BJ', 'bénin': 'BJ',
+    // Benin variations
+    'benin': 'BJ', 'bénin': 'BJ', 'béninoise': 'BJ', 'beninoise': 'BJ',
+
+    // Côte d'Ivoire variations
     'cote divoire': 'CI', "cote d'ivoire": 'CI', "côte d'ivoire": 'CI', 'ivory coast': 'CI',
-    'democratic republic of congo': 'CD', 'dr congo': 'CD', 'drc': 'CD', 'congo kinshasa': 'CD', 'zaire': 'CD',
-    'republic of congo': 'CG', 'congo brazzaville': 'CG', 'congo': 'CG',
-    'senegal': 'SN', 'sénégal': 'SN',
-    'burkina faso': 'BF', 'burkina': 'BF',
-    'ghana': 'GH',
-    'nigeria': 'NG', 'nigéria': 'NG',
-    'kenya': 'KE',
-    'guinea': 'GN', 'guinée': 'GN',
-    'mali': 'ML',
-    'niger': 'NE',
-    'gabon': 'GA',
-    'togo': 'TG',
+    'cote-d\'ivoire': 'CI', 'cote-divoire': 'CI', 'cotedivoire': 'CI', 'ivorian': 'CI',
+
+    // Congo variations (Democratic Republic)
+    'democratic republic of congo': 'CD', 'dr congo': 'CD', 'drc': 'CD', 'congo kinshasa': 'CD',
+    'zaire': 'CD', 'congo-kinshasa': 'CD', 'rdc': 'CD', 'republique democratique du congo': 'CD',
+
+    // Congo variations (Republic)
+    'republic of congo': 'CG', 'congo brazzaville': 'CG', 'congo': 'CG', 'congo-brazzaville': 'CG',
+    'republique du congo': 'CG', 'congo republic': 'CG',
+
+    // Senegal variations
+    'senegal': 'SN', 'sénégal': 'SN', 'senegalese': 'SN', 'sénégalais': 'SN',
+
+    // Burkina Faso variations
+    'burkina faso': 'BF', 'burkina': 'BF', 'burkina-faso': 'BF', 'burkinabe': 'BF',
+    'burkinafaso': 'BF', 'burkina_faso': 'BF',
+
+    // Ghana variations
+    'ghana': 'GH', 'ghanaian': 'GH', 'gold coast': 'GH',
+
+    // Nigeria variations
+    'nigeria': 'NG', 'nigéria': 'NG', 'nigerian': 'NG', 'nigérian': 'NG',
+    'federal republic of nigeria': 'NG',
+
+    // Kenya variations
+    'kenya': 'KE', 'kenyan': 'KE', 'republic of kenya': 'KE',
+
+    // Guinea variations
+    'guinea': 'GN', 'guinée': 'GN', 'guinea conakry': 'GN', 'guinée-conakry': 'GN',
+    'republic of guinea': 'GN', 'republique de guinee': 'GN',
+
+    // Mali variations
+    'mali': 'ML', 'malian': 'ML', 'republic of mali': 'ML', 'republique du mali': 'ML',
+
+    // Niger variations
+    'niger': 'NE', 'nigerien': 'NE', 'republic of niger': 'NE', 'republique du niger': 'NE',
+
+    // Gabon variations
+    'gabon': 'GA', 'gabonese': 'GA', 'gabonais': 'GA', 'republic of gabon': 'GA',
+    'republique gabonaise': 'GA',
+
+    // Togo variations
+    'togo': 'TG', 'togolese': 'TG', 'togolais': 'TG', 'republic of togo': 'TG',
+    'republique togolaise': 'TG',
 };
 
 // Reverse mapping: dialing code to country ISO
@@ -142,4 +176,30 @@ export function normalizePhoneNumber(rawPhoneNumber: string | undefined | null, 
         log.warn(`normalizePhoneNumber: No country context and doesn't start with known prefix. Cannot reliably format. RawCleaned: '${cleanedPhone}'`);
         return null;
     }
+}
+
+/**
+ * Normalizes country name to ISO code for registration/profile updates
+ * @param countryInput - User's country input (could be name or code)
+ * @returns Normalized ISO country code or original input if no match
+ */
+export function normalizeCountryName(countryInput?: string): string {
+    if (!countryInput || typeof countryInput !== 'string') {
+        return countryInput || '';
+    }
+
+    const normalized = countryInput.toLowerCase().trim();
+
+    // Check if it's already a valid ISO code (uppercase)
+    if (countryDialingCodes[countryInput.toUpperCase()]) {
+        return countryInput.toUpperCase();
+    }
+
+    // Check country name variations  
+    if (countryNameVariations[normalized]) {
+        return countryNameVariations[normalized];
+    }
+
+    // Return original input if no match found
+    return countryInput;
 } 

@@ -23,7 +23,7 @@ import { UserDetails } from '../database/repositories/user.repository';
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
 import { AppError } from '../utils/errors';
-import { normalizePhoneNumber, determineUserCountryCode } from '../utils/phone.utils';
+import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName } from '../utils/phone.utils';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -193,6 +193,12 @@ export class UserService {
 
         if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.sex || !userToCreate.birthDate || !userToCreate.country || !userToCreate.region || !userToCreate.phoneNumber) {
             throw new Error('Missing required registration fields');
+        }
+
+        // Normalize country name (e.g., "Cameroun" or "Cameroon" -> "CM")
+        if (userToCreate.country) {
+            userToCreate.country = normalizeCountryName(userToCreate.country);
+            log.info(`Country normalized during registration: ${registrationData.country} -> ${userToCreate.country}`);
         }
 
         if (!actualReferrerCode) {
@@ -642,7 +648,12 @@ export class UserService {
 
         if (updateData.name !== undefined) allowedFields.name = updateData.name;
         if (updateData.region !== undefined) allowedFields.region = updateData.region;
-        if (updateData.country !== undefined) allowedFields.country = updateData.country;
+        if (updateData.country !== undefined) {
+            allowedFields.country = normalizeCountryName(updateData.country);
+            if (updateData.country !== allowedFields.country) {
+                log.info(`Country normalized during profile update: ${updateData.country} -> ${allowedFields.country}`);
+            }
+        }
         if (updateData.city !== undefined) allowedFields.city = updateData.city;
         if (updateData.phoneNumber !== undefined) allowedFields.phoneNumber = updateData.phoneNumber;
         if (updateData.momoNumber !== undefined) allowedFields.momoNumber = updateData.momoNumber;
@@ -2079,12 +2090,11 @@ export class UserService {
             allowedAdminUpdates.region = updateData.region;
         }
         if (updateData.country !== undefined) {
-            // Add basic validation for ISO code format (2 letters)
-            if (typeof updateData.country === 'string' && updateData.country.length === 2) {
-                allowedAdminUpdates.country = updateData.country.toUpperCase(); // Store as uppercase
-            } else {
-                log.warn(`Admin update user ${userId}: Invalid country code format provided: ${updateData.country}`);
-                // Optionally throw an error: throw new Error('Invalid country code format. Must be 2 letters.');
+            // Normalize country name first
+            const normalizedCountry = normalizeCountryName(updateData.country);
+            allowedAdminUpdates.country = normalizedCountry;
+            if (updateData.country !== normalizedCountry) {
+                log.info(`Admin country normalized: ${updateData.country} -> ${normalizedCountry}`);
             }
         }
         if (updateData.city !== undefined) {

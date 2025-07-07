@@ -7,7 +7,10 @@
         "build": "tsc",
         "start": "node dist/server.js",
         "dev": "nodemon --exec ts-node --swc src/server.ts",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "migrate:cameroon": "node migrate-cameroon-countries.js",
+        "check:countries": "node check-all-countries.js analyze",
+        "fix:countries": "node check-all-countries.js fix"
     },
     "keywords": [],
     "author": "",
