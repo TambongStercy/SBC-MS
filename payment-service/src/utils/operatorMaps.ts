@@ -13,6 +13,9 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     // Togo (TG) - Added for CinetPay support
     'TOGOCOM_TGO': 'TG',
     'MOOV_TGO': 'TG',
+    // Togo (TG) - Added for FeexPay support (alternative naming)
+    'TOGOCOM_TG': 'TG',
+    'MOOV_TG': 'TG',
     // Mali (ML) - Added for CinetPay support
     'ORANGE_MLI': 'ML',
     'MOOV_MLI': 'ML',
@@ -83,7 +86,7 @@ export const correspondents = {
         'currencies': ['XOF']
     },
     'TG': {
-        'operators': ['TOGOCOM_TGO', 'MOOV_TGO'], // Togo
+        'operators': ['TOGOCOM_TGO', 'MOOV_TGO', 'TOGOCOM_TG', 'MOOV_TG'], // Togo (support both naming conventions)
         'currencies': ['XOF']
     },
     'ML': {
@@ -136,6 +139,9 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     // Togo (TG) - XOF
     'TOGOCOM_TGO': 'XOF',
     'MOOV_TGO': 'XOF',
+    // Togo (TG) - XOF (alternative naming for FeexPay)
+    'TOGOCOM_TG': 'XOF',
+    'MOOV_TG': 'XOF',
     // Mali (ML) - XOF
     'ORANGE_MLI': 'XOF',
     'MOOV_MLI': 'XOF',
@@ -173,6 +179,9 @@ export const momoOperatorToCinetpayPaymentMethod: { [key: string]: string } = {
     // Togo (TG) - Added for CinetPay support
     'TOGOCOM_TGO': 'TOGOCOM',
     'MOOV_TGO': 'MOOVTG',
+    // Togo (TG) - Alternative naming for FeexPay (maps to same CinetPay methods)
+    'TOGOCOM_TG': 'TOGOCOM',
+    'MOOV_TG': 'MOOVTG',
     // Mali (ML) - Added for CinetPay support
     'ORANGE_MLI': 'OMML',
     'MOOV_MLI': 'MOOVML',
