@@ -13,7 +13,8 @@ import {
   Wallet,
   Send,
   Bell,
-  Hammer
+  Hammer,
+  HardDrive
 } from "lucide-react";
 import { Link, NavLink } from "react-router-dom";
 
@@ -71,6 +72,12 @@ const SIDEBAR_ITEMS = [
     icon: Settings,
     color: "#ec4899",
     path: "/settings",
+  },
+  {
+    name: "Storage Monitor",
+    icon: HardDrive,
+    color: "#06b6d4",
+    path: "/storage",
   },
   {
     name: "Notifications",

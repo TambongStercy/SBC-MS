@@ -6,6 +6,7 @@ import config from './config';
 import connectDB from './database/connection';
 import logger from './utils/logger';
 import apiRoutes from './api/routes'; // Import main router
+import storageMonitorJob from './jobs/storageMonitor.job'; // Storage monitoring
 const log = logger.getLogger('Server');
 
 const app: Express = express();
@@ -76,6 +77,10 @@ const PORT = config.port;
 
 app.listen(PORT, () => {
     log.info(`Settings Service started on port ${PORT} in ${config.nodeEnv} mode`);
+    
+    // Start storage monitoring job
+    storageMonitorJob.start();
+    log.info('Storage monitoring job started');
 });
 
 export default app; // Optional: export for testing

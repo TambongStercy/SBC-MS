@@ -15,6 +15,7 @@ import SettingsManagementPage from './pages/SettingsManagementPage';
 import NotificationsPage from './pages/NotificationsPage';
 import Partners from './pages/Partners';
 import FixFeexpayPaymentsPage from './pages/FixFeexpayPaymentsPage';
+import StorageMonitoringPage from './pages/StorageMonitoringPage';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -59,6 +60,7 @@ function App() {
             <Route path="/transactions" element={<TransactionManagementPage />} />
             <Route path="/account-transactions" element={<AccountTransactionsManagementPage />} />
             <Route path="/settings" element={<SettingsManagementPage />} />
+            <Route path="/storage" element={<StorageMonitoringPage />} />
             <Route path="/tombola" element={<TombolaManagementPage />} />
             <Route path="/tombola/draw/:monthId" element={<TombolaDrawPage />} />
             <Route path="/logout" element={<Deconnexion />} />
