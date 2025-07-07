@@ -16,7 +16,8 @@ export interface ContactSearchFilters {
     minAge?: number;
     maxAge?: number;
     language?: string; // Added language filter (assuming single string for now)
-    profession?: string; // Added profession filter
+    profession?: string; // Added profession filter (single profession)
+    professions?: string[]; // Added professions filter (multiple professions array)
     interests?: string[]; // Added interests filter (array)
     // 'interest' singular was used in controller, let's keep 'interests' as array here.
 

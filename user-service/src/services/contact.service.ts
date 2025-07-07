@@ -4,14 +4,17 @@ import { ContactSearchFilters, ContactSearchResponse } from '../types/contact.ty
 import { SubscriptionType } from '../database/models/subscription.model';
 import { generateVCFFile } from '../utils/vcf.utils';
 import { SubscriptionService } from './subscription.service';
+import { UserService } from './user.service';
 
 export class ContactService {
     private userRepository: UserRepository;
     private subscriptionService: SubscriptionService;
+    private userService: UserService;
 
     constructor() {
         this.userRepository = new UserRepository();
         this.subscriptionService = new SubscriptionService();
+        this.userService = new UserService();
     }
 
     /**
@@ -53,7 +56,12 @@ export class ContactService {
             filters.minAge !== undefined ||
             filters.maxAge !== undefined ||
             (filters.preferenceCategories && filters.preferenceCategories.length > 0) ||
-            filters.region !== undefined;
+            (filters.professions && filters.professions.length > 0) ||
+            filters.profession !== undefined ||
+            (filters.interests && filters.interests.length > 0) ||
+            filters.language !== undefined ||
+            filters.region !== undefined ||
+            filters.city !== undefined;
 
         if (usingAdvancedFilters) {
             const hasContactPlan = await this.hasSubscriptionAccess(userId, SubscriptionType.CIBLE);
@@ -72,7 +80,36 @@ export class ContactService {
      */
     async searchContacts(userId: string, filters: ContactSearchFilters): Promise<ContactSearchResponse> {
         await this.validateFilters(userId, filters);
-        return await this.userRepository.searchContactUsers(userId, filters);
+
+        // Set default pagination
+        const pagination = {
+            page: filters.page || 1,
+            limit: filters.limit || 10
+        };
+
+        // Use the user service method that supports professions array and better filtering
+        const result = await this.userService.findUsersByCriteria(filters, pagination, true);
+
+        // Convert the result to ContactSearchResponse format
+        return {
+            users: result.users.map(user => ({
+                _id: user._id?.toString() || '',
+                name: user.name || '',
+                email: user.email || '',
+                phoneNumber: user.phoneNumber,
+                region: user.region,
+                city: user.city,
+                sex: user.sex,
+                birthDate: user.birthDate,
+                language: user.language,
+                profession: user.profession,
+                interests: user.interests,
+                createdAt: user.createdAt || new Date()
+            })),
+            totalCount: result.totalCount,
+            page: result.page,
+            totalPages: result.totalPages
+        };
     }
 
     /**
@@ -86,7 +123,7 @@ export class ContactService {
 
         // Remove pagination for export to get all matching contacts
         const fullFilters = { ...filters, page: undefined, limit: undefined };
-        const { users } = await this.userRepository.searchContactUsers(userId, fullFilters);
+        const users = await this.userService.findAllUsersByCriteria(fullFilters, true);
 
         return generateVCFFile(users);
     }

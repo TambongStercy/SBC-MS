@@ -1563,7 +1563,14 @@ export class UserService {
         if (filters.city) query.city = { $regex: `^${filters.city.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
         if (filters.sex) query.sex = filters.sex;
         if (filters.language) query.language = { $in: [new RegExp(filters.language.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')] };
-        if (filters.profession) query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+
+        // Handle professions array filter (takes priority over single profession)
+        if (filters.professions && filters.professions.length > 0) {
+            query.profession = { $in: filters.professions.map(p => new RegExp(p.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')) };
+        } else if (filters.profession) {
+            query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+        }
+
         if (filters.interests && filters.interests.length > 0) {
             query.interests = { $in: filters.interests.map(i => new RegExp(i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')) };
         }
@@ -1675,7 +1682,14 @@ export class UserService {
         if (filters.language) {
             query.language = { $elemMatch: { $regex: `^${filters.language.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, $options: 'i' } };
         }
-        if (filters.profession) query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+
+        // Handle professions array filter (takes priority over single profession)
+        if (filters.professions && filters.professions.length > 0) {
+            query.profession = { $in: filters.professions.map(p => new RegExp(p.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')) };
+        } else if (filters.profession) {
+            query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+        }
+
         if (filters.interests && filters.interests.length > 0) {
             query.interests = {
                 $in: filters.interests.map(i => new RegExp(i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i'))
@@ -1776,7 +1790,14 @@ export class UserService {
         if (filters.language) {
             query.language = { $elemMatch: { $regex: `^${filters.language.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, $options: 'i' } };
         }
-        if (filters.profession) query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+
+        // Handle professions array filter (takes priority over single profession)
+        if (filters.professions && filters.professions.length > 0) {
+            query.profession = { $in: filters.professions.map(p => new RegExp(p.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')) };
+        } else if (filters.profession) {
+            query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+        }
+
         if (filters.interests && filters.interests.length > 0) {
             query.interests = {
                 $in: filters.interests.map(i => new RegExp(i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i'))

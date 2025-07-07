@@ -440,7 +440,13 @@ export class UserRepository {
         if (filters.city) query.city = filters.city;
         if (filters.sex) query.sex = filters.sex;
         if (filters.language) query.language = filters.language; // Assuming IUser.language is string
-        if (filters.profession) query.profession = { $regex: filters.profession, $options: 'i' }; // Case-insensitive search
+
+        // Handle professions array filter (takes priority over single profession)
+        if (filters.professions && filters.professions.length > 0) {
+            query.profession = { $in: filters.professions.map(p => new RegExp(p, 'i')) }; // Case-insensitive array search
+        } else if (filters.profession) {
+            query.profession = { $regex: filters.profession, $options: 'i' }; // Case-insensitive search
+        }
 
         // Age filter (requires birthDate field)
         if (filters.minAge || filters.maxAge) {

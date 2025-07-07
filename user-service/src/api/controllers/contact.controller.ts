@@ -55,9 +55,53 @@ export class ContactController {
             }
         }
 
+        // Parse professions filter (multiple professions)
+        if (query.professions) {
+            if (Array.isArray(query.professions)) {
+                filters.professions = query.professions;
+            } else if (typeof query.professions === 'string') {
+                // Split by comma and decode URI components
+                filters.professions = query.professions.split(',').map((p: string) => decodeURIComponent(p.trim()));
+            }
+        }
+
+        // Parse single profession filter (backward compatibility)
+        if (query.profession) {
+            filters.profession = query.profession;
+        }
+
+        // Parse country filter
+        if (query.country) {
+            filters.country = query.country;
+        }
+
         // Parse region filter
         if (query.region) {
             filters.region = query.region;
+        }
+
+        // Parse city filter
+        if (query.city) {
+            filters.city = query.city;
+        }
+
+        // Parse language filter
+        if (query.language) {
+            filters.language = query.language;
+        }
+
+        // Parse name filter
+        if (query.name) {
+            filters.name = query.name;
+        }
+
+        // Parse interests filter
+        if (query.interests) {
+            if (Array.isArray(query.interests)) {
+                filters.interests = query.interests;
+            } else if (typeof query.interests === 'string') {
+                filters.interests = query.interests.split(',').map((i: string) => i.trim());
+            }
         }
 
         // Parse pagination
