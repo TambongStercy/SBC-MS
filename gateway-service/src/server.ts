@@ -173,6 +173,15 @@ app.use('/api/settings', proxy(config.services.settingsServiceUrl, {
   }
 }));
 
+// Storage service (keep specific config for file uploads if needed)
+app.use('/api/storage', proxy(config.services.settingsServiceUrl, {
+  parseReqBody: false,
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to storage service`);
+    return '/api/storage' + req.url;  
+  }
+}));
+
 // Event service (Add back explicit limit)
 app.use('/api/events', proxy(config.services.settingsServiceUrl, {
   proxyReqPathResolver: (req) => {

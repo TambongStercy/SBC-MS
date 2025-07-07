@@ -87,18 +87,18 @@ export interface StorageCheckResponse {
     };
 }
 
-// API functions
+// API functions - Fixed endpoints to match backend routes
 export const getStorageStatus = async (): Promise<StorageStatusResponse> => {
-    const response = await apiClient.get('/settings/storage/status');
+    const response = await apiClient.get('/storage/status');
     return response.data;
 };
 
 export const runStorageCheck = async (): Promise<StorageCheckResponse> => {
-    const response = await apiClient.post('/settings/storage/check');
+    const response = await apiClient.post('/storage/check');
     return response.data;
 };
 
 export const getCleanupCandidates = async (daysOld = 7): Promise<CleanupCandidatesResponse> => {
-    const response = await apiClient.get(`/settings/storage/cleanup-candidates?daysOld=${daysOld}`);
+    const response = await apiClient.get(`/storage/cleanup-candidates?daysOld=${daysOld}`);
     return response.data;
 }; 
