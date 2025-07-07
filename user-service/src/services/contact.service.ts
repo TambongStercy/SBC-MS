@@ -125,6 +125,17 @@ export class ContactService {
         const fullFilters = { ...filters, page: undefined, limit: undefined };
         const users = await this.userService.findAllUsersByCriteria(fullFilters, true);
 
-        return generateVCFFile(users);
+        // Filter and transform users to ensure required fields are present
+        const validUsers = users
+            .filter(user => user.name && user.email)
+            .map(user => ({
+                name: user.name!,
+                email: user.email!,
+                phoneNumber: user.phoneNumber,
+                region: user.region,
+                shareContactInfo: user.shareContactInfo
+            }));
+
+        return generateVCFFile(validUsers);
     }
 } 
