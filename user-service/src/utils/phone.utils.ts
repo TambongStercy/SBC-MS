@@ -11,6 +11,74 @@ const countryDialingCodes: { [key: string]: string } = {
     // Add all countries your application supports
 };
 
+// Country name variations mapping to ISO codes
+const countryNameVariations: { [key: string]: string } = {
+    // Cameroon variations
+    'cameroon': 'CM', 'cameroun': 'CM', 'camerun': 'CM', 'kamerun': 'CM',
+
+    // Other common variations
+    'benin': 'BJ', 'bénin': 'BJ',
+    'cote divoire': 'CI', "cote d'ivoire": 'CI', "côte d'ivoire": 'CI', 'ivory coast': 'CI',
+    'democratic republic of congo': 'CD', 'dr congo': 'CD', 'drc': 'CD', 'congo kinshasa': 'CD', 'zaire': 'CD',
+    'republic of congo': 'CG', 'congo brazzaville': 'CG', 'congo': 'CG',
+    'senegal': 'SN', 'sénégal': 'SN',
+    'burkina faso': 'BF', 'burkina': 'BF',
+    'ghana': 'GH',
+    'nigeria': 'NG', 'nigéria': 'NG',
+    'kenya': 'KE',
+    'guinea': 'GN', 'guinée': 'GN',
+    'mali': 'ML',
+    'niger': 'NE',
+    'gabon': 'GA',
+    'togo': 'TG',
+};
+
+// Reverse mapping: dialing code to country ISO
+const dialingCodeToCountry: { [key: string]: string } = {};
+Object.entries(countryDialingCodes).forEach(([iso, code]) => {
+    dialingCodeToCountry[code] = iso;
+});
+
+/**
+ * Determines the user's country code from country field or phone number
+ * @param country - User's country field (could be name or code)
+ * @param phoneNumber - User's phone number
+ * @returns ISO country code (e.g., 'CM') or 'Autres' if undetermined
+ */
+export function determineUserCountryCode(country?: string, phoneNumber?: string | number): string {
+    // 1. Try to normalize country field first
+    if (country && typeof country === 'string') {
+        const normalizedCountry = country.toLowerCase().trim();
+
+        // Check if it's already a valid ISO code
+        if (countryDialingCodes[normalizedCountry.toUpperCase()]) {
+            return normalizedCountry.toUpperCase();
+        }
+
+        // Check country name variations
+        if (countryNameVariations[normalizedCountry]) {
+            return countryNameVariations[normalizedCountry];
+        }
+    }
+
+    // 2. Try to extract from phone number
+    if (phoneNumber) {
+        const phoneStr = phoneNumber.toString().replace(/\D/g, ''); // Remove non-digits
+
+        // Check each dialing code (longer codes first to avoid partial matches)
+        const sortedCodes = Object.keys(dialingCodeToCountry).sort((a, b) => b.length - a.length);
+
+        for (const code of sortedCodes) {
+            if (phoneStr.startsWith(code)) {
+                return dialingCodeToCountry[code];
+            }
+        }
+    }
+
+    // 3. Default fallback
+    return 'Autres';
+}
+
 /**
  * Normalizes a phone number to an international format (e.g., 237691767754).
  *

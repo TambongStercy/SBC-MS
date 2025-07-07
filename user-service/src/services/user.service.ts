@@ -23,7 +23,7 @@ import { UserDetails } from '../database/repositories/user.repository';
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
 import { AppError } from '../utils/errors';
-import { normalizePhoneNumber } from '../utils/phone.utils';
+import { normalizePhoneNumber, determineUserCountryCode } from '../utils/phone.utils';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -2680,25 +2680,11 @@ export class UserService {
             // `allUsersDates`, `classiqueSubStartDates`, `cibleSubStartDates` are no longer needed here,
             // as the aggregated data is used directly.
 
-            // Calculate Balances by Country (unchanged logic)
+            // Calculate Balances by Country with improved normalization
             const balancesByCountry: { [countryCode: string]: number } = {};
             allUsers.forEach((user: Pick<FlattenMaps<IUser>, '_id' | 'balance' | 'country' | 'phoneNumber'>) => {
-                let countryCode = 'Autres'; // Default
-                const userCountryUpper = typeof user.country === 'string' ? user.country.toUpperCase() : undefined;
-
-                if (userCountryUpper && countryCodePrefixes[userCountryUpper]) {
-                    countryCode = userCountryUpper;
-                } else if (user.phoneNumber) {
-                    const phoneStr = user.phoneNumber.toString(); // Ensure it's a string
-                    // Check prefixes (simple startsWith)
-                    for (const prefix in prefixToCountryCode) {
-                        if (phoneStr.startsWith(prefix)) {
-                            countryCode = prefixToCountryCode[prefix];
-                            break;
-                        }
-                    }
-                }
-
+                // Use the new country normalization utility
+                const countryCode = determineUserCountryCode(user.country, user.phoneNumber);
                 balancesByCountry[countryCode] = (balancesByCountry[countryCode] || 0) + (user.balance || 0);
             });
 

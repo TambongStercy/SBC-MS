@@ -2171,9 +2171,10 @@ class PaymentService {
 
     /**
      * [ADMIN] Get total amount for completed withdrawals.
+     * Updated to handle data inconsistencies and provide accurate calculations.
      */
     async getTotalWithdrawalsAmount(): Promise<number> {
-        log.info('Calculating total completed withdrawal amount');
+        log.info('Calculating total completed withdrawal amount with improved accuracy');
         try {
             const result = await TransactionModel.aggregate([
                 {
@@ -2184,18 +2185,79 @@ class PaymentService {
                     }
                 },
                 {
+                    $project: {
+                        // Normalize amounts: withdrawals should be negative, but handle edge cases
+                        normalizedAmount: {
+                            $cond: {
+                                if: { $gt: ['$amount', 0] },
+                                then: { $multiply: ['$amount', -1] }, // Convert positive to negative
+                                else: '$amount' // Keep negative as is
+                            }
+                        },
+                        amount: 1,
+                        transactionId: 1,
+                        createdAt: 1
+                    }
+                },
+                {
                     $group: {
-                        _id: null, // Group all matched documents
-                        // Remember withdrawal amounts are stored negative, so sum and negate
-                        totalAmount: { $sum: '$amount' }
+                        _id: null,
+                        totalAmount: { $sum: '$normalizedAmount' },
+                        count: { $sum: 1 },
+                        positiveAmounts: {
+                            $sum: {
+                                $cond: {
+                                    if: { $gt: ['$amount', 0] },
+                                    then: 1,
+                                    else: 0
+                                }
+                            }
+                        }
                     }
                 }
             ]).exec();
 
-            // Result is an array, check if it's empty (no completed withdrawals)
-            const total = result.length > 0 ? result[0].totalAmount : 0;
-            // Negate the result because withdrawal amounts are stored negatively
-            return Math.abs(total);
+            if (result.length === 0) {
+                log.info('No completed withdrawals found');
+                return 0;
+            }
+
+            const data = result[0];
+            const total = Math.abs(data.totalAmount); // Take absolute value since withdrawals should be negative
+            const count = data.count;
+            const positiveAmountCount = data.positiveAmounts;
+
+            log.info(`Total withdrawal calculation: ${count} transactions, ${total} F total`);
+            
+            if (positiveAmountCount > 0) {
+                log.warn(`Found ${positiveAmountCount} withdrawal transactions with positive amounts. These may indicate data issues.`);
+            }
+
+            // Additional validation: check if result seems unreasonable
+            if (total > 100000000) { // > 100M F seems unreasonable
+                log.warn(`Total withdrawal amount (${total} F) seems unusually high. This may indicate data issues.`);
+                
+                // Get a sample of large transactions for investigation
+                const largeTxs = await TransactionModel.find({
+                    type: TransactionType.WITHDRAWAL,
+                    status: TransactionStatus.COMPLETED,
+                    deleted: { $ne: true },
+                    $or: [
+                        { amount: { $gt: 1000000 } },
+                        { amount: { $lt: -1000000 } }
+                    ]
+                }).select('transactionId amount createdAt').limit(5).lean();
+                
+                if (largeTxs.length > 0) {
+                    log.warn(`Sample large withdrawal transactions:`, largeTxs.map(tx => ({
+                        id: tx.transactionId,
+                        amount: tx.amount,
+                        date: tx.createdAt
+                    })));
+                }
+            }
+
+            return total;
         } catch (error) {
             log.error('Error calculating total withdrawal amount:', error);
             throw new AppError('Failed to calculate total withdrawal amount', 500);
