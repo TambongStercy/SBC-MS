@@ -31,44 +31,39 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Define countries for each gateway based on the new rule
-        // Countries that use CinetPay for PAYMENTS
+        // Countries that use CinetPay
         const cinetpayCountries = [
             'BF', // Burkina Faso
-            'TG', // Togo - PAYMENTS use CinetPay (withdrawals use FeexPay)
             'ML', // Mali
             'NE', // Niger
             'BJ', // Bénin
             'CI', // Côte d'Ivoire
             'CM', // Cameroun
-            'SN'  // Sénégal
+            'SN', // Sénégal
+            'TG'  // Togo (payments only; withdrawals use FeexPay in backend)
         ];
 
-        // Countries that use FeexPay for PAYMENTS
-        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Togo removed - payments use CinetPay
+        // Countries that use FeexPay
+        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Togo removed, now CinetPay for payments
 
-        // Only include FeexPay operators for countries that still use FeexPay for PAYMENTS
+        // Only include FeexPay operators for countries that still use FeexPay
         const feexpayOperators = {
             'CG': ['mtn_cg'], // Congo Brazzaville
             'GN': [], // Guinea (operators TBD)
             'GA': [], // Gabon (operators TBD)
             'CD': [], // Democratic Republic of Congo (operators TBD)
             'KE': [], // Kenya (operators TBD)
-            // Togo removed - payments now use CinetPay (withdrawals use FeexPay)
-            // Removed operators for countries that now use CinetPay for payments:
-            // 'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin - now uses CinetPay
-            // 'CI': ['mtn_ci', 'moov_ci', 'wave_ci', 'orange_ci'], // Côte d'Ivoire - now uses CinetPay
-            // 'SN': ['orange_sn', 'free_sn'], // Senegal - now uses CinetPay
-            // 'BF': ['moov_bf', 'orange_bf'], // Burkina Faso - now uses CinetPay
-            // TODO: Add operators for GN, GA, CD, KE if they use FeexPay and require operator selection
-            // Check FeexPay documentation for exact slugs for these countries.
+            // 'TG': ['togocom_tg', 'moov_tg'], // Togo now handled by CinetPay for payments
+            // Add operators for GN, GA, CD, KE if needed
         };
+        // NOTE: Withdrawals for Togo are handled by FeexPay in the backend, but payments are CinetPay.
 
         const getCurrencyForCountry = (countryCode) => {
             const countryCurrencyMap = {
-                // CinetPay countries (payments)
-                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'TG': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'BF': 'XOF', 'CM': 'XAF',
-                // FeexPay countries (payments)
-                'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
+                // CinetPay countries
+                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'BF': 'XOF', 'CM': 'XAF',
+                // FeexPay countries
+                'TG': 'XOF', 'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
             };
             return countryCurrencyMap[countryCode] || 'XAF';
         };
