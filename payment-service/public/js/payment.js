@@ -34,7 +34,6 @@ document.addEventListener('DOMContentLoaded', function () {
         // Countries that use CinetPay
         const cinetpayCountries = [
             'BF', // Burkina Faso
-            'TG', // Togo
             'ML', // Mali
             'NE', // Niger
             'BJ', // Bénin
@@ -44,7 +43,7 @@ document.addEventListener('DOMContentLoaded', function () {
         ];
 
         // Countries that use FeexPay
-        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Remaining countries
+        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'TG']; // Added Togo
 
         // Only include FeexPay operators for countries that still use FeexPay
         const feexpayOperators = {
@@ -53,11 +52,11 @@ document.addEventListener('DOMContentLoaded', function () {
             'GA': [], // Gabon (operators TBD)
             'CD': [], // Democratic Republic of Congo (operators TBD)
             'KE': [], // Kenya (operators TBD)
+            'TG': ['togocom_tg', 'moov_tg'], // Togo - now uses FeexPay
             // Removed operators for countries that now use CinetPay:
             // 'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin - now uses CinetPay
             // 'CI': ['mtn_ci', 'moov_ci', 'wave_ci', 'orange_ci'], // Côte d'Ivoire - now uses CinetPay
             // 'SN': ['orange_sn', 'free_sn'], // Senegal - now uses CinetPay
-            // 'TG': ['togocom_tg', 'moov_tg'], // Togo - now uses CinetPay
             // 'BF': ['moov_bf', 'orange_bf'], // Burkina Faso - now uses CinetPay
             // TODO: Add operators for GN, GA, CD, KE if they use FeexPay and require operator selection
             // Check FeexPay documentation for exact slugs for these countries.
@@ -65,9 +64,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const getCurrencyForCountry = (countryCode) => {
             const countryCurrencyMap = {
-                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'TG': 'XOF', 'ML': 'XOF',
-                'NE': 'XOF', 'BF': 'XOF', 'CG': 'XAF', 'CM': 'XAF', 'GA': 'XAF',
-                'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
+                // CinetPay countries
+                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'BF': 'XOF', 'CM': 'XAF',
+                // FeexPay countries
+                'TG': 'XOF', 'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
             };
             return countryCurrencyMap[countryCode] || 'XAF';
         };
