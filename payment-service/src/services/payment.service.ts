@@ -1600,7 +1600,7 @@ class PaymentService {
             'BF', // Burkina Faso
             'ML', // Mali
             'NE', // Niger
-            'BJ', // Bénin
+            // 'BJ', // Bénin - Now using FeexPay for both payments and withdrawals
             'CI', // Côte d'Ivoire
             'CM', // Cameroun
             'SN', // Sénégal
@@ -1612,7 +1612,7 @@ class PaymentService {
             return PaymentGateway.CINETPAY;
         } else {
             // List of remaining countries that should use FeexPay
-            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Togo removed
+            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ']; // Added Benin
             if (feexpaySupportedCountries.includes(countryCode)) {
                 log.info(`Country ${countryCode} selected, using FEEXPAY.`);
                 return PaymentGateway.FEEXPAY;

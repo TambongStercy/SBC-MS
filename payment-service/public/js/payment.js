@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', function () {
             'BF', // Burkina Faso
             'ML', // Mali
             'NE', // Niger
-            'BJ', // Bénin
+            // 'BJ', // Bénin - Now using FeexPay for both payments and withdrawals
             'CI', // Côte d'Ivoire
             'CM', // Cameroun
             'SN', // Sénégal
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', function () {
         ];
 
         // Countries that use FeexPay
-        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Togo removed, now CinetPay for payments
+        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ']; // Added Benin to FeexPay
 
         // Only include FeexPay operators for countries that still use FeexPay
         const feexpayOperators = {
@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', function () {
             'GA': [], // Gabon (operators TBD)
             'CD': [], // Democratic Republic of Congo (operators TBD)
             'KE': [], // Kenya (operators TBD)
+            'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin mobile money operators
             // 'TG': ['togocom_tg', 'moov_tg'], // Togo now handled by CinetPay for payments
             // Add operators for GN, GA, CD, KE if needed
         };
