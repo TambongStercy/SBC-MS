@@ -31,9 +31,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Define countries for each gateway based on the new rule
-        // Countries that use CinetPay
+        // Countries that use CinetPay for PAYMENTS
         const cinetpayCountries = [
             'BF', // Burkina Faso
+            'TG', // Togo - PAYMENTS use CinetPay (withdrawals use FeexPay)
             'ML', // Mali
             'NE', // Niger
             'BJ', // Bénin
@@ -42,18 +43,18 @@ document.addEventListener('DOMContentLoaded', function () {
             'SN'  // Sénégal
         ];
 
-        // Countries that use FeexPay
-        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'TG']; // Added Togo
+        // Countries that use FeexPay for PAYMENTS
+        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Togo removed - payments use CinetPay
 
-        // Only include FeexPay operators for countries that still use FeexPay
+        // Only include FeexPay operators for countries that still use FeexPay for PAYMENTS
         const feexpayOperators = {
             'CG': ['mtn_cg'], // Congo Brazzaville
             'GN': [], // Guinea (operators TBD)
             'GA': [], // Gabon (operators TBD)
             'CD': [], // Democratic Republic of Congo (operators TBD)
             'KE': [], // Kenya (operators TBD)
-            'TG': ['togocom_tg', 'moov_tg'], // Togo - now uses FeexPay
-            // Removed operators for countries that now use CinetPay:
+            // Togo removed - payments now use CinetPay (withdrawals use FeexPay)
+            // Removed operators for countries that now use CinetPay for payments:
             // 'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin - now uses CinetPay
             // 'CI': ['mtn_ci', 'moov_ci', 'wave_ci', 'orange_ci'], // Côte d'Ivoire - now uses CinetPay
             // 'SN': ['orange_sn', 'free_sn'], // Senegal - now uses CinetPay
@@ -64,10 +65,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const getCurrencyForCountry = (countryCode) => {
             const countryCurrencyMap = {
-                // CinetPay countries
-                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'BF': 'XOF', 'CM': 'XAF',
-                // FeexPay countries
-                'TG': 'XOF', 'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
+                // CinetPay countries (payments)
+                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'TG': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'BF': 'XOF', 'CM': 'XAF',
+                // FeexPay countries (payments)
+                'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
             };
             return countryCurrencyMap[countryCode] || 'XAF';
         };

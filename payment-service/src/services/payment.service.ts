@@ -405,8 +405,8 @@ class PaymentService {
             let payoutNotificationUrl: string;
             let providerName: 'CinetPay' | 'FeexPay';
 
-            // Use the same gateway selection logic as payments
-            const selectedGateway = this.selectGateway(countryCode);
+            // Use withdrawal-specific gateway selection logic
+            const selectedGateway = this.selectWithdrawalGateway(countryCode);
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
                 payoutService = cinetpayPayoutService;
@@ -1491,8 +1491,8 @@ class PaymentService {
             log.info(`Payment currency (${finalCurrency}) matches intent currency. No conversion needed.`);
         }
 
-        // Select Gateway first
-        const selectedGateway = this.selectGateway(details.countryCode);
+        // Select Payment Gateway first
+        const selectedGateway = this.selectPaymentGateway(details.countryCode);
 
         // Set up update data for the PaymentIntent document
         const updateData: UpdatePaymentIntentInput = { // Use the specific Update type
@@ -1588,8 +1588,37 @@ class PaymentService {
         return updatedIntent;
     }
 
-    private selectGateway(countryCode: string): PaymentGateway {
-        // Countries that use CinetPay
+    private selectPaymentGateway(countryCode: string): PaymentGateway {
+        // Countries that use CinetPay for PAYMENTS
+        const cinetpaySupportedCountries = [
+            'BF', // Burkina Faso
+            'ML', // Mali
+            'NE', // Niger
+            'BJ', // Bénin
+            'CI', // Côte d'Ivoire
+            'CM', // Cameroun
+            'SN', // Sénégal
+            'TG'  // Togo - PAYMENTS use CinetPay
+        ];
+
+        if (cinetpaySupportedCountries.includes(countryCode)) {
+            log.info(`Country ${countryCode} selected for PAYMENT, using CINETPAY.`);
+            return PaymentGateway.CINETPAY;
+        } else {
+            // List of remaining countries that should use FeexPay for payments
+            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE']; // Togo removed for payments
+            if (feexpaySupportedCountries.includes(countryCode)) {
+                log.info(`Country ${countryCode} selected for PAYMENT, using FEEXPAY.`);
+                return PaymentGateway.FEEXPAY;
+            }
+        }
+
+        log.error(`Unsupported country code for payment gateway selection: ${countryCode}`);
+        throw new Error(`Unsupported country code: ${countryCode}. Payments for this country are not currently enabled.`);
+    }
+
+    private selectWithdrawalGateway(countryCode: string): PaymentGateway {
+        // Countries that use CinetPay for WITHDRAWALS
         const cinetpaySupportedCountries = [
             'BF', // Burkina Faso
             'ML', // Mali
@@ -1598,33 +1627,46 @@ class PaymentService {
             'CI', // Côte d'Ivoire
             'CM', // Cameroun
             'SN'  // Sénégal
+            // TG removed - Togo WITHDRAWALS use FeexPay
         ];
 
         if (cinetpaySupportedCountries.includes(countryCode)) {
-            log.info(`Country ${countryCode} selected, using CINETPAY.`);
+            log.info(`Country ${countryCode} selected for WITHDRAWAL, using CINETPAY.`);
             return PaymentGateway.CINETPAY;
         } else {
-            // List of remaining countries that should use FeexPay
-            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'TG']; // Added Togo
+            // List of countries that should use FeexPay for withdrawals
+            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'TG']; // Togo added for withdrawals
             if (feexpaySupportedCountries.includes(countryCode)) {
-                log.info(`Country ${countryCode} selected, using FEEXPAY.`);
+                log.info(`Country ${countryCode} selected for WITHDRAWAL, using FEEXPAY.`);
                 return PaymentGateway.FEEXPAY;
             }
         }
 
-        log.error(`Unsupported country code for gateway selection: ${countryCode}`);
-        throw new Error(`Unsupported country code: ${countryCode}. Payments for this country are not currently enabled.`);
+        log.error(`Unsupported country code for withdrawal gateway selection: ${countryCode}`);
+        throw new Error(`Unsupported country code: ${countryCode}. Withdrawals for this country are not currently enabled.`);
+    }
+
+    // Keep the old method for backward compatibility, but mark it as deprecated
+    private selectGateway(countryCode: string): PaymentGateway {
+        log.warn(`DEPRECATED: selectGateway() called. Use selectPaymentGateway() or selectWithdrawalGateway() instead.`);
+        // Default to payment gateway for backward compatibility
+        return this.selectPaymentGateway(countryCode);
     }
 
     private getFeexpayOperatorsForCountry(countryCode: string): string[] | undefined {
         const feexpayOperators: Record<string, string[]> = {
-            'BJ': ['mtn', 'moov', 'celtiis_bj'],
-            'CI': ['moov_ci', 'mtn_ci', 'orange_ci', 'wave_ci'],
-            'SN': ['orange_sn', 'free_sn'],
             'CG': ['mtn_cg'],
-            'TG': ['togocom_tg', 'moov_tg'],
-            'BF': ['moov_bf', 'orange_bf'], // Added Burkina Faso
-            // 'CM': ['mtn_cm', 'orange_cm'] // Cameroon handled by CinetPay now
+            'GN': [], // Guinea (operators TBD)
+            'GA': [], // Gabon (operators TBD)
+            'CD': [], // Democratic Republic of Congo (operators TBD)
+            'KE': [], // Kenya (operators TBD)
+            // Removed Togo - payments now use CinetPay (withdrawals use FeexPay)
+            // Removed other countries that now use CinetPay for payments:
+            // 'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin - payments use CinetPay
+            // 'CI': ['moov_ci', 'mtn_ci', 'orange_ci', 'wave_ci'], // Côte d'Ivoire - payments use CinetPay
+            // 'SN': ['orange_sn', 'free_sn'], // Senegal - payments use CinetPay
+            // 'BF': ['moov_bf', 'orange_bf'], // Burkina Faso - payments use CinetPay
+            // 'CM': ['mtn_cm', 'orange_cm'] // Cameroon - payments use CinetPay
         };
         return feexpayOperators[countryCode];
     }
@@ -2977,8 +3019,8 @@ class PaymentService {
             let payoutNotificationUrl: string;
             let providerName: 'CinetPay' | 'FeexPay';
 
-            // Use the same gateway selection logic as payments
-            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode);
+            // Use withdrawal-specific gateway selection logic
+            const selectedGateway = this.selectWithdrawalGateway(withdrawalDetails.accountInfo.countryCode);
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
                 payoutService = cinetpayPayoutService;
@@ -3225,8 +3267,8 @@ class PaymentService {
                 ? recipientDetails.phoneNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : recipientDetails.phoneNumber.replace(/\D/g, '');
 
-            // Use the same gateway selection logic as other withdrawal methods
-            const selectedGateway = this.selectGateway(recipientDetails.countryCode);
+            // Use withdrawal-specific gateway selection logic
+            const selectedGateway = this.selectWithdrawalGateway(recipientDetails.countryCode);
             let payoutResult: any;
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
