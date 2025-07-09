@@ -12,6 +12,8 @@ interface IConfig {
     host: string;
     app: {
         frontendUrl: string;
+        supportUrl: string;
+        appLogoUrl: string;
     };
     rabbitMQ: {
         url: string;
@@ -91,7 +93,9 @@ const config: IConfig = {
     port: parseInt(process.env.PORT || '3002', 10),
     host: process.env.HOST || '0.0.0.0',
     app: {
-        frontendUrl: process.env.FRONTEND_URL || 'https://sniperbuisnesscenter.com/'
+        frontendUrl: process.env.FRONTEND_URL || 'https://sniperbuisnesscenter.com',
+        supportUrl: process.env.SUPPORT_URL || 'https://www.whatsapp.com/channel/0029Vav3mvCElah05C8QuT03',
+        appLogoUrl: process.env.APP_LOGO_URL || 'https://sniperbuisnesscenter.com/assets/images/logo.png'
     },
     rabbitMQ: {
         url: process.env.RABBITMQ_URL || 'amqp://localhost',

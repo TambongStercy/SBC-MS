@@ -103,7 +103,7 @@ class EmailDiagnostics {
                     this.issues.push('SPF record does not include SendGrid');
                     this.recommendations.push('🔧 Add "include:sendgrid.net" to SPF record');
                 }
-            } else {
+} else {
                 console.log('❌ No SPF record found');
                 this.issues.push('Missing SPF record');
                 this.recommendations.push('🔧 Create SPF record: "v=spf1 include:sendgrid.net ~all"');
@@ -156,7 +156,7 @@ class EmailDiagnostics {
 
             if (dmarcRecord) {
                 console.log('✅ DMARC Record found:', dmarcRecord);
-            } else {
+        } else {
                 console.log('❌ No DMARC record found');
                 this.issues.push('Missing DMARC record');
                 this.recommendations.push('🔧 Create DMARC record for email policy');

@@ -231,13 +231,14 @@ class EmailService {
         <body style="margin: 0; padding: 0; background-color: #f5f7fa;">
             <div class="email-container">
                 <div class="header">
-                    <h1>Sniper Business Center</h1>
+                    <img src="${config.app.appLogoUrl}" alt="Sniper Business Center" style="height: 60px; width: auto; object-fit: contain; margin-bottom: 10px;" />
                     <p>Votre plateforme de confiance</p>
                 </div>
                 <div class="content">
                     ${content}
                 </div>
                 <div class="footer">
+                    <img src="${config.app.appLogoUrl}" alt="Sniper Business Center" style="height: 40px; width: auto; object-fit: contain; margin-bottom: 10px;" />
                     <p><strong>Sniper Business Center</strong></p>
                     <p>Développé par Simbtech © ${new Date().getFullYear()}</p>
                     <p>Cameroun - Yaoundé</p>
@@ -298,10 +299,10 @@ class EmailService {
             </p>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/" class="button">
+                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/wallet" class="button">
                     Voir mon solde
                 </a>
-            </div>
+        </div>
             
             <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
                 Continuez à parrainer pour gagner plus de commissions ! 🚀
@@ -368,7 +369,7 @@ class EmailService {
             </p>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${config.app.frontendUrl || 'https://app.sniperbuisnesscenter.com'}/dashboard" class="button">
+                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/wallet" class="button">
                     Voir mes transactions
                 </a>
             </div>
@@ -440,10 +441,10 @@ class EmailService {
             </p>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${config.app.frontendUrl || 'https://app.sniperbuisnesscenter.com'}/support" class="button" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);">
+                <a href="${config.app.supportUrl || 'https://www.whatsapp.com/channel/0029Vav3mvCElah05C8QuT03'}/" class="button" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);">
                     Contacter le Support
                 </a>
-            </div>
+        </div>
             
             <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
                 Nous nous excusons pour ce désagrément et restons à votre disposition.
@@ -605,10 +606,10 @@ class EmailService {
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${config.app.frontendUrl || 'https://app.sniperbuisnesscenter.com'}/dashboard" class="button">
+                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/" class="button">
                     Accéder à mon tableau de bord
                 </a>
-            </div>
+        </div>
             
             <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
                 Prêt à commencer votre aventure entrepreneuriale ? 🌟
@@ -643,51 +644,91 @@ class EmailService {
     async sendContactExportEmail(email: string, name: string, vcfContent: string, fileName: string = 'contacts.vcf'): Promise<boolean> {
         const content = `
             <div style="text-align: center;">
-                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center;">
-                    <span style="color: white; font-size: 32px;">📁</span>
+                <div style="width: 90px; height: 90px; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); border-radius: 20px; margin: 0 auto 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(17, 92, 246, 0.25);">
+                    <span style="color: white; font-size: 36px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">📥</span>
                 </div>
             </div>
             
-            <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
-                Export de Contacts Terminé
-            </h2>
+            <h1 style="color: #115CF6; text-align: center; margin-bottom: 25px; font-size: 32px; font-weight: 700; text-shadow: 0 2px 4px rgba(17, 92, 246, 0.1);">
+                Export de Contacts Terminé ✨
+            </h1>
             
-            <p style="font-size: 18px; margin-bottom: 15px;">
-                Bonjour <strong style="color: #004d7a;">${name}</strong>,
+            <p style="font-size: 18px; margin-bottom: 15px; color: #1a1a1a;">
+                Bonjour <strong style="color: #115CF6; font-weight: 700;">${name}</strong> ! 👋
             </p>
             
-            <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
-                Votre demande d'export de contacts a été traitée avec succès. Vous trouverez en pièce jointe le fichier VCF contenant vos contacts.
+            <p style="font-size: 16px; color: #4a4a4a; margin-bottom: 30px; line-height: 1.6;">
+                Excellente nouvelle ! Votre demande d'export de contacts a été <strong style="color: #22c55e;">traitée avec succès</strong>. 
+                Vous trouverez en pièce jointe le fichier VCF contenant tous vos contacts exportés.
             </p>
             
-            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 5px solid #2196f3; padding: 20px; margin: 25px 0; border-radius: 8px;">
-                <h3 style="color: #1976d2; margin-bottom: 15px; font-size: 20px; text-align: center;">
-                    📋 Détails de l'Export
+            <div style="background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%); border: 2px solid #115CF6; border-radius: 16px; padding: 25px; margin: 30px 0; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -10px; right: -10px; width: 40px; height: 40px; background: #115CF6; border-radius: 50%; opacity: 0.1;"></div>
+                <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 22px; text-align: center; font-weight: 700;">
+                    📊 Détails de l'Export
                 </h3>
-                <p style="margin: 8px 0; font-size: 16px; text-align: center;"><strong>Fichier:</strong> ${fileName}</p>
-                <p style="margin: 8px 0; font-size: 16px; text-align: center;"><strong>Format:</strong> VCF (vCard)</p>
-                <p style="margin: 8px 0; font-size: 16px; text-align: center;"><strong>Date:</strong> ${new Date().toLocaleString('fr-FR')}</p>
+                <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(17, 92, 246, 0.08); border: 1px solid #e5e7eb;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                        <span style="font-weight: 600; color: #374151;">📎 Fichier:</span>
+                        <span style="color: #115CF6; font-family: 'Courier New', monospace; font-weight: 600;">${fileName}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                        <span style="font-weight: 600; color: #374151;">🗂️ Format:</span>
+                        <span style="color: #22c55e; font-weight: 600;">VCF (vCard)</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0; padding: 8px 0;">
+                        <span style="font-weight: 600; color: #374151;">📅 Date:</span>
+                        <span style="color: #6b7280; font-weight: 500;">${new Date().toLocaleString('fr-FR')}</span>
+                    </div>
+                </div>
             </div>
             
-            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 25px 0;">
-                <p style="margin: 0; color: #856404; font-size: 15px;">
-                    <strong>💡 Astuce :</strong> Vous pouvez importer ce fichier VCF directement dans votre carnet d'adresses, Outlook, Gmail ou votre téléphone.
-                </p>
+            <div style="background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border: 2px solid #fb923c; border-radius: 16px; padding: 20px; margin: 30px 0;">
+                <div style="display: flex; align-items: flex-start; gap: 15px;">
+                    <div style="width: 40px; height: 40px; background: #fb923c; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 10px rgba(251, 146, 60, 0.2);">
+                        <span style="color: white; font-size: 20px; font-weight: bold;">💡</span>
+                    </div>
+                    <div style="flex: 1;">
+                        <h4 style="color: #ea580c; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">
+                            Conseil Pro
+                        </h4>
+                        <p style="margin: 0; color: #c2410c; font-size: 15px; line-height: 1.5;">
+                            Vous pouvez importer ce fichier VCF directement dans votre carnet d'adresses, 
+                            <strong>Outlook</strong>, <strong>Gmail</strong> ou votre <strong>téléphone mobile</strong> pour synchroniser tous vos contacts.
+                        </p>
+                    </div>
+                </div>
             </div>
             
-            <p style="font-size: 16px; color: #555; margin: 25px 0;">
-                Si vous avez des questions sur l'utilisation du fichier VCF ou si vous rencontrez des problèmes, n'hésitez pas à contacter notre support.
+            <div style="background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%); border-radius: 16px; padding: 25px; margin: 30px 0; text-align: center; border: 1px solid #dbeafe;">
+                <h3 style="color: #115CF6; margin-bottom: 15px; font-size: 20px; font-weight: 700;">
+                    📱 Comment utiliser votre fichier VCF ?
+                </h3>
+                <div style="text-align: left; max-width: 400px; margin: 0 auto;">
+                    <p style="margin: 8px 0; font-size: 15px; color: #374151;">📧 <strong>Gmail:</strong> Importez via les Contacts Google</p>
+                    <p style="margin: 8px 0; font-size: 15px; color: #374151;">📮 <strong>Outlook:</strong> Fichier → Importer et Exporter</p>
+                    <p style="margin: 8px 0; font-size: 15px; color: #374151;">📱 <strong>iPhone:</strong> Envoyez-vous le fichier par email et ouvrez-le</p>
+                    <p style="margin: 8px 0; font-size: 15px; color: #374151;">🤖 <strong>Android:</strong> Ouvrez avec l'application Contacts</p>
+                </div>
+            </div>
+            
+            <p style="font-size: 16px; color: #6b7280; margin: 30px 0; text-align: center; line-height: 1.6;">
+                Si vous avez des questions sur l'utilisation du fichier VCF ou si vous rencontrez des problèmes, 
+                n'hésitez pas à <strong style="color: #115CF6;">contacter notre support</strong>. Nous sommes là pour vous aider ! 🤝
             </p>
             
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="${config.app.frontendUrl || 'https://app.sniperbuisnesscenter.com'}/contacts" class="button">
-                    Retour aux Contacts
+            <div style="text-align: center; margin: 40px 0;">
+                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/contacts" 
+                   style="background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; box-shadow: 0 10px 30px rgba(17, 92, 246, 0.25); transition: all 0.3s ease; display: inline-block; text-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                    📞 Retour aux Contacts
                 </a>
             </div>
             
-            <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
-                Merci d'utiliser nos services ! 📞
-            </p>
+            <div style="text-align: center; margin: 30px 0; padding: 20px; background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%); border-radius: 12px; border: 1px solid #dbeafe;">
+                <p style="font-size: 16px; color: #115CF6; font-weight: 700; margin: 0;">
+                    Votre réseau est votre richesse - exploitez-le au maximum ! 🚀✨
+                </p>
+            </div>
         `;
 
         const emailHtml = this.createBaseTemplate(

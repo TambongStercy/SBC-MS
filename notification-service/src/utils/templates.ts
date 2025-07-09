@@ -6,6 +6,8 @@ interface Template {
   body: string;
 }
 
+import config from '../config';
+
 // Beautiful base template function for consistent styling
 const createBeautifulTemplate = (title: string, content: string, footerText?: string): string => {
   return `
@@ -18,24 +20,24 @@ const createBeautifulTemplate = (title: string, content: string, footerText?: st
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Inter', 'Segoe UI', 'Roboto', sans-serif; line-height: 1.6; color: #333; }
+            body { font-family: 'Inter', 'Segoe UI', 'Roboto', sans-serif; line-height: 1.6; color: #1a1a1a; }
             .email-container { max-width: 600px; margin: 0 auto; background: #ffffff; }
-            .header { background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); padding: 30px 20px; text-align: center; }
-            .header h1 { color: #ffffff; font-size: 28px; font-weight: 600; margin-bottom: 8px; }
-            .header p { color: #e1f5fe; font-size: 16px; font-weight: 300; }
+            .header { background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); padding: 30px 20px; text-align: center; box-shadow: 0 4px 15px rgba(17, 92, 246, 0.15); }
+            .header h1 { color: #ffffff; font-size: 28px; font-weight: 700; margin-bottom: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .header p { color: #e1f3ff; font-size: 16px; font-weight: 400; }
             .content { padding: 40px 30px; background: #ffffff; }
-            .highlight-box { background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); border-left: 5px solid #4caf50; padding: 20px; margin: 25px 0; border-radius: 8px; }
-            .warning-box { background: linear-gradient(135deg, #fff3cd 0%, #fdf6e3 100%); border-left: 5px solid #ffc107; padding: 20px; margin: 25px 0; border-radius: 8px; }
-            .error-box { background: linear-gradient(135deg, #ffebee 0%, #fce4ec 100%); border-left: 5px solid #f44336; padding: 20px; margin: 25px 0; border-radius: 8px; }
-            .code-box { background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border: 2px dashed #004d7a; padding: 30px; margin: 25px 0; border-radius: 12px; text-align: center; }
-            .code { font-size: 36px; font-weight: 700; color: #004d7a; letter-spacing: 8px; font-family: 'Courier New', monospace; background: white; padding: 20px; border-radius: 8px; }
-            .button { display: inline-block; background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); color: #ffffff !important; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 20px 0; }
-            .footer { background: #f8f9fa; padding: 25px 20px; text-align: center; border-top: 1px solid #e9ecef; }
-            .footer p { color: #6c757d; font-size: 14px; margin: 5px 0; }
-            .success-icon { width: 60px; height: 60px; background: #4caf50; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; }
-            .warning-icon { width: 60px; height: 60px; background: #ff9800; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; }
-            .error-icon { width: 60px; height: 60px; background: #f44336; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; }
-            .security-icon { width: 80px; height: 80px; background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; }
+            .highlight-box { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-left: 5px solid #22c55e; padding: 20px; margin: 25px 0; border-radius: 12px; border: 1px solid #bbf7d0; }
+            .warning-box { background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border-left: 5px solid #fb923c; padding: 20px; margin: 25px 0; border-radius: 12px; border: 1px solid #fdba74; }
+            .error-box { background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); border-left: 5px solid #ef4444; padding: 20px; margin: 25px 0; border-radius: 12px; border: 1px solid #fca5a5; }
+            .code-box { background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%); border: 2px dashed #115CF6; padding: 30px; margin: 25px 0; border-radius: 16px; text-align: center; }
+            .code { font-size: 36px; font-weight: 700; color: #115CF6; letter-spacing: 8px; font-family: 'Courier New', monospace; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(17, 92, 246, 0.08); border: 1px solid #dbeafe; }
+            .button { display: inline-block; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); color: #ffffff !important; padding: 16px 32px; text-decoration: none; border-radius: 50px; font-weight: 700; margin: 20px 0; box-shadow: 0 10px 30px rgba(17, 92, 246, 0.25); transition: all 0.3s ease; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+            .footer { background: #f8fafc; padding: 25px 20px; text-align: center; border-top: 1px solid #e2e8f0; }
+            .footer p { color: #64748b; font-size: 14px; margin: 5px 0; }
+            .success-icon { width: 60px; height: 60px; background: #22c55e; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; box-shadow: 0 8px 25px rgba(34, 197, 94, 0.2); }
+            .warning-icon { width: 60px; height: 60px; background: #fb923c; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; box-shadow: 0 8px 25px rgba(251, 146, 60, 0.2); }
+            .error-icon { width: 60px; height: 60px; background: #ef4444; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; box-shadow: 0 8px 25px rgba(239, 68, 68, 0.2); }
+            .security-icon { width: 80px; height: 80px; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; box-shadow: 0 10px 30px rgba(17, 92, 246, 0.25); }
             @media (max-width: 600px) {
                 .content { padding: 20px 15px; }
                 .header { padding: 20px 15px; }
@@ -44,20 +46,21 @@ const createBeautifulTemplate = (title: string, content: string, footerText?: st
             }
         </style>
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f7fa;">
+    <body style="margin: 0; padding: 0; background-color: #f1f5f9;">
         <div class="email-container">
             <div class="header">
-                <h1>Sniper Business Center</h1>
+                <img src="${config.app.appLogoUrl}" alt="Sniper Business Center" style="height: 60px; width: auto; object-fit: contain; margin-bottom: 10px;" />
                 <p>Votre plateforme de confiance</p>
             </div>
             <div class="content">
                 ${content}
             </div>
             <div class="footer">
+                <img src="${config.app.appLogoUrl}" alt="Sniper Business Center" style="height: 40px; width: auto; object-fit: contain; margin-bottom: 10px;" />
                 <p><strong>Sniper Business Center</strong></p>
                 <p>Développé par Simbtech © ${new Date().getFullYear()}</p>
                 <p>Cameroun - Yaoundé</p>
-                ${footerText ? `<p style="margin-top: 15px; color: #495057;">${footerText}</p>` : ''}
+                ${footerText ? `<p style="margin-top: 15px; color: #475569;">${footerText}</p>` : ''}
             </div>
         </div>
     </body>
@@ -78,38 +81,38 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <div class="security-icon">🔐</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Vérification de Retrait
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #004d7a;">{{name}}</strong>,
+              Bonjour <strong style="color: #115CF6;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Voici votre code de vérification pour finaliser votre retrait :
           </p>
           
           <div class="code-box">
-              <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 20px;">
+              <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Vérification
               </h3>
               <div class="code">{{code}}</div>
-              <p style="margin: 15px 0 0 0; color: #666; font-size: 14px;">
+              <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
           </div>
           
           <div class="warning-box">
-              <p style="margin: 0; color: #856404; font-size: 15px;">
+              <p style="margin: 0; color: #ea580c; font-size: 15px;">
                   <strong>⚠️ Important :</strong> Ne partagez jamais ce code avec qui que ce soit. Notre équipe ne vous demandera jamais votre code de vérification.
               </p>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               Si vous n'avez pas demandé ce retrait, veuillez contacter notre support immédiatement.
           </p>
-        `,
+      `,
         'Votre sécurité financière est notre priorité.'
       ),
       plainText: `Bonjour {{name}},\nVotre code de vérification de retrait est : {{code}}\nVeuillez le saisir pour finaliser votre retrait.\nCe code expire dans {{expireMinutes}} minutes.\nSi vous n'avez pas demandé ce retrait, contactez notre support.\nÉquipe SBC`
@@ -123,7 +126,7 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <div class="security-icon">🔐</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Code de Connexion
           </h2>
           
@@ -131,30 +134,30 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               Bonjour,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Voici votre code de vérification pour vous connecter à Sniper Business Center :
           </p>
           
           <div class="code-box">
-              <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 20px;">
+              <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Connexion
               </h3>
               <div class="code">{{code}}</div>
-              <p style="margin: 15px 0 0 0; color: #666; font-size: 14px;">
+              <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
           </div>
           
           <div class="warning-box">
-              <p style="margin: 0; color: #856404; font-size: 15px;">
+              <p style="margin: 0; color: #ea580c; font-size: 15px;">
                   <strong>⚠️ Sécurité :</strong> Ne partagez jamais ce code. L'équipe SBC ne vous demandera jamais votre code OTP.
               </p>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               Si vous n'avez pas tenté de vous connecter, ignorez cet email ou contactez notre support.
           </p>
-        `,
+      `,
         'Votre sécurité est notre priorité absolue.'
       ),
       plainText: `Votre code de connexion SBC est : {{code}}\nExpire dans {{expireMinutes}} minutes.\nSi vous n'avez pas tenté de vous connecter, ignorez ce message.\nÉquipe SBC`
@@ -165,36 +168,36 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
         'Finalisation de votre Inscription',
         `
           <div style="text-align: center;">
-              <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px;">🎉</div>
+              <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; box-shadow: 0 10px 30px rgba(34, 197, 94, 0.25);">🎉</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Bienvenue chez SBC !
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #004d7a;">{{name}}</strong>,
+              Bonjour <strong style="color: #115CF6;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Merci de vous être inscrit chez Sniper Business Center ! Pour finaliser votre inscription, utilisez ce code de vérification :
           </p>
           
           <div class="code-box">
-              <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 20px;">
+              <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Vérification
               </h3>
               <div class="code">{{code}}</div>
-              <p style="margin: 15px 0 0 0; color: #666; font-size: 14px;">
+              <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               Une fois votre compte vérifié, vous pourrez commencer à explorer toutes nos fonctionnalités !
           </p>
           
-          <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+          <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
               Bienvenue dans la famille SBC ! 🚀
           </p>
         `,
@@ -215,35 +218,35 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <div class="success-icon">🎉</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Transaction Réussie
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #004d7a;">{{name}}</strong>,
+              Bonjour <strong style="color: #115CF6;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
-              Votre transaction de <strong style="color: #004d7a;">{{amount}} {{currency}}</strong> a été réussie avec succès !
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
+              Votre transaction de <strong style="color: #115CF6;">{{amount}} {{currency}}</strong> a été réussie avec succès !
           </p>
           
           <div class="highlight-box">
-              <p style="margin: 0; color: #28a745; font-size: 15px;">
+              <p style="margin: 0; color: #16a34a; font-size: 15px;">
                   <strong>👏 Félicitations !</strong> Votre transaction a été validée.
               </p>
-              <p style="margin: 10px 0 0 0; color: #555; font-size: 14px;">
+              <p style="margin: 10px 0 0 0; color: #374151; font-size: 14px;">
                   Transaction ID : <strong>{{transactionId}}</strong>
               </p>
-              <p style="margin: 0 0 10px 0; color: #555; font-size: 14px;">
+              <p style="margin: 0 0 10px 0; color: #374151; font-size: 14px;">
                   Date : <strong>{{date}}</strong>
               </p>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               N'hésitez pas à explorer d'autres fonctionnalités de notre plateforme !
           </p>
           
-          <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+          <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
               Profitez de votre expérience SBC ! 🚀
           </p>
         `,
@@ -260,35 +263,35 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <div class="error-icon">❌</div>
           </div>
           
-          <h2 style="color: #ff3333; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #ef4444; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Transaction Échouée
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #ff3333;">{{name}}</strong>,
+              Bonjour <strong style="color: #ef4444;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
-              Nous regrettons de vous informer que votre transaction de <strong style="color: #ff3333;">{{amount}} {{currency}}</strong> a échoué.
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
+              Nous regrettons de vous informer que votre transaction de <strong style="color: #ef4444;">{{amount}} {{currency}}</strong> a échoué.
           </p>
           
           <div class="error-box">
-              <p style="margin: 0; color: #dc3545; font-size: 15px;">
+              <p style="margin: 0; color: #ef4444; font-size: 15px;">
                   <strong>⚠️ Désolé :</strong> Votre transaction a été rejetée pour la raison suivante :
               </p>
-              <p style="margin: 10px 0 0 0; color: #555; font-size: 14px;">
+              <p style="margin: 10px 0 0 0; color: #374151; font-size: 14px;">
                   Raison : <strong>{{reason}}</strong>
               </p>
-              <p style="margin: 0 0 10px 0; color: #555; font-size: 14px;">
+              <p style="margin: 0 0 10px 0; color: #374151; font-size: 14px;">
                   Date : <strong>{{date}}</strong>
               </p>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               Si vous avez des questions, n'hésitez pas à contacter notre équipe de support.
           </p>
           
-          <p style="font-size: 16px; color: #ff3333; text-align: center; font-weight: 500;">
+          <p style="font-size: 16px; color: #ef4444; text-align: center; font-weight: 500;">
               Votre expérience SBC ! 🚀
           </p>
         `,
@@ -309,27 +312,27 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <div class="success-icon">🎉</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Nouveau Parrainage !
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #004d7a;">{{name}}</strong>,
+              Bonjour <strong style="color: #115CF6;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Excellente nouvelle ! Quelqu'un s'est inscrit en utilisant votre code de parrainage.
           </p>
           
           <div class="highlight-box">
-              <h3 style="color: #2e7d32; margin-bottom: 15px; font-size: 20px; text-align: center;">
+              <h3 style="color: #16a34a; margin-bottom: 15px; font-size: 20px; text-align: center;">
                   👥 Détails du Parrainage
               </h3>
               <p style="margin: 8px 0; font-size: 16px; text-align: center;"><strong>Niveau:</strong> {{level}}</p>
               <p style="margin: 8px 0; font-size: 16px; text-align: center;"><strong>Date:</strong> {{date}}</p>
           </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               Continuez à partager votre code de parrainage pour gagner plus de récompenses !
           </p>
           
@@ -337,12 +340,12 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <a href="https://sniperbuisnesscenter.com/dashboard" class="button">
                   Voir mes parrainages
               </a>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+          <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
               Bravo pour votre réseau grandissant ! 🚀
           </p>
-        `,
+      `,
         'Ensemble, construisons un réseau solide !'
       ),
       plainText: `Bonjour {{name}},\nExcellente nouvelle ! Quelqu'un s'est inscrit en utilisant votre code de parrainage.\nNiveau: {{level}}\nDate: {{date}}\nContinuez à partager votre code pour gagner plus de récompenses !\nÉquipe SBC`
@@ -357,29 +360,29 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
         'Bienvenue chez SBC',
         `
           <div style="text-align: center;">
-              <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px;">🎉</div>
+              <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; box-shadow: 0 10px 30px rgba(34, 197, 94, 0.25);">🎉</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 32px; font-weight: 700;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 32px; font-weight: 700;">
               Bienvenue dans la famille SBC !
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #004d7a;">{{name}}</strong>,
+              Bonjour <strong style="color: #115CF6;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Félicitations ! Votre compte a été créé avec succès. Vous faites maintenant partie d'une communauté dynamique d'entrepreneurs.
           </p>
           
-          <div style="background: #f8f9fa; border-radius: 12px; padding: 25px; margin: 30px 0;">
-              <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 22px; text-align: center;">
+          <div style="background: #f8fafc; border-radius: 12px; padding: 25px; margin: 30px 0;">
+              <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 22px; text-align: center;">
                   🚀 Prochaines Étapes
               </h3>
               <div style="text-align: left;">
                   <p style="margin: 10px 0; font-size: 16px;">✅ <strong>Complétez votre profil</strong> pour une meilleure expérience</p>
                   <p style="margin: 10px 0; font-size: 16px;">🛍️ <strong>Explorez nos services</strong> exclusifs</p>
-                  <p style="margin: 10px 0; font-size: 16px;">👥 <strong>Partagez votre code:</strong> <span style="background: #e3f2fd; padding: 5px 10px; border-radius: 4px; font-family: monospace;">{{referralCode}}</span></p>
+                  <p style="margin: 10px 0; font-size: 16px;">👥 <strong>Partagez votre code:</strong> <span style="background: #eff6ff; padding: 5px 10px; border-radius: 4px; font-family: monospace; color: #115CF6; font-weight: 600;">{{referralCode}}</span></p>
                   <p style="margin: 10px 0; font-size: 16px;">💰 <strong>Commencez à gagner</strong> dès aujourd'hui</p>
               </div>
           </div>
@@ -388,12 +391,12 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <a href="https://sniperbuisnesscenter.com/dashboard" class="button">
                   Accéder à mon tableau de bord
               </a>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+          <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
               Prêt à commencer votre aventure entrepreneuriale ? 🌟
           </p>
-        `,
+      `,
         'Ensemble, construisons votre succès entrepreneurial !'
       ),
       plainText: `Bonjour {{name}},\nFélicitations ! Votre compte SBC a été créé avec succès.\nProchaines étapes:\n- Complétez votre profil\n- Explorez nos services\n- Partagez votre code: {{referralCode}}\n- Commencez à gagner\nÉquipe SBC`
@@ -407,7 +410,7 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <div class="security-icon">🔐</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Réinitialisation de Mot de Passe
           </h2>
           
@@ -415,30 +418,30 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               Bonjour,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Nous avons reçu une demande de réinitialisation de votre mot de passe. Utilisez ce code pour le réinitialiser :
           </p>
           
           <div class="code-box">
-              <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 20px;">
+              <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Réinitialisation
               </h3>
               <div class="code">{{code}}</div>
-              <p style="margin: 15px 0 0 0; color: #666; font-size: 14px;">
+              <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
           </div>
           
           <div class="warning-box">
-              <p style="margin: 0; color: #856404; font-size: 15px;">
+              <p style="margin: 0; color: #ea580c; font-size: 15px;">
                   <strong>⚠️ Important :</strong> Si vous n'avez pas demandé cette réinitialisation, ignorez cet email et contactez notre support.
               </p>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               Après avoir saisi ce code, vous pourrez créer un nouveau mot de passe sécurisé.
           </p>
-        `,
+      `,
         'Votre sécurité est notre priorité absolue.'
       ),
       plainText: `Nous avons reçu une demande de réinitialisation de votre mot de passe.\nVotre code de réinitialisation est : {{code}}\nCe code expire dans {{expireMinutes}} minutes.\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message.\nÉquipe SBC`
@@ -456,34 +459,34 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <div class="warning-icon">🔧</div>
           </div>
           
-          <h2 style="color: #ff9800; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #fb923c; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Maintenance Programmée
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #004d7a;">{{name}}</strong>,
+              Bonjour <strong style="color: #115CF6;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Nous souhaitons vous informer d'une maintenance programmée de notre système.
           </p>
           
           <div class="warning-box">
-              <h3 style="color: #e65100; margin-bottom: 15px; font-size: 20px; text-align: center;">
+              <h3 style="color: #fb923c; margin-bottom: 15px; font-size: 20px; text-align: center;">
                   📅 Détails de la Maintenance
               </h3>
               <p style="margin: 8px 0; font-size: 16px; text-align: center;"><strong>Date:</strong> {{date}}</p>
               <p style="margin: 8px 0; font-size: 16px; text-align: center;"><strong>Heure:</strong> {{startTime}} à {{endTime}} (UTC)</p>
-              <p style="margin: 15px 0 0 0; color: #666; font-size: 14px; text-align: center;">
+              <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px; text-align: center;">
                   Pendant cette période, nos services pourraient être temporairement indisponibles.
               </p>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #555; margin: 25px 0;">
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
               Nous nous excusons pour tout désagrément causé et vous remercions de votre compréhension.
           </p>
           
-          <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+          <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
               Merci pour votre patience ! 🙏
           </p>
         `,
@@ -501,23 +504,23 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
         'Nouvelles Fonctionnalités',
         `
           <div style="text-align: center;">
-              <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px;">🚀</div>
+              <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; box-shadow: 0 10px 30px rgba(17, 92, 246, 0.25);">🚀</div>
           </div>
           
-          <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
               Nouvelles Fonctionnalités !
           </h2>
           
           <p style="font-size: 18px; margin-bottom: 15px;">
-              Bonjour <strong style="color: #004d7a;">{{name}}</strong>,
+              Bonjour <strong style="color: #115CF6;">{{name}}</strong>,
           </p>
           
-          <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 25px;">
               Nous sommes ravis de vous annoncer l'ajout de nouvelles fonctionnalités pour améliorer votre expérience :
           </p>
           
-          <div style="background: #f8f9fa; border-radius: 12px; padding: 25px; margin: 30px 0;">
-              <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 22px; text-align: center;">
+          <div style="background: #f8fafc; border-radius: 12px; padding: 25px; margin: 30px 0;">
+              <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 22px; text-align: center;">
                   ✨ Nouveautés
               </h3>
               <div style="text-align: left;">
@@ -531,12 +534,12 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <a href="https://sniperbuisnesscenter.com/dashboard" class="button">
                   Découvrir les nouveautés
               </a>
-          </div>
+        </div>
           
-          <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+          <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
               Explorez ces nouvelles fonctionnalités dès maintenant ! 🌟
           </p>
-        `,
+      `,
         'Innovation et excellence pour votre succès !'
       ),
       plainText: `Bonjour {{name}},\nNous sommes ravis de vous annoncer l'ajout de nouvelles fonctionnalités :\n- {{feature1}}\n- {{feature2}}\n- {{feature3}}\nConnectez-vous pour les découvrir !\nÉquipe SBC`
