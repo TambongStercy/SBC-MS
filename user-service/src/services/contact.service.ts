@@ -116,9 +116,9 @@ export class ContactService {
      * Generate a VCF file from contacts matching the specified filters
      * @param userId The user ID requesting the export
      * @param filters The search filter parameters
-     * @returns Buffer containing VCF file data
+     * @returns Object containing both Buffer and string content of VCF file
      */
-    async exportContactsAsVCF(userId: string, filters: ContactSearchFilters): Promise<Buffer> {
+    async exportContactsAsVCF(userId: string, filters: ContactSearchFilters): Promise<{ buffer: Buffer; content: string }> {
         await this.validateFilters(userId, filters);
 
         // Remove pagination for export to get all matching contacts
@@ -136,6 +136,9 @@ export class ContactService {
                 shareContactInfo: user.shareContactInfo
             }));
 
-        return generateVCFFile(validUsers);
+        const buffer = generateVCFFile(validUsers);
+        const content = buffer.toString('utf8');
+
+        return { buffer, content };
     }
 } 
