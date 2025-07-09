@@ -199,36 +199,131 @@ class EmailService {
     private createBaseTemplate(title: string, content: string, footerText?: string): string {
         return `
         <!DOCTYPE html>
-        <html lang="fr" style="margin: 0; padding: 0;">
+        <html lang="fr">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <meta name="format-detection" content="telephone=no">
             <meta name="x-apple-disable-message-reformatting">
+            <!-- Mobile OTP detection meta tags -->
+            <meta name="apple-mobile-web-app-capable" content="yes">
+            <meta name="mobile-web-app-capable" content="yes">
             <title>${title}</title>
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { font-family: 'Inter', 'Segoe UI', 'Roboto', sans-serif; line-height: 1.6; color: #333; }
-                .email-container { max-width: 600px; margin: 0 auto; background: #ffffff; }
-                .header { background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); padding: 30px 20px; text-align: center; }
-                .header h1 { color: #ffffff; font-size: 28px; font-weight: 600; margin-bottom: 8px; }
-                .header p { color: #e1f5fe; font-size: 16px; font-weight: 300; }
-                .content { padding: 40px 30px; background: #ffffff; }
-                .highlight-box { background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); border-left: 5px solid #4caf50; padding: 20px; margin: 25px 0; border-radius: 8px; }
-                .amount { font-size: 24px; font-weight: 700; color: #2e7d32; margin: 10px 0; }
-                .button { display: inline-block; background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); color: #ffffff !important; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 20px 0; transition: all 0.3s ease; }
-                .footer { background: #f8f9fa; padding: 25px 20px; text-align: center; border-top: 1px solid #e9ecef; }
-                .footer p { color: #6c757d; font-size: 14px; margin: 5px 0; }
-                .success-icon { width: 60px; height: 60px; background: #4caf50; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; }
-                .warning-icon { width: 60px; height: 60px; background: #ff9800; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; }
-                .error-icon { width: 60px; height: 60px; background: #f44336; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; }
-                @media (max-width: 600px) {
-                    .content { padding: 20px 15px; }
-                    .header { padding: 20px 15px; }
-                    .header h1 { font-size: 24px; }
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+            /* Add structured data for OTP detection */
+            [data-testid="otp-code"] {
+                -webkit-user-select: all;
+                -moz-user-select: all;
+                -ms-user-select: all;
+                user-select: all;
+                -webkit-touch-callout: default;
+                -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+            }
+            body { 
+                font-family: 'Inter', Arial, sans-serif; 
+                line-height: 1.6; 
+                color: #333; 
+                margin: 0; 
+                padding: 0; 
+                background-color: #f5f7fa; 
+                -webkit-text-size-adjust: 100%; 
+                -ms-text-size-adjust: 100%;
+            }
+            .email-container { 
+                max-width: 600px; 
+                margin: 0 auto; 
+                background-color: #ffffff; 
+                border-radius: 12px; 
+                overflow: hidden; 
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); 
+            }
+            .header { 
+                background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); 
+                color: white; 
+                padding: 30px; 
+                text-align: center; 
+            }
+            .header img { 
+                max-width: 100%; 
+                height: auto; 
+            }
+            .content { 
+                padding: 40px 30px; 
+            }
+            .footer { 
+                background-color: #f8f9fa; 
+                padding: 20px 30px; 
+                text-align: center; 
+                color: #6c757d; 
+                font-size: 14px; 
+            }
+            .footer img { 
+                max-width: 100%; 
+                height: auto; 
+            }
+            .button { 
+                display: inline-block; 
+                background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); 
+                color: white; 
+                padding: 15px 30px; 
+                text-decoration: none; 
+                border-radius: 8px; 
+                font-weight: 600; 
+                box-shadow: 0 5px 15px rgba(17, 92, 246, 0.3); 
+                transition: all 0.3s ease;
+            }
+            .button:hover { 
+                transform: translateY(-2px); 
+                box-shadow: 0 8px 25px rgba(17, 92, 246, 0.4); 
+            }
+            .highlight-box { 
+                background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); 
+                border-left: 5px solid #115CF6; 
+                padding: 20px; 
+                margin: 20px 0; 
+                border-radius: 8px; 
+            }
+            .success-icon, .error-icon { 
+                width: 60px; 
+                height: 60px; 
+                border-radius: 50%; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                margin: 0 auto 20px; 
+                font-size: 24px; 
+            }
+            .success-icon { 
+                background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); 
+                box-shadow: 0 8px 25px rgba(34, 197, 94, 0.3); 
+            }
+            .error-icon { 
+                background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); 
+                box-shadow: 0 8px 25px rgba(239, 68, 68, 0.3); 
+            }
+            .amount { 
+                font-size: 28px; 
+                font-weight: 700; 
+                color: #115CF6; 
+                margin: 10px 0; 
+            }
+            @media only screen and (max-width: 600px) {
+                .email-container { 
+                    margin: 10px; 
+                    border-radius: 8px; 
                 }
-            </style>
+                .content { 
+                    padding: 20px; 
+                }
+                .header { 
+                    padding: 20px; 
+                }
+                .amount { 
+                    font-size: 24px; 
+                }
+            }
+        </style>
         </head>
         <body style="margin: 0; padding: 0; background-color: #f5f7fa;">
             <div class="email-container">
@@ -491,38 +586,43 @@ class EmailService {
 
         const content = `
             <div style="text-align: center;">
-                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center;">
+                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center;">
                     <span style="color: white; font-size: 32px;">🔐</span>
                 </div>
             </div>
             
-            <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+            <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
                 Code de Vérification
             </h2>
             
             <p style="font-size: 18px; margin-bottom: 15px;">
-                Bonjour <strong style="color: #115CF6;">${name}</strong>,
+                Bonjour <strong style="color: #004d7a;">${name}</strong>,
             </p>
             
             <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
                 Voici votre code de vérification pour <strong>${purposeText.toLowerCase()}</strong> :
             </p>
             
-            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 5px solid #115CF6; padding: 30px; margin: 25px 0; border-radius: 12px; text-align: center;">
-                <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
+            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 5px solid #004d7a; padding: 30px; margin: 25px 0; border-radius: 12px; text-align: center;">
+                <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 20px;">
                     🔑 Votre Code OTP
                 </h3>
-                <div data-otp="${otpCode}" data-copytarget="otp" style="font-size: 36px; font-weight: 700; color: #115CF6; letter-spacing: 8px; font-family: 'Courier New', monospace; background: white; padding: 20px; border-radius: 8px; border: 2px dashed #115CF6; user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; cursor: pointer; position: relative;">
-                    <code style="font-weight: 700; color: #115CF6;">${otpCode}</code>
-                    <small style="display: block; margin-top: 10px; color: #94a3b8; font-size: 12px; font-style: italic; text-align: center; letter-spacing: normal;">📋 Tapez longuement pour copier</small>
+                <!-- Mobile-friendly OTP code with structured data -->
+                <div style="font-size: 36px; font-weight: 700; color: #004d7a; letter-spacing: 8px; font-family: 'Courier New', monospace; background: white; padding: 20px; border-radius: 8px; border: 2px dashed #004d7a;" id="otp-code" data-testid="otp-code">
+                    ${otpCode}
                 </div>
+                <!-- Additional mobile-friendly format for better detection -->
+                <div style="display: none;">Your verification code is ${otpCode}</div>
+                <div style="display: none;">OTP: ${otpCode}</div>
+                <div style="display: none;">Code: ${otpCode}</div>
+                <div style="display: none;">${otpCode} is your verification code</div>
                 <p style="margin: 15px 0 0 0; color: #666; font-size: 14px;">
                     Ce code expire dans <strong>10 minutes</strong>
                 </p>
             </div>
             
             <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 25px 0;">
-                <p style="margin: 0; color: #ea580c; font-size: 15px;">
+                <p style="margin: 0; color: #856404; font-size: 15px;">
                     <strong>⚠️ Important :</strong> Ne partagez jamais ce code avec qui que ce soit. L'équipe SBC ne vous demandera jamais votre code OTP.
                 </p>
             </div>
@@ -531,7 +631,7 @@ class EmailService {
                 Si vous n'avez pas demandé ce code, ignorez cet email ou contactez notre support si vous avez des préoccupations.
             </p>
             
-            <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
+            <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
                 Merci de votre confiance ! 🚀
             </p>
         `;
@@ -545,7 +645,7 @@ class EmailService {
         try {
             const result = await this.sendEmail({
                 to: email,
-                subject: `🔐 Code de vérification SBC: ${otpCode}`,
+                subject: `${otpCode} is your SBC verification code`,
                 html: emailHtml,
                 from: config.email.from
             });
