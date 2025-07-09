@@ -203,6 +203,8 @@ class EmailService {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta name="format-detection" content="telephone=no">
+            <meta name="x-apple-disable-message-reformatting">
             <title>${title}</title>
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -489,29 +491,30 @@ class EmailService {
 
         const content = `
             <div style="text-align: center;">
-                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center;">
+                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center;">
                     <span style="color: white; font-size: 32px;">🔐</span>
                 </div>
             </div>
             
-            <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
+            <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
                 Code de Vérification
             </h2>
             
             <p style="font-size: 18px; margin-bottom: 15px;">
-                Bonjour <strong style="color: #004d7a;">${name}</strong>,
+                Bonjour <strong style="color: #115CF6;">${name}</strong>,
             </p>
             
             <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
                 Voici votre code de vérification pour <strong>${purposeText.toLowerCase()}</strong> :
             </p>
             
-            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 5px solid #004d7a; padding: 30px; margin: 25px 0; border-radius: 12px; text-align: center;">
-                <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 20px;">
+            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 5px solid #115CF6; padding: 30px; margin: 25px 0; border-radius: 12px; text-align: center;">
+                <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                     🔑 Votre Code OTP
                 </h3>
-                <div style="font-size: 36px; font-weight: 700; color: #004d7a; letter-spacing: 8px; font-family: 'Courier New', monospace; background: white; padding: 20px; border-radius: 8px; border: 2px dashed #004d7a;">
-                    ${otpCode}
+                <div data-otp="${otpCode}" data-copytarget="otp" style="font-size: 36px; font-weight: 700; color: #115CF6; letter-spacing: 8px; font-family: 'Courier New', monospace; background: white; padding: 20px; border-radius: 8px; border: 2px dashed #115CF6; user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; cursor: pointer; position: relative;">
+                    <code style="font-weight: 700; color: #115CF6;">${otpCode}</code>
+                    <small style="display: block; margin-top: 10px; color: #94a3b8; font-size: 12px; font-style: italic; text-align: center; letter-spacing: normal;">📋 Tapez longuement pour copier</small>
                 </div>
                 <p style="margin: 15px 0 0 0; color: #666; font-size: 14px;">
                     Ce code expire dans <strong>10 minutes</strong>
@@ -519,7 +522,7 @@ class EmailService {
             </div>
             
             <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 25px 0;">
-                <p style="margin: 0; color: #856404; font-size: 15px;">
+                <p style="margin: 0; color: #ea580c; font-size: 15px;">
                     <strong>⚠️ Important :</strong> Ne partagez jamais ce code avec qui que ce soit. L'équipe SBC ne vous demandera jamais votre code OTP.
                 </p>
             </div>
@@ -528,7 +531,7 @@ class EmailService {
                 Si vous n'avez pas demandé ce code, ignorez cet email ou contactez notre support si vous avez des préoccupations.
             </p>
             
-            <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+            <p style="font-size: 16px; color: #115CF6; text-align: center; font-weight: 500;">
                 Merci de votre confiance ! 🚀
             </p>
         `;

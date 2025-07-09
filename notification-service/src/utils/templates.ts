@@ -16,6 +16,8 @@ const createBeautifulTemplate = (title: string, content: string, footerText?: st
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="format-detection" content="telephone=no">
+        <meta name="x-apple-disable-message-reformatting">
         <title>${title}</title>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -97,7 +99,10 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Vérification
               </h3>
-              <div class="code">{{code}}</div>
+              <div class="code" data-otp="{{code}}" data-copytarget="otp" style="user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; cursor: pointer; position: relative;">
+                  <code style="font-family: 'Courier New', monospace; font-size: 28px; letter-spacing: 4px; display: block; padding: 8px; background: rgba(255,255,255,0.15); border-radius: 6px; border: 2px dashed rgba(17, 92, 246, 0.3);">{{code}}</code>
+                  <small style="display: block; margin-top: 8px; color: #94a3b8; font-size: 11px; font-style: italic; text-align: center;">📋 Tapez longuement pour copier</small>
+              </div>
               <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
@@ -142,7 +147,10 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Connexion
               </h3>
-              <div class="code">{{code}}</div>
+              <div class="code" data-otp="{{code}}" data-copytarget="otp" style="user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; cursor: pointer; position: relative;">
+                  <code style="font-family: 'Courier New', monospace; font-size: 28px; letter-spacing: 4px; display: block; padding: 8px; background: rgba(255,255,255,0.15); border-radius: 6px; border: 2px dashed rgba(17, 92, 246, 0.3);">{{code}}</code>
+                  <small style="display: block; margin-top: 8px; color: #94a3b8; font-size: 11px; font-style: italic; text-align: center;">📋 Tapez longuement pour copier</small>
+              </div>
               <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
@@ -187,7 +195,10 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Vérification
               </h3>
-              <div class="code">{{code}}</div>
+              <div class="code" data-otp="{{code}}" data-copytarget="otp" style="user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; cursor: pointer; position: relative;">
+                  <code style="font-family: 'Courier New', monospace; font-size: 28px; letter-spacing: 4px; display: block; padding: 8px; background: rgba(255,255,255,0.15); border-radius: 6px; border: 2px dashed rgba(17, 92, 246, 0.3);">{{code}}</code>
+                  <small style="display: block; margin-top: 8px; color: #94a3b8; font-size: 11px; font-style: italic; text-align: center;">📋 Tapez longuement pour copier</small>
+              </div>
               <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
@@ -426,7 +437,10 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
               <h3 style="color: #115CF6; margin-bottom: 20px; font-size: 20px;">
                   🔑 Code de Réinitialisation
               </h3>
-              <div class="code">{{code}}</div>
+              <div class="code" data-otp="{{code}}" data-copytarget="otp" style="user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; cursor: pointer; position: relative;">
+                  <code style="font-family: 'Courier New', monospace; font-size: 28px; letter-spacing: 4px; display: block; padding: 8px; background: rgba(255,255,255,0.15); border-radius: 6px; border: 2px dashed rgba(17, 92, 246, 0.3);">{{code}}</code>
+                  <small style="display: block; margin-top: 8px; color: #94a3b8; font-size: 11px; font-style: italic; text-align: center;">📋 Tapez longuement pour copier</small>
+              </div>
               <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
                   Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
               </p>
