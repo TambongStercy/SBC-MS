@@ -202,6 +202,50 @@ class NotificationService {
             return false;
         }
     }
+
+    /**
+     * Send contact export email with VCF attachment using beautiful template
+     */
+    async sendContactExportEmail({
+        userId,
+        recipientEmail,
+        userName,
+        vcfContent,
+        fileName,
+    }: {
+        userId: string;
+        recipientEmail: string;
+        userName: string;
+        vcfContent: string;
+        fileName?: string;
+    }): Promise<boolean> {
+        try {
+            log.info(`Sending contact export email to ${recipientEmail} for user ${userId}`);
+
+            const response = await this.apiClient.post('/notifications/contact-export-email', {
+                userId,
+                recipientEmail,
+                userName,
+                vcfContent,
+                fileName: fileName || 'contacts.vcf'
+            });
+
+            if (response.status === 200 && response.data.success) {
+                log.info(`Contact export email sent successfully to ${recipientEmail}`);
+                return true;
+            } else {
+                log.warn(`Failed to send contact export email: ${response.data.message}`);
+                return false;
+            }
+        } catch (error: any) {
+            log.error(`Error sending contact export email: ${error.message}`, {
+                userId,
+                recipientEmail,
+                error: error.response?.data || error.message,
+            });
+            return false;
+        }
+    }
 }
 
 // Export singleton instance

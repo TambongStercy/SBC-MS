@@ -3473,35 +3473,20 @@ export class UserService {
         log.info(`Attempting to send VCF file as email attachment to user ${userId} (${userEmail})`);
         log.debug(`VCF content length before sending: ${vcfContent.length} characters.`);
         try {
-            // French subject and HTML body for a simple but good design
-            const subject = 'Vos Contacts Exportés de SBC';
-            const bodyHtml = `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
-                    <div style="background-color: #f7f7f7; padding: 20px; text-align: center; border-bottom: 1px solid #eee;">
-                        <h2 style="color: #0056b3;">Export de vos Contacts SBC</h2>
-                    </div>
-                    <div style="padding: 20px; text-align: left;">
-                        <p>Cher utilisateur,</p>
-                        <p>Voici vos contacts demandés de SBC, joints en pièce jointe au format VCF.</p>
-                        <p>Merci d'utiliser nos services.</p>
-                    </div>
-                    <div style="background-color: #f7f7f7; padding: 20px; text-align: center; border-top: 1px solid #eee; font-size: 0.9em; color: #777;">
-                        <p>Cordialement,<br>L'équipe SBC</p>
-                    </div>
-                </div>
-            `;
+            // Get user name for personalized email
+            const user = await userRepository.findById(userId);
+            const userName = user?.name || 'Utilisateur';
 
-            await notificationService.sendEmailWithAttachment({
+            // Use the new beautiful email template from notification service
+            await notificationService.sendContactExportEmail({
                 userId: userId.toString(),
                 recipientEmail: userEmail,
-                subject: subject,
-                // Pass the HTML body for better design
-                body: bodyHtml,
-                attachmentContent: Buffer.from(vcfContent).toString('base64'), // Base64 encode for sending
-                attachmentFileName: fileName,
-                attachmentContentType: 'text/vcard', // Explicitly set content type
+                userName: userName,
+                vcfContent: vcfContent,
+                fileName: fileName
             });
-            log.info(`VCF email successfully scheduled for user ${userId}.`);
+            
+            log.info(`VCF email successfully scheduled for user ${userId} using new template.`);
         } catch (error) {
             log.error(`Failed to send VCF email to user ${userId} (${userEmail}):`, error);
             // Log the error but don't re-throw, as the primary request (download) should still succeed.

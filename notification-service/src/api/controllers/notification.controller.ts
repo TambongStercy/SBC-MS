@@ -488,7 +488,7 @@ export class NotificationController {
         const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
         log.info(`Received commission earned email request from ${callingService}:`, req.body);
         try {
-            const { email, amount, level, name, username, debt } = req.body;
+            const { email, amount, level, name, username, debt, currency = 'FCFA' } = req.body;
 
             // Basic validation
             if (!email || !amount || !level || !name || !username) {
@@ -505,7 +505,8 @@ export class NotificationController {
                 level,
                 name,
                 username,
-                debt
+                debt,
+                currency // Now including the currency field
             });
 
             if (success) {
@@ -595,6 +596,41 @@ export class NotificationController {
 
         } catch (error: any) {
             log.error(`Error handling transaction failure email request from ${callingService}:`, error);
+            next(error);
+        }
+    }
+
+    /**
+     * Handle request to send a contact export email with VCF attachment
+     * @route POST /contact-export-email
+     */
+    async handleContactExportEmail(req: Request, res: Response, next: Function): Promise<void> {
+        const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
+        log.info(`Received contact export email request from ${callingService}:`, req.body);
+        try {
+            const { userId, recipientEmail, userName, vcfContent, fileName } = req.body;
+
+            // Basic validation
+            if (!userId || !recipientEmail || !userName || !vcfContent) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields for contact export email: userId, recipientEmail, userName, vcfContent'
+                });
+                return;
+            }
+
+            await this.notificationService.sendContactExportEmail({
+                userId,
+                recipientEmail,
+                userName,
+                vcfContent,
+                fileName: fileName || 'contacts.vcf'
+            });
+
+            res.status(200).json({ success: true, message: 'Contact export email sent successfully.' });
+
+        } catch (error: any) {
+            log.error(`Error handling contact export email request from ${callingService}:`, error);
             next(error);
         }
     }

@@ -10,6 +10,9 @@ interface IConfig {
     nodeEnv: string;
     port: number;
     host: string;
+    app: {
+        frontendUrl: string;
+    };
     rabbitMQ: {
         url: string;
         queueName: string;
@@ -50,6 +53,13 @@ interface IConfig {
         user: string;
         password: string;
         from: string;
+        // Add bounce handling configuration
+        bounceHandling: {
+            enabled: boolean;
+            webhookSecret: string;
+            maxRetries: number;
+            retryDelay: number;
+        };
     };
     sms: {
         twilioAccountSid: string;
@@ -80,6 +90,9 @@ const config: IConfig = {
     nodeEnv: process.env.NODE_ENV || 'development',
     port: parseInt(process.env.PORT || '3002', 10),
     host: process.env.HOST || '0.0.0.0',
+    app: {
+        frontendUrl: process.env.FRONTEND_URL || 'https://sniperbuisnesscenter.com/'
+    },
     rabbitMQ: {
         url: process.env.RABBITMQ_URL || 'amqp://localhost',
         queueName: process.env.RABBITMQ_NOTIFICATION_QUEUE || 'notification_queue'
@@ -124,7 +137,14 @@ const config: IConfig = {
         service: process.env.EMAIL_SERVICE || '',
         user: process.env.EMAIL_USER || '',
         password: process.env.EMAIL_PASSWORD || '',
-        from: process.env.EMAIL_FROM || 'Sniper Business Center <notification@example.com>'
+        from: process.env.EMAIL_FROM || 'Sniper Business Center <noreply@sniperbuisnesscenter.com>', // Use main verified domain
+        // Add bounce handling configuration
+        bounceHandling: {
+            enabled: process.env.EMAIL_BOUNCE_HANDLING_ENABLED === 'true',
+            webhookSecret: process.env.SENDGRID_WEBHOOK_SECRET || '',
+            maxRetries: parseInt(process.env.EMAIL_MAX_RETRIES || '3', 10),
+            retryDelay: parseInt(process.env.EMAIL_RETRY_DELAY || '300000', 10), // 5 minutes
+        }
     },
 
     sms: {

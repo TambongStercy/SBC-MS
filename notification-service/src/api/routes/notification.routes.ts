@@ -20,6 +20,8 @@ router.post('/internal/broadcast', authenticateServiceRequest, (req, res, next) 
 router.post('/internal/email/commission-earned', authenticateServiceRequest, (req, res, next) => notificationController.handleCommissionEarnedEmail(req, res, next));
 router.post('/internal/email/transaction-successful', authenticateServiceRequest, (req, res, next) => notificationController.handleTransactionSuccessEmail(req, res, next));
 router.post('/internal/email/transaction-failed', authenticateServiceRequest, (req, res, next) => notificationController.handleTransactionFailureEmail(req, res, next));
+// Contact export email route
+router.post('/contact-export-email', authenticateServiceRequest, (req, res, next) => notificationController.handleContactExportEmail(req, res, next));
 // --- END NEW EMAIL ROUTES ---
 
 // Admin-only routes

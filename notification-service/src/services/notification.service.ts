@@ -620,15 +620,14 @@ class NotificationService {
      * @returns Promise<void>
      */
     async sendEmailWithAttachment(input: SendAttachmentEmailInput): Promise<void> {
-        log.info(`Preparing to send email with attachment to ${input.recipient} for user ${input.userId}`);
         try {
-            // Decode base64 content
+            // Use the sendEmail method directly to handle attachment since this is a simple operation
             const attachmentBuffer = Buffer.from(input.attachmentContent, 'base64');
 
-            const mailOptions = {
+            const success = await emailService.sendEmail({
                 to: input.recipient,
                 subject: input.subject,
-                html: `<p>${input.body.replace(/\n/g, '<br>')}</p>`, // Basic HTML, replace newlines with <br>
+                html: input.body,
                 attachments: [
                     {
                         filename: input.attachmentFileName,
@@ -636,30 +635,48 @@ class NotificationService {
                         contentType: input.attachmentContentType,
                     },
                 ],
-            };
-
-            await emailService.sendEmail(mailOptions);
-            log.info(`Email with attachment successfully sent to ${input.recipient}`);
-
-            // Optionally, create a notification record for audit/user history
-            await this.createNotification({
-                userId: input.userId,
-                type: NotificationType.ACCOUNT, // Or a specific type like 'document_export'
-                channel: DeliveryChannel.EMAIL,
-                recipient: input.recipient,
-                data: {
-                    subject: input.subject,
-                    body: `Your requested file '${input.attachmentFileName}' has been sent to your email.`,
-                    templateId: 'email_with_attachment', // Custom template ID
-                    variables: {
-                        fileName: input.attachmentFileName,
-                    }
-                }
             });
 
+            if (!success) {
+                throw new AppError(`Failed to send email with attachment to ${input.recipient}`, 500);
+            }
+
+            log.info(`Email with attachment sent successfully to ${input.recipient}`);
         } catch (error: any) {
-            log.error(`Failed to send email with attachment to ${input.recipient}: ${error.message}`, error);
-            throw new AppError(`Failed to send email with attachment: ${error.message}`, 500);
+            log.error(`Error sending email with attachment to ${input.recipient}:`, error);
+            throw error; // Rethrow so caller can handle
+        }
+    }
+
+    /**
+     * Send contact export email with VCF attachment using beautiful template
+     */
+    async sendContactExportEmail(input: {
+        userId: string | Types.ObjectId;
+        recipientEmail: string;
+        userName: string;
+        vcfContent: string;
+        fileName?: string;
+    }): Promise<void> {
+        try {
+            const fileName = input.fileName || 'contacts.vcf';
+
+            // Use the new beautiful email template from email service
+            const success = await emailService.sendContactExportEmail(
+                input.recipientEmail,
+                input.userName,
+                input.vcfContent,
+                fileName
+            );
+
+            if (!success) {
+                throw new AppError(`Failed to send contact export email to ${input.recipientEmail}`, 500);
+            }
+
+            log.info(`Contact export email sent successfully to ${input.recipientEmail} for user ${input.userId}`);
+        } catch (error: any) {
+            log.error(`Error sending contact export email to ${input.recipientEmail}:`, error);
+            throw error; // Rethrow so caller can handle
         }
     }
 
