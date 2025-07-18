@@ -12,6 +12,7 @@ export interface UserDetails {
     name: string;
     email: string;
     phoneNumber?: string | number;
+    notificationPreference?: 'email' | 'whatsapp';
     // Add other common fields that user-service might return for a user
     country?: string;
     region?: string;
@@ -326,6 +327,8 @@ class UserServiceClient {
             throw new AppError(`Failed to communicate with user service for active subscriptions.`, 503);
         }
     }
+
+
 }
 
 export const userServiceClient = new UserServiceClient(); 

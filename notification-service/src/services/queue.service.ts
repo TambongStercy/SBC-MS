@@ -1,6 +1,4 @@
-const Bull = require('bull');
-import { Queue, Job } from 'bull';
-import * as Redis from 'redis';
+import Bull, { Queue, Job } from 'bull';
 import config from '../config';
 import logger from '../utils/logger';
 import { emailService } from './email.service';
@@ -22,7 +20,6 @@ export class QueueService {
     private emailQueue: Queue;
     private smsQueue: Queue;
     private whatsappQueue: Queue;
-    private redisClient: any;
 
     constructor() {
         try {
@@ -329,19 +326,37 @@ export class QueueService {
                 return;
             }
 
-            // Always use plainText if available, otherwise strip HTML from body
-            let message = '';
-            if (typeof data.plainText === 'string' && data.plainText.trim()) {
-                message = data.plainText.trim();
-            } else if (data.body) {
-                // Fallback: strip HTML tags
-                message = data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-            }
+            // Check if we have a separate WhatsApp code to send as a second message
+            let success = false;
+            if (data.whatsappCode && typeof data.whatsappCode === 'string' && data.whatsappCode.trim()) {
+                // Send two separate messages: main message + code
+                const mainMessage = (typeof data.plainText === 'string' && data.plainText.trim()) 
+                    ? data.plainText.trim() 
+                    : (data.body ? data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '');
+                
+                const codeMessage = data.whatsappCode.trim();
+                
+                const messages = [mainMessage, codeMessage].filter(msg => msg); // Remove empty messages
+                
+                success = await whatsappService.sendMultipleTextMessages({
+                    phoneNumber: notification.recipient,
+                    messages,
+                });
+            } else {
+                // Send single message (original behavior)
+                let message = '';
+                if (typeof data.plainText === 'string' && data.plainText.trim()) {
+                    message = data.plainText.trim();
+                } else if (data.body) {
+                    // Fallback: strip HTML tags
+                    message = data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                }
 
-            const success = await whatsappService.sendTextMessage({
-                phoneNumber: notification.recipient,
-                message,
-            });
+                success = await whatsappService.sendTextMessage({
+                    phoneNumber: notification.recipient,
+                    message,
+                });
+            }
 
             if (success) {
                 // Mark as sent
@@ -424,6 +439,7 @@ export class QueueService {
         await Promise.all([
             this.emailQueue.close(),
             this.smsQueue.close(),
+            this.whatsappQueue.close(),
         ]);
 
         log.info('Queue service shut down successfully');

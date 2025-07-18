@@ -27,12 +27,13 @@ export enum NotificationStatus {
 }
 
 // Interface for notification data subdocument
-interface INotificationData {
+export interface INotificationData {
     templateId?: string;
     variables?: Record<string, any>;
     subject?: string;
     body: string;
     plainText?: string;
+    whatsappCode?: string;
     attachmentContent?: string;
     attachmentFileName?: string;
     attachmentContentType?: string;
@@ -62,6 +63,7 @@ const NotificationDataSchema = new Schema({
     subject: { type: String },
     body: { type: String, required: true },
     plainText: { type: String },
+    whatsappCode: { type: String },
     attachmentContent: { type: String },
     attachmentFileName: { type: String },
     attachmentContentType: { type: String },

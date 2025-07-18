@@ -37,11 +37,11 @@ class WhatsAppService extends EventEmitter {
         this.disconnectCallback = cb;
     }
 
-    public getConnectionStatus(): { 
-        isReady: boolean, 
-        hasQr: boolean, 
+    public getConnectionStatus(): {
+        isReady: boolean,
+        hasQr: boolean,
         qrTimestamp: number | null,
-        connectionState: string 
+        connectionState: string
     } {
         return {
             isReady: this.isReady,
@@ -68,14 +68,14 @@ class WhatsAppService extends EventEmitter {
             const fs = require('fs');
             const path = require('path');
             const authPath = './whatsapp_auth';
-            
+
             if (fs.existsSync(authPath)) {
                 fs.rmSync(authPath, { recursive: true, force: true });
                 log.info('WhatsApp authentication data cleared');
             }
 
             log.info('WhatsApp logged out successfully');
-            
+
             // Reinitialize to generate new QR
             setTimeout(() => {
                 this.init();
@@ -101,7 +101,7 @@ class WhatsAppService extends EventEmitter {
 
             this.sock.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, qr } = update;
-                
+
                 if (qr) {
                     // Generate PNG base64 QR
                     try {
@@ -114,17 +114,17 @@ class WhatsAppService extends EventEmitter {
                         log.error('Failed to generate QR PNG:', err);
                     }
                 }
-                
+
                 if (connection === 'close') {
                     this.isReady = false;
                     const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-                    
+
                     if (shouldReconnect) {
                         log.info('WhatsApp connection closed, attempting to reconnect...');
                         // Clear QR code when connection closes
                         this.latestQr = null;
                         this.latestQrTimestamp = 0;
-                        
+
                         // Reconnect after a short delay
                         setTimeout(() => {
                             this.init();
@@ -134,12 +134,12 @@ class WhatsAppService extends EventEmitter {
                         this.latestQr = null;
                         this.latestQrTimestamp = 0;
                     }
-                    
+
                     if (this.disconnectCallback) {
                         this.disconnectCallback(null);
                     }
                 }
-                
+
                 if (connection === 'open') {
                     log.info('WhatsApp connection established successfully!');
                     this.isReady = true;
@@ -148,7 +148,7 @@ class WhatsAppService extends EventEmitter {
                     this.latestQrTimestamp = 0;
                     this.emit('connected');
                 }
-                
+
                 if (connection === 'connecting') {
                     log.info('WhatsApp connecting...');
                 }
@@ -171,6 +171,34 @@ class WhatsAppService extends EventEmitter {
             return true;
         } catch (err) {
             log.error('Failed to send WhatsApp message:', err);
+            return false;
+        }
+    }
+
+    public async sendMultipleTextMessages({ phoneNumber, messages }: { phoneNumber: string, messages: string[] }): Promise<boolean> {
+        if (!this.sock || !this.isReady) {
+            log.warn('WhatsApp socket not ready. Cannot send messages.');
+            return false;
+        }
+        try {
+            const jid = phoneNumber.includes('@s.whatsapp.net') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
+            log.info(`[DEBUG] About to send ${messages.length} WhatsApp messages`, { phoneNumber, messageCount: messages.length });
+            
+            // Send messages with a small delay between them
+            for (let i = 0; i < messages.length; i++) {
+                await this.sock.sendMessage(jid, { text: messages[i] });
+                log.info(`WhatsApp message ${i + 1}/${messages.length} sent to ${phoneNumber}`);
+                
+                // Add a small delay between messages (except for the last one)
+                if (i < messages.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+                }
+            }
+            
+            log.info(`All ${messages.length} WhatsApp messages sent successfully to ${phoneNumber}`);
+            return true;
+        } catch (err) {
+            log.error('Failed to send WhatsApp messages:', err);
             return false;
         }
     }

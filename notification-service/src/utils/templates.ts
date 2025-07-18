@@ -4,6 +4,8 @@ import { NotificationType } from '../database/models/notification.model';
 interface Template {
   subject?: string;
   body: string;
+  plainText?: string;
+  whatsappCode?: string;
 }
 
 import config from '../config';
@@ -120,7 +122,18 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
       `,
         'Votre sécurité financière est notre priorité.'
       ),
-      plainText: `Bonjour {{name}},\nVotre code de vérification de retrait est : {{code}}\nVeuillez le saisir pour finaliser votre retrait.\nCe code expire dans {{expireMinutes}} minutes.\nSi vous n'avez pas demandé ce retrait, contactez notre support.\nÉquipe SBC`
+      plainText: `💰 *Vérification de Retrait SBC*
+
+Bonjour *{{name}}*,
+
+Votre code ci-dessous :
+
+⏰ Ce code expire dans *{{expireMinutes}} minutes*.
+
+⚠️ Si vous n'avez pas demandé ce retrait, contactez notre support immédiatement.
+
+_Équipe SBC_`,
+      whatsappCode: `*{{code}}*`
     },
     'verify-login': {
       subject: '{{code}} is your SBC login code',
@@ -170,7 +183,16 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
       `,
         'Votre sécurité est notre priorité absolue.'
       ),
-      plainText: `Votre code de connexion SBC est : {{code}}\nExpire dans {{expireMinutes}} minutes.\nSi vous n'avez pas tenté de vous connecter, ignorez ce message.\nÉquipe SBC`
+      plainText: `🔐 *Code de Connexion SBC*
+
+Votre code ci-dessous :
+
+⏰ Expire dans *{{expireMinutes}} minutes*.
+
+⚠️ Si vous n'avez pas tenté de vous connecter, ignorez ce message.
+
+_Équipe SBC_`,
+      whatsappCode: `*{{code}}*`
     },
     'verify-registration': {
       subject: '{{code}} is your SBC registration code',
@@ -218,7 +240,18 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
         `,
         'Ensemble, construisons votre succès entrepreneurial !'
       ),
-      plainText: `Bonjour {{name}},\nMerci de vous être inscrit chez SBC ! Votre code de vérification est : {{code}}\nCe code expire dans {{expireMinutes}} minutes.\nSi vous ne vous êtes pas inscrit, ignorez ce message.\nÉquipe SBC`
+      plainText: `🎉 *Bienvenue chez SBC !*
+
+Bonjour *{{name}}*,
+
+Merci de vous être inscrit ! Votre code ci-dessous :
+
+⏰ Ce code expire dans *{{expireMinutes}} minutes*.
+
+⚠️ Si vous ne vous êtes pas inscrit, ignorez ce message.
+
+_Équipe SBC_`,
+      whatsappCode: `*{{code}}*`
     },
   },
 
@@ -459,7 +492,18 @@ const TEMPLATES: Record<NotificationType, Record<string, Template & { plainText?
       `,
         'Votre sécurité est notre priorité absolue.'
       ),
-      plainText: `Nous avons reçu une demande de réinitialisation de votre mot de passe.\nVotre code de réinitialisation est : {{code}}\nCe code expire dans {{expireMinutes}} minutes.\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message.\nÉquipe SBC`
+      plainText: `🔐 *Réinitialisation de Mot de Passe*
+
+Nous avons reçu une demande de réinitialisation de votre mot de passe.
+
+Votre code ci-dessous :
+
+⏰ Ce code expire dans *{{expireMinutes}} minutes*.
+
+⚠️ Si vous n'avez pas demandé cette réinitialisation, ignorez ce message.
+
+_Équipe SBC_`,
+      whatsappCode: `*{{code}}*`
     },
   },
 
@@ -573,7 +617,7 @@ export const getProcessedTemplate = (
   type: NotificationType,
   templateId: string,
   variables: Record<string, any> = {}
-): { subject?: string; body: string; plainText: string } => {
+): { subject?: string; body: string; plainText: string; whatsappCode?: string } => {
   // Get the template
   const template = TEMPLATES[type]?.[templateId];
 
@@ -581,14 +625,14 @@ export const getProcessedTemplate = (
     throw new Error(`Template not found: ${type}/${templateId}`);
   }
 
-  // Process the template - replace {{variable}} with actual values
+  // Process template variables
   let processedBody = template.body;
   let processedSubject = template.subject || '';
   let processedPlainText = template.plainText || '';
+  let processedWhatsappCode = template.whatsappCode || '';
 
-  // Replace variables in both body and subject
-  Object.keys(variables).forEach(key => {
-    const value = variables[key];
+  // Replace variables in all template parts
+  Object.entries(variables).forEach(([key, value]) => {
     const regex = new RegExp(`{{${key}}}`, 'g');
     processedBody = processedBody.replace(regex, value);
     if (processedSubject) {
@@ -597,6 +641,9 @@ export const getProcessedTemplate = (
     if (processedPlainText) {
       processedPlainText = processedPlainText.replace(regex, value);
     }
+    if (processedWhatsappCode) {
+      processedWhatsappCode = processedWhatsappCode.replace(regex, value);
+    }
   });
 
   // Fallback: If no plainText, strip HTML from body
@@ -604,11 +651,18 @@ export const getProcessedTemplate = (
     processedPlainText = processedBody.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
   }
 
-  return {
+  const result: any = {
     subject: processedSubject,
     body: processedBody.trim(),
     plainText: processedPlainText.trim(),
   };
+
+  // Add whatsappCode if it exists
+  if (processedWhatsappCode) {
+    result.whatsappCode = processedWhatsappCode.trim();
+  }
+
+  return result;
 };
 
 /**
@@ -636,4 +690,4 @@ export const getAvailableTemplates = (): { type: string; id: string; subject?: s
  */
 export const templateExists = (type: NotificationType, templateId: string): boolean => {
   return !!TEMPLATES[type]?.[templateId];
-}; 
+};

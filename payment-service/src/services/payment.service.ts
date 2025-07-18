@@ -1033,16 +1033,22 @@ class PaymentService {
             verificationExpiry: otpExpiry
         });
 
-        // Fetch user details for notification
+        // Fetch user details for notification (including notification preference)
         let userEmail: string | undefined;
+        let userPhoneNumber: string | undefined;
         let userName: string | undefined;
+        let notificationPreference: 'email' | 'whatsapp' = 'email'; // Default to email
+
         try {
             const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
-            if (!userDetails?.email) {
-                log.warn(`Could not find email for user ${transaction.userId} for OTP notification.`);
+            if (!userDetails) {
+                log.warn(`Could not find user details for user ${transaction.userId} for OTP notification.`);
             } else {
                 userEmail = userDetails.email;
+                userPhoneNumber = userDetails.phoneNumber?.toString();
                 userName = userDetails.name;
+                notificationPreference = userDetails.notificationPreference || 'email';
+                log.info(`User ${transaction.userId} notification preference: ${notificationPreference}`);
             }
         } catch (userError: any) {
             log.error(`Failed to fetch user details for ${transaction.userId} during OTP generation for notification: ${userError.message}`);
@@ -1053,24 +1059,49 @@ class PaymentService {
         const netAmountForNotification = transaction.metadata?.netAmountRequested;
         const targetPayoutCurrency = transaction.metadata?.payoutCurrency;
 
-        // Send notification with OTP (e.g., via SMS or email)
-        if (userEmail && netAmountForNotification !== undefined && targetPayoutCurrency !== undefined) {
-            await notificationService.sendVerificationOTP(
-                {
-                    userId: transaction.userId.toString(),
-                    recipient: userEmail,
-                    channel: DeliveryChannel.EMAIL,
-                    code: otpCode,
-                    expireMinutes: 10,
-                    isRegistration: false,
-                    userName: userName || 'Customer',
-                    purpose: 'withdrawal_verification',
-                    // Pass the net amount for notification as that's what the user expects to receive
-                    description: `Withdrawal verification code for ${netAmountForNotification} ${targetPayoutCurrency} for transaction ${transaction.transactionId}.`,
+        // Send notification with OTP using user's preferred channel
+        if (netAmountForNotification !== undefined && targetPayoutCurrency !== undefined) {
+            let recipient: string | undefined;
+            let channel: DeliveryChannel;
+
+            // Determine recipient and channel based on user preference
+            if (notificationPreference === 'whatsapp' && userPhoneNumber) {
+                recipient = userPhoneNumber;
+                channel = DeliveryChannel.WHATSAPP;
+                log.info(`Sending withdrawal OTP via WhatsApp to ${userPhoneNumber} for user ${transaction.userId}`);
+            } else if (userEmail) {
+                recipient = userEmail;
+                channel = DeliveryChannel.EMAIL;
+                log.info(`Sending withdrawal OTP via Email to ${userEmail} for user ${transaction.userId}`);
+            } else {
+                log.warn(`No valid recipient found for user ${transaction.userId}. Email: ${userEmail}, Phone: ${userPhoneNumber}, Preference: ${notificationPreference}`);
+                recipient = undefined;
+                channel = DeliveryChannel.EMAIL;
+            }
+
+            if (recipient) {
+                try {
+                    await notificationService.sendVerificationOTP({
+                        userId: transaction.userId.toString(),
+                        recipient,
+                        channel,
+                        code: otpCode,
+                        expireMinutes: 5, // Match the actual OTP expiry time
+                        isRegistration: false,
+                        userName: userName || 'Customer',
+                        purpose: 'withdrawal_verification',
+                        description: `Withdrawal verification code for ${netAmountForNotification} ${targetPayoutCurrency} for transaction ${transaction.transactionId}.`,
+                    });
+                    log.info(`Withdrawal OTP sent successfully via ${channel} to ${recipient} for transaction ${transactionId}`);
+                } catch (notificationError: any) {
+                    log.error(`Failed to send withdrawal OTP notification for transaction ${transactionId}: ${notificationError.message}`);
+                    // Don't throw error here as OTP generation was successful, just notification failed
                 }
-            );
+            } else {
+                log.warn(`Skipping OTP notification for transaction ${transactionId} as no valid recipient was found.`);
+            }
         } else {
-            log.warn(`Skipping OTP notification for transaction ${transactionId} as user email, net amount or payout currency was not available.`);
+            log.warn(`Skipping OTP notification for transaction ${transactionId} as net amount or payout currency was not available.`);
         }
 
         log.info(`OTP (code: ${otpCode}) generated and sent for transaction ${transactionId}. Expires at ${otpExpiry.toISOString()}`);

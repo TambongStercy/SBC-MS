@@ -120,6 +120,7 @@ class NotificationService {
                 subject: processedTemplate.subject,
                 body: processedTemplate.body,
                 plainText: processedTemplate.plainText,
+                whatsappCode: processedTemplate.whatsappCode, // Add WhatsApp code support
             };
         } else if (data.subject) {
             // If no template but subject provided
@@ -229,19 +230,45 @@ class NotificationService {
     }
 
     /**
-     * Send a WhatsApp notification using the same plainText as SMS
+     * Send a WhatsApp notification with support for dual messages (main message + separate code)
      */
     private async sendWhatsappNotification(notification: INotification): Promise<boolean> {
-        // Always strip HTML tags for WhatsApp
-        let body = '';
-        if (typeof notification.data.plainText === 'string' && notification.data.plainText.trim()) {
-            body = notification.data.plainText.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-        } else if (notification.data.body) {
-            body = notification.data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        const data = notification.data || {};
+
+        // Check if we have a separate WhatsApp code to send as a second message
+        if (data.whatsappCode && typeof data.whatsappCode === 'string' && data.whatsappCode.trim()) {
+            // Send two separate messages: main message + code
+            const mainMessage = (typeof data.plainText === 'string' && data.plainText.trim())
+                ? data.plainText.trim()
+                : (data.body ? data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '');
+
+            const codeMessage = data.whatsappCode.trim();
+
+            const messages = [mainMessage, codeMessage].filter(msg => msg); // Remove empty messages
+
+            log.info(`[WhatsApp] Sending dual messages to ${notification.recipient}: ${messages.length} messages`);
+
+            return whatsappService.sendMultipleTextMessages({
+                phoneNumber: notification.recipient,
+                messages,
+            });
+        } else {
+            // Send single message (original behavior)
+            let message = '';
+            if (typeof data.plainText === 'string' && data.plainText.trim()) {
+                message = data.plainText.trim();
+            } else if (data.body) {
+                // Fallback: strip HTML tags
+                message = data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            }
+
+            log.info(`[WhatsApp] Sending single message to ${notification.recipient}: ${message.substring(0, 50)}...`);
+
+            return whatsappService.sendTextMessage({
+                phoneNumber: notification.recipient,
+                message,
+            });
         }
-        log.info(`[WhatsApp] Final message to send: ${body}`);
-        // Actually send the message
-        return whatsappService.sendTextMessage({ phoneNumber: notification.recipient, message: body });
     }
 
     /**
