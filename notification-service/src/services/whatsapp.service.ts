@@ -37,6 +37,57 @@ class WhatsAppService extends EventEmitter {
         this.disconnectCallback = cb;
     }
 
+    public getConnectionStatus(): { 
+        isReady: boolean, 
+        hasQr: boolean, 
+        qrTimestamp: number | null,
+        connectionState: string 
+    } {
+        return {
+            isReady: this.isReady,
+            hasQr: this.latestQr !== null,
+            qrTimestamp: this.latestQr ? this.latestQrTimestamp : null,
+            connectionState: this.isReady ? 'connected' : (this.latestQr ? 'waiting_for_scan' : 'disconnected')
+        };
+    }
+
+    public async logout(): Promise<{ success: boolean, message?: string }> {
+        try {
+            if (!this.sock) {
+                return { success: false, message: 'WhatsApp is not initialized' };
+            }
+
+            // Close the socket connection
+            await this.sock.logout();
+            this.sock = null;
+            this.isReady = false;
+            this.latestQr = null;
+            this.latestQrTimestamp = 0;
+
+            // Clear authentication data
+            const fs = require('fs');
+            const path = require('path');
+            const authPath = './whatsapp_auth';
+            
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+                log.info('WhatsApp authentication data cleared');
+            }
+
+            log.info('WhatsApp logged out successfully');
+            
+            // Reinitialize to generate new QR
+            setTimeout(() => {
+                this.init();
+            }, 1000);
+
+            return { success: true, message: 'WhatsApp logged out successfully' };
+        } catch (error) {
+            log.error('Error during WhatsApp logout:', error);
+            return { success: false, message: 'Failed to logout WhatsApp' };
+        }
+    }
+
     private async init() {
         try {
             // Use a persistent auth folder

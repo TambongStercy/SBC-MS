@@ -424,12 +424,17 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "99b186bd-d69e-4f90-8080-c9e50b747518",
-  "amount": 500,
+  "reference": "Zxz3vdQ54nIH",
+  "amount": 2070,
   "status": "SUCCESSFUL",
   "callback_info": {
-    "client_transaction_id": "SBC_TX_123456789",
-    "userId": "65d2b0344a7e2b9efbf6205d"
+    "sessionId":"_ua3WlQrGEsS",
+    "userId":"6859ab5624c99159b9786def",
+    "userName":"TCHONDA mehiwa",
+    "userPhoneNumber":"22871602613",
+    "userEmail":"tchondajerome408@gmail.com",
+    "userCountry":"Togo",
+    "userCity":"Hohotoe"
   }
 }
 
@@ -446,19 +451,19 @@ Content-Type: application/json
 
 {
   "cpm_site_id": "5876842",
-  "cpm_trans_id": "UTK8-nCHlnz9",
-  "cpm_trans_date": "2025-06-22 21:16:16",
-  "cpm_amount": "2070",
-  "cpm_currency": "XAF",
-  "signature": "aff4110b77d62601a1aca843f82e8cdea5233073891822ce8e849acc3e1a9f88",
-  "payment_method": "OMCM",
-  "cel_phone_num": "699062760",
-  "cpm_phone_prefixe": "237",
+  "cpm_trans_id": "JeGGY-6HVgyp",
+  "cpm_trans_date": "2025-07-15 18:24:44",
+  "cpm_amount": "2142",
+  "cpm_currency": "XOF",
+  "signature": "f7bc2647296a9458ec2219aeb244088460291ab0e992b31218aa05f0a74d4f5e",
+  "payment_method": "MOMO",
+  "cel_phone_num": "0554668483",
+  "cpm_phone_prefixe": "225",
   "cpm_language": "fr",
   "cpm_version": "V3",
   "cpm_payment_config": "SINGLE",
   "cpm_page_action": "PAYMENT",
-  "cpm_custom": "{\"sessionId\":\"0yjLUkC-1o5V\"}",
+  "cpm_custom": "{\"sessionId\":\"JeGGY-6HVgyp\"}",
   "cpm_designation": "undefined - undefined",
   "cpm_error_message": "SUCCES"
 }
@@ -467,7 +472,6 @@ Content-Type: application/json
 # WH2. User A (Referrer) gets the webhook
 GET {{baseUrl}}/health
 Content-Type: application/json
-
 
 
 
@@ -866,4 +870,291 @@ Content-Type: application/json
         "recipientName": "Test User",
         "recipientEmail": "testuser@example.com"
     }
+}
+
+###
+# ==========================
+# Phone Number Change Tests (WhatsApp Verification)
+# ==========================
+
+###
+# PC1. Request OTP for Phone Number Change (Authenticated)
+# This sends an OTP to the NEW phone number via WhatsApp
+POST {{baseUrl}}/users/request-change-phone
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "newPhoneNumber": "237671234567"
+}
+
+###
+# PC2. Confirm Phone Number Change (Authenticated)
+# Use the OTP received on the new phone number via WhatsApp
+POST {{baseUrl}}/users/confirm-change-phone
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "newPhoneNumber": "237671234567",
+    "otpCode": "123456"
+}
+
+###
+# PC3. Test Phone Change with Invalid Phone Number
+POST {{baseUrl}}/users/request-change-phone
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "newPhoneNumber": "invalid-phone"
+}
+
+###
+# PC4. Test Phone Change with Phone Already in Use
+# This should return a 409 Conflict error
+POST {{baseUrl}}/users/request-change-phone
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "newPhoneNumber": "{{userB_PhoneNumber}}"
+}
+
+###
+# PC5. Test Phone Change Confirmation with Invalid OTP
+POST {{baseUrl}}/users/confirm-change-phone
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "newPhoneNumber": "237671234567",
+    "otpCode": "000000"
+}
+
+###
+# ==========================
+# Email Change Tests (for comparison)
+# ==========================
+
+###
+# EC1. Request OTP for Email Change (Authenticated)
+# This sends an OTP to the NEW email address
+POST {{baseUrl}}/users/request-change-email
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "newEmail": "newemail@example.com"
+}
+
+###
+# EC2. Confirm Email Change (Authenticated)
+# Use the OTP received on the new email address
+POST {{baseUrl}}/users/confirm-change-email
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "newEmail": "newemail@example.com",
+    "otpCode": "123456"
+}
+
+###
+# ==========================
+# Notification Preference Tests
+# ==========================
+
+###
+# NP1. Update User Notification Preference to WhatsApp
+PUT {{baseUrl}}/users/me
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "notificationPreference": "whatsapp"
+}
+
+###
+# NP2. Update User Notification Preference to Email
+PUT {{baseUrl}}/users/me
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "notificationPreference": "email"
+}
+
+###
+# NP3. Test Invalid Notification Preference
+PUT {{baseUrl}}/users/me
+Authorization: Bearer {{userA_AuthToken}}
+Content-Type: application/json
+
+{
+    "notificationPreference": "sms"
+}
+
+###
+# NP4. Get User Profile to Check Notification Preference
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{userA_AuthToken}}
+
+###
+# ==========================
+# OTP with Notification Preferences Tests
+# ==========================
+
+###
+# ONP1. Resend OTP Using User's Preferred Method (no override)
+POST {{baseUrl}}/users/resend-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_Email}}",
+    "purpose": "login"
+}
+
+###
+# ONP2. Resend OTP with WhatsApp Override
+POST {{baseUrl}}/users/resend-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_Email}}",
+    "purpose": "login",
+    "channel": "whatsapp"
+}
+
+###
+# ONP3. Resend OTP with Email Override
+POST {{baseUrl}}/users/resend-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_PhoneNumber}}",
+    "purpose": "login",
+    "channel": "email"
+}
+
+###
+# ONP4. Password Reset OTP Using User's Preferred Method
+POST {{baseUrl}}/users/request-password-reset-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_Email}}"
+}
+
+###
+# ONP5. Password Reset OTP with WhatsApp Override
+POST {{baseUrl}}/users/request-password-reset-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_Email}}",
+    "channel": "whatsapp"
+}
+
+###
+# ONP6. Password Reset OTP with Email Override
+POST {{baseUrl}}/users/request-password-reset-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_PhoneNumber}}",
+    "channel": "email"
+}
+
+###
+# ONP7. Test Legacy Email Field Support (backward compatibility)
+POST {{baseUrl}}/users/resend-otp
+Content-Type: application/json
+
+{
+    "email": "{{userA_Email}}",
+    "purpose": "login"
+}
+
+###
+# ONP8. Test Legacy Email Field with Channel Override
+POST {{baseUrl}}/users/request-password-reset-otp
+Content-Type: application/json
+
+{
+    "email": "{{userA_Email}}",
+    "channel": "whatsapp"
+}
+
+###
+# ONP9. Test Invalid Channel Override
+POST {{baseUrl}}/users/resend-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_Email}}",
+    "purpose": "login",
+    "channel": "sms"
+}
+
+###
+# ONP10. Test Phone Number Identification for OTP
+POST {{baseUrl}}/users/resend-otp
+Content-Type: application/json
+
+{
+    "identifier": "{{userA_PhoneNumber}}",
+    "purpose": "forgotPassword"
+}
+
+###
+# ==========================
+# Registration with Notification Preference Tests
+# ==========================
+
+###
+# RNP1. Register User with WhatsApp Preference
+POST {{baseUrl}}/users/register
+Content-Type: application/json
+
+{
+    "name": "WhatsApp User",
+    "email": "whatsapp_user@example.com",
+    "password": "StrongPassword123!",
+    "region": "Center",
+    "phoneNumber": "237671234567",
+    "sex": "male",
+    "age": 25,
+    "notificationPreference": "whatsapp"
+}
+
+###
+# RNP2. Register User with Email Preference (default)
+POST {{baseUrl}}/users/register
+Content-Type: application/json
+
+{
+    "name": "Email User",
+    "email": "email_user@example.com",
+    "password": "StrongPassword123!",
+    "region": "Center",
+    "phoneNumber": "237671234568",
+    "sex": "female",
+    "age": 30,
+    "notificationPreference": "email"
+}
+
+###
+# RNP3. Register User without Notification Preference (should default to email)
+POST {{baseUrl}}/users/register
+Content-Type: application/json
+
+{
+    "name": "Default User",
+    "email": "default_user@example.com",
+    "password": "StrongPassword123!",
+    "region": "Center",
+    "phoneNumber": "237671234569",
+    "sex": "other",
+    "age": 28
 }

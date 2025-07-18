@@ -98,6 +98,11 @@ router.post('/request-change-email', (req, res, next) => userController.requestC
 // COMPLETE Email Change (Authenticated, rate limited)
 router.post('/confirm-change-email', mediumLimiter, (req, res, next) => userController.confirmChangeEmail(req as AuthenticatedRequest, res, next));
 
+// Request OTP for Phone Change (Authenticated)
+router.post('/request-change-phone', (req, res, next) => userController.requestChangePhoneOtp(req as AuthenticatedRequest, res, next));
+// COMPLETE Phone Change (Authenticated, rate limited)
+router.post('/confirm-change-phone', mediumLimiter, (req, res, next) => userController.confirmChangePhone(req as AuthenticatedRequest, res, next));
+
 // === Admin Routes ===
 // Apply admin authorization middleware for these routes
 router.post('/admin/fix-referrals', authenticate as any, authorize([UserRole.ADMIN]) as any, (req, res, next) => userController.adminFixReferrals(req as AuthenticatedRequest, res, next));

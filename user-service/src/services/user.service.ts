@@ -275,11 +275,14 @@ export class UserService {
         // --- Trigger OTP Generation --- 
         try {
             const otp = await this.generateAndStoreOtp(newUser._id, 'otps'); // Use general OTP type
+            // Get delivery info based on user's notification preference
+            const deliveryInfo = this.getOtpDeliveryInfo(newUser);
+
             // this notification service communicates with the notification microservice
             await notificationService.sendOtp({
                 userId: newUser._id.toString(),
-                recipient: newUser.email,
-                channel: DeliveryChannel.EMAIL,
+                recipient: deliveryInfo.recipient,
+                channel: deliveryInfo.channel,
                 code: otp,
                 expireMinutes: 10,
                 isRegistration: true,
@@ -375,12 +378,14 @@ export class UserService {
         // --- Trigger OTP Generation --- 
         try {
             const otp = await this.generateAndStoreOtp(user._id, 'otps'); // Use general OTP type
+            // Get delivery info based on user's notification preference
+            const deliveryInfo = this.getOtpDeliveryInfo(user);
 
             // Send OTP to user
             await notificationService.sendOtp({
                 userId: user._id.toString(),
-                recipient: user.email,
-                channel: DeliveryChannel.EMAIL,
+                recipient: deliveryInfo.recipient,
+                channel: deliveryInfo.channel,
                 code: otp,
                 expireMinutes: 10,
                 isRegistration: false,
@@ -2857,29 +2862,37 @@ export class UserService {
     }
 
     /**
-     * Resends an OTP code to the user's registered email.
-     * @param email - The email address of the user.
+     * Resends an OTP code to the user using their preferred notification method.
+     * @param identifier - The email address or phone number of the user.
      * @param purpose - The reason for requesting the OTP (e.g., 'login', 'register', 'forgotPassword').
+     * @param channelOverride - Optional channel override ('email' or 'whatsapp').
      * @returns Promise<void>
      */
-    async resendOtp(email: string, purpose: 'login' | 'register' | 'forgotPassword' | 'changeEmail' | string): Promise<void> {
-        log.info(`OTP resend requested for email: ${email}, purpose: ${purpose}`);
+    async resendOtp(
+        identifier: string,
+        purpose: 'login' | 'register' | 'forgotPassword' | 'changeEmail' | string,
+        channelOverride?: 'email' | 'whatsapp'
+    ): Promise<void> {
+        log.info(`OTP resend requested for identifier: ${identifier}, purpose: ${purpose}, channelOverride: ${channelOverride}`);
 
-        const user = await userRepository.findByEmail(email);
+        // Try to find user by email or phone
+        const user = await userRepository.findByEmailOrPhone(identifier, identifier);
 
-        // IMPORTANT: Do not confirm if the user exists to prevent email enumeration attacks.
+        // IMPORTANT: Do not confirm if the user exists to prevent enumeration attacks.
         // If user exists, proceed with OTP generation and sending.
         if (user && !user.blocked && !user.deleted) { // Only send if user is active
             try {
                 // Generate and store a new general-purpose OTP
                 const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
 
+                // Get delivery info based on user's preference and optional override
+                const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
+
                 // Send OTP via notification service
-                // The notification service might internally adjust the message based on purpose
                 await notificationService.sendOtp({
                     userId: user._id.toString(),
-                    recipient: user.email,
-                    channel: DeliveryChannel.EMAIL,
+                    recipient: deliveryInfo.recipient,
+                    channel: deliveryInfo.channel,
                     code: otpCode,
                     expireMinutes: 10, // Standard expiration
                     isRegistration: purpose === 'register', // Set based on purpose
@@ -2887,53 +2900,87 @@ export class UserService {
                     userName: user.name
                 });
 
-                log.info(`Resent OTP successfully for email: ${email}`);
+                log.info(`Resent OTP successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
 
             } catch (error) {
-                log.error(`Failed to resend OTP for email ${email}:`, error);
+                log.error(`Failed to resend OTP for identifier ${identifier}:`, error);
                 // Log the error but don't throw it back to the controller to avoid revealing info.
                 // The controller will return a generic success message regardless.
             }
         } else {
-            log.warn(`OTP resend requested for non-existent or inactive user: ${email}. No action taken.`);
+            log.warn(`OTP resend requested for non-existent or inactive user: ${identifier}. No action taken.`);
             // No error thrown, just log internally.
         }
         // Always return void, regardless of user existence or OTP sending success.
     }
 
     /**
-     * Sends an OTP for password reset purposes.
-     * @param email - The email address of the user requesting the reset.
+     * Sends an OTP for password reset purposes using user's preferred notification method.
+     * @param identifier - The email address or phone number of the user requesting the reset.
+     * @param channelOverride - Optional channel override ('email' or 'whatsapp').
      * @returns Promise<void>
      */
-    async requestPasswordResetOtp(email: string): Promise<void> {
+    async requestPasswordResetOtp(identifier: string, channelOverride?: 'email' | 'whatsapp'): Promise<void> {
         const purpose = 'forgotPassword';
-        log.info(`Password reset OTP requested for email: ${email}`);
+        log.info(`Password reset OTP requested for identifier: ${identifier}, channelOverride: ${channelOverride}`);
 
-        const user = await userRepository.findByEmail(email);
+        // Try to find user by email or phone
+        const user = await userRepository.findByEmailOrPhone(identifier, identifier);
 
         // IMPORTANT: Do not confirm if the user exists.
         if (user && !user.blocked && !user.deleted) {
             try {
                 const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
+
+                // Get delivery info based on user's preference and optional override
+                const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
+
                 await notificationService.sendOtp({
                     userId: user._id.toString(),
-                    recipient: user.email,
-                    channel: DeliveryChannel.EMAIL,
+                    recipient: deliveryInfo.recipient,
+                    channel: deliveryInfo.channel,
                     code: otpCode,
                     expireMinutes: 10,
-                    isRegistration: false, // Added missing property
+                    isRegistration: false,
                     purpose: purpose,
                     userName: user.name
                 });
-                log.info(`Password reset OTP sent successfully for email: ${email}`);
+                log.info(`Password reset OTP sent successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
             } catch (error) {
-                log.error(`Failed to send password reset OTP for email ${email}:`, error);
+                log.error(`Failed to send password reset OTP for identifier ${identifier}:`, error);
                 throw error;
             }
         } else {
-            log.warn(`Password reset OTP requested for non-existent or inactive user: ${email}. No action taken.`);
+            log.warn(`Password reset OTP requested for non-existent or inactive user: ${identifier}. No action taken.`);
             throw new AppError('User not found or inactive.', 404);
+        }
+    }
+
+    /**
+     * Helper method to determine the delivery channel for OTP based on user preference and optional override
+     * @param user - The user object containing notification preference
+     * @param channelOverride - Optional channel override for this specific request
+     * @returns The delivery channel to use and the recipient address
+     */
+    private getOtpDeliveryInfo(user: IUser, channelOverride?: 'email' | 'whatsapp'): {
+        channel: DeliveryChannel,
+        recipient: string
+    } {
+        // Use override if provided, otherwise use user's preference
+        const preferredChannel = channelOverride || user.notificationPreference;
+
+        switch (preferredChannel) {
+            case 'whatsapp':
+                return {
+                    channel: DeliveryChannel.WHATSAPP,
+                    recipient: user.phoneNumber
+                };
+            case 'email':
+            default:
+                return {
+                    channel: DeliveryChannel.EMAIL,
+                    recipient: user.email
+                };
         }
     }
 
@@ -3121,6 +3168,116 @@ export class UserService {
 
         // Optional: Send confirmation to the *old* email address?
         // await notificationService.sendEmailChangeConfirmation(user.id, user.email /* old email */, newEmail, user.name);
+    }
+
+    /**
+     * Sends an OTP to a *new* phone number to verify a phone change request.
+     * Requires the user to be authenticated.
+     * @param userId - The ID of the authenticated user requesting the change.
+     * @param newPhoneNumber - The new phone number to verify.
+     * @returns Promise<void>
+     */
+    async requestChangePhoneOtp(userId: string | Types.ObjectId, newPhoneNumber: string): Promise<void> {
+        const purpose = 'changePhone';
+        log.info(`Change phone OTP requested for user ${userId} to new phone: ${newPhoneNumber}`);
+
+        // 1. Validate new phone number format
+        if (!newPhoneNumber || typeof newPhoneNumber !== 'string') {
+            throw new AppError('Invalid new phone number format.', 400);
+        }
+
+        // Normalize the phone number
+        const normalizedPhoneNumber = normalizePhoneNumber(newPhoneNumber);
+        if (!normalizedPhoneNumber) {
+            throw new AppError('Invalid phone number format.', 400);
+        }
+
+        // 2. Check if new phone number is already in use by *another* user
+        const existingUserWithNewPhone = await userRepository.findByPhoneNumber(normalizedPhoneNumber);
+        if (existingUserWithNewPhone && existingUserWithNewPhone._id.toString() !== userId.toString()) {
+            throw new AppError('This phone number is already associated with another account.', 409); // 409 Conflict
+        }
+
+        // 3. Get current user details (for username in notification)
+        const currentUser = await userRepository.findById(userId);
+        if (!currentUser || currentUser.blocked || currentUser.deleted) {
+            // This shouldn't happen if the user is authenticated, but check anyway.
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+
+        // 4. Generate and store OTP for the *current* user
+        const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps');
+
+        // 5. Send OTP to the *new* phone number via WhatsApp
+        await notificationService.sendOtp({
+            userId: currentUser._id.toString(),
+            recipient: normalizedPhoneNumber, // Send to the NEW phone number
+            channel: DeliveryChannel.WHATSAPP,
+            code: otpCode,
+            expireMinutes: 10,
+            isRegistration: false,
+            purpose: purpose,
+            userName: currentUser.name // Use current user's name
+        });
+
+        log.info(`Change phone OTP sent successfully to ${normalizedPhoneNumber} for user ${userId}`);
+        // No error thrown if notification fails, handled by notificationService client
+    }
+
+    /**
+     * Confirms the phone number change after verifying the OTP.
+     * Requires the user to be authenticated.
+     * @param userId - The ID of the authenticated user.
+     * @param newPhoneNumber - The new phone number that was previously requested.
+     * @param otpCode - The OTP code received at the new phone number.
+     * @returns Promise<void>
+     */
+    async confirmChangePhone(userId: string | Types.ObjectId, newPhoneNumber: string, otpCode: string): Promise<void> {
+        log.info(`Confirming phone change for user ${userId} to new phone: ${newPhoneNumber}`);
+
+        if (!newPhoneNumber || !otpCode) {
+            throw new AppError('New phone number and OTP are required.', 400);
+        }
+
+        // Normalize the phone number
+        const normalizedPhoneNumber = normalizePhoneNumber(newPhoneNumber);
+        if (!normalizedPhoneNumber) {
+            throw new AppError('Invalid phone number format.', 400);
+        }
+
+        // 1. Find the currently authenticated user
+        const user = await userRepository.findById(userId);
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+
+        // 2. Validate the OTP stored against the *current* user
+        const now = new Date();
+        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+
+        if (!matchingOtp) {
+            log.warn(`Invalid or expired phone change OTP for user: ${userId}`);
+            throw new AppError('Invalid or expired OTP.', 400);
+        }
+
+        // 3. Check *again* if the new phone number is already in use by *another* user (race condition check)
+        const existingUserWithNewPhone = await userRepository.findByPhoneNumber(normalizedPhoneNumber);
+        if (existingUserWithNewPhone && existingUserWithNewPhone._id.toString() !== userId.toString()) {
+            // Clear the OTP even if the phone is taken now, to prevent reuse
+            await userRepository.clearOtps(user._id, 'otps');
+            throw new AppError('This phone number has been taken by another account since the request was made.', 409);
+        }
+
+        // 4. OTP is valid and phone number is available. Clear *all* general OTPs.
+        await userRepository.clearOtps(user._id, 'otps');
+
+        // 5. Update the user's phone number
+        await userRepository.updateById(user._id, { phoneNumber: normalizedPhoneNumber });
+
+        log.info(`Phone number successfully changed to ${normalizedPhoneNumber} for user ${userId}`);
+
+        // Optional: Send confirmation to the *old* phone number?
+        // await notificationService.sendPhoneChangeConfirmation(user.id, user.phoneNumber /* old phone */, normalizedPhoneNumber, user.name);
     }
 
     /**
@@ -3485,7 +3642,7 @@ export class UserService {
                 vcfContent: vcfContent,
                 fileName: fileName
             });
-            
+
             log.info(`VCF email successfully scheduled for user ${userId} using new template.`);
         } catch (error) {
             log.error(`Failed to send VCF email to user ${userId} (${userEmail}):`, error);

@@ -23,12 +23,15 @@ export const escapeVCardField = (value: string | number | undefined): string => 
 export const generateVCard = (user: IUser): string => {
     const { name, email, phoneNumber, region } = user;
 
+    // Append "SBC" to the contact name for all exported contacts
+    const displayName = name ? `${name} SBC` : 'SBC';
+
     // Format the vCard according to the RFC 6350 specification
     const vCardLines = [
         'BEGIN:VCARD',
         'VERSION:3.0',
-        `FN:${escapeVCardField(name)}`,
-        `N:${escapeVCardField(name)};;;`,
+        `FN:${escapeVCardField(displayName)}`,
+        `N:${escapeVCardField(displayName)};;;`,
         email ? `EMAIL:${escapeVCardField(email)}` : '',
         phoneNumber ? `TEL;TYPE=CELL:${escapeVCardField(phoneNumber)}` : '',
         region ? `ADR;TYPE=HOME:;;${escapeVCardField(region)};;;` : '',

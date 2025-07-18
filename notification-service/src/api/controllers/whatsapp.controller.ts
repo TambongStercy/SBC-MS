@@ -71,4 +71,45 @@ export const streamWhatsAppQr = (req: Request, res: Response) => {
     req.on('close', () => {
         whatsappService.off('qr', onQr);
     });
+};
+
+export const getWhatsAppStatus = (req: Request, res: Response) => {
+    try {
+        const status = whatsappService.getConnectionStatus();
+        res.status(200).json({
+            success: true,
+            data: status
+        });
+    } catch (error) {
+        logger.error('Error getting WhatsApp status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get WhatsApp status',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+};
+
+export const logoutWhatsApp = async (req: Request, res: Response) => {
+    try {
+        const result = await whatsappService.logout();
+        if (result.success) {
+            res.status(200).json({
+                success: true,
+                message: 'WhatsApp logged out successfully'
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: result.message || 'Failed to logout WhatsApp'
+            });
+        }
+    } catch (error) {
+        logger.error('Error logging out WhatsApp:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to logout WhatsApp',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 }; 

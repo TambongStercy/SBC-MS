@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Send, AlertTriangle, Search, UserPlus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import WhatsAppManager from '../components/WhatsAppManager';
 // TODO: Import necessary API functions (searchUsers, sendBulkNotification, sendCriteriaNotification)
 // import { searchUsers } from '../services/adminUserApi'; // Example
 // import { sendBulkNotification, sendCriteriaNotification } from '../services/adminNotificationApi'; // Example
@@ -247,9 +248,16 @@ const NotificationsPage: React.FC = () => {
 
     return (
         <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white p-4 md:p-8">
-            <h1 className="text-2xl md:text-3xl font-bold mb-6 text-white">Send Notification</h1>
+            <h1 className="text-2xl md:text-3xl font-bold mb-6 text-white">Notifications Management</h1>
 
+            {/* WhatsApp Management Section */}
+            <div className="max-w-4xl mx-auto mb-8">
+                <WhatsAppManager />
+            </div>
+
+            {/* Notification Sending Section */}
             <div className="max-w-3xl mx-auto bg-gray-800 shadow rounded-lg p-6">
+                <h2 className="text-xl font-semibold text-white mb-6">Send Notification</h2>
                 <form onSubmit={handleSubmit} className="space-y-6">
 
                     {/* Send Mode Selection */}

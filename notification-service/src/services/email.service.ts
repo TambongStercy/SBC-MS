@@ -810,7 +810,7 @@ class EmailService {
                 <div style="text-align: left; max-width: 400px; margin: 0 auto;">
                     <p style="margin: 8px 0; font-size: 15px; color: #374151;">📧 <strong>Gmail:</strong> Importez via les Contacts Google</p>
                     <p style="margin: 8px 0; font-size: 15px; color: #374151;">📮 <strong>Outlook:</strong> Fichier → Importer et Exporter</p>
-                    <p style="margin: 8px 0; font-size: 15px; color: #374151;">📱 <strong>iPhone:</strong> Envoyez-vous le fichier par email et ouvrez-le</p>
+                    <p style="margin: 8px 0; font-size: 15px; color: #374151;">📱 <strong>iPhone:</strong> Partagez le fichier avec l’application contacts de votre iPhone</p>
                     <p style="margin: 8px 0; font-size: 15px; color: #374151;">🤖 <strong>Android:</strong> Ouvrez avec l'application Contacts</p>
                 </div>
             </div>

@@ -389,7 +389,8 @@ export class UserController {
                 interests,
                 profession,
                 shareContactInfo,
-                referralCode
+                referralCode,
+                notificationPreference
             } = req.body;
 
             // Construct update object with only the fields provided
@@ -466,6 +467,17 @@ export class UserController {
             if (profession !== undefined) updateData.profession = profession; // Consider validation
             if (shareContactInfo !== undefined) updateData.shareContactInfo = shareContactInfo;
             if (referralCode !== undefined) updateData.referralCode = referralCode;
+            if (notificationPreference !== undefined) {
+                // Validate notification preference
+                const validPreferences = ['email', 'whatsapp'];
+                if (validPreferences.includes(notificationPreference)) {
+                    updateData.notificationPreference = notificationPreference;
+                } else {
+                    log.warn(`Invalid notificationPreference provided by user ${userId}: ${notificationPreference}`);
+                    res.status(400).json({ success: false, message: `Invalid notification preference. Must be one of: ${validPreferences.join(', ')}.` });
+                    return;
+                }
+            }
 
             // Check if there is anything to update
             if (Object.keys(updateData).length === 0) {
@@ -1334,52 +1346,82 @@ export class UserController {
     }
 
     /**
-     * Resend OTP code
+     * Resend OTP code using user's preferred notification method
      * @route POST /api/users/resend-otp
      */
     async resendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { email, purpose } = req.body;
+            const { identifier, email, purpose, channel } = req.body;
+
+            // Support both new 'identifier' field and legacy 'email' field
+            const userIdentifier = identifier || email;
 
             // Basic validation
-            if (!email || typeof email !== 'string' || !email.includes('@')) {
-                res.status(400).json({ success: false, message: 'Valid email address is required.' });
+            if (!userIdentifier || typeof userIdentifier !== 'string') {
+                res.status(400).json({ success: false, message: 'Valid email address or phone number is required.' });
                 return;
             }
-            // Optional: Validate purpose against a known list if desired, but service can handle unknown purposes gracefully.
+
+            // Optional: Validate purpose against a known list
             const validPurposes = ['login', 'register', 'forgotPassword', 'changeEmail'];
             if (!purpose || typeof purpose !== 'string' || !validPurposes.includes(purpose)) {
                 res.status(400).json({ success: false, message: `Valid purpose is required (${validPurposes.join(', ')}).` });
                 return;
             }
 
+            // Validate channel override if provided
+            const validChannels = ['email', 'whatsapp'];
+            if (channel && (!validChannels.includes(channel))) {
+                res.status(400).json({ success: false, message: `Valid channel is required (${validChannels.join(', ')}) or omit to use user preference.` });
+                return;
+            }
 
-            // Call the service method. It handles logic internally and doesn't throw errors based on user existence.
-            await this.userService.resendOtp(email, purpose);
+            // Call the service method with optional channel override
+            await this.userService.resendOtp(userIdentifier, purpose, channel);
 
-            // Send a generic success response to prevent leaking information about account existence.
-            res.status(200).json({ success: true, message: 'If an account with this email exists, an OTP has been sent.' });
+            // Send a generic success response to prevent leaking information about account existence
+            const channelMessage = channel ? ` via ${channel}` : ' using your preferred notification method';
+            res.status(200).json({ 
+                success: true, 
+                message: `If an account with this identifier exists, an OTP has been sent${channelMessage}.` 
+            });
 
         } catch (error: any) {
-            // Catch potential unexpected errors from the service layer (e.g., notification service failure if not handled internally)
-            this.log.error(`Unexpected error during OTP resend for email ${req.body?.email}:`, error);
+            // Catch potential unexpected errors from the service layer
+            this.log.error(`Unexpected error during OTP resend for identifier ${req.body?.identifier || req.body?.email}:`, error);
             // Still send a generic message, but log the internal error
             res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
         }
     }
 
     /**
-     * Request OTP for password reset
+     * Request OTP for password reset using user's preferred notification method
      * @route POST /api/users/request-password-reset
      */
     async requestPasswordResetOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { email } = req.body;
-            if (!email) {
-                throw new AppError('Email is required for password reset OTP.', 400);
+            const { identifier, email, channel } = req.body;
+            
+            // Support both new 'identifier' field and legacy 'email' field
+            const userIdentifier = identifier || email;
+            
+            if (!userIdentifier) {
+                throw new AppError('Email address or phone number is required for password reset OTP.', 400);
             }
-            await this.userService.requestPasswordResetOtp(email);
-            res.status(200).json({ success: true, message: 'If your email is registered, a password reset OTP has been sent.' });
+
+            // Validate channel override if provided
+            const validChannels = ['email', 'whatsapp'];
+            if (channel && (!validChannels.includes(channel))) {
+                throw new AppError(`Valid channel is required (${validChannels.join(', ')}) or omit to use user preference.`, 400);
+            }
+
+            await this.userService.requestPasswordResetOtp(userIdentifier, channel);
+            
+            const channelMessage = channel ? ` via ${channel}` : ' using your preferred notification method';
+            res.status(200).json({ 
+                success: true, 
+                message: `If your account is registered, a password reset OTP has been sent${channelMessage}.` 
+            });
         } catch (error) {
             next(error);
         }
@@ -1489,6 +1531,73 @@ export class UserController {
                 res.status(error.statusCode).json({ success: false, message: error.message });
             } else {
                 res.status(500).json({ success: false, message: 'An internal error occurred during email change confirmation.' });
+            }
+        }
+    }
+
+    /**
+     * Request OTP to verify a new phone number (Requires Authentication)
+     * @route POST /api/users/request-change-phone
+     */
+    async requestChangePhoneOtp(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication required.' });
+                return;
+            }
+
+            const { newPhoneNumber } = req.body;
+            if (!newPhoneNumber || typeof newPhoneNumber !== 'string') {
+                res.status(400).json({ success: false, message: 'Valid new phone number is required.' });
+                return;
+            }
+
+            await this.userService.requestChangePhoneOtp(userId, newPhoneNumber);
+
+            // Return success message indicating OTP sent to the NEW phone number
+            res.status(200).json({ success: true, message: `An OTP has been sent to ${newPhoneNumber} via WhatsApp to verify the change.` });
+
+        } catch (error: any) {
+            log.error(`[Controller] Error requesting change phone OTP for user ${req.user?.userId}:`, error);
+            // If AppError, use its message and status, otherwise generic 500
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
+            }
+        }
+    }
+
+    /**
+     * Handles the phone number change confirmation request.
+     * @route POST /api/users/confirm-change-phone
+     */
+    async confirmChangePhone(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            // User ID comes from the authenticated request middleware
+            const userId = req.user?.userId;
+            const { newPhoneNumber, otpCode } = req.body;
+
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication required.' });
+                return;
+            }
+            if (!newPhoneNumber || !otpCode) {
+                res.status(400).json({ success: false, message: 'New phone number and OTP are required.' });
+                return;
+            }
+
+            await this.userService.confirmChangePhone(userId, newPhoneNumber, otpCode);
+
+            res.status(200).json({ success: true, message: 'Phone number change confirmed successfully.' });
+
+        } catch (error) {
+            log.error('Phone number change confirmation failed:', error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                res.status(500).json({ success: false, message: 'An internal error occurred during phone number change confirmation.' });
             }
         }
     }

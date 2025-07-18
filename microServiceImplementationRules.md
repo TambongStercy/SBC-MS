@@ -78,3 +78,55 @@ This section provides a general template and guidelines for structuring a micros
 *   **API Gateway / Reverse Proxy:** Handles incoming requests, routing, load balancing, SSL termination (Nginx, Traefik, or a custom Node.js gateway). Define as a service in `docker-compose.yml`.
 
 This generalized structure provides a solid foundation for building scalable and maintainable microservices applications using Node.js and TypeScript. Remember to adapt the specific tools and configurations based on your project's requirements.
+
+
+
+
+sms-frontend/
+├── src/
+│   ├── components/
+│   │   ├── common/              # Shared components (buttons, modals, etc.)
+│   │   ├── dashboards/          # Role-specific dashboard components
+│   │   ├── forms/               # Reusable form components
+│   │   ├── tables/              # Data table components
+│   │   ├── charts/              # Analytics charts
+│   │   └── layout/              # Navigation, sidebar, header
+│   ├── pages/
+│   │   ├── super-manager/   # Super manager pages
+│   │   ├── principal/       # Principal pages
+│   │   ├── bursar/          # Bursar pages
+│   │   ├── teacher/         # Teacher 
+│   │   └── shared/              # Pages used by multiple roles
+│   ├── services/                # API calls organized by domain
+│   │   ├── api.ts              # Base API configuration
+│   │   ├── auth.ts             # Authentication
+│   │   ├── users.ts            # User management
+│   │   ├── students.ts         # Student operations
+│   │   ├── fees.ts             # Fee management
+│   │   ├── discipline.ts       # Discipline tracking
+│   │   └── analytics.ts        # Analytics data
+│   ├── hooks/                   # Custom React hooks
+│   │   ├── useAuth.ts          # Authentication state
+│   │   ├── useRole.ts          # Role management
+│   │   ├── useAcademicYear.ts  # Academic year context
+│   │   └── usePermissions.ts   # Permission checking
+│   ├── contexts/                # React contexts
+│   │   ├── AuthContext.tsx     # Authentication context
+│   │   ├── RoleContext.tsx     # Current role context
+│   │   └── AcademicYearContext.tsx
+│   ├── utils/                   # Helper functions
+│   │   ├── constants.ts        # App constants
+│   │   ├── formatters.ts       # Data formatting
+│   │   ├── validators.ts       # Form validation
+│   │   └── permissions.ts      # Permission utilities
+│   ├── types/                   # TypeScript types
+│   │   ├── api.ts              # API response types
+│   │   ├── user.ts             # User-related types
+│   │   ├── student.ts          # Student-related types
+│   │   └── common.ts           # Shared types
+│   ├── styles/                  # Global styles
+│   └── assets/                  # Images, icons
+├── public/
+├── tailwind.config.js
+├── vite.config.ts
+└── package.json

@@ -15,6 +15,12 @@ export enum UserSex {
     PREFER_NOT_TO_SAY = 'prefer_not_to_say',
 }
 
+// Define notification preferences for OTP delivery
+export enum NotificationPreference {
+    EMAIL = 'email',
+    WHATSAPP = 'whatsapp',
+}
+
 // Simple map for country codes to dialing codes relevant to the User model
 const countryDialingCodesMap: { [key: string]: string } = {
     CM: '237', // Cameroon
@@ -83,6 +89,7 @@ export interface IUser extends Document {
     interests?: string[];
     profession?: string;
     shareContactInfo: boolean;
+    notificationPreference: NotificationPreference;
     createdAt: Date;
     updatedAt: Date;
     passwordResetToken?: string | null;
@@ -183,6 +190,12 @@ const UserSchema = new Schema<IUser>(
             index: true
         },
         shareContactInfo: { type: Boolean, default: true },
+        notificationPreference: {
+            type: String,
+            enum: Object.values(NotificationPreference),
+            default: NotificationPreference.EMAIL,
+            required: true
+        },
         updatedAt: { type: Date, default: Date.now },
         passwordResetToken: { type: String, default: null },
         passwordResetTokenExpiration: { type: Date, default: null },
