@@ -373,7 +373,6 @@ class PaymentService {
                 message: message
             };
         }
-        console.log("no en attente")
         // --- End Soft Lock ---
         try {
             // Fetch user's MoMo details from user-service

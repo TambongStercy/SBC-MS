@@ -2917,6 +2917,7 @@ export class UserService {
 
     /**
      * Sends an OTP for password reset purposes using user's preferred notification method.
+     * If WhatsApp is preferred but fails, falls back to email.
      * @param identifier - The email address or phone number of the user requesting the reset.
      * @param channelOverride - Optional channel override ('email' or 'whatsapp').
      * @returns Promise<void>
@@ -2935,8 +2936,9 @@ export class UserService {
 
                 // Get delivery info based on user's preference and optional override
                 const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
-
-                await notificationService.sendOtp({
+                
+                // First attempt with the preferred or overridden channel
+                let success = await notificationService.sendOtp({
                     userId: user._id.toString(),
                     recipient: deliveryInfo.recipient,
                     channel: deliveryInfo.channel,
@@ -2946,7 +2948,34 @@ export class UserService {
                     purpose: purpose,
                     userName: user.name
                 });
-                log.info(`Password reset OTP sent successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
+                
+                // If WhatsApp was attempted but failed, and user has email, fall back to email
+                if (!success && deliveryInfo.channel === DeliveryChannel.WHATSAPP && user.email) {
+                    log.info(`WhatsApp OTP delivery failed for user ${user._id}, falling back to email: ${user.email}`);
+                    
+                    success = await notificationService.sendOtp({
+                        userId: user._id.toString(),
+                        recipient: user.email,
+                        channel: DeliveryChannel.EMAIL,
+                        code: otpCode,
+                        expireMinutes: 10,
+                        isRegistration: false,
+                        purpose: purpose,
+                        userName: user.name
+                    });
+                    
+                    if (success) {
+                        log.info(`Password reset OTP sent successfully via fallback email for user: ${user._id}`);
+                    } else {
+                        log.error(`Both WhatsApp and email fallback failed for password reset OTP for user: ${user._id}`);
+                        throw new Error('Failed to send OTP via both WhatsApp and email');
+                    }
+                } else if (success) {
+                    log.info(`Password reset OTP sent successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
+                } else {
+                    log.error(`Failed to send password reset OTP for identifier ${identifier} via ${deliveryInfo.channel}`);
+                    throw new Error(`Failed to send OTP via ${deliveryInfo.channel}`);
+                }
             } catch (error) {
                 log.error(`Failed to send password reset OTP for identifier ${identifier}:`, error);
                 throw error;

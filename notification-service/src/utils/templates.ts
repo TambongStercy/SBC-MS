@@ -133,7 +133,7 @@ Votre code ci-dessous :
 ⚠️ Si vous n'avez pas demandé ce retrait, contactez notre support immédiatement.
 
 _Équipe SBC_`,
-      whatsappCode: `*{{code}}*`
+      whatsappCode: `{{code}}`
     },
     'verify-login': {
       subject: '{{code}} is your SBC login code',
@@ -192,7 +192,7 @@ Votre code ci-dessous :
 ⚠️ Si vous n'avez pas tenté de vous connecter, ignorez ce message.
 
 _Équipe SBC_`,
-      whatsappCode: `*{{code}}*`
+      whatsappCode: `{{code}}`
     },
     'verify-registration': {
       subject: '{{code}} is your SBC registration code',
@@ -251,7 +251,7 @@ Merci de vous être inscrit ! Votre code ci-dessous :
 ⚠️ Si vous ne vous êtes pas inscrit, ignorez ce message.
 
 _Équipe SBC_`,
-      whatsappCode: `*{{code}}*`
+      whatsappCode: `{{code}}`
     },
   },
 
@@ -503,7 +503,7 @@ Votre code ci-dessous :
 ⚠️ Si vous n'avez pas demandé cette réinitialisation, ignorez ce message.
 
 _Équipe SBC_`,
-      whatsappCode: `*{{code}}*`
+      whatsappCode: `{{code}}`
     },
   },
 

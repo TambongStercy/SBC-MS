@@ -1397,6 +1397,7 @@ export class UserController {
 
     /**
      * Request OTP for password reset using user's preferred notification method
+     * With fallback from WhatsApp to email if WhatsApp fails
      * @route POST /api/users/request-password-reset
      */
     async requestPasswordResetOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -1418,7 +1419,16 @@ export class UserController {
 
             await this.userService.requestPasswordResetOtp(userIdentifier, channel);
             
-            const channelMessage = channel ? ` via ${channel}` : ' using your preferred notification method';
+            // Update message to inform about potential fallback
+            let channelMessage;
+            if (channel === 'whatsapp') {
+                channelMessage = ' via WhatsApp (with email fallback if WhatsApp is unavailable)';
+            } else if (channel === 'email') {
+                channelMessage = ' via email';
+            } else {
+                channelMessage = ' using your preferred notification method (with email fallback if WhatsApp is unavailable)';
+            }
+            
             res.status(200).json({ 
                 success: true, 
                 message: `If your account is registered, a password reset OTP has been sent${channelMessage}.` 

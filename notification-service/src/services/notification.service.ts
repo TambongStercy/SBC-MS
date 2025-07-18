@@ -231,9 +231,25 @@ class NotificationService {
 
     /**
      * Send a WhatsApp notification with support for dual messages (main message + separate code)
+     * Checks WhatsApp connection status before attempting to send
      */
     private async sendWhatsappNotification(notification: INotification): Promise<boolean> {
         const data = notification.data || {};
+        
+        // First check if WhatsApp is connected and ready
+        const whatsappStatus = whatsappService.getConnectionStatus();
+        if (!whatsappStatus.isReady) {
+            log.warn(`WhatsApp is not ready (status: ${whatsappStatus.connectionState}). Cannot send notification to ${notification.recipient}`);
+            
+            // For OTP notifications, we should indicate failure so the service can try email fallback
+            if (notification.type === NotificationType.OTP) {
+                log.info(`OTP notification ${notification._id} failed via WhatsApp - caller should try email fallback`);
+                return false;
+            }
+            
+            // For non-OTP notifications, we'll mark as failed but could implement a retry mechanism
+            return false;
+        }
 
         // Check if we have a separate WhatsApp code to send as a second message
         if (data.whatsappCode && typeof data.whatsappCode === 'string' && data.whatsappCode.trim()) {
