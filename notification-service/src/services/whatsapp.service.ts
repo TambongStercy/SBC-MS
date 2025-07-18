@@ -101,6 +101,7 @@ class WhatsAppService extends EventEmitter {
 
             this.sock.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, qr } = update;
+                
                 if (qr) {
                     // Generate PNG base64 QR
                     try {
@@ -113,16 +114,43 @@ class WhatsAppService extends EventEmitter {
                         log.error('Failed to generate QR PNG:', err);
                     }
                 }
+                
                 if (connection === 'close') {
-                    log.warn('WhatsApp connection closed.');
+                    this.isReady = false;
+                    const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+                    
+                    if (shouldReconnect) {
+                        log.info('WhatsApp connection closed, attempting to reconnect...');
+                        // Clear QR code when connection closes
+                        this.latestQr = null;
+                        this.latestQrTimestamp = 0;
+                        
+                        // Reconnect after a short delay
+                        setTimeout(() => {
+                            this.init();
+                        }, 3000);
+                    } else {
+                        log.warn('WhatsApp connection closed - logged out.');
+                        this.latestQr = null;
+                        this.latestQrTimestamp = 0;
+                    }
+                    
                     if (this.disconnectCallback) {
-                        // Provide a URL or null (to be set by API layer)
                         this.disconnectCallback(null);
                     }
                 }
+                
                 if (connection === 'open') {
-                    log.info('WhatsApp connection established!');
+                    log.info('WhatsApp connection established successfully!');
                     this.isReady = true;
+                    // Clear QR code when connected
+                    this.latestQr = null;
+                    this.latestQrTimestamp = 0;
+                    this.emit('connected');
+                }
+                
+                if (connection === 'connecting') {
+                    log.info('WhatsApp connecting...');
                 }
             });
         } catch (error) {

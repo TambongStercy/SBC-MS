@@ -74,11 +74,20 @@ const WhatsAppManager: React.FC = () => {
         }
     }, [status?.hasQr, qrCode, fetchQrCode]);
 
-    // Auto-refresh status every 10 seconds
+    // Auto-refresh status every 5 seconds for better responsiveness
     useEffect(() => {
-        const interval = setInterval(fetchStatus, 10000);
+        const interval = setInterval(fetchStatus, 5000);
         return () => clearInterval(interval);
     }, [fetchStatus]);
+
+    // Clean up QR code URL when component unmounts
+    useEffect(() => {
+        return () => {
+            if (qrCode) {
+                URL.revokeObjectURL(qrCode);
+            }
+        };
+    }, [qrCode]);
 
     const getStatusColor = (state: string) => {
         switch (state) {
