@@ -644,7 +644,7 @@ export class UserService {
         updateData: Partial<Pick<IUser,
             'name' | 'region' | 'country' | 'city' | 'phoneNumber' | 'momoNumber' |
             'momoOperator' | 'avatar' | 'avatarId' | 'sex' | 'birthDate' | 'language' |
-            'preferenceCategories' | 'interests' | 'profession' | 'shareContactInfo' |
+            'preferenceCategories' | 'interests' | 'profession' | 'shareContactInfo' | 'notificationPreference'|
             'referralCode' // Added referralCode here
         >>
     ): Promise<Omit<IUser, 'password' | 'otps' | 'contactsOtps'> | null> {
@@ -673,6 +673,7 @@ export class UserService {
         if (updateData.profession !== undefined) allowedFields.profession = updateData.profession;
         if (updateData.shareContactInfo !== undefined) allowedFields.shareContactInfo = updateData.shareContactInfo;
         if (updateData.referralCode !== undefined) allowedFields.referralCode = updateData.referralCode; // Add referral code assignment
+        if (updateData.notificationPreference !== undefined) allowedFields.notificationPreference = updateData.notificationPreference;
 
         // --- Referral Code Uniqueness Check --- 
         if (allowedFields.referralCode) {
