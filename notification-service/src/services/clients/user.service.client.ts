@@ -96,8 +96,7 @@ class UserServiceClient {
 
     /**
      * Fetches basic details (email, phone, language, name) for a single user.
-     * Note: Assumes user-service has a GET /api/users/:userId/details internal endpoint.
-     *       This endpoint needs to be created in user-service.
+     * Uses the existing /batch-details endpoint with a single user ID.
      * @param userId The ID of the user to fetch.
      * @returns Promise<UserDetails | null> User details or null if not found/error.
      */
@@ -107,11 +106,13 @@ class UserServiceClient {
             return null;
         }
 
-        const url = `${this.userServiceUrl}/api/users/${userId}/details`; // NEEDS TO BE IMPLEMENTED IN USER-SERVICE
+        const url = `${this.userServiceUrl}/api/users/internal/batch-details`;
         log.debug(`Calling User Service to get details for user: ${userId} at ${url}`);
 
         try {
-            const response = await axios.get<GetUserDetailsResponse>(url, {
+            const response = await axios.post<{ success: boolean; data: UserDetails[] }>(url, {
+                userIds: [userId] // Send single user ID in array
+            }, {
                 headers: {
                     'Authorization': `Bearer ${this.serviceSecret}`,
                     'X-Service-Name': 'notification-service'
@@ -119,14 +120,15 @@ class UserServiceClient {
                 timeout: 5000
             });
 
-            if (response.data?.success && response.data?.data) {
-                return response.data.data;
+            if (response.data?.success && Array.isArray(response.data?.data) && response.data.data.length > 0) {
+                log.info(`Successfully fetched user details for userId: ${userId}`);
+                return response.data.data[0]; // Return the first (and only) user from the array
             } else {
-                log.warn(`User Service call to get user details returned success=false or no data for user ${userId}. Message: ${response.data?.message}`);
+                log.warn(`User Service batch-details call returned no data for user ${userId}`);
                 return null;
             }
         } catch (error: any) {
-            log.error(`Error calling User Service getUserDetails at ${url} for user ${userId}:`, error.response?.data || error.message);
+            log.error(`Error calling User Service batch-details at ${url} for user ${userId}:`, error.response?.data || error.message);
             return null;
         }
     }
