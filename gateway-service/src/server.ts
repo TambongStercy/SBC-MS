@@ -106,6 +106,20 @@ app.use('/api/notifications', proxy(config.services.notificationServiceUrl, {
   }
 }));
 
+app.use('/api/whatsapp', proxy(config.services.notificationServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to whatsapp service`);
+    return '/api/whatsapp' + req.url;
+  }
+}));
+
+app.use('/api/webhook', proxy(config.services.notificationServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to webhook service`);
+    return '/api/webhook' + req.url;
+  }
+}));
+
 // Payment service
 app.use('/api/payments', proxy(config.services.paymentServiceUrl, {
   proxyReqPathResolver: (req) => {
@@ -178,7 +192,7 @@ app.use('/api/storage', proxy(config.services.settingsServiceUrl, {
   parseReqBody: false,
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to storage service`);
-    return '/api/storage' + req.url;  
+    return '/api/storage' + req.url;
   }
 }));
 

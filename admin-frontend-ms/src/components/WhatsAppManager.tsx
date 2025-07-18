@@ -1,13 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Smartphone, QrCode, LogOut, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-interface WhatsAppStatus {
-    isReady: boolean;
-    hasQr: boolean;
-    qrTimestamp: number | null;
-    connectionState: 'connected' | 'waiting_for_scan' | 'disconnected';
-}
+import { getWhatsAppStatus, getWhatsAppQr, logoutWhatsApp, WhatsAppStatus } from '../api/whatsapp';
 
 const WhatsAppManager: React.FC = () => {
     const [status, setStatus] = useState<WhatsAppStatus | null>(null);
@@ -16,70 +10,43 @@ const WhatsAppManager: React.FC = () => {
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-    // API base URL - adjust this to match your notification service
-    const API_BASE = process.env.REACT_APP_NOTIFICATION_SERVICE_URL || 'http://localhost:3002/api';
-
     const fetchStatus = useCallback(async () => {
         try {
-            const response = await fetch(`${API_BASE}/whatsapp/status`);
-            const data = await response.json();
-            
-            if (data.success) {
-                setStatus(data.data);
-                setLastUpdated(new Date());
-            } else {
-                toast.error('Failed to fetch WhatsApp status');
-            }
+            const statusData = await getWhatsAppStatus();
+            setStatus(statusData);
+            setLastUpdated(new Date());
         } catch (error) {
             console.error('Error fetching WhatsApp status:', error);
-            toast.error('Failed to connect to notification service');
+            toast.error('Failed to fetch WhatsApp status');
         }
-    }, [API_BASE]);
+    }, []);
 
     const fetchQrCode = useCallback(async () => {
         if (!status?.hasQr) return;
         
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE}/whatsapp/qr`);
-            
-            if (response.ok) {
-                const blob = await response.blob();
-                const qrUrl = URL.createObjectURL(blob);
-                setQrCode(qrUrl);
-            } else {
-                toast.error('Failed to fetch QR code');
-            }
+            const blob = await getWhatsAppQr();
+            const qrUrl = URL.createObjectURL(blob);
+            setQrCode(qrUrl);
         } catch (error) {
             console.error('Error fetching QR code:', error);
             toast.error('Failed to fetch QR code');
         } finally {
             setIsLoading(false);
         }
-    }, [API_BASE, status?.hasQr]);
+    }, [status?.hasQr]);
 
     const handleLogout = async () => {
         setIsLoggingOut(true);
         const toastId = toast.loading('Logging out WhatsApp...');
         
         try {
-            const response = await fetch(`${API_BASE}/whatsapp/logout`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                toast.success('WhatsApp logged out successfully', { id: toastId });
-                setQrCode(null);
-                // Refresh status after logout
-                setTimeout(fetchStatus, 2000);
-            } else {
-                toast.error(data.message || 'Failed to logout WhatsApp', { id: toastId });
-            }
+            const message = await logoutWhatsApp();
+            toast.success(message || 'WhatsApp logged out successfully', { id: toastId });
+            setQrCode(null);
+            // Refresh status after logout
+            setTimeout(fetchStatus, 2000);
         } catch (error) {
             console.error('Error logging out WhatsApp:', error);
             toast.error('Failed to logout WhatsApp', { id: toastId });
