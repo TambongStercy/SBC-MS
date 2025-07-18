@@ -404,7 +404,7 @@ export class UserRepository {
             _id: { $in: userIds },
             deleted: { $ne: true } // Ensure user is not soft-deleted
         })
-            .select('_id name email phoneNumber avatar momoNumber momoOperator balance') // Select fields matching the updated UserDetails interface
+            .select('_id name email phoneNumber avatar momoNumber momoOperator balance notificationPreference role') // Select fields matching the updated UserDetails interface
             .lean() // Use lean for performance as we only need plain objects
             .exec();
     }
