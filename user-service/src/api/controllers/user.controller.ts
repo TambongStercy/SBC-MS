@@ -372,8 +372,6 @@ export class UserController {
                 return;
             }
 
-            log.warn('user update body request: ');
-            console.log(req.body);
 
             // Extract updatable fields from request body
             const {
