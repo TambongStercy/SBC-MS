@@ -1,5 +1,6 @@
 {
   "devDependencies": {
+    "@types/qrcode": "^1.5.5",
     "@types/qrcode-terminal": "^0.12.2"
   },
   "dependencies": {

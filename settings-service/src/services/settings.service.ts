@@ -38,24 +38,27 @@ class SettingsService {
     }
 
     /**
-     * Helper function to generate proxy URLs for file references.
+     * Helper function to generate direct URLs for file references.
+     * Uses direct URLs for new GCS files, proxy for old Drive files.
      * @param settings - The settings document.
      * @returns The settings document with URLs populated.
      */
-    private populateFileUrls(settings: ISettings | null): ISettings | null {
+    private async populateFileUrls(settings: ISettings | null): Promise<ISettings | null> {
         if (!settings) return null;
 
-        const generateUrl = (ref?: IFileReference) => {
+        const generateUrl = async (ref?: IFileReference) => {
             if (ref?.fileId) {
-                ref.url = GoogleDriveService.getProxyFileUrl(ref.fileId);
+                // Import cloud storage service dynamically
+                const CloudStorageService = (await import('./cloudStorage.service')).default;
+                ref.url = await CloudStorageService.getFileUrl(ref.fileId);
             }
             return ref;
         };
 
-        settings.companyLogo = generateUrl(settings.companyLogo);
-        settings.termsAndConditionsPdf = generateUrl(settings.termsAndConditionsPdf);
-        settings.presentationVideo = generateUrl(settings.presentationVideo);
-        settings.presentationPdf = generateUrl(settings.presentationPdf);
+        settings.companyLogo = await generateUrl(settings.companyLogo);
+        settings.termsAndConditionsPdf = await generateUrl(settings.termsAndConditionsPdf);
+        settings.presentationVideo = await generateUrl(settings.presentationVideo);
+        settings.presentationPdf = await generateUrl(settings.presentationPdf);
 
         return settings;
     }
@@ -72,7 +75,7 @@ class SettingsService {
         }
 
         try {
-            settings = this.populateFileUrls(settings);
+            settings = await this.populateFileUrls(settings);
         } catch (processingError: any) {
             log.error('Error processing settings after fetch:', processingError);
             // Handle potential errors during URL population, though less likely
@@ -88,7 +91,7 @@ class SettingsService {
         const settings = await this.repository.upsert(data);
         log.info('Settings updated successfully.');
         // Re-populate URLs for the response
-        return this.populateFileUrls(settings) || settings;
+        return await this.populateFileUrls(settings) || settings;
     }
 
     /**
@@ -147,7 +150,7 @@ class SettingsService {
 
         log.info(`${fieldName} updated successfully in database.`);
         // Re-populate URLs for the response
-        return this.populateFileUrls(updatedSettings) || updatedSettings;
+        return await this.populateFileUrls(updatedSettings) || updatedSettings;
     }
 
     // --- Specific File Update Methods ---
@@ -170,7 +173,7 @@ class SettingsService {
 
     /**
      * Uploads a generic file for use by other services.
-     * Stores the file in Google Drive and returns access information.
+     * Uses hybrid storage: Cloud Storage for new uploads, Drive for existing files.
      * Does NOT modify the main Settings document.
      * @param file The file uploaded via Multer.
      * @param folderName Optional name ('profile-picture', 'product-docs') to specify target folder.
@@ -178,58 +181,40 @@ class SettingsService {
      */
     async uploadGenericFile(file: Express.Multer.File, folderName?: string): Promise<UploadedFileInfo> {
         log.info(`Uploading generic file: ${file.originalname} (Size: ${file.size}), Target Folder Name: ${folderName || 'Default'}`);
-        let fileId: string;
-
-        // Determine the parent folder ID based on folderName
-        let parentFolderId: string | undefined;
-        switch (folderName) {
-            case 'profile-picture':
-                parentFolderId = config.googleDrive.profilePictureFolderId;
-                log.debug('Targeting Profile Picture folder.');
-                break;
-            case 'product-docs':
-                parentFolderId = config.googleDrive.productDocsFolderId;
-                log.debug('Targeting Product Docs folder.');
-                break;
-            default:
-                // Use default settings folder ID or undefined if none configured
-                parentFolderId = config.googleDrive.parentFolderId;
-                log.debug('Targeting default settings folder (or root if none specified).');
-        }
-
-        // Optional: Add a check if a specific folder was requested but its ID is missing
-        if (folderName && !parentFolderId) {
-            log.warn(`Folder ID for requested folder '${folderName}' is not configured. Uploading to default/root.`);
-            // Reset to default/root if specific folder ID missing
-            parentFolderId = config.googleDrive.parentFolderId;
-        }
-
+        
         try {
-            log.debug(`Uploading generic file '${file.originalname}' to Google Drive...`);
-            const uniqueFileName = `generic_${Date.now()}_${file.originalname}`;
-            const uploadResult = await GoogleDriveService.uploadFile(
+            // Import cloud storage service
+            const CloudStorageService = (await import('./cloudStorage.service')).default;
+            
+            // Create organized filename with folder prefix
+            const folderPrefix = folderName ? `${folderName}/` : '';
+            const uniqueFileName = `${folderPrefix}${Date.now()}_${file.originalname}`;
+            
+            log.debug(`Uploading generic file '${file.originalname}' using hybrid storage...`);
+            const uploadResult = await CloudStorageService.uploadFileHybrid(
                 file.buffer,
                 file.mimetype,
                 uniqueFileName,
-                parentFolderId // Pass the determined parent folder ID
+                folderName
             );
-            fileId = uploadResult.fileId;
-            log.info(`Generic file uploaded successfully. File ID: ${fileId}`);
+            
+            log.info(`Generic file uploaded successfully. File ID: ${uploadResult.fileId}`);
+            
+            const fileInfo: UploadedFileInfo = {
+                fileId: uploadResult.fileId,
+                url: uploadResult.publicUrl,
+                fileName: file.originalname,
+                mimeType: file.mimetype,
+                size: file.size,
+            };
+            
+            log.info(`Returning info for generic file upload:`, fileInfo);
+            return fileInfo;
+            
         } catch (uploadError: any) {
-            log.error(`Failed to upload generic file to Google Drive: ${uploadError.message}`, uploadError);
+            log.error(`Failed to upload generic file: ${uploadError.message}`, uploadError);
             throw new Error('Failed to upload file to storage.');
         }
-
-        const url = GoogleDriveService.getProxyFileUrl(fileId);
-        const fileInfo: UploadedFileInfo = {
-            fileId: fileId,
-            url: url,
-            fileName: file.originalname,
-            mimeType: file.mimetype,
-            size: file.size,
-        };
-        log.info(`Returning info for generic file upload:`, fileInfo);
-        return fileInfo;
     }
 
     // --- Formations Management Methods ---

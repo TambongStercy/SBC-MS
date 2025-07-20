@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Smartphone, QrCode, LogOut, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getWhatsAppStatus, getWhatsAppQr, logoutWhatsApp, WhatsAppStatus } from '../api/whatsapp';
+import { getWhatsAppStatus, getWhatsAppQr, logoutWhatsApp, forceReconnectWhatsApp, WhatsAppStatus } from '../api/whatsapp';
 
 const WhatsAppManager: React.FC = () => {
     const [status, setStatus] = useState<WhatsAppStatus | null>(null);
     const [qrCode, setQrCode] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
+    const [isReconnecting, setIsReconnecting] = useState(false);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [pollInterval, setPollInterval] = useState<number>(5000); // Dynamic polling interval
 
     const fetchStatus = useCallback(async () => {
         try {
@@ -55,6 +57,24 @@ const WhatsAppManager: React.FC = () => {
         }
     };
 
+    const handleForceReconnect = async () => {
+        setIsReconnecting(true);
+        const toastId = toast.loading('Force reconnecting WhatsApp...');
+        
+        try {
+            const message = await forceReconnectWhatsApp();
+            toast.success(message || 'WhatsApp reconnection initiated', { id: toastId });
+            setQrCode(null);
+            // Refresh status after reconnect
+            setTimeout(fetchStatus, 2000);
+        } catch (error) {
+            console.error('Error force reconnecting WhatsApp:', error);
+            toast.error('Failed to force reconnect WhatsApp', { id: toastId });
+        } finally {
+            setIsReconnecting(false);
+        }
+    };
+
     const handleRefresh = () => {
         fetchStatus();
         if (status?.hasQr) {
@@ -74,11 +94,31 @@ const WhatsAppManager: React.FC = () => {
         }
     }, [status?.hasQr, qrCode, fetchQrCode]);
 
-    // Auto-refresh status every 5 seconds for better responsiveness
+    // Dynamic polling based on connection state
     useEffect(() => {
-        const interval = setInterval(fetchStatus, 5000);
+        if (!status) return;
+        
+        // Adjust polling interval based on connection state
+        let newInterval = 5000; // Default 5 seconds
+        
+        if (status.isReady) {
+            newInterval = 10000; // 10 seconds when connected
+        } else if (status.isInitializing || status.reconnectAttempts > 0) {
+            newInterval = 3000; // 3 seconds when initializing or reconnecting
+        } else if (status.connectionState === 'waiting_for_scan') {
+            newInterval = 8000; // 8 seconds when waiting for QR scan
+        }
+        
+        if (newInterval !== pollInterval) {
+            setPollInterval(newInterval);
+        }
+    }, [status, pollInterval]);
+
+    // Auto-refresh status with dynamic interval
+    useEffect(() => {
+        const interval = setInterval(fetchStatus, pollInterval);
         return () => clearInterval(interval);
-    }, [fetchStatus]);
+    }, [fetchStatus, pollInterval]);
 
     // Clean up QR code URL when component unmounts
     useEffect(() => {
@@ -115,7 +155,15 @@ const WhatsAppManager: React.FC = () => {
         }
     };
 
-    const getStatusText = (state: string) => {
+    const getStatusText = (state: string, isInitializing?: boolean, reconnectAttempts?: number) => {
+        if (isInitializing) {
+            return 'Initializing...';
+        }
+        
+        if (reconnectAttempts && reconnectAttempts > 0) {
+            return `Reconnecting (${reconnectAttempts}/5)`;
+        }
+        
         switch (state) {
             case 'connected':
                 return 'Connected & Ready';
@@ -123,6 +171,8 @@ const WhatsAppManager: React.FC = () => {
                 return 'Waiting for QR Scan';
             case 'disconnected':
                 return 'Disconnected';
+            case 'connecting':
+                return 'Connecting...';
             default:
                 return 'Unknown';
         }
@@ -153,30 +203,52 @@ const WhatsAppManager: React.FC = () => {
                             {getStatusIcon(status.connectionState)}
                             <div>
                                 <p className={`font-medium ${getStatusColor(status.connectionState)}`}>
-                                    {getStatusText(status.connectionState)}
+                                    {getStatusText(status.connectionState, status.isInitializing, status.reconnectAttempts)}
                                 </p>
-                                {lastUpdated && (
-                                    <p className="text-sm text-gray-400">
-                                        Last updated: {lastUpdated.toLocaleTimeString()}
-                                    </p>
-                                )}
+                                <div className="flex items-center space-x-4 text-sm text-gray-400">
+                                    {lastUpdated && (
+                                        <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
+                                    )}
+                                    {status.reconnectAttempts > 0 && (
+                                        <span className="text-yellow-400">
+                                            Reconnect attempts: {status.reconnectAttempts}/5
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                         
-                        {status.isReady && (
-                            <button
-                                onClick={handleLogout}
-                                disabled={isLoggingOut}
-                                className="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-transparent hover:bg-red-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {isLoggingOut ? (
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : (
-                                    <LogOut className="h-4 w-4 mr-2" />
-                                )}
-                                Logout WhatsApp
-                            </button>
-                        )}
+                        <div className="flex space-x-2">
+                            {!status.isReady && status.connectionState === 'disconnected' && (
+                                <button
+                                    onClick={handleForceReconnect}
+                                    disabled={isReconnecting || status.isInitializing}
+                                    className="inline-flex items-center px-3 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-400 bg-transparent hover:bg-blue-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {isReconnecting ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : (
+                                        <RefreshCw className="h-4 w-4 mr-2" />
+                                    )}
+                                    Force Reconnect
+                                </button>
+                            )}
+                            
+                            {status.isReady && (
+                                <button
+                                    onClick={handleLogout}
+                                    disabled={isLoggingOut}
+                                    className="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-transparent hover:bg-red-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {isLoggingOut ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : (
+                                        <LogOut className="h-4 w-4 mr-2" />
+                                    )}
+                                    Logout WhatsApp
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* QR Code Section */}
@@ -236,14 +308,45 @@ const WhatsAppManager: React.FC = () => {
                     )}
 
                     {/* Disconnected Status */}
-                    {status.connectionState === 'disconnected' && !status.hasQr && (
+                    {status.connectionState === 'disconnected' && !status.hasQr && !status.isInitializing && (
                         <div className="bg-red-900 border border-red-700 rounded-lg p-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <AlertCircle className="h-5 w-5 text-red-400 mr-3" />
+                                    <div>
+                                        <p className="text-red-100 font-medium">WhatsApp Disconnected</p>
+                                        <p className="text-red-200 text-sm">
+                                            WhatsApp is not connected. {status.reconnectAttempts >= 5 ? 'Max reconnection attempts reached.' : 'A new QR code should appear shortly for reconnection.'}
+                                        </p>
+                                    </div>
+                                </div>
+                                {status.reconnectAttempts >= 5 && (
+                                    <button
+                                        onClick={handleForceReconnect}
+                                        disabled={isReconnecting}
+                                        className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-100 bg-red-800 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-900 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        {isReconnecting ? (
+                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        ) : (
+                                            <RefreshCw className="h-4 w-4 mr-2" />
+                                        )}
+                                        Retry Connection
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Initializing Status */}
+                    {status.isInitializing && (
+                        <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
                             <div className="flex items-center">
-                                <AlertCircle className="h-5 w-5 text-red-400 mr-3" />
+                                <Loader2 className="h-5 w-5 text-blue-400 mr-3 animate-spin" />
                                 <div>
-                                    <p className="text-red-100 font-medium">WhatsApp Disconnected</p>
-                                    <p className="text-red-200 text-sm">
-                                        WhatsApp is not connected. A new QR code should appear shortly for reconnection.
+                                    <p className="text-blue-100 font-medium">Initializing WhatsApp Connection</p>
+                                    <p className="text-blue-200 text-sm">
+                                        Setting up WhatsApp service, please wait...
                                     </p>
                                 </div>
                             </div>

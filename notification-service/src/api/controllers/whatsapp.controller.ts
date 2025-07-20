@@ -112,4 +112,28 @@ export const logoutWhatsApp = async (req: Request, res: Response) => {
             error: error instanceof Error ? error.message : 'Unknown error'
         });
     }
+};
+
+export const forceReconnectWhatsApp = async (req: Request, res: Response) => {
+    try {
+        const result = await whatsappService.forceReconnect();
+        if (result.success) {
+            res.status(200).json({
+                success: true,
+                message: result.message || 'WhatsApp reconnection initiated'
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: result.message || 'Failed to force reconnect WhatsApp'
+            });
+        }
+    } catch (error) {
+        logger.error('Error force reconnecting WhatsApp:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to force reconnect WhatsApp',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 }; 

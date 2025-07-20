@@ -5,6 +5,8 @@ export interface WhatsAppStatus {
     hasQr: boolean;
     qrTimestamp: number | null;
     connectionState: 'connected' | 'waiting_for_scan' | 'disconnected';
+    reconnectAttempts: number;
+    isInitializing: boolean;
 }
 
 export interface WhatsAppStatusResponse {
@@ -40,6 +42,14 @@ export const getWhatsAppQr = async (): Promise<Blob> => {
  */
 export const logoutWhatsApp = async (): Promise<string> => {
     const response = await apiClient.post<WhatsAppLogoutResponse>('/whatsapp/logout');
+    return response.data.message;
+};
+
+/**
+ * Force reconnect WhatsApp
+ */
+export const forceReconnectWhatsApp = async (): Promise<string> => {
+    const response = await apiClient.post<WhatsAppLogoutResponse>('/whatsapp/reconnect');
     return response.data.message;
 };
 
