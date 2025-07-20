@@ -1,7 +1,7 @@
 import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket } from '@whiskeysockets/baileys';
 import logger from '../utils/logger';
 import { Boom } from '@hapi/boom';
-import QRCode from 'qrcode';
+const QRCode = require('qrcode');
 import { EventEmitter } from 'events';
 
 const log = logger.getLogger('WhatsAppService');
@@ -148,23 +148,21 @@ class WhatsAppService extends EventEmitter {
             log.info(`WhatsApp initialization attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts}`);
 
             // Use a persistent auth folder
+            log.info('Loading WhatsApp authentication state...');
             const { state, saveCreds } = await useMultiFileAuthState('./whatsapp_auth');
+            log.info('WhatsApp authentication state loaded successfully');
 
+            log.info('Creating WhatsApp socket...');
             this.sock = makeWASocket({
                 auth: state,
-                connectTimeoutMs: 60000, // 60 seconds timeout
-                defaultQueryTimeoutMs: 60000,
-                keepAliveIntervalMs: 30000, // Keep alive every 30 seconds
-                // Disable automatic reconnection - we'll handle it manually
-                shouldIgnoreJid: () => false,
-                // Add browser info for better compatibility
+                // Use minimal configuration to avoid potential issues
                 browser: ['Ubuntu', 'Chrome', '22.04.4'],
-                // Reduce message retry attempts
-                msgRetryCounterCache: undefined,
-                // No logger to reduce noise
-                logger: undefined,
-                printQRInTerminal: false
+                printQRInTerminal: false,
+                // Add some basic error handling options
+                connectTimeoutMs: 60000,
+                defaultQueryTimeoutMs: 60000
             });
+            log.info('WhatsApp socket created successfully');
 
             this.sock.ev.on('creds.update', saveCreds);
 
