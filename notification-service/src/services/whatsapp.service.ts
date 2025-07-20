@@ -30,7 +30,10 @@ class WhatsAppService extends EventEmitter {
 
     constructor() {
         super();
-        this.init();
+        // Start initialization after a short delay to ensure all dependencies are ready
+        setTimeout(() => {
+            this.init();
+        }, 1000);
     }
 
     public getLatestQr(): { qr: string | null, timestamp: number } {
@@ -126,10 +129,18 @@ class WhatsAppService extends EventEmitter {
             this.latestQrTimestamp = 0;
             this.connectionState = 'close';
 
+            // Clear authentication data to force fresh QR generation
+            const fs = require('fs');
+            const authPath = './whatsapp_auth';
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+                log.info('WhatsApp authentication data cleared for fresh start');
+            }
+
             // Reinitialize immediately
             await this.init();
 
-            return { success: true, message: 'WhatsApp reconnection initiated' };
+            return { success: true, message: 'WhatsApp reconnection initiated with fresh authentication' };
         } catch (error) {
             log.error('Error during WhatsApp force reconnect:', error);
             return { success: false, message: 'Failed to force reconnect WhatsApp' };
@@ -207,10 +218,24 @@ class WhatsAppService extends EventEmitter {
                             this.init();
                         }, delay);
                     } else if (statusCode === DisconnectReason.loggedOut) {
-                        log.warn('WhatsApp connection closed - logged out.');
+                        log.warn('WhatsApp connection closed - logged out. Clearing auth data and generating new QR...');
+
+                        // Clear authentication data when logged out
+                        const fs = require('fs');
+                        const authPath = './whatsapp_auth';
+                        if (fs.existsSync(authPath)) {
+                            fs.rmSync(authPath, { recursive: true, force: true });
+                            log.info('WhatsApp authentication data cleared due to logout');
+                        }
+
                         this.latestQr = null;
                         this.latestQrTimestamp = 0;
                         this.reconnectAttempts = 0;
+
+                        // Reinitialize to generate new QR code
+                        setTimeout(() => {
+                            this.init();
+                        }, 2000);
                     } else {
                         log.error(`WhatsApp max reconnection attempts (${this.maxReconnectAttempts}) reached. Stopping reconnection.`);
                         this.latestQr = null;

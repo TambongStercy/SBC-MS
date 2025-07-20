@@ -4,7 +4,7 @@ export interface WhatsAppStatus {
     isReady: boolean;
     hasQr: boolean;
     qrTimestamp: number | null;
-    connectionState: 'connected' | 'waiting_for_scan' | 'disconnected';
+    connectionState: 'connected' | 'waiting_for_scan' | 'disconnected' | 'close' | 'open' | 'connecting';
     reconnectAttempts: number;
     isInitializing: boolean;
 }

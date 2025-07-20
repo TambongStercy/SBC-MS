@@ -25,7 +25,7 @@ const WhatsAppManager: React.FC = () => {
 
     const fetchQrCode = useCallback(async () => {
         if (!status?.hasQr) return;
-        
+
         setIsLoading(true);
         try {
             const blob = await getWhatsAppQr();
@@ -42,7 +42,7 @@ const WhatsAppManager: React.FC = () => {
     const handleLogout = async () => {
         setIsLoggingOut(true);
         const toastId = toast.loading('Logging out WhatsApp...');
-        
+
         try {
             const message = await logoutWhatsApp();
             toast.success(message || 'WhatsApp logged out successfully', { id: toastId });
@@ -60,7 +60,7 @@ const WhatsAppManager: React.FC = () => {
     const handleForceReconnect = async () => {
         setIsReconnecting(true);
         const toastId = toast.loading('Force reconnecting WhatsApp...');
-        
+
         try {
             const message = await forceReconnectWhatsApp();
             toast.success(message || 'WhatsApp reconnection initiated', { id: toastId });
@@ -97,10 +97,10 @@ const WhatsAppManager: React.FC = () => {
     // Dynamic polling based on connection state
     useEffect(() => {
         if (!status) return;
-        
+
         // Adjust polling interval based on connection state
         let newInterval = 5000; // Default 5 seconds
-        
+
         if (status.isReady) {
             newInterval = 10000; // 10 seconds when connected
         } else if (status.isInitializing || status.reconnectAttempts > 0) {
@@ -108,7 +108,7 @@ const WhatsAppManager: React.FC = () => {
         } else if (status.connectionState === 'waiting_for_scan') {
             newInterval = 8000; // 8 seconds when waiting for QR scan
         }
-        
+
         if (newInterval !== pollInterval) {
             setPollInterval(newInterval);
         }
@@ -132,11 +132,15 @@ const WhatsAppManager: React.FC = () => {
     const getStatusColor = (state: string) => {
         switch (state) {
             case 'connected':
+            case 'open':
                 return 'text-green-400';
             case 'waiting_for_scan':
                 return 'text-yellow-400';
             case 'disconnected':
+            case 'close':
                 return 'text-red-400';
+            case 'connecting':
+                return 'text-blue-400';
             default:
                 return 'text-gray-400';
         }
@@ -145,11 +149,15 @@ const WhatsAppManager: React.FC = () => {
     const getStatusIcon = (state: string) => {
         switch (state) {
             case 'connected':
+            case 'open':
                 return <CheckCircle className="h-5 w-5 text-green-400" />;
             case 'waiting_for_scan':
                 return <QrCode className="h-5 w-5 text-yellow-400" />;
             case 'disconnected':
+            case 'close':
                 return <AlertCircle className="h-5 w-5 text-red-400" />;
+            case 'connecting':
+                return <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />;
             default:
                 return <Smartphone className="h-5 w-5 text-gray-400" />;
         }
@@ -159,22 +167,24 @@ const WhatsAppManager: React.FC = () => {
         if (isInitializing) {
             return 'Initializing...';
         }
-        
+
         if (reconnectAttempts && reconnectAttempts > 0) {
             return `Reconnecting (${reconnectAttempts}/5)`;
         }
-        
+
         switch (state) {
             case 'connected':
+            case 'open':
                 return 'Connected & Ready';
             case 'waiting_for_scan':
                 return 'Waiting for QR Scan';
             case 'disconnected':
+            case 'close':
                 return 'Disconnected';
             case 'connecting':
                 return 'Connecting...';
             default:
-                return 'Unknown';
+                return `Unknown (${state})`;
         }
     };
 
@@ -217,9 +227,9 @@ const WhatsAppManager: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div className="flex space-x-2">
-                            {!status.isReady && status.connectionState === 'disconnected' && (
+                            {!status.isReady && (status.connectionState === 'disconnected' || status.connectionState === 'close') && (
                                 <button
                                     onClick={handleForceReconnect}
                                     disabled={isReconnecting || status.isInitializing}
@@ -233,7 +243,7 @@ const WhatsAppManager: React.FC = () => {
                                     Force Reconnect
                                 </button>
                             )}
-                            
+
                             {status.isReady && (
                                 <button
                                     onClick={handleLogout}
@@ -259,10 +269,10 @@ const WhatsAppManager: React.FC = () => {
                                     Scan QR Code to Connect WhatsApp
                                 </h3>
                                 <p className="text-gray-300 mb-6">
-                                    Open WhatsApp on your phone, go to Settings → Linked Devices → Link a Device, 
+                                    Open WhatsApp on your phone, go to Settings → Linked Devices → Link a Device,
                                     and scan this QR code.
                                 </p>
-                                
+
                                 {isLoading ? (
                                     <div className="flex justify-center items-center h-64">
                                         <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
@@ -270,9 +280,9 @@ const WhatsAppManager: React.FC = () => {
                                 ) : qrCode ? (
                                     <div className="flex justify-center">
                                         <div className="bg-white p-4 rounded-lg">
-                                            <img 
-                                                src={qrCode} 
-                                                alt="WhatsApp QR Code" 
+                                            <img
+                                                src={qrCode}
+                                                alt="WhatsApp QR Code"
                                                 className="w-64 h-64 object-contain"
                                             />
                                         </div>
@@ -282,7 +292,7 @@ const WhatsAppManager: React.FC = () => {
                                         <p>QR Code not available</p>
                                     </div>
                                 )}
-                                
+
                                 {status.qrTimestamp && (
                                     <p className="text-sm text-gray-400 mt-4">
                                         QR Code generated: {new Date(status.qrTimestamp).toLocaleString()}
@@ -308,7 +318,7 @@ const WhatsAppManager: React.FC = () => {
                     )}
 
                     {/* Disconnected Status */}
-                    {status.connectionState === 'disconnected' && !status.hasQr && !status.isInitializing && (
+                    {(status.connectionState === 'disconnected' || status.connectionState === 'close') && !status.hasQr && !status.isInitializing && (
                         <div className="bg-red-900 border border-red-700 rounded-lg p-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center">
