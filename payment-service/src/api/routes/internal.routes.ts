@@ -36,6 +36,7 @@ statsRouter.get('/user/:userId/total-withdrawals', (req, res, next) => paymentCo
 // General Admin Stats (Consider moving if this file becomes too large)
 statsRouter.get('/transactions', (req, res, next) => paymentController.adminGetTotalTransactionsCount(req, res, next));
 statsRouter.get('/total-withdrawals', (req, res, next) => paymentController.adminGetTotalWithdrawals(req, res, next));
+statsRouter.get('/total-deposits', (req, res, next) => paymentController.adminGetTotalDeposits(req, res, next));
 statsRouter.get('/total-revenue', (req, res, next) => paymentController.adminGetTotalRevenue(req, res, next));
 statsRouter.get('/monthly-revenue', (req, res, next) => paymentController.adminGetMonthlyRevenue(req, res, next));
 statsRouter.get('/activity-overview', (req, res, next) => paymentController.adminGetActivityOverview(req, res, next));

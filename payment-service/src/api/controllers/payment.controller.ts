@@ -499,6 +499,22 @@ export class PaymentController {
     }
 
     /**
+     * [ADMIN] Get Total Deposits
+     * @route GET /api/payments/admin/stats/total-deposits
+     * @access Admin
+     */
+    public adminGetTotalDeposits = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        log.info('Admin request: Get total deposits');
+        try {
+            const totalDeposits = await paymentService.getTotalDepositsAmount();
+            return res.status(200).json({ success: true, data: totalDeposits });
+        } catch (error) {
+            log.error('Error in adminGetTotalDeposits:', error);
+            next(error);
+        }
+    }
+
+    /**
      * [ADMIN] Get Total Revenue
      * @route GET /api/payments/admin/stats/total-revenue
      * @access Admin

@@ -2211,10 +2211,10 @@ class PaymentService {
 
     /**
      * [ADMIN] Get total amount for completed withdrawals.
-     * Updated to handle data inconsistencies and provide accurate calculations.
+     * All amounts are stored as positive values regardless of transaction type.
      */
     async getTotalWithdrawalsAmount(): Promise<number> {
-        log.info('Calculating total completed withdrawal amount with improved accuracy');
+        log.info('Calculating total completed withdrawal amount');
         try {
             const result = await TransactionModel.aggregate([
                 {
@@ -2225,34 +2225,10 @@ class PaymentService {
                     }
                 },
                 {
-                    $project: {
-                        // Normalize amounts: withdrawals should be negative, but handle edge cases
-                        normalizedAmount: {
-                            $cond: {
-                                if: { $gt: ['$amount', 0] },
-                                then: { $multiply: ['$amount', -1] }, // Convert positive to negative
-                                else: '$amount' // Keep negative as is
-                            }
-                        },
-                        amount: 1,
-                        transactionId: 1,
-                        createdAt: 1
-                    }
-                },
-                {
                     $group: {
                         _id: null,
-                        totalAmount: { $sum: '$normalizedAmount' },
-                        count: { $sum: 1 },
-                        positiveAmounts: {
-                            $sum: {
-                                $cond: {
-                                    if: { $gt: ['$amount', 0] },
-                                    then: 1,
-                                    else: 0
-                                }
-                            }
-                        }
+                        totalAmount: { $sum: '$amount' }, // Sum amounts directly (all are positive)
+                        count: { $sum: 1 }
                     }
                 }
             ]).exec();
@@ -2263,15 +2239,10 @@ class PaymentService {
             }
 
             const data = result[0];
-            const total = Math.abs(data.totalAmount); // Take absolute value since withdrawals should be negative
+            const total = data.totalAmount;
             const count = data.count;
-            const positiveAmountCount = data.positiveAmounts;
 
             log.info(`Total withdrawal calculation: ${count} transactions, ${total} F total`);
-
-            if (positiveAmountCount > 0) {
-                log.warn(`Found ${positiveAmountCount} withdrawal transactions with positive amounts. These may indicate data issues.`);
-            }
 
             // Additional validation: check if result seems unreasonable
             if (total > 100000000) { // > 100M F seems unreasonable
@@ -2282,10 +2253,7 @@ class PaymentService {
                     type: TransactionType.WITHDRAWAL,
                     status: TransactionStatus.COMPLETED,
                     deleted: { $ne: true },
-                    $or: [
-                        { amount: { $gt: 1000000 } },
-                        { amount: { $lt: -1000000 } }
-                    ]
+                    amount: { $gt: 1000000 } // Look for amounts > 1M F
                 }).select('transactionId amount createdAt').limit(5).lean();
 
                 if (largeTxs.length > 0) {
@@ -2301,6 +2269,48 @@ class PaymentService {
         } catch (error) {
             log.error('Error calculating total withdrawal amount:', error);
             throw new AppError('Failed to calculate total withdrawal amount', 500);
+        }
+    }
+
+    /**
+     * [ADMIN] Get total amount for completed deposits.
+     * All amounts are stored as positive values regardless of transaction type.
+     */
+    async getTotalDepositsAmount(): Promise<number> {
+        log.info('Calculating total completed deposit amount');
+        try {
+            const result = await TransactionModel.aggregate([
+                {
+                    $match: {
+                        type: TransactionType.DEPOSIT,
+                        status: TransactionStatus.COMPLETED,
+                        deleted: { $ne: true } // Exclude soft-deleted
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalAmount: { $sum: '$amount' }, // Sum amounts directly (all are positive)
+                        count: { $sum: 1 }
+                    }
+                }
+            ]).exec();
+
+            if (result.length === 0) {
+                log.info('No completed deposits found');
+                return 0;
+            }
+
+            const data = result[0];
+            const total = data.totalAmount;
+            const count = data.count;
+
+            log.info(`Total deposit calculation: ${count} transactions, ${total} F total`);
+
+            return total;
+        } catch (error) {
+            log.error('Error calculating total deposit amount:', error);
+            throw new AppError('Failed to calculate total deposit amount', 500);
         }
     }
 

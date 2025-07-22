@@ -23,7 +23,7 @@ import { UserDetails } from '../database/repositories/user.repository';
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
 import { AppError } from '../utils/errors';
-import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName } from '../utils/phone.utils';
+import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes } from '../utils/phone.utils';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -101,7 +101,8 @@ interface MonthlyCount {
 interface AdminDashboardData {
     adminBalance: number;
     count: number; // Total Users
-    subCount: number; // Total Active Subscribers
+    classiqueSubCount: number; // Total Active Classique Subscribers
+    cibleSubCount: number; // Total Active Cible Subscribers
     // Removed raw date arrays:
     // allUsersDates: Date[];
     // classiqueSubStartDates: Date[];
@@ -113,7 +114,9 @@ interface AdminDashboardData {
 
     totalTransactions: number;
     totalWithdrawals: number;
+    totalDeposits: number; // NEW: Total deposit transactions
     totalRevenue: number;
+    totalCountryBalances: number; // NEW: Sum of all user balances across countries
     monthlyRevenue: any[]; // Define specific type if known from paymentService
     balancesByCountry: { [countryCode: string]: number }; // Renamed from 'balances'
     activityOverview: any[]; // Define specific type if known from paymentService
@@ -2538,30 +2541,6 @@ export class UserService {
         try {
             log.info('Fetching admin dashboard data...');
 
-            const countryCodePrefixes: { [key: string]: string[] } = {
-                'DZ': ['+213'], 'AO': ['+244'], 'BJ': ['+229'], 'BW': ['+267'],
-                'BF': ['+226'], 'BI': ['+257'], 'CV': ['+238'], 'CM': ['+237'],
-                'CF': ['+236'], 'TD': ['+235'], 'KM': ['+269'], 'CD': ['+243'],
-                'CG': ['+242'], 'CI': ['+225'], 'DJ': ['+20'], 'EG': ['+240'],
-                'GQ': ['+291'], 'ER': ['+268'], 'SZ': ['+251'], 'ET': ['+241'],
-                'GA': ['+220'], 'GM': ['+233'], 'GH': ['+224'], 'GN': ['+245'],
-                'GW': ['+254'], 'KE': ['+266'], 'LS': ['+231'], 'LR': ['+218'],
-                'LY': ['+261'], 'MG': ['+265'], 'MW': ['+223'], 'ML': ['+222'],
-                'MR': ['+230'], 'MU': ['+212'], 'MA': ['+258'], 'MZ': ['+264'],
-                'NA': ['+227'], 'NE': ['+234'], 'NG': ['+250'], 'RW': ['+239'],
-                'ST': ['+221'], 'SN': ['+248'], 'SC': ['+232'], 'SL': ['+252'],
-                'SO': ['+27'], 'ZA': ['+211'], 'SS': ['+249'], 'SD': ['+255'],
-                'TZ': ['+228'], 'TG': ['+216'], 'TN': ['+256'], 'UG': ['+260'],
-                'ZM': ['+263'], 'ZW': ['+225']
-            };
-
-            const prefixToCountryCode: { [key: string]: string } = {};
-            for (const country in countryCodePrefixes) {
-                countryCodePrefixes[country].forEach(prefix => {
-                    prefixToCountryCode[prefix] = country;
-                });
-            }
-
             log.info('Step 1: Fetching all users and other dashboard data');
 
 
@@ -2569,7 +2548,8 @@ export class UserService {
             const [
                 // Local Data
                 allUsers, // Still fetch for total count and balance by country
-                totalSubCount, // Still count active subs
+                classiqueSubCount, // Count active Classique subs
+                cibleSubCount, // Count active Cible subs
 
                 // NEW: Aggregation for monthly user registrations
                 monthlyAllUsersAgg,
@@ -2582,6 +2562,7 @@ export class UserService {
                 adminBalance, // This will now come from settingsService
                 totalTransactions,
                 totalWithdrawals,
+                totalDeposits, // NEW: Total deposit transactions
                 totalRevenue,
                 monthlyRevenue,
                 activityOverviewData,
@@ -2591,7 +2572,14 @@ export class UserService {
                     .select('createdAt balance country phoneNumber _id')
                     .lean()
                     .exec(),
-                SubscriptionModel.countDocuments({ status: SubscriptionStatus.ACTIVE }).exec(),
+                SubscriptionModel.countDocuments({
+                    status: SubscriptionStatus.ACTIVE,
+                    subscriptionType: SubscriptionType.CLASSIQUE
+                }).exec(),
+                SubscriptionModel.countDocuments({
+                    status: SubscriptionStatus.ACTIVE,
+                    subscriptionType: SubscriptionType.CIBLE
+                }).exec(),
 
                 // Aggregation for all monthly user registrations
                 UserModel.aggregate([
@@ -2681,6 +2669,7 @@ export class UserService {
                 settingsService.getAdminBalance(), // NEW: Fetch admin balance from settings-service
                 paymentService.getTotalTransactions(),
                 paymentService.getTotalWithdrawals(),
+                paymentService.getTotalDepositsAmount(), // NEW: Fetch total deposits
                 paymentService.getTotalRevenue(),
                 paymentService.getMonthlyRevenue(),
                 paymentService.getActivityOverview(),
@@ -2700,22 +2689,29 @@ export class UserService {
 
             // Calculate Balances by Country with improved normalization
             const balancesByCountry: { [countryCode: string]: number } = {};
+            let totalCountryBalances = 0;
+
             allUsers.forEach((user: Pick<FlattenMaps<IUser>, '_id' | 'balance' | 'country' | 'phoneNumber'>) => {
                 // Use the new country normalization utility
                 const countryCode = determineUserCountryCode(user.country, user.phoneNumber);
-                balancesByCountry[countryCode] = (balancesByCountry[countryCode] || 0) + (user.balance || 0);
+                const userBalance = user.balance || 0;
+                balancesByCountry[countryCode] = (balancesByCountry[countryCode] || 0) + userBalance;
+                totalCountryBalances += userBalance;
             });
 
             const dashboardData: AdminDashboardData = {
                 adminBalance,
                 count: totalUsersCount,
-                subCount: totalSubCount,
+                classiqueSubCount: classiqueSubCount,
+                cibleSubCount: cibleSubCount,
                 monthlyAllUsers: monthlyAllUsersAgg,
                 monthlyClassiqueSubs: monthlyClassiqueSubsAgg,
                 monthlyCibleSubs: monthlyCibleSubsAgg,
                 totalTransactions,
                 totalWithdrawals,
+                totalDeposits,
                 totalRevenue,
+                totalCountryBalances,
                 monthlyRevenue: monthlyRevenue,
                 balancesByCountry: balancesByCountry,
                 activityOverview: activityOverviewData

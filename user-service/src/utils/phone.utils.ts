@@ -3,7 +3,7 @@ import logger from './logger';
 const log = logger.getLogger('PhoneUtils');
 
 // Map of country ISO codes to their international dialing codes
-const countryDialingCodes: { [key: string]: string } = {
+export const countryDialingCodes: { [key: string]: string } = {
     CM: '237', BJ: '229', CG: '242', GH: '233',
     CI: '225', SN: '221', TG: '228', BF: '226',
     GN: '224', ML: '223', NE: '227', GA: '241',

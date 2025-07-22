@@ -48,13 +48,16 @@ export interface ActivityOverviewData {
 interface AdminDashboardData {
   adminBalance: number;
   count: number;
-  subCount: number;
+  classiqueSubCount: number; // Updated: Separate Classique subscription count
+  cibleSubCount: number; // Updated: Separate Cible subscription count
   monthlyAllUsers: MonthlyCountData[];
   monthlyClassiqueSubs: MonthlyCountData[];
   monthlyCibleSubs: MonthlyCountData[];
   totalTransactions: number;
   totalWithdrawals: number;
+  totalDeposits: number; // NEW: Total deposit transactions
   totalRevenue: number;
+  totalCountryBalances: number; // NEW: Sum of all user balances across countries
   monthlyRevenue: MonthlyRevenueData[];
   balancesByCountry: { [countryCode: string]: number };
   activityOverview: ActivityOverviewData[];
@@ -120,15 +123,21 @@ const OverViewPage = () => {
           setSelectedCountryCode(Object.keys(actualDashboardData.balancesByCountry)[0]);
         }
 
-        // Now directly use the pre-aggregated monthly data from the <backend></backend>
+        // Now directly use the pre-aggregated monthly data from the backend
         const formattedUsersData = actualDashboardData.monthlyAllUsers.map((allUserMonth: MonthlyCountData) => {
           const classiqueMonth = actualDashboardData.monthlyClassiqueSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
           const cibleMonth = actualDashboardData.monthlyCibleSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
+
+          // Convert month format from "2024-02" to "Feb 24"
+          const [year, month] = allUserMonth.month.split('-');
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const monthLabel = `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`;
+
           return {
-            month: allUserMonth.month,
-            allUsers: allUserMonth.count,
-            classique: classiqueMonth?.count || 0,
-            cible: cibleMonth?.count || 0,
+            monthLabel: monthLabel, // Chart expects "monthLabel"
+            Users: allUserMonth.count, // Chart expects "Users" (capital U)
+            Classique: classiqueMonth?.count || 0, // Chart expects "Classique" (capital C)
+            Cible: cibleMonth?.count || 0, // Chart expects "Cible" (capital C)
           };
         });
         setMonthlyData(formattedUsersData);
@@ -185,10 +194,16 @@ const OverViewPage = () => {
             color="#ec4899"
           />
           <StatCard
-            name="Total abonnés"
+            name="Abonnés Classique"
             icon={UserRoundCheck}
-            value={dashboardData?.subCount || "N/A"}
+            value={dashboardData?.classiqueSubCount || "N/A"}
             color="#f59e0b"
+          />
+          <StatCard
+            name="Abonnés Cible"
+            icon={UserRoundCheck}
+            value={dashboardData?.cibleSubCount || "N/A"}
+            color="#8b5cf6"
           />
           <StatCard
             name="Revenu Total"
@@ -207,6 +222,18 @@ const OverViewPage = () => {
             icon={ListChecks}
             value={dashboardData?.totalTransactions || "N/A"}
             color="#10b981"
+          />
+          <StatCard
+            name="Total Dépôts"
+            icon={BadgeSwissFranc}
+            value={dashboardData?.totalDeposits != null ? `${Math.round(dashboardData.totalDeposits).toLocaleString('en-US')} F` : "N/A"}
+            color="#16a34a"
+          />
+          <StatCard
+            name="Soldes Totaux"
+            icon={BadgeSwissFranc}
+            value={dashboardData?.totalCountryBalances != null ? `${Math.round(dashboardData.totalCountryBalances).toLocaleString('en-US')} F` : "N/A"}
+            color="#3b82f6"
           />
 
           {/* DYNAMIC COUNTRY BALANCE DISPLAY */}
@@ -275,10 +302,11 @@ const OverViewPage = () => {
                   <ComparisonChart
                     title="Utilisateurs vs Abonnés"
                     data={[
-                      { name: "Autres Utilisateurs", value: dashboardData.count - dashboardData.subCount },
-                      { name: "Abonnés Actifs", value: dashboardData.subCount },
+                      { name: "Autres Utilisateurs", value: dashboardData.count - (dashboardData.classiqueSubCount + dashboardData.cibleSubCount) },
+                      { name: "Abonnés Classique", value: dashboardData.classiqueSubCount },
+                      { name: "Abonnés Cible", value: dashboardData.cibleSubCount },
                     ]}
-                    colors={['#6b7280', '#f59e0b']} // gray, amber
+                    colors={['#6b7280', '#f59e0b', '#8b5cf6']} // gray, amber, purple
                   />
                 </div>
 

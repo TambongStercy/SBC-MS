@@ -267,6 +267,32 @@ class PaymentServiceClient {
     }
 
     /**
+     * Fetches the total deposits amount from the payment service.
+     * Calls endpoint: GET /api/internal/stats/total-deposits
+     */
+    async getTotalDepositsAmount(): Promise<number> {
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/total-deposits`);
+        try {
+            // Expect ApiResponse with data: number
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-deposits');
+            if (response.data.success && typeof response.data.data === 'number') {
+                this.log.info(`Successfully fetched total deposits: ${response.data.data}`);
+                return response.data.data;
+            } else {
+                const errMsg = response.data.message || `Payment service responded with failure or unexpected structure for total deposits. Data: ${JSON.stringify(response.data.data)}`;
+                this.log.warn(errMsg);
+                throw new AppError(errMsg, response.status);
+            }
+        } catch (error: any) {
+            this.log.error(`Error calling payment service /internal/stats/total-deposits: ${error.message}`, error);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(`Failed to retrieve total deposits from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
+            }
+            throw new AppError(`Failed to retrieve total deposits from payment service.`, 500);
+        }
+    }
+
+    /**
      * Fetches the total revenue amount from the payment service.
      * Calls endpoint: GET /api/internal/stats/total-revenue
      */
