@@ -1629,15 +1629,14 @@ class PaymentService {
     }
 
     private selectGateway(countryCode: string): PaymentGateway {
-        // Countries that use CinetPay for payments (including Togo)
+        // Countries that use CinetPay for payments and withdrawals
         const cinetpaySupportedCountries = [
-            'BF', // Burkina Faso
+            'BF', // Burkina Faso - Added for withdrawals as per client request
             'ML', // Mali
             'NE', // Niger
-            // 'BJ', // Bénin - Now using FeexPay for both payments and withdrawals
-            'CI', // Côte d'Ivoire
+            'CI', // Côte d'Ivoire - Added for withdrawals as per client request
             'CM', // Cameroun
-            'SN', // Sénégal
+            'SN', // Sénégal - Added for withdrawals as per client request
             'TG'  // Togo (payments only; withdrawals use FeexPay)
         ];
 
@@ -1660,12 +1659,13 @@ class PaymentService {
     private getFeexpayOperatorsForCountry(countryCode: string): string[] | undefined {
         const feexpayOperators: Record<string, string[]> = {
             'BJ': ['mtn', 'moov', 'celtiis_bj'],
-            'CI': ['moov_ci', 'mtn_ci', 'orange_ci', 'wave_ci'],
-            'SN': ['orange_sn', 'free_sn'],
             'CG': ['mtn_cg'],
             'TG': ['togocom_tg', 'moov_tg'],
-            'BF': ['moov_bf', 'orange_bf'], // Added Burkina Faso
-            // 'CM': ['mtn_cm', 'orange_cm'] // Cameroon handled by CinetPay now
+            'CD': ['vodacom_mpesa_cod', 'airtel_cod', 'orange_cod'],
+            'KE': ['mpesa_ken'],
+            'NG': ['mtn_momo_nga', 'airtel_nga'],
+            'GA': ['airtel_gab']
+            // Note: CI, SN, BF now handled by CinetPay for withdrawals
         };
         return feexpayOperators[countryCode];
     }

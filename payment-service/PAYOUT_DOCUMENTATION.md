@@ -17,17 +17,30 @@ The SBC Payout System provides comprehensive money transfer capabilities using C
 
 ### 📱 Valid momoOperator Values
 
-| Country | Country Code | Currency | momoOperator Values | Payment Methods |
-|---------|--------------|----------|-------------------|-----------------|
-| **Cameroun** | CM | XAF | `MTN`, `ORANGE`, `mtn`, `orange` | Auto-detected |
-| **Côte d'Ivoire** | CI | XOF | `ORANGE`, `MTN`, `MOOV`, `WAVE` | OM, MOMO, FLOOZ, WAVECI |
-| **Sénégal** | SN | XOF | `ORANGE`, `FREE`, `WAVE` | OMSN, FREESN, WAVESN |
-| **Togo** | TG | XOF | `TMONEY`, `FLOOZ` | TMONEYTG, FLOOZTG |
-| **Benin** | BJ | XOF | `MTN`, `MOOV` | MTNBJ, MOOVBJ |
-| **Mali** | ML | XOF | `ORANGE`, `MOOV` | OMML, MOOVML |
-| **Burkina Faso** | BF | XOF | `ORANGE`, `MOOV` | OMBF, MOOVBF |
-| **Guinea** | GN | GNF | `ORANGE`, `MTN` | OMGN, MTNGN |
-| **Congo (RDC)** | CD | CDF | `ORANGE`, `MPESA`, `AIRTEL` | OMCD, MPESACD, AIRTELCD |
+| Country | Country Code | Currency | momoOperator Values | Payment Gateway | Withdrawal Gateway |
+|---------|--------------|----------|--------------------|-----------------|--------------------|
+| **Cameroun** | CM | XAF | `MTN`, `ORANGE`, `mtn`, `orange` | CinetPay | CinetPay |
+| **Côte d'Ivoire** | CI | XOF | `ORANGE`, `MTN`, `MOOV`, `WAVE` | CinetPay | CinetPay ✅ |
+| **Sénégal** | SN | XOF | `ORANGE`, `FREE`, `WAVE` | CinetPay | CinetPay ✅ |
+| **Burkina Faso** | BF | XOF | `ORANGE`, `MOOV` | CinetPay | CinetPay ✅ |
+| **Togo** | TG | XOF | `TMONEY`, `FLOOZ` | CinetPay | FeexPay* |
+| **Benin** | BJ | XOF | `MTN`, `MOOV` | FeexPay | FeexPay |
+| **Mali** | ML | XOF | `ORANGE`, `MOOV` | CinetPay | CinetPay |
+| **Guinea** | GN | GNF | `ORANGE`, `MTN` | FeexPay | FeexPay |
+| **Congo (RDC)** | CD | CDF | `ORANGE`, `MPESA`, `AIRTEL` | FeexPay | FeexPay |
+
+*Note: Togo uses CinetPay for payments but FeexPay for withdrawals due to better withdrawal support.*
+
+### 🔄 Gateway Routing Logic
+
+**CinetPay Countries (Payments & Withdrawals):**
+- Cameroun (CM), Côte d'Ivoire (CI), Sénégal (SN), Burkina Faso (BF), Mali (ML), Niger (NE)
+
+**FeexPay Countries (Payments & Withdrawals):**
+- Benin (BJ), Congo Brazzaville (CG), Guinea (GN), Gabon (GA), Congo DRC (CD), Kenya (KE), Nigeria (NG)
+
+**Special Case:**
+- **Togo (TG)**: CinetPay for payments, FeexPay for withdrawals
 
 ### 📞 Valid momoNumber Format
 

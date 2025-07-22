@@ -78,50 +78,41 @@ export class FeexPayPayoutService {
 
     // Map momoOperator slugs to FeexPay payout endpoints and their network parameter value
     // This mapping is crucial for routing to the correct FeexPay API endpoint
+    // Updated based on official FeexPay Payout API documentation
     private readonly feexPayPayoutEndpoints: Record<string, {
         endpoint: string;
         networkParam: string; // The 'network' parameter expected by FeexPay
         minAmount: number; // Minimum amount for this endpoint/network
     }> = {
-            // Benin
-            'MTN_MOMO_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MTN', minAmount: 50 }, // For general MTN/MOOV global endpoint
+            // Benin - Using global endpoint for MTN and MOOV
+            'MTN_MOMO_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MTN', minAmount: 50 },
             'MOOV_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MOOV', minAmount: 50 },
-            // Removed CELTIIS_BJ if it's not in your correspondents map or not supported by FeexPay's global endpoint
-            // Côte d'Ivoire
-            'MTN_MOMO_CIV': { endpoint: '/payouts/public/mtn_ci', networkParam: 'MTN CI', minAmount: 100 },
-            'ORANGE_CIV': { endpoint: '/payouts/public/orange_ci', networkParam: 'ORANGE CI', minAmount: 100 },
-            // Removed MOOV_CI and WAVE_CI if not supported or not in correspondents, replaced with the ones from correspondents map
-            // Senegal
-            'ORANGE_SEN': { endpoint: '/payouts/public/orange_sn', networkParam: 'ORANGE SN', minAmount: 100 },
-            'FREE_SEN': { endpoint: '/payouts/public/free_sn', networkParam: 'FREE SN', minAmount: 100 },
+            
+            // Togo - Using dedicated Togo endpoint as per documentation
+            'TOGOCOM_TG': { endpoint: '/payouts/public/togo', networkParam: 'TOGOCOM TG', minAmount: 100 },
+            'MOOV_TG': { endpoint: '/payouts/public/togo', networkParam: 'MOOV TG', minAmount: 100 },
+            
             // Congo Brazzaville (Republic of the Congo)
             'MTN_MOMO_COG': { endpoint: '/payouts/public/mtn_cg', networkParam: 'MTN CG', minAmount: 100 },
             'AIRTEL_COG': { endpoint: '/payouts/public/airtel_cg', networkParam: 'AIRTEL CG', minAmount: 100 },
-            // Togo - Keeping as is assuming FeexPay still uses these
-            'TOGOCOM_TG': { endpoint: '/payouts/public/togo', networkParam: 'TOGOCOM TG', minAmount: 100 },
-            'MOOV_TG': { endpoint: '/payouts/public/togo', networkParam: 'MOOV TG', minAmount: 100 },
-            // Burkina Faso
-            'MOOV_BFA': { endpoint: '/payouts/public/moov_bf', networkParam: 'MOOV BF', minAmount: 100 },
-            'ORANGE_BFA': { endpoint: '/payouts/public/orange_bf', networkParam: 'ORANGE BF', minAmount: 100 },
-            // New additions based on correspondents map
-            // Cameroon (CM) - Assuming CinetPay is used, but adding if FeexPay supports directly
-            // 'MTN_MOMO_CMR': { endpoint: '/payouts/public/mtn_cm', networkParam: 'MTN CM', minAmount: 100 },
-            // 'ORANGE_CMR': { endpoint: '/payouts/public/orange_cm', networkParam: 'ORANGE CM', minAmount: 100 },
-            // DRC (CD)
+            
+            // DRC (Democratic Republic of Congo)
             'VODACOM_MPESA_COD': { endpoint: '/payouts/public/vodacom_cd', networkParam: 'VODACOM CD', minAmount: 100 },
             'AIRTEL_COD': { endpoint: '/payouts/public/airtel_cd', networkParam: 'AIRTEL CD', minAmount: 100 },
             'ORANGE_COD': { endpoint: '/payouts/public/orange_cd', networkParam: 'ORANGE CD', minAmount: 100 },
-            // Kenya (KE)
+            
+            // Kenya
             'MPESA_KEN': { endpoint: '/payouts/public/mpesa_ke', networkParam: 'MPESA KE', minAmount: 100 },
-            // Nigeria (NG)
+            
+            // Nigeria
             'MTN_MOMO_NGA': { endpoint: '/payouts/public/mtn_ng', networkParam: 'MTN NG', minAmount: 100 },
             'AIRTEL_NGA': { endpoint: '/payouts/public/airtel_ng', networkParam: 'AIRTEL NG', minAmount: 100 },
-            // Gabon (GA)
+            
+            // Gabon
             'AIRTEL_GAB': { endpoint: '/payouts/public/airtel_ga', networkParam: 'AIRTEL GA', minAmount: 100 },
-            // Guinea (GN), Mali (ML), Niger (NE) - If FeexPay supports, add similarly
-            // 'ORANGE_GN': { endpoint: '/payouts/public/orange_gn', networkParam: 'ORANGE GN', minAmount: 100 },
-            // 'MOOV_ML': { endpoint: '/payouts/public/moov_ml', networkParam: 'MOOV ML', minAmount: 100 },
-            // 'ORANGE_NE': { endpoint: '/payouts/public/orange_ne', networkParam: 'ORANGE NE', minAmount: 100 },
+            
+            // Note: Côte d'Ivoire, Senegal, and Burkina Faso should now use CinetPay for withdrawals
+            // Removing them from FeexPay endpoints to avoid confusion
         };
 
     private readonly countryDialingCodes: Record<string, string> = {
