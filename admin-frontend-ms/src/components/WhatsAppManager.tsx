@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Smartphone, QrCode, LogOut, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, Smartphone, QrCode, LogOut, CheckCircle, AlertCircle, RefreshCw, Cloud, Settings, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getWhatsAppStatus, getWhatsAppQr, logoutWhatsApp, forceReconnectWhatsApp, WhatsAppStatus } from '../api/whatsapp';
 
@@ -23,8 +23,17 @@ const WhatsAppManager: React.FC = () => {
         }
     }, []);
 
+    // Helper function to determine implementation type
+    const isBaileyImplementation = (status: WhatsAppStatus | null): boolean => {
+        return status !== null && (status.hasQr !== undefined || status.qrTimestamp !== undefined || status.reconnectAttempts !== undefined);
+    };
+
+    const isCloudApiImplementation = (status: WhatsAppStatus | null): boolean => {
+        return status !== null && (status.implementation === 'WhatsApp Cloud API' || status.lastHealthCheck !== undefined);
+    };
+
     const fetchQrCode = useCallback(async () => {
-        if (!status?.hasQr) return;
+        if (!status?.hasQr || !isBaileyImplementation(status)) return;
 
         setIsLoading(true);
         try {
@@ -37,7 +46,7 @@ const WhatsAppManager: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [status?.hasQr]);
+    }, [status?.hasQr, status]);
 
     const handleLogout = async () => {
         setIsLoggingOut(true);
@@ -94,19 +103,29 @@ const WhatsAppManager: React.FC = () => {
         }
     }, [status?.hasQr, qrCode, fetchQrCode]);
 
-    // Dynamic polling based on connection state
+    // Dynamic polling based on connection state and implementation
     useEffect(() => {
         if (!status) return;
 
-        // Adjust polling interval based on connection state
+        // Adjust polling interval based on implementation and connection state
         let newInterval = 5000; // Default 5 seconds
 
-        if (status.isReady) {
-            newInterval = 10000; // 10 seconds when connected
-        } else if (status.isInitializing || status.reconnectAttempts > 0) {
-            newInterval = 3000; // 3 seconds when initializing or reconnecting
-        } else if (status.connectionState === 'waiting_for_scan') {
-            newInterval = 8000; // 8 seconds when waiting for QR scan
+        if (isCloudApiImplementation(status)) {
+            // Cloud API polling - less frequent since it's more stable
+            if (status.isReady) {
+                newInterval = 15000; // 15 seconds when connected
+            } else {
+                newInterval = 8000; // 8 seconds when checking connectivity
+            }
+        } else if (isBaileyImplementation(status)) {
+            // Bailey polling - more frequent due to connection instability
+            if (status.isReady) {
+                newInterval = 10000; // 10 seconds when connected
+            } else if (status.isInitializing || (status.reconnectAttempts && status.reconnectAttempts > 0)) {
+                newInterval = 3000; // 3 seconds when initializing or reconnecting
+            } else if (status.connectionState === 'waiting_for_scan') {
+                newInterval = 5000; // 5 seconds when waiting for QR scan
+            }
         }
 
         if (newInterval !== pollInterval) {
@@ -192,8 +211,19 @@ const WhatsAppManager: React.FC = () => {
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
-                    <Smartphone className="h-6 w-6 text-green-400" />
-                    <h2 className="text-xl font-semibold text-white">WhatsApp Management</h2>
+                    {isCloudApiImplementation(status) ? (
+                        <Cloud className="h-6 w-6 text-blue-400" />
+                    ) : (
+                        <Smartphone className="h-6 w-6 text-green-400" />
+                    )}
+                    <h2 className="text-xl font-semibold text-white">
+                        WhatsApp Management
+                        {status && (
+                            <span className="text-sm font-normal text-gray-400 ml-2">
+                                ({isCloudApiImplementation(status) ? 'Cloud API' : 'Bailey'})
+                            </span>
+                        )}
+                    </h2>
                 </div>
                 <button
                     onClick={handleRefresh}
@@ -207,6 +237,43 @@ const WhatsAppManager: React.FC = () => {
 
             {status ? (
                 <div className="space-y-6">
+                    {/* Implementation Type Banner */}
+                    {isCloudApiImplementation(status) ? (
+                        <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
+                            <div className="flex items-center">
+                                <Cloud className="h-5 w-5 text-blue-400 mr-3" />
+                                <div className="flex-1">
+                                    <p className="text-blue-100 font-medium">WhatsApp Cloud API</p>
+                                    <p className="text-blue-200 text-sm">
+                                        Using official WhatsApp Business API. No QR code scanning required.
+                                    </p>
+                                </div>
+                                <a
+                                    href="https://business.facebook.com/wa/manage/"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                                >
+                                    <Settings className="h-4 w-4 mr-1" />
+                                    Business Manager
+                                    <ExternalLink className="h-3 w-3 ml-1" />
+                                </a>
+                            </div>
+                        </div>
+                    ) : isBaileyImplementation(status) && (
+                        <div className="bg-yellow-900 border border-yellow-700 rounded-lg p-4">
+                            <div className="flex items-center">
+                                <QrCode className="h-5 w-5 text-yellow-400 mr-3" />
+                                <div>
+                                    <p className="text-yellow-100 font-medium">Bailey (WhatsApp Web)</p>
+                                    <p className="text-yellow-200 text-sm">
+                                        Legacy implementation using WhatsApp Web protocol. Requires QR code scanning.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Status Display */}
                     <div className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
                         <div className="flex items-center space-x-3">
@@ -219,7 +286,10 @@ const WhatsAppManager: React.FC = () => {
                                     {lastUpdated && (
                                         <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
                                     )}
-                                    {status.reconnectAttempts > 0 && (
+                                    {status.lastHealthCheck && isCloudApiImplementation(status) && (
+                                        <span>Last health check: {new Date(status.lastHealthCheck).toLocaleTimeString()}</span>
+                                    )}
+                                    {status.reconnectAttempts !== undefined && status.reconnectAttempts > 0 && (
                                         <span className="text-yellow-400">
                                             Reconnect attempts: {status.reconnectAttempts}/5
                                         </span>
@@ -229,40 +299,52 @@ const WhatsAppManager: React.FC = () => {
                         </div>
 
                         <div className="flex space-x-2">
-                            {!status.isReady && (status.connectionState === 'disconnected' || status.connectionState === 'close') && (
-                                <button
-                                    onClick={handleForceReconnect}
-                                    disabled={isReconnecting || status.isInitializing}
-                                    className="inline-flex items-center px-3 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-400 bg-transparent hover:bg-blue-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    {isReconnecting ? (
-                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    ) : (
-                                        <RefreshCw className="h-4 w-4 mr-2" />
+                            {/* Bailey-specific actions */}
+                            {isBaileyImplementation(status) && (
+                                <>
+                                    {!status.isReady && (status.connectionState === 'disconnected' || status.connectionState === 'close') && (
+                                        <button
+                                            onClick={handleForceReconnect}
+                                            disabled={isReconnecting || status.isInitializing}
+                                            className="inline-flex items-center px-3 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-400 bg-transparent hover:bg-blue-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            {isReconnecting ? (
+                                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                            ) : (
+                                                <RefreshCw className="h-4 w-4 mr-2" />
+                                            )}
+                                            Force Reconnect
+                                        </button>
                                     )}
-                                    Force Reconnect
-                                </button>
+
+                                    {status.isReady && (
+                                        <button
+                                            onClick={handleLogout}
+                                            disabled={isLoggingOut}
+                                            className="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-transparent hover:bg-red-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            {isLoggingOut ? (
+                                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                            ) : (
+                                                <LogOut className="h-4 w-4 mr-2" />
+                                            )}
+                                            Logout WhatsApp
+                                        </button>
+                                    )}
+                                </>
                             )}
 
-                            {status.isReady && (
-                                <button
-                                    onClick={handleLogout}
-                                    disabled={isLoggingOut}
-                                    className="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-transparent hover:bg-red-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    {isLoggingOut ? (
-                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    ) : (
-                                        <LogOut className="h-4 w-4 mr-2" />
-                                    )}
-                                    Logout WhatsApp
-                                </button>
+                            {/* Cloud API info - no logout/reconnect needed */}
+                            {isCloudApiImplementation(status) && (
+                                <div className="text-sm text-gray-400 italic">
+                                    Configuration managed via Facebook Business Manager
+                                </div>
                             )}
                         </div>
                     </div>
 
-                    {/* QR Code Section */}
-                    {status.hasQr && status.connectionState === 'waiting_for_scan' && (
+                    {/* QR Code Section - Only for Bailey */}
+                    {isBaileyImplementation(status) && status.hasQr && status.connectionState === 'waiting_for_scan' && (
                         <div className="bg-gray-700 rounded-lg p-6">
                             <div className="text-center">
                                 <h3 className="text-lg font-medium text-white mb-4">
@@ -308,17 +390,22 @@ const WhatsAppManager: React.FC = () => {
                             <div className="flex items-center">
                                 <CheckCircle className="h-5 w-5 text-green-400 mr-3" />
                                 <div>
-                                    <p className="text-green-100 font-medium">WhatsApp Connected Successfully!</p>
+                                    <p className="text-green-100 font-medium">
+                                        WhatsApp {isCloudApiImplementation(status) ? 'Cloud API' : 'Connection'} Ready!
+                                    </p>
                                     <p className="text-green-200 text-sm">
-                                        The system can now send WhatsApp notifications to users.
+                                        {isCloudApiImplementation(status)
+                                            ? 'Official WhatsApp Business API is active and ready to send notifications.'
+                                            : 'WhatsApp Web connection is active. The system can now send notifications.'
+                                        }
                                     </p>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Disconnected Status */}
-                    {(status.connectionState === 'disconnected' || status.connectionState === 'close') && !status.hasQr && !status.isInitializing && (
+                    {/* Disconnected Status - Only for Bailey */}
+                    {isBaileyImplementation(status) && (status.connectionState === 'disconnected' || status.connectionState === 'close') && !status.hasQr && !status.isInitializing && (
                         <div className="bg-red-900 border border-red-700 rounded-lg p-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center">
@@ -363,17 +450,52 @@ const WhatsAppManager: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Cloud API Error Status */}
+                    {isCloudApiImplementation(status) && !status.isReady && (
+                        <div className="bg-red-900 border border-red-700 rounded-lg p-4">
+                            <div className="flex items-center">
+                                <AlertCircle className="h-5 w-5 text-red-400 mr-3" />
+                                <div>
+                                    <p className="text-red-100 font-medium">WhatsApp Cloud API Not Ready</p>
+                                    <p className="text-red-200 text-sm">
+                                        The WhatsApp Cloud API is not responding properly. Please check your configuration in Facebook Business Manager and verify your API credentials.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Instructions */}
-                    <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
-                        <h4 className="text-blue-100 font-medium mb-2">📱 How to Connect WhatsApp:</h4>
-                        <ol className="text-blue-200 text-sm space-y-1 list-decimal list-inside">
-                            <li>Open WhatsApp on your phone</li>
-                            <li>Go to Settings (⚙️) → Linked Devices</li>
-                            <li>Tap "Link a Device"</li>
-                            <li>Scan the QR code shown above</li>
-                            <li>Wait for connection confirmation</li>
-                        </ol>
-                    </div>
+                    {isBaileyImplementation(status) ? (
+                        <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
+                            <h4 className="text-blue-100 font-medium mb-2">📱 How to Connect WhatsApp (Bailey):</h4>
+                            <ol className="text-blue-200 text-sm space-y-1 list-decimal list-inside">
+                                <li>Open WhatsApp on your phone</li>
+                                <li>Go to Settings (⚙️) → Linked Devices</li>
+                                <li>Tap "Link a Device"</li>
+                                <li>Scan the QR code shown above</li>
+                                <li>Wait for connection confirmation</li>
+                            </ol>
+                        </div>
+                    ) : isCloudApiImplementation(status) ? (
+                        <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
+                            <h4 className="text-blue-100 font-medium mb-2">🏢 WhatsApp Cloud API Configuration:</h4>
+                            <ul className="text-blue-200 text-sm space-y-1 list-disc list-inside">
+                                <li>Configure your WhatsApp Business account via <a href="https://business.facebook.com/wa/manage/" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:text-blue-200 underline">Facebook Business Manager</a></li>
+                                <li>Ensure your phone number is verified in Meta Business Manager</li>
+                                <li>Check that webhooks are properly configured</li>
+                                <li>Verify API credentials are correctly set in environment variables</li>
+                                <li>No QR code scanning required - managed entirely through Meta platform</li>
+                            </ul>
+                        </div>
+                    ) : (
+                        <div className="bg-gray-700 border border-gray-600 rounded-lg p-4">
+                            <h4 className="text-gray-100 font-medium mb-2">⚠️ Unknown Implementation</h4>
+                            <p className="text-gray-300 text-sm">
+                                Unable to determine WhatsApp implementation type. Please check your configuration.
+                            </p>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="flex justify-center items-center h-32">

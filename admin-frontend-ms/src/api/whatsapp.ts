@@ -2,11 +2,13 @@ import apiClient from './apiClient';
 
 export interface WhatsAppStatus {
     isReady: boolean;
-    hasQr: boolean;
-    qrTimestamp: number | null;
-    connectionState: 'connected' | 'waiting_for_scan' | 'disconnected' | 'close' | 'open' | 'connecting';
-    reconnectAttempts: number;
-    isInitializing: boolean;
+    hasQr?: boolean; // Only available for Bailey
+    qrTimestamp?: number | null; // Only available for Bailey
+    connectionState: 'connected' | 'waiting_for_scan' | 'disconnected' | 'close' | 'open' | 'connecting' | 'error';
+    reconnectAttempts?: number; // Only available for Bailey
+    isInitializing?: boolean; // Only available for Bailey
+    implementation?: string; // 'WhatsApp Cloud API' or 'Bailey'
+    lastHealthCheck?: Date | null; // Only available for Cloud API
 }
 
 export interface WhatsAppStatusResponse {
