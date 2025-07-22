@@ -8,6 +8,7 @@ import apiRoutes from './api/routes';
 import { notificationProcessor } from './jobs/notificationProcessor';
 import { queueService } from './services/queue.service';
 import logger from './utils/logger';
+import { initializeWhatsAppConfig } from './utils/whatsapp-config-initializer';
 
 // Create Express server
 const app = express();
@@ -65,6 +66,9 @@ const PORT = config.port;
 
 async function startServer() {
     try {
+        // Initialize WhatsApp configuration
+        initializeWhatsAppConfig();
+
         // Connect to MongoDB
         await connectDB();
 

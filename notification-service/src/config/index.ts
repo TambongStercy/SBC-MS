@@ -86,6 +86,18 @@ interface IConfig {
         password?: string;
         db: number;
     };
+    whatsapp: {
+        accessToken: string;
+        phoneNumberId: string;
+        businessAccountId: string;
+        webhookVerifyToken: string;
+        apiVersion: string;
+        apiBaseUrl: string;
+        enableCloudApi: boolean;
+        enableWebhookValidation: boolean;
+        enableRateLimiting: boolean;
+        enableRetryLogic: boolean;
+    };
 }
 
 const config: IConfig = {
@@ -178,6 +190,19 @@ const config: IConfig = {
         db: parseInt(process.env.REDIS_DB || '0', 10)
     },
 
+    whatsapp: {
+        accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
+        phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+        businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+        webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
+        apiVersion: process.env.WHATSAPP_API_VERSION || 'v18.0',
+        apiBaseUrl: process.env.WHATSAPP_API_BASE_URL || 'https://graph.facebook.com',
+        enableCloudApi: process.env.WHATSAPP_ENABLE_CLOUD_API === 'true',
+        enableWebhookValidation: process.env.WHATSAPP_ENABLE_WEBHOOK_VALIDATION !== 'false',
+        enableRateLimiting: process.env.WHATSAPP_ENABLE_RATE_LIMITING !== 'false',
+        enableRetryLogic: process.env.WHATSAPP_ENABLE_RETRY_LOGIC !== 'false'
+    },
+
 };
 
 // Validation function for required configurations
@@ -197,6 +222,16 @@ const validateConfig = (): void => {
             // 'TWILIO_PHONE_NUMBER',
             // 'RABBITMQ_URL'
         );
+
+        // Add WhatsApp Cloud API validation in production if enabled
+        if (config.whatsapp.enableCloudApi) {
+            requiredEnvs.push(
+                'WHATSAPP_ACCESS_TOKEN',
+                'WHATSAPP_PHONE_NUMBER_ID',
+                'WHATSAPP_BUSINESS_ACCOUNT_ID',
+                'WHATSAPP_WEBHOOK_VERIFY_TOKEN'
+            );
+        }
     }
 
     const missingEnvs = requiredEnvs.filter(env => !process.env[env]);

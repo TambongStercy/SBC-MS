@@ -34,6 +34,8 @@ export interface INotificationData {
     body: string;
     plainText?: string;
     whatsappCode?: string;
+    language?: string; // Language preference for templates (e.g., 'en_US', 'fr')
+    lang?: string; // Alternative language field
     attachmentContent?: string;
     attachmentFileName?: string;
     attachmentContentType?: string;
@@ -54,6 +56,16 @@ export interface INotification extends Document {
     retryCount: number;
     createdAt: Date;
     updatedAt: Date;
+    // WhatsApp Cloud API specific fields
+    whatsappMessageId?: string;
+    whatsappStatus?: string;
+    whatsappDeliveredAt?: Date;
+    whatsappReadAt?: Date;
+    whatsappError?: {
+        code: number;
+        title: string;
+        message: string;
+    };
 }
 
 // Create notification data schema
@@ -64,6 +76,8 @@ const NotificationDataSchema = new Schema({
     body: { type: String, required: true },
     plainText: { type: String },
     whatsappCode: { type: String },
+    language: { type: String }, // Added language field
+    lang: { type: String }, // Added lang field
     attachmentContent: { type: String },
     attachmentFileName: { type: String },
     attachmentContentType: { type: String },
@@ -120,6 +134,25 @@ const NotificationSchema = new Schema<INotification>(
         retryCount: {
             type: Number,
             default: 0,
+        },
+        // WhatsApp Cloud API specific fields
+        whatsappMessageId: {
+            type: String,
+            index: true,
+        },
+        whatsappStatus: {
+            type: String,
+        },
+        whatsappDeliveredAt: {
+            type: Date,
+        },
+        whatsappReadAt: {
+            type: Date,
+        },
+        whatsappError: {
+            code: { type: Number },
+            title: { type: String },
+            message: { type: String },
         },
     },
     {

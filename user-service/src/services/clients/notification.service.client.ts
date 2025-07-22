@@ -15,6 +15,7 @@ interface OtpNotificationRequest {
     isRegistration: boolean;
     userName?: string;
     purpose?: string;
+    language?: string;
 }
 
 // NEW INTERFACE for attachment email request
@@ -108,6 +109,7 @@ class NotificationService {
             expireMinutes: 10,
             isRegistration,
             userName,
+            language: 'fr',
         });
     }
 
@@ -129,6 +131,7 @@ class NotificationService {
             expireMinutes: 10,
             isRegistration,
             userName,
+            language: 'fr',
         });
     }
 

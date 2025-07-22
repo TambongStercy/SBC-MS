@@ -424,12 +424,12 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "Zxz3vdQ54nIH",
+  "reference": "9B4BB5BA-3B57-4D21-9068-748BEAA452A8",
   "amount": 2070,
   "status": "SUCCESSFUL",
   "callback_info": {
-    "sessionId":"_ua3WlQrGEsS",
-    "userId":"6859ab5624c99159b9786def",
+    "sessionId":"az3QIYIFbeP5",
+    "userId":"685f22383248e6cfcf763926",
     "userName":"TCHONDA mehiwa",
     "userPhoneNumber":"22871602613",
     "userEmail":"tchondajerome408@gmail.com",

@@ -5,8 +5,10 @@ import { emailService } from './email.service';
 import { smsService } from './sms.service';
 import { notificationRepository } from '../database/repositories/notification.repository';
 import { DeliveryChannel, INotification } from '../database/models/notification.model';
-import whatsappService from './whatsapp.service';
+import whatsappServiceFactory from './whatsapp-service-factory';
 import { notificationService } from './notification.service';
+import { NotificationStatus } from '../database/models/notification.model';
+import { getOtpTemplateConfig, convertLanguageCode } from '../utils/otp-template.config';
 
 const log = logger.getLogger('QueueService');
 
@@ -297,7 +299,7 @@ export class QueueService {
     }
 
     /**
-     * Process WhatsApp notification job
+     * Process WhatsApp notification job with enhanced tracking
      */
     private async processWhatsappNotification(job: Job<NotificationJobData>): Promise<void> {
         const { notificationId } = job.data;
@@ -326,60 +328,121 @@ export class QueueService {
                 return;
             }
 
-            // Check if we have a separate WhatsApp code to send as a second message
+            // Get WhatsApp service and check if enhanced methods are supported
+            const whatsappService = whatsappServiceFactory.getService();
+            const supportsEnhanced = whatsappServiceFactory.supportsEnhancedMethods();
+
             let success = false;
+            let messageId: string | undefined;
+
+            // Check if OTP code exists (use language-specific template)
             if (data.whatsappCode && typeof data.whatsappCode === 'string' && data.whatsappCode.trim()) {
-                // Send two separate messages: main message + code
-                const mainMessage = (typeof data.plainText === 'string' && data.plainText.trim()) 
-                    ? data.plainText.trim() 
-                    : (data.body ? data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '');
-                
-                const codeMessage = data.whatsappCode.trim();
-                
-                const messages = [mainMessage, codeMessage].filter(msg => msg); // Remove empty messages
-                
-                success = await whatsappService.sendMultipleTextMessages({
-                    phoneNumber: notification.recipient,
-                    messages,
-                });
+                // Detect language from notification data and convert to supported language
+                const inputLanguage = data.language || data.lang;
+                const templateConfig = getOtpTemplateConfig(inputLanguage);
+
+                log.info(`[QueueService] Using ${templateConfig.templateName} template (${templateConfig.languageCode}) for OTP message to ${notification.recipient}`);
+
+                const components = [
+                    {
+                        type: "body",
+                        parameters: [
+                            {
+                                type: "text",
+                                text: data.whatsappCode.trim()
+                            }
+                        ]
+                    },
+                    {
+                        type: "button",
+                        sub_type: "url",
+                        index: "0",
+                        parameters: [
+                            {
+                                type: "text",
+                                text: data.whatsappCode.trim()
+                            }
+                        ]
+                    }
+                ];
+
+                if (supportsEnhanced && 'sendTemplateMessage' in whatsappService) {
+                    const result = await (whatsappService as any).sendTemplateMessage({
+                        phoneNumber: notification.recipient,
+                        templateName: templateConfig.templateName,
+                        languageCode: templateConfig.languageCode,
+                        components: components,
+                    });
+
+                    success = result.success;
+
+                    if (result.success && result.messageId) {
+                        messageId = result.messageId;
+                        if (messageId) {
+                            await notificationRepository.markAsSentWithMessageId(notification._id, messageId);
+                        }
+                        log.info(`WhatsApp ${templateConfig.templateName} template notification ${notificationId} sent successfully with message ID: ${messageId}`);
+                    } else {
+                        log.error(`WhatsApp ${templateConfig.templateName} template notification ${notificationId} failed: ${result.error}`);
+                        throw new Error(result.error || `${templateConfig.templateName} template method returned failure`);
+                    }
+                } else {
+                    throw new Error('Template sending not supported by current WhatsApp service');
+                }
             } else {
-                // Send single message (original behavior)
+                // Send single message (fallback for non-OTP messages)
                 let message = '';
                 if (typeof data.plainText === 'string' && data.plainText.trim()) {
                     message = data.plainText.trim();
                 } else if (data.body) {
-                    // Fallback: strip HTML tags
                     message = data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
                 }
 
-                success = await whatsappService.sendTextMessage({
-                    phoneNumber: notification.recipient,
-                    message,
-                });
+                if (supportsEnhanced && 'sendTextMessageEnhanced' in whatsappService) {
+                    const result = await (whatsappService as any).sendTextMessageEnhanced({
+                        phoneNumber: notification.recipient,
+                        message,
+                    });
+
+                    success = result.success;
+
+                    if (result.success && result.messageId) {
+                        messageId = result.messageId;
+                        if (messageId) {
+                            await notificationRepository.markAsSentWithMessageId(notification._id, messageId);
+                        }
+                        log.info(`WhatsApp notification ${notificationId} sent successfully with message ID: ${messageId}`);
+                    } else {
+                        throw new Error(result.error || 'Enhanced method returned failure');
+                    }
+                } else {
+                    success = await whatsappService.sendTextMessage({
+                        phoneNumber: notification.recipient,
+                        message,
+                    });
+
+                    if (success) {
+                        await notificationRepository.markAsSent(notification._id);
+                        log.info(`WhatsApp notification ${notificationId} sent successfully (legacy method)`);
+                    }
+                }
             }
 
-            if (success) {
-                // Mark as sent
-                await notificationRepository.markAsSent(notification._id);
-                log.info(`WhatsApp notification ${notificationId} sent successfully to ${notification.recipient}`);
-            } else {
+            if (!success) {
                 throw new Error('WhatsApp service returned false');
             }
 
         } catch (error: any) {
             log.error(`Failed to process WhatsApp notification ${notificationId}:`, error);
 
-            // If this is the final attempt, mark as failed
-            if (job.attemptsMade >= (job.opts.attempts || 5)) {
-                try {
-                    await notificationRepository.markAsFailed(notificationId, error.message);
-                    log.error(`WhatsApp notification ${notificationId} permanently failed after ${job.attemptsMade} attempts`);
-                } catch (dbError) {
-                    log.error(`Failed to mark notification ${notificationId} as failed:`, dbError);
-                }
-            }
+            // Update notification with failure details
+            await notificationRepository.update(notificationId, {
+                status: NotificationStatus.FAILED,
+                failedAt: new Date(),
+                errorDetails: error.message || 'Unknown error occurred during queue processing'
+            });
 
-            throw error; // Re-throw to trigger Bull's retry mechanism
+            throw error; // Re-throw to trigger job retry
         }
     }
 

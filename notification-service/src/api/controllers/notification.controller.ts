@@ -114,7 +114,8 @@ export class NotificationController {
                 expireMinutes = 10,
                 isRegistration = false,
                 userName,
-                purpose
+                purpose,
+                language // Add language field extraction
             } = req.body;
 
             // Validate required fields
@@ -153,7 +154,8 @@ export class NotificationController {
                 expireMinutes,
                 isRegistration,
                 userName,
-                purpose
+                purpose,
+                language // Pass language to service
             );
 
             res.status(200).json({

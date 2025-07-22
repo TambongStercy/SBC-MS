@@ -1,7 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { notificationController } from '../controllers/notification.controller';
 import { authenticate, authenticateServiceRequest } from '../middleware/auth.middleware';
-import whatsappService from '../../services/whatsapp.service';
+import whatsappServiceFactory from '../../services/whatsapp-service-factory';
+import config from '../../config';
 
 const router = Router();
 
@@ -41,7 +42,22 @@ router.get('/queue/stats', authenticateServiceRequest, (req, res) => notificatio
 
 // WhatsApp QR code endpoint
 router.get('/whatsapp/qr', (req, res) => {
-    const { qr, timestamp } = whatsappService.getLatestQr();
+    // QR code functionality is only available for Bailey implementation
+    if (config.whatsapp.enableCloudApi) {
+        return res.status(404).json({
+            success: false,
+            message: 'QR code is not available when using WhatsApp Cloud API. Please use the Meta Business Manager to configure your WhatsApp Business account.'
+        });
+    }
+
+    const service = whatsappServiceFactory.getService() as any;
+
+    // Check if the service has the getLatestQr method (Bailey-specific)
+    if (!service.getLatestQr) {
+        return res.status(404).json({ success: false, message: 'QR code functionality not available' });
+    }
+
+    const { qr, timestamp } = service.getLatestQr();
     if (!qr) {
         return res.status(404).json({ success: false, message: 'No QR code available' });
     }
@@ -59,6 +75,21 @@ router.get('/whatsapp/qr', (req, res) => {
 
 // WhatsApp QR code SSE stream
 router.get('/whatsapp/qr/stream', (req, res) => {
+    // QR code functionality is only available for Bailey implementation
+    if (config.whatsapp.enableCloudApi) {
+        return res.status(404).json({
+            success: false,
+            message: 'QR code streaming is not available when using WhatsApp Cloud API. Please use the Meta Business Manager to configure your WhatsApp Business account.'
+        });
+    }
+
+    const service = whatsappServiceFactory.getService() as any;
+
+    // Check if the service has the required methods (Bailey-specific)
+    if (!service.getLatestQr || !service.on || !service.off) {
+        return res.status(404).json({ success: false, message: 'QR code streaming functionality not available' });
+    }
+
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -66,7 +97,7 @@ router.get('/whatsapp/qr/stream', (req, res) => {
         'Access-Control-Allow-Origin': '*',
     });
     // Send the latest QR immediately if available
-    const { qr, timestamp } = whatsappService.getLatestQr();
+    const { qr, timestamp } = service.getLatestQr();
     if (qr) {
         res.write(`event: qr\ndata: ${JSON.stringify({ qr, timestamp })}\n\n`);
     }
@@ -74,10 +105,10 @@ router.get('/whatsapp/qr/stream', (req, res) => {
     const onQr = (newQr: string) => {
         res.write(`event: qr\ndata: ${JSON.stringify({ qr: newQr, timestamp: Date.now() })}\n\n`);
     };
-    whatsappService.on('qr', onQr);
+    service.on('qr', onQr);
     // Clean up on client disconnect
     req.on('close', () => {
-        whatsappService.off('qr', onQr);
+        service.off('qr', onQr);
     });
 });
 

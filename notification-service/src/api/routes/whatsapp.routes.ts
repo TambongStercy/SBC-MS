@@ -17,4 +17,5 @@ router.get('/status', getWhatsAppStatus);
 router.post('/logout', logoutWhatsApp);
 router.post('/reconnect', forceReconnectWhatsApp);
 
+
 export default router; 

@@ -16,7 +16,7 @@ import config from '../config';
 import { userServiceClient } from './clients/user.service.client';
 import { AppError } from '../utils/errors';
 import { queueService } from './queue.service';
-import whatsappService from './whatsapp.service';
+import whatsappServiceFactory from './whatsapp-service-factory';
 
 // Create a component-specific logger
 const log = logger.getLogger('NotificationService');
@@ -71,7 +71,7 @@ interface SendAttachmentEmailInput {
 class NotificationService {
     constructor() {
         // Listen for WhatsApp disconnects
-        whatsappService.onDisconnect(async (qrUrl) => {
+        whatsappServiceFactory.getService().onDisconnect(async (qrUrl: string | null) => {
             const adminEmail = config.email?.from || 'admin@example.com';
             const baseUrl = process.env.SERVER_URL || process.env.PUBLIC_URL || 'http://localhost:3002';
             const qrEndpoint = `${baseUrl}/api/notifications/whatsapp/qr`;
@@ -122,6 +122,11 @@ class NotificationService {
                 plainText: processedTemplate.plainText,
                 whatsappCode: processedTemplate.whatsappCode, // Add WhatsApp code support
             };
+
+            // Extract and store language from variables if present
+            if (data.variables && data.variables.language) {
+                notificationData.data.language = data.variables.language;
+            }
         } else if (data.subject) {
             // If no template but subject provided
             notificationData.data.subject = data.subject;
@@ -230,61 +235,243 @@ class NotificationService {
     }
 
     /**
-     * Send a WhatsApp notification with support for dual messages (main message + separate code)
-     * Checks WhatsApp connection status before attempting to send
+     * Send WhatsApp notification with enhanced tracking and fallback mechanisms
      */
     private async sendWhatsappNotification(notification: INotification): Promise<boolean> {
         const data = notification.data || {};
-        
+
         // First check if WhatsApp is connected and ready
-        const whatsappStatus = whatsappService.getConnectionStatus();
+        const whatsappStatus = whatsappServiceFactory.getService().getConnectionStatus();
         if (!whatsappStatus.isReady) {
             log.warn(`WhatsApp is not ready (status: ${whatsappStatus.connectionState}). Cannot send notification to ${notification.recipient}`);
-            
-            // For OTP notifications, we should indicate failure so the service can try email fallback
+
+            // Implement fallback mechanism for critical OTP notifications
             if (notification.type === NotificationType.OTP) {
-                log.info(`OTP notification ${notification._id} failed via WhatsApp - caller should try email fallback`);
+                log.info(`OTP notification ${notification._id} failed via WhatsApp - attempting email fallback`);
+
+                try {
+                    // Try email fallback for OTP
+                    const emailSuccess = await this.sendEmailNotification(notification);
+                    if (emailSuccess) {
+                        log.info(`OTP notification ${notification._id} successfully sent via email fallback`);
+                        // Update notification to indicate fallback was used
+                        await notificationRepository.update(notification._id, {
+                            errorDetails: 'WhatsApp unavailable - sent via email fallback',
+                            sentAt: new Date(),
+                            status: NotificationStatus.SENT
+                        });
+                        return true;
+                    }
+                } catch (emailError) {
+                    log.error(`Email fallback also failed for OTP notification ${notification._id}:`, emailError);
+                }
+
+                // Mark as failed if both WhatsApp and email failed
+                await notificationRepository.update(notification._id, {
+                    status: NotificationStatus.FAILED,
+                    failedAt: new Date(),
+                    errorDetails: 'WhatsApp unavailable and email fallback failed'
+                });
                 return false;
             }
-            
-            // For non-OTP notifications, we'll mark as failed but could implement a retry mechanism
+
+            // For non-OTP notifications, mark as failed but don't try fallback
+            await notificationRepository.update(notification._id, {
+                status: NotificationStatus.FAILED,
+                failedAt: new Date(),
+                errorDetails: `WhatsApp service not ready: ${whatsappStatus.connectionState}`
+            });
             return false;
         }
 
-        // Check if we have a separate WhatsApp code to send as a second message
-        if (data.whatsappCode && typeof data.whatsappCode === 'string' && data.whatsappCode.trim()) {
-            // Send two separate messages: main message + code
-            const mainMessage = (typeof data.plainText === 'string' && data.plainText.trim())
-                ? data.plainText.trim()
-                : (data.body ? data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '');
+        try {
+            const whatsappService = whatsappServiceFactory.getService();
+            let result;
 
-            const codeMessage = data.whatsappCode.trim();
+            // Check if we have a separate WhatsApp code to send as a second message
+            if (data.whatsappCode && typeof data.whatsappCode === 'string' && data.whatsappCode.trim()) {
+                // Send two separate messages: main message + code
+                const mainMessage = (typeof data.plainText === 'string' && data.plainText.trim())
+                    ? data.plainText.trim()
+                    : (data.body ? data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '');
 
-            const messages = [mainMessage, codeMessage].filter(msg => msg); // Remove empty messages
+                const codeMessage = data.whatsappCode.trim();
+                const messages = [mainMessage, codeMessage].filter(msg => msg); // Remove empty messages
 
-            log.info(`[WhatsApp] Sending dual messages to ${notification.recipient}: ${messages.length} messages`);
+                log.info(`[WhatsApp] Sending dual messages to ${notification.recipient}: ${messages.length} messages`);
 
-            return whatsappService.sendMultipleTextMessages({
-                phoneNumber: notification.recipient,
-                messages,
-            });
-        } else {
-            // Send single message (original behavior)
-            let message = '';
-            if (typeof data.plainText === 'string' && data.plainText.trim()) {
-                message = data.plainText.trim();
-            } else if (data.body) {
-                // Fallback: strip HTML tags
-                message = data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                // Use enhanced method if available (Cloud API)
+                if (whatsappServiceFactory.supportsEnhancedMethods() && 'sendMultipleTextMessagesEnhanced' in whatsappService) {
+                    result = await (whatsappService as any).sendMultipleTextMessagesEnhanced({
+                        phoneNumber: notification.recipient,
+                        messages,
+                    });
+
+                    if (result.success) {
+                        // Update notification with message IDs
+                        const updateData: any = {
+                            status: NotificationStatus.SENT,
+                            sentAt: new Date(),
+                            whatsappStatus: 'sent'
+                        };
+
+                        // Store first message ID as primary and all IDs in a custom field
+                        if (result.messageIds && result.messageIds.length > 0) {
+                            updateData.whatsappMessageId = result.messageIds[0];
+                            // Store additional message IDs in error details field (temporary solution)
+                            if (result.messageIds.length > 1) {
+                                updateData.errorDetails = `Additional message IDs: ${result.messageIds.slice(1).join(', ')}`;
+                            }
+                        }
+
+                        await notificationRepository.update(notification._id, updateData);
+                        log.info(`WhatsApp notification ${notification._id} sent successfully with ${result.sentCount}/${result.totalCount} messages`);
+                        return true;
+                    } else {
+                        // Handle partial success or complete failure
+                        await this.handleWhatsAppFailure(notification, result.error || 'Unknown error', result.sentCount || 0, result.totalCount || messages.length);
+                        return result.sentCount && result.sentCount > 0; // Return true if at least one message was sent
+                    }
+                } else {
+                    // Fallback to legacy method for Bailey
+                    const success = await whatsappService.sendMultipleTextMessages({
+                        phoneNumber: notification.recipient,
+                        messages,
+                    });
+
+                    if (success) {
+                        await notificationRepository.markAsSent(notification._id);
+                        log.info(`WhatsApp notification ${notification._id} sent successfully (legacy method)`);
+                        return true;
+                    } else {
+                        await this.handleWhatsAppFailure(notification, 'Failed to send multiple messages via legacy method');
+                        return false;
+                    }
+                }
+            } else {
+                // Send single message (original behavior)
+                let message = '';
+                if (typeof data.plainText === 'string' && data.plainText.trim()) {
+                    message = data.plainText.trim();
+                } else if (data.body) {
+                    // Fallback: strip HTML tags
+                    message = data.body.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                }
+
+                log.info(`[WhatsApp] Sending single message to ${notification.recipient}: ${message.substring(0, 50)}...`);
+
+                // Use enhanced method if available (Cloud API)
+                if (whatsappServiceFactory.supportsEnhancedMethods() && 'sendTextMessageEnhanced' in whatsappService) {
+                    result = await (whatsappService as any).sendTextMessageEnhanced({
+                        phoneNumber: notification.recipient,
+                        message,
+                    });
+
+                    if (result.success) {
+                        // Update notification with message ID
+                        const updateData: any = {
+                            status: NotificationStatus.SENT,
+                            sentAt: new Date(),
+                            whatsappStatus: 'sent'
+                        };
+
+                        if (result.messageId) {
+                            updateData.whatsappMessageId = result.messageId;
+                        }
+
+                        await notificationRepository.update(notification._id, updateData);
+                        log.info(`WhatsApp notification ${notification._id} sent successfully with message ID: ${result.messageId}`);
+                        return true;
+                    } else {
+                        await this.handleWhatsAppFailure(notification, result.error || 'Unknown error');
+                        return false;
+                    }
+                } else {
+                    // Fallback to legacy method for Bailey
+                    const success = await whatsappService.sendTextMessage({
+                        phoneNumber: notification.recipient,
+                        message,
+                    });
+
+                    if (success) {
+                        await notificationRepository.markAsSent(notification._id);
+                        log.info(`WhatsApp notification ${notification._id} sent successfully (legacy method)`);
+                        return true;
+                    } else {
+                        await this.handleWhatsAppFailure(notification, 'Failed to send text message via legacy method');
+                        return false;
+                    }
+                }
             }
-
-            log.info(`[WhatsApp] Sending single message to ${notification.recipient}: ${message.substring(0, 50)}...`);
-
-            return whatsappService.sendTextMessage({
-                phoneNumber: notification.recipient,
-                message,
-            });
+        } catch (error: any) {
+            log.error(`Unexpected error sending WhatsApp notification ${notification._id}:`, error);
+            await this.handleWhatsAppFailure(notification, error.message || 'Unexpected error occurred');
+            return false;
         }
+    }
+
+    /**
+     * Handle WhatsApp message failure with appropriate fallback mechanisms
+     */
+    private async handleWhatsAppFailure(notification: INotification, errorMessage: string, sentCount?: number, totalCount?: number): Promise<void> {
+        log.error(`WhatsApp notification ${notification._id} failed:`, errorMessage);
+
+        // For OTP messages, attempt fallback to email or SMS
+        if (notification.type === NotificationType.OTP) {
+            log.info(`Attempting fallback delivery for OTP notification ${notification._id}`);
+
+            try {
+                // Try email first
+                if (notification.recipient.includes('@')) {
+                    const emailSuccess = await this.sendEmailNotification(notification);
+                    if (emailSuccess) {
+                        log.info(`OTP notification ${notification._id} successfully sent via email fallback`);
+                        await notificationRepository.update(notification._id, {
+                            status: NotificationStatus.SENT,
+                            sentAt: new Date(),
+                            errorDetails: `WhatsApp failed: ${errorMessage} - sent via email fallback`
+                        });
+                        return;
+                    }
+                }
+
+                // Try SMS as last resort (if recipient looks like phone number)
+                if (/^\+?\d{7,15}$/.test(notification.recipient)) {
+                    try {
+                        const smsSuccess = await this.sendSmsNotification(notification);
+                        if (smsSuccess) {
+                            log.info(`OTP notification ${notification._id} successfully sent via SMS fallback`);
+                            await notificationRepository.update(notification._id, {
+                                status: NotificationStatus.SENT,
+                                sentAt: new Date(),
+                                errorDetails: `WhatsApp failed: ${errorMessage} - sent via SMS fallback`
+                            });
+                            return;
+                        }
+                    } catch (smsError) {
+                        log.error(`SMS fallback also failed for OTP notification ${notification._id}:`, smsError);
+                    }
+                }
+            } catch (fallbackError) {
+                log.error(`Fallback delivery failed for OTP notification ${notification._id}:`, fallbackError);
+            }
+        }
+
+        // Mark as failed if no fallback succeeded
+        const failureMessage = sentCount && totalCount ?
+            `Partial failure: ${sentCount}/${totalCount} messages sent. Error: ${errorMessage}` :
+            errorMessage;
+
+        await notificationRepository.update(notification._id, {
+            status: NotificationStatus.FAILED,
+            failedAt: new Date(),
+            errorDetails: failureMessage,
+            whatsappError: {
+                code: 0,
+                title: 'Delivery Failed',
+                message: errorMessage
+            }
+        });
     }
 
     /**
@@ -341,6 +528,15 @@ class NotificationService {
 
     /**
      * Send an OTP notification
+     * @param userId - User ID 
+     * @param recipient - Email, phone number, or WhatsApp number
+     * @param channel - Delivery channel (email, sms, whatsapp)
+     * @param code - OTP code to send
+     * @param expireMinutes - Minutes until code expires
+     * @param isRegistration - Whether this is for user registration
+     * @param userName - Optional user name for personalization
+     * @param purpose - Purpose of OTP (e.g., 'withdrawal_verification')
+     * @param language - Language code (e.g., 'en', 'fr', 'es') - will be converted to supported template language
      */
     async sendOtpNotification(
         userId: string | Types.ObjectId,
@@ -351,6 +547,7 @@ class NotificationService {
         isRegistration: boolean = false,
         userName?: string,
         purpose?: string,
+        language?: string, // Simple language codes like 'en', 'fr', 'es' are automatically converted
     ): Promise<INotification> {
         const templateId = purpose === 'withdrawal_verification' ? 'withdrawal-verification' : isRegistration ? 'verify-registration' : 'verify-login';
 
@@ -362,6 +559,11 @@ class NotificationService {
 
         if (userName) {
             variables.name = userName;
+        }
+
+        // Add language to variables if provided
+        if (language) {
+            variables.language = language;
         }
 
         return this.createAndSendNotification({
@@ -744,7 +946,7 @@ class NotificationService {
             const mimetype = input.attachmentContentType;
             const fileName = input.attachmentFileName;
 
-            const success = await whatsappService.sendFileMessage({
+            const success = await whatsappServiceFactory.getService().sendFileMessage({
                 phoneNumber: input.recipient,
                 buffer: fileBuffer,
                 mimetype,
@@ -777,4 +979,4 @@ class NotificationService {
 }
 
 // Export service instance
-export const notificationService = new NotificationService(); 
+export const notificationService = new NotificationService();

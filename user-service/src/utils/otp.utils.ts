@@ -2,6 +2,35 @@ import crypto from 'crypto';
 import logger from './logger';
 
 /**
+ * Language-specific template mapping for WhatsApp OTP
+ */
+export const OTP_TEMPLATE_CONFIG = {
+    en_US: {
+        templateName: 'connexion',
+        languageCode: 'en_US'
+    },
+    fr: {
+        templateName: 'connexionfr', 
+        languageCode: 'fr'
+    },
+    en: {
+        templateName: 'connexion',
+        languageCode: 'en_US'
+    }
+} as const;
+
+export type SupportedLanguage = keyof typeof OTP_TEMPLATE_CONFIG;
+
+/**
+ * Gets the appropriate WhatsApp template configuration for a given language
+ * @param language The language code (defaults to 'en_US')
+ * @returns Template configuration object
+ */
+export function getOtpTemplateConfig(language: SupportedLanguage = 'en_US') {
+    return OTP_TEMPLATE_CONFIG[language] || OTP_TEMPLATE_CONFIG.en_US;
+}
+
+/**
  * Generates a secure random OTP.
  * @param length The desired length of the OTP (default: 6).
  * @returns A string containing the generated OTP.

@@ -286,7 +286,8 @@ export class UserService {
                 code: otp,
                 expireMinutes: 10,
                 isRegistration: true,
-                userName: newUser.name
+                userName: newUser.name,
+                language: newUser.language?.[0] || 'fr'
             });
         } catch (otpError) {
             log.error(`Failed to generate OTP during registration for ${newUser.email}`, otpError);
@@ -389,7 +390,8 @@ export class UserService {
                 code: otp,
                 expireMinutes: 10,
                 isRegistration: false,
-                userName: user.name
+                userName: user.name,
+                language: user.language?.[0] || 'fr'
             });
 
 
@@ -644,7 +646,7 @@ export class UserService {
         updateData: Partial<Pick<IUser,
             'name' | 'region' | 'country' | 'city' | 'phoneNumber' | 'momoNumber' |
             'momoOperator' | 'avatar' | 'avatarId' | 'sex' | 'birthDate' | 'language' |
-            'preferenceCategories' | 'interests' | 'profession' | 'shareContactInfo' | 'notificationPreference'|
+            'preferenceCategories' | 'interests' | 'profession' | 'shareContactInfo' | 'notificationPreference' |
             'referralCode' // Added referralCode here
         >>
     ): Promise<Omit<IUser, 'password' | 'otps' | 'contactsOtps'> | null> {
@@ -2898,7 +2900,8 @@ export class UserService {
                     expireMinutes: 10, // Standard expiration
                     isRegistration: purpose === 'register', // Set based on purpose
                     purpose: purpose, // Pass the purpose directly
-                    userName: user.name
+                    userName: user.name,
+                    language: user.language?.[0] || 'fr'
                 });
 
                 log.info(`Resent OTP successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
@@ -2936,7 +2939,7 @@ export class UserService {
 
                 // Get delivery info based on user's preference and optional override
                 const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
-                
+
                 // First attempt with the preferred or overridden channel
                 let success = await notificationService.sendOtp({
                     userId: user._id.toString(),
@@ -2946,13 +2949,14 @@ export class UserService {
                     expireMinutes: 10,
                     isRegistration: false,
                     purpose: purpose,
-                    userName: user.name
+                    userName: user.name,
+                    language: user.language?.[0] || 'fr'
                 });
-                
+
                 // If WhatsApp was attempted but failed, and user has email, fall back to email
                 if (!success && deliveryInfo.channel === DeliveryChannel.WHATSAPP && user.email) {
                     log.info(`WhatsApp OTP delivery failed for user ${user._id}, falling back to email: ${user.email}`);
-                    
+
                     success = await notificationService.sendOtp({
                         userId: user._id.toString(),
                         recipient: user.email,
@@ -2961,9 +2965,10 @@ export class UserService {
                         expireMinutes: 10,
                         isRegistration: false,
                         purpose: purpose,
-                        userName: user.name
+                        userName: user.name,
+                        language: user.language?.[0] || 'fr'
                     });
-                    
+
                     if (success) {
                         log.info(`Password reset OTP sent successfully via fallback email for user: ${user._id}`);
                     } else {
@@ -3055,7 +3060,8 @@ export class UserService {
             expireMinutes: 10,
             isRegistration: false, // Added missing property
             purpose: purpose,
-            userName: currentUser.name // Use current user's name
+            userName: currentUser.name, // Use current user's name
+            language: currentUser.language?.[0] || 'fr'
         });
 
         log.info(`Change email OTP sent successfully to ${newEmail} for user ${userId}`);

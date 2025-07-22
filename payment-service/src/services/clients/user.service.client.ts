@@ -13,6 +13,7 @@ export interface UserDetails {
     email: string;
     phoneNumber?: string | number;
     notificationPreference?: 'email' | 'whatsapp';
+    language?: string[];
     // Add other common fields that user-service might return for a user
     country?: string;
     region?: string;

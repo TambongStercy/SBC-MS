@@ -15,6 +15,7 @@ interface OtpNotificationRequest {
     userName?: string;
     purpose?: string;
     description?: string;
+    language?: string;
 }
 
 // Define notification types

@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import { Boom } from '@hapi/boom';
 const QRCode = require('qrcode');
 import { EventEmitter } from 'events';
+import config from '../config';
 
 const log = logger.getLogger('WhatsAppService');
 
@@ -30,10 +31,17 @@ class WhatsAppService extends EventEmitter {
 
     constructor() {
         super();
-        // Start initialization after a short delay to ensure all dependencies are ready
-        setTimeout(() => {
-            this.init();
-        }, 1000);
+        // Only initialize if Cloud API is not enabled
+        if (!config.whatsapp.enableCloudApi) {
+            // Start initialization after a short delay to ensure all dependencies are ready
+            setTimeout(() => {
+                this.init();
+            }, 1000);
+        } else {
+            log.info('Bailey WhatsApp service is disabled because Cloud API is enabled.');
+            this.isReady = false;
+            this.connectionState = 'disabled';
+        }
     }
 
     public getLatestQr(): { qr: string | null, timestamp: number } {

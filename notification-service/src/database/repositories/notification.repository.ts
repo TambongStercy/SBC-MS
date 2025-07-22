@@ -27,9 +27,18 @@ interface CreateNotificationInput {
 interface UpdateNotificationInput {
     status?: NotificationStatus;
     sentAt?: Date;
+    deliveredAt?: Date;
     failedAt?: Date;
     errorDetails?: string;
-    // Add other updatable fields if needed
+    // WhatsApp Cloud API specific fields
+    whatsappStatus?: string;
+    whatsappDeliveredAt?: Date;
+    whatsappReadAt?: Date;
+    whatsappError?: {
+        code: number;
+        title: string;
+        message: string;
+    };
 }
 
 export class NotificationRepository {
@@ -103,7 +112,130 @@ export class NotificationRepository {
         return result.modifiedCount > 0;
     }
 
-    // Add other necessary methods (e.g., findById, markAsRead, etc.)
+    // WhatsApp Cloud API specific methods
+
+    /**
+     * Find notification by WhatsApp message ID
+     */
+    async findByWhatsAppMessageId(messageId: string): Promise<INotification | null> {
+        try {
+            return await NotificationModel.findOne({ whatsappMessageId: messageId }).lean();
+        } catch (error: any) {
+            log.error(`Error finding notification by WhatsApp message ID ${messageId}: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Update notification with WhatsApp message ID after sending
+     */
+    async updateWithWhatsAppMessageId(id: string | Types.ObjectId, messageId: string): Promise<boolean> {
+        try {
+            const result = await NotificationModel.updateOne(
+                { _id: id },
+                { $set: { whatsappMessageId: messageId } }
+            );
+            return result.modifiedCount > 0;
+        } catch (error: any) {
+            log.error(`Error updating notification ${id} with WhatsApp message ID: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Update notification with WhatsApp webhook status
+     */
+    async updateWhatsAppStatus(
+        messageId: string, 
+        updateData: {
+            whatsappStatus?: string;
+            whatsappDeliveredAt?: Date;
+            whatsappReadAt?: Date;
+            whatsappError?: { code: number; title: string; message: string; };
+            status?: NotificationStatus;
+            deliveredAt?: Date;
+            sentAt?: Date;
+            failedAt?: Date;
+            errorDetails?: string;
+        }
+    ): Promise<INotification | null> {
+        try {
+            const notification = await NotificationModel.findOneAndUpdate(
+                { whatsappMessageId: messageId },
+                { $set: updateData },
+                { new: true }
+            );
+            
+            if (!notification) {
+                log.warn(`No notification found with WhatsApp message ID: ${messageId}`);
+            }
+            
+            return notification;
+        } catch (error: any) {
+            log.error(`Error updating WhatsApp status for message ${messageId}: ${error.message}`, { updateData });
+            throw error;
+        }
+    }
+
+    /**
+     * Mark notification as sent with WhatsApp message ID
+     */
+    async markAsSentWithMessageId(id: string | Types.ObjectId, messageId: string): Promise<boolean> {
+        try {
+            const result = await NotificationModel.updateOne(
+                { _id: id, status: NotificationStatus.PENDING },
+                { 
+                    $set: { 
+                        status: NotificationStatus.SENT, 
+                        sentAt: new Date(),
+                        whatsappMessageId: messageId,
+                        whatsappStatus: 'sent'
+                    } 
+                }
+            );
+            return result.modifiedCount > 0;
+        } catch (error: any) {
+            log.error(`Error marking notification ${id} as sent with message ID: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get WhatsApp delivery statistics
+     */
+    async getWhatsAppDeliveryStats(userId?: string | Types.ObjectId): Promise<{
+        totalSent: number;
+        delivered: number;
+        read: number;
+        failed: number;
+        pending: number;
+    }> {
+        try {
+            const matchFilter: any = { channel: DeliveryChannel.WHATSAPP };
+            if (userId) {
+                matchFilter.userId = new Types.ObjectId(userId);
+            }
+
+            const stats = await NotificationModel.aggregate([
+                { $match: matchFilter },
+                {
+                    $group: {
+                        _id: null,
+                        totalSent: { $sum: { $cond: [{ $ne: ['$whatsappMessageId', null] }, 1, 0] } },
+                        delivered: { $sum: { $cond: [{ $ne: ['$whatsappDeliveredAt', null] }, 1, 0] } },
+                        read: { $sum: { $cond: [{ $ne: ['$whatsappReadAt', null] }, 1, 0] } },
+                        failed: { $sum: { $cond: [{ $eq: ['$status', NotificationStatus.FAILED] }, 1, 0] } },
+                        pending: { $sum: { $cond: [{ $eq: ['$status', NotificationStatus.PENDING] }, 1, 0] } }
+                    }
+                }
+            ]);
+
+            return stats[0] || { totalSent: 0, delivered: 0, read: 0, failed: 0, pending: 0 };
+        } catch (error: any) {
+            log.error(`Error getting WhatsApp delivery stats: ${error.message}`);
+            throw error;
+        }
+    }
 }
 
 // Export singleton instance

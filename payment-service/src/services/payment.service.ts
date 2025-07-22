@@ -1037,6 +1037,7 @@ class PaymentService {
         let userEmail: string | undefined;
         let userPhoneNumber: string | undefined;
         let userName: string | undefined;
+        let userLanguage: string | undefined;
         let notificationPreference: 'email' | 'whatsapp' = 'email'; // Default to email
 
         try {
@@ -1048,6 +1049,7 @@ class PaymentService {
                 userPhoneNumber = userDetails.phoneNumber?.toString();
                 userName = userDetails.name;
                 notificationPreference = userDetails.notificationPreference || 'email';
+                userLanguage = userDetails.language?.[0] || 'fr';
                 log.info(`User ${transaction.userId} notification preference: ${notificationPreference}`);
             }
         } catch (userError: any) {
@@ -1091,6 +1093,7 @@ class PaymentService {
                         userName: userName || 'Customer',
                         purpose: 'withdrawal_verification',
                         description: `Withdrawal verification code for ${netAmountForNotification} ${targetPayoutCurrency} for transaction ${transaction.transactionId}.`,
+                        language: userLanguage || 'fr'
                     });
                     log.info(`Withdrawal OTP sent successfully via ${channel} to ${recipient} for transaction ${transactionId}`);
                 } catch (notificationError: any) {
