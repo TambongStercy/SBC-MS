@@ -413,11 +413,11 @@ const WhatsAppManager: React.FC = () => {
                                     <div>
                                         <p className="text-red-100 font-medium">WhatsApp Disconnected</p>
                                         <p className="text-red-200 text-sm">
-                                            WhatsApp is not connected. {status.reconnectAttempts >= 5 ? 'Max reconnection attempts reached.' : 'A new QR code should appear shortly for reconnection.'}
+                                            WhatsApp is not connected. {(status.reconnectAttempts || 0) >= 5 ? 'Max reconnection attempts reached.' : 'A new QR code should appear shortly for reconnection.'}
                                         </p>
                                     </div>
                                 </div>
-                                {status.reconnectAttempts >= 5 && (
+                                {(status.reconnectAttempts || 0) >= 5 && (
                                     <button
                                         onClick={handleForceReconnect}
                                         disabled={isReconnecting}
