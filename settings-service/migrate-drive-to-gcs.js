@@ -39,7 +39,7 @@ const CONFIG = {
     bucketName: 'sbc-file-storage',
 
     // Migration settings
-    batchSize: 10, // Process 10 files at a time
+    batchSize: 200, // Process 200 files at a time
     dryRun: false, // SAFETY: Set to false only when ready for actual migration
     backupFilePath: './migration-backup.json' // Backup of file mappings
 };
@@ -238,19 +238,45 @@ class DriveToGCSMigrator {
                 };
             }
 
-            // Step 1: Download from Google Drive
-            const driveResponse = await this.driveService.files.get({
-                fileId: driveFileId,
-                alt: 'media'
-            }, { responseType: 'arraybuffer' });
-
-            const fileBuffer = Buffer.from(driveResponse.data);
-            console.log(`     ⬇️  Downloaded: ${fileName} (${fileBuffer.length} bytes)`);
-
-            // Step 2: Upload to Cloud Storage with organized folder structure
+            // Step 1: Get bucket and file references
             const bucket = this.gcsStorage.bucket(CONFIG.bucketName);
             const file = bucket.file(gcsFileName);
 
+            // Check if file already exists in Cloud Storage (restart safety)
+            const [exists] = await file.exists();
+
+            if (exists) {
+                const gcsUrl = `https://storage.googleapis.com/${CONFIG.bucketName}/${gcsFileName}`;
+                console.log(`     ✅ Already migrated: ${gcsFileName}`);
+                return {
+                    success: true,
+                    driveFileId,
+                    fileName: gcsFileName,
+                    originalName: fileName,
+                    folderType,
+                    gcsUrl,
+                    size: 0,
+                    skipped: true
+                };
+            }
+
+            // Step 2: Download from Google Drive and upload to Cloud Storage in parallel pipeline
+            const startTime = Date.now();
+
+            // Download from Google Drive
+            const downloadPromise = this.driveService.files.get({
+                fileId: driveFileId,
+                alt: 'media'
+            }, { responseType: 'arraybuffer' }).then(response => {
+                const fileBuffer = Buffer.from(response.data);
+                console.log(`     ⬇️  Downloaded: ${fileName} (${fileBuffer.length} bytes)`);
+                return fileBuffer;
+            });
+
+            // Wait for download, then upload
+            const fileBuffer = await downloadPromise;
+
+            // Step 3: Upload to Cloud Storage with organized folder structure
             await file.save(fileBuffer, {
                 metadata: {
                     contentType: mimeType,
@@ -263,7 +289,8 @@ class DriveToGCSMigrator {
             });
 
             const gcsUrl = `https://storage.googleapis.com/${CONFIG.bucketName}/${gcsFileName}`;
-            console.log(`     ⬆️  Uploaded to: ${gcsUrl}`);
+            const duration = Date.now() - startTime;
+            console.log(`     ⬆️  Uploaded to: ${gcsUrl} (${duration}ms)`);
 
             return {
                 success: true,
@@ -353,7 +380,7 @@ class DriveToGCSMigrator {
                         // Extract the full path from GCS URL (e.g., "documents/filename.pdf")
                         const urlParts = newGcsUrl.split('/');
                         const gcsFilePath = urlParts.slice(-2).join('/'); // Get folder/filename
-                        
+
                         updateFields[field] = {
                             ...fileRef,
                             fileId: gcsFilePath,        // Cloud Storage path
@@ -390,7 +417,7 @@ class DriveToGCSMigrator {
                     // Extract the full path from GCS URL (e.g., "products/filename.jpg")
                     const urlParts = newGcsUrl.split('/');
                     const gcsFilePath = urlParts.slice(-2).join('/'); // Get folder/filename
-                    
+
                     migratedImages.push({
                         url: newGcsUrl,           // CDN URL
                         fileId: gcsFilePath       // Cloud Storage path (products/filename.jpg)
@@ -444,29 +471,66 @@ class DriveToGCSMigrator {
                 return;
             }
 
-            // Process files in batches
+            // Process files in parallel batches for maximum speed
+            const totalBatches = Math.ceil(driveFiles.length / CONFIG.batchSize);
+
             for (let i = 0; i < driveFiles.length; i += CONFIG.batchSize) {
                 const batch = driveFiles.slice(i, i + CONFIG.batchSize);
-                console.log(`\n📦 Processing batch ${Math.floor(i / CONFIG.batchSize) + 1} (${batch.length} files)...`);
+                const batchNumber = Math.floor(i / CONFIG.batchSize) + 1;
+                const batchStartTime = Date.now();
 
+                console.log(`\n📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} files)...`);
+
+                // Process all files in this batch in parallel
                 const batchPromises = batch.map(file => this.migrateFile(file));
                 const results = await Promise.allSettled(batchPromises);
+
+                // Process results and track stats
+                let successCount = 0;
+                let skipCount = 0;
+                let failCount = 0;
 
                 results.forEach((result, index) => {
                     if (result.status === 'fulfilled') {
                         const migrationResult = result.value;
                         this.migrationLog.push(migrationResult);
 
-                        if (migrationResult.success && migrationResult.gcsUrl) {
-                            this.fileMapping[migrationResult.driveFileId] = migrationResult.gcsUrl;
+                        if (migrationResult.success) {
+                            if (migrationResult.skipped) {
+                                skipCount++;
+                            } else {
+                                successCount++;
+                            }
+
+                            if (migrationResult.gcsUrl) {
+                                this.fileMapping[migrationResult.driveFileId] = migrationResult.gcsUrl;
+                            }
+                        } else {
+                            failCount++;
                         }
                     } else {
-                        console.error(`❌ Batch error:`, result.reason);
+                        console.error(`❌ Failed to process ${batch[index].name}:`, result.reason);
+                        failCount++;
+                        this.migrationLog.push({
+                            success: false,
+                            driveFileId: batch[index].id,
+                            fileName: batch[index].name,
+                            error: result.reason?.message || 'Unknown error'
+                        });
                     }
                 });
 
-                // Small delay between batches
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                const batchDuration = Date.now() - batchStartTime;
+                console.log(`   ✅ Batch ${batchNumber}: ${successCount} migrated, ${skipCount} skipped, ${failCount} failed (${batchDuration}ms)`);
+
+                // Progress indicator
+                const progressPercent = ((batchNumber / totalBatches) * 100).toFixed(1);
+                console.log(`   📊 Overall progress: ${progressPercent}% (${batchNumber}/${totalBatches} batches)`);
+
+                // Small delay between batches for VPS stability
+                if (batchNumber < totalBatches) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
             }
 
             // Update database references
