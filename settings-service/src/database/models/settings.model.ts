@@ -1,13 +1,14 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-// Reusable Interface for File References (stored in Drive)
+// Reusable Interface for File References (supports both Drive and Cloud Storage)
 // Export this so EventModel can use it
 export interface IFileReference {
-    fileId: string;     // Google Drive File ID
-    url?: string;        // Dynamically generated proxy URL (not stored)
-    fileName?: string;   // Original filename
-    mimeType?: string;   // File MIME type
-    size?: number;       // File size in bytes
+    fileId: string;         // Google Drive File ID or Cloud Storage filename
+    url?: string;           // CDN URL for Cloud Storage or proxy URL for Drive
+    fileName?: string;      // Original filename
+    mimeType?: string;      // File MIME type
+    size?: number;          // File size in bytes
+    storageType?: 'drive' | 'gcs'; // Storage backend type
 }
 
 // New Interface for Formations
@@ -43,13 +44,15 @@ export interface ISettings extends Document {
     updatedAt: Date;
 }
 
-// Schema for File Reference
+// Schema for File Reference (supports both Drive and Cloud Storage)
 // Export this so EventModel can use it
 export const FileReferenceSchema: Schema = new Schema({
     fileId: { type: String, required: true },
+    url: { type: String }, // CDN URL for new files, proxy URL for legacy files
     fileName: { type: String },
     mimeType: { type: String },
     size: { type: Number },
+    storageType: { type: String, enum: ['drive', 'gcs'], default: 'drive' },
 }, { _id: false });
 
 // Remove EventItemSchema - moved to event.model.ts

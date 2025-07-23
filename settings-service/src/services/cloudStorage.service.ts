@@ -97,7 +97,7 @@ class CloudStorageService {
                     contentType: mimeType,
                     cacheControl: 'public, max-age=31536000', // 1 year cache
                 },
-                public: true, // Make file publicly accessible
+                // Files will be publicly accessible via bucket-level IAM policy
             });
 
             const publicUrl = `https://storage.googleapis.com/${this.bucketName}/${fileName}`;
@@ -117,20 +117,57 @@ class CloudStorageService {
 
     async createBucketIfNotExists(): Promise<void> {
         try {
-            const [exists] = await this.storage.bucket(this.bucketName).exists();
+            const bucket = this.storage.bucket(this.bucketName);
+            const [exists] = await bucket.exists();
+
             if (!exists) {
                 await this.storage.createBucket(this.bucketName, {
                     location: 'US',
                     storageClass: 'STANDARD',
+                    uniformBucketLevelAccess: true, // Enable uniform bucket-level access
                 });
 
-                // Make bucket publicly readable
-                await this.storage.bucket(this.bucketName).makePublic();
-                log.info(`Created and configured bucket: ${this.bucketName}`);
+                log.info(`Created bucket with uniform bucket-level access: ${this.bucketName}`);
             }
+
+            // Set bucket-level IAM policy to allow public read access
+            await this.setBucketPublicPolicy(bucket);
+
         } catch (error: any) {
             log.error(`Error creating bucket: ${error.message}`);
             throw error;
+        }
+    }
+
+    private async setBucketPublicPolicy(bucket: any): Promise<void> {
+        try {
+            // Get current IAM policy
+            const [policy] = await bucket.iam.getPolicy();
+
+            // Add public read access
+            const publicReadBinding = {
+                role: 'roles/storage.objectViewer',
+                members: ['allUsers'],
+            };
+
+            // Check if public read binding already exists
+            const existingBinding = policy.bindings?.find(
+                (binding: any) => binding.role === 'roles/storage.objectViewer' &&
+                    binding.members?.includes('allUsers')
+            );
+
+            if (!existingBinding) {
+                if (!policy.bindings) policy.bindings = [];
+                policy.bindings.push(publicReadBinding);
+
+                await bucket.iam.setPolicy(policy);
+                log.info(`Set bucket IAM policy for public read access: ${this.bucketName}`);
+            } else {
+                log.info(`Bucket already has public read access: ${this.bucketName}`);
+            }
+        } catch (error: any) {
+            log.warn(`Could not set bucket public policy (files may not be publicly accessible): ${error.message}`);
+            // Don't throw error - the bucket still works, files just might not be publicly accessible
         }
     }
 

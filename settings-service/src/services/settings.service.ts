@@ -117,30 +117,37 @@ class SettingsService {
             }
         }
 
-        // Upload the new file to Google Drive
+        // Upload the new file to Cloud Storage (hybrid system)
         let fileId: string;
+        let fileUrl: string;
         try {
-            log.debug(`Uploading new ${fieldName} file '${file.originalname}' to Google Drive...`);
+            log.debug(`Uploading new ${fieldName} file '${file.originalname}' to Cloud Storage...`);
             const uniqueFileName = `${fileNamePrefix}${Date.now()}_${file.originalname}`;
-            const uploadResult = await GoogleDriveService.uploadFile(
+
+            // Import and use cloud storage service
+            const CloudStorageService = (await import('./cloudStorage.service')).default;
+            const uploadResult = await CloudStorageService.uploadFileHybrid(
                 file.buffer,
                 file.mimetype,
                 uniqueFileName
             );
 
             fileId = uploadResult.fileId;
-            log.info(`New ${fieldName} file uploaded successfully. File ID: ${fileId}`);
+            fileUrl = uploadResult.publicUrl;
+            log.info(`New ${fieldName} file uploaded successfully. File ID: ${fileId}, URL: ${fileUrl}`);
         } catch (uploadError: any) {
-            log.error(`Failed to upload new ${fieldName} file to Google Drive: ${uploadError.message}`, uploadError);
+            log.error(`Failed to upload new ${fieldName} file to storage: ${uploadError.message}`, uploadError);
             throw new AppError(`Failed to upload ${fieldName} file to storage.`, 500);
         }
 
-        // Prepare file reference data
+        // Prepare file reference data with CDN URL
         const fileData: IFileReference = {
             fileId: fileId,
             fileName: file.originalname,
             mimeType: file.mimetype,
             size: file.size,
+            url: fileUrl, // Store CDN URL directly
+            storageType: 'gcs' // Mark as Cloud Storage
         };
 
         log.debug(`Updating settings database with new ${fieldName} information...`, fileData);
@@ -181,15 +188,15 @@ class SettingsService {
      */
     async uploadGenericFile(file: Express.Multer.File, folderName?: string): Promise<UploadedFileInfo> {
         log.info(`Uploading generic file: ${file.originalname} (Size: ${file.size}), Target Folder Name: ${folderName || 'Default'}`);
-        
+
         try {
             // Import cloud storage service
             const CloudStorageService = (await import('./cloudStorage.service')).default;
-            
+
             // Create organized filename with folder prefix
             const folderPrefix = folderName ? `${folderName}/` : '';
             const uniqueFileName = `${folderPrefix}${Date.now()}_${file.originalname}`;
-            
+
             log.debug(`Uploading generic file '${file.originalname}' using hybrid storage...`);
             const uploadResult = await CloudStorageService.uploadFileHybrid(
                 file.buffer,
@@ -197,9 +204,9 @@ class SettingsService {
                 uniqueFileName,
                 folderName
             );
-            
+
             log.info(`Generic file uploaded successfully. File ID: ${uploadResult.fileId}`);
-            
+
             const fileInfo: UploadedFileInfo = {
                 fileId: uploadResult.fileId,
                 url: uploadResult.publicUrl,
@@ -207,10 +214,10 @@ class SettingsService {
                 mimeType: file.mimetype,
                 size: file.size,
             };
-            
+
             log.info(`Returning info for generic file upload:`, fileInfo);
             return fileInfo;
-            
+
         } catch (uploadError: any) {
             log.error(`Failed to upload generic file: ${uploadError.message}`, uploadError);
             throw new Error('Failed to upload file to storage.');
