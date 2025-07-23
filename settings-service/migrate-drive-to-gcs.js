@@ -40,7 +40,7 @@ const CONFIG = {
 
     // Migration settings
     batchSize: 10, // Process 10 files at a time
-    dryRun: true, // SAFETY: Set to false only when ready for actual migration
+    dryRun: false, // SAFETY: Set to false only when ready for actual migration
     backupFilePath: './migration-backup.json' // Backup of file mappings
 };
 
