@@ -467,8 +467,7 @@ export class CinetPayPayoutService {
                 client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
             };
 
-            // Do NOT send a specific payment_method if it's OMCM, let CinetPay auto-detect
-            // or if it's not explicitly valid in our list (which might not be exhaustive for transfers)
+            // payment_method is optional for CinetPay. Only set if explicitly provided and valid.
             if (request.paymentMethod && request.paymentMethod !== 'OMCM' && this.isValidPaymentMethod(request.paymentMethod, request.countryCode)) {
                 transferRequest.payment_method = request.paymentMethod;
                 log.info(`Using specified payment method: ${request.paymentMethod}`);

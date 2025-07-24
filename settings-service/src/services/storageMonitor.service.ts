@@ -296,7 +296,7 @@ class StorageMonitorService {
 
     /**
      * Get storage breakdown by folder and file type for Cloud Storage
-     */
+ */
     async getStorageBreakdown(): Promise<{
         totalFiles: number;
         profilePictureFiles: number;

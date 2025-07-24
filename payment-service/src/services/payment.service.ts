@@ -402,12 +402,14 @@ class PaymentService {
 
             // --- SPLIT LOGIC: For withdrawals, Togo (TG) uses FeexPay, not CinetPay ---
             let selectedGateway: PaymentGateway;
-            if (countryCode === 'TG') {
-                selectedGateway = PaymentGateway.FEEXPAY;
-                log.info('Togo withdrawal: Forcing gateway to FEEXPAY (payments use CinetPay, withdrawals use FeexPay)');
-            } else {
-                selectedGateway = this.selectGateway(countryCode);
-            }
+            // OLD: if (countryCode === 'TG') {
+            //     selectedGateway = PaymentGateway.FEEXPAY;
+            //     log.info('Togo withdrawal: Forcing gateway to FEEXPAY (payments use CinetPay, withdrawals use FeexPay)');
+            // } else {
+            //     selectedGateway = this.selectGateway(countryCode);
+            // }
+            // NEW: Togo (TG) withdrawals should use CinetPay, just like payments
+            selectedGateway = this.selectGateway(countryCode);
 
             // Determine which payout service to use based on country code using the same logic as payments
             let payoutService;
@@ -3028,7 +3030,7 @@ class PaymentService {
             let payoutNotificationUrl: string;
             let providerName: 'CinetPay' | 'FeexPay';
 
-            // Use the same gateway selection logic as payments
+            // Use the same gateway selection logic as payments (now CinetPay for Togo withdrawals too)
             const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode);
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
