@@ -2751,7 +2751,7 @@ export class UserService {
             fileBuffer,
             mimeType,
             originalName,
-            'profile-picture'
+            'avatars'
         );
 
         // Update user with both the file ID (for reference) and the public URL

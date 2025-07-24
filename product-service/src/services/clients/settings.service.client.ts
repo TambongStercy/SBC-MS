@@ -55,7 +55,7 @@ class SettingsServiceClient {
         fileBuffer: Buffer,
         mimeType: string,
         originalName: string,
-        folderName?: 'profile-picture' | 'product-docs' | 'products'
+        folderName?: 'avatars' | 'documents' | 'products'
     ): Promise<{ fileId: string; url: string }> {
         // Target the new internal endpoint
         const url = '/settings/internal/upload';

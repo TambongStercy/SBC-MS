@@ -137,7 +137,7 @@ class SettingsServiceClient {
         fileBuffer: Buffer,
         mimeType: string,
         originalName: string,
-        folderName?: 'profile-picture' | 'product-docs'
+        folderName?: 'avatars' | 'documents' | 'products'
     ): Promise<FileUploadResponseData> {
         const url = '/settings/internal/upload';
         log.info(`Uploading file "${originalName}" (${mimeType}) to internal endpoint ${this.apiClient.defaults.baseURL}${url}, Folder: ${folderName || 'default'}`);

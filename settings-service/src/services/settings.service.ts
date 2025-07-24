@@ -366,6 +366,52 @@ class SettingsService {
             throw new AppError('Failed to retrieve admin balance from payment service.', 500);
         }
     }
+
+    async uploadFileToCloudStorage(
+        fileBuffer: Buffer,
+        mimeType: string,
+        originalName: string,
+        folderName?: 'avatars' | 'documents' | 'products'
+    ): Promise<{ fileId: string; url: string }> {
+        // Define folder mapping
+        const folderMap = {
+            'avatars': 'avatars/',
+            'products': 'products/',
+            'documents': 'documents/'
+        };
+
+        const destinationFolder = folderName ? folderMap[folderName] : 'others/';
+
+        try {
+            // Import cloud storage service
+            const CloudStorageService = (await import('./cloudStorage.service')).default;
+
+            // Create organized filename with folder prefix
+            const uniqueFileName = `${Date.now()}_${originalName}`;
+
+            log.debug(`Uploading file '${originalName}' to Cloud Storage in folder: ${destinationFolder}`);
+            const uploadResult = await CloudStorageService.uploadFileHybrid(
+                fileBuffer,
+                mimeType,
+                uniqueFileName,
+                destinationFolder
+            );
+
+            log.info(`File uploaded successfully. File ID: ${uploadResult.fileId}`);
+
+            const fileInfo: { fileId: string; url: string } = {
+                fileId: uploadResult.fileId,
+                url: uploadResult.publicUrl,
+            };
+
+            log.info(`Returning info for file upload:`, fileInfo);
+            return fileInfo;
+
+        } catch (uploadError: any) {
+            log.error(`Failed to upload file to Cloud Storage: ${uploadError.message}`, uploadError);
+            throw new AppError('Failed to upload file to storage.', 500);
+        }
+    }
 }
 
 export default new SettingsService(); 
