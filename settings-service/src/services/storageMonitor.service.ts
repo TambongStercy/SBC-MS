@@ -58,16 +58,14 @@ class StorageMonitorService {
     async getStorageUsage(): Promise<StorageUsage> {
         try {
             const bucket = this.storage.bucket(this.bucketName);
-            const [files] = await bucket.getFiles();
+            const [files] = await bucket.getFiles({ autoPaginate: true });
 
             let totalBytes = 0;
-            let fileCount = 0;
-
             for (const file of files) {
-                const [metadata] = await file.getMetadata();
-                totalBytes += parseInt(String(metadata.size || '0'), 10);
-                fileCount++;
+                totalBytes += parseInt(String(file.metadata.size || '0'), 10);
             }
+
+            const fileCount = files.length;
 
             // Cloud Storage is virtually unlimited, so we base "percentage" on cost thresholds
             const costs = this.calculateStorageCosts(totalBytes, fileCount, 0);
@@ -175,7 +173,7 @@ class StorageMonitorService {
             cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
             const bucket = this.storage.bucket(this.bucketName);
-            const [files] = await bucket.getFiles();
+            const [files] = await bucket.getFiles({ autoPaginate: true });
 
             const candidates = [];
 
@@ -190,8 +188,7 @@ class StorageMonitorService {
             ];
 
             for (const file of files) {
-                const [metadata] = await file.getMetadata();
-                const createdDate = new Date(metadata.timeCreated as string);
+                const createdDate = new Date(file.metadata.timeCreated as string);
 
                 // Skip if file is newer than cutoff
                 if (createdDate > cutoffDate) continue;
@@ -209,9 +206,9 @@ class StorageMonitorService {
                     candidates.push({
                         id: file.name,
                         name: file.name,
-                        createdTime: metadata.timeCreated,
-                        size: metadata.size,
-                        mimeType: metadata.contentType
+                        createdTime: file.metadata.timeCreated,
+                        size: file.metadata.size,
+                        mimeType: file.metadata.contentType
                     });
                 }
             }
@@ -308,7 +305,7 @@ class StorageMonitorService {
     }> {
         try {
             const bucket = this.storage.bucket(this.bucketName);
-            const [files] = await bucket.getFiles();
+            const [files] = await bucket.getFiles({ autoPaginate: true });
 
             let profilePictureFiles = 0;
             let productFiles = 0;
@@ -319,8 +316,7 @@ class StorageMonitorService {
 
             // Categorize files by folder structure
             for (const file of files) {
-                const [metadata] = await file.getMetadata();
-                totalBytes += parseInt(String(metadata.size || '0'), 10);
+                totalBytes += parseInt(String(file.metadata.size || '0'), 10);
 
                 if (file.name.startsWith('avatars/')) {
                     profilePictureFiles++;

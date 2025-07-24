@@ -7,11 +7,11 @@ import FormData from 'form-data'; // Ensure FormData is imported
 const log = logger.getLogger('SettingsServiceClient');
 
 // Define expected response structure for file upload
-interface FileUploadResponseData {
-    fileId: string;
-    url?: string; // URL might be returned by settings service
-    message?: string;
-}
+// interface FileUploadResponseData {
+//     fileId: string;
+//     url?: string; // URL might be returned by settings service
+//     message?: string;
+// }
 
 // Define the payload structure for JSON/Base64 upload
 // interface FileUploadPayload { // Removing this unused interface
@@ -55,8 +55,8 @@ class SettingsServiceClient {
         fileBuffer: Buffer,
         mimeType: string,
         originalName: string,
-        folderName?: 'profile-picture' | 'product-docs' // Add optional folderName
-    ): Promise<{ fileId: string }> {
+        folderName?: 'profile-picture' | 'product-docs' | 'products'
+    ): Promise<{ fileId: string; url: string }> {
         // Target the new internal endpoint
         const url = '/settings/internal/upload';
         log.info(`Uploading file "${originalName}" (${mimeType}) to internal endpoint ${this.apiClient.defaults.baseURL}${url}, Folder: ${folderName || 'default'}`);
@@ -75,7 +75,7 @@ class SettingsServiceClient {
 
         try {
             // Send as multipart/form-data
-            const response = await this.apiClient.post<ServiceResponse<FileUploadResponseData>>(
+            const response = await this.apiClient.post<ServiceResponse<{ fileId: string; url: string }>>(
                 url,
                 formData, // Send the FormData object
                 {
@@ -88,9 +88,9 @@ class SettingsServiceClient {
             );
 
             // Settings service internal endpoint returns 200 OK on success
-            if (response.status === 200 && response.data?.success && response.data.data?.fileId) {
-                log.info(`File uploaded successfully. File ID: ${response.data.data.fileId}`);
-                return { fileId: response.data.data.fileId };
+            if (response.status === 200 && response.data?.success && response.data.data?.fileId && response.data.data?.url) {
+                log.info(`File uploaded successfully. File ID: ${response.data.data.fileId}, URL: ${response.data.data.url}`);
+                return { fileId: response.data.data.fileId, url: response.data.data.url };
             } else {
                 log.warn('Settings service responded with failure or unexpected structure for file upload.', {
                     status: response.status,

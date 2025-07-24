@@ -133,10 +133,10 @@ export class ProductService {
                         file.buffer,
                         file.mimetype,
                         file.originalname,
-                        'product-docs'
-                    ).then((uploadResult: { fileId: string }) => ({
+                        'products' // Use 'products' as the destination folder
+                    ).then((uploadResult: { fileId: string; url: string }) => ({
                         fileId: uploadResult.fileId,
-                        url: `/settings/files/${uploadResult.fileId}`
+                        url: uploadResult.url // Use the full URL from the settings service
                     }))
                 );
                 const results = await Promise.all(uploadPromises);
@@ -237,10 +237,10 @@ export class ProductService {
                         file.buffer,
                         file.mimetype,
                         file.originalname,
-                        'product-docs'
-                    ).then((uploadResult: { fileId: string }) => ({
+                        'products' // Use 'products' as the destination folder
+                    ).then((uploadResult: { fileId: string; url: string }) => ({
                         fileId: uploadResult.fileId,
-                        url: `/settings/files/${uploadResult.fileId}`
+                        url: uploadResult.url // Use the full URL from the settings service
                     }))
                 );
                 safeUpdateData.images = await Promise.all(uploadPromises);

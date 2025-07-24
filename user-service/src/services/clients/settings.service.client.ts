@@ -29,7 +29,8 @@ interface FileUploadPayload {
 
 interface FileUploadResponseData {
     fileId: string;
-    // Include other potential fields like webViewLink, webContentLink etc.
+    url: string; // URL is returned by settings service
+    message?: string;
 }
 
 interface ServiceResponse<T> {
@@ -164,11 +165,11 @@ class SettingsServiceClient {
                 }
             );
 
-            if (response.status === 200 && response.data?.success && response.data.data?.fileId) {
-                log.info(`File uploaded successfully via user-service client. File ID: ${response.data.data.fileId}`);
+            if (response.status === 200 && response.data?.success && response.data.data) {
+                log.info(`File uploaded successfully. File ID: ${response.data.data.fileId}, URL: ${response.data.data.url}`);
                 return response.data.data;
             } else {
-                log.warn('Settings service responded with failure or unexpected structure for file upload (user-service client).', {
+                log.warn('Settings service responded with failure or unexpected structure for file upload.', {
                     status: response.status,
                     responseData: response.data
                 });

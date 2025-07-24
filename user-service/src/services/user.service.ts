@@ -2743,45 +2743,29 @@ export class UserService {
         fileBuffer: Buffer,
         mimeType: string,
         originalName: string
-    ): Promise<Partial<IUser>> { // Return Partial<IUser> to include avatar URL
+    ): Promise<Partial<IUser>> {
         log.info(`Updating avatar for user ${userId}`);
-        try {
-            // 1. Upload to Settings Service, specifying the folder
-            const uploadResult = await settingsService.uploadFile(
-                fileBuffer,
-                mimeType,
-                originalName,
-                'profile-picture' // Specify the target folder name
-            );
-            const fileId = uploadResult.fileId;
 
-            // 2. Construct Proxy URL
-            // Use relative path which will be resolved based on where user-service is mounted
-            const proxyUrl = `/settings/files/${fileId}`; // Relative URL pointing to settings-service proxy
+        // Call settings service to upload the file
+        const { fileId, url } = await settingsService.uploadFile(
+            fileBuffer,
+            mimeType,
+            originalName,
+            'profile-picture'
+        );
 
-            // 3. Update User Document
-            const updatedUser = await userRepository.updateById(userId, {
-                avatar: proxyUrl,
-                avatarId: fileId // Store the original file ID if needed
-            });
+        // Update user with both the file ID (for reference) and the public URL
+        const updatedUser = await userRepository.updateById(userId, {
+            avatarId: fileId,
+            avatar: url
+        });
 
-            if (!updatedUser) {
-                // TODO: Consider deleting the uploaded file from settings-service if user update fails
-                throw new AppError('User not found after avatar upload', 404);
-            }
-
-            log.info(`Avatar updated successfully for user ${userId}. New URL: ${proxyUrl}`);
-            // Return only the necessary updated fields or the mapped response
-            return this.mapUserToResponse(updatedUser); // Ensure avatar field is included
-
-        } catch (error) {
-            log.error(`Failed to update avatar for user ${userId}:`, error);
-            // Re-throw specific AppErrors or a generic one
-            if (error instanceof AppError) {
-                throw error;
-            }
-            throw new AppError('Failed to update avatar', 500);
+        if (!updatedUser) {
+            throw new AppError('Failed to update user with new avatar', 500);
         }
+
+        log.info(`Avatar updated successfully for user ${userId}. New URL: ${url}`);
+        return this.mapUserToResponse(updatedUser);
     }
 
     /**
