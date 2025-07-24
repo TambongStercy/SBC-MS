@@ -1,148 +1,169 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import storageMonitorService from '../../services/storageMonitor.service';
-import storageMonitorJob from '../../jobs/storageMonitor.job';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('StorageController');
 
 export class StorageController {
-    /**
- * Get current storage status and recommendations
- */
-    async getStorageStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
-            const report = await storageMonitorService.getStorageReport();
-
-            // Get storage breakdown for additional insights
-            let breakdown = null;
-            try {
-                breakdown = await storageMonitorService.getStorageBreakdown();
-            } catch (error) {
-                log.debug('Could not get storage breakdown:', error);
-            }
-
-            // Format the response for better readability
-            const formattedReport = {
-                usage: {
-                    used: storageMonitorService.formatBytes(report.usage.used),
-                    total: storageMonitorService.formatBytes(report.usage.total),
-                    available: storageMonitorService.formatBytes(report.usage.availableSpace),
-                    percentage: `${report.usage.percentage}%`,
-                    raw: report.usage // Include raw bytes for programmatic use
-                },
-                breakdown: breakdown ? {
-                    totalFiles: breakdown.totalFiles,
-                    userContent: {
-                        profilePictures: breakdown.profilePictureFiles,
-                        productImages: breakdown.productFiles,
-                        note: "User content is PROTECTED and will never be automatically deleted"
-                    },
-                    otherFiles: breakdown.otherFiles,
-                    summary: breakdown.breakdown
-                } : null,
-                alert: report.alert,
-                cleanupCandidates: {
-                    count: report.cleanupCandidates,
-                    note: "Only includes safe temporary files - user content is excluded"
-                },
-                recommendations: report.recommendations,
-                healthStatus: this.getHealthStatus(report.usage.percentage),
-                protectionPolicy: {
-                    profilePictures: "PROTECTED - Never deleted",
-                    productImages: "PROTECTED - Never deleted",
-                    userGeneratedContent: "PROTECTED - Never deleted",
-                    temporaryFiles: "Safe for cleanup after 7+ days"
-                }
-            };
-
-            res.status(200).json({
-                success: true,
-                data: formattedReport
-            });
-
-        } catch (error: any) {
-            log.error('Error getting storage status:', error);
-            next(error);
-        }
-    }
 
     /**
-     * Manually trigger storage monitoring check
+     * Get comprehensive storage status including usage, costs, and recommendations
      */
-    async runStorageCheck(req: Request, res: Response, next: NextFunction): Promise<void> {
+    async getStorageStatus(req: Request, res: Response): Promise<void> {
         try {
-            log.info('Manual storage check triggered via API');
-
-            // Run the monitoring job immediately
-            await storageMonitorJob.runNow();
-
-            // Get the latest report
             const report = await storageMonitorService.getStorageReport();
+            const breakdown = await storageMonitorService.getStorageBreakdown();
 
-            res.status(200).json({
+            // Format the response to match frontend expectations
+            const response = {
                 success: true,
-                message: 'Storage check completed',
                 data: {
                     usage: {
                         used: storageMonitorService.formatBytes(report.usage.used),
-                        total: storageMonitorService.formatBytes(report.usage.total),
-                        percentage: `${report.usage.percentage}%`
+                        total: "Unlimited", // Cloud Storage is virtually unlimited
+                        available: "Unlimited", // Cloud Storage is virtually unlimited
+                        percentage: `${report.usage.percentage.toFixed(1)}%`,
+                        raw: report.usage
                     },
+                    costs: {
+                        storage: `${Math.round(report.costs.storage)} FCFA`,
+                        bandwidth: `${Math.round(report.costs.bandwidth)} FCFA`,
+                        operations: `${Math.round(report.costs.operations)} FCFA`,
+                        total: `${Math.round(report.costs.total)} FCFA`,
+                        raw: report.costs
+                    },
+                    breakdown: breakdown ? {
+                        totalFiles: breakdown.totalFiles,
+                        profilePictureFiles: breakdown.profilePictureFiles,
+                        productFiles: breakdown.productFiles,
+                        documentFiles: breakdown.documentFiles,
+                        otherFiles: breakdown.otherFiles,
+                        breakdown: breakdown.breakdown,
+                        costs: breakdown.costs
+                    } : null,
                     alert: report.alert,
-                    timestamp: new Date().toISOString()
+                    cleanupCandidates: {
+                        count: report.cleanupCandidates,
+                        potentialSavings: "To be calculated", // We can enhance this later
+                        note: "Only temporary/cache files are considered for cleanup. User content is always protected."
+                    },
+                    recommendations: report.recommendations,
+                    healthStatus: this.determineHealthStatus(report.costs.total, report.alert),
+                    protectionPolicy: {
+                        profilePictures: "PROTECTED",
+                        productImages: "PROTECTED", 
+                        userGeneratedContent: "PROTECTED",
+                        temporaryFiles: "CLEANABLE"
+                    }
                 }
-            });
+            };
 
+            res.json(response);
         } catch (error: any) {
-            log.error('Error running manual storage check:', error);
-            next(error);
+            log.error('Error getting storage status:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get storage status',
+                error: error.message
+            });
         }
     }
 
     /**
-     * Get list of files that can be cleaned up
+     * Run a manual storage check and return updated status
      */
-    async getCleanupCandidates(req: Request, res: Response, next: NextFunction): Promise<void> {
+    async runStorageCheck(req: Request, res: Response): Promise<void> {
+        try {
+            // Log current storage status (this will also run checks)
+            await storageMonitorService.logStorageStatus();
+            
+            // Get fresh data
+            const usage = await storageMonitorService.getStorageUsage();
+            const alert = await storageMonitorService.checkStorageHealth();
+            const costs = storageMonitorService.calculateStorageCosts(usage.used, usage.fileCount, 0);
+
+            const response = {
+                success: true,
+                message: 'Storage check completed successfully',
+                data: {
+                    usage: {
+                        used: storageMonitorService.formatBytes(usage.used),
+                        fileCount: usage.fileCount.toString(),
+                        totalCost: `${Math.round(costs.total)} FCFA`
+                    },
+                    alert,
+                    timestamp: new Date().toISOString()
+                }
+            };
+
+            res.json(response);
+        } catch (error: any) {
+            log.error('Error running storage check:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to run storage check',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get cleanup candidates with potential cost savings
+     */
+    async getCleanupCandidates(req: Request, res: Response): Promise<void> {
         try {
             const daysOld = parseInt(req.query.daysOld as string) || 7;
-
             const candidates = await storageMonitorService.getCleanupCandidates(daysOld);
 
-            // Calculate total size that could be freed
-            const totalSize = candidates.reduce((sum, file) => {
-                return sum + (parseInt(file.size || '0', 10));
-            }, 0);
+            // Calculate total size and potential savings
+            let totalBytes = 0;
+            const formattedCandidates = candidates.map(candidate => {
+                const size = parseInt(candidate.size || '0', 10);
+                totalBytes += size;
+                
+                return {
+                    id: candidate.id,
+                    name: candidate.name,
+                    createdTime: candidate.createdTime,
+                    size: storageMonitorService.formatBytes(size),
+                    mimeType: candidate.mimeType
+                };
+            });
 
-            res.status(200).json({
+            // Estimate cost savings (storage cost only, as bandwidth is already used)
+            const monthlyCostSavings = storageMonitorService.calculateStorageCosts(totalBytes, 0, 0).storage;
+
+            const response = {
                 success: true,
                 data: {
                     totalFiles: candidates.length,
-                    totalSizeToFree: storageMonitorService.formatBytes(totalSize),
+                    totalSizeToFree: storageMonitorService.formatBytes(totalBytes),
                     daysOld,
-                    files: candidates.map(file => ({
-                        id: file.id,
-                        name: file.name,
-                        size: storageMonitorService.formatBytes(parseInt(file.size || '0', 10)),
-                        createdTime: file.createdTime,
-                        mimeType: file.mimeType
-                    }))
+                    estimatedCostSavings: `${Math.round(monthlyCostSavings)} FCFA`,
+                    candidates: formattedCandidates
                 }
-            });
+            };
 
+            res.json(response);
         } catch (error: any) {
             log.error('Error getting cleanup candidates:', error);
-            next(error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get cleanup candidates',
+                error: error.message
+            });
         }
     }
 
     /**
-     * Get storage health status based on percentage
+     * Determine health status based on costs and alerts
      */
-    private getHealthStatus(percentage: number): string {
-        if (percentage >= 98) return 'EMERGENCY';
-        if (percentage >= 95) return 'CRITICAL';
-        if (percentage >= 80) return 'WARNING';
-        if (percentage >= 60) return 'MODERATE';
+    private determineHealthStatus(totalCost: number, alert: any): string {
+        if (alert?.level === 'critical') return 'CRITICAL';
+        if (alert?.level === 'warning') return 'WARNING';
+        if (totalCost > 1000) return 'MODERATE'; // Above 1000 FCFA
         return 'HEALTHY';
     }
-} 
+}
+
+export default new StorageController(); 

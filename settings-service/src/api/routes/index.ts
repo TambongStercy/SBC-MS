@@ -5,8 +5,13 @@ import storageRoutes from './storage.routes';
 
 const router = Router();
 
+// Settings routes (including file uploads)
 router.use('/settings', settingsRoutes);
+
+// Storage monitoring routes (under settings)
+router.use('/settings/storage', storageRoutes);
+
+// Event routes  
 router.use('/events', eventRoutes);
-router.use('/storage', storageRoutes);
 
 export default router; 

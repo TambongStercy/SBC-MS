@@ -1,6 +1,8 @@
 import React from 'react';
 import { Product } from '../../pages/ProductsManagementPage'; // Import Product interface only
 import { Edit, Trash2, Zap } from 'lucide-react'; // Icons for actions
+import { ImageDisplay } from '../common/ImageDisplay';
+import { getFileUrl } from '../../utils/fileUtils';
 
 interface ProductListProps {
     products: Product[];
@@ -58,11 +60,20 @@ const ProductList: React.FC<ProductListProps> = ({
                             <tr key={product._id} className="border-b bg-gray-800 border-gray-700 hover:bg-gray-600">
                                 <td className="px-6 py-4">
                                     {product.imagesUrl && product.imagesUrl.length > 0 ? (
-                                        <img
-                                            src={product.imagesUrl[0]}
-                                            alt={product.name}
-                                            className="w-16 h-16 object-cover rounded"
-                                        />
+                                        // Check if it's already a full URL or needs processing
+                                        product.imagesUrl[0].startsWith('http') ? (
+                                            <img
+                                                src={product.imagesUrl[0]}
+                                                alt={product.name}
+                                                className="w-16 h-16 object-cover rounded"
+                                            />
+                                        ) : (
+                                            <ImageDisplay
+                                                fileId={product.imagesUrl[0]}
+                                                alt={product.name}
+                                                className="w-16 h-16 object-cover rounded"
+                                            />
+                                        )
                                     ) : (
                                         <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-500">
                                             No Image

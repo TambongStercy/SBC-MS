@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '../../pages/ProductsManagementPage'; // Import interfaces
+import { ImageDisplay } from '../common/ImageDisplay';
+import { getFileUrl } from '../../utils/fileUtils';
 
 interface ProductEditFormProps {
     product: Partial<Product> | null; // Use Partial for create mode, null if no initial data
@@ -244,7 +246,16 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                         {/* Existing Images (only show when editing) */}
                         {product?._id && existingImageUrls.map((url, index) => (
                             <div key={`existing-${index}`} className="relative group">
-                                <img src={url} alt={`Existing product image ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-gray-600" />
+                                {/* Handle both full URLs and file IDs */}
+                                {url.startsWith('http') ? (
+                                    <img src={url} alt={`Existing product image ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-gray-600" />
+                                ) : (
+                                    <ImageDisplay
+                                        fileId={url}
+                                        alt={`Existing product image ${index + 1}`}
+                                        className="w-full h-20 object-cover rounded-md border border-gray-600"
+                                    />
+                                )}
                                 {/* TODO: Add a button to remove existing image */}
                                 {/* <button type="button" className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100">&times;</button> */}
                             </div>

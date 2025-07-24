@@ -38,27 +38,42 @@ class SettingsService {
     }
 
     /**
-     * Helper function to generate direct URLs for file references.
-     * Uses direct URLs for new GCS files, proxy for old Drive files.
+     * Helper function to generate direct CDN URLs for file references.
+     * Cloud Storage files get direct CDN URLs, Google Drive files get proxy URLs.
      * @param settings - The settings document.
      * @returns The settings document with URLs populated.
      */
     private async populateFileUrls(settings: ISettings | null): Promise<ISettings | null> {
         if (!settings) return null;
 
-        const generateUrl = async (ref?: IFileReference) => {
-            if (ref?.fileId) {
-                // Import cloud storage service dynamically
-                const CloudStorageService = (await import('./cloudStorage.service')).default;
-                ref.url = await CloudStorageService.getFileUrl(ref.fileId);
+        const generateUrl = (ref?: IFileReference) => {
+            if (!ref?.fileId) return ref;
+
+            // Check if it's a Cloud Storage file (contains folder structure)
+            if (ref.fileId.includes('/') || ref.fileId.startsWith('avatars/') || ref.fileId.startsWith('products/') || ref.fileId.startsWith('documents/')) {
+                // Direct CDN URL for Cloud Storage files
+                ref.url = `https://storage.googleapis.com/sbc-file-storage/${ref.fileId}`;
             }
+            // Check if it's already a full URL
+            else if (ref.fileId.startsWith('https://storage.googleapis.com/')) {
+                ref.url = ref.fileId; // Already a direct URL
+            }
+            // Google Drive file - use proxy for bandwidth efficiency
+            else if (ref.fileId.length === 33 && ref.fileId.startsWith('1')) {
+                ref.url = `/api/settings/files/${ref.fileId}`;
+            }
+            // Fallback: assume Cloud Storage path
+            else {
+                ref.url = `https://storage.googleapis.com/sbc-file-storage/${ref.fileId}`;
+            }
+
             return ref;
         };
 
-        settings.companyLogo = await generateUrl(settings.companyLogo);
-        settings.termsAndConditionsPdf = await generateUrl(settings.termsAndConditionsPdf);
-        settings.presentationVideo = await generateUrl(settings.presentationVideo);
-        settings.presentationPdf = await generateUrl(settings.presentationPdf);
+        settings.companyLogo = generateUrl(settings.companyLogo);
+        settings.termsAndConditionsPdf = generateUrl(settings.termsAndConditionsPdf);
+        settings.presentationVideo = generateUrl(settings.presentationVideo);
+        settings.presentationPdf = generateUrl(settings.presentationPdf);
 
         return settings;
     }
@@ -140,13 +155,13 @@ class SettingsService {
             throw new AppError(`Failed to upload ${fieldName} file to storage.`, 500);
         }
 
-        // Prepare file reference data with CDN URL
+        // Prepare file reference data with direct CDN URL for Cloud Storage
         const fileData: IFileReference = {
             fileId: fileId,
             fileName: file.originalname,
             mimeType: file.mimetype,
             size: file.size,
-            url: fileUrl, // Store CDN URL directly
+            url: fileUrl, // Direct CDN URL (no proxy)
             storageType: 'gcs' // Mark as Cloud Storage
         };
 

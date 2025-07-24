@@ -1,114 +1,168 @@
-import { google, drive_v3 } from 'googleapis';
+import { Storage } from '@google-cloud/storage';
 import config from '../config';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('StorageMonitorService');
 
 interface StorageUsage {
-    used: number;
-    total: number;
-    percentage: number;
-    availableSpace: number;
+    used: number;           // Bytes used
+    total: number;          // Estimated limit (Cloud Storage is virtually unlimited)
+    percentage: number;     // Percentage based on cost thresholds
+    availableSpace: number; // Virtually unlimited for Cloud Storage
+    fileCount: number;      // Number of files
+}
+
+interface StorageCosts {
+    storage: number;        // Monthly storage cost in FCFA
+    bandwidth: number;      // Monthly bandwidth cost in FCFA
+    operations: number;     // Monthly operations cost in FCFA
+    total: number;          // Total monthly cost in FCFA
 }
 
 interface StorageAlert {
-    level: 'warning' | 'critical' | 'emergency';
-    percentage: number;
+    level: 'info' | 'warning' | 'critical';
+    costThreshold: number;  // Cost threshold in FCFA
     message: string;
     recommendedActions: string[];
 }
 
 class StorageMonitorService {
-    private drive: drive_v3.Drive;
+    private storage: Storage;
+    private bucketName: string;
+
+    // Cloud Storage pricing (in USD, converted to FCFA at ~600 FCFA per USD)
+    private readonly PRICING = {
+        storagePerGBMonth: 0.020 * 600,      // ~12 FCFA per GB per month
+        bandwidthPerGB: 0.12 * 600,          // ~72 FCFA per GB (after 1TB free)
+        operationsPer10K: 0.004 * 600,       // ~2.4 FCFA per 10K operations
+        freeBandwidthGB: 1024,               // 1TB free egress per month
+        exchangeRate: 600                    // USD to FCFA
+    };
 
     constructor() {
-        const jwtClient = new google.auth.JWT(
-            config.googleDrive.clientEmail,
-            undefined,
-            config.googleDrive.privateKey,
-            ['https://www.googleapis.com/auth/drive']
-        );
+        // Use existing Google Drive credentials for Cloud Storage
+        this.storage = new Storage({
+            credentials: {
+                client_email: config.googleDrive.clientEmail,
+                private_key: config.googleDrive.privateKey,
+            },
+            projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+        });
 
-        this.drive = google.drive({ version: 'v3', auth: jwtClient });
+        this.bucketName = process.env.CLOUD_STORAGE_BUCKET_NAME || 'sbc-file-storage';
     }
 
     /**
-     * Get current storage usage information
+     * Get current Cloud Storage usage information
      */
     async getStorageUsage(): Promise<StorageUsage> {
         try {
-            const response = await this.drive.about.get({
-                fields: 'storageQuota'
-            });
+            const bucket = this.storage.bucket(this.bucketName);
+            const [files] = await bucket.getFiles();
 
-            const quota = response.data.storageQuota;
-            const used = parseInt(quota?.usage || '0', 10);
-            const total = parseInt(quota?.limit || '0', 10);
+            let totalBytes = 0;
+            let fileCount = 0;
 
-            const percentage = total > 0 ? (used / total) * 100 : 0;
-            const availableSpace = Math.max(0, total - used);
+            for (const file of files) {
+                const [metadata] = await file.getMetadata();
+                totalBytes += parseInt(String(metadata.size || '0'), 10);
+                fileCount++;
+            }
+
+            // Cloud Storage is virtually unlimited, so we base "percentage" on cost thresholds
+            const costs = this.calculateStorageCosts(totalBytes, fileCount, 0);
+            const monthlyStorageCost = costs.storage;
+
+            // Define cost thresholds in FCFA
+            const warningThreshold = 5000;  // 5,000 FCFA
+            const criticalThreshold = 15000; // 15,000 FCFA
+
+            const percentage = Math.min(100, (monthlyStorageCost / criticalThreshold) * 100);
 
             return {
-                used,
-                total,
-                percentage: Math.round(percentage * 100) / 100, // Round to 2 decimal places
-                availableSpace
+                used: totalBytes,
+                total: -1, // Unlimited for Cloud Storage
+                percentage: Math.round(percentage * 100) / 100,
+                availableSpace: -1, // Unlimited for Cloud Storage
+                fileCount
             };
         } catch (error: any) {
-            log.error('Error fetching storage usage:', error);
+            log.error('Error fetching Cloud Storage usage:', error);
             throw new Error(`Failed to get storage usage: ${error.message}`);
         }
     }
 
     /**
-     * Check storage health and return alerts if needed
+     * Calculate monthly storage costs in FCFA
+     */
+    calculateStorageCosts(storageBytes: number, fileCount: number, bandwidthGB: number): StorageCosts {
+        const storageGB = storageBytes / (1024 * 1024 * 1024);
+
+        // Storage cost
+        const storage = storageGB * this.PRICING.storagePerGBMonth;
+
+        // Bandwidth cost (first 1TB free)
+        const chargableBandwidth = Math.max(0, bandwidthGB - this.PRICING.freeBandwidthGB);
+        const bandwidth = chargableBandwidth * this.PRICING.bandwidthPerGB;
+
+        // Operations cost (rough estimate based on file count)
+        const estimatedOperations = fileCount * 2; // Assume 2 operations per file on average
+        const operations = (estimatedOperations / 10000) * this.PRICING.operationsPer10K;
+
+        const total = storage + bandwidth + operations;
+
+        return { storage, bandwidth, operations, total };
+    }
+
+    /**
+     * Check storage health based on cost thresholds
      */
     async checkStorageHealth(): Promise<StorageAlert | null> {
         const usage = await this.getStorageUsage();
+        const costs = this.calculateStorageCosts(usage.used, usage.fileCount, 0);
 
-        if (usage.percentage >= 98) {
-            return {
-                level: 'emergency',
-                percentage: usage.percentage,
-                message: 'EMERGENCY: Storage almost full! Uploads will fail soon.',
-                recommendedActions: [
-                    'Enable billing immediately',
-                    'Run emergency cleanup',
-                    'Delete temporary files',
-                    'Contact system administrator'
-                ]
-            };
-        }
+        // Cost thresholds in FCFA
+        const warningCost = 5000;   // 5,000 FCFA
+        const criticalCost = 15000; // 15,000 FCFA
 
-        if (usage.percentage >= 95) {
+        if (costs.total >= criticalCost) {
             return {
                 level: 'critical',
-                percentage: usage.percentage,
-                message: 'CRITICAL: Storage critically low',
+                costThreshold: criticalCost,
+                message: `CRITICAL: Monthly storage cost is ${Math.round(costs.total)} FCFA (above ${criticalCost} FCFA threshold)`,
                 recommendedActions: [
-                    'Enable billing on Google Cloud',
-                    'Run cleanup scripts',
-                    'Archive old files',
-                    'Monitor closely'
+                    'Review and optimize file storage',
+                    'Implement file cleanup policies',
+                    'Monitor storage growth trends',
+                    'Consider archiving old files'
                 ]
             };
         }
 
-        if (usage.percentage >= 80) {
+        if (costs.total >= warningCost) {
             return {
                 level: 'warning',
-                percentage: usage.percentage,
-                message: 'WARNING: Storage getting full',
+                costThreshold: warningCost,
+                message: `WARNING: Monthly storage cost is ${Math.round(costs.total)} FCFA (above ${warningCost} FCFA threshold)`,
                 recommendedActions: [
-                    'Plan billing upgrade',
-                    'Schedule cleanup',
-                    'Review storage policies',
-                    'Monitor trends'
+                    'Monitor storage usage trends',
+                    'Plan for potential cleanup',
+                    'Review file retention policies',
+                    'Consider cost optimization'
                 ]
             };
         }
 
-        return null; // No alert needed
+        // Info level for normal usage
+        return {
+            level: 'info',
+            costThreshold: 0,
+            message: `Storage costs are within normal range: ${Math.round(costs.total)} FCFA/month`,
+            recommendedActions: [
+                'Continue monitoring usage',
+                'Maintain current storage practices'
+            ]
+        };
     }
 
     /**
@@ -119,35 +173,13 @@ class StorageMonitorService {
         try {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-            const cutoffISO = cutoffDate.toISOString();
 
-            // Get protected folder IDs (user content that should NEVER be deleted)
-            const protectedFolders = [
-                config.googleDrive.profilePictureFolderId, // Profile pictures
-                config.googleDrive.productDocsFolderId    // Product images/docs
-            ].filter(Boolean); // Remove any undefined values
+            const bucket = this.storage.bucket(this.bucketName);
+            const [files] = await bucket.getFiles();
 
-            // Build query to exclude protected folders and only include safe file types
-            let query = `createdTime < '${cutoffISO}' and trashed = false`;
+            const candidates = [];
 
-            // Exclude files in protected folders
-            if (protectedFolders.length > 0) {
-                const folderExclusions = protectedFolders.map(folderId => `not parents in '${folderId}'`).join(' and ');
-                query += ` and (${folderExclusions})`;
-            }
-
-            // Only include temporary/cache files that are safe to delete
-            // Add file type restrictions for extra safety
-            const safeFileTypes = [
-                'application/json',           // Config/cache files
-                'text/plain',                // Log files, temp text files
-                'application/zip',           // Temporary archives
-                'application/x-gzip',        // Compressed temp files
-                'text/csv',                  // Export files
-                'application/pdf'            // Generated reports (be careful with this)
-            ];
-
-            // Add name patterns for files that are definitely safe to clean
+            // Safe prefixes for temporary/cache files that can be deleted
             const safePrefixes = [
                 'temp_',
                 'cache_',
@@ -157,25 +189,34 @@ class StorageMonitorService {
                 'tmp_'
             ];
 
-            // Build file type and name pattern filters
-            const safeTypeQuery = safeFileTypes.map(type => `mimeType='${type}'`).join(' or ');
-            const safePrefixQuery = safePrefixes.map(prefix => `name contains '${prefix}'`).join(' or ');
+            for (const file of files) {
+                const [metadata] = await file.getMetadata();
+                const createdDate = new Date(metadata.timeCreated as string);
 
-            // Combine all safety filters - only files that match safe patterns
-            query += ` and ((${safeTypeQuery}) or (${safePrefixQuery}))`;
+                // Skip if file is newer than cutoff
+                if (createdDate > cutoffDate) continue;
 
-            log.debug(`Cleanup query: ${query}`);
+                // Only include files with safe prefixes (exclude user content)
+                const fileName = file.name;
+                const hasSafePrefix = safePrefixes.some(prefix => fileName.startsWith(prefix));
 
-            const response = await this.drive.files.list({
-                q: query,
-                fields: 'files(id, name, createdTime, size, mimeType, parents)',
-                orderBy: 'createdTime asc',
-                pageSize: 50 // Reduced for safety
-            });
+                // Additional safety: exclude user content folders
+                const isUserContent = fileName.startsWith('avatars/') ||
+                    fileName.startsWith('products/') ||
+                    fileName.startsWith('documents/');
 
-            const candidates = response.data.files || [];
+                if (hasSafePrefix && !isUserContent) {
+                    candidates.push({
+                        id: file.name,
+                        name: file.name,
+                        createdTime: metadata.timeCreated,
+                        size: metadata.size,
+                        mimeType: metadata.contentType
+                    });
+                }
+            }
 
-            // Additional safety check: Log what we're considering for cleanup
+            // Log what we're considering for cleanup
             if (candidates.length > 0) {
                 log.info(`Found ${candidates.length} cleanup candidates (safe files only):`);
                 candidates.forEach(file => {
@@ -191,42 +232,49 @@ class StorageMonitorService {
     }
 
     /**
-     * Get storage statistics and recommendations
+     * Get storage statistics and cost recommendations
      */
     async getStorageReport(): Promise<{
         usage: StorageUsage;
+        costs: StorageCosts;
         alert: StorageAlert | null;
         cleanupCandidates: number;
         recommendations: string[];
     }> {
         const usage = await this.getStorageUsage();
+        const costs = this.calculateStorageCosts(usage.used, usage.fileCount, 0);
         const alert = await this.checkStorageHealth();
         const cleanupFiles = await this.getCleanupCandidates();
 
         const recommendations: string[] = [];
 
-        if (usage.percentage > 50) {
-            recommendations.push('Consider enabling Google Cloud billing for unlimited storage (~$1-2/month)');
+        if (costs.total > 1000) {
+            recommendations.push(`Current monthly cost: ${Math.round(costs.total)} FCFA (${Math.round(costs.total / 600)} USD)`);
         }
 
-        if (usage.percentage > 70) {
-            recommendations.push('Plan storage upgrade - user content should never be deleted');
+        if (costs.total > 5000) {
+            recommendations.push('Consider implementing file cleanup policies to reduce costs');
         }
 
-        if (usage.percentage > 85) {
-            recommendations.push('URGENT: Enable Google Cloud billing or migrate to Cloud Storage');
+        if (costs.total > 10000) {
+            recommendations.push('Review file retention policies - archive old files to reduce storage costs');
         }
 
-        if (usage.percentage > 95) {
-            recommendations.push('CRITICAL: Immediate billing upgrade required to prevent upload failures');
+        if (costs.total > 20000) {
+            recommendations.push('URGENT: High storage costs detected. Implement aggressive cleanup strategies');
         }
 
         if (cleanupFiles.length > 0) {
             recommendations.push(`${cleanupFiles.length} safe temporary files could be cleaned up (user content excluded)`);
         }
 
+        if (costs.total < 1000) {
+            recommendations.push('Storage costs are low and manageable');
+        }
+
         return {
             usage,
+            costs,
             alert,
             cleanupCandidates: cleanupFiles.length,
             recommendations
@@ -247,72 +295,60 @@ class StorageMonitorService {
     }
 
     /**
- * Get storage breakdown by folder and file type
- */
+     * Get storage breakdown by folder and file type for Cloud Storage
+     */
     async getStorageBreakdown(): Promise<{
         totalFiles: number;
         profilePictureFiles: number;
         productFiles: number;
+        documentFiles: number;
         otherFiles: number;
         breakdown: string[];
+        costs: StorageCosts;
     }> {
         try {
-            const profilePictureFolderId = config.googleDrive.profilePictureFolderId;
-            const productDocsFolderId = config.googleDrive.productDocsFolderId;
+            const bucket = this.storage.bucket(this.bucketName);
+            const [files] = await bucket.getFiles();
 
             let profilePictureFiles = 0;
             let productFiles = 0;
+            let documentFiles = 0;
             let otherFiles = 0;
+            let totalBytes = 0;
             const breakdown: string[] = [];
 
-            // Count files in profile pictures folder
-            if (profilePictureFolderId) {
-                const ppResponse = await this.drive.files.list({
-                    q: `parents in '${profilePictureFolderId}' and trashed = false`,
-                    fields: 'files(id)',
-                    pageSize: 1000
-                });
-                profilePictureFiles = ppResponse.data.files?.length || 0;
-                breakdown.push(`Profile Pictures: ${profilePictureFiles} files`);
+            // Categorize files by folder structure
+            for (const file of files) {
+                const [metadata] = await file.getMetadata();
+                totalBytes += parseInt(String(metadata.size || '0'), 10);
+
+                if (file.name.startsWith('avatars/')) {
+                    profilePictureFiles++;
+                } else if (file.name.startsWith('products/')) {
+                    productFiles++;
+                } else if (file.name.startsWith('documents/')) {
+                    documentFiles++;
+                } else {
+                    otherFiles++;
+                }
             }
 
-            // Count files in product docs folder  
-            if (productDocsFolderId) {
-                const pdResponse = await this.drive.files.list({
-                    q: `parents in '${productDocsFolderId}' and trashed = false`,
-                    fields: 'files(id)',
-                    pageSize: 1000
-                });
-                productFiles = pdResponse.data.files?.length || 0;
-                breakdown.push(`Product Images/Docs: ${productFiles} files`);
-            }
-
-            // Count other files
-            let otherQuery = 'trashed = false';
-            if (profilePictureFolderId || productDocsFolderId) {
-                const excludeFolders = [profilePictureFolderId, productDocsFolderId]
-                    .filter(Boolean)
-                    .map(id => `not parents in '${id}'`)
-                    .join(' and ');
-                otherQuery += ` and (${excludeFolders})`;
-            }
-
-            const otherResponse = await this.drive.files.list({
-                q: otherQuery,
-                fields: 'files(id)',
-                pageSize: 1000
-            });
-            otherFiles = otherResponse.data.files?.length || 0;
+            breakdown.push(`Profile Pictures (avatars/): ${profilePictureFiles} files`);
+            breakdown.push(`Product Images (products/): ${productFiles} files`);
+            breakdown.push(`Documents: ${documentFiles} files`);
             breakdown.push(`Other Files: ${otherFiles} files`);
 
-            const totalFiles = profilePictureFiles + productFiles + otherFiles;
+            const totalFiles = profilePictureFiles + productFiles + documentFiles + otherFiles;
+            const costs = this.calculateStorageCosts(totalBytes, totalFiles, 0);
 
             return {
                 totalFiles,
                 profilePictureFiles,
                 productFiles,
+                documentFiles,
                 otherFiles,
-                breakdown
+                breakdown,
+                costs
             };
         } catch (error: any) {
             log.error('Error getting storage breakdown:', error);
@@ -321,21 +357,19 @@ class StorageMonitorService {
     }
 
     /**
-     * Log current storage status
+     * Log current Cloud Storage status with costs
      */
     async logStorageStatus(): Promise<void> {
         try {
             const report = await this.getStorageReport();
+            const breakdown = await this.getStorageBreakdown();
 
-            log.info(`Storage Status: ${this.formatBytes(report.usage.used)} / ${this.formatBytes(report.usage.total)} (${report.usage.percentage}%)`);
+            log.info(`Cloud Storage Status: ${this.formatBytes(report.usage.used)} (${report.usage.fileCount} files)`);
+            log.info(`Monthly Cost Estimate: ${Math.round(report.costs.total)} FCFA (~${Math.round(report.costs.total / 600)} USD)`);
+            log.info(`Cost Breakdown: Storage: ${Math.round(report.costs.storage)} FCFA, Bandwidth: ${Math.round(report.costs.bandwidth)} FCFA, Operations: ${Math.round(report.costs.operations)} FCFA`);
 
-            // Add file breakdown for better insights
-            try {
-                const breakdown = await this.getStorageBreakdown();
-                log.info(`File Breakdown: ${breakdown.breakdown.join(', ')} (Total: ${breakdown.totalFiles} files)`);
-            } catch (error) {
-                log.debug('Could not get detailed file breakdown:', error);
-            }
+            // File breakdown
+            log.info(`File Breakdown: ${breakdown.breakdown.join(', ')}`);
 
             if (report.alert) {
                 log.warn(`Storage Alert [${report.alert.level.toUpperCase()}]: ${report.alert.message}`);
@@ -350,9 +384,10 @@ class StorageMonitorService {
                 log.info('Storage recommendations:', report.recommendations);
             }
         } catch (error: any) {
-            log.error('Error logging storage status:', error);
+            log.error('Error logging Cloud Storage status:', error);
         }
     }
+
 }
 
 export default new StorageMonitorService(); 

@@ -11,7 +11,9 @@ import {
     Package,
     CheckCircle,
     AlertCircle,
-    XCircle
+    XCircle,
+    DollarSign,
+    Cloud
 } from 'lucide-react';
 import {
     getStorageStatus,
@@ -83,10 +85,9 @@ const StorageMonitoringPage: React.FC = () => {
     const getHealthStatusColor = (status: string) => {
         switch (status) {
             case 'HEALTHY': return 'text-green-400 bg-green-900/20 border-green-500';
-            case 'MODERATE': return 'text-yellow-400 bg-yellow-900/20 border-yellow-500';
-            case 'WARNING': return 'text-orange-400 bg-orange-900/20 border-orange-500';
+            case 'MODERATE': return 'text-blue-400 bg-blue-900/20 border-blue-500';
+            case 'WARNING': return 'text-yellow-400 bg-yellow-900/20 border-yellow-500';
             case 'CRITICAL': return 'text-red-400 bg-red-900/20 border-red-500';
-            case 'EMERGENCY': return 'text-red-600 bg-red-900/40 border-red-400 animate-pulse';
             default: return 'text-gray-400 bg-gray-900/20 border-gray-500';
         }
     };
@@ -94,18 +95,17 @@ const StorageMonitoringPage: React.FC = () => {
     const getHealthStatusIcon = (status: string) => {
         switch (status) {
             case 'HEALTHY': return <CheckCircle className="w-5 h-5" />;
-            case 'MODERATE': return <AlertCircle className="w-5 h-5" />;
+            case 'MODERATE': return <Cloud className="w-5 h-5" />;
             case 'WARNING': return <AlertTriangle className="w-5 h-5" />;
             case 'CRITICAL': return <XCircle className="w-5 h-5" />;
-            case 'EMERGENCY': return <XCircle className="w-5 h-5" />;
             default: return <Database className="w-5 h-5" />;
         }
     };
 
-    const getProgressBarColor = (percentage: number) => {
-        if (percentage >= 95) return 'bg-red-500';
-        if (percentage >= 80) return 'bg-orange-500';
-        if (percentage >= 60) return 'bg-yellow-500';
+    const getCostBarColor = (percentage: number) => {
+        if (percentage >= 80) return 'bg-red-500';
+        if (percentage >= 50) return 'bg-yellow-500';
+        if (percentage >= 25) return 'bg-blue-500';
         return 'bg-green-500';
     };
 
@@ -144,8 +144,8 @@ const StorageMonitoringPage: React.FC = () => {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Storage Monitoring</h1>
-                    <p className="text-gray-400">Monitor Google Drive storage usage and health</p>
+                    <h1 className="text-3xl font-bold text-white mb-2">Cloud Storage Monitoring</h1>
+                    <p className="text-gray-400">Monitor Google Cloud Storage usage and monthly costs</p>
                 </div>
                 <div className="flex items-center space-x-4">
                     <label className="flex items-center space-x-2 text-sm text-gray-300">
@@ -185,47 +185,66 @@ const StorageMonitoringPage: React.FC = () => {
 
             {/* Storage Overview */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Usage Summary */}
+                {/* Usage and Cost Summary */}
                 <div className="lg:col-span-2 bg-gray-800 rounded-lg p-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-xl font-semibold text-white">Storage Usage</h2>
+                        <h2 className="text-xl font-semibold text-white">Storage Usage & Costs</h2>
                         <div className={`flex items-center space-x-2 px-3 py-1 rounded-full border ${getHealthStatusColor(data.healthStatus)}`}>
                             {getHealthStatusIcon(data.healthStatus)}
                             <span className="font-medium">{data.healthStatus}</span>
                         </div>
                     </div>
 
-                    {/* Progress Bar */}
+                    {/* Cost-based Progress Bar */}
                     <div className="mb-6">
                         <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm text-gray-300">Storage Used</span>
+                            <span className="text-sm text-gray-300">Monthly Cost Impact</span>
                             <span className="text-sm font-medium text-white">{data.usage.percentage}</span>
                         </div>
                         <div className="w-full bg-gray-700 rounded-full h-3">
                             <div
-                                className={`h-3 rounded-full transition-all duration-300 ${getProgressBarColor(data.usage.raw.percentage)}`}
+                                className={`h-3 rounded-full transition-all duration-300 ${getCostBarColor(data.usage.raw.percentage)}`}
                                 style={{ width: data.usage.percentage }}
                             ></div>
                         </div>
                         <div className="flex justify-between items-center mt-2 text-sm text-gray-400">
-                            <span>{data.usage.used} used</span>
-                            <span>{data.usage.available} available</span>
+                            <span>{data.usage.used} stored</span>
+                            <span>{data.costs.total} FCFA/month</span>
                         </div>
                     </div>
 
                     {/* Usage Stats */}
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                         <div className="text-center">
                             <div className="text-2xl font-bold text-white">{data.usage.used}</div>
-                            <div className="text-sm text-gray-400">Used</div>
+                            <div className="text-sm text-gray-400">Storage Used</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-2xl font-bold text-white">{data.usage.total}</div>
-                            <div className="text-sm text-gray-400">Total</div>
+                            <div className="text-2xl font-bold text-white">{data.usage.raw.fileCount.toLocaleString()}</div>
+                            <div className="text-sm text-gray-400">Files</div>
                         </div>
-                        <div className="text-center">
-                            <div className="text-2xl font-bold text-white">{data.usage.available}</div>
-                            <div className="text-sm text-gray-400">Available</div>
+                    </div>
+
+                    {/* Cost Breakdown */}
+                    <div className="mt-6 border-t border-gray-700 pt-4">
+                        <h3 className="text-lg font-semibold text-white mb-3">Monthly Cost Breakdown</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="text-center">
+                                <div className="text-lg font-bold text-blue-400">{data.costs.storage}</div>
+                                <div className="text-xs text-gray-400">Storage</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-lg font-bold text-green-400">{data.costs.bandwidth}</div>
+                                <div className="text-xs text-gray-400">Bandwidth</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-lg font-bold text-purple-400">{data.costs.operations}</div>
+                                <div className="text-xs text-gray-400">Operations</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-xl font-bold text-yellow-400">{data.costs.total}</div>
+                                <div className="text-xs text-gray-400">Total/Month</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -240,14 +259,21 @@ const StorageMonitoringPage: React.FC = () => {
                                     <Image className="w-5 h-5 text-blue-400" />
                                     <span className="text-gray-300">Profile Pictures</span>
                                 </div>
-                                <span className="font-semibold text-white">{data.breakdown.userContent.profilePictures}</span>
+                                <span className="font-semibold text-white">{data.breakdown.profilePictureFiles}</span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
                                     <Package className="w-5 h-5 text-green-400" />
                                     <span className="text-gray-300">Product Images</span>
                                 </div>
-                                <span className="font-semibold text-white">{data.breakdown.userContent.productImages}</span>
+                                <span className="font-semibold text-white">{data.breakdown.productFiles}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                    <FileText className="w-5 h-5 text-purple-400" />
+                                    <span className="text-gray-300">Documents</span>
+                                </div>
+                                <span className="font-semibold text-white">{data.breakdown.documentFiles}</span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
@@ -256,7 +282,7 @@ const StorageMonitoringPage: React.FC = () => {
                                 </div>
                                 <span className="font-semibold text-white">{data.breakdown.otherFiles}</span>
                             </div>
-                            <div className="pt-2 border-t border-gray-700">
+                            <div className="border-t border-gray-700 pt-3">
                                 <div className="flex items-center justify-between">
                                     <span className="text-gray-300 font-medium">Total Files</span>
                                     <span className="font-bold text-white">{data.breakdown.totalFiles}</span>
@@ -270,32 +296,24 @@ const StorageMonitoringPage: React.FC = () => {
             </div>
 
             {/* Alert Section */}
-            {data.alert && (
-                <div className={`rounded-lg p-6 border-l-4 ${data.alert.level === 'emergency' ? 'bg-red-900/20 border-red-500' :
-                        data.alert.level === 'critical' ? 'bg-orange-900/20 border-orange-500' :
-                            'bg-yellow-900/20 border-yellow-500'
+            {data.alert && data.alert.level !== 'info' && (
+                <div className={`rounded-lg p-6 border-l-4 ${data.alert.level === 'critical' ? 'bg-red-900/20 border-red-500' :
+                        'bg-yellow-900/20 border-yellow-500'
                     }`}>
                     <div className="flex items-start space-x-3">
-                        <AlertTriangle className={`w-6 h-6 mt-1 ${data.alert.level === 'emergency' ? 'text-red-400' :
-                                data.alert.level === 'critical' ? 'text-orange-400' :
-                                    'text-yellow-400'
+                        <AlertTriangle className={`w-6 h-6 mt-0.5 ${data.alert.level === 'critical' ? 'text-red-400' : 'text-yellow-400'
                             }`} />
-                        <div className="flex-1">
-                            <h3 className={`text-lg font-semibold ${data.alert.level === 'emergency' ? 'text-red-300' :
-                                    data.alert.level === 'critical' ? 'text-orange-300' :
-                                        'text-yellow-300'
+                        <div className="flex-grow">
+                            <h3 className={`font-semibold mb-2 ${data.alert.level === 'critical' ? 'text-red-300' : 'text-yellow-300'
                                 }`}>
-                                {data.alert.level.toUpperCase()} ALERT
+                                {data.alert.level.toUpperCase()} - Cost Alert
                             </h3>
-                            <p className="text-gray-300 mt-1">{data.alert.message}</p>
-                            <div className="mt-3">
-                                <h4 className="text-sm font-medium text-gray-300 mb-2">Recommended Actions:</h4>
-                                <ul className="space-y-1">
+                            <p className="text-gray-300 mb-3">{data.alert.message}</p>
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium text-gray-300">Recommended Actions:</p>
+                                <ul className="text-sm text-gray-400 list-disc list-inside space-y-1">
                                     {data.alert.recommendedActions.map((action, index) => (
-                                        <li key={index} className="text-sm text-gray-400 flex items-start">
-                                            <span className="text-gray-500 mr-2">•</span>
-                                            {action}
-                                        </li>
+                                        <li key={index}>{action}</li>
                                     ))}
                                 </ul>
                             </div>
@@ -304,7 +322,7 @@ const StorageMonitoringPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Protection Policy & Recommendations */}
+            {/* Lower Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Protection Policy */}
                 <div className="bg-gray-800 rounded-lg p-6">
@@ -341,7 +359,7 @@ const StorageMonitoringPage: React.FC = () => {
                 <div className="bg-gray-800 rounded-lg p-6">
                     <div className="flex items-center space-x-2 mb-4">
                         <TrendingUp className="w-5 h-5 text-blue-400" />
-                        <h2 className="text-xl font-semibold text-white">Recommendations</h2>
+                        <h2 className="text-xl font-semibold text-white">Cost Optimization</h2>
                     </div>
                     {data.recommendations.length > 0 ? (
                         <ul className="space-y-2">
@@ -362,14 +380,18 @@ const StorageMonitoringPage: React.FC = () => {
             {cleanupData && (
                 <div className="bg-gray-800 rounded-lg p-6">
                     <h2 className="text-xl font-semibold text-white mb-4">Safe Cleanup Candidates</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                         <div className="text-center">
                             <div className="text-2xl font-bold text-white">{cleanupData.data.totalFiles}</div>
                             <div className="text-sm text-gray-400">Safe Files</div>
                         </div>
                         <div className="text-center">
                             <div className="text-2xl font-bold text-white">{cleanupData.data.totalSizeToFree}</div>
-                            <div className="text-sm text-gray-400">Potential Space</div>
+                            <div className="text-sm text-gray-400">Storage to Free</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-2xl font-bold text-green-400">{cleanupData.data.estimatedCostSavings}</div>
+                            <div className="text-sm text-gray-400">Monthly Savings</div>
                         </div>
                         <div className="text-center">
                             <div className="text-2xl font-bold text-white">{cleanupData.data.daysOld}+</div>

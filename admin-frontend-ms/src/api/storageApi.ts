@@ -1,33 +1,41 @@
 import apiClient from './apiClient';
 
-// Types for storage monitoring API responses
+// Types for Cloud Storage monitoring API responses
 export interface StorageUsage {
-    used: number;
-    total: number;
-    percentage: number;
-    availableSpace: number;
+    used: number;           // Bytes used
+    total: number;          // Unlimited for Cloud Storage (-1)
+    percentage: number;     // Percentage based on cost thresholds
+    availableSpace: number; // Unlimited for Cloud Storage (-1)
+    fileCount: number;      // Number of files
+}
+
+export interface StorageCosts {
+    storage: number;        // Monthly storage cost in FCFA
+    bandwidth: number;      // Monthly bandwidth cost in FCFA
+    operations: number;     // Monthly operations cost in FCFA
+    total: number;          // Total monthly cost in FCFA
 }
 
 export interface StorageBreakdown {
     totalFiles: number;
-    userContent: {
-        profilePictures: number;
-        productImages: number;
-        note: string;
-    };
+    profilePictureFiles: number;
+    productFiles: number;
+    documentFiles: number;
     otherFiles: number;
-    summary: string[];
+    breakdown: string[];
+    costs: StorageCosts;
 }
 
 export interface StorageAlert {
-    level: 'warning' | 'critical' | 'emergency';
-    percentage: number;
+    level: 'info' | 'warning' | 'critical';
+    costThreshold: number;  // Cost threshold in FCFA
     message: string;
     recommendedActions: string[];
 }
 
 export interface CleanupCandidates {
     count: number;
+    potentialSavings: string; // Formatted cost savings
     note: string;
 }
 
@@ -35,41 +43,47 @@ export interface StorageStatusResponse {
     success: boolean;
     data: {
         usage: {
-            used: string;
-            total: string;
-            available: string;
-            percentage: string;
+            used: string;           // Formatted size (e.g., "125.5 MB")
+            total: string;          // "Unlimited" for Cloud Storage
+            available: string;      // "Unlimited" for Cloud Storage  
+            percentage: string;     // Cost-based percentage (e.g., "25.3%")
             raw: StorageUsage;
+        };
+        costs: {
+            storage: string;        // Formatted storage cost
+            bandwidth: string;      // Formatted bandwidth cost
+            operations: string;     // Formatted operations cost
+            total: string;          // Formatted total monthly cost
+            raw: StorageCosts;
         };
         breakdown: StorageBreakdown | null;
         alert: StorageAlert | null;
         cleanupCandidates: CleanupCandidates;
         recommendations: string[];
-        healthStatus: 'HEALTHY' | 'MODERATE' | 'WARNING' | 'CRITICAL' | 'EMERGENCY';
+        healthStatus: 'HEALTHY' | 'MODERATE' | 'WARNING' | 'CRITICAL';
         protectionPolicy: {
-            profilePictures: string;
-            productImages: string;
-            userGeneratedContent: string;
-            temporaryFiles: string;
+            profilePictures: string;    // "PROTECTED"
+            productImages: string;      // "PROTECTED"
+            userGeneratedContent: string; // "PROTECTED"
+            temporaryFiles: string;     // "CLEANABLE"
         };
     };
-}
-
-export interface CleanupFile {
-    id: string;
-    name: string;
-    size: string;
-    createdTime: string;
-    mimeType: string;
 }
 
 export interface CleanupCandidatesResponse {
     success: boolean;
     data: {
         totalFiles: number;
-        totalSizeToFree: string;
+        totalSizeToFree: string;    // Formatted size
         daysOld: number;
-        files: CleanupFile[];
+        estimatedCostSavings: string; // Estimated monthly cost savings
+        candidates: {
+            id: string;
+            name: string;
+            createdTime: string;
+            size: string;
+            mimeType: string;
+        }[];
     };
 }
 
@@ -79,26 +93,26 @@ export interface StorageCheckResponse {
     data: {
         usage: {
             used: string;
-            total: string;
-            percentage: string;
+            fileCount: string;
+            totalCost: string;      // Monthly cost in FCFA
         };
         alert: StorageAlert | null;
         timestamp: string;
     };
 }
 
-// API functions - Fixed endpoints to match backend routes
+// API functions for Cloud Storage monitoring
 export const getStorageStatus = async (): Promise<StorageStatusResponse> => {
-    const response = await apiClient.get('/storage/status');
+    const response = await apiClient.get('/settings/storage/status');
     return response.data;
 };
 
 export const runStorageCheck = async (): Promise<StorageCheckResponse> => {
-    const response = await apiClient.post('/storage/check');
+    const response = await apiClient.post('/settings/storage/check');
     return response.data;
 };
 
-export const getCleanupCandidates = async (daysOld = 7): Promise<CleanupCandidatesResponse> => {
-    const response = await apiClient.get(`/storage/cleanup-candidates?daysOld=${daysOld}`);
+export const getCleanupCandidates = async (daysOld: number = 7): Promise<CleanupCandidatesResponse> => {
+    const response = await apiClient.get(`/settings/storage/cleanup-candidates?daysOld=${daysOld}`);
     return response.data;
 }; 

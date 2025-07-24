@@ -1,64 +1,71 @@
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 import storageMonitorService from '../services/storageMonitor.service';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('StorageMonitorJob');
 
 class StorageMonitorJob {
-    private isRunning = false;
+    private quickCheckJob: cron.ScheduledTask | null = null;
+    private dailyCheckJob: cron.ScheduledTask | null = null;
 
     /**
-     * Start the storage monitoring job
-     * Runs every hour to check storage status
+     * Start the storage monitoring jobs
      */
     start(): void {
-        // Run every hour at minute 0
-        cron.schedule('0 * * * *', async () => {
-            if (this.isRunning) {
-                log.debug('Storage monitor job already running, skipping...');
-                return;
-            }
-
-            this.isRunning = true;
-            try {
-                await this.runMonitoring();
-            } catch (error: any) {
-                log.error('Error in storage monitoring job:', error);
-            } finally {
-                this.isRunning = false;
-            }
+        // Quick check every hour
+        this.quickCheckJob = cron.schedule('0 * * * *', async () => {
+            await this.runQuickCheck();
         });
 
-        // Also run a daily detailed check at 2 AM
-        cron.schedule('0 2 * * *', async () => {
-            try {
-                await this.runDetailedCheck();
-            } catch (error: any) {
-                log.error('Error in daily storage check:', error);
-            }
+        // Detailed check daily at 2 AM
+        this.dailyCheckJob = cron.schedule('0 2 * * *', async () => {
+            await this.runDetailedCheck();
         });
 
-        log.info('Storage monitoring job started - running every hour');
+        log.info('Storage monitoring jobs started');
+        log.info('- Quick check: Every hour');
+        log.info('- Detailed check: Daily at 2 AM');
+
+        // Run initial check
+        setImmediate(() => this.runQuickCheck());
     }
 
     /**
-     * Run basic storage monitoring
+     * Stop the storage monitoring jobs
      */
-    private async runMonitoring(): Promise<void> {
-        log.debug('Running storage monitoring check...');
-
-        const report = await storageMonitorService.getStorageReport();
-
-        // Log if there's an alert or high usage
-        if (report.alert || report.usage.percentage > 70) {
-            await storageMonitorService.logStorageStatus();
+    stop(): void {
+        if (this.quickCheckJob) {
+            this.quickCheckJob.stop();
+            this.quickCheckJob = null;
         }
+        if (this.dailyCheckJob) {
+            this.dailyCheckJob.stop();
+            this.dailyCheckJob = null;
+        }
+        log.info('Storage monitoring jobs stopped');
+    }
 
-        // Send notifications for critical situations
-        if (report.alert && report.alert.level === 'emergency') {
-            await this.sendEmergencyAlert(report);
-        } else if (report.alert && report.alert.level === 'critical') {
-            await this.sendCriticalAlert(report);
+    /**
+     * Run a quick check (hourly)
+     */
+    private async runQuickCheck(): Promise<void> {
+        try {
+            log.debug('Running quick storage check...');
+            const report = await storageMonitorService.getStorageReport();
+
+            // Log if there's an alert or costs are rising
+            if (report.alert || report.costs.total > 1000) {
+                await storageMonitorService.logStorageStatus();
+            }
+
+            // Send notifications for critical cost situations
+            if (report.alert && report.alert.level === 'critical') {
+                await this.sendCriticalAlert(report);
+            } else if (report.alert && report.alert.level === 'warning') {
+                await this.sendWarningAlert(report);
+            }
+        } catch (error: any) {
+            log.error('Error in quick storage check:', error);
         }
     }
 
@@ -68,71 +75,72 @@ class StorageMonitorJob {
     private async runDetailedCheck(): Promise<void> {
         log.info('Running daily detailed storage check...');
 
-        const report = await storageMonitorService.getStorageReport();
+        try {
+            // Always log detailed status daily
+            await storageMonitorService.logStorageStatus();
 
-        // Always log detailed status daily
-        await storageMonitorService.logStorageStatus();
+            // Get cleanup candidates
+            const cleanupCandidates = await storageMonitorService.getCleanupCandidates(7);
+            if (cleanupCandidates.length > 0) {
+                log.info(`Daily cleanup report: ${cleanupCandidates.length} safe temporary files found for cleanup`);
+            }
 
-        // Log cleanup recommendations (ONLY for safe temp files)
-        if (report.cleanupCandidates > 0) {
-            log.info(`Daily cleanup recommendation: ${report.cleanupCandidates} SAFE temporary files could be cleaned up to free space`);
-            log.warn('NOTE: User profile pictures and product images are NEVER included in cleanup recommendations');
+            // Get storage breakdown for insights
+            const breakdown = await storageMonitorService.getStorageBreakdown();
+            log.info(`Daily file breakdown: ${breakdown.breakdown.join(', ')}`);
+            log.info(`Daily cost breakdown: Storage ${Math.round(breakdown.costs.storage)} FCFA, Total ${Math.round(breakdown.costs.total)} FCFA/month`);
+
+        } catch (error: any) {
+            log.error('Error in detailed storage check:', error);
         }
-
-        // Log trend analysis (if storage is consistently high)
-        if (report.usage.percentage > 80) {
-            log.warn('Storage consistently high - consider implementing automated cleanup or upgrading storage');
-        }
     }
 
     /**
-     * Send emergency alert for critical storage situations
-     */
-    private async sendEmergencyAlert(report: any): Promise<void> {
-        // TODO: Integrate with notification service to send email/SMS alerts
-        log.error(`EMERGENCY STORAGE ALERT: ${report.alert.message}`);
-        log.error('Storage usage:', `${storageMonitorService.formatBytes(report.usage.used)} / ${storageMonitorService.formatBytes(report.usage.total)} (${report.usage.percentage}%)`);
-        log.error('Immediate action required:', report.alert.recommendedActions);
-
-        // You can extend this to send actual notifications:
-        // await notificationService.sendEmergencyAlert({
-        //     subject: 'EMERGENCY: Storage Full',
-        //     message: report.alert.message,
-        //     actions: report.alert.recommendedActions
-        // });
-    }
-
-    /**
-     * Send critical alert for high storage usage
-     */
-    private async sendCriticalAlert(report: any): Promise<void> {
-        log.warn(`CRITICAL STORAGE ALERT: ${report.alert.message}`);
-        log.warn('Recommended actions:', report.alert.recommendedActions);
-
-        // You can extend this to send actual notifications:
-        // await notificationService.sendCriticalAlert({
-        //     subject: 'Critical Storage Warning',
-        //     message: report.alert.message,
-        //     actions: report.alert.recommendedActions
-        // });
-    }
-
-    /**
-     * Run monitoring check immediately (for testing)
+     * Run storage check immediately (for manual triggers)
      */
     async runNow(): Promise<void> {
-        log.info('Running immediate storage check...');
-        await this.runMonitoring();
+        log.info('Manual storage check triggered');
         await this.runDetailedCheck();
     }
 
     /**
-     * Stop the monitoring job
+     * Send critical cost alert
      */
-    stop(): void {
-        // Note: node-cron doesn't provide a direct stop method for specific tasks
-        // In a production environment, you might want to use a job queue system
-        log.info('Storage monitoring job stop requested');
+    private async sendCriticalAlert(report: any): Promise<void> {
+        try {
+            log.warn('CRITICAL COST ALERT:', {
+                message: report.alert.message,
+                totalCost: `${Math.round(report.costs.total)} FCFA/month`,
+                costThreshold: `${report.alert.costThreshold} FCFA`,
+                recommendations: report.alert.recommendedActions
+            });
+
+            // Here you could add notification service integration
+            // await notificationService.sendAlert('storage-critical', { ... });
+
+        } catch (error: any) {
+            log.error('Error sending critical storage alert:', error);
+        }
+    }
+
+    /**
+     * Send warning cost alert
+     */
+    private async sendWarningAlert(report: any): Promise<void> {
+        try {
+            log.warn('STORAGE COST WARNING:', {
+                message: report.alert.message,
+                totalCost: `${Math.round(report.costs.total)} FCFA/month`,
+                costThreshold: `${report.alert.costThreshold} FCFA`,
+                recommendations: report.alert.recommendedActions
+            });
+
+            // Here you could add notification service integration
+            // await notificationService.sendAlert('storage-warning', { ... });
+
+        } catch (error: any) {
+            log.error('Error sending warning storage alert:', error);
+        }
     }
 }
 

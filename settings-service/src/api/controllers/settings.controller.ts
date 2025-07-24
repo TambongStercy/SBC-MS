@@ -144,8 +144,8 @@ export const internalUploadFile = async (req: Request, res: Response, next: Next
     }
 };
 
-// Proxy file content - this remains the same
-export const getFileFromDrive = async (req: Request, res: Response, next: NextFunction) => {
+// Universal file proxy - handles both Google Drive and Cloud Storage files
+export const getFileFromStorage = async (req: Request, res: Response, next: NextFunction) => {
     const { fileId } = req.params;
     if (!fileId) {
         log.warn('Missing fileId in proxy request');
@@ -154,6 +154,24 @@ export const getFileFromDrive = async (req: Request, res: Response, next: NextFu
 
     try {
         log.info(`Proxy request received for file ID: ${fileId}`);
+
+        // Check if it's a Cloud Storage file (contains folder structure or is a URL)
+        if (fileId.includes('/') || fileId.startsWith('avatars/') || fileId.startsWith('products/') || fileId.startsWith('documents/') || fileId.startsWith('https://storage.googleapis.com/')) {
+            // Cloud Storage file - redirect to direct CDN URL
+            let directUrl: string;
+
+            if (fileId.startsWith('https://storage.googleapis.com/')) {
+                directUrl = fileId; // Already a full URL
+            } else {
+                directUrl = `https://storage.googleapis.com/sbc-file-storage/${fileId}`;
+            }
+
+            log.info(`Redirecting to Cloud Storage CDN: ${directUrl}`);
+            return res.redirect(302, directUrl);
+        }
+
+        // Google Drive file - use proxy streaming (legacy support)
+        log.info(`Serving Google Drive file via proxy: ${fileId}`);
         const { stream, mimeType, size } = await GoogleDriveService.getFileContent(fileId);
 
         if (mimeType) {
@@ -181,13 +199,16 @@ export const getFileFromDrive = async (req: Request, res: Response, next: NextFu
         });
 
     } catch (error: any) {
-        log.error(`Error in getFileFromDrive for file ID ${fileId}:`, error);
+        log.error(`Error in getFileFromStorage for file ID ${fileId}:`, error);
         if (error.message === 'File not found') {
             return res.status(404).json({ success: false, message: 'File not found' });
         }
         next(new AppError('Failed to retrieve file from storage', 500));
     }
 };
+
+// Backward compatibility alias
+export const getFileFromDrive = getFileFromStorage;
 
 /**
  * Get Thumbnail from Drive

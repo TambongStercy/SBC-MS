@@ -1,29 +1,29 @@
 import { Router } from 'express';
-import { StorageController } from '../controllers/storage.controller';
+import storageController from '../controllers/storage.controller';
+import authenticateJWT from '../middleware/auth.middleware';
 
 const router = Router();
-const storageController = new StorageController();
 
 /**
- * @route   GET /api/storage/status
- * @desc    Get current storage usage and health status
- * @access  Internal (should be protected in production)
+ * @route GET /api/settings/storage/status
+ * @desc Get comprehensive storage status including usage, costs, and recommendations
+ * @access Protected
  */
-router.get('/status', storageController.getStorageStatus.bind(storageController));
+router.get('/status', authenticateJWT, storageController.getStorageStatus.bind(storageController));
 
 /**
- * @route   POST /api/storage/check
- * @desc    Manually trigger storage monitoring check
- * @access  Internal (should be protected in production)
+ * @route POST /api/settings/storage/check
+ * @desc Run a manual storage check and return updated status
+ * @access Protected
  */
-router.post('/check', storageController.runStorageCheck.bind(storageController));
+router.post('/check', authenticateJWT, storageController.runStorageCheck.bind(storageController));
 
 /**
- * @route   GET /api/storage/cleanup-candidates
- * @desc    Get list of files that can be cleaned up
- * @query   daysOld: number (default: 7) - Files older than this many days
- * @access  Internal (should be protected in production)
+ * @route GET /api/settings/storage/cleanup-candidates
+ * @desc Get cleanup candidates with potential cost savings
+ * @query daysOld - Files older than this many days (default: 7)
+ * @access Protected
  */
-router.get('/cleanup-candidates', storageController.getCleanupCandidates.bind(storageController));
+router.get('/cleanup-candidates', authenticateJWT, storageController.getCleanupCandidates.bind(storageController));
 
 export default router; 

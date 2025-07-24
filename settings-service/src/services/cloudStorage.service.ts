@@ -59,25 +59,24 @@ class CloudStorageService {
         }
     }
 
-    // Universal file retrieval - works with both Drive and GCS files
+    // Universal file retrieval - returns direct CDN URLs for Cloud Storage, proxy URLs for Drive
     async getFileUrl(fileId: string): Promise<string> {
         // Check if it's already a full URL (GCS direct URL)
         if (fileId.startsWith('https://storage.googleapis.com/')) {
             return fileId; // Already a direct URL
         }
 
-        // Check if it's a GCS filename (contains folder structure)
-        if (fileId.includes('/') || fileId.startsWith('profile-pictures/') || fileId.startsWith('product-images/')) {
+        // Check if it's a GCS filename (contains folder structure) - return direct CDN URL
+        if (fileId.includes('/') || fileId.startsWith('avatars/') || fileId.startsWith('products/') || fileId.startsWith('documents/')) {
             return `https://storage.googleapis.com/${this.bucketName}/${fileId}`;
         }
 
-        // Check if it's a Drive file (33 character ID starting with '1')
+        // Check if it's a Drive file (33 character ID starting with '1') - use proxy to save bandwidth
         if (fileId.length === 33 && fileId.startsWith('1')) {
-            // For Drive files, we can return direct URLs instead of proxy
-            return this.getDriveDirectUrl(fileId);
+            return `/api/settings/files/${fileId}`;
         }
 
-        // Fallback: assume it's a GCS filename
+        // Fallback: assume it's a GCS filename and return direct CDN URL
         return `https://storage.googleapis.com/${this.bucketName}/${fileId}`;
     }
 

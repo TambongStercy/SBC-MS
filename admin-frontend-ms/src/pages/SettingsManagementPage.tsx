@@ -11,6 +11,8 @@ import {
 import apiClient from '../api/apiClient'; // <--- Import apiClient
 import { useDropzone, FileRejection } from 'react-dropzone';
 import toast from 'react-hot-toast'; // USE react-hot-toast
+import { getFileUrl, getAbsoluteProxyUrl, getStorageType } from '../utils/fileUtils';
+import { ImageDisplay } from '../components/common/ImageDisplay';
 
 // Helper to get file type category
 const getFileType = (mimeType?: string): 'image' | 'video' | 'pdf' | 'other' => {
@@ -108,22 +110,19 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
     // Determine current file type for preview
     const currentFileType = getFileType(currentFile?.mimeType);
 
-    // Construct the ABSOLUTE proxy URL for the current file
-    const getAbsoluteProxyUrl = (fileId?: string): string | null => {
-        if (!fileId) return null;
-        const baseUrl = apiClient.defaults.baseURL || '';
-        const path = `/settings/files/${fileId}`; // Use path relative to API base
-        return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
-    };
-    const currentFileProxyUrl = getAbsoluteProxyUrl(currentFile?.fileId);
+    // Get the appropriate URL for the current file (Cloud Storage or proxy)
+    const currentFileUrl = currentFile?.fileId ?
+        getFileUrl(currentFile.fileId, `${apiClient.defaults.baseURL || ''}/settings/files`) :
+        null;
 
     // Logging for debugging
     if (title === 'Company Logo') {
         console.log(`[Logo Section] currentFile.fileId:`, currentFile?.fileId);
-        console.log(`[Logo Section] Constructed Absolute Proxy URL:`, currentFileProxyUrl);
+        console.log(`[Logo Section] Storage Type:`, currentFile?.fileId ? getStorageType(currentFile.fileId) : 'none');
+        console.log(`[Logo Section] Final URL:`, currentFileUrl);
         console.log(`[Logo Section] currentFile.mimeType:`, currentFile?.mimeType);
         console.log(`[Logo Section] Calculated file type:`, currentFileType);
-        console.log(`[Logo Section] Condition check (currentFileProxyUrl):`, !!currentFileProxyUrl);
+        console.log(`[Logo Section] Condition check (currentFileUrl):`, !!currentFileUrl);
         console.log(`[Logo Section] Condition check (currentFileType === 'image'):`, currentFileType === 'image');
     }
 
@@ -132,27 +131,35 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
             <h3 className="text-lg font-semibold mb-1 text-white">{title}</h3>
             {description && <p className="text-sm text-gray-400 mb-4">{description}</p>}
 
-            {/* Current File Preview - Use ABSOLUTE proxy URL */}
+            {/* Current File Preview - Use new file URL system */}
             <div className="mb-4">
                 <p className="text-sm font-medium text-gray-300 mb-2">Current File:</p>
-                {currentFileProxyUrl ? (
+                {currentFileUrl ? (
                     <div className="flex items-start space-x-4 p-3 bg-gray-700 rounded">
-                        {currentFileType === 'image' && (
-                            <img src={currentFileProxyUrl} alt={`Current ${title}`} className="h-20 w-auto object-contain rounded" />
+                        {currentFileType === 'image' && currentFile?.fileId && (
+                            <ImageDisplay
+                                fileId={currentFile.fileId}
+                                alt={`Current ${title}`}
+                                className="h-20 w-auto object-contain rounded"
+                                showDebugInfo={title === 'Company Logo'}
+                            />
                         )}
                         {currentFileType === 'video' && (
-                            <video src={currentFileProxyUrl} controls className="h-24 w-auto rounded" />
+                            <video src={currentFileUrl} controls className="h-24 w-auto rounded" />
                         )}
                         {(currentFileType === 'pdf' || currentFileType === 'other') && (
                             <FileIcon className="h-10 w-10 text-gray-400 flex-shrink-0 mt-1" />
                         )}
                         <div className="flex-grow text-sm">
-                            <a href={currentFileProxyUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-400 hover:text-indigo-300 break-all" title={currentFile?.fileName || 'View File'}>
+                            <a href={currentFileUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-400 hover:text-indigo-300 break-all" title={currentFile?.fileName || 'View File'}>
                                 {currentFile?.fileName || 'View File'}
                                 <ExternalLink className="inline h-3 w-3 ml-1" />
                             </a>
                             {currentFile?.size && <p className="text-gray-400 mt-1">Size: {(currentFile.size / (1024 * 1024)).toFixed(2)} MB</p>}
                             {currentFile?.mimeType && <p className="text-gray-400">Type: {currentFile.mimeType}</p>}
+                            {currentFile?.fileId && title === 'Company Logo' && (
+                                <p className="text-xs text-blue-400 mt-1">Storage: {getStorageType(currentFile.fileId)}</p>
+                            )}
                         </div>
                     </div>
                 ) : (
@@ -270,12 +277,10 @@ const SettingsManagementPage: React.FC = () => {
     const [formationToDeleteId, setFormationToDeleteId] = useState<string | null>(null);
     const [isDeletingFormation, setIsDeletingFormation] = useState<boolean>(false);
 
-    // --- Helper to get absolute URL for event files --- 
+    // --- Helper to get URL for event files using new system --- 
     const getEventFileUrl = (fileId?: string): string | null => {
         if (!fileId) return null;
-        const baseUrl = apiClient.defaults.baseURL || '';
-        const path = `/settings/files/${fileId}`; // Path relative to API base
-        return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+        return getFileUrl(fileId, `${apiClient.defaults.baseURL || ''}/settings/files`);
     };
 
     // --- Fetching Data --- 
@@ -955,13 +960,12 @@ const SettingsManagementPage: React.FC = () => {
                                                 <div key={event._id} className="flex items-start space-x-4 p-4 bg-gray-700 rounded-md">
                                                     {/* Event Previews Container */}
                                                     <div className="flex space-x-2 flex-shrink-0">
-                                                        {/* Event Image Preview - Use absolute URL */}
-                                                        {imageUrl && (
-                                                            <img
-                                                                src={imageUrl}
+                                                        {/* Event Image Preview - Use new file system */}
+                                                        {event.image?.fileId && (
+                                                            <ImageDisplay
+                                                                fileId={event.image.fileId}
                                                                 alt={`Event ${event._id} image`}
                                                                 className="h-16 w-16 object-cover rounded bg-gray-600"
-                                                            // onError={(e) => { /* fallback */ }}
                                                             />
                                                         )}
                                                         {/* Optional Event Video Preview - Use absolute URL */}
