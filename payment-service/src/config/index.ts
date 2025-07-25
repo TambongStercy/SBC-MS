@@ -34,6 +34,14 @@ interface IConfig {
         shopName: string;
         webhookSecret: string;
     };
+    nowpayments: {
+        apiKey: string;
+        sandbox: boolean;
+        baseUrl: string;
+        ipnSecret: string;
+        payoutApiKey?: string; // For mass payouts
+        webhookSecret: string;
+    };
     services: { // Added based on user-service pattern
         serviceSecret: string;
         userServiceUrl?: string;
@@ -89,6 +97,14 @@ const config: IConfig = {
         shopName: process.env.LYGOS_SHOP_NAME || 'SBC',
         webhookSecret: process.env.LYGOS_WEBHOOK_SECRET || ''
     },
+    nowpayments: {
+        apiKey: process.env.NOWPAYMENTS_API_KEY || '',
+        sandbox: process.env.NOWPAYMENTS_SANDBOX === 'true',
+        baseUrl: process.env.NOWPAYMENTS_BASE_URL || 'https://api.nowpayments.io/v1',
+        ipnSecret: process.env.NOWPAYMENTS_IPN_SECRET || '',
+        payoutApiKey: process.env.NOWPAYMENTS_PAYOUT_API_KEY,
+        webhookSecret: process.env.NOWPAYMENTS_WEBHOOK_SECRET || ''
+    },
     services: { // Populate from .env or provide defaults
         userServiceUrl: process.env.USER_SERVICE_URL,
         notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL,
@@ -126,6 +142,7 @@ const validateConfig = (): void => {
         'FEEXPAY_SHOP_ID',
         'CINETPAY_API_KEY',
         'CINETPAY_SITE_ID',
+        'NOWPAYMENTS_API_KEY', // Added for crypto payments
         'PAYMENT_SERVICE_BASE_URL',
         'FRONTEND_URL', // Likely needed for redirects
         'SERVICE_SECRET',

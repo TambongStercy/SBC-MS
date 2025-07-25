@@ -68,13 +68,22 @@ export class PaymentController {
                 currency: paymentIntent?.currency || 'XAF', // Default to XAF if not set
                 paymentStatus: paymentIntent?.status,
                 phoneNumber: paymentIntent?.phoneNumber,
-                countryCode: paymentIntent?.countryCode,
+                // Don't pass "CRYPTO" as country code - it's not a real country
+                countryCode: (paymentIntent?.countryCode === 'CRYPTO') ? undefined : paymentIntent?.countryCode,
                 operator: paymentIntent?.operator,
                 errorMessage: errorMessage,
                 assetBasePath: '/api/payments/static', // Path to static assets
                 // NEW: Add gateway and gatewayPaymentId
                 gateway: paymentIntent?.gateway || '',
                 gatewayPaymentId: paymentIntent?.gatewayPaymentId || '',
+                // NEW: Add crypto payment specific fields
+                cryptoAddress: paymentIntent?.cryptoAddress,
+                payAmount: paymentIntent?.payAmount,
+                payCurrency: paymentIntent?.payCurrency,
+                isCryptoPayment: paymentIntent?.gateway === 'nowpayments',
+                paymentType: paymentIntent?.paymentType,
+                subscriptionType: paymentIntent?.subscriptionType,
+                subscriptionPlan: paymentIntent?.subscriptionPlan
             };
 
             res.render('payment', viewData);
@@ -137,8 +146,8 @@ export class PaymentController {
             console.log(req.body)
 
             // Validation is handled by middleware, but basic check here is okay too
-            if (!countryCode || !paymentCurrency) {
-                return res.status(400).json({ success: false, message: 'Missing required fields: phoneNumber, countryCode, paymentCurrency' });
+            if (!paymentCurrency) {
+                return res.status(400).json({ success: false, message: 'Missing required field: paymentCurrency' });
             }
 
             const paymentIntent = await paymentService.submitPaymentDetails(
@@ -299,6 +308,190 @@ export class PaymentController {
             res.status(500).json({
                 success: false,
                 message: error.message || 'CinetPay Transfer webhook processing failed'
+            });
+        }
+    };
+
+    /**
+     * Handle NOWPayments webhook notifications for crypto payments
+     */
+    public handleNowPaymentsWebhook = async (req: Request, res: Response) => {
+        try {
+            const payload = req.body;
+            const signature = req.headers['x-nowpayments-sig'] as string;
+
+            log.info(`Received NOWPayments webhook for order: ${payload?.order_id}, payment: ${payload?.payment_id}`);
+
+            if (!payload.payment_id || !payload.order_id) {
+                log.warn('NOWPayments webhook missing required fields');
+                return res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields (payment_id, order_id)'
+                });
+            }
+
+            await paymentService.handleNowPaymentsWebhook(payload, signature);
+            log.info(`Successfully processed NOWPayments webhook for order: ${payload.order_id}`);
+
+            res.status(200).json({ success: true });
+        } catch (error: any) {
+            log.error('Error processing NOWPayments webhook:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'NOWPayments webhook processing failed'
+            });
+        }
+    };
+
+    /**
+     * Handle NOWPayments payout webhook notifications
+     */
+    public handleNowPaymentsPayoutWebhook = async (req: Request, res: Response) => {
+        try {
+            const payload = req.body;
+            const signature = req.headers['x-nowpayments-sig'] as string;
+
+            log.info(`Received NOWPayments payout webhook for withdrawal: ${payload?.withdrawal_id || payload?.id}`);
+
+            if (!payload.id || !payload.status) {
+                log.warn('NOWPayments payout webhook missing required fields');
+                return res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields (id, status)'
+                });
+            }
+
+            await paymentService.handleNowPaymentsPayoutWebhook(payload, signature);
+            log.info(`Successfully processed NOWPayments payout webhook for withdrawal: ${payload.withdrawal_id || payload.id}`);
+
+            res.status(200).json({ success: true });
+        } catch (error: any) {
+            log.error('Error processing NOWPayments payout webhook:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'NOWPayments payout webhook processing failed'
+            });
+        }
+    };
+
+    /**
+     * Get available cryptocurrencies
+     */
+    public getAvailableCryptoCurrencies = async (req: Request, res: Response) => {
+        try {
+            const currencies = await paymentService.getAvailableCryptoCurrencies();
+            res.status(200).json({
+                success: true,
+                data: { currencies }
+            });
+        } catch (error: any) {
+            log.error('Error getting available crypto currencies:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to get available cryptocurrencies'
+            });
+        }
+    };
+
+    /**
+     * Get crypto payment estimate
+     */
+    public getCryptoPaymentEstimate = async (req: Request, res: Response) => {
+        try {
+            const { amount, fromCurrency, toCurrency } = req.query;
+
+            if (!amount || !fromCurrency || !toCurrency) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields: amount, fromCurrency, toCurrency'
+                });
+            }
+
+            log.info(`Getting crypto estimate: ${amount} ${fromCurrency} -> ${toCurrency}`);
+
+            const estimate = await paymentService.getCryptoPaymentEstimate(
+                parseFloat(amount as string),
+                fromCurrency as string,
+                toCurrency as string
+            );
+
+            log.info(`Crypto estimate result:`, estimate);
+
+            res.status(200).json({
+                success: true,
+                data: estimate
+            });
+        } catch (error: any) {
+            log.error('Error getting crypto payment estimate:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to get payment estimate'
+            });
+        }
+    };
+
+    /**
+     * Create crypto payout
+     */
+    public createCryptoPayout = async (req: Request, res: Response) => {
+        try {
+            const { userId, amount, cryptoCurrency, cryptoAddress, description } = req.body;
+
+            if (!userId || !amount || !cryptoCurrency || !cryptoAddress) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields: userId, amount, cryptoCurrency, cryptoAddress'
+                });
+            }
+
+            if (typeof amount !== 'number' || amount <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid amount: must be a positive number'
+                });
+            }
+
+            const ipAddress = req.ip;
+            const deviceInfo = req.headers['user-agent'] || 'unknown';
+
+            const result = await paymentService.createCryptoPayout(
+                userId,
+                amount,
+                cryptoCurrency,
+                cryptoAddress,
+                description || 'Crypto payout',
+                ipAddress,
+                deviceInfo
+            );
+
+            res.status(200).json(result);
+        } catch (error: any) {
+            log.error('Error creating crypto payout:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to create crypto payout'
+            });
+        }
+    };
+
+    /**
+     * Debug NOWPayments connection
+     */
+    public debugNowPayments = async (req: Request, res: Response) => {
+        try {
+            log.info('Testing NOWPayments API connection...');
+
+            const testResult = await paymentService.testNowPaymentsConnection();
+
+            res.status(200).json({
+                success: true,
+                data: testResult
+            });
+        } catch (error: any) {
+            log.error('Error testing NOWPayments connection:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to test NOWPayments connection'
             });
         }
     };

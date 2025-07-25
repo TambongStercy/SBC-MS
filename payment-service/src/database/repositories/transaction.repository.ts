@@ -126,6 +126,18 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
     }
 
     /**
+     * Find a transaction by its external transaction ID
+     */
+    async findByExternalTransactionId(externalTransactionId: string): Promise<ITransaction | null> {
+        try {
+            return await this.model.findOne({ externalTransactionId }).lean<ITransaction>().exec();
+        } catch (error) {
+            log.error(`Error finding transaction by externalTransactionId ${externalTransactionId}: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
      * Find transactions for a specific user
      */
     async findByUserId(

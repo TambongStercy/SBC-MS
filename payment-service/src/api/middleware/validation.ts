@@ -60,16 +60,22 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
         });
     }
 
-    // Always require countryCode and paymentCurrency
-    if (!countryCode || !paymentCurrency) {
+    // Always require paymentCurrency
+    if (!paymentCurrency) {
         return res.status(400).json({
             success: false,
-            message: 'Missing required fields: countryCode, paymentCurrency'
+            message: 'Missing required field: paymentCurrency'
         });
     }
 
     // Validate paymentCurrency format/value
-    const validCurrencies = ['XOF', 'XAF', 'KES', 'CDF', 'GNF']; // Add other supported currencies
+    const validFiatCurrencies = ['XOF', 'XAF', 'KES', 'CDF', 'GNF']; // Fiat currencies
+    const validCryptoCurrencies = [
+        'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'LTC', 'XRP', 'ADA',
+        'DOT', 'SOL', 'MATIC', 'TRX', 'BCH', 'LINK', 'DOGE', 'XMR'
+    ]; // Crypto currencies
+    const validCurrencies = [...validFiatCurrencies, ...validCryptoCurrencies];
+
     if (typeof paymentCurrency !== 'string' || !validCurrencies.includes(paymentCurrency)) {
         return res.status(400).json({
             success: false,
@@ -77,8 +83,27 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
         });
     }
 
-    // Validate country code format/value
-    // Ensure this list matches the countries available in the frontend dropdown
+    // Check if this is a crypto payment
+    const isCryptoPayment = validCryptoCurrencies.includes(paymentCurrency);
+
+    // For crypto payments, country code is not required
+    if (isCryptoPayment) {
+        // Crypto payments don't need country code or phone number
+        // Skip country and phone validation for crypto payments
+        next();
+        return;
+    }
+
+    // For fiat payments, countryCode is required
+    if (!countryCode) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required field: countryCode (required for fiat payments)'
+        });
+    }
+
+    // Validate country code format/value for fiat payments
+    // Removed "CRYPTO" from valid countries as it's not a real country
     const validCountries = ['BJ', 'BF', 'CI', 'SN', 'CG', 'TG', 'CM', 'GA', 'CD', 'KE', 'GN', 'ML', 'NE'];
     if (typeof countryCode !== 'string' || !validCountries.includes(countryCode)) {
         return res.status(400).json({

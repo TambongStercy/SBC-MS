@@ -55,4 +55,24 @@ router.post('/webhooks/cinetpay', paymentController.handleCinetPayWebhook);
 // Webhook for CinetPay Transfer (Payout) status updates
 router.post('/webhooks/cinetpay/transfer-status', paymentController.handleCinetpayTransferWebhook);
 
+// Route for NOWPayments crypto webhook endpoint
+router.post('/webhooks/nowpayments', paymentController.handleNowPaymentsWebhook);
+
+// Route for NOWPayments payout webhook endpoint
+router.post('/webhooks/nowpayments/payout', paymentController.handleNowPaymentsPayoutWebhook);
+
+// --- Crypto Payment Routes ---
+
+// Get available cryptocurrencies
+router.get('/crypto/currencies', paymentController.getAvailableCryptoCurrencies);
+
+// Get crypto payment estimate
+router.get('/crypto/estimate', paymentController.getCryptoPaymentEstimate);
+
+// Create crypto payout (requires authentication in production)
+router.post('/crypto/payout', paymentController.createCryptoPayout);
+
+// Debug NOWPayments connection
+router.get('/crypto/debug', paymentController.debugNowPayments);
+
 export default router; 

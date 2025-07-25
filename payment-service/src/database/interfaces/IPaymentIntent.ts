@@ -8,7 +8,12 @@ export enum PaymentStatus {
     FAILED = 'FAILED',                 // Payment failed
     CANCELED = 'CANCELED',               // Payment explicitly canceled (if applicable)
     REQUIRES_ACTION = 'REQUIRES_ACTION',  // Provider requires additional action (e.g., 3DS)
-    ERROR = 'ERROR'
+    ERROR = 'ERROR',
+    // Crypto-specific statuses
+    WAITING_FOR_CRYPTO_DEPOSIT = 'WAITING_FOR_CRYPTO_DEPOSIT', // Waiting for user to send crypto
+    PARTIALLY_PAID = 'PARTIALLY_PAID',   // Payment partially received
+    CONFIRMED = 'CONFIRMED',             // Crypto payment confirmed on blockchain
+    EXPIRED = 'EXPIRED'                  // Payment window expired
 }
 
 export enum PaymentGateway {
@@ -17,6 +22,7 @@ export enum PaymentGateway {
     CINETPAY = 'cinetpay',
     LYGOS = 'lygos',
     STRIPE = 'stripe', // Example if you add Stripe later
+    NOWPAYMENTS = 'nowpayments', // Added NOWPayments for crypto
     TESTING = 'testing' // Added for testing purposes
 }
 
@@ -30,10 +36,20 @@ export interface IPaymentIntent extends Document {
     subscriptionPlan?: string; // e.g., 'monthly', 'annual'
 
     amount?: number; // To be filled when user provides details
-    currency?: string; // e.g., 'XOF', 'KES', 'USD' - To be filled when user provides details
+    currency?: string; // e.g., 'XOF', 'KES', 'USD', 'BTC', 'ETH', 'USDT' - To be filled when user provides details
     phoneNumber?: string; // To be filled when user provides details
     countryCode?: string; // e.g., 'BJ', 'CM', 'CI' - To be filled, used for gateway selection
     operator?: string; // Optional: Payment operator slug (e.g., 'mtn', 'orange_ci')
+
+    // Crypto-specific fields
+    payCurrency?: string; // Crypto currency for payment (e.g., 'BTC', 'ETH', 'USDT')
+    payAmount?: number; // Amount in crypto currency
+    cryptoAddress?: string; // Crypto deposit address
+    cryptoQrCode?: string; // QR code for crypto payment
+    exchangeRate?: number; // Exchange rate from fiat to crypto
+    networkFee?: number; // Network fee for crypto transaction
+    minConfirmations?: number; // Required confirmations for crypto payment
+    expiresAt?: Date; // Payment expiration time for crypto
 
     status: PaymentStatus; // Current status of the payment intent
     gateway: PaymentGateway; // Which gateway was used (or NONE initially)

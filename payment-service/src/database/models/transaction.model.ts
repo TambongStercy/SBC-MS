@@ -23,11 +23,25 @@ export enum TransactionType {
 
 // Define Currency
 export enum Currency {
+    // Fiat currencies
     XAF = 'XAF',  // Central African CFA franc
     XOF = 'XOF', // West African CFA franc
     USD = 'USD',
     EUR = 'EUR',
     GBP = 'GBP',
+    // Cryptocurrencies
+    BTC = 'BTC',   // Bitcoin
+    ETH = 'ETH',   // Ethereum
+    USDT = 'USDT', // Tether
+    USDC = 'USDC', // USD Coin
+    BNB = 'BNB',   // Binance Coin
+    LTC = 'LTC',   // Litecoin
+    XRP = 'XRP',   // Ripple
+    ADA = 'ADA',   // Cardano
+    DOT = 'DOT',   // Polkadot
+    SOL = 'SOL',   // Solana
+    MATIC = 'MATIC', // Polygon
+    TRX = 'TRX',   // TRON
 }
 
 // Interface for Payment Provider Data

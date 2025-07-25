@@ -16,6 +16,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const otpInputGroup = document.getElementById('otp-input-group');
     const otpInput = document.getElementById('otp');
 
+    // New crypto payment elements
+    const paymentMethodRadios = document.querySelectorAll('input[name="paymentMethod"]');
+    const mobileMoneyFields = document.getElementById('mobile-money-fields');
+    const cryptoFields = document.getElementById('crypto-fields');
+    const cryptoCurrencySelect = document.getElementById('crypto-currency');
+    const cryptoEstimate = document.getElementById('crypto-estimate');
+    const cryptoAmount = document.getElementById('crypto-amount');
+    const cryptoRate = document.getElementById('crypto-rate');
+
     // sessionId, paymentStatus, prefillPhoneNumber, prefillCountryCode, prefillOperator are defined globally by EJS
     // NEW: Pass gateway and gatewayPaymentId from EJS to JS
     var gateway = "<%= gateway %>";
@@ -67,6 +76,60 @@ document.addEventListener('DOMContentLoaded', function () {
                 'TG': 'XOF', 'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
             };
             return countryCurrencyMap[countryCode] || 'XAF';
+        };
+
+        const handlePaymentMethodChange = () => {
+            const selectedMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value;
+
+            if (selectedMethod === 'mobile_money') {
+                mobileMoneyFields?.classList.remove('hidden');
+                cryptoFields?.classList.add('hidden');
+
+                // Reset crypto fields
+                if (cryptoCurrencySelect) cryptoCurrencySelect.value = '';
+                if (cryptoEstimate) cryptoEstimate.classList.add('hidden');
+
+                // Update form for current country
+                updateFormForCountry();
+            } else if (selectedMethod === 'cryptocurrency') {
+                mobileMoneyFields?.classList.add('hidden');
+                cryptoFields?.classList.remove('hidden');
+
+                // Reset mobile money fields
+                if (countrySelect) countrySelect.value = '';
+                if (phoneInput) phoneInput.value = '';
+                if (operatorSelect) operatorSelect.value = '';
+                if (operatorSelectGroup) operatorSelectGroup.classList.add('hidden');
+                if (phoneInputGroup) phoneInputGroup.classList.add('hidden');
+                if (otpInputGroup) otpInputGroup.classList.add('hidden');
+            }
+        };
+
+        const handleCryptoCurrencyChange = async () => {
+            const selectedCrypto = cryptoCurrencySelect?.value;
+            if (!selectedCrypto || !paymentAmount || !paymentCurrency) {
+                if (cryptoEstimate) cryptoEstimate.classList.add('hidden');
+                return;
+            }
+
+            try {
+                // Get crypto estimate
+                const response = await fetch(`/api/payments/crypto/estimate?amount=${paymentAmount}&fromCurrency=${paymentCurrency}&toCurrency=${selectedCrypto}`);
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    const estimate = result.data;
+                    if (cryptoAmount) cryptoAmount.textContent = `${estimate.estimatedAmount} ${selectedCrypto}`;
+                    if (cryptoRate) cryptoRate.textContent = `1 ${paymentCurrency} = ${(estimate.estimatedAmount / paymentAmount).toFixed(8)} ${selectedCrypto}`;
+                    if (cryptoEstimate) cryptoEstimate.classList.remove('hidden');
+                } else {
+                    console.error('Failed to get crypto estimate:', result.message);
+                    if (cryptoEstimate) cryptoEstimate.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error getting crypto estimate:', error);
+                if (cryptoEstimate) cryptoEstimate.classList.add('hidden');
+            }
         };
 
         const updateFormForCountry = () => {
@@ -127,6 +190,14 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         };
 
+        // Payment method switching logic
+        if (paymentMethodRadios.length > 0) {
+            paymentMethodRadios.forEach(radio => {
+                radio.addEventListener('change', handlePaymentMethodChange);
+            });
+            handlePaymentMethodChange(); // Initial call
+        }
+
         if (countrySelect) { // Ensure countrySelect exists before adding listener or calling update
             countrySelect.addEventListener('change', () => {
                 updateFormForCountry(); // Call on country change
@@ -144,6 +215,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // }
             });
             updateFormForCountry(); // Initial call to set up form based on pre-selected country/operator
+        }
+
+        // Crypto currency change handler
+        if (cryptoCurrencySelect) {
+            cryptoCurrencySelect.addEventListener('change', handleCryptoCurrencyChange);
         }
 
 
@@ -201,42 +277,67 @@ document.addEventListener('DOMContentLoaded', function () {
             if (submitButton) submitButton.disabled = true;
             if (retryContainer) retryContainer.classList.add('hidden');
 
-            const selectedCountry = countrySelect.value;
-            const requiresPhone = feexpayCountries.includes(selectedCountry);
-            const requiresOperator = !operatorSelectGroup.classList.contains('hidden');
-            const determinedCurrency = getCurrencyForCountry(selectedCountry);
-            const selectedOperatorValue = operatorSelect.value; // Get current operator value
+            const selectedPaymentMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value;
 
-            if (!selectedCountry) {
-                errorMessage.textContent = 'Veuillez sélectionner votre pays.';
-                if (buttonSpinner) buttonSpinner.classList.add('hidden');
-                if (buttonText) buttonText.textContent = 'Procéder au paiement';
-                if (submitButton) submitButton.disabled = false;
-                return;
-            }
-            if (requiresOperator && !selectedOperatorValue) {
-                errorMessage.textContent = 'Veuillez sélectionner un opérateur de paiement.';
-                if (buttonSpinner) buttonSpinner.classList.add('hidden');
-                if (buttonText) buttonText.textContent = 'Procéder au paiement';
-                if (submitButton) submitButton.disabled = false;
-                return;
-            }
-            if (requiresPhone && !phoneInput.value) {
-                errorMessage.textContent = 'Veuillez entrer votre numéro de téléphone pour le paiement.';
-                if (buttonSpinner) buttonSpinner.classList.add('hidden');
-                if (buttonText) buttonText.textContent = 'Procéder au paiement';
-                if (submitButton) submitButton.disabled = false;
-                return;
-            }
+            let formData = {};
 
-            console.log(`Devise déterminée pour ${selectedCountry}: ${determinedCurrency}`);
+            if (selectedPaymentMethod === 'cryptocurrency') {
+                // Handle crypto payment
+                const selectedCrypto = cryptoCurrencySelect?.value;
 
-            const formData = {
-                paymentCurrency: determinedCurrency,
-                countryCode: selectedCountry,
-                operator: requiresOperator ? selectedOperatorValue : undefined,
-                phoneNumber: requiresPhone ? phoneInput.value : undefined,
-            };
+                if (!selectedCrypto) {
+                    errorMessage.textContent = 'Veuillez sélectionner une cryptomonnaie.';
+                    if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                    if (buttonText) buttonText.textContent = 'Procéder au paiement';
+                    if (submitButton) submitButton.disabled = false;
+                    return;
+                }
+
+                formData = {
+                    paymentCurrency: selectedCrypto,
+                    // No countryCode needed for crypto payments
+                };
+
+                console.log(`Crypto payment selected: ${selectedCrypto}`);
+            } else {
+                // Handle mobile money payment (existing logic)
+                const selectedCountry = countrySelect.value;
+                const requiresPhone = feexpayCountries.includes(selectedCountry);
+                const requiresOperator = !operatorSelectGroup.classList.contains('hidden');
+                const determinedCurrency = getCurrencyForCountry(selectedCountry);
+                const selectedOperatorValue = operatorSelect.value; // Get current operator value
+
+                if (!selectedCountry) {
+                    errorMessage.textContent = 'Veuillez sélectionner votre pays.';
+                    if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                    if (buttonText) buttonText.textContent = 'Procéder au paiement';
+                    if (submitButton) submitButton.disabled = false;
+                    return;
+                }
+                if (requiresOperator && !selectedOperatorValue) {
+                    errorMessage.textContent = 'Veuillez sélectionner un opérateur de paiement.';
+                    if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                    if (buttonText) buttonText.textContent = 'Procéder au paiement';
+                    if (submitButton) submitButton.disabled = false;
+                    return;
+                }
+                if (requiresPhone && !phoneInput.value) {
+                    errorMessage.textContent = 'Veuillez entrer votre numéro de téléphone pour le paiement.';
+                    if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                    if (buttonText) buttonText.textContent = 'Procéder au paiement';
+                    if (submitButton) submitButton.disabled = false;
+                    return;
+                }
+
+                console.log(`Devise déterminée pour ${selectedCountry}: ${determinedCurrency}`);
+
+                formData = {
+                    paymentCurrency: determinedCurrency,
+                    countryCode: selectedCountry,
+                    operator: requiresOperator ? selectedOperatorValue : undefined,
+                    phoneNumber: requiresPhone ? phoneInput.value : undefined,
+                };
+            }
             // Removed Orange Senegal OTP logic since SN now uses CinetPay
             // if (selectedCountry === 'SN' && selectedOperatorValue === 'orange_sn' && otpInput.value) {
             //     formData.otp = otpInput.value;
@@ -263,29 +364,60 @@ document.addEventListener('DOMContentLoaded', function () {
                     window.location.href = result.data.gatewayCheckoutUrl;
                     if (buttonText) buttonText.textContent = 'Redirection...';
                 } else {
-                    // This is likely a request-to-pay flow (e.g., FeexPay USSD)
-                    if (requiresPhone) { // Check if it was a flow that involves a phone (most request-to-pay)
-                        if (buttonText) buttonText.textContent = 'Confirmer sur le téléphone';
-                        errorMessage.textContent = 'Veuillez vérifier votre téléphone pour approuver la demande de paiement.';
-                        // Apply yellow styling for this specific message
-                        errorMessage.className = 'text-center mt-4 p-3 bg-yellow-100 text-yellow-800 border border-yellow-300 rounded-md text-base min-h-[2.5rem] font-medium';
+                    // Handle different payment flows based on method
+                    if (selectedPaymentMethod === 'cryptocurrency') {
+                        // Crypto payment flow
+                        if (buttonText) buttonText.textContent = 'Paiement crypto initié';
+                        errorMessage.textContent = 'Votre paiement crypto a été initié. Veuillez suivre les instructions pour envoyer votre paiement.';
+                        errorMessage.className = 'text-center mt-4 p-3 bg-orange-100 text-orange-800 border border-orange-300 rounded-md text-base min-h-[2.5rem] font-medium';
 
-                        // Update global status and start polling if now PENDING_PROVIDER
-                        if (result.data && result.data.status === 'PENDING_PROVIDER') {
-                            paymentStatus = 'PENDING_PROVIDER'; // Update global JS status variable
-                            console.log('Demande de paiement réussie, nouveau statut PENDING_PROVIDER. Démarrage du sondage.');
-                            startPolling();
+                        // Update global status and start polling for crypto payments
+                        if (result.data && result.data.status === 'WAITING_FOR_CRYPTO_DEPOSIT') {
+                            paymentStatus = 'WAITING_FOR_CRYPTO_DEPOSIT';
+                            console.log('Paiement crypto initié, nouveau statut WAITING_FOR_CRYPTO_DEPOSIT. Rechargement de la page pour afficher les instructions.');
+                            // Refresh the page to show crypto deposit instructions
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1000); // Small delay to let user see the success message
                         } else if (result.data && result.data.status === 'PROCESSING') {
                             paymentStatus = 'PROCESSING';
-                            errorMessage.textContent = 'Votre paiement est en cours de traitement. Vérification des mises à jour...';
-                            // Apply yellow styling for this specific message as well (or a slightly different one for processing)
+                            errorMessage.textContent = 'Votre paiement crypto est en cours de traitement. Vérification des mises à jour...';
                             errorMessage.className = 'text-center mt-4 p-3 bg-blue-100 text-blue-800 border border-blue-300 rounded-md text-base min-h-[2.5rem] font-medium';
-                            console.log('Demande de paiement réussie, nouveau statut PROCESSING. Démarrage du sondage.');
+                            console.log('Paiement crypto initié, nouveau statut PROCESSING. Démarrage du sondage.');
                             startPolling();
+                        } else {
+                            // For any other status, also refresh to show the updated state
+                            console.log('Paiement crypto initié avec statut:', result.data?.status || 'unknown');
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1500);
                         }
                     } else {
-                        // Should not happen if no redirect and not a phone-based payment
-                        throw new Error('Paiement initié, mais aucune URL de redirection reçue et non un paiement par téléphone.');
+                        // This is likely a request-to-pay flow (e.g., FeexPay USSD)
+                        const requiresPhone = selectedPaymentMethod === 'mobile_money' && feexpayCountries.includes(countrySelect.value);
+                        if (requiresPhone) { // Check if it was a flow that involves a phone (most request-to-pay)
+                            if (buttonText) buttonText.textContent = 'Confirmer sur le téléphone';
+                            errorMessage.textContent = 'Veuillez vérifier votre téléphone pour approuver la demande de paiement.';
+                            // Apply yellow styling for this specific message
+                            errorMessage.className = 'text-center mt-4 p-3 bg-yellow-100 text-yellow-800 border border-yellow-300 rounded-md text-base min-h-[2.5rem] font-medium';
+
+                            // Update global status and start polling if now PENDING_PROVIDER
+                            if (result.data && result.data.status === 'PENDING_PROVIDER') {
+                                paymentStatus = 'PENDING_PROVIDER'; // Update global JS status variable
+                                console.log('Demande de paiement réussie, nouveau statut PENDING_PROVIDER. Démarrage du sondage.');
+                                startPolling();
+                            } else if (result.data && result.data.status === 'PROCESSING') {
+                                paymentStatus = 'PROCESSING';
+                                errorMessage.textContent = 'Votre paiement est en cours de traitement. Vérification des mises à jour...';
+                                // Apply yellow styling for this specific message as well (or a slightly different one for processing)
+                                errorMessage.className = 'text-center mt-4 p-3 bg-blue-100 text-blue-800 border border-blue-300 rounded-md text-base min-h-[2.5rem] font-medium';
+                                console.log('Demande de paiement réussie, nouveau statut PROCESSING. Démarrage du sondage.');
+                                startPolling();
+                            }
+                        } else {
+                            // Should not happen if no redirect and not a phone-based payment
+                            throw new Error('Paiement initié, mais aucune URL de redirection reçue et non un paiement par téléphone.');
+                        }
                     }
                 }
             } catch (error) {
@@ -431,16 +563,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Note: This client-side update of `paymentStatus` is for immediate UI reaction. Page reload is the source of truth.
                 // window.paymentStatus = newStatus; // Or however you want to manage this global if needed elsewhere
 
-                if (newStatus === 'SUCCEEDED' || newStatus === 'FAILED' || newStatus === 'CANCELED') {
+                if (newStatus === 'SUCCEEDED' || newStatus === 'FAILED' || newStatus === 'CANCELED' || newStatus === 'CONFIRMED') {
                     console.log(`Le statut de paiement est final : ${newStatus}. Rechargement de la page.`);
                     if (pollingIntervalId) clearInterval(pollingIntervalId);
                     window.location.reload();
-                } else if (newStatus === 'PENDING_PROVIDER' || newStatus === 'PROCESSING') {
+                } else if (newStatus === 'PENDING_PROVIDER' || newStatus === 'PROCESSING' || newStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' || newStatus === 'PARTIALLY_PAID') {
                     // Continue polling
                     if (paymentStatus !== newStatus && errorMessage) { // If status changed but still pending, update message
                         paymentStatus = newStatus; // Update local JS variable for consistency
                         if (newStatus === 'PROCESSING') {
                             errorMessage.textContent = 'Le paiement est maintenant en cours de traitement avec le fournisseur...';
+                        } else if (newStatus === 'WAITING_FOR_CRYPTO_DEPOSIT') {
+                            errorMessage.textContent = 'En attente de votre dépôt crypto. Veuillez envoyer le montant exact à l\'adresse fournie.';
+                        } else if (newStatus === 'PARTIALLY_PAID') {
+                            errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant.';
                         } else {
                             errorMessage.textContent = 'Toujours en attente de confirmation sur votre téléphone...';
                         }
@@ -469,11 +605,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
-    if (paymentStatus === 'PENDING_PROVIDER' || paymentStatus === 'PROCESSING') {
+    if (paymentStatus === 'PENDING_PROVIDER' || paymentStatus === 'PROCESSING' || paymentStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' || paymentStatus === 'PARTIALLY_PAID') {
         console.log(`Le statut initial est ${paymentStatus}. Démarrage du sondage du statut pour la session : ${sessionId}`);
-        // Initial message update for PROCESSING if not already set by PENDING_PROVIDER logic
+        // Initial message update for different statuses if not already set by other logic
         if (paymentStatus === 'PROCESSING' && errorMessage) {
             errorMessage.textContent = 'Votre paiement est en cours de traitement. Vérification des mises à jour...';
+        } else if (paymentStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' && errorMessage) {
+            errorMessage.textContent = 'En attente de votre dépôt crypto. Veuillez envoyer le montant exact à l\'adresse fournie.';
+        } else if (paymentStatus === 'PARTIALLY_PAID' && errorMessage) {
+            errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant.';
         }
         // if (pollingIntervalId) clearInterval(pollingIntervalId); // Clear any existing interval - MOVED TO startPolling()
         // pollingIntervalId = setInterval(checkPaymentStatus, pollInterval); // MOVED TO startPolling()

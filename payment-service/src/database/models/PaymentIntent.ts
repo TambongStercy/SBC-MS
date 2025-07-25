@@ -41,6 +41,32 @@ const PaymentIntentSchema: Schema = new Schema(
             type: String, // Store the payment operator slug (e.g., 'mtn', 'orange_ci')
             index: true, // Optional: index if you query by operator often
         },
+        // Crypto-specific fields added to the schema
+        payCurrency: {
+            type: String,
+        },
+        payAmount: {
+            type: Number,
+        },
+        cryptoAddress: {
+            type: String,
+        },
+        cryptoQrCode: {
+            type: String,
+        },
+        exchangeRate: {
+            type: Number,
+        },
+        networkFee: {
+            type: Number,
+        },
+        minConfirmations: {
+            type: Number,
+        },
+        expiresAt: {
+            type: Date,
+            // index: { expires: '30m' } // REMOVED: To prevent automatic deletion of payment intents
+        },
         status: {
             type: String,
             enum: Object.values(PaymentStatus),

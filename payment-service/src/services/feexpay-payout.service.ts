@@ -34,6 +34,11 @@ const log = logger.getLogger('FeexPayPayoutService');
  * - Minimum amount: 100 FCFA
  * - Currency: XOF (West African CFA franc)
  * 
+ * IP WHITELISTING REQUIREMENTS:
+ * - FeexPay requires server IP addresses to be whitelisted
+ * - Contact FeexPay support to whitelist your server IPs
+ * - Use the check-server-ip.js script to identify your public IPs
+ * 
  * @see https://api.feexpay.me/api/payouts/public/togo
  */
 
@@ -60,6 +65,7 @@ export interface PayoutResult {
     amount: number;
     recipient: string;
     error?: any;
+    requiresIPWhitelisting?: boolean; // New flag to indicate IP whitelist needed
 }
 
 export interface PayoutStatus {
@@ -87,30 +93,30 @@ export class FeexPayPayoutService {
             // Benin - Using global endpoint for MTN and MOOV
             'MTN_MOMO_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MTN', minAmount: 50 },
             'MOOV_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MOOV', minAmount: 50 },
-            
+
             // Togo - Using dedicated Togo endpoint as per documentation
             'TOGOCOM_TG': { endpoint: '/payouts/public/togo', networkParam: 'TOGOCOM TG', minAmount: 100 },
             'MOOV_TG': { endpoint: '/payouts/public/togo', networkParam: 'MOOV TG', minAmount: 100 },
-            
+
             // Congo Brazzaville (Republic of the Congo)
             'MTN_MOMO_COG': { endpoint: '/payouts/public/mtn_cg', networkParam: 'MTN CG', minAmount: 100 },
             'AIRTEL_COG': { endpoint: '/payouts/public/airtel_cg', networkParam: 'AIRTEL CG', minAmount: 100 },
-            
+
             // DRC (Democratic Republic of Congo)
             'VODACOM_MPESA_COD': { endpoint: '/payouts/public/vodacom_cd', networkParam: 'VODACOM CD', minAmount: 100 },
             'AIRTEL_COD': { endpoint: '/payouts/public/airtel_cd', networkParam: 'AIRTEL CD', minAmount: 100 },
             'ORANGE_COD': { endpoint: '/payouts/public/orange_cd', networkParam: 'ORANGE CD', minAmount: 100 },
-            
+
             // Kenya
             'MPESA_KEN': { endpoint: '/payouts/public/mpesa_ke', networkParam: 'MPESA KE', minAmount: 100 },
-            
+
             // Nigeria
             'MTN_MOMO_NGA': { endpoint: '/payouts/public/mtn_ng', networkParam: 'MTN NG', minAmount: 100 },
             'AIRTEL_NGA': { endpoint: '/payouts/public/airtel_ng', networkParam: 'AIRTEL NG', minAmount: 100 },
-            
+
             // Gabon
             'AIRTEL_GAB': { endpoint: '/payouts/public/airtel_ga', networkParam: 'AIRTEL GA', minAmount: 100 },
-            
+
             // Note: Côte d'Ivoire, Senegal, and Burkina Faso should now use CinetPay for withdrawals
             // Removing them from FeexPay endpoints to avoid confusion
         };
@@ -162,9 +168,67 @@ export class FeexPayPayoutService {
             },
             (error) => {
                 log.error('FeexPay API Response Error:', error.response?.data || error.message);
+
+                // Enhanced error handling for IP whitelisting
+                if (this.isIPWhitelistingError(error)) {
+                    log.error('🚫 FeexPay IP Whitelisting Error Detected! Server IP needs to be whitelisted.');
+                    log.error('📧 Contact FeexPay support to whitelist your server IP address');
+                    log.error('🔧 Run the check-server-ip.js script to identify your public IP');
+                }
+
                 return Promise.reject(error);
             }
         );
+    }
+
+    /**
+     * Detects if the error is related to IP whitelisting
+     */
+    private isIPWhitelistingError(error: any): boolean {
+        if (!error.response) return false;
+
+        const status = error.response.status;
+        const message = error.response.data?.message || error.message || '';
+
+        // Check for common IP whitelist error patterns
+        return (
+            status === 403 && (
+                message.toLowerCase().includes('forbidden') &&
+                (message.toLowerCase().includes('ip') || message.toLowerCase().includes('whitelist'))
+            )
+        ) || (
+                status === 401 && message.toLowerCase().includes('ip not whitelisted')
+            ) || (
+                message.toLowerCase().includes('ip not whitelisted') ||
+                message.toLowerCase().includes('forbidden ip') ||
+                message.toLowerCase().includes('ip address not allowed')
+            );
+    }
+
+    /**
+     * Creates a detailed error message for IP whitelisting issues
+     */
+    private createIPWhitelistingErrorMessage(originalError: any): string {
+        return `🚫 FeexPay IP Whitelisting Required
+
+❌ Error: ${originalError.response?.data?.message || originalError.message}
+
+🔧 SOLUTION STEPS:
+1. Contact FeexPay Support:
+   📧 Email: support@feexpay.me
+   📞 Check FeexPay documentation for contact details
+
+2. Request IP Whitelisting:
+   🏷️  Shop ID: ${config.feexpay.shopId}
+   🌐 Mention this is for PAYOUT API access
+   📍 Request whitelisting for server IP addresses
+
+3. Get Your Server IPs:
+   💻 Run: node check-server-ip.js
+   🔍 Or check your hosting provider's documentation
+
+⚠️  IMPORTANT: Without IP whitelisting, all FeexPay payouts will fail.
+💡 Consider setting up a static IP or NAT gateway for production.`;
     }
 
     /**
@@ -263,6 +327,15 @@ export class FeexPayPayoutService {
 
         } catch (error: any) {
             log.error(`Error initiating FeexPay payout for ${request.client_transaction_id}: ${error.message}`, error.response?.data || error);
+
+            // Enhanced error handling for IP whitelisting
+            if (this.isIPWhitelistingError(error)) {
+                const detailedMessage = this.createIPWhitelistingErrorMessage(error);
+                log.error(detailedMessage);
+
+                throw new AppError(detailedMessage, 403);
+            }
+
             throw new AppError(`Failed to initiate FeexPay payout: ${error.response?.data?.message || error.message}`, error.response?.status || 500);
         }
     }
@@ -297,6 +370,14 @@ export class FeexPayPayoutService {
             }
         } catch (error: any) {
             log.error(`Error checking FeexPay payout status for ${feexpayReference}: ${error.message}`, error.response?.data || error);
+
+            // Enhanced error handling for IP whitelisting in status checks too
+            if (this.isIPWhitelistingError(error)) {
+                const detailedMessage = this.createIPWhitelistingErrorMessage(error);
+                log.error(detailedMessage);
+                throw new AppError(detailedMessage, 403);
+            }
+
             throw new AppError(`Failed to check FeexPay payout status: ${error.response?.data?.message || error.message}`, error.response?.status || 500);
         }
     }

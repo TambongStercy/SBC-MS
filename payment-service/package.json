@@ -14,6 +14,7 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
+        "@nowpaymentsio/nowpayments-api-js": "^1.0.5",
         "@types/node-cron": "^3.0.11",
         "axios": "^1.8.4",
         "bcrypt": "^5.1.1",
@@ -28,6 +29,7 @@
         "morgan": "^1.10.0",
         "nanoid": "^3.3.4",
         "node-cron": "^4.2.0",
+        "qrcode": "^1.5.4",
         "validator": "^13.11.0",
         "winston": "^3.17.0"
     },

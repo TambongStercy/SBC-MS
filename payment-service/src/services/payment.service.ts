@@ -13,6 +13,7 @@ import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
 import { countryCodeToDialingPrefix, momoOperatorToCinetpayPaymentMethod, momoOperatorToCountryCode, getPrefixFromOperator, momoOperatorToCurrency } from '../utils/operatorMaps'; // NEW: Import all necessary maps and helper
+import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 
@@ -1167,8 +1168,24 @@ class PaymentService {
             throw new Error('Missing required fields (userId, amount, currency, paymentType) to create payment intent.');
         }
         if (data.amount <= 0) {
-            log.error('Invalid amount for createPaymentIntent', { amount: data.amount });
+            log.error('Invalid amount for createPaymentIntent', {
+                amount: data.amount,
+                userId: data.userId,
+                currency: data.currency,
+                paymentType: data.paymentType
+            });
             throw new Error('Payment amount must be positive.');
+        }
+
+        // Additional validation for extremely small amounts that might round to 0
+        if (data.amount < 0.01) {
+            log.error('Payment amount too small', {
+                amount: data.amount,
+                userId: data.userId,
+                currency: data.currency,
+                paymentType: data.paymentType
+            });
+            throw new Error('Payment amount must be at least 0.01.');
         }
 
         // Create the initial intent
@@ -1243,6 +1260,10 @@ class PaymentService {
             return amount; // No conversion needed for CFA francs
         }
 
+        // Check if we're converting TO a cryptocurrency
+        const isCryptoTarget = this.isCryptoCurrency(toCurrency);
+        log.info(`Target currency ${toCurrency} is crypto: ${isCryptoTarget}`);
+
         const fromCurrencyLower = fromCurrency.toLowerCase();
         const toCurrencyLower = toCurrency.toLowerCase();
 
@@ -1284,13 +1305,54 @@ class PaymentService {
                 rate = 1;
                 log.info(`CFA franc fallback: Using 1:1 rate for ${fromCurrency} -> ${toCurrency}`);
             }
-            const convertedAmount = Math.round(amount * rate); // Use Math.round instead of Math.ceil
-            log.info(`Converted amount (using fallback rate): ${convertedAmount} ${toCurrency}`);
+
+            let convertedAmount;
+            if (isCryptoTarget) {
+                // For crypto, preserve precision with 8 decimal places
+                convertedAmount = parseFloat((amount * rate).toFixed(8));
+                log.info(`Converted amount (using fallback rate, crypto): ${convertedAmount} ${toCurrency}`);
+            } else {
+                // For fiat currencies, round to whole numbers, except for USD
+                if (toCurrency.toUpperCase() === 'USD') {
+                    convertedAmount = parseFloat((amount * rate).toFixed(2));
+                    log.info(`Converted amount (using fallback rate, USD): ${convertedAmount} ${toCurrency}`);
+                } else {
+                    convertedAmount = Math.round(amount * rate);
+                    log.info(`Converted amount (using fallback rate, fiat): ${convertedAmount} ${toCurrency}`);
+                }
+            }
             return convertedAmount;
         }
 
-        const convertedAmount = Math.round(amount * exchangeRate); // Use Math.round instead of Math.ceil
-        log.info(`Converted amount (using API rate): ${convertedAmount} ${toCurrency}`);
+        let convertedAmount;
+        if (isCryptoTarget) {
+            // For cryptocurrency conversions, preserve decimal precision
+            // Use 8 decimal places (standard for most cryptocurrencies)
+            convertedAmount = parseFloat((amount * exchangeRate).toFixed(8));
+            log.info(`Converted amount (using API rate, crypto): ${convertedAmount} ${toCurrency}`);
+
+            // Additional validation for crypto amounts - they should be > 0 but can be very small
+            if (convertedAmount <= 0) {
+                log.error(`Crypto conversion resulted in zero or negative amount`, {
+                    originalAmount: amount,
+                    fromCurrency: fromCurrency,
+                    toCurrency: toCurrency,
+                    exchangeRate: exchangeRate,
+                    convertedAmount: convertedAmount
+                });
+                throw new Error(`Currency conversion to ${toCurrency} resulted in invalid amount: ${convertedAmount}`);
+            }
+        } else {
+            // For fiat currencies, round to whole numbers, except for USD which needs decimals for other gateways
+            if (toCurrency.toUpperCase() === 'USD') {
+                convertedAmount = parseFloat((amount * exchangeRate).toFixed(2));
+                log.info(`Converted amount (using API rate, USD): ${convertedAmount} ${toCurrency}`);
+            } else {
+                convertedAmount = Math.round(amount * exchangeRate);
+                log.info(`Converted amount (using API rate, fiat): ${convertedAmount} ${toCurrency}`);
+            }
+        }
+
         return convertedAmount;
     }
 
@@ -1425,6 +1487,305 @@ class PaymentService {
     }
 
     /**
+     * Handle NOWPayments webhook for crypto payment updates
+     */
+    public async handleNowPaymentsWebhook(payload: any, signature?: string): Promise<void> {
+        try {
+            // Verify webhook signature if provided
+            if (signature && config.nowpayments.ipnSecret) {
+                const isValid = nowPaymentsService.verifyWebhookSignature(
+                    JSON.stringify(payload),
+                    signature
+                );
+                if (!isValid) {
+                    log.error('NOWPayments webhook signature verification failed');
+                    throw new Error('Invalid webhook signature');
+                }
+            }
+
+            const { payment_id, order_id, payment_status, actually_paid, pay_currency, outcome_amount, outcome_currency } = payload;
+
+            if (!payment_id || !order_id || !payment_status) {
+                log.warn('Received NOWPayments webhook with missing required fields', payload);
+                throw new Error('Webhook payload missing required fields');
+            }
+
+            log.info(`Processing NOWPayments webhook for order: ${order_id}, payment: ${payment_id}, status: ${payment_status}`);
+
+            // Find payment intent by sessionId (which we used as order_id)
+            const paymentIntent = await paymentIntentRepository.findBySessionId(order_id);
+
+            if (!paymentIntent) {
+                log.error(`Payment intent not found for NOWPayments webhook: ${order_id}`);
+                throw new Error('Payment intent not found for webhook');
+            }
+
+            // Verify gateway and payment ID match
+            if (paymentIntent.gateway !== PaymentGateway.NOWPAYMENTS) {
+                log.error(`Payment intent ${order_id} is not a NOWPayments payment`);
+                throw new Error('Payment intent is not a NOWPayments payment');
+            }
+
+            if (payment_id !== paymentIntent.gatewayPaymentId) {
+                log.error(`NOWPayments payment ID mismatch for ${order_id}. Expected: ${paymentIntent.gatewayPaymentId}, Received: ${payment_id}`);
+                throw new Error('Payment ID mismatch');
+            }
+
+            // Skip if already in final state
+            if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
+                log.warn(`Webhook received for already processed payment intent: ${order_id}, Status: ${paymentIntent.status}`);
+                return;
+            }
+
+            // Map NOWPayments status to internal status
+            const newStatus = nowPaymentsService.mapStatusToInternal(payment_status);
+
+            // Log payment details for tracking
+            if (actually_paid && pay_currency) {
+                log.info(`NOWPayments payment details for ${order_id}:`);
+                log.info(`Amount Paid: ${actually_paid} ${pay_currency}`);
+                if (outcome_amount && outcome_currency) {
+                    log.info(`Outcome Amount: ${outcome_amount} ${outcome_currency}`);
+                }
+            }
+
+            // Update payment intent status if changed
+            let updatedIntent: IPaymentIntent | null = paymentIntent;
+            if (newStatus !== paymentIntent.status) {
+                const updateData: any = {
+                    status: newStatus
+                };
+
+                // Update crypto-specific fields from webhook
+                if (actually_paid) {
+                    updateData.paidAmount = actually_paid;
+                }
+                if (pay_currency) {
+                    updateData.paidCurrency = pay_currency;
+                }
+
+                updatedIntent = await paymentIntentRepository.addWebhookEvent(order_id, newStatus, payload);
+
+                if (updatedIntent) {
+                    // Update additional fields if available
+                    await paymentIntentRepository.updateBySessionId(order_id, updateData);
+                }
+
+                log.info(`PaymentIntent ${order_id} status updated to ${newStatus} via NOWPayments webhook.`);
+
+                if (!updatedIntent) {
+                    log.error(`Failed to update PaymentIntent ${order_id} after NOWPayments webhook event.`);
+                    return;
+                }
+            }
+
+            // Handle payment completion for final states
+            if (updatedIntent && (updatedIntent.status === PaymentStatus.SUCCEEDED || updatedIntent.status === PaymentStatus.FAILED || updatedIntent.status === PaymentStatus.CONFIRMED)) {
+                await this.handlePaymentCompletion(updatedIntent);
+            }
+
+        } catch (error: any) {
+            log.error('Error processing NOWPayments webhook:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a crypto payout using NOWPayments
+     */
+    public async createCryptoPayout(
+        userId: string | Types.ObjectId,
+        netAmountDesired: number,
+        cryptoCurrency: string,
+        cryptoAddress: string,
+        description: string,
+        ipAddress?: string,
+        deviceInfo?: string
+    ) {
+        try {
+            log.info(`Creating crypto payout for user ${userId}: ${netAmountDesired} ${cryptoCurrency} to ${cryptoAddress}`);
+
+            // Validate withdrawal against user's balance and limits from the user-service
+            const limitCheck = await userServiceClient.checkWithdrawalLimits(userId.toString(), netAmountDesired);
+            if (!limitCheck.allowed) {
+                throw new Error(limitCheck.reason || 'Crypto payout not permitted at this time.');
+            }
+
+            // Create a pending transaction to track this payout
+            const transactionInput: CreateTransactionInput = {
+                userId,
+                type: TransactionType.WITHDRAWAL,
+                amount: netAmountDesired,
+                currency: cryptoCurrency as Currency,
+                status: TransactionStatus.PENDING,
+                description: description || `Crypto payout to ${cryptoAddress}`,
+                metadata: {
+                    reference: `CRYPTO_PAYOUT_${Date.now()}`,
+                    cryptoAddress,
+                    payoutMethod: 'nowpayments',
+                    serviceProvider: 'nowpayments',
+                    paymentMethod: `crypto_${cryptoCurrency.toLowerCase()}`
+                },
+                ipAddress,
+                deviceInfo,
+            };
+            const transaction = await transactionRepository.create(transactionInput);
+
+            // Initiate the payout with NOWPayments
+            const payoutRequest = {
+                address: cryptoAddress,
+                currency: cryptoCurrency,
+                amount: netAmountDesired,
+                ipnCallbackUrl: `${config.selfBaseUrl}/api/payments/webhooks/nowpayments/payout`,
+                feePaidByUser: true // User pays the network fee
+            };
+
+            const payoutResponse = await nowPaymentsService.createPayout(payoutRequest);
+
+            // Update transaction with payout details
+            await transactionRepository.updateById(transaction._id.toString(), {
+                externalTransactionId: payoutResponse.id,
+                status: nowPaymentsService.mapPayoutStatusToInternal(payoutResponse.status),
+                metadata: {
+                    ...transaction.metadata,
+                    payoutResponse: payoutResponse,
+                    withdrawalId: payoutResponse.withdrawalId,
+                    batchWithdrawalId: payoutResponse.batchWithdrawalId
+                }
+            });
+
+            // Deduct amount from user balance if payout is initiated successfully
+            await userServiceClient.updateUserBalance(userId.toString(), -netAmountDesired);
+
+            log.info(`Crypto payout initiated successfully for user ${userId}, transaction: ${transaction.transactionId}`);
+
+            return {
+                success: true,
+                transactionId: transaction.transactionId,
+                payoutId: payoutResponse.id,
+                withdrawalId: payoutResponse.withdrawalId,
+                status: payoutResponse.status,
+                message: 'Crypto payout initiated successfully'
+            };
+
+        } catch (error: any) {
+            log.error(`Error creating crypto payout for user ${userId}:`, error);
+            throw new Error(`Failed to create crypto payout: ${error.message}`);
+        }
+    }
+
+    /**
+     * Handle NOWPayments payout webhook
+     */
+    public async handleNowPaymentsPayoutWebhook(payload: any, signature?: string): Promise<void> {
+        try {
+            // Verify webhook signature if provided
+            if (signature && config.nowpayments.ipnSecret) {
+                const isValid = nowPaymentsService.verifyWebhookSignature(
+                    JSON.stringify(payload),
+                    signature
+                );
+                if (!isValid) {
+                    log.error('NOWPayments payout webhook signature verification failed');
+                    throw new Error('Invalid webhook signature');
+                }
+            }
+
+            const { id, withdrawal_id, status, hash, amount, currency, address } = payload;
+
+            if (!id || !status) {
+                log.warn('Received NOWPayments payout webhook with missing required fields', payload);
+                throw new Error('Webhook payload missing required fields');
+            }
+
+            log.info(`Processing NOWPayments payout webhook for withdrawal: ${withdrawal_id || id}, status: ${status}`);
+
+            // Find transaction by external transaction ID
+            const transaction = await transactionRepository.findByExternalTransactionId(id);
+
+            if (!transaction) {
+                log.error(`Transaction not found for NOWPayments payout webhook: ${id}`);
+                throw new Error('Transaction not found for payout webhook');
+            }
+
+            // Skip if already in final state
+            if (transaction.status === TransactionStatus.COMPLETED || transaction.status === TransactionStatus.FAILED) {
+                log.warn(`Payout webhook received for already processed transaction: ${transaction.transactionId}, Status: ${transaction.status}`);
+                return;
+            }
+
+            // Map NOWPayments payout status to internal status
+            const newStatus = nowPaymentsService.mapPayoutStatusToInternal(status);
+
+            // Update transaction status
+            await transactionRepository.updateById(transaction._id.toString(), {
+                status: newStatus,
+                metadata: {
+                    ...transaction.metadata,
+                    payoutWebhookPayload: payload,
+                    transactionHash: hash,
+                    finalAmount: amount,
+                    finalCurrency: currency,
+                    finalAddress: address,
+                    completedAt: newStatus === TransactionStatus.COMPLETED ? new Date() : undefined
+                }
+            });
+
+            log.info(`Transaction ${transaction.transactionId} status updated to ${newStatus} via NOWPayments payout webhook.`);
+
+            // If payout failed, refund the user
+            if (newStatus === TransactionStatus.FAILED) {
+                await userServiceClient.updateUserBalance(transaction.userId.toString(), transaction.amount);
+                log.info(`Refunded ${transaction.amount} ${transaction.currency} to user ${transaction.userId.toString()} due to failed payout`);
+            }
+
+        } catch (error: any) {
+            log.error('Error processing NOWPayments payout webhook:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get available cryptocurrencies for payments and payouts
+     */
+    public async getAvailableCryptoCurrencies(): Promise<string[]> {
+        try {
+            return await nowPaymentsService.getAvailableCurrencies();
+        } catch (error: any) {
+            log.error('Error getting available crypto currencies:', error);
+            throw new Error('Failed to get available cryptocurrencies');
+        }
+    }
+
+    /**
+     * Get crypto payment estimate
+     */
+    public async getCryptoPaymentEstimate(
+        amount: number,
+        fromCurrency: string,
+        toCurrency: string
+    ): Promise<any> {
+        try {
+            return await nowPaymentsService.getEstimatePrice(amount, fromCurrency, toCurrency);
+        } catch (error: any) {
+            log.error('Error getting crypto payment estimate:', error);
+            throw new Error('Failed to get payment estimate');
+        }
+    }
+
+    /**
+     * Test NOWPayments API connection
+     */
+    public async testNowPaymentsConnection(): Promise<any> {
+        try {
+            return await nowPaymentsService.testConnection();
+        } catch (error: any) {
+            log.error('Error testing NOWPayments connection:', error);
+            throw new Error('Failed to test NOWPayments connection');
+        }
+    }
+
+    /**
      * Handles actions common to both successful and failed payment completions,
      * including notifying the originating service.
      */
@@ -1502,8 +1863,25 @@ class PaymentService {
         }
 
         if (!paymentIntent.amount || !paymentIntent.currency) {
-            log.error(`PaymentIntent ${sessionId} is missing amount/currency during submission.`);
+            log.error(`PaymentIntent ${sessionId} is missing amount/currency during submission.`, {
+                sessionId: paymentIntent.sessionId,
+                amount: paymentIntent.amount,
+                currency: paymentIntent.currency,
+                status: paymentIntent.status
+            });
             throw new Error('Payment intent is incomplete. Amount/Currency missing.');
+        }
+
+        // CRITICAL: Validate payment amount is greater than 0
+        if (paymentIntent.amount <= 0) {
+            log.error(`PaymentIntent ${sessionId} has invalid amount: ${paymentIntent.amount}`, {
+                sessionId: paymentIntent.sessionId,
+                amount: paymentIntent.amount,
+                currency: paymentIntent.currency,
+                userId: paymentIntent.userId,
+                status: paymentIntent.status
+            });
+            throw new Error(`Invalid payment amount: ${paymentIntent.amount}. Amount must be greater than 0.`);
         }
 
         // --- Construct Full Phone Number ---
@@ -1529,22 +1907,71 @@ class PaymentService {
 
         if (paymentIntent.currency !== finalCurrency) {
             finalAmount = await this.convertCurrency(paymentIntent.amount, paymentIntent.currency, finalCurrency);
+
+            // Validate converted amount - different logic for crypto vs fiat
+            const isCryptoPayment = this.isCryptoCurrency(finalCurrency);
+
+            if (!finalAmount || finalAmount <= 0) {
+                log.error(`Currency conversion resulted in invalid amount: ${finalAmount}`, {
+                    sessionId: paymentIntent.sessionId,
+                    originalAmount: paymentIntent.amount,
+                    originalCurrency: paymentIntent.currency,
+                    finalAmount: finalAmount,
+                    finalCurrency: finalCurrency,
+                    isCryptoPayment: isCryptoPayment
+                });
+                throw new Error(`Currency conversion failed. Converted amount: ${finalAmount} is invalid.`);
+            }
+
+            // Additional validation based on currency type
+            if (isCryptoPayment) {
+                // For crypto, allow very small amounts but validate they're not zero
+                if (finalAmount === 0) {
+                    log.error(`Crypto conversion resulted in zero amount`, {
+                        sessionId: paymentIntent.sessionId,
+                        originalAmount: paymentIntent.amount,
+                        originalCurrency: paymentIntent.currency,
+                        finalAmount: finalAmount,
+                        finalCurrency: finalCurrency
+                    });
+                    throw new Error(`Currency conversion to ${finalCurrency} resulted in zero amount. The payment amount may be too small for this cryptocurrency.`);
+                }
+                log.info(`Crypto conversion successful: ${paymentIntent.amount} ${paymentIntent.currency} → ${finalAmount} ${finalCurrency} (${finalAmount.toFixed(8)})`);
+            } else {
+                // For fiat currencies, enforce minimum amount of 1
+                if (finalAmount < 1) {
+                    log.error(`Fiat conversion resulted in amount less than 1`, {
+                        sessionId: paymentIntent.sessionId,
+                        originalAmount: paymentIntent.amount,
+                        originalCurrency: paymentIntent.currency,
+                        finalAmount: finalAmount,
+                        finalCurrency: finalCurrency
+                    });
+                    throw new Error(`Currency conversion to ${finalCurrency} resulted in amount less than 1. Minimum amount is 1 ${finalCurrency}.`);
+                }
+                log.info(`Fiat currency converted: ${paymentIntent.amount} ${paymentIntent.currency} → ${finalAmount} ${finalCurrency}`);
+            }
         } else {
             log.info(`Payment currency (${finalCurrency}) matches intent currency. No conversion needed.`);
         }
 
-        // Select Gateway first
-        const selectedGateway = this.selectGateway(details.countryCode);
+        // Select Gateway first (pass currency to check for crypto)
+        // For crypto payments, countryCode might be undefined
+        const selectedGateway = this.selectGateway(details.countryCode || '', finalCurrency);
 
         // Set up update data for the PaymentIntent document
         const updateData: UpdatePaymentIntentInput = { // Use the specific Update type
-            countryCode: details.countryCode,
             gateway: selectedGateway,
             paidCurrency: finalCurrency, // Store the currency user chose to pay with
             paidAmount: finalAmount,    // Store the final amount after potential conversion
             phoneNumber: fullPhoneNumber, // Store the full international phone number
             // Keep other fields undefined for now, add conditionally below
         };
+
+        // Only set countryCode if it's provided (not needed for crypto payments)
+        if (details.countryCode) {
+            updateData.countryCode = details.countryCode;
+        }
 
         // Validate if phone number/operator is required and present *after* selecting gateway
         if (selectedGateway === PaymentGateway.FEEXPAY) {
@@ -1566,6 +1993,11 @@ class PaymentService {
             // We specifically *don't* set phone/operator here, letting them remain undefined in updateData
             // updateData.phoneNumber = undefined; // No need, default is undefined
             // updateData.operator = undefined;   // No need, default is undefined
+
+        } else if (selectedGateway === PaymentGateway.NOWPAYMENTS) {
+            // NOWPayments doesn't require phone number or operator for crypto payments
+            // Crypto payments are done via wallet addresses
+            log.info(`Crypto payment selected with ${finalCurrency}, no phone number required`);
         }
 
         // Update the intent before initiating payment
@@ -1587,6 +2019,8 @@ class PaymentService {
                 finalPaymentIntent = await this.initiateFeexpayPayment(updatedIntent, finalAmount, finalCurrency, details.operator, details.otp);
             } else if (updatedIntent.gateway === PaymentGateway.CINETPAY) {
                 finalPaymentIntent = await this.initiateCinetPayPayment(updatedIntent, finalAmount, finalCurrency);
+            } else if (updatedIntent.gateway === PaymentGateway.NOWPAYMENTS) {
+                finalPaymentIntent = await this.initiateNowPaymentsPayment(updatedIntent, finalAmount, finalCurrency);
             } else {
                 log.error(`Unsupported gateway selected: ${updatedIntent.gateway} for session ${sessionId}`);
                 throw new Error('Unsupported country/gateway combination.');
@@ -1630,7 +2064,19 @@ class PaymentService {
         return updatedIntent;
     }
 
-    private selectGateway(countryCode: string): PaymentGateway {
+    private selectGateway(countryCode: string, currency?: string): PaymentGateway {
+        // Check if user wants to pay with cryptocurrency
+        if (currency && this.isCryptoCurrency(currency)) {
+            log.info(`Crypto currency ${currency} selected, using NOWPAYMENTS.`);
+            return PaymentGateway.NOWPAYMENTS;
+        }
+
+        // For non-crypto payments, country code is required
+        if (!countryCode || countryCode.trim() === '') {
+            log.error(`Country code is required for non-crypto payments but was not provided`);
+            throw new Error('Country code is required for fiat currency payments.');
+        }
+
         // Countries that use CinetPay for payments and withdrawals
         const cinetpaySupportedCountries = [
             'BF', // Burkina Faso - Added for withdrawals as per client request
@@ -1656,6 +2102,17 @@ class PaymentService {
 
         log.error(`Unsupported country code for gateway selection: ${countryCode}`);
         throw new Error(`Unsupported country code: ${countryCode}. Payments for this country are not currently enabled.`);
+    }
+
+    /**
+     * Check if a currency is a cryptocurrency
+     */
+    private isCryptoCurrency(currency: string): boolean {
+        const cryptoCurrencies = [
+            'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'LTC', 'XRP', 'ADA',
+            'DOT', 'SOL', 'MATIC', 'TRX', 'BCH', 'LINK', 'DOGE', 'XMR'
+        ];
+        return cryptoCurrencies.includes(currency.toUpperCase());
     }
 
     private getFeexpayOperatorsForCountry(countryCode: string): string[] | undefined {
@@ -1967,6 +2424,234 @@ class PaymentService {
                 log.error(`CinetPay setup error: ${error.message}`);
             }
             throw new Error('Failed to initiate CinetPay payment');
+        }
+    }
+
+    /**
+     * Initiate NOWPayments crypto payment
+     */
+    private async initiateNowPaymentsPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
+        try {
+            log.info(`Initiating NOWPayments crypto payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
+
+            // CRITICAL: Validate payment amount before processing
+            if (!amount || amount <= 0) {
+                log.error(`Invalid payment amount for NOWPayments: ${amount}. Payment intent:`, {
+                    sessionId: paymentIntent.sessionId,
+                    originalAmount: paymentIntent.amount,
+                    originalCurrency: paymentIntent.currency,
+                    finalAmount: amount,
+                    finalCurrency: currency
+                });
+                throw new Error(`Invalid payment amount: ${amount}. Amount must be greater than 0.`);
+            }
+
+            // Validate original payment intent amount
+            if (!paymentIntent.amount || paymentIntent.amount <= 0) {
+                log.error(`Payment intent has invalid original amount: ${paymentIntent.amount}`, {
+                    sessionId: paymentIntent.sessionId,
+                    paymentIntent: {
+                        amount: paymentIntent.amount,
+                        currency: paymentIntent.currency,
+                        userId: paymentIntent.userId,
+                        status: paymentIntent.status
+                    }
+                });
+                throw new Error(`Payment intent has invalid original amount: ${paymentIntent.amount}. Cannot process crypto payment.`);
+            }
+
+            // Create the payment via NOWPayments API
+            let paymentResponse: any;
+            try {
+                // CRITICAL: NOWPayments doesn't support XAF as price currency.
+                // We must use the original fiat amount from the payment intent for the price.
+                let priceAmountForRequest;
+                let priceCurrencyForRequest = paymentIntent.currency || 'USD';
+                const isStablecoin = ['USDT', 'USDC'].includes(currency.toUpperCase());
+
+
+                if (priceCurrencyForRequest === 'XAF') {
+                    // Convert original XAF amount to USD for NOWPayments, ensuring we have decimals.
+                    priceAmountForRequest = await this.convertCurrency(paymentIntent.amount, 'XAF', 'USD');
+                    priceCurrencyForRequest = 'USD';
+                    log.info(`Converted price for NOWPayments: ${paymentIntent.amount} XAF → ${priceAmountForRequest} USD`);
+                } else {
+                    // If original currency is not XAF, assume it's something NOWPayments supports (e.g., USD itself).
+                    priceAmountForRequest = paymentIntent.amount;
+                }
+
+                const paymentRequest: any = { // Use 'any' to dynamically add properties
+                    payCurrency: currency, // Crypto currency selected by user
+                    orderId: paymentIntent.sessionId,
+                    orderDescription: `${paymentIntent.subscriptionType || 'SBC'} - ${paymentIntent.subscriptionPlan || 'Payment'}`,
+                    ipnCallbackUrl: `${config.selfBaseUrl}/api/payments/webhooks/nowpayments`,
+                    successUrl: `${config.frontendUrl}/payment/success?sessionId=${paymentIntent.sessionId}`,
+                    cancelUrl: `${config.frontendUrl}/payment/cancel?sessionId=${paymentIntent.sessionId}`
+                };
+
+                if (isStablecoin) {
+                    // For stablecoins, we provide the exact amount to be paid.
+                    paymentRequest.payAmount = priceAmountForRequest; // e.g., 5.51 USDT
+                    // NOWPayments requires priceAmount even when payAmount is set for validation.
+                    paymentRequest.priceAmount = priceAmountForRequest;
+                    paymentRequest.priceCurrency = 'USD'; // The price is in USD.
+                    log.info(`Stablecoin payment: Sending exact payAmount of ${paymentRequest.payAmount} ${currency} and priceAmount of ${paymentRequest.priceAmount} USD`);
+                } else {
+                    // For other cryptos, we provide the fiat price and let NOWPayments calculate the crypto amount.
+                    paymentRequest.priceAmount = priceAmountForRequest;
+                    paymentRequest.priceCurrency = priceCurrencyForRequest; // This will be USD if original was XAF
+                    log.info(`Non-stablecoin payment: Sending priceAmount of ${paymentRequest.priceAmount} ${paymentRequest.priceCurrency}`);
+                }
+
+
+                log.info('NOWPayments request (with USD conversion):', paymentRequest);
+
+                paymentResponse = await nowPaymentsService.createPayment(paymentRequest);
+                log.info(`NOWPayments response:`, paymentResponse);
+                log.info(`NOWPayments payment status: ${paymentResponse.paymentStatus}`);
+
+                // CRITICAL: Validate NOWPayments response has required fields
+                if (!paymentResponse || typeof paymentResponse !== 'object') {
+                    log.error(`NOWPayments returned invalid response (not an object):`, paymentResponse);
+                    throw new Error('NOWPayments API returned invalid response format');
+                }
+
+                // Check for required fields in crypto payment response
+                const requiredFields = ['paymentId', 'payAddress', 'payCurrency', 'payAmount'];
+                const missingFields = requiredFields.filter(field => !paymentResponse[field]);
+
+                if (missingFields.length > 0) {
+                    log.error(`NOWPayments response missing required fields:`, {
+                        missingFields,
+                        receivedResponse: paymentResponse,
+                        sessionId: paymentIntent.sessionId
+                    });
+                    throw new Error(`NOWPayments response missing required fields: ${missingFields.join(', ')}. Please try again or contact support.`);
+                }
+
+                // Validate payment address exists
+                if (!paymentResponse.payAddress || paymentResponse.payAddress.trim() === '') {
+                    log.error(`NOWPayments returned empty crypto address`, {
+                        paymentResponse,
+                        sessionId: paymentIntent.sessionId
+                    });
+                    throw new Error('NOWPayments did not provide a crypto deposit address. Please try again.');
+                }
+
+                // Validate pay amount is reasonable
+                if (!paymentResponse.payAmount || paymentResponse.payAmount <= 0) {
+                    log.error(`NOWPayments returned invalid pay amount`, {
+                        payAmount: paymentResponse.payAmount,
+                        sessionId: paymentIntent.sessionId
+                    });
+                    throw new Error('NOWPayments provided invalid payment amount. Please try again.');
+                }
+
+                log.info(`✅ NOWPayments response validation passed:`, {
+                    paymentId: paymentResponse.paymentId,
+                    payAddress: paymentResponse.payAddress,
+                    payCurrency: paymentResponse.payCurrency,
+                    payAmount: paymentResponse.payAmount,
+                    sessionId: paymentIntent.sessionId
+                });
+
+            } catch (apiError: any) {
+                log.error(`NOWPayments API call failed:`, {
+                    error: apiError.message,
+                    sessionId: paymentIntent.sessionId,
+                    amount: amount,
+                    currency: currency,
+                    stack: apiError.stack
+                });
+
+                // Provide specific error messages for different failure types
+                if (apiError.message.includes('getaddrinfo') || apiError.message.includes('ENOTFOUND') || apiError.message.includes('EAI_AGAIN')) {
+                    throw new Error('Unable to connect to NOWPayments API. Please check your internet connection and try again later.');
+                } else if (apiError.message.includes('401') || apiError.message.includes('authentication')) {
+                    throw new Error('NOWPayments API authentication failed. Please contact support.');
+                } else if (apiError.message.includes('400')) {
+                    throw new Error('Invalid payment parameters. Please check your payment details and try again.');
+                } else {
+                    throw new Error(`Payment service temporarily unavailable: ${apiError.message}`);
+                }
+            }
+
+            // Debug: Map the status and log it
+            const mappedStatus = nowPaymentsService.mapStatusToInternal(paymentResponse.paymentStatus);
+            log.info(`Mapped NOWPayments status '${paymentResponse.paymentStatus}' to internal status '${mappedStatus}'`);
+
+            // OVERRIDE: For crypto payments, always set to WAITING_FOR_CRYPTO_DEPOSIT if we have a valid deposit address
+            // This ensures the UI shows deposit instructions regardless of NOWPayments status
+            let finalStatus = mappedStatus;
+            if (paymentResponse.payAddress && paymentResponse.payAmount) {
+                finalStatus = PaymentStatus.WAITING_FOR_CRYPTO_DEPOSIT;
+                log.info(`🔄 Overriding status to WAITING_FOR_CRYPTO_DEPOSIT for crypto payment with valid deposit info`);
+            }
+
+            // Update payment intent with crypto payment details
+            const updateData = {
+                gatewayPaymentId: paymentResponse.paymentId,
+                gatewayCheckoutUrl: paymentResponse.paymentUrl,
+                status: finalStatus, // Use the final status (potentially overridden)
+                gatewayRawResponse: paymentResponse,
+                // Store crypto-specific fields from the NOWPayments response
+                payCurrency: paymentResponse.payCurrency,
+                payAmount: paymentResponse.payAmount,
+                cryptoAddress: paymentResponse.payAddress,
+                // Also update the main currency and amount fields for consistency if needed
+                currency: paymentResponse.payCurrency,
+                amount: paymentResponse.payAmount,
+                expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes from now for crypto payments
+            };
+
+            log.info(`Updating payment intent with crypto data:`, {
+                sessionId: paymentIntent.sessionId,
+                status: updateData.status,
+                cryptoAddress: updateData.cryptoAddress,
+                payAmount: updateData.payAmount,
+                payCurrency: updateData.payCurrency
+            });
+
+            const updatedIntent = await paymentIntentRepository.updateBySessionId(
+                paymentIntent.sessionId,
+                updateData
+            );
+
+            if (!updatedIntent) {
+                throw new Error('Failed to update payment intent after NOWPayments initiation');
+            }
+
+            log.info(`NOWPayments crypto payment initiated successfully for sessionId: ${paymentIntent.sessionId}`);
+            log.info(`Final payment intent status: ${updatedIntent.status}, crypto address: ${updatedIntent.cryptoAddress}`);
+
+            // Verify the status is set correctly for crypto deposits
+            if (updatedIntent.status === PaymentStatus.WAITING_FOR_CRYPTO_DEPOSIT) {
+                log.info(`✅ Payment intent correctly set to WAITING_FOR_CRYPTO_DEPOSIT - deposit instructions should be shown`);
+            } else {
+                log.warn(`⚠️ Payment intent status is ${updatedIntent.status} instead of WAITING_FOR_CRYPTO_DEPOSIT - this may cause display issues`);
+            }
+
+            return updatedIntent;
+
+        } catch (error: any) {
+            log.error(`NOWPayments payment initiation failed:`, error);
+
+            // Update payment intent status to ERROR for failed initiations
+            try {
+                await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+                    status: PaymentStatus.ERROR,
+                    gatewayRawResponse: {
+                        error: error.message,
+                        timestamp: new Date().toISOString(),
+                        gateway: 'NOWPayments'
+                    }
+                });
+                log.info(`Updated payment intent ${paymentIntent.sessionId} status to ERROR after NOWPayments failure`);
+            } catch (updateError: any) {
+                log.error(`Failed to update payment intent status after NOWPayments error:`, updateError);
+            }
+
+            throw new Error(`Failed to initiate NOWPayments payment: ${error.message}`);
         }
     }
 
@@ -3791,6 +4476,11 @@ class PaymentService {
                 [PaymentStatus.PENDING_PROVIDER]: 1,
                 [PaymentStatus.ERROR]: 2,
                 [PaymentStatus.PROCESSING]: 3,
+                // Crypto-specific statuses
+                [PaymentStatus.WAITING_FOR_CRYPTO_DEPOSIT]: 1,
+                [PaymentStatus.PARTIALLY_PAID]: 2,
+                [PaymentStatus.CONFIRMED]: 4,
+                [PaymentStatus.EXPIRED]: 98,
                 // Other statuses not in the filter can be given a high number if they somehow appear
                 [PaymentStatus.SUCCEEDED]: 99,
                 [PaymentStatus.FAILED]: 99,
