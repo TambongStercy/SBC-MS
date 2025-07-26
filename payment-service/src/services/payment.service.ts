@@ -4353,6 +4353,7 @@ class PaymentService {
             throw new AppError('FeexPay transaction ID not found for this payment intent. Payment may not have been initiated externally yet.', 400);
         }
 
+
         // 3. Check if current status allows querying (not PENDING_USER_INPUT, SUCCEEDED, or FAILED)
         if (paymentIntent.status === PaymentStatus.PENDING_USER_INPUT) {
             log.warn(`PaymentIntent ${sessionId} is PENDING_USER_INPUT. External status check is not applicable.`);
