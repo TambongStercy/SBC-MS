@@ -159,9 +159,16 @@ class WhatsAppCloudService extends EventEmitter {
                 },
             };
 
-            const response = await this.httpClient.post(
-                `/${this.phoneNumberId}/${WHATSAPP_API_ENDPOINTS.MESSAGES}`,
-                messageData
+            // Use retry logic for the API call (same as sendTextMessageEnhanced)
+            const response = await withRetry(
+                async () => {
+                    return this.httpClient.post(
+                        `/${this.phoneNumberId}/${WHATSAPP_API_ENDPOINTS.MESSAGES}`,
+                        messageData
+                    );
+                },
+                RETRY_CONFIG.MAX_RETRIES,
+                RETRY_CONFIG.BASE_DELAY
             );
 
             const responseData = response.data as WhatsAppResponse;
@@ -179,12 +186,14 @@ class WhatsAppCloudService extends EventEmitter {
                 success: false,
                 error: 'No message ID in response from WhatsApp API',
             };
-        } catch (error: any) {
-            const whatsappError = extractWhatsAppError(error);
-            log.error('Failed to send template message', { error: whatsappError });
+        } catch (error) {
+            const whatsappError = defaultWhatsAppErrorHandler.processError(error, {
+                phoneNumber: params.phoneNumber
+            });
+            log.error(`Failed to send template message to ${params.phoneNumber}:`, whatsappError);
             return {
                 success: false,
-                error: whatsappError.message,
+                error: whatsappError.message || 'Unknown error occurred',
             };
         }
     }
