@@ -4649,6 +4649,112 @@ class PaymentService {
         });
         log.info(`Transaction ${internalTransactionId} status updated to ${updateStatus} based on FeexPay webhook.`);
     }
+
+    /**
+     * Handles the logic for updating a transaction's state based on a status
+     * update from the FeexPay background job.
+     */
+    public async handleFeexPayStatusUpdate(update: {
+        internalTransactionId: string;
+        feexpayReference: string;
+        newStatus: 'completed' | 'failed' | 'pending' | 'processing';
+        amount: number;
+        comment: string;
+    }): Promise<void> {
+        log.info(`Handling FeexPay status update for transaction ${update.internalTransactionId}. New status: ${update.newStatus}`);
+
+        const transaction = await transactionRepository.findByTransactionId(update.internalTransactionId);
+        if (!transaction) {
+            log.error(`Transaction with ID ${update.internalTransactionId} not found. Cannot process FeexPay update.`);
+            return;
+        }
+
+        switch (update.newStatus) {
+            case 'completed':
+                await transactionRepository.update(transaction._id, {
+                    status: TransactionStatus.COMPLETED,
+                    'metadata.statusDetails': update.comment,
+                    'metadata.providerTransactionId': update.feexpayReference,
+                });
+
+                // DEBIT the user's balance now that the payout is confirmed.
+                const amountToDebit = -Math.abs(transaction.amount);
+                await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
+                log.info(`Transaction ${update.internalTransactionId} successfully marked as COMPLETED and debited ${amountToDebit} from user ${transaction.userId}.`);
+
+                break;
+
+            case 'failed':
+                // If it failed, just mark as failed. No refund is needed as balance was never debited.
+                await this.handleFailedWithdrawal(
+                    update.internalTransactionId,
+                    `FeexPay reported failure: ${update.comment}`,
+                    update.feexpayReference
+                );
+                break;
+
+            case 'pending':
+            case 'processing':
+                // If status is still pending/processing, just update the status details.
+                await transactionRepository.update(transaction._id, {
+                    status: update.newStatus === 'pending' ? TransactionStatus.PENDING : TransactionStatus.PROCESSING,
+                    'metadata.statusDetails': `FeexPay status is ${update.newStatus}. Last check: ${new Date().toISOString()}`,
+                });
+                log.info(`Transaction ${update.internalTransactionId} is still in progress with status: ${update.newStatus}.`);
+                break;
+        }
+    }
+
+    /**
+     * Centralized method to handle a failed withdrawal.
+     * It marks the transaction as FAILED and sends a notification.
+     * No refund is processed here as the balance is only debited on success.
+     */
+    private async handleFailedWithdrawal(transactionId: string, reason: string, providerTransactionId?: string): Promise<void> {
+        log.error(`Processing failed withdrawal for transaction ${transactionId}. Reason: ${reason}`);
+
+        const transaction = await transactionRepository.findByTransactionId(transactionId);
+
+        if (!transaction) {
+            log.error(`Cannot process failed withdrawal: Transaction ${transactionId} not found.`);
+            return;
+        }
+
+        // Prevent multiple updates
+        if (transaction.status === TransactionStatus.FAILED) {
+            log.warn(`Transaction ${transactionId} is already marked as FAILED. Skipping update.`);
+            return;
+        }
+
+        // Update transaction status to FAILED
+        await transactionRepository.update(transaction._id, {
+            status: TransactionStatus.FAILED,
+            'metadata.failureReason': reason,
+            'metadata.providerTransactionId': providerTransactionId,
+            'metadata.statusDetails': `Failed at ${new Date().toISOString()}`
+        });
+        log.info(`Transaction ${transactionId} successfully marked as FAILED.`);
+
+        // Notify the user about the failure
+        try {
+            const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+            if (userDetails?.email) {
+                await notificationService.sendTransactionFailureEmail({
+                    email: userDetails.email,
+                    name: userDetails.name || 'Customer',
+                    transactionId: transaction.transactionId,
+                    transactionType: 'withdrawal',
+                    amount: transaction.metadata?.netAmountRequested || Math.abs(transaction.amount),
+                    currency: transaction.metadata?.payoutCurrency || transaction.currency,
+                    date: new Date().toISOString(),
+                    reason: reason
+                });
+                log.info(`Failure notification sent for transaction ${transactionId}.`);
+            }
+        } catch (error) {
+            log.warn(`Failed to send failure notification for transaction ${transactionId}.`, { error });
+        }
+    }
 }
 
 // Export singleton instance

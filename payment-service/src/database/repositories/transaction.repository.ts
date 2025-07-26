@@ -55,6 +55,8 @@ export interface UpdateTransactionInput {
     serviceProvider?: string;
     paymentMethod?: string;
     externalTransactionId?: string;
+    // Add index signature to allow any string key
+    [key: string]: any;
 }
 
 export class TransactionRepository extends BaseRepository<ITransaction> {

@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import { TransactionType } from '../database/models/transaction.model';
 import transactionRepository from '../database/repositories/transaction.repository';
 import paymentService from '../services/payment.service';
+import { feexPayPayoutService } from '../services/feexpay-payout.service'; // Import FeexPay service
 
 const log = logger.getLogger('TransactionStatusChecker');
 
@@ -96,28 +97,88 @@ export class TransactionStatusChecker {
         log.info(`Reconciling status for withdrawal transaction ${transaction.transactionId}`);
 
         try {
-            // This job primarily handles withdrawals stuck in processing.
             if (transaction.type !== TransactionType.WITHDRAWAL) {
-                log.debug(`Skipping non-withdrawal transaction ${transaction.transactionId} during reconciliation.`);
+                log.debug(`Skipping non-withdrawal transaction ${transaction.transactionId}.`);
                 return;
             }
 
-            const isCinetPay = transaction.serviceProvider === 'CinetPay';
-            if (!isCinetPay) {
-                log.debug(`Withdrawal ${transaction.transactionId} not handled by CinetPay, skipping.`);
+            // Determine the payout service provider from transaction metadata
+            const serviceProvider = transaction.metadata?.selectedPayoutService;
+
+            if (!serviceProvider) {
+                log.warn(`Cannot determine service provider for transaction ${transaction.transactionId}. Skipping.`);
                 return;
             }
 
-            await paymentService.processConfirmedPayoutWebhook(
-                transaction.transactionId,
-                'Status check by background job',
-                { fromJob: true, source: 'TransactionStatusChecker', checkedAt: new Date().toISOString() }
-            );
+            log.info(`Transaction ${transaction.transactionId} was processed by ${serviceProvider}.`);
+
+            switch (serviceProvider) {
+                case 'CinetPay':
+                    await this.reconcileCinetPayTransaction(transaction);
+                    break;
+
+                case 'FeexPay':
+                    await this.reconcileFeexPayTransaction(transaction);
+                    break;
+
+                default:
+                    log.warn(`Unknown service provider '${serviceProvider}' for transaction ${transaction.transactionId}.`);
+                    break;
+            }
 
         } catch (error) {
-            // The error is already logged inside processConfirmedPayoutWebhook,
-            // but we log it here as well to know the source is the job.
             log.error(`Error during reconciliation for transaction ${transaction.transactionId}: ${error}`);
+        }
+    }
+
+    /**
+     * Reconciles a transaction handled by CinetPay.
+     */
+    private async reconcileCinetPayTransaction(transaction: any): Promise<void> {
+        log.info(`Reconciling CinetPay transaction ${transaction.transactionId}...`);
+        // Use the existing webhook processing logic which checks status with CinetPay
+        await paymentService.processConfirmedPayoutWebhook(
+            transaction.transactionId,
+            'Status check by background job',
+            { fromJob: true, source: 'TransactionStatusChecker' }
+        );
+    }
+
+    /**
+     * Reconciles a transaction handled by FeexPay.
+     */
+    private async reconcileFeexPayTransaction(transaction: any): Promise<void> {
+        log.info(`Reconciling FeexPay transaction ${transaction.transactionId}...`);
+        // CORRECTED: The FeexPay reference is stored in the `externalTransactionId` field.
+        const feexpayReference = transaction.externalTransactionId;
+
+        if (!feexpayReference) {
+            log.error(`FeexPay reference not found for transaction ${transaction.transactionId}. Cannot check status.`);
+            return;
+        }
+
+        try {
+            const currentStatus = transaction.status;
+            const feexpayStatus = await feexPayPayoutService.checkPayoutStatus(feexpayReference);
+
+            // If the status from FeexPay is different from our DB status, update it.
+            if (feexpayStatus.status !== currentStatus) {
+                log.info(`Status for FeexPay transaction ${transaction.transactionId} has changed from '${currentStatus}' to '${feexpayStatus.status}'. Updating...`);
+
+                // Call a new method in PaymentService to handle the update
+                await paymentService.handleFeexPayStatusUpdate({
+                    internalTransactionId: transaction.transactionId,
+                    feexpayReference: feexpayReference,
+                    newStatus: feexpayStatus.status,
+                    amount: transaction.amount, // The gross amount debited
+                    comment: `Status updated to ${feexpayStatus.status} by background job. Original comment: ${feexpayStatus.comment}`
+                });
+
+            } else {
+                log.info(`FeexPay transaction ${transaction.transactionId} status is still '${currentStatus}'. No update needed.`);
+            }
+        } catch (error) {
+            log.error(`Failed to check or update status for FeexPay transaction ${transaction.transactionId}:`, error);
         }
     }
 
