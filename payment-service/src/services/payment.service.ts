@@ -4756,6 +4756,7 @@ class PaymentService {
             log.warn(`Failed to send failure notification for transaction ${transactionId}.`, { error });
         }
     }
+    
 }
 
 // Export singleton instance
