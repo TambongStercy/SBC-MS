@@ -289,6 +289,15 @@ export class CinetPayPayoutService {
 
             log.info(`Preparing to add contact to CinetPay:`, contact);
 
+            // Special handling for Côte d'Ivoire to prevent 417 errors
+            if (contact.prefix === '225') { // Côte d'Ivoire
+                // Ensure phone number format is correct for Côte d'Ivoire
+                const phonePattern = /^0[1235789]\d{7}$/; // Must be 01, 02, 03, 05, 07, 08, 09 + 7 digits
+                if (!phonePattern.test(contact.phone)) {
+                    log.warn(`Côte d'Ivoire phone number ${contact.phone} may not be in correct format. Expected: 0XXXXXXXX`);
+                }
+            }
+
             const params = new URLSearchParams();
             params.append('data', JSON.stringify([contact]));
 
@@ -296,7 +305,14 @@ export class CinetPayPayoutService {
 
             const response = await this.apiClient.post<CinetPayContactResponse>(
                 `/transfer/contact?token=${token}&lang=fr`,
-                params // Send URLSearchParams object directly
+                params, // Send URLSearchParams object directly
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'application/json',
+                        'User-Agent': 'SBC-API/1.0'
+                    }
+                }
             );
 
             log.info(`CinetPay add contact raw response:`, response.data);
@@ -350,6 +366,19 @@ export class CinetPayPayoutService {
 
         } catch (error: any) {
             log.error('Failed to add contact:', error.message);
+
+            // Special handling for 417 errors (common with Côte d'Ivoire)
+            if (error.response && error.response.status === 417) {
+                log.error('HTTP 417 Expectation Failed - likely phone number format issue for Côte d\'Ivoire');
+                log.error('Contact data:', contact);
+                log.error('Recommendation: Check phone number format for country', contact.prefix);
+
+                // For Côte d'Ivoire, provide specific guidance
+                if (contact.prefix === '225') {
+                    throw new Error(`Failed to add contact: Invalid phone number format for Côte d'Ivoire. Phone numbers must start with 01, 02, 03, 05, 07, 08, or 09 and be 10 digits total. Current: ${contact.phone}`);
+                }
+            }
+
             // Log the full error details for debugging
             if (error.response) {
                 log.error('CinetPay API Error Response (addContact):', {
@@ -410,6 +439,26 @@ export class CinetPayPayoutService {
         }
 
         cleanPhone = cleanPhone.replace(/^0+/, ''); // Remove leading zeros (e.g., 07895086 -> 7895086)
+
+        // Special handling for Côte d'Ivoire to prevent 417 errors
+        if (countryCode === 'CI') {
+            // Côte d'Ivoire phone numbers should be 10 digits without country code
+            // Valid operator prefixes: 01, 02, 03, 05, 07, 08, 09
+            if (cleanPhone.length === 8) {
+                // If 8 digits, add leading 0 (e.g., 12345678 -> 012345678)
+                cleanPhone = '0' + cleanPhone;
+            }
+            if (cleanPhone.length === 9 && !cleanPhone.startsWith('0')) {
+                // If 9 digits without leading 0, add it
+                cleanPhone = '0' + cleanPhone;
+            }
+            // Validate that it starts with valid operator prefixes
+            const validPrefixes = ['01', '02', '03', '05', '07', '08', '09'];
+            const phonePrefix = cleanPhone.substring(0, 2);
+            if (!validPrefixes.includes(phonePrefix)) {
+                log.warn(`Côte d'Ivoire phone number ${cleanPhone} has invalid operator prefix ${phonePrefix}. Valid prefixes: ${validPrefixes.join(', ')}`);
+            }
+        }
 
         return cleanPhone;
     }
