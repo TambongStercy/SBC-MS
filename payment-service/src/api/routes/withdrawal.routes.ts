@@ -16,7 +16,7 @@ router.use(generalLimiter);     // Apply general rate limiting
  * @desc    [ADMIN] Initiate a withdrawal for a specific user's balance, bypassing OTP.
  * @access  Private (Admin only)
  */
-router.post('/admin/user', (req, res) => {
+router.post('/admin/user', validateAdminUserWithdrawal, (req, res) => {
     withdrawalController.initiateAdminUserWithdrawal(req, res);
 });
 
@@ -25,7 +25,7 @@ router.post('/admin/user', (req, res) => {
  * @desc    [ADMIN] Initiate a direct payout (e.g., from system balance), not linked to a user's wallet.
  * @access  Private (Admin only)
  */
-router.post('/admin/direct', (req, res) => {
+router.post('/admin/direct', validateAdminDirectPayout, (req, res) => {
     withdrawalController.initiateAdminDirectPayout(req, res);
 });
 

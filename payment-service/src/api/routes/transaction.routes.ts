@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { transactionController } from '../controllers/transaction.controller';
 import { authenticate, authenticateServiceRequest, requireAdmin } from '../middleware/auth.middleware';
+import { validateWithdrawal } from '../middleware/validation';
 
 const router = Router();
 const adminRouter = Router();
@@ -25,7 +26,7 @@ router.post('/deposit/initiate', authenticate, (req, res) => transactionControll
 router.post('/deposit/callback', authenticateServiceRequest, (req, res) => transactionController.processDepositCallback(req, res));
 
 // Withdrawal routes
-router.post('/withdrawal/initiate', authenticate, (req, res) => transactionController.initiateWithdrawal(req, res));
+router.post('/withdrawal/initiate', authenticate, validateWithdrawal, (req, res) => transactionController.initiateWithdrawal(req, res));
 router.post('/withdrawal/verify', authenticate, (req, res) => transactionController.verifyWithdrawal(req, res));
 router.delete('/withdrawal/:transactionId/cancel', authenticate, (req, res) => transactionController.cancelWithdrawal(req, res));
 
