@@ -3110,7 +3110,11 @@ export class UserService {
             throw new AppError('Validation failed for password reset.', 500);
         }
 
-        // Sex field normalization is now handled by the pre-save hook in the User model
+        // Explicitly handle sex field normalization before saving to ensure validation passes
+        const sexValue = user.sex as any; // Cast to any to handle potential empty strings from database
+        if (sexValue === '' || (typeof sexValue === 'string' && sexValue.trim() === '')) {
+            user.sex = undefined as any; // Handle empty string case to avoid enum validation error
+        }
 
         // Set the new password and save the user document to trigger the pre-save hook
         user.password = newPassword;

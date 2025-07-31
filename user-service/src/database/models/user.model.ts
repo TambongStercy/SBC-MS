@@ -208,7 +208,20 @@ const UserSchema = new Schema<IUser>(
 
 // --- Middleware --- 
 
-// Consolidated pre('save') hook for password hashing and sex normalization
+// Pre-validate hook for sex field normalization (runs before validation)
+UserSchema.pre<IUser>('validate', function (next: any) {
+    // Sex field normalization logic - always check sex field, not just when modified
+    const sexValue = this.sex as any; // Cast to any to handle potential empty strings
+    if (sexValue && typeof sexValue === 'string' && sexValue.trim() !== '') {
+        this.sex = sexValue.toLowerCase() as any;
+    } else if (sexValue === '' || (typeof sexValue === 'string' && sexValue.trim() === '')) {
+        this.sex = undefined as any; // Handle empty string case to avoid enum validation error
+    }
+
+    next();
+});
+
+// Consolidated pre('save') hook for password hashing and phone normalization
 UserSchema.pre<IUser>('save', async function (next: any) {
     // Phone Number Normalization Logic
     if (this.isModified('phoneNumber') && this.phoneNumber) {
@@ -262,15 +275,7 @@ UserSchema.pre<IUser>('save', async function (next: any) {
         }
     }
 
-    // Sex field normalization logic
-    if (this.isModified('sex')) {
-        const sexValue = this.sex as any; // Cast to any to handle potential empty strings
-        if (sexValue && typeof sexValue === 'string' && sexValue.trim() !== '') {
-            this.sex = sexValue.toLowerCase() as any;
-        } else if (sexValue === '' || (typeof sexValue === 'string' && sexValue.trim() === '')) {
-            this.sex = undefined as any; // Handle empty string case to avoid enum validation error
-        }
-    }
+
 
     // Restore Password Hashing Logic
     if (this.isModified('password') && this.password) {
@@ -285,27 +290,11 @@ UserSchema.pre<IUser>('save', async function (next: any) {
     next();
 });
 
-// Hash password and normalize sex field on update if modified
-UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next: any) {
-    const update = this.getUpdate() as any; // Get the update operations
+// Pre-validate hook for findOneAndUpdate operations
+UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', function (next: any) {
+    const update = this.getUpdate() as any;
 
-    // Check if password is being updated and is a string
-    if (update && update.password && typeof update.password === 'string') {
-        try {
-            const salt = await bcrypt.genSalt(10);
-            const hashedPassword = await bcrypt.hash(update.password, salt);
-            // Update the password in the $set operator or directly if not using $set
-            if (update.$set && update.$set.password) {
-                update.$set.password = hashedPassword;
-            } else {
-                update.password = hashedPassword;
-            }
-        } catch (err: any) {
-            return next(err);
-        }
-    }
-
-    // Check if sex field is being updated
+    // Check if sex field is being updated and normalize it
     if (update && update.sex !== undefined) {
         const sexValue = update.$set?.sex !== undefined ? update.$set.sex : update.sex;
         if (sexValue && typeof sexValue === 'string' && sexValue.trim() !== '') {
@@ -325,7 +314,31 @@ UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next: any)
         }
     }
 
-    this.setUpdate(update); // Apply the modified update
+    this.setUpdate(update);
+    next();
+});
+
+// Hash password on update if modified
+UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next: any) {
+    const update = this.getUpdate() as any; // Get the update operations
+
+    // Check if password is being updated and is a string
+    if (update && update.password && typeof update.password === 'string') {
+        try {
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(update.password, salt);
+            // Update the password in the $set operator or directly if not using $set
+            if (update.$set && update.$set.password) {
+                update.$set.password = hashedPassword;
+            } else {
+                update.password = hashedPassword;
+            }
+            this.setUpdate(update); // Apply the modified update
+        } catch (err: any) {
+            return next(err);
+        }
+    }
+
     next();
 });
 
