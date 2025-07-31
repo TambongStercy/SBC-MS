@@ -207,8 +207,10 @@ export class UserController {
 
             // Normalize sex field to lowercase if it exists
             const registrationData = { ...req.body };
-            if (registrationData.sex && typeof registrationData.sex === 'string') {
+            if (registrationData.sex && typeof registrationData.sex === 'string' && registrationData.sex.trim() !== '') {
                 registrationData.sex = registrationData.sex.toLowerCase();
+            } else if (registrationData.sex === '' || (typeof registrationData.sex === 'string' && registrationData.sex.trim() === '')) {
+                registrationData.sex = undefined; // Handle empty string case
             }
 
             // --- Phone Number Normalization ---
@@ -442,7 +444,15 @@ export class UserController {
             if (momoNumber !== undefined) updateData.momoNumber = momoNumber;
             if (momoOperator !== undefined) updateData.momoOperator = momoOperator;
             if (avatar !== undefined) updateData.avatar = avatar;
-            if (sex !== undefined) updateData.sex = sex.toLowerCase(); // Consider validation against enum
+            if (sex !== undefined) {
+                if (typeof sex === 'string' && sex.trim() !== '') {
+                    updateData.sex = sex.toLowerCase(); // Consider validation against enum
+                } else if (sex === '' || (typeof sex === 'string' && sex.trim() === '')) {
+                    updateData.sex = undefined; // Handle empty string case
+                } else {
+                    updateData.sex = sex;
+                }
+            }
             if (birthDate !== undefined) {
                 // Basic validation: Check if it's a valid date string/number
                 const parsedDate = new Date(birthDate);

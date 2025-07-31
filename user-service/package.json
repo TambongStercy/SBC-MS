@@ -10,7 +10,11 @@
         "test": "echo \"Error: no test specified\" && exit 1",
         "migrate:cameroon": "node migrate-cameroon-countries.js",
         "check:countries": "node check-all-countries.js analyze",
-        "fix:countries": "node check-all-countries.js fix"
+        "fix:countries": "node check-all-countries.js fix",
+        "recalc:partners": "ts-node --swc src/scripts/partner-recalc-simple.ts",
+        "recalc:partners:apply": "ts-node --swc src/scripts/partner-recalc-simple.ts --apply",
+        "recalc:partners:full": "ts-node --swc src/scripts/recalculate-partner-transactions.ts",
+        "recalc:partners:full:apply": "ts-node --swc src/scripts/recalculate-partner-transactions.ts --apply"
     },
     "keywords": [],
     "author": "",

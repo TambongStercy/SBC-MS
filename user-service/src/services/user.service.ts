@@ -3110,15 +3110,7 @@ export class UserService {
             throw new AppError('Validation failed for password reset.', 500);
         }
 
-        // Manually normalize the sex field since pre-save hook is not executing
-        if (user.sex && typeof user.sex === 'string') {
-            const originalSex = user.sex;
-            const lowercasedSex = user.sex.toLowerCase();
-            if (user.sex !== lowercasedSex) {
-                console.log(`[DEBUG] resetPassword: Manually normalizing sex from "${originalSex}" to "${lowercasedSex}"`);
-                user.sex = lowercasedSex as any; // Cast to any to avoid TS errors
-            }
-        }
+        // Sex field normalization is now handled by the pre-save hook in the User model
 
         // Set the new password and save the user document to trigger the pre-save hook
         user.password = newPassword;

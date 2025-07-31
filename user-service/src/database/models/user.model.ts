@@ -262,6 +262,16 @@ UserSchema.pre<IUser>('save', async function (next: any) {
         }
     }
 
+    // Sex field normalization logic
+    if (this.isModified('sex')) {
+        const sexValue = this.sex as any; // Cast to any to handle potential empty strings
+        if (sexValue && typeof sexValue === 'string' && sexValue.trim() !== '') {
+            this.sex = sexValue.toLowerCase() as any;
+        } else if (sexValue === '' || (typeof sexValue === 'string' && sexValue.trim() === '')) {
+            this.sex = undefined as any; // Handle empty string case to avoid enum validation error
+        }
+    }
+
     // Restore Password Hashing Logic
     if (this.isModified('password') && this.password) {
         try {
@@ -275,7 +285,7 @@ UserSchema.pre<IUser>('save', async function (next: any) {
     next();
 });
 
-// Hash password on update if modified
+// Hash password and normalize sex field on update if modified
 UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next: any) {
     const update = this.getUpdate() as any; // Get the update operations
 
@@ -290,14 +300,33 @@ UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next: any)
             } else {
                 update.password = hashedPassword;
             }
-            this.setUpdate(update); // Apply the modified update
-            next();
         } catch (err: any) {
             return next(err);
         }
-    } else {
-        next(); // No password update or not a string, proceed
     }
+
+    // Check if sex field is being updated
+    if (update && update.sex !== undefined) {
+        const sexValue = update.$set?.sex !== undefined ? update.$set.sex : update.sex;
+        if (sexValue && typeof sexValue === 'string' && sexValue.trim() !== '') {
+            const normalizedSex = sexValue.toLowerCase();
+            if (update.$set && update.$set.sex !== undefined) {
+                update.$set.sex = normalizedSex;
+            } else {
+                update.sex = normalizedSex;
+            }
+        } else if (sexValue === '' || (typeof sexValue === 'string' && sexValue.trim() === '')) {
+            // Handle empty string case - set to undefined to avoid enum validation error
+            if (update.$set && update.$set.sex !== undefined) {
+                update.$set.sex = undefined;
+            } else {
+                update.sex = undefined;
+            }
+        }
+    }
+
+    this.setUpdate(update); // Apply the modified update
+    next();
 });
 
 // --- Soft Delete Query Middleware --- 

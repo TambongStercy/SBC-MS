@@ -492,8 +492,16 @@ export class SubscriptionService {
         this.log.info(`Distributing commissions for user ${buyerUserId}, plan ${planType}, isUpgrade: ${isUpgrade}`);
 
         const commissionRates = { level1: 0.50, level2: 0.25, level3: 0.125 };
-        const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
-        let commissionBaseAmount = 0;
+        const PARTNER_RATES = { silver: 0.18, gold: 0.30 }; // Partner commission rates (updated)
+
+        // New fixed base amounts for partner commissions, in FCFA
+        const PARTNER_COMMISSION_BASES = {
+            [SubscriptionType.CLASSIQUE]: 250,
+            [SubscriptionType.CIBLE]: 625,
+            'upgrade': 350 // For upgrades from Classique to Cible
+        };
+
+        let commissionBaseAmount = 0; // This is the base for referral levels
 
         if (isUpgrade) {
             commissionBaseAmount = 3000; // Fixed upgrade commission base
@@ -598,18 +606,33 @@ export class SubscriptionService {
 
             // Calculate remaining commission for partners
             const totalReferralPayout = l1Amount + l2Amount + l3Amount;
-            const remainingForPartners = commissionBaseAmount - totalReferralPayout;
+            const remainingForPartners = commissionBaseAmount - totalReferralPayout; // This line's value is now primarily for logging
 
             this.log.info(`Total referral payout: ${totalReferralPayout} ${currency}. Remaining for partners: ${remainingForPartners} ${currency}.`);
 
-            if (remainingForPartners > 0) {
+            // The remainingForPartners check below is now more of a logical guard,
+            // as partner commissions are based on fixed amounts, not the remainder.
+            // It prevents processing if the overall commissionBaseAmount was zero or negative.
+            if (commissionBaseAmount > 0) { // Ensure there was a valid base for referral commissions to proceed with partner commissions
                 const processPartnerCommission = async (referrerId: string, referralLevel: 1 | 2 | 3) => {
                     if (!referrerId) return; // Should not happen if referrer exists for a level
 
                     const partnerDetails = await partnerService.getActivePartnerByUserId(referrerId);
                     if (partnerDetails) {
                         const partnerRate = PARTNER_RATES[partnerDetails.pack];
-                        const partnerCommissionShare = remainingForPartners * partnerRate;
+
+                        let partnerBaseAmount = 0;
+                        if (isUpgrade) {
+                            partnerBaseAmount = PARTNER_COMMISSION_BASES['upgrade'];
+                        } else if (planType === SubscriptionType.CLASSIQUE) {
+                            partnerBaseAmount = PARTNER_COMMISSION_BASES[SubscriptionType.CLASSIQUE];
+                        } else if (planType === SubscriptionType.CIBLE) {
+                            partnerBaseAmount = PARTNER_COMMISSION_BASES[SubscriptionType.CIBLE];
+                        } else {
+                            this.log.warn(`Unknown plan type ${planType} for partner commission calculation. Using 0 base.`);
+                        }
+
+                        const partnerCommissionShare = partnerBaseAmount * partnerRate; // Calculate based on fixed partner base amount
 
                         if (partnerCommissionShare > 0) {
                             this.log.info(`Referrer ${referrerId} (L${referralLevel}) is a ${partnerDetails.pack} partner. Recording partner commission: ${partnerCommissionShare} ${currency}.`);
