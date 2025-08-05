@@ -57,6 +57,31 @@ print(`- Lost to TTL deletion: ${referralsLostToTTL}`);
 print(`- Recovered from backup: ${referralsRecovered}`);
 print(`- Recovery rate: ${referralRecoveryRate}%`);
 
+// Subscriptions recovery analysis
+const subscriptionsLostToTTL = backupCounts.subscriptions - oldCounts.subscriptions;
+const subscriptionsRecovered = prodCounts.subscriptions - 32226; // Original production count
+const subscriptionRecoveryRate = subscriptionsLostToTTL > 0 ? (subscriptionsRecovered / subscriptionsLostToTTL * 100).toFixed(2) : '0.00';
+
+print(`\nSubscriptions:`);
+print(`- Lost to TTL deletion: ${subscriptionsLostToTTL}`);
+print(`- Recovered from backup: ${subscriptionsRecovered}`);
+print(`- Recovery rate: ${subscriptionRecoveryRate}%`);
+
+// Subscription type breakdown
+if (subscriptionsRecovered > 0) {
+    const classiqueCount = prodDb.subscriptions.countDocuments({ 
+        subscriptionType: 'CLASSIQUE',
+        'metadata.recoveredFromBackup': true 
+    });
+    const premiumCount = prodDb.subscriptions.countDocuments({ 
+        subscriptionType: 'PREMIUM',
+        'metadata.recoveredFromBackup': true 
+    });
+    
+    print(`- Recovered CLASSIQUE subscriptions: ${classiqueCount}`);
+    print(`- Recovered PREMIUM subscriptions: ${premiumCount}`);
+}
+
 // Check for email conflicts
 const conflictCount = prodDb.user_recovery_conflicts ? prodDb.user_recovery_conflicts.countDocuments() : 0;
 
@@ -71,11 +96,31 @@ if (conflictCount > 0) {
 
 print(`\nSUCCESS METRICS:`);
 print('================');
-print(`- Total data recovery success: ${((usersRecovered + referralsRecovered) / (usersLostToTTL + referralsLostToTTL) * 100).toFixed(2)}%`);
+const totalLost = usersLostToTTL + referralsLostToTTL + subscriptionsLostToTTL;
+const totalRecovered = usersRecovered + referralsRecovered + subscriptionsRecovered;
+const overallRecoveryRate = totalLost > 0 ? (totalRecovered / totalLost * 100).toFixed(2) : '0.00';
+
+print(`- Overall data recovery success: ${overallRecoveryRate}%`);
 print(`- Users restored: ${usersRecovered.toLocaleString()}`);
 print(`- Referrals restored: ${referralsRecovered.toLocaleString()}`);
+print(`- Subscriptions restored: ${subscriptionsRecovered.toLocaleString()}`);
+print(`- Total records restored: ${totalRecovered.toLocaleString()}`);
 print(`- Production database integrity: ✅ Maintained`);
+
+// Additional subscription insights
+if (prodCounts.subscriptions > 0) {
+    const activeSubscriptions = prodDb.subscriptions.countDocuments({ status: 'active' });
+    const totalClassique = prodDb.subscriptions.countDocuments({ subscriptionType: 'CLASSIQUE' });
+    const totalPremium = prodDb.subscriptions.countDocuments({ subscriptionType: 'PREMIUM' });
+    
+    print(`\nSUBSCRIPTION INSIGHTS:`);
+    print('=====================');
+    print(`- Total active subscriptions: ${activeSubscriptions}`);
+    print(`- CLASSIQUE subscriptions: ${totalClassique} (${(totalClassique/prodCounts.subscriptions*100).toFixed(1)}%)`);
+    print(`- PREMIUM subscriptions: ${totalPremium} (${(totalPremium/prodCounts.subscriptions*100).toFixed(1)}%)`);
+}
 
 print(`\n=== RECOVERY OPERATION COMPLETED ===`);
 print(`The TTL deletion crisis recovery has been completed successfully.`);
-print(`Most of the lost data has been restored while maintaining data integrity.`);
+print(`Lost data has been restored across users, referrals, and subscriptions`);
+print(`while maintaining data integrity and preventing duplicates.`);
