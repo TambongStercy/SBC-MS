@@ -85,10 +85,11 @@ class PartnerTransactionRecalculator {
         log.info(`Processing partner ${partnerId} (User: ${userId}, Pack: ${partner.pack})`);
 
         try {
-            // Get all referrals where this partner is the referrer
+            // Get all referrals where this partner is the referrer created after 2024-09-01
             const referrals = await ReferralModel.find({
                 referrer: userId,
-                archived: { $ne: true }
+                archived: { $ne: true },
+                createdAt: { $gte: new Date('2024-09-01') }
             }).lean();
 
             log.debug(`Found ${referrals.length} referrals for partner ${partnerId}`);
@@ -101,10 +102,10 @@ class PartnerTransactionRecalculator {
                 const referredUserId = referral.referredUser;
                 const referralLevel = referral.referralLevel as 1 | 2 | 3;
 
-                // Get all subscriptions for the referred user that were created after the partner became active
+                // Get all subscriptions for the referred user that were created after 2024-09-01
                 const subscriptions = await SubscriptionModel.find({
                     user: referredUserId,
-                    createdAt: { $gte: partnerCreatedAt }, // Only subscriptions after partner creation
+                    createdAt: { $gte: new Date('2024-09-01') }, // Only subscriptions after 2024-09-01
                     status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.EXPIRED] } // Include both active and expired
                 }).lean();
 
@@ -178,54 +179,44 @@ class PartnerTransactionRecalculator {
     private async applyRecalculationResults(results: PartnerRecalculationData[]): Promise<void> {
         log.info('Applying recalculation results...');
 
-        const session = await mongoose.startSession();
-
         try {
-            await session.withTransaction(async () => {
-                for (const result of results) {
-                    // Clear existing partner transactions
-                    await PartnerTransactionModel.deleteMany(
-                        { partnerId: result.partnerId },
-                        { session }
-                    );
+            for (const result of results) {
+                // Clear existing partner transactions
+                await PartnerTransactionModel.deleteMany({ partnerId: result.partnerId });
 
-                    // Create new transactions
-                    if (result.transactions.length > 0) {
-                        const transactionsToCreate = result.transactions.map(tx => ({
-                            partnerId: result.partnerId,
-                            user: result.userId,
-                            pack: result.pack,
-                            transType: PartnerTransactionType.DEPOSIT,
-                            message: tx.message,
-                            amount: tx.amount,
-                            sourcePaymentSessionId: tx.sourcePaymentSessionId,
-                            sourceSubscriptionType: tx.sourceSubscriptionType,
-                            referralLevelInvolved: tx.referralLevelInvolved,
-                            createdAt: tx.createdAt,
-                            updatedAt: tx.createdAt
-                        }));
+                // Create new transactions
+                if (result.transactions.length > 0) {
+                    const transactionsToCreate = result.transactions.map(tx => ({
+                        partnerId: result.partnerId,
+                        user: result.userId,
+                        pack: result.pack,
+                        transType: PartnerTransactionType.DEPOSIT,
+                        message: tx.message,
+                        amount: tx.amount,
+                        sourcePaymentSessionId: tx.sourcePaymentSessionId,
+                        sourceSubscriptionType: tx.sourceSubscriptionType,
+                        referralLevelInvolved: tx.referralLevelInvolved,
+                        createdAt: tx.createdAt,
+                        updatedAt: tx.createdAt
+                    }));
 
-                        await PartnerTransactionModel.insertMany(transactionsToCreate, { session });
-                    }
-
-                    // Update partner balance
-                    await PartnerModel.findByIdAndUpdate(
-                        result.partnerId,
-                        { amount: result.recalculatedAmount },
-                        { session }
-                    );
-
-                    log.info(`Updated partner ${result.partnerId}: ${result.transactions.length} transactions, balance: ${result.recalculatedAmount}`);
+                    await PartnerTransactionModel.insertMany(transactionsToCreate);
                 }
-            });
+
+                // Update partner balance
+                await PartnerModel.findByIdAndUpdate(
+                    result.partnerId,
+                    { amount: result.recalculatedAmount }
+                );
+
+                log.info(`Updated partner ${result.partnerId}: ${result.transactions.length} transactions, balance: ${result.recalculatedAmount}`);
+            }
 
             log.info('Successfully applied all recalculation results');
 
         } catch (error) {
             log.error('Error applying recalculation results:', error);
             throw error;
-        } finally {
-            await session.endSession();
         }
     }
 

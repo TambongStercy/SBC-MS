@@ -12,8 +12,13 @@ const PARTNER_COMMISSION_BASES = {
     [SubscriptionType.CIBLE]: 625
 };
 
-async function recalculatePartnerTransactions(dryRun = true) {
-    console.log(`🔄 Starting partner recalculation (DRY RUN: ${dryRun})`);
+// Partner system launch date - only referrals after this date should count
+const PARTNER_SYSTEM_LAUNCH_DATE = new Date('2024-09-01T00:00:00.000Z');
+
+async function recalculatePartnerTransactionsCorrect(dryRun = true) {
+    console.log(`🔄 Starting CORRECT partner recalculation (DRY RUN: ${dryRun})`);
+    console.log(`📅 Partner system launched: ${PARTNER_SYSTEM_LAUNCH_DATE.toISOString()}`);
+    console.log(`📋 Only counting referrals created after this date`);
 
     // Get all active partners
     const partners = await PartnerModel.find({ isActive: true });
@@ -24,24 +29,29 @@ async function recalculatePartnerTransactions(dryRun = true) {
     for (const partner of partners) {
         console.log(`\n👤 Processing partner ${partner._id} (${partner.pack})`);
 
-        // Get referrals for this partner created after 2024-09-01
+        // CORRECT LOGIC: Get referrals created after partner system launch
         const referrals = await ReferralModel.find({
             referrer: partner.user,
             archived: { $ne: true },
-            createdAt: { $gte: new Date('2024-09-01') }
+            createdAt: { $gte: PARTNER_SYSTEM_LAUNCH_DATE } // Only referrals after partner system launch
         });
 
         let newBalance = 0;
         const newTransactions = [];
 
-        // Process each referral
+        console.log(`  Found ${referrals.length} valid referrals (after ${PARTNER_SYSTEM_LAUNCH_DATE.toDateString()})`);
+
+        // Process each valid referral
         for (const referral of referrals) {
-            // Get subscriptions created after 2024-09-01
+            // Get ALL subscriptions for the referred user (regardless of when they were created)
+            // This is correct because if someone was referred after the partner system launched,
+            // the partner should get credit for all their subscriptions
             const subscriptions = await SubscriptionModel.find({
                 user: referral.referredUser,
-                createdAt: { $gte: new Date('2024-09-01') },
                 status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.EXPIRED] }
             });
+
+            console.log(`    Referral ${referral.referredUser} (L${referral.referralLevel}): ${subscriptions.length} subscriptions`);
 
             // Calculate commission for each subscription
             for (const sub of subscriptions) {
@@ -59,9 +69,11 @@ async function recalculatePartnerTransactions(dryRun = true) {
                         amount: commission,
                         sourceSubscriptionType: sub.subscriptionType,
                         referralLevelInvolved: referral.referralLevel,
-                        sourcePaymentSessionId: `recalc-${sub._id}`,
+                        sourcePaymentSessionId: `correct-recalc-${sub._id}`,
                         createdAt: sub.createdAt
                     });
+
+                    console.log(`      Commission: ${commission} XAF from ${sub.subscriptionType} (${sub.createdAt.toDateString()})`);
                 }
             }
         }
@@ -103,9 +115,11 @@ async function recalculatePartnerTransactions(dryRun = true) {
     const totalCurrent = results.reduce((sum, r) => sum + r.currentBalance, 0);
     const totalNew = results.reduce((sum, r) => sum + r.newBalance, 0);
     const totalTransactions = results.reduce((sum, r) => sum + r.transactions.length, 0);
+    const partnersWithChanges = results.filter(r => r.difference !== 0).length;
 
     console.log(`\n📈 SUMMARY:`);
     console.log(`Partners processed: ${results.length}`);
+    console.log(`Partners with changes: ${partnersWithChanges}`);
     console.log(`Total current balance: ${totalCurrent} XAF`);
     console.log(`Total new balance: ${totalNew} XAF`);
     console.log(`Net difference: ${totalNew - totalCurrent} XAF`);
@@ -118,15 +132,86 @@ async function recalculatePartnerTransactions(dryRun = true) {
     return results;
 }
 
+// Test specific partner function with correct logic
+async function testSpecificPartnerCorrect(userId: string) {
+    console.log(`🔍 Testing specific partner with CORRECT logic: ${userId}`);
+    console.log(`📅 Partner system launched: ${PARTNER_SYSTEM_LAUNCH_DATE.toISOString()}`);
+
+    const partner = await PartnerModel.findOne({ user: new mongoose.Types.ObjectId(userId) });
+    if (!partner) {
+        console.log('❌ Partner not found');
+        return;
+    }
+
+    console.log(`Partner: ${partner._id} (${partner.pack})`);
+    console.log(`Current amount: ${partner.amount || 0} XAF`);
+    console.log(`Partner created: ${partner.createdAt}`);
+
+    // Get referrals created after partner system launch
+    const allReferrals = await ReferralModel.find({
+        referrer: partner.user,
+        archived: { $ne: true }
+    });
+
+    const validReferrals = await ReferralModel.find({
+        referrer: partner.user,
+        archived: { $ne: true },
+        createdAt: { $gte: PARTNER_SYSTEM_LAUNCH_DATE }
+    });
+
+    console.log(`\nTotal referrals: ${allReferrals.length}`);
+    console.log(`Valid referrals (after ${PARTNER_SYSTEM_LAUNCH_DATE.toDateString()}): ${validReferrals.length}`);
+
+    let expectedCommission = 0;
+
+    for (const referral of validReferrals) {
+        const subscriptions = await SubscriptionModel.find({
+            user: referral.referredUser,
+            status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.EXPIRED] }
+        });
+
+        console.log(`  Referral ${referral.referredUser} (L${referral.referralLevel}): ${subscriptions.length} subscriptions`);
+        console.log(`    Referral created: ${referral.createdAt.toDateString()}`);
+
+        for (const sub of subscriptions) {
+            const baseAmount = PARTNER_COMMISSION_BASES[sub.subscriptionType] || 0;
+            const commission = Math.round(baseAmount * PARTNER_RATES[partner.pack]);
+            expectedCommission += commission;
+
+            console.log(`    ${sub.subscriptionType} (${sub.createdAt.toDateString()}): ${commission} XAF`);
+        }
+    }
+
+    console.log(`\nExpected total commission: ${expectedCommission} XAF`);
+    console.log(`Current balance: ${partner.amount || 0} XAF`);
+    console.log(`Difference: ${expectedCommission - (partner.amount || 0)} XAF`);
+
+    // Show invalid referrals for reference
+    const invalidReferrals = allReferrals.filter(ref => ref.createdAt < PARTNER_SYSTEM_LAUNCH_DATE);
+    if (invalidReferrals.length > 0) {
+        console.log(`\n⚠️  Invalid referrals (before partner system launch): ${invalidReferrals.length}`);
+        invalidReferrals.slice(0, 3).forEach((ref, index) => {
+            console.log(`  ${index + 1}. ${ref.referredUser} - Created: ${ref.createdAt.toDateString()}`);
+        });
+    }
+}
+
 // Run script
 async function main() {
     const dryRun = !process.argv.includes('--apply');
+    const testMode = process.argv.includes('--test');
+    const testUserId = process.argv.find(arg => arg.startsWith('--user='))?.split('=')[1];
 
     try {
         // Connect to database using the existing connection module
         await connectDB();
 
-        await recalculatePartnerTransactions(dryRun);
+        if (testMode && testUserId) {
+            await testSpecificPartnerCorrect(testUserId);
+        } else {
+            await recalculatePartnerTransactionsCorrect(dryRun);
+        }
+
         console.log('\n✅ Script completed successfully');
     } catch (error) {
         console.error('\n❌ Script failed:', error);
@@ -143,4 +228,4 @@ if (require.main === module) {
     main();
 }
 
-export { recalculatePartnerTransactions };
+export { recalculatePartnerTransactionsCorrect, testSpecificPartnerCorrect };

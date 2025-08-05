@@ -545,7 +545,7 @@ Content-Type: application/json
 # --- IMPORTANT: Copy the Bearer token from the successful login response above ---
 # Store them in your environment variables or manually replace below
 @AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MTYyOTA2MywiZXhwIjoxNzUxNzE1NDYzfQ.QVpwLUx4J9jbJhWT2DGno7DN-6NHpONBxnquCdvosK4
-@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1MTYyOTA2MywiZXhwIjoxNzUxNzE1NDYzfQ.QVpwLUx4J9jbJhWT2DGno7DN-6NHpONBxnquCdvosK4
+@ADMIN_AUTH_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1NDEyNjAyNSwiZXhwIjoxNzU0MjEyNDI1fQ.VsfYzDQC_srktAdo_CYVWFFyI9aUBnYneR_HJjcRFGU
 
 
 ### USER WITHDRAWAL ENDPOINTS
@@ -654,20 +654,8 @@ Authorization: Bearer {{ADMIN_AUTH_TOKEN}}
 {
   "usersToFix": [
     {
-      "userIdentifier": "romainamdjia@gmail.com",
-      "correctReferrerIdentifier": "jdkeymmardo@gmail.com"
-    },
-    {
-      "userIdentifier": "jedidia461@gmail.com",
-      "correctReferrerIdentifier": "jdkeymmardo@gmail.com"
-    },
-    {
-      "userIdentifier": "camirichardo1@gmail.com",
-      "correctReferrerIdentifier": "jdkeymmardo@gmail.com"
-    },
-    {
-      "userIdentifier": "robertassokpo03@gmail.com",
-      "correctReferrerIdentifier": "jdkeymmardo@gmail.com"
+      "userIdentifier": "rocboccovi@gmail.com",
+      "correctReferrerIdentifier": "agbessilomadon@gmail.com"
     }
   ],
   "bugStartDate": "2024-06-09T00:00:00Z",  
