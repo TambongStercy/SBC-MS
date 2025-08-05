@@ -879,21 +879,21 @@ export class UserService {
             let totalCount = 0;
             const referrerObjectId = new Types.ObjectId(referrerId.toString());
 
-            // 1. Fetch referrals (filtered or unfiltered)
+            // 1. Fetch referrals with proper filtering including subType
             if (nameFilter && nameFilter.trim().length > 0) {
                 // Use new search methods if nameFilter is provided
                 log.info(`Searching referred users for ${referrerId} with name filter: ${nameFilter}`);
                 const searchResult = level && [1, 2, 3].includes(level)
-                    ? await referralRepository.searchReferralsByReferrerAndLevel(referrerObjectId, level, nameFilter, page, limit)
-                    : await referralRepository.searchAllReferralsByReferrer(referrerObjectId, nameFilter, page, limit);
+                    ? await referralRepository.searchReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, nameFilter, page, limit, subType)
+                    : await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
                 referredUsersData = searchResult.referrals;
                 totalCount = searchResult.totalCount;
             } else {
-                // Use existing methods if no nameFilter
-                log.info(`Fetching referred users for ${referrerId} (no name filter)`);
+                // Use methods that include subType filtering
+                log.info(`Fetching referred users for ${referrerId} (no name filter, subType: ${subType})`);
                 const referralResponse = level && [1, 2, 3].includes(level)
-                    ? await referralRepository.findReferralsByReferrerAndLevel(referrerObjectId, level, page, limit, true)
-                    : await referralRepository.findAllReferralsByReferrer(referrerObjectId, page, limit, true);
+                    ? await referralRepository.findReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, page, limit, subType)
+                    : await referralRepository.findAllReferralsByReferrerWithSubType(referrerObjectId, page, limit, subType);
                 // Map the populated data to the expected structure
                 referredUsersData = referralResponse.referrals.map((ref: any) => {
                     const user = ref.referredUser;
@@ -937,7 +937,7 @@ export class UserService {
                 });
             }
 
-            // 4. Map final data, adding subscription info
+            // 4. Map final data, adding subscription info (for display purposes only, filtering is done in repository)
             let mappedUsers: IReferredUserInfo[] = referredUsersData.map((user) => {
                 const userIdStr = user._id.toString();
                 const subscriptions = activeSubscriptionsMap.get(userIdStr);
@@ -946,26 +946,6 @@ export class UserService {
                     activeSubscriptions: subscriptions && subscriptions.length > 0 ? subscriptions : undefined
                 };
             });
-
-            // 5. Apply subType filter AFTER mapping
-            if (subType) {
-                log.info(`Applying subType filter: ${subType}`);
-                mappedUsers = mappedUsers.filter(user => {
-                    if (subType === 'none') {
-                        return !user.activeSubscriptions || user.activeSubscriptions.length === 0;
-                    } else if (subType === 'all') {
-                        return user.activeSubscriptions && user.activeSubscriptions.length > 0;
-                    } else { // Specific type: 'CLASSIQUE' or 'CIBLE'
-                        return user.activeSubscriptions?.includes(subType as SubscriptionType);
-                    }
-                });
-            }
-
-            // IMPORTANT: The totalCount and totalPages returned here reflect the UNFILTERED count from the
-            // initial repository query. If the subType filter significantly reduces the results on a page,
-            // 'referredUsers.length' might be less than 'limit', but 'totalCount' will remain the original total.
-            // If you need totalCount/totalPages to reflect the *filtered* count, the filtering logic
-            // would need to be integrated into the initial database query for referred users.
 
             // 6. Return combined data with pagination
             return {

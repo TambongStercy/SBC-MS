@@ -180,25 +180,78 @@ export class ReferralRepository {
         const skip = (page - 1) * limit;
         const queryFilter = { referrer: referrerId, referralLevel: level, archived: { $ne: true } };
 
-        const query = ReferralModel.find(queryFilter)
-            .skip(skip)
-            .limit(limit);
-
         if (populateReferredUser) {
-            query.populate('referredUser', this.userPopulationFields);
+            // Use aggregation to ensure count matches data when populating users
+            const pipeline = [
+                { $match: queryFilter },
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'referredUser',
+                        foreignField: '_id',
+                        as: 'referredUserData'
+                    }
+                },
+                {
+                    $unwind: {
+                        path: '$referredUserData',
+                        preserveNullAndEmptyArrays: false // This filters out referrals with no user
+                    }
+                },
+                {
+                    $match: {
+                        'referredUserData.deleted': { $ne: true },
+                        'referredUserData.blocked': { $ne: true }
+                    }
+                }
+            ];
+
+            // Get total count with same filtering
+            const countPipeline = [...pipeline, { $count: 'total' }];
+            const countResult = await ReferralModel.aggregate(countPipeline);
+            const totalCount = countResult[0]?.total || 0;
+
+            // Get paginated data
+            const dataPipeline = [
+                ...pipeline,
+                { $skip: skip },
+                { $limit: limit },
+                {
+                    $addFields: {
+                        referredUser: '$referredUserData'
+                    }
+                },
+                {
+                    $project: {
+                        referredUserData: 0 // Remove the lookup field
+                    }
+                }
+            ];
+
+            const referrals = await ReferralModel.aggregate(dataPipeline);
+
+            return {
+                referrals,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit),
+                page
+            };
+        } else {
+            // Original logic for non-populated queries
+            const query = ReferralModel.find(queryFilter)
+                .skip(skip)
+                .limit(limit);
+
+            const referrals = await query.exec();
+            const totalCount = await ReferralModel.countDocuments(queryFilter);
+
+            return {
+                referrals,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit),
+                page
+            };
         }
-
-        const referrals = await query.exec();
-        const validReferrals = referrals.filter(ref => !populateReferredUser || ref.referredUser); // Filter null if populated
-
-        const totalCount = await ReferralModel.countDocuments(queryFilter);
-
-        return {
-            referrals: validReferrals, // Return potentially filtered list
-            totalCount,
-            totalPages: Math.ceil(totalCount / limit),
-            page
-        };
     }
 
     /**
@@ -218,26 +271,80 @@ export class ReferralRepository {
         const skip = (page - 1) * limit;
         const queryFilter = { referrer: referrerId, archived: { $ne: true } };
 
-        const query = ReferralModel.find(queryFilter)
-            .sort({ referralLevel: 1, createdAt: -1 }) // Keep sort order from old model
-            .skip(skip)
-            .limit(limit);
-
         if (populateReferredUser) {
-            query.populate('referredUser', this.userPopulationFields);
+            // Use aggregation to ensure count matches data when populating users
+            const pipeline = [
+                { $match: queryFilter },
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'referredUser',
+                        foreignField: '_id',
+                        as: 'referredUserData'
+                    }
+                },
+                {
+                    $unwind: {
+                        path: '$referredUserData',
+                        preserveNullAndEmptyArrays: false // This filters out referrals with no user
+                    }
+                },
+                {
+                    $match: {
+                        'referredUserData.deleted': { $ne: true },
+                        'referredUserData.blocked': { $ne: true }
+                    }
+                }
+            ];
+
+            // Get total count with same filtering
+            const countPipeline = [...pipeline, { $count: 'total' }];
+            const countResult = await ReferralModel.aggregate(countPipeline);
+            const totalCount = countResult[0]?.total || 0;
+
+            // Get paginated data
+            const dataPipeline = [
+                ...pipeline,
+                { $sort: { referralLevel: 1, createdAt: -1 } }, // Keep sort order from old model
+                { $skip: skip },
+                { $limit: limit },
+                {
+                    $addFields: {
+                        referredUser: '$referredUserData'
+                    }
+                },
+                {
+                    $project: {
+                        referredUserData: 0 // Remove the lookup field
+                    }
+                }
+            ];
+
+            const referrals = await ReferralModel.aggregate(dataPipeline);
+
+            return {
+                referrals,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit),
+                page
+            };
+        } else {
+            // Original logic for non-populated queries
+            const query = ReferralModel.find(queryFilter)
+                .sort({ referralLevel: 1, createdAt: -1 }) // Keep sort order from old model
+                .skip(skip)
+                .limit(limit);
+
+            const referrals = await query.exec();
+            const totalCount = await ReferralModel.countDocuments(queryFilter);
+
+            return {
+                referrals,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit),
+                page
+            };
         }
-
-        const referrals = await query.exec();
-        const validReferrals = referrals.filter(ref => !populateReferredUser || ref.referredUser); // Filter null if populated
-
-        const totalCount = await ReferralModel.countDocuments(queryFilter);
-
-        return {
-            referrals: validReferrals, // Return potentially filtered list
-            totalCount,
-            totalPages: Math.ceil(totalCount / limit),
-            page
-        };
     }
 
     /**
@@ -713,6 +820,477 @@ export class ReferralRepository {
 
         const result = await ReferralModel.aggregate<{ paginatedResults: PopulatedReferredUserInfo[], totalCount: { count: number }[] }>(pipeline);
 
+        const referrals = result[0]?.paginatedResults || [];
+        const totalCount = result[0]?.totalCount[0]?.count || 0;
+
+        return { referrals, totalCount };
+    }
+
+    /**
+     * Finds referrals by referrer and level with subType filtering integrated into the query
+     */
+    async findReferralsByReferrerAndLevelWithSubType(
+        referrerId: string | Types.ObjectId,
+        level: number,
+        page: number = 1,
+        limit: number = 10,
+        subType?: string
+    ): Promise<ReferralPaginationResponse> {
+        const skip = (page - 1) * limit;
+        const referrerObjectId = new Types.ObjectId(referrerId.toString());
+
+        const pipeline = [
+            {
+                $match: {
+                    referrer: referrerObjectId,
+                    referralLevel: level,
+                    archived: { $ne: true }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'referredUser',
+                    foreignField: '_id',
+                    as: 'referredUserData'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$referredUserData',
+                    preserveNullAndEmptyArrays: false
+                }
+            },
+            {
+                $match: {
+                    'referredUserData.deleted': { $ne: true },
+                    'referredUserData.blocked': { $ne: true }
+                }
+            }
+        ];
+
+        // Add subscription lookup and filtering if subType is specified
+        if (subType) {
+            pipeline.push(
+                {
+                    $lookup: {
+                        from: 'subscriptions',
+                        let: { userId: '$referredUserData._id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$user', '$$userId'] },
+                                    status: 'ACTIVE'
+                                }
+                            }
+                        ],
+                        as: 'activeSubscriptions'
+                    }
+                }
+            );
+
+            // Apply subType filter
+            if (subType === 'none') {
+                pipeline.push({
+                    $match: {
+                        $or: [
+                            { activeSubscriptions: { $size: 0 } },
+                            { activeSubscriptions: { $exists: false } }
+                        ]
+                    }
+                });
+            } else if (subType === 'all') {
+                pipeline.push({
+                    $match: {
+                        $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else {
+                // Specific subscription type
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.subscriptionType': subType
+                    }
+                });
+            }
+        }
+
+        // Get total count with same filtering
+        const countPipeline = [...pipeline, { $count: 'total' }];
+        const countResult = await ReferralModel.aggregate(countPipeline);
+        const totalCount = countResult[0]?.total || 0;
+
+        // Get paginated data
+        const dataPipeline = [
+            ...pipeline,
+            { $skip: skip },
+            { $limit: limit },
+            {
+                $addFields: {
+                    referredUser: '$referredUserData'
+                }
+            },
+            {
+                $project: {
+                    referredUserData: 0,
+                    activeSubscriptions: 0
+                }
+            }
+        ];
+
+        const referrals = await ReferralModel.aggregate(dataPipeline);
+
+        return {
+            referrals,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+            page
+        };
+    }
+
+    /**
+     * Finds all referrals by referrer with subType filtering integrated into the query
+     */
+    async findAllReferralsByReferrerWithSubType(
+        referrerId: string | Types.ObjectId,
+        page: number = 1,
+        limit: number = 10,
+        subType?: string
+    ): Promise<ReferralPaginationResponse> {
+        const skip = (page - 1) * limit;
+        const referrerObjectId = new Types.ObjectId(referrerId.toString());
+
+        const pipeline = [
+            {
+                $match: {
+                    referrer: referrerObjectId,
+                    archived: { $ne: true }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'referredUser',
+                    foreignField: '_id',
+                    as: 'referredUserData'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$referredUserData',
+                    preserveNullAndEmptyArrays: false
+                }
+            },
+            {
+                $match: {
+                    'referredUserData.deleted': { $ne: true },
+                    'referredUserData.blocked': { $ne: true }
+                }
+            }
+        ];
+
+        // Add subscription lookup and filtering if subType is specified
+        if (subType) {
+            pipeline.push(
+                {
+                    $lookup: {
+                        from: 'subscriptions',
+                        let: { userId: '$referredUserData._id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$user', '$$userId'] },
+                                    status: 'ACTIVE'
+                                }
+                            }
+                        ],
+                        as: 'activeSubscriptions'
+                    }
+                }
+            );
+
+            // Apply subType filter
+            if (subType === 'none') {
+                pipeline.push({
+                    $match: {
+                        $or: [
+                            { activeSubscriptions: { $size: 0 } },
+                            { activeSubscriptions: { $exists: false } }
+                        ]
+                    }
+                });
+            } else if (subType === 'all') {
+                pipeline.push({
+                    $match: {
+                        $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else {
+                // Specific subscription type
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.subscriptionType': subType
+                    }
+                });
+            }
+        }
+
+        // Get total count with same filtering
+        const countPipeline = [...pipeline, { $count: 'total' }];
+        const countResult = await ReferralModel.aggregate(countPipeline);
+        const totalCount = countResult[0]?.total || 0;
+
+        // Get paginated data
+        const dataPipeline = [
+            ...pipeline,
+            { $sort: { referralLevel: 1, createdAt: -1 } },
+            { $skip: skip },
+            { $limit: limit },
+            {
+                $addFields: {
+                    referredUser: '$referredUserData'
+                }
+            },
+            {
+                $project: {
+                    referredUserData: 0,
+                    activeSubscriptions: 0
+                }
+            }
+        ];
+
+        const referrals = await ReferralModel.aggregate(dataPipeline);
+
+        return {
+            referrals,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+            page
+        };
+    }
+
+    /**
+     * Search referrals by referrer and level with subType filtering and name search
+     */
+    async searchReferralsByReferrerAndLevelWithSubType(
+        referrerId: string | Types.ObjectId,
+        level: number,
+        nameFilter: string,
+        page: number,
+        limit: number,
+        subType?: string
+    ): Promise<{ referrals: PopulatedReferredUserInfo[]; totalCount: number }> {
+        const skip = (page - 1) * limit;
+        const referrerObjectId = new Types.ObjectId(referrerId.toString());
+        const nameRegex = new RegExp(nameFilter, 'i');
+
+        const pipeline = [
+            {
+                $match: {
+                    referrer: referrerObjectId,
+                    referralLevel: level,
+                    archived: { $ne: true }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'referredUser',
+                    foreignField: '_id',
+                    as: 'userData'
+                }
+            },
+            { $unwind: '$userData' },
+            {
+                $match: {
+                    'userData.name': nameRegex,
+                    'userData.deleted': { $ne: true },
+                    'userData.blocked': { $ne: true }
+                }
+            }
+        ];
+
+        // Add subscription filtering if subType is specified
+        if (subType) {
+            pipeline.push(
+                {
+                    $lookup: {
+                        from: 'subscriptions',
+                        let: { userId: '$userData._id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$user', '$$userId'] },
+                                    status: 'ACTIVE'
+                                }
+                            }
+                        ],
+                        as: 'activeSubscriptions'
+                    }
+                }
+            );
+
+            if (subType === 'none') {
+                pipeline.push({
+                    $match: {
+                        $or: [
+                            { activeSubscriptions: { $size: 0 } },
+                            { activeSubscriptions: { $exists: false } }
+                        ]
+                    }
+                });
+            } else if (subType === 'all') {
+                pipeline.push({
+                    $match: {
+                        $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else {
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.subscriptionType': subType
+                    }
+                });
+            }
+        }
+
+        pipeline.push(
+            { $sort: { 'userData.name': 1 } },
+            {
+                $facet: {
+                    paginatedResults: [
+                        { $skip: skip },
+                        { $limit: limit },
+                        {
+                            $project: {
+                                _id: '$userData._id',
+                                name: '$userData.name',
+                                email: '$userData.email',
+                                phoneNumber: '$userData.phoneNumber',
+                                referralLevel: '$referralLevel',
+                                createdAt: '$createdAt'
+                            }
+                        }
+                    ],
+                    totalCount: [{ $count: 'count' }]
+                }
+            }
+        );
+
+        const result = await ReferralModel.aggregate(pipeline);
+        const referrals = result[0]?.paginatedResults || [];
+        const totalCount = result[0]?.totalCount[0]?.count || 0;
+
+        return { referrals, totalCount };
+    }
+
+    /**
+     * Search all referrals by referrer with subType filtering and name search
+     */
+    async searchAllReferralsByReferrerWithSubType(
+        referrerId: string | Types.ObjectId,
+        nameFilter: string,
+        page: number,
+        limit: number,
+        subType?: string
+    ): Promise<{ referrals: PopulatedReferredUserInfo[]; totalCount: number }> {
+        const skip = (page - 1) * limit;
+        const referrerObjectId = new Types.ObjectId(referrerId.toString());
+        const nameRegex = new RegExp(nameFilter, 'i');
+
+        const pipeline = [
+            {
+                $match: {
+                    referrer: referrerObjectId,
+                    archived: { $ne: true }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'referredUser',
+                    foreignField: '_id',
+                    as: 'userData'
+                }
+            },
+            { $unwind: '$userData' },
+            {
+                $match: {
+                    'userData.name': nameRegex,
+                    'userData.deleted': { $ne: true },
+                    'userData.blocked': { $ne: true }
+                }
+            }
+        ];
+
+        // Add subscription filtering if subType is specified
+        if (subType) {
+            pipeline.push(
+                {
+                    $lookup: {
+                        from: 'subscriptions',
+                        let: { userId: '$userData._id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$user', '$$userId'] },
+                                    status: 'ACTIVE'
+                                }
+                            }
+                        ],
+                        as: 'activeSubscriptions'
+                    }
+                }
+            );
+
+            if (subType === 'none') {
+                pipeline.push({
+                    $match: {
+                        $or: [
+                            { activeSubscriptions: { $size: 0 } },
+                            { activeSubscriptions: { $exists: false } }
+                        ]
+                    }
+                });
+            } else if (subType === 'all') {
+                pipeline.push({
+                    $match: {
+                        $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else {
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.subscriptionType': subType
+                    }
+                });
+            }
+        }
+
+        pipeline.push(
+            { $sort: { referralLevel: 1, 'userData.name': 1 } },
+            {
+                $facet: {
+                    paginatedResults: [
+                        { $skip: skip },
+                        { $limit: limit },
+                        {
+                            $project: {
+                                _id: '$userData._id',
+                                name: '$userData.name',
+                                email: '$userData.email',
+                                phoneNumber: '$userData.phoneNumber',
+                                referralLevel: '$referralLevel',
+                                createdAt: '$createdAt'
+                            }
+                        }
+                    ],
+                    totalCount: [{ $count: 'count' }]
+                }
+            }
+        );
+
+        const result = await ReferralModel.aggregate(pipeline);
         const referrals = result[0]?.paginatedResults || [];
         const totalCount = result[0]?.totalCount[0]?.count || 0;
 
