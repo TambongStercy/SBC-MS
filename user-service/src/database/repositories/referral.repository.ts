@@ -1,6 +1,6 @@
 import ReferralModel, { IReferral } from '../models/referral.model';
 import UserModel, { IUser } from '../models/user.model';
-import mongoose, { Types, Document, UpdateWriteOpResult } from 'mongoose';
+import mongoose, { Types, Document, UpdateWriteOpResult, PipelineStage } from 'mongoose';
 import SubscriptionModel, { SubscriptionStatus } from '../models/subscription.model';
 
 // Define document type
@@ -305,7 +305,7 @@ export class ReferralRepository {
             // Get paginated data
             const dataPipeline = [
                 ...pipeline,
-                { $sort: { referralLevel: 1, createdAt: -1 } }, // Keep sort order from old model
+                { $sort: { referralLevel: 1 as const, createdAt: -1 as const } }, // Keep sort order from old model
                 { $skip: skip },
                 { $limit: limit },
                 {
@@ -839,7 +839,8 @@ export class ReferralRepository {
         const skip = (page - 1) * limit;
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
 
-        const pipeline = [
+        // Build pipeline dynamically to avoid TypeScript issues
+        const pipeline: any[] = [
             {
                 $match: {
                     referrer: referrerObjectId,
@@ -871,23 +872,21 @@ export class ReferralRepository {
 
         // Add subscription lookup and filtering if subType is specified
         if (subType) {
-            pipeline.push(
-                {
-                    $lookup: {
-                        from: 'subscriptions',
-                        let: { userId: '$referredUserData._id' },
-                        pipeline: [
-                            {
-                                $match: {
-                                    $expr: { $eq: ['$user', '$$userId'] },
-                                    status: 'ACTIVE'
-                                }
+            pipeline.push({
+                $lookup: {
+                    from: 'subscriptions',
+                    let: { userId: '$referredUserData._id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$user', '$$userId'] },
+                                status: 'ACTIVE'
                             }
-                        ],
-                        as: 'activeSubscriptions'
-                    }
+                        }
+                    ],
+                    as: 'activeSubscriptions'
                 }
-            );
+            });
 
             // Apply subType filter
             if (subType === 'none') {
@@ -960,7 +959,7 @@ export class ReferralRepository {
         const skip = (page - 1) * limit;
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
 
-        const pipeline = [
+        const pipeline: any[] = [
             {
                 $match: {
                     referrer: referrerObjectId,
@@ -991,23 +990,21 @@ export class ReferralRepository {
 
         // Add subscription lookup and filtering if subType is specified
         if (subType) {
-            pipeline.push(
-                {
-                    $lookup: {
-                        from: 'subscriptions',
-                        let: { userId: '$referredUserData._id' },
-                        pipeline: [
-                            {
-                                $match: {
-                                    $expr: { $eq: ['$user', '$$userId'] },
-                                    status: 'ACTIVE'
-                                }
+            pipeline.push({
+                $lookup: {
+                    from: 'subscriptions',
+                    let: { userId: '$referredUserData._id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$user', '$$userId'] },
+                                status: 'ACTIVE'
                             }
-                        ],
-                        as: 'activeSubscriptions'
-                    }
+                        }
+                    ],
+                    as: 'activeSubscriptions'
                 }
-            );
+            });
 
             // Apply subType filter
             if (subType === 'none') {
@@ -1043,7 +1040,7 @@ export class ReferralRepository {
         // Get paginated data
         const dataPipeline = [
             ...pipeline,
-            { $sort: { referralLevel: 1, createdAt: -1 } },
+            { $sort: { referralLevel: 1 as const, createdAt: -1 as const } },
             { $skip: skip },
             { $limit: limit },
             {
@@ -1084,7 +1081,7 @@ export class ReferralRepository {
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
         const nameRegex = new RegExp(nameFilter, 'i');
 
-        const pipeline = [
+        const pipeline: any[] = [
             {
                 $match: {
                     referrer: referrerObjectId,
@@ -1198,7 +1195,7 @@ export class ReferralRepository {
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
         const nameRegex = new RegExp(nameFilter, 'i');
 
-        const pipeline = [
+        const pipeline: any[] = [
             {
                 $match: {
                     referrer: referrerObjectId,
