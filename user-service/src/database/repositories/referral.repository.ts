@@ -704,7 +704,7 @@ export class ReferralRepository {
         limit: number
     ): Promise<{ referrals: PopulatedReferredUserInfo[]; totalCount: number }> {
         const skip = (page - 1) * limit;
-            const referrerObjectId = new mongoose.Types.ObjectId(referrerId.toString());
+        const referrerObjectId = new mongoose.Types.ObjectId(referrerId.toString());
         const nameRegex = new RegExp(nameFilter, 'i'); // Case-insensitive regex
 
         const pipeline: mongoose.PipelineStage[] = [
@@ -715,8 +715,8 @@ export class ReferralRepository {
             // Unwind the userData array (referrals where user was deleted will be removed)
             { $unwind: '$userData' },
             // Filter by user name and ensure user is valid
-                {
-                    $match: {
+            {
+                $match: {
                     'userData.name': nameRegex,
                     'userData.deleted': { $ne: true }, // Ensure user not deleted
                     'userData.blocked': { $ne: true }  // Ensure user not blocked
@@ -880,7 +880,8 @@ export class ReferralRepository {
                         {
                             $match: {
                                 $expr: { $eq: ['$user', '$$userId'] },
-                                status: 'ACTIVE'
+                                status: SubscriptionStatus.ACTIVE,
+                                endDate: { $gt: new Date() }
                             }
                         }
                     ],
@@ -998,7 +999,8 @@ export class ReferralRepository {
                         {
                             $match: {
                                 $expr: { $eq: ['$user', '$$userId'] },
-                                status: 'ACTIVE'
+                                status: SubscriptionStatus.ACTIVE,
+                                endDate: { $gt: new Date() }
                             }
                         }
                     ],
@@ -1118,7 +1120,8 @@ export class ReferralRepository {
                             {
                                 $match: {
                                     $expr: { $eq: ['$user', '$$userId'] },
-                                    status: 'ACTIVE'
+                                    status: SubscriptionStatus.ACTIVE,
+                                    endDate: { $gt: new Date() }
                                 }
                             }
                         ],
@@ -1231,7 +1234,8 @@ export class ReferralRepository {
                             {
                                 $match: {
                                     $expr: { $eq: ['$user', '$$userId'] },
-                                    status: 'ACTIVE'
+                                    status: SubscriptionStatus.ACTIVE,
+                                    endDate: { $gt: new Date() }
                                 }
                             }
                         ],
