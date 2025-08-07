@@ -916,18 +916,34 @@ export class UserService {
                     (referralResponse as any).referredUsers :
                     (referralResponse as any).referrals;
                 referredUsersData = referralsArray.map((ref: any) => {
-                    const user = ref.referredUser;
-                    return {
-                        _id: user._id,
-                        name: user?.name ?? 'N/A',
-                        email: user?.email ?? 'N/A',
-                        phoneNumber: user?.phoneNumber?.toString() ?? '', // Ensure string
-                        referralLevel: ref.referralLevel,
-                        avatar: user?.avatar ?? '',
-                        avatarId: user?.avatarId ?? '',
-                        createdAt: ref.createdAt,
-                        // activeSubscriptions will be added later
-                    };
+                    // For indirect type, data is already projected, no nested referredUser
+                    if (type === 'indirect') {
+                        return {
+                            _id: ref._id,
+                            name: ref?.name ?? 'N/A',
+                            email: ref?.email ?? 'N/A',
+                            phoneNumber: ref?.phoneNumber?.toString() ?? '', // Ensure string
+                            referralLevel: ref.referralLevel,
+                            avatar: ref?.avatar ?? '',
+                            avatarId: ref?.avatarId ?? '',
+                            createdAt: ref.createdAt,
+                            // activeSubscriptions will be added later
+                        };
+                    } else {
+                        // For other types, data has nested referredUser structure
+                        const user = ref.referredUser;
+                        return {
+                            _id: user._id,
+                            name: user?.name ?? 'N/A',
+                            email: user?.email ?? 'N/A',
+                            phoneNumber: user?.phoneNumber?.toString() ?? '', // Ensure string
+                            referralLevel: ref.referralLevel,
+                            avatar: user?.avatar ?? '',
+                            avatarId: user?.avatarId ?? '',
+                            createdAt: ref.createdAt,
+                            // activeSubscriptions will be added later
+                        };
+                    }
                 }).filter((info: any) => info.name !== 'N/A');
                 totalCount = referralResponse.totalCount;
             }
