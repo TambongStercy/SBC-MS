@@ -70,6 +70,20 @@ export interface GroupedPopulatedReferralPaginationResponse {
     currentPage: number;
 }
 
+// Define interface for monthly referral data
+export interface MonthlyReferralData {
+    month: string; // Format: "YYYY-MM"
+    monthName: string; // Format: "January", "February", etc.
+    level1: number;
+    level2: number;
+    level3: number;
+    total: number;
+    level1ActiveSubscribers: number;
+    level2ActiveSubscribers: number;
+    level3ActiveSubscribers: number;
+    totalActiveSubscribers: number;
+}
+
 // Define interface for the result of getReferralStats
 export interface ReferralStatsResponse {
     totalReferrals: number;
@@ -79,6 +93,7 @@ export interface ReferralStatsResponse {
     level1ActiveSubscribers: number;
     level2ActiveSubscribers: number;
     level3ActiveSubscribers: number;
+    monthlyData: MonthlyReferralData[];
 }
 
 export class ReferralRepository {
@@ -625,6 +640,100 @@ export class ReferralRepository {
         ).exec();
     }
 
+        /**
+     * Generates monthly referral data for the current year with counts by level and active subscribers.
+     * @param referrerId - The ID of the user whose monthly referral data is needed.
+     * @returns Array of monthly referral data for each month of the current year.
+     */
+    private async generateMonthlyReferralData(referrerId: Types.ObjectId): Promise<MonthlyReferralData[]> {
+        const currentYear = new Date().getFullYear();
+        const startOfYear = new Date(currentYear, 0, 1); // January 1st
+        const endOfYear = new Date(currentYear + 1, 0, 1); // January 1st of next year
+        
+        // Month names for formatting
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+
+        // Get all referrals for the current year
+        const yearlyReferrals = await ReferralModel.find({
+            referrer: referrerId,
+            archived: { $ne: true },
+            createdAt: {
+                $gte: startOfYear,
+                $lt: endOfYear
+            }
+        }).lean();
+
+        // Helper function to count active subscribers for a specific set of user IDs
+        const countActiveSubscribersForUsers = async (userIds: Types.ObjectId[]): Promise<number> => {
+            if (userIds.length === 0) return 0;
+            return SubscriptionModel.countDocuments({
+                user: { $in: userIds },
+                status: SubscriptionStatus.ACTIVE,
+                endDate: { $gt: new Date() } // Ensure end date is in the future
+            }).exec();
+        };
+
+        // Initialize monthly data structure
+        const monthlyData: MonthlyReferralData[] = [];
+        
+        // Process each month of the current year
+        for (let month = 0; month < 12; month++) {
+            const monthStart = new Date(currentYear, month, 1);
+            const monthEnd = new Date(currentYear, month + 1, 1);
+            
+            // Filter referrals for this month
+            const monthReferrals = yearlyReferrals.filter(ref => 
+                ref.createdAt >= monthStart && ref.createdAt < monthEnd
+            );
+
+            // Count by level and collect user IDs
+            let level1 = 0;
+            let level2 = 0;
+            let level3 = 0;
+            const level1UserIds: Types.ObjectId[] = [];
+            const level2UserIds: Types.ObjectId[] = [];
+            const level3UserIds: Types.ObjectId[] = [];
+
+            monthReferrals.forEach(ref => {
+                if (ref.referralLevel === 1) {
+                    level1++;
+                    level1UserIds.push(ref.referredUser);
+                } else if (ref.referralLevel === 2) {
+                    level2++;
+                    level2UserIds.push(ref.referredUser);
+                } else if (ref.referralLevel === 3) {
+                    level3++;
+                    level3UserIds.push(ref.referredUser);
+                }
+            });
+
+            // Count active subscribers for each level
+            const [level1ActiveSubscribers, level2ActiveSubscribers, level3ActiveSubscribers] = await Promise.all([
+                countActiveSubscribersForUsers(level1UserIds),
+                countActiveSubscribersForUsers(level2UserIds),
+                countActiveSubscribersForUsers(level3UserIds)
+            ]);
+
+            monthlyData.push({
+                month: `${currentYear}-${String(month + 1).padStart(2, '0')}`,
+                monthName: monthNames[month],
+                level1,
+                level2,
+                level3,
+                total: level1 + level2 + level3,
+                level1ActiveSubscribers,
+                level2ActiveSubscribers,
+                level3ActiveSubscribers,
+                totalActiveSubscribers: level1ActiveSubscribers + level2ActiveSubscribers + level3ActiveSubscribers
+            });
+        }
+
+        return monthlyData;
+    }
+
     /**
      * Calculates referral statistics (counts per level) for a given user.
      * Also counts how many referred users at each level have an active subscription.
@@ -674,7 +783,10 @@ export class ReferralRepository {
             countActiveSubs(level3UserIds)
         ]);
 
-        // 4. Return combined results
+        // 4. Generate monthly referral data for the current year
+        const monthlyData = await this.generateMonthlyReferralData(referrerObjectId);
+
+        // 5. Return combined results
         return {
             totalReferrals: level1Count + level2Count + level3Count,
             level1Count,
@@ -683,6 +795,7 @@ export class ReferralRepository {
             level1ActiveSubscribers,
             level2ActiveSubscribers,
             level3ActiveSubscribers,
+            monthlyData
         };
     }
 

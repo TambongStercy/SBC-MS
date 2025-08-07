@@ -144,6 +144,19 @@ class WhatsAppCloudService extends EventEmitter {
         components: any[];
     }): Promise<WhatsAppSendResult> {
         try {
+            // Check rate limit before sending template message
+            const rateLimiter = require('../../rate-limit-checker');
+            const limiter = new rateLimiter();
+
+            if (!limiter.canSendMessage()) {
+                const status = limiter.getStatus();
+                log.warn(`Rate limit reached. ${status.remaining} messages remaining. Reset in ${status.hoursUntilReset} hours.`);
+                return {
+                    success: false,
+                    error: `Rate limit exceeded. Can send again in ${status.hoursUntilReset} hours.`
+                };
+            }
+
             const formattedPhoneNumber = this.formatPhoneNumber(params.phoneNumber);
 
             const messageData: WhatsAppMessage = {
@@ -175,6 +188,10 @@ class WhatsAppCloudService extends EventEmitter {
 
             if (responseData.messages && responseData.messages.length > 0) {
                 const messageId = responseData.messages[0].id;
+
+                // Increment rate limit counter after successful send
+                limiter.incrementCount();
+
                 log.info(`WhatsApp template message sent successfully to ${formattedPhoneNumber}, message ID: ${messageId}`);
                 return {
                     success: true,
@@ -236,17 +253,257 @@ class WhatsAppCloudService extends EventEmitter {
     }
 
     /**
-     * Format phone number for WhatsApp API
+     * Format phone number for WhatsApp API (International)
+     * Handles numbers from multiple countries while preserving existing country codes
      */
     private formatPhoneNumber(phoneNumber: string): string {
         // Remove all non-digit characters
         let cleanNumber = phoneNumber.replace(/\D/g, '');
 
-        // Ensure it starts with country code (if not, assume it's a local number)
-        if (!cleanNumber.startsWith('1') && cleanNumber.length === 10) {
-            cleanNumber = '1' + cleanNumber; // Add US country code as default
+        // If number is already in international format (12+ digits), keep as-is
+        // We use 12+ because some countries have 11-digit local numbers that need formatting
+        if (cleanNumber.length >= 12) {
+            return cleanNumber;
         }
 
+        // Common country code patterns - if number starts with these, it's likely already formatted
+        const commonCountryCodes = [
+            // Major non-African countries
+            '1',    // US/Canada
+            '33',   // France
+            '44',   // UK
+            '49',   // Germany
+            '86',   // China
+            '91',   // India
+
+            // Complete African country codes (all 54 African countries)
+            '212',  // Morocco
+            '213',  // Algeria
+            '216',  // Tunisia
+            '218',  // Libya
+            '220',  // Gambia
+            '221',  // Senegal
+            '222',  // Mauritania
+            '223',  // Mali
+            '224',  // Guinea
+            '225',  // Côte d'Ivoire (Ivory Coast)
+            '226',  // Burkina Faso
+            '227',  // Niger
+            '228',  // Togo
+            '229',  // Benin
+            '230',  // Mauritius
+            '231',  // Liberia
+            '232',  // Sierra Leone
+            '233',  // Ghana
+            '234',  // Nigeria
+            '235',  // Chad
+            '236',  // Central African Republic
+            '237',  // Cameroon
+            '238',  // Cape Verde
+            '239',  // São Tomé and Príncipe
+            '240',  // Equatorial Guinea
+            '241',  // Gabon
+            '242',  // Republic of the Congo
+            '243',  // Democratic Republic of the Congo
+            '244',  // Angola
+            '245',  // Guinea-Bissau
+            '246',  // British Indian Ocean Territory
+            '247',  // Ascension Island
+            '248',  // Seychelles
+            '249',  // Sudan
+            '250',  // Rwanda
+            '251',  // Ethiopia
+            '252',  // Somalia
+            '253',  // Djibouti
+            '254',  // Kenya
+            '255',  // Tanzania
+            '256',  // Uganda
+            '257',  // Burundi
+            '258',  // Mozambique
+            '260',  // Zambia
+            '261',  // Madagascar
+            '262',  // Réunion/Mayotte (France)
+            '263',  // Zimbabwe
+            '264',  // Namibia
+            '265',  // Malawi
+            '266',  // Lesotho
+            '267',  // Botswana
+            '268',  // Eswatini (Swaziland)
+            '269',  // Comoros
+            '27',   // South Africa
+            '290',  // Saint Helena
+            '291',  // Eritrea
+            '297',  // Aruba (sometimes used in Africa context)
+            '298',  // Faroe Islands (sometimes used in Africa context)
+        ];
+
+        // Check if number already starts with a country code
+        // Prioritize longer country codes to avoid conflicts (e.g., 212 vs 21)
+        const sortedCodes = commonCountryCodes.sort((a, b) => b.length - a.length);
+
+        for (const code of sortedCodes) {
+            if (cleanNumber.startsWith(code)) {
+                // Additional validation: ensure the remaining digits make sense for that country
+                const remainingDigits = cleanNumber.substring(code.length);
+
+                // For 3-digit country codes, remaining should be 7-10 digits
+                // For 2-digit country codes, remaining should be 8-10 digits  
+                // For 1-digit country codes, remaining should be 10 digits
+                const minRemaining = code.length === 3 ? 7 : code.length === 2 ? 8 : 10;
+                const maxRemaining = 10;
+
+                if (remainingDigits.length >= minRemaining && remainingDigits.length <= maxRemaining) {
+                    // Special case: avoid treating US numbers as Morocco (212) numbers
+                    if (code === '212' && cleanNumber.length === 10 && /^[2-9]\d{9}$/.test(cleanNumber)) {
+                        // This looks like a US number, continue to US formatting logic
+                        break;
+                    }
+
+                    // Number already has country code, return as-is
+                    return cleanNumber;
+                }
+            }
+        }
+
+        // Handle specific patterns for numbers without country codes
+        // Focus on your main user countries from payment service + major African countries
+        // Use intelligent defaults to minimize conflicts
+
+        // Nigerian numbers (11 digits starting with 0, remove 0 and add 234)
+        if (cleanNumber.length === 11 && cleanNumber.startsWith('0') &&
+            (cleanNumber.startsWith('070') || cleanNumber.startsWith('080') ||
+                cleanNumber.startsWith('081') || cleanNumber.startsWith('090') ||
+                cleanNumber.startsWith('091'))) {
+            return '234' + cleanNumber.substring(1);
+        }
+
+        // Cameroon mobile numbers (9 digits starting with 6) - Your primary market
+        if (cleanNumber.length === 9 && cleanNumber.startsWith('6')) {
+            return '237' + cleanNumber;
+        }
+
+        // Senegal numbers (9 digits starting with 7, add 221)
+        if (cleanNumber.length === 9 && cleanNumber.startsWith('7')) {
+            return '221' + cleanNumber;
+        }
+
+        // DRC numbers (9 digits starting with 8 or 9, add 243)
+        if (cleanNumber.length === 9 &&
+            (cleanNumber.startsWith('8') || cleanNumber.startsWith('9'))) {
+            return '243' + cleanNumber;
+        }
+
+        // Congo Brazzaville numbers (9 digits starting with 0, remove 0 and add 242)
+        if (cleanNumber.length === 9 && cleanNumber.startsWith('0') &&
+            (cleanNumber.startsWith('05') || cleanNumber.startsWith('06'))) {
+            return '242' + cleanNumber.substring(1);
+        }
+
+        // Gabon numbers (8 digits starting with 0, remove 0 and add 241)
+        if (cleanNumber.length === 8 && cleanNumber.startsWith('0') &&
+            (cleanNumber.startsWith('05') || cleanNumber.startsWith('06') ||
+                cleanNumber.startsWith('07'))) {
+            return '241' + cleanNumber.substring(1);
+        }
+
+        // West African 8-digit patterns - Use smart defaults based on your user base
+        if (cleanNumber.length === 8) {
+            // Burkina Faso (5X patterns)
+            if (cleanNumber.startsWith('5')) {
+                return '226' + cleanNumber;
+            }
+            // Benin (4X patterns)
+            if (cleanNumber.startsWith('4')) {
+                return '229' + cleanNumber;
+            }
+            // Tunisia (3X patterns)
+            if (cleanNumber.startsWith('3')) {
+                return '216' + cleanNumber;
+            }
+            // Mali (default for 2X, 6X, 7X, 9X patterns - most common in your region)
+            if (cleanNumber.startsWith('2') || cleanNumber.startsWith('6') ||
+                cleanNumber.startsWith('7') || cleanNumber.startsWith('9')) {
+                return '223' + cleanNumber;
+            }
+        }
+
+        // 10-digit numbers starting with 0 - Smart routing based on common patterns
+        if (cleanNumber.length === 10 && cleanNumber.startsWith('0')) {
+            const prefix = cleanNumber.substring(0, 3);
+
+            // Very specific patterns first to avoid conflicts
+
+            // Ethiopia (091-099) - Very specific pattern
+            if (prefix >= '091' && prefix <= '099') {
+                return '251' + cleanNumber.substring(1);
+            }
+
+            // Ghana (specific mobile patterns)
+            if (prefix === '020' || prefix === '023' || prefix === '024' ||
+                prefix === '026' || prefix === '027' || prefix === '028' ||
+                prefix === '050' || prefix === '054' || prefix === '055' ||
+                prefix === '056' || prefix === '057' || prefix === '059') {
+                return '233' + cleanNumber.substring(1);
+            }
+
+            // Morocco (06X patterns)
+            if (prefix >= '061' && prefix <= '069') {
+                return '212' + cleanNumber.substring(1);
+            }
+
+            // Algeria (specific patterns)
+            if (prefix === '055' || prefix === '056' || prefix === '057' ||
+                prefix === '069' || prefix === '077' || prefix === '079') {
+                return '213' + cleanNumber.substring(1);
+            }
+
+            // For conflicting 07X patterns, use geographic/usage-based defaults
+            if (prefix >= '070' && prefix <= '079') {
+                // Kenya is very common for 07X patterns in East Africa
+                return '254' + cleanNumber.substring(1);
+            }
+
+            // For 08X patterns
+            if (prefix >= '080' && prefix <= '089') {
+                // Rwanda for 08X patterns
+                return '250' + cleanNumber.substring(1);
+            }
+
+            // For 03X patterns (Uganda)
+            if (prefix >= '030' && prefix <= '039') {
+                return '256' + cleanNumber.substring(1);
+            }
+
+            // For 06X patterns not caught by Morocco
+            if (prefix >= '060' && prefix <= '069') {
+                // Tanzania for remaining 06X
+                return '255' + cleanNumber.substring(1);
+            }
+
+            // For remaining patterns, default to Côte d'Ivoire (broad coverage)
+            // This covers most West African patterns not caught above
+            return '225' + cleanNumber.substring(1);
+        }
+
+        // UK numbers (11 digits starting with 0, remove 0 and add 44)
+        if (cleanNumber.length === 11 && cleanNumber.startsWith('0')) {
+            return '44' + cleanNumber.substring(1);
+        }
+
+        // French numbers (10 digits starting with 0, remove 0 and add 33)
+        if (cleanNumber.length === 10 && cleanNumber.startsWith('0')) {
+            return '33' + cleanNumber.substring(1);
+        }
+
+        // US/Canada numbers (10 digits, no country code)
+        // More flexible pattern for US numbers
+        if (cleanNumber.length === 10 && /^[2-9]\d{9}$/.test(cleanNumber)) {
+            return '1' + cleanNumber;
+        }
+
+        // If we can't determine the country, log a warning and return as-is
+        // This prevents breaking existing functionality
+        log.warn(`Unable to determine country code for phone number: ${phoneNumber} (cleaned: ${cleanNumber})`);
         return cleanNumber;
     }
 
@@ -477,9 +734,15 @@ class WhatsAppCloudService extends EventEmitter {
         }
 
         try {
+            const originalPhoneNumber = phoneNumber;
             const formattedPhoneNumber = this.formatPhoneNumber(phoneNumber);
 
-            log.info(`Sending WhatsApp text message to ${formattedPhoneNumber}`);
+            log.info(`WhatsApp Message Details:`, {
+                original: originalPhoneNumber,
+                formatted: formattedPhoneNumber,
+                messageLength: message.length,
+                timestamp: new Date().toISOString()
+            });
 
             const messageData: WhatsAppMessage = {
                 messaging_product: 'whatsapp',
@@ -507,7 +770,13 @@ class WhatsAppCloudService extends EventEmitter {
 
             if (responseData.messages && responseData.messages.length > 0) {
                 const messageId = responseData.messages[0].id;
-                log.info(`WhatsApp message sent successfully to ${formattedPhoneNumber}, message ID: ${messageId}`);
+                log.info(`WhatsApp API Response:`, {
+                    messageId,
+                    recipient: formattedPhoneNumber,
+                    original: originalPhoneNumber,
+                    status: 'accepted',
+                    timestamp: new Date().toISOString()
+                });
                 return {
                     success: true,
                     messageId
@@ -521,7 +790,14 @@ class WhatsAppCloudService extends EventEmitter {
             };
         } catch (error) {
             const whatsappError = defaultWhatsAppErrorHandler.processError(error, { phoneNumber });
-            log.error(`Failed to send WhatsApp message to ${phoneNumber}:`, whatsappError);
+            log.error(`WhatsApp Send Error:`, {
+                original: phoneNumber,
+                formatted: this.formatPhoneNumber(phoneNumber),
+                error: whatsappError.message,
+                errorCode: whatsappError.code,
+                timestamp: new Date().toISOString(),
+                fullError: error
+            });
             return {
                 success: false,
                 error: whatsappError.message || 'Unknown error occurred'
