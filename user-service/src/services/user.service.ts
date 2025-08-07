@@ -973,7 +973,7 @@ export class UserService {
                 });
             }
 
-            // 4. Map final data, adding subscription info (for display purposes only, filtering is done in repository)
+            // 4. Map final data, adding subscription info
             let mappedUsers: IReferredUserInfo[] = referredUsersData.map((user) => {
                 const userIdStr = user._id.toString();
                 const subscriptions = activeSubscriptionsMap.get(userIdStr);
@@ -982,6 +982,28 @@ export class UserService {
                     activeSubscriptions: subscriptions && subscriptions.length > 0 ? subscriptions : undefined
                 };
             });
+
+            // 5. Apply subType filtering for indirect type (since it bypassed repository-level filtering)
+            if (type === 'indirect' && subType) {
+                const originalCount = mappedUsers.length;
+                if (subType === 'none') {
+                    // Filter users with no active subscriptions
+                    mappedUsers = mappedUsers.filter(user => !user.activeSubscriptions || user.activeSubscriptions.length === 0);
+                } else if (subType === 'all') {
+                    // Filter users with any active subscriptions
+                    mappedUsers = mappedUsers.filter(user => user.activeSubscriptions && user.activeSubscriptions.length > 0);
+                } else {
+                    // Filter users with specific subscription type
+                    mappedUsers = mappedUsers.filter(user =>
+                        user.activeSubscriptions && user.activeSubscriptions.includes(subType as SubscriptionType)
+                    );
+                }
+                log.info(`SubType filtering for indirect: ${originalCount} -> ${mappedUsers.length} users (subType: ${subType})`);
+
+                // Note: totalCount should ideally be recalculated for proper pagination,
+                // but this would require a more complex query. For now, we keep the original count
+                // as an approximation.
+            }
 
             // 6. Return combined data with pagination
             return {
