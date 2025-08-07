@@ -551,7 +551,9 @@ export class UserController {
                     if (typeQuery === 'direct') {
                         level = 1;
                     } else if (typeQuery === 'indirect') {
-                        level = 2; // Will include both level 2 and 3 in the service
+                        // For indirect, we need to handle both level 2 and 3 differently
+                        // Don't set a specific level here, handle it in the service call
+                        level = undefined;
                     }
                 }
             }
@@ -585,7 +587,8 @@ export class UserController {
                 nameFilter as string | undefined, // Pass name filter
                 page,
                 limit,
-                subType // Pass subType
+                subType, // Pass subType
+                typeQuery as string | undefined // Pass type parameter for indirect handling
             );
             res.status(200).json({ success: true, data: result });
         } catch (error: any) {
@@ -1392,9 +1395,9 @@ export class UserController {
 
             // Send a generic success response to prevent leaking information about account existence
             const channelMessage = channel ? ` via ${channel}` : ' using your preferred notification method';
-            res.status(200).json({ 
-                success: true, 
-                message: `If an account with this identifier exists, an OTP has been sent${channelMessage}.` 
+            res.status(200).json({
+                success: true,
+                message: `If an account with this identifier exists, an OTP has been sent${channelMessage}.`
             });
 
         } catch (error: any) {
@@ -1413,10 +1416,10 @@ export class UserController {
     async requestPasswordResetOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { identifier, email, channel } = req.body;
-            
+
             // Support both new 'identifier' field and legacy 'email' field
             const userIdentifier = identifier || email;
-            
+
             if (!userIdentifier) {
                 throw new AppError('Email address or phone number is required for password reset OTP.', 400);
             }
@@ -1428,7 +1431,7 @@ export class UserController {
             }
 
             await this.userService.requestPasswordResetOtp(userIdentifier, channel);
-            
+
             // Update message to inform about potential fallback
             let channelMessage;
             if (channel === 'whatsapp') {
@@ -1438,10 +1441,10 @@ export class UserController {
             } else {
                 channelMessage = ' using your preferred notification method (with email fallback if WhatsApp is unavailable)';
             }
-            
-            res.status(200).json({ 
-                success: true, 
-                message: `If your account is registered, a password reset OTP has been sent${channelMessage}.` 
+
+            res.status(200).json({
+                success: true,
+                message: `If your account is registered, a password reset OTP has been sent${channelMessage}.`
             });
         } catch (error) {
             next(error);

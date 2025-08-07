@@ -867,7 +867,8 @@ export class UserService {
         nameFilter?: string, // Optional
         page: number = 1,
         limit: number = 10,
-        subType?: string // NEW PARAMETER
+        subType?: string, // NEW PARAMETER
+        type?: string // NEW PARAMETER for handling indirect
     ): Promise<{ // Return type updated
         referredUsers: IReferredUserInfo[];
         totalCount: number;
@@ -882,20 +883,39 @@ export class UserService {
             // 1. Fetch referrals with proper filtering including subType
             if (nameFilter && nameFilter.trim().length > 0) {
                 // Use new search methods if nameFilter is provided
-                log.info(`Searching referred users for ${referrerId} with name filter: ${nameFilter}`);
-                const searchResult = level && [1, 2, 3].includes(level)
-                    ? await referralRepository.searchReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, nameFilter, page, limit, subType)
-                    : await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
+                log.info(`Searching referred users for ${referrerId} with name filter: ${nameFilter}, type: ${type}`);
+                let searchResult;
+                if (type === 'indirect') {
+                    // For indirect type, search both level 2 and 3
+                    searchResult = await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
+                    // Filter to only include level 2 and 3
+                    searchResult.referrals = searchResult.referrals.filter(ref => ref.referralLevel === 2 || ref.referralLevel === 3);
+                    // Note: totalCount will need to be recalculated properly in repository
+                } else {
+                    searchResult = level && [1, 2, 3].includes(level)
+                        ? await referralRepository.searchReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, nameFilter, page, limit, subType)
+                        : await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
+                }
                 referredUsersData = searchResult.referrals;
                 totalCount = searchResult.totalCount;
             } else {
                 // Use methods that include subType filtering
-                log.info(`Fetching referred users for ${referrerId} (no name filter, subType: ${subType})`);
-                const referralResponse = level && [1, 2, 3].includes(level)
-                    ? await referralRepository.findReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, page, limit, subType)
-                    : await referralRepository.findAllReferralsByReferrerWithSubType(referrerObjectId, page, limit, subType);
+                log.info(`Fetching referred users for ${referrerId} (no name filter, subType: ${subType}, type: ${type})`);
+                let referralResponse;
+                if (type === 'indirect') {
+                    // For indirect type, get both level 2 and 3 referrals
+                    // Use the existing method that handles both levels, then apply subType filtering if needed
+                    referralResponse = await referralRepository.findIndirectReferredUsersPopulated(referrerObjectId, page, limit);
+                } else {
+                    referralResponse = level && [1, 2, 3].includes(level)
+                        ? await referralRepository.findReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, page, limit, subType)
+                        : await referralRepository.findAllReferralsByReferrerWithSubType(referrerObjectId, page, limit, subType);
+                }
                 // Map the populated data to the expected structure
-                referredUsersData = referralResponse.referrals.map((ref: any) => {
+                const referralsArray = type === 'indirect' ?
+                    (referralResponse as any).referredUsers :
+                    (referralResponse as any).referrals;
+                referredUsersData = referralsArray.map((ref: any) => {
                     const user = ref.referredUser;
                     return {
                         _id: user._id,
