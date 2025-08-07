@@ -640,16 +640,16 @@ export class ReferralRepository {
         ).exec();
     }
 
-        /**
-     * Generates monthly referral data for the current year with counts by level and active subscribers.
-     * @param referrerId - The ID of the user whose monthly referral data is needed.
-     * @returns Array of monthly referral data for each month of the current year.
-     */
+    /**
+ * Generates monthly referral data for the current year with counts by level and active subscribers.
+ * @param referrerId - The ID of the user whose monthly referral data is needed.
+ * @returns Array of monthly referral data for each month of the current year.
+ */
     private async generateMonthlyReferralData(referrerId: Types.ObjectId): Promise<MonthlyReferralData[]> {
         const currentYear = new Date().getFullYear();
         const startOfYear = new Date(currentYear, 0, 1); // January 1st
         const endOfYear = new Date(currentYear + 1, 0, 1); // January 1st of next year
-        
+
         // Month names for formatting
         const monthNames = [
             'January', 'February', 'March', 'April', 'May', 'June',
@@ -678,14 +678,14 @@ export class ReferralRepository {
 
         // Initialize monthly data structure
         const monthlyData: MonthlyReferralData[] = [];
-        
+
         // Process each month of the current year
         for (let month = 0; month < 12; month++) {
             const monthStart = new Date(currentYear, month, 1);
             const monthEnd = new Date(currentYear, month + 1, 1);
-            
+
             // Filter referrals for this month
-            const monthReferrals = yearlyReferrals.filter(ref => 
+            const monthReferrals = yearlyReferrals.filter(ref =>
                 ref.createdAt >= monthStart && ref.createdAt < monthEnd
             );
 
