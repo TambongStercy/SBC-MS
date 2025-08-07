@@ -351,15 +351,20 @@ class PaymentService {
         if (existingActiveWithdrawal) {
             log.warn(`User ${userId} has an existing active withdrawal (Tx ID: ${existingActiveWithdrawal.transactionId}, Status: ${existingActiveWithdrawal.status}).`);
 
-            let message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) that is currently ${existingActiveWithdrawal.status.replace(/_/g, ' ')}. Please complete or cancel it before initiating a new one.`;
+            let message = '';
             let otpExpiresAt = existingActiveWithdrawal.verificationExpiry; // Default to existing expiry
 
-            // If the existing withdrawal is still awaiting OTP, re-send it and update expiry
+            // Customize message based on withdrawal status
             if (existingActiveWithdrawal.status === TransactionStatus.PENDING_OTP_VERIFICATION) {
                 log.info(`Re-sending OTP for existing PENDING_OTP_VERIFICATION withdrawal (Tx ID: ${existingActiveWithdrawal.transactionId}).`);
                 const { verificationExpiry } = await this.sendWithdrawalOTP(existingActiveWithdrawal.transactionId);
                 otpExpiresAt = verificationExpiry; // Use the new expiry from re-send
-                message += " An OTP has been re-sent to your registered contact for this existing request.";
+                message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) awaiting OTP verification. Please complete or cancel it before initiating a new one. An OTP has been re-sent to your registered contact for this existing request.`;
+            } else if (existingActiveWithdrawal.status === TransactionStatus.PENDING || existingActiveWithdrawal.status === TransactionStatus.PROCESSING) {
+                message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) that is currently being processed. Please be patient and wait for it to complete before initiating a new withdrawal. Processing typically takes a few minutes.`;
+            } else {
+                // Fallback for any other status
+                message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) that is currently ${existingActiveWithdrawal.status.replace(/_/g, ' ')}. Please complete or cancel it before initiating a new one.`;
             }
 
             return {
