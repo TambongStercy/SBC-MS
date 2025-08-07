@@ -47,7 +47,7 @@ export class TransactionStatusChecker {
     }
 
     /**
-     * Main method to check all processing withdrawal transactions
+     * Main method to check all processing withdrawal transactions and stale OTP verifications
      */
     private async checkPendingTransactions(): Promise<void> {
         if (this.isRunning) {
@@ -59,25 +59,27 @@ export class TransactionStatusChecker {
         log.info('Starting transaction status check cycle');
 
         try {
-            // Find all withdrawal transactions with processing status
+            // 1. Check and cancel stale OTP verification withdrawals
+            await this.checkStaleOtpVerifications();
+
+            // 2. Find all withdrawal transactions with processing status
             const processingTransactions = await transactionRepository.findProcessingWithdrawals(100);
 
             if (processingTransactions.length === 0) {
                 log.info('No processing withdrawal transactions found to reconcile.');
-                return;
-            }
+            } else {
+                log.info(`Found ${processingTransactions.length} processing withdrawal transactions to reconcile`);
 
-            log.info(`Found ${processingTransactions.length} processing withdrawal transactions to reconcile`);
-
-            // Process each transaction
-            for (const transaction of processingTransactions) {
-                try {
-                    await this.reconcileWithdrawalStatus(transaction);
-                    // Add small delay between API calls to be respectful
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                } catch (error) {
-                    log.error(`Error reconciling status for transaction ${transaction.transactionId}: ${error}`);
-                    // Continue with next transaction even if one fails
+                // Process each transaction
+                for (const transaction of processingTransactions) {
+                    try {
+                        await this.reconcileWithdrawalStatus(transaction);
+                        // Add small delay between API calls to be respectful
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    } catch (error) {
+                        log.error(`Error reconciling status for transaction ${transaction.transactionId}: ${error}`);
+                        // Continue with next transaction even if one fails
+                    }
                 }
             }
 
@@ -86,6 +88,24 @@ export class TransactionStatusChecker {
             log.error(`Error in transaction status check cycle: ${error}`);
         } finally {
             this.isRunning = false;
+        }
+    }
+
+    /**
+     * Checks for and cancels withdrawal transactions stuck in PENDING_OTP_VERIFICATION 
+     * status for more than 20 minutes.
+     */
+    private async checkStaleOtpVerifications(): Promise<void> {
+        try {
+            log.info('Checking for stale OTP verification withdrawals...');
+            const result = await paymentService.systemCancelStaleWithdrawals();
+            if (result.cancelledCount > 0) {
+                log.info(`Cancelled ${result.cancelledCount} stale OTP verification withdrawals.`);
+            } else {
+                log.debug('No stale OTP verification withdrawals found.');
+            }
+        } catch (error) {
+            log.error('Error checking stale OTP verifications:', error);
         }
     }
 

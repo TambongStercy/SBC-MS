@@ -1119,8 +1119,8 @@ class PaymentService {
      * This applies only to withdrawals in PENDING_OTP_VERIFICATION status.
      * Once verified and balance is debited, cancellation means refund.
      */
-    async cancelWithdrawal(userId: string | Types.ObjectId, transactionId: string): Promise<void> {
-        log.info(`Attempting to cancel withdrawal transaction ${transactionId} for user ${userId}.`);
+    async cancelWithdrawal(userId: string | Types.ObjectId, transactionId: string, isSystemCall: boolean = false): Promise<void> {
+        log.info(`Attempting to cancel withdrawal transaction ${transactionId} for user ${userId}. System call: ${isSystemCall}`);
 
         const transaction = await transactionRepository.findByTransactionId(transactionId);
 
@@ -1128,7 +1128,7 @@ class PaymentService {
             throw new AppError('Withdrawal transaction not found.', 404);
         }
 
-        if (transaction.userId.toString() !== userId.toString()) {
+        if (!isSystemCall && transaction.userId.toString() !== userId.toString()) {
             throw new AppError('Access denied: You can only cancel your own withdrawals.', 403);
         }
 
@@ -1137,6 +1137,11 @@ class PaymentService {
         }
 
         // Only allow cancellation if in PENDING_OTP_VERIFICATION status
+        if (transaction.status !== TransactionStatus.PENDING_OTP_VERIFICATION) {
+            throw new AppError(`Cannot cancel withdrawal with status '${transaction.status}'. Only withdrawals with status '${TransactionStatus.PENDING_OTP_VERIFICATION}' can be cancelled.`, 400);
+        }
+
+        // Proceed with cancellation logic
         if (transaction.status === TransactionStatus.PENDING_OTP_VERIFICATION) {
             await transactionRepository.update(transaction._id, {
                 status: TransactionStatus.CANCELLED,
@@ -4756,7 +4761,42 @@ class PaymentService {
             log.warn(`Failed to send failure notification for transaction ${transactionId}.`, { error });
         }
     }
-    
+
+    /**
+     * [SYSTEM] Finds and cancels withdrawal transactions stuck in PENDING_OTP_VERIFICATION.
+     * This is intended to be called by a background job.
+     */
+    async systemCancelStaleWithdrawals(): Promise<{ cancelledCount: number }> {
+        const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
+        log.info(`Searching for withdrawals in PENDING_OTP_VERIFICATION status created before ${twentyMinutesAgo.toISOString()}`);
+
+        const staleTransactions = await transactionRepository.find({
+            status: TransactionStatus.PENDING_OTP_VERIFICATION,
+            createdAt: { $lt: twentyMinutesAgo },
+        });
+
+        if (staleTransactions.length === 0) {
+            log.info('No stale withdrawals found.');
+            return { cancelledCount: 0 };
+        }
+
+        log.info(`Found ${staleTransactions.length} stale withdrawals to cancel.`);
+        let cancelledCount = 0;
+
+        for (const transaction of staleTransactions) {
+            try {
+                // Use the existing cancelWithdrawal logic but with a system context
+                await this.cancelWithdrawal(transaction.userId, transaction.transactionId, true);
+                log.info(`System cancelled stale withdrawal ${transaction.transactionId} for user ${transaction.userId}.`);
+                cancelledCount++;
+            } catch (error: any) {
+                log.error(`Failed to system-cancel stale withdrawal ${transaction.transactionId}: ${error.message}`, error);
+            }
+        }
+
+        return { cancelledCount };
+    }
+
 }
 
 // Export singleton instance
