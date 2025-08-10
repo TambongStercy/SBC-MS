@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import logger from '../../utils/logger';
 import { transactionStatusChecker } from '../../jobs/transaction-status-checker.job';
 import transactionRepository from '../../database/repositories/transaction.repository';
+import paymentService from '../../services/payment.service';
+import { withdrawalMonitor } from '../../utils/withdrawal-monitor';
 
 const log = logger.getLogger('AdminController');
 
@@ -122,6 +124,65 @@ export class AdminController {
             res.status(500).json({
                 success: false,
                 message: 'Failed to get processing transactions statistics',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Get withdrawal service status for monitoring
+     */
+    public async getWithdrawalServiceStatus(req: Request, res: Response): Promise<void> {
+        try {
+            const serviceStatus = paymentService.getWithdrawalServiceStatus();
+            const blockedStats = withdrawalMonitor.getBlockedAttemptsStats();
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    ...serviceStatus,
+                    blockedAttempts: blockedStats
+                },
+                message: serviceStatus.feexpayWithdrawalsEnabled 
+                    ? 'All withdrawal services are operational' 
+                    : 'FeexPay withdrawals are currently disabled',
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            log.error(`Error getting withdrawal service status: ${error}`);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get withdrawal service status',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Get recent blocked withdrawal attempts for monitoring
+     */
+    public async getBlockedWithdrawalAttempts(req: Request, res: Response): Promise<void> {
+        try {
+            const limit = parseInt(req.query.limit as string) || 50;
+            const recentAttempts = withdrawalMonitor.getRecentBlockedAttempts(limit);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    attempts: recentAttempts,
+                    count: recentAttempts.length,
+                    limit: limit
+                },
+                message: `Retrieved ${recentAttempts.length} recent blocked withdrawal attempts`,
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            log.error(`Error getting blocked withdrawal attempts: ${error}`);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get blocked withdrawal attempts',
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
         }

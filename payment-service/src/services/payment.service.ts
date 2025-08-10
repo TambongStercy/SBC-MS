@@ -16,6 +16,7 @@ import { countryCodeToDialingPrefix, momoOperatorToCinetpayPaymentMethod, momoOp
 import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
+import { withdrawalMonitor } from '../utils/withdrawal-monitor';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -161,6 +162,24 @@ class PaymentService {
 
     constructor() {
         // Constructor is now empty or can be used for dependency injection
+    }
+
+    /**
+     * Check if FeexPay withdrawals are currently enabled
+     */
+    public isFeexPayWithdrawalsEnabled(): boolean {
+        return config.feexpay.withdrawalsEnabled;
+    }
+
+    /**
+     * Get withdrawal service status for admin monitoring
+     */
+    public getWithdrawalServiceStatus() {
+        return {
+            feexpayWithdrawalsEnabled: config.feexpay.withdrawalsEnabled,
+            cinetpayEnabled: true, // CinetPay is always enabled
+            lastChecked: new Date().toISOString()
+        };
     }
 
     /**
@@ -406,16 +425,27 @@ class PaymentService {
                 throw new AppError(`Unsupported Mobile Money operator: ${momoOperator} or missing currency mapping for it. Please contact support.`, 400);
             }
 
-            // --- SPLIT LOGIC: For withdrawals, Togo (TG) uses FeexPay, not CinetPay ---
+            // --- FEEXPAY WITHDRAWALS CONTROL ---
+            // Check if FeexPay withdrawals are enabled via configuration
             let selectedGateway: PaymentGateway;
-            // OLD: if (countryCode === 'TG') {
-            //     selectedGateway = PaymentGateway.FEEXPAY;
-            //     log.info('Togo withdrawal: Forcing gateway to FEEXPAY (payments use CinetPay, withdrawals use FeexPay)');
-            // } else {
-            //     selectedGateway = this.selectGateway(countryCode);
-            // }
-            // NEW: Togo (TG) withdrawals should use CinetPay, just like payments
-            selectedGateway = this.selectGateway(countryCode);
+            const originalGateway = this.selectGateway(countryCode);
+
+            if (originalGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
+                log.error(`FeexPay withdrawals are currently disabled. Country: ${countryCode}, User: ${userId}`);
+
+                // Track the blocked attempt
+                withdrawalMonitor.logBlockedAttempt({
+                    userId: userId.toString(),
+                    amount: netAmountDesired,
+                    countryCode: countryCode,
+                    timestamp: new Date(),
+                    reason: 'FeexPay withdrawals disabled'
+                });
+
+                throw new AppError('Withdrawals are temporarily unavailable for your region. Please contact support for assistance.', 503);
+            }
+
+            selectedGateway = originalGateway;
 
             // Determine which payout service to use based on country code using the same logic as payments
             let payoutService;
@@ -425,13 +455,13 @@ class PaymentService {
             if (selectedGateway === PaymentGateway.CINETPAY) {
                 payoutService = cinetpayPayoutService;
                 providerName = 'CinetPay';
-                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`;
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`;
                 log.info(`Using CinetPay for payout to ${countryCode} based on gateway selection.`);
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
                 // For countries that use FeexPay
                 payoutService = feexPayPayoutService;
                 providerName = 'FeexPay';
-                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}`; // Assuming a FeexPay webhook endpoint
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`; // Assuming a FeexPay webhook endpoint
                 log.info(`Using FeexPay for payout to ${countryCode} based on gateway selection.`);
             } else {
                 log.error(`Unsupported gateway selected for withdrawal: ${selectedGateway} for country ${countryCode}`);
@@ -705,7 +735,7 @@ class PaymentService {
                     // paymentMethod: cinetpayPaymentMethod, // Removed as per auto-detection strategy
                     description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                     client_transaction_id: updatedTransaction.transactionId,
-                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`
                 });
             } else if (selectedPayoutService === 'FeexPay') {
                 payoutPromise = feexPayPayoutService.initiatePayout({
@@ -718,7 +748,7 @@ class PaymentService {
                     recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
                     description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                     client_transaction_id: updatedTransaction.transactionId,
-                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}` // Assuming FeexPay webhook
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay` // Assuming FeexPay webhook
                 });
             } else {
                 log.error(`Unknown payout service selected for transaction ${updatedTransaction.transactionId}: ${selectedPayoutService}`);
@@ -3728,16 +3758,57 @@ class PaymentService {
             // Use the same gateway selection logic as payments (now CinetPay for Togo withdrawals too)
             const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode);
 
+            // --- FEEXPAY ADMIN WITHDRAWALS CONTROL ---
+            // Ensure admin withdrawals also respect FeexPay blocking
+            if (selectedGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
+                log.error(`Admin attempted FeexPay withdrawal but it's disabled. Admin: ${adminId}, Country: ${withdrawalDetails.accountInfo.countryCode}, User: ${targetUserId}`);
+
+                // Track the blocked admin attempt
+                withdrawalMonitor.logBlockedAttempt({
+                    userId: targetUserId.toString(),
+                    amount: netAmountDesired,
+                    countryCode: withdrawalDetails.accountInfo.countryCode,
+                    timestamp: new Date(),
+                    reason: 'FeexPay admin withdrawal disabled',
+                    adminId: adminId
+                });
+
+                await transactionRepository.update(withdrawalTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(withdrawalTransaction.metadata || {}),
+                        failureReason: 'FeexPay withdrawals are currently disabled',
+                        statusDetails: 'Admin withdrawal blocked due to FeexPay restrictions'
+                    }
+                });
+                throw new AppError('FeexPay withdrawals are currently disabled. Please contact support for assistance.', 503);
+            }
+
+            // --- FEEXPAY ADMIN WITHDRAWALS CONTROL ---
+            // Ensure admin withdrawals also respect FeexPay blocking
+            if (selectedGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
+                log.error(`Admin attempted FeexPay withdrawal but it's disabled. Admin: ${adminId}, Country: ${withdrawalDetails.accountInfo.countryCode}, User: ${targetUserId}`);
+                await transactionRepository.update(withdrawalTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(withdrawalTransaction.metadata || {}),
+                        failureReason: 'FeexPay withdrawals are currently disabled',
+                        statusDetails: 'Admin withdrawal blocked due to FeexPay restrictions'
+                    }
+                });
+                throw new AppError('FeexPay withdrawals are currently disabled. Please contact support for assistance.', 503);
+            }
+
             if (selectedGateway === PaymentGateway.CINETPAY) {
                 payoutService = cinetpayPayoutService;
                 providerName = 'CinetPay';
-                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}`;
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`;
                 log.info(`Using CinetPay for admin payout to ${withdrawalDetails.accountInfo.countryCode} based on gateway selection.`);
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
                 // For countries that use FeexPay
                 payoutService = feexPayPayoutService;
                 providerName = 'FeexPay';
-                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay}`;
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`;
                 log.info(`Using FeexPay for admin payout to ${withdrawalDetails.accountInfo.countryCode} based on gateway selection.`);
             } else {
                 log.error(`Unsupported gateway selected for admin withdrawal: ${selectedGateway} for country ${withdrawalDetails.accountInfo.countryCode}`);
@@ -3975,6 +4046,33 @@ class PaymentService {
 
             // Use the same gateway selection logic as other withdrawal methods
             const selectedGateway = this.selectGateway(recipientDetails.countryCode);
+
+            // --- FEEXPAY ADMIN DIRECT PAYOUT CONTROL ---
+            // Ensure admin direct payouts also respect FeexPay blocking
+            if (selectedGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
+                log.error(`Admin attempted FeexPay direct payout but it's disabled. Admin: ${adminId}, Country: ${recipientDetails.countryCode}`);
+
+                // Track the blocked admin direct payout attempt
+                withdrawalMonitor.logBlockedAttempt({
+                    userId: 'DIRECT_PAYOUT',
+                    amount: netAmountDesired,
+                    countryCode: recipientDetails.countryCode,
+                    timestamp: new Date(),
+                    reason: 'FeexPay admin direct payout disabled',
+                    adminId: adminId
+                });
+
+                await transactionRepository.update(directPayoutTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(directPayoutTransaction.metadata || {}),
+                        failureReason: 'FeexPay payouts are currently disabled',
+                        statusDetails: 'Admin direct payout blocked due to FeexPay restrictions'
+                    }
+                });
+                throw new AppError('FeexPay payouts are currently disabled. Please contact support for assistance.', 503);
+            }
+
             let payoutResult: any;
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
@@ -3989,7 +4087,7 @@ class PaymentService {
                     paymentMethod: recipientDetails.paymentMethod,
                     description: description,
                     client_transaction_id: directPayoutTransaction.transactionId, // Use our internal transaction ID
-                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay}` // Use the dedicated payout webhook
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay` // Use the dedicated payout webhook
                 });
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
                 log.info(`Using FeexPay for admin direct payout to ${recipientDetails.countryCode} based on gateway selection.`);

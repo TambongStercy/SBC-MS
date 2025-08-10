@@ -9,4 +9,8 @@ router.post('/transactions/check/:transactionId', adminController.checkSpecificT
 router.get('/transactions/processing-stats', adminController.getProcessingTransactionsStats);
 router.get('/transactions/details/:transactionId', adminController.getTransactionDetails);
 
+// Admin endpoints for withdrawal service management
+router.get('/withdrawals/service-status', adminController.getWithdrawalServiceStatus);
+router.get('/withdrawals/blocked-attempts', adminController.getBlockedWithdrawalAttempts);
+
 export default router; 

@@ -142,7 +142,7 @@ export class FeexPayPayoutService {
     constructor() {
         this.apiClient = axios.create({
             baseURL: config.feexpay.baseUrl, // Assuming a base URL like 'https://api.feexpay.me/api'
-            timeout: 60000, // 60 seconds timeout
+            timeout: 1800000, // 30 minutes timeout (1800000 milliseconds)
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${config.feexpay.apiKey}`, // Authorization header for all requests

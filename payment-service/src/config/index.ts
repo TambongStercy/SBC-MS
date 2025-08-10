@@ -27,6 +27,7 @@ interface IConfig {
         shopId: string;
         baseUrl: string;
         webhookSecret: string;
+        withdrawalsEnabled: boolean;
     };
     lygos: {
         apiKey: string;
@@ -89,7 +90,8 @@ const config: IConfig = {
         apiKey: process.env.FEEXPAY_API_KEY || '',
         shopId: process.env.FEEXPAY_SHOP_ID || '',
         baseUrl: process.env.FEEXPAY_BASE_URL || 'https://api.feexpay.me/api',
-        webhookSecret: process.env.FEEXPAY_WEBHOOK_SECRET || ''
+        webhookSecret: process.env.FEEXPAY_WEBHOOK_SECRET || '',
+        withdrawalsEnabled: process.env.FEEXPAY_WITHDRAWALS_ENABLED === 'true' // Default to false for security
     },
     lygos: {
         apiKey: process.env.LYGOS_API_KEY || '',
