@@ -1485,7 +1485,11 @@ class PaymentService {
         }
         if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
             log.warn(`Webhook received for already processed payment intent: ${cpm_trans_id}, Status: ${paymentIntent.status}`);
-            return;
+            if (paymentIntent.status === PaymentStatus.SUCCEEDED) {
+                return;
+            } else {
+                log.warn(`Continuing with processing of CinetPay webhook for ${cpm_trans_id} as it is in a final state (${paymentIntent.status}).`);
+            }
         }
 
         // Log amount comparison for fee analysis

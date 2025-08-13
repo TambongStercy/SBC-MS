@@ -424,7 +424,7 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "8E3A64F4-F34A-426E-8F23-4AAD6C88A608",
+  "reference": "F202D83E-8FBA-4DAF-A2A9-C1D96EA65694",
   "amount": 2070,
   "status": "SUCCESSFUL",
   "callback_info": {
@@ -451,22 +451,25 @@ Content-Type: application/json
 
 {
   "cpm_site_id": "5876842",
-  "cpm_trans_id": "JeGGY-6HVgyp",
-  "cpm_trans_date": "2025-07-15 18:24:44",
+  "cpm_trans_id": "kgBbDHI_3iGF",
+  "cpm_trans_date": "2025-08-13 14:02:41",
   "cpm_amount": "2142",
   "cpm_currency": "XOF",
-  "signature": "f7bc2647296a9458ec2219aeb244088460291ab0e992b31218aa05f0a74d4f5e",
-  "payment_method": "MOMO",
-  "cel_phone_num": "0554668483",
-  "cpm_phone_prefixe": "225",
+  "signature": "8b3c8b70e3457f0ded283b18bdf6a40f82866f18cfeeace2381597b8e769a3c2",
+  "payment_method": "WAVESN",
+  "cel_phone_num": "221000",
+  "cpm_phone_prefixe": "221",
   "cpm_language": "fr",
   "cpm_version": "V3",
   "cpm_payment_config": "SINGLE",
   "cpm_page_action": "PAYMENT",
-  "cpm_custom": "{\"sessionId\":\"JeGGY-6HVgyp\"}",
+  "cpm_custom": "{\"sessionId\":\"kgBbDHI_3iGF\"}",
   "cpm_designation": "undefined - undefined",
   "cpm_error_message": "SUCCES"
 }
+
+
+
 
 ###
 # WH2. User A (Referrer) gets the webhook
