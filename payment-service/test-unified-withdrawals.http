@@ -1,0 +1,87 @@
+### Test Unified Withdrawal System
+### This file tests the new unified withdrawal endpoint that supports both mobile money and crypto withdrawals with OTP verification
+
+@baseUrl = http://localhost:3003
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJpZCI6IjY1ZDJiMDM0NGE3ZTJiOWVmYmY2MjA1ZCIsImVtYWlsIjoidGFtYm9uZ3N0ZXJsaW5nQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc1NTUxMTMyNywiZXhwIjoxNzU1NTk3NzI3fQ.fCBSnhcQ09gKrHHR92zFSInMPM3ykRGM0gWzh3xu5mw
+
+### 1. Initiate Mobile Money Withdrawal (Minimum: 500 XAF, must be multiple of 5)
+POST {{baseUrl}}/api/transactions/withdrawal/initiate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "amount": 10000,
+    "withdrawalType": "mobile_money"
+}
+
+### 2. Initiate Crypto Withdrawal (Minimum: $15 USD)
+POST {{baseUrl}}/api/transactions/withdrawal/initiate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "amount": 15,
+    "withdrawalType": "crypto"
+}
+
+### 2a. Test Crypto Minimum Validation (should fail with $5 USD)
+POST {{baseUrl}}/api/transactions/withdrawal/initiate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "amount": 5,
+    "withdrawalType": "crypto"
+}
+
+### 2b. Test Mobile Money Minimum Validation (should fail with 400 XAF)
+POST {{baseUrl}}/api/transactions/withdrawal/initiate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "amount": 400,
+    "withdrawalType": "mobile_money"
+}
+
+### 3. Verify Mobile Money Withdrawal (use transactionId from step 1)
+POST {{baseUrl}}/api/transactions/withdrawal/verify
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "transactionId": "TXN_XXXXXXXXXX",
+    "verificationCode": "123456"
+}
+
+### 4. Verify Crypto Withdrawal (use transactionId from step 2)
+POST {{baseUrl}}/api/transactions/withdrawal/verify
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "transactionId": "TXN_XXXXXXXXXX", 
+    "verificationCode": "123456"
+}
+
+### 5. Cancel a withdrawal if needed
+DELETE {{baseUrl}}/api/transactions/withdrawal/TXN_XXXXXXXXXX/cancel
+Authorization: Bearer {{token}}
+
+### Notes:
+### - The withdrawalType parameter is now required and can be either "mobile_money" or "crypto"
+### - Both withdrawal types now go through OTP verification
+### - Mobile money withdrawals use the user's saved MoMo details
+### - Crypto withdrawals use the user's saved crypto wallet details  
+### - The same verification endpoint handles both types
+### - Users will receive OTP via email or SMS based on their contact info
+###
+### Withdrawal Limits:
+### - Mobile Money: Minimum 500 XAF, must be multiple of 5
+### - Crypto: Minimum $15 USD, no multiple requirement
+### - Daily limit: 3 total withdrawals per day (mobile money + crypto combined)
+###
+### Expected Validation Responses:
+### - $5 crypto: "Minimum crypto withdrawal amount is $15 USD"
+### - 400 XAF mobile money: "Minimum mobile money withdrawal amount is 500 XAF"
+### - Missing withdrawalType: "Withdrawal type is required. Use \"mobile_money\" or \"crypto\"."

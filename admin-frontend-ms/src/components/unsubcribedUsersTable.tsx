@@ -9,6 +9,7 @@ interface User {
   email: string;
   phoneNumber: string;
   balance: number;
+  usdBalance?: number; // Add USD balance field
   avatar: string;
 }
 
@@ -90,7 +91,10 @@ const UnsubcribedUsersTable: React.FC<UnsubcribedUsersTableProps> = ({ users, mo
                   Tel
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Solde
+                  Solde FCFA
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  Solde USD
                 </th>
               </tr>
             </thead>
@@ -117,7 +121,10 @@ const UnsubcribedUsersTable: React.FC<UnsubcribedUsersTableProps> = ({ users, mo
                     {user.phoneNumber}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
-                    {user.balance}
+                    {user.balance ? user.balance.toLocaleString('fr-FR') : '0'} FCFA
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                    {user.usdBalance ? user.usdBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'} USD
                   </td>
                 </motion.tr>
               ))}

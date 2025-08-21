@@ -354,9 +354,10 @@ class PaymentService {
             createdAt: { $gte: today, $lt: tomorrow }
         });
 
-        if (dailyWithdrawalsCount >= 3) {
-            log.warn(`User ${userId} has reached daily withdrawal limit (${dailyWithdrawalsCount} withdrawals today).`);
-            throw new AppError('You have reached your daily limit of 3 withdrawals. Please try again tomorrow.', 429); // 429 Too Many Requests
+        const DAILY_WITHDRAWAL_LIMIT = 3;
+        if (dailyWithdrawalsCount >= DAILY_WITHDRAWAL_LIMIT) {
+            log.warn(`User ${userId} has reached daily withdrawal limit of ${DAILY_WITHDRAWAL_LIMIT} (${dailyWithdrawalsCount} withdrawals today).`);
+            throw new AppError(`Daily withdrawal limit of ${DAILY_WITHDRAWAL_LIMIT} transactions reached. Please try again tomorrow.`, 429); // 429 Too Many Requests
         }
         // --- End Daily Withdrawal Limit Check ---
 
@@ -649,7 +650,105 @@ class PaymentService {
                 log.warn(`Continuing withdrawal processing for ${userId} despite failing to fetch user details.`);
             }
 
-            // Get net amount for notification from metadata
+            // Check if this is a crypto withdrawal
+            const isCryptoWithdrawal = updatedTransaction.metadata?.cryptoWithdrawal;
+
+            if (isCryptoWithdrawal) {
+                // Handle crypto withdrawal verification
+                log.info(`Processing crypto withdrawal verification for transaction ${updatedTransaction.transactionId}`);
+
+                const cryptoAddress = updatedTransaction.metadata?.cryptoAddress;
+                const cryptoCurrency = updatedTransaction.metadata?.cryptoCurrency;
+                const usdAmount = updatedTransaction.metadata?.usdAmount;
+
+                if (!cryptoAddress || !cryptoCurrency || !usdAmount) {
+                    log.error(`Transaction ${updatedTransaction.transactionId} missing crypto withdrawal details.`);
+                    await transactionRepository.update(updatedTransaction._id, {
+                        status: TransactionStatus.FAILED,
+                        metadata: {
+                            ...(updatedTransaction.metadata || {}),
+                            failureReason: 'Missing crypto withdrawal details.',
+                            statusDetails: 'Crypto payout could not be initiated due to incomplete crypto info in transaction record.'
+                        }
+                    });
+                    throw new AppError('Incomplete crypto withdrawal details in transaction record. Cannot proceed with payout.', 500);
+                }
+
+                // Send initial crypto withdrawal notification
+                if (userEmail) {
+                    await notificationService.sendTransactionSuccessEmail({
+                        email: userEmail,
+                        name: userName || 'Customer',
+                        transactionType: 'crypto_withdrawal_initiated',
+                        transactionId: updatedTransaction.transactionId,
+                        amount: usdAmount,
+                        currency: cryptoCurrency,
+                        date: updatedTransaction.createdAt.toISOString()
+                    });
+                    log.info(`Initial crypto withdrawal notification sent for transaction ${transactionId}.`);
+                }
+
+                // Use the existing createCryptoPayout method for the actual payout
+                this.createCryptoPayout(
+                    userId,
+                    usdAmount,
+                    cryptoCurrency,
+                    cryptoAddress,
+                    `Verified crypto withdrawal for Transaction ${updatedTransaction.transactionId}`,
+                    updatedTransaction.ipAddress,
+                    updatedTransaction.deviceInfo
+                ).then(cryptoResult => {
+                    if (cryptoResult.success) {
+                        log.info(`Crypto payout initiated for transaction ${updatedTransaction.transactionId}. NOWPayments Payout ID: ${cryptoResult.payoutId}`);
+                        transactionRepository.update(updatedTransaction._id, {
+                            externalTransactionId: cryptoResult.payoutId,
+                            serviceProvider: 'nowpayments',
+                            status: TransactionStatus.PROCESSING,
+                            metadata: {
+                                ...(updatedTransaction.metadata || {}),
+                                payoutInitiationStatus: 'initiated',
+                                payoutMessage: cryptoResult.message || 'Crypto payout initiated successfully',
+                                nowpaymentsPayoutId: cryptoResult.payoutId,
+                                nowpaymentsWithdrawalId: cryptoResult.withdrawalId
+                            }
+                        }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} with NOWPayments payout details:`, err));
+                    } else {
+                        log.error(`Crypto payout failed for transaction ${updatedTransaction.transactionId}: ${cryptoResult.message}`);
+                        transactionRepository.update(updatedTransaction._id, {
+                            status: TransactionStatus.FAILED,
+                            metadata: {
+                                ...(updatedTransaction.metadata || {}),
+                                failureReason: 'Crypto payout failed',
+                                payoutError: cryptoResult.message
+                            }
+                        }).catch(err => log.error(`Failed to update failed crypto transaction ${updatedTransaction.transactionId}:`, err));
+                    }
+                }).catch(error => {
+                    log.error(`Error during crypto payout for transaction ${updatedTransaction.transactionId}:`, error);
+                    transactionRepository.update(updatedTransaction._id, {
+                        status: TransactionStatus.FAILED,
+                        metadata: {
+                            ...(updatedTransaction.metadata || {}),
+                            failureReason: 'Crypto payout exception',
+                            payoutError: error.message
+                        }
+                    }).catch(err => log.error(`Failed to update failed crypto transaction ${updatedTransaction.transactionId}:`, err));
+                });
+
+                // Return success response for crypto withdrawal
+                return {
+                    success: true,
+                    transaction: {
+                        transactionId: updatedTransaction.transactionId,
+                        status: updatedTransaction.status,
+                        amount: usdAmount,
+                        currency: cryptoCurrency,
+                        message: `Crypto withdrawal of ${usdAmount} USD to ${cryptoAddress.substring(0, 10)}... initiated successfully.`
+                    }
+                };
+            }
+
+            // Handle mobile money withdrawal (existing logic)
             const netAmountForPayout = updatedTransaction.metadata?.netAmountRequested;
             const targetPayoutCurrency = updatedTransaction.metadata?.payoutCurrency as Currency;
             const selectedPayoutService = updatedTransaction.metadata?.selectedPayoutService as 'CinetPay' | 'FeexPay';
@@ -1709,6 +1808,7 @@ class PaymentService {
                 payoutId: payoutResponse.id,
                 withdrawalId: payoutResponse.withdrawalId,
                 status: payoutResponse.status,
+                amount: netAmountDesired, // Added this line
                 message: 'Crypto payout initiated successfully'
             };
 
@@ -1716,6 +1816,154 @@ class PaymentService {
             log.error(`Error creating crypto payout for user ${userId}:`, error);
             throw new Error(`Failed to create crypto payout: ${error.message}`);
         }
+    }
+
+    /**
+     * Initiate a crypto withdrawal with OTP verification (unified withdrawal flow).
+     * This method creates a transaction in PENDING_OTP_VERIFICATION status and sends an OTP.
+     * The actual withdrawal is processed after OTP verification via verifyWithdrawal.
+     */
+    public async initiateCryptoWithdrawalWithOTP(
+        userId: string | Types.ObjectId,
+        usdAmount: number,
+        ipAddress?: string,
+        deviceInfo?: string
+    ) {
+        log.info(`Initiating crypto withdrawal with OTP for user ${userId}: ${usdAmount} USD`);
+
+        // --- Daily Withdrawal Limit Check ---
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setUTCDate(today.getUTCDate() + 1);
+
+        const dailyWithdrawalsCount = await TransactionModel.countDocuments({
+            userId: new Types.ObjectId(userId.toString()),
+            type: TransactionType.WITHDRAWAL,
+            status: { $in: [TransactionStatus.COMPLETED, TransactionStatus.PENDING, TransactionStatus.PROCESSING, TransactionStatus.PENDING_OTP_VERIFICATION] },
+            createdAt: { $gte: today, $lt: tomorrow }
+        });
+
+        const DAILY_WITHDRAWAL_LIMIT = 3;
+        if (dailyWithdrawalsCount >= DAILY_WITHDRAWAL_LIMIT) {
+            log.warn(`User ${userId} has reached daily withdrawal limit of ${DAILY_WITHDRAWAL_LIMIT}.`);
+            throw new AppError(`Daily withdrawal limit of ${DAILY_WITHDRAWAL_LIMIT} transactions reached. Please try again tomorrow.`, 400);
+        }
+
+        // Get user details and crypto wallet information
+        const userDetails = await userServiceClient.getUserDetails(userId.toString());
+        if (!userDetails) {
+            throw new AppError('User not found.', 404);
+        }
+
+        // Check if user has crypto wallet configured
+        if (!userDetails.cryptoWalletAddress || !userDetails.cryptoWalletCurrency) {
+            throw new AppError('Crypto wallet not configured. Please set up your crypto wallet in your profile first.', 400);
+        }
+
+        // Check withdrawal limits from user service
+        const limitCheck = await userServiceClient.checkWithdrawalLimits(userId.toString(), usdAmount);
+        if (!limitCheck.allowed) {
+            throw new AppError(limitCheck.reason || 'Crypto withdrawal not permitted at this time.', 400);
+        }
+
+        // Check if there's already a pending crypto withdrawal
+        const existingPendingWithdrawal = await TransactionModel.findOne({
+            userId: new Types.ObjectId(userId.toString()),
+            type: TransactionType.WITHDRAWAL,
+            status: { $in: [TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
+            'metadata.payoutMethod': 'nowpayments'
+        });
+
+        if (existingPendingWithdrawal) {
+            const result = {
+                success: true,
+                transactionId: existingPendingWithdrawal.transactionId,
+                amount: existingPendingWithdrawal.metadata?.usdAmount || existingPendingWithdrawal.amount,
+                fee: existingPendingWithdrawal.fee,
+                total: (existingPendingWithdrawal.metadata?.usdAmount || existingPendingWithdrawal.amount || 0) + (existingPendingWithdrawal.fee || 0),
+                status: existingPendingWithdrawal.status,
+                expiresAt: existingPendingWithdrawal.verificationExpiry,
+                message: 'You have a pending crypto withdrawal. Please verify it using the OTP sent to your registered contact or cancel it before initiating a new one.'
+            };
+            return result;
+        }
+
+        // Calculate fees - use existing fee calculation for crypto (method: 'crypto')
+        const cryptoFeeInXAF = this.calculateWithdrawalFee(usdAmount, Currency.XAF, 'crypto');
+        const usdAmountInXAF = await this.convertCurrency(usdAmount, Currency.USD, Currency.XAF);
+        const grossAmountToDebitInXAF = usdAmountInXAF + cryptoFeeInXAF;
+
+        log.info(`Crypto withdrawal: ${usdAmount} USD (${usdAmountInXAF} XAF) + ${cryptoFeeInXAF} XAF fee = ${grossAmountToDebitInXAF} XAF total debit`);
+
+        // Generate OTP
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+        // Create transaction in PENDING_OTP_VERIFICATION status
+        const transactionInput: CreateTransactionInput = {
+            userId,
+            type: TransactionType.WITHDRAWAL,
+            amount: usdAmountInXAF, // Store in XAF for balance deduction consistency
+            fee: cryptoFeeInXAF,
+            currency: Currency.XAF, // Balance deduction currency
+            status: TransactionStatus.PENDING_OTP_VERIFICATION,
+            description: `Crypto withdrawal request for ${usdAmount} USD to ${userDetails.cryptoWalletAddress.substring(0, 10)}...`,
+            metadata: {
+                cryptoWithdrawal: true,
+                payoutMethod: 'nowpayments',
+                serviceProvider: 'nowpayments',
+                paymentMethod: `crypto_${userDetails.cryptoWalletCurrency.toLowerCase()}`,
+                cryptoAddress: userDetails.cryptoWalletAddress,
+                cryptoCurrency: userDetails.cryptoWalletCurrency,
+                usdAmount: usdAmount, // Store original USD amount
+                netAmountRequested: usdAmount,
+                payoutCurrency: userDetails.cryptoWalletCurrency
+            },
+            verificationCode,
+            verificationExpiry,
+            ipAddress,
+            deviceInfo
+        };
+
+        const transaction = await transactionRepository.create(transactionInput);
+
+        // Send OTP notification via email or SMS
+        const userName = userDetails.name || 'User';
+
+        // Prefer email, fallback to SMS if no email available
+        if (userDetails.email || userDetails.phoneNumber) {
+            try {
+                const otpRequest = {
+                    userId: userId.toString(),
+                    recipient: userDetails.email || (userDetails.phoneNumber ? userDetails.phoneNumber.toString() : ''),
+                    channel: userDetails.email ? DeliveryChannel.EMAIL : DeliveryChannel.SMS,
+                    code: verificationCode,
+                    expireMinutes: 10,
+                    isRegistration: false,
+                    userName,
+                    purpose: 'crypto_withdrawal',
+                    description: `Crypto withdrawal of ${usdAmount} USD to ${userDetails.cryptoWalletAddress.substring(0, 10)}...`
+                };
+
+                await notificationService.sendVerificationOTP(otpRequest);
+                log.info(`Crypto withdrawal OTP sent for transaction ${transaction.transactionId}`);
+            } catch (error: any) {
+                log.error(`Failed to send crypto withdrawal OTP: ${error.message}`);
+                // Don't fail the transaction, but log the error
+            }
+        }
+
+        return {
+            success: true,
+            transactionId: transaction.transactionId,
+            amount: usdAmount, // Return USD amount to user
+            fee: cryptoFeeInXAF / (usdAmountInXAF / usdAmount), // Convert fee back to USD for display
+            total: usdAmount + (cryptoFeeInXAF / (usdAmountInXAF / usdAmount)),
+            status: transaction.status,
+            expiresAt: verificationExpiry,
+            message: 'Crypto withdrawal OTP sent to your registered contact. Please verify to complete the withdrawal.'
+        };
     }
 
     /**

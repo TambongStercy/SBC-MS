@@ -32,6 +32,7 @@ export interface AdminUserData {
     region?: string;
     city?: string;
     balance?: number;
+    usdBalance?: number; // Add USD balance field
     role?: string;
     blocked?: boolean;
     deleted?: boolean;

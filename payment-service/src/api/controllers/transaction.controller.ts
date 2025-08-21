@@ -214,7 +214,7 @@ export class TransactionController {
 
     /**
      * Initiate a withdrawal transaction for the authenticated user.
-     * The method and account information will be derived from the user's registered MoMo details.
+     * Supports both mobile money and crypto withdrawals with OTP verification.
      * @route POST /api/transactions/withdrawal/initiate
      */
     async initiateWithdrawal(req: Request, res: Response) {
@@ -224,24 +224,45 @@ export class TransactionController {
                 return res.status(401).json({ success: false, message: 'User not authenticated' });
             }
 
-            const { amount } = req.body; // Only amount and currency are required in the request
+            const { amount, withdrawalType } = req.body;
 
-            if (!amount) {
+            if (!amount || !withdrawalType) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Amount and currency are required'
+                    message: 'Amount and withdrawal type are required. Use "mobile_money" or "crypto" for withdrawalType.'
                 });
             }
 
-            // The paymentService will now fetch the user's MoMo details internally
-            const withdrawalResult = await paymentService.initiateWithdrawal(
-                userId,
-                amount,
-                req.ip || '',
-                req.get('User-Agent') || ''
-            );
+            if (!['mobile_money', 'crypto'].includes(withdrawalType)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid withdrawal type. Use "mobile_money" or "crypto".'
+                });
+            }
 
-            log.info(`Withdrawal result: ${JSON.stringify(withdrawalResult)}`);
+            const ipAddress = req.ip || '';
+            const deviceInfo = req.get('User-Agent') || '';
+
+            // Route to appropriate withdrawal method based on type
+            let withdrawalResult;
+            if (withdrawalType === 'crypto') {
+                withdrawalResult = await paymentService.initiateCryptoWithdrawalWithOTP(
+                    userId,
+                    amount,
+                    ipAddress,
+                    deviceInfo
+                );
+            } else {
+                // Mobile money withdrawal (existing flow)
+                withdrawalResult = await paymentService.initiateWithdrawal(
+                    userId,
+                    amount,
+                    ipAddress,
+                    deviceInfo
+                );
+            }
+
+            log.info(`${withdrawalType} withdrawal result: ${JSON.stringify(withdrawalResult)}`);
 
             // If a message about existing pending withdrawal is returned, include it
             if (withdrawalResult.message) {
@@ -329,6 +350,7 @@ export class TransactionController {
             });
         }
     }
+
 
     async test(req: Request, res: Response) {
         try {

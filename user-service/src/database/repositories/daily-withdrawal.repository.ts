@@ -85,6 +85,42 @@ export class DailyWithdrawalRepository {
     }
 
     /**
+     * Increments successful withdrawal count for a user on a specific date
+     * @param userId - User ID
+     * @param date - Date of withdrawal
+     * @param amount - Amount withdrawn (to add to totalAmount)
+     * @returns The updated withdrawal record
+     */
+    async incrementSuccessfulWithdrawal(userId: string | Types.ObjectId, date: Date, amount: number): Promise<IDailyWithdrawal | null> {
+        try {
+            const startOfDay = new Date(date);
+            startOfDay.setHours(0, 0, 0, 0);
+
+            return await DailyWithdrawalModel.findOneAndUpdate(
+                { 
+                    userId: new Types.ObjectId(userId.toString()), 
+                    date: startOfDay 
+                },
+                { 
+                    $inc: { 
+                        successfulCount: 1,
+                        totalAmount: amount,
+                        count: 1
+                    }
+                },
+                { 
+                    new: true, 
+                    upsert: true,
+                    setDefaultsOnInsert: true
+                }
+            ).exec();
+        } catch (error) {
+            logger.error('Error in incrementSuccessfulWithdrawal:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Gets all daily withdrawal records with pagination
      * @param page - Page number (default: 1)
      * @param limit - Items per page (default: 10)

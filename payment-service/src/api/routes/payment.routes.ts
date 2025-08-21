@@ -67,10 +67,17 @@ router.post('/webhooks/nowpayments/payout', paymentController.handleNowPaymentsP
 router.get('/crypto/currencies', paymentController.getAvailableCryptoCurrencies);
 
 // Get crypto payment estimate
+router.post('/crypto-estimate', paymentController.getCryptoEstimate);
 router.get('/crypto/estimate', paymentController.getCryptoPaymentEstimate);
 
-// Create crypto payout (requires authentication in production)
-router.post('/crypto/payout', paymentController.createCryptoPayout);
+// Create crypto payment intent
+router.post('/crypto-payment', paymentController.createCryptoPayment);
+
+// Get payment status
+router.get('/status/:sessionId', paymentController.getPaymentStatus);
+
+// Create crypto payout (requires authentication)
+router.post('/crypto/payout', authenticate, paymentController.createCryptoPayout);
 
 // Debug NOWPayments connection
 router.get('/crypto/debug', paymentController.debugNowPayments);

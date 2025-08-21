@@ -24,6 +24,7 @@ export enum PaymentGateway {
     FEEXPAY = 'feexpay',
     CINETPAY = 'cinetpay',
     LYGOS = 'lygos',
+    NOWPAYMENTS = 'nowpayments',
     TESTING = 'testing'
 }
 
@@ -44,6 +45,8 @@ export interface PaymentIntent {
     gatewayPaymentId?: string;
     paidAmount?: number;
     paidCurrency?: string;
+    payAmount?: number; // For crypto payments (NOWPayments)
+    payCurrency?: string; // For crypto payments (NOWPayments)
     phoneNumber?: string;
     countryCode?: string;
     operator?: string;

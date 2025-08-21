@@ -72,12 +72,20 @@ function RetraitAdmin() {
     <div className="flex-1 overflow-auto relative z-10">
       <Header title="Retrait" />
       <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8 ">
-        <StatCard
-          name="Solde Admin"
-          value={adminData?.balance + ' FCFA'}
-          icon={BadgeSwissFranc}
-          color="#6366F1"
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <StatCard
+            name="Solde Admin (FCFA)"
+            value={adminData?.balance ? adminData.balance.toLocaleString('fr-FR') + ' FCFA' : '0 FCFA'}
+            icon={BadgeSwissFranc}
+            color="#6366F1"
+          />
+          <StatCard
+            name="Solde Admin (USD)"
+            value={adminData?.usdBalance ? adminData.usdBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : '0.00 USD'}
+            icon={HandCoins}
+            color="#10B981"
+          />
+        </div>
         <motion.div
           className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 mt-2"
           initial={{ opacity: 0, y: 20 }}

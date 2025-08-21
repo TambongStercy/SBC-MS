@@ -110,6 +110,17 @@ interface ActivityOverviewResponseData {
     payments: number;
 }
 
+interface TransactionRecoveryResult {
+    restoredCount: number;
+    message: string;
+}
+
+interface UserRecoveryStats {
+    totalRecoverable: number;
+    totalAmount: number;
+    byProvider: Record<string, number>;
+}
+
 class PaymentServiceClient {
     private apiClient: AxiosInstance;
     private log = logger.getLogger('PaymentServiceClient');
@@ -421,6 +432,72 @@ class PaymentServiceClient {
                 throw new AppError(`Failed to retrieve admin balance from payment service. Status: ${error.response.status}, Message: ${error.response.data?.message || 'Unknown error'}`, error.response.status);
             }
             throw new AppError(`Failed to retrieve admin balance from payment service.`, 500);
+        }
+    }
+
+    /**
+     * Process user registration to restore recoverable transactions
+     */
+    async processUserRegistrationForRecovery(
+        userId: string, 
+        email?: string, 
+        phoneNumber?: string
+    ): Promise<TransactionRecoveryResult> {
+        try {
+            this.log.info(`Requesting transaction recovery for user: ${userId}`);
+            
+            const response = await this.apiClient.post<ApiResponse<TransactionRecoveryResult>>('/internal/recovery/process-user-registration', {
+                userId,
+                email,
+                phoneNumber
+            });
+
+            if (response.data.success && response.data.data) {
+                this.log.info(`Transaction recovery completed for user ${userId}: ${response.data.data.restoredCount} transactions restored`);
+                return response.data.data;
+            } else {
+                this.log.warn(`Transaction recovery failed for user ${userId}: ${response.data.message}`);
+                return {
+                    restoredCount: 0,
+                    message: response.data.message || 'Recovery failed'
+                };
+            }
+        } catch (error: any) {
+            this.log.error(`Error during transaction recovery for user ${userId}:`, error);
+            
+            // Don't throw error to avoid breaking user registration if recovery fails
+            return {
+                restoredCount: 0,
+                message: 'Recovery service unavailable'
+            };
+        }
+    }
+
+    /**
+     * Get recovery statistics for a user
+     */
+    async getUserRecoveryStats(email?: string, phoneNumber?: string): Promise<UserRecoveryStats> {
+        try {
+            const response = await this.apiClient.get<ApiResponse<UserRecoveryStats>>('/internal/recovery/user-stats', {
+                params: { email, phoneNumber }
+            });
+
+            if (response.data.success && response.data.data) {
+                return response.data.data;
+            } else {
+                return {
+                    totalRecoverable: 0,
+                    totalAmount: 0,
+                    byProvider: {}
+                };
+            }
+        } catch (error: any) {
+            this.log.error(`Error getting user recovery stats:`, error);
+            return {
+                totalRecoverable: 0,
+                totalAmount: 0,
+                byProvider: {}
+            };
         }
     }
 }

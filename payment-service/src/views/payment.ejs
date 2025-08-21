@@ -778,7 +778,7 @@
                             <!-- Amount Display -->
                             <div class="amount-card animate-slide-up delay-400">
                                 <div class="amount-text">
-                                    Montant dû: <%= amount %>
+                                    Montant dû: <%= amount.toFixed(2) %>
                                         <%= currency %>
                                 </div>
                             </div>
@@ -1040,7 +1040,9 @@
                                                     </div>
 
                                                     <!-- QR Code Container -->
-                                                    <div id="qrcode-container" class="qr-container"></div>
+                                                    <div id="qrcode-container" class="qr-container">
+                                                        <!-- The QR code will be injected here by JavaScript -->
+                                                    </div>
 
                                                     <!-- Crypto Address -->
                                                     <% if (typeof cryptoAddress !=='undefined' && cryptoAddress) { %>
@@ -1116,283 +1118,14 @@
             var gateway = "<%= gateway %>";
             var gatewayPaymentId = "<%= gatewayPaymentId %>";
             var cryptoAddress = "<%= (typeof cryptoAddress !== 'undefined' && cryptoAddress !== null) ? cryptoAddress : '' %>";
-            var isBeta = true; // Flag to control beta features like crypto payments
+            var cryptoQrCodeBase64 = "<%= (typeof cryptoQrCodeBase64 !== 'undefined' && cryptoQrCodeBase64 !== null) ? cryptoQrCodeBase64 : '' %>";
+            var isBeta = true; // Flag to control beta features like crypto payments - ENABLED for crypto
 
-            // Enhanced payment method switching
-            document.addEventListener('DOMContentLoaded', function() {
-                const methodCards = document.querySelectorAll('.method-card');
-                const mobileMoneyFields = document.getElementById('mobile-money-fields');
-                const cryptoFields = document.getElementById('crypto-fields');
-                const cryptoCard = document.querySelector('.method-card.crypto');
-                const mobileMoneyCard = document.querySelector('.method-card.mobile-money');
-
-                // Centralized logic for beta state
-                if (isBeta) {
-                    // 1. Ensure crypto fields are and remain hidden
-                    if (cryptoFields) {
-                        cryptoFields.classList.add('hidden');
-                    }
-
-                    // 2. Set mobile money as the default and only active selection
-                    if (mobileMoneyCard) {
-                        methodCards.forEach(c => c.classList.remove('selected'));
-                        mobileMoneyCard.classList.add('selected');
-                        const mobileMoneyRadio = mobileMoneyCard.querySelector('input[type="radio"]');
-                        if (mobileMoneyRadio) mobileMoneyRadio.checked = true;
-                        if (mobileMoneyFields) mobileMoneyFields.classList.remove('hidden');
-                    }
-
-                    // 3. Attach a specific, simple listener to the crypto card to show the popup
-                    if (cryptoCard) {
-                        cryptoCard.addEventListener('click', function(event) {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            showComingSoonPopup();
-                        });
-                    }
-
-                    // 4. Attach a listener only to the mobile money card for any interaction
-                    if (mobileMoneyCard) {
-                        mobileMoneyCard.addEventListener('click', function() {
-                             // No action needed, it's already selected. This prevents other listeners from interfering.
-                        });
-                    }
-                } else {
-                    // Original functionality when isBeta is false
-                    methodCards.forEach(card => {
-                        card.addEventListener('click', function() {
-                            const method = this.dataset.method;
-                            const radio = this.querySelector('input[type="radio"]');
-
-                            methodCards.forEach(c => c.classList.remove('selected'));
-                            this.classList.add('selected');
-                            if(radio) radio.checked = true;
-
-                            if (method === 'mobile_money') {
-                                if (mobileMoneyFields) mobileMoneyFields.classList.remove('hidden');
-                                if (cryptoFields) cryptoFields.classList.add('hidden');
-                            } else if (method === 'cryptocurrency') {
-                                if (mobileMoneyFields) mobileMoneyFields.classList.add('hidden');
-                                if (cryptoFields) cryptoFields.classList.remove('hidden');
-                            }
-                        });
-                    });
-                }
-
-                // Enhanced QR Code generation
-                function displayCryptoQrCode(address) {
-                    console.log('displayCryptoQrCode called with address:', address);
-
-                    if (!address || address.trim() === '') {
-                        console.log('Cannot create QR code - missing address');
-                        showQrCodeFallback('No address provided');
-                        return;
-                    }
-
-                    const trimmedAddress = address.trim();
-
-                    if (typeof window.createQrCode === 'function') {
-                        // Clear the container first
-                        const container = document.getElementById('qrcode-container');
-                        if (container) {
-                            container.innerHTML = '';
-                        }
-                        window.createQrCode(trimmedAddress);
-                    } else {
-                        console.error('QR Code library not loaded properly');
-                        showQrCodeFallback(trimmedAddress);
-                    }
-                }
-
-                function showQrCodeFallback(address) {
-                    console.log('Using QR code fallback. Displaying placeholder.');
-                    const container = document.getElementById('qrcode-container');
-                    if (container) {
-                        container.innerHTML = `
-                            <div class="qr-fallback">
-                                <svg class="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                </svg>
-                                <p class="text-sm text-gray-600 mb-1 font-medium">QR code indisponible</p>
-                                <p class="text-xs text-gray-500">Veuillez copier l'adresse manuellement</p>
-                            </div>
-                        `;
-                    }
-                }
-
-                // Copy to clipboard functionality (CSP compliant)
-                const copyButton = document.getElementById('copy-address-btn');
-                if (copyButton) {
-                    copyButton.addEventListener('click', function () {
-                        const textToCopy = document.getElementById('crypto-address-text').innerText;
-
-                        if (navigator.clipboard && window.isSecureContext) {
-                            navigator.clipboard.writeText(textToCopy).then(() => {
-                                // Visual feedback
-                                copyButton.classList.add('copied');
-                                copyButton.innerHTML = `
-                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                                    </svg>
-                                `;
-
-                                setTimeout(() => {
-                                    copyButton.classList.remove('copied');
-                                    copyButton.innerHTML = `
-                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-                                        </svg>
-                                    `;
-                                }, 2000);
-                            }).catch(err => {
-                                console.error('Failed to copy to clipboard:', err);
-                                showCopyFallback(textToCopy);
-                            });
-                        } else {
-                            showCopyFallback(textToCopy);
-                        }
-                    });
-                }
-
-                function showCopyFallback(text) {
-                    // Fallback for older browsers
-                    const textArea = document.createElement('textarea');
-                    textArea.value = text;
-                    textArea.style.position = 'absolute';
-                    textArea.style.left = '-9999px';
-                    document.body.appendChild(textArea);
-                    textArea.select();
-
-                    try {
-                        document.execCommand('copy');
-                        // Show success feedback
-                        const copyButton = document.getElementById('copy-address-btn');
-                        if (copyButton) {
-                            copyButton.classList.add('copied');
-                            setTimeout(() => {
-                                copyButton.classList.remove('copied');
-                            }, 2000);
-                        }
-                    } catch (err) {
-                        console.error('Failed to copy to clipboard:', err);
-                        alert('Failed to copy address. Please copy manually.');
-                    }
-
-                    document.body.removeChild(textArea);
-                }
-
-                // Function to show coming soon popup
-                function showComingSoonPopup() {
-                    // Create modal overlay
-                    const overlay = document.createElement('div');
-                    overlay.style.cssText = `
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        height: 100%;
-                        background: rgba(0, 0, 0, 0.5);
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        z-index: 1000;
-                        backdrop-filter: blur(5px);
-                    `;
-
-                    // Create modal content
-                    const modal = document.createElement('div');
-                    modal.style.cssText = `
-                        background: white;
-                        border-radius: 20px;
-                        padding: 40px;
-                        max-width: 400px;
-                        width: 90%;
-                        text-align: center;
-                        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-                        position: relative;
-                        animation: modalSlideIn 0.3s ease-out;
-                    `;
-
-                    modal.innerHTML = `
-                        <div style="width: 80px; height: 80px; margin: 0 auto 24px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                            <svg style="width: 40px; height: 40px; color: white;" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                            </svg>
-                        </div>
-                        <h3 style="font-size: 24px; font-weight: 700; color: #1f2937; margin-bottom: 16px;">Paiements Crypto</h3>
-                        <p style="font-size: 16px; color: #6b7280; margin-bottom: 8px; line-height: 1.6;">🚀 Bientôt disponible!</p>
-                        <p style="font-size: 14px; color: #9ca3af; margin-bottom: 32px;">Les paiements et retraits en cryptomonnaie arriveront prochainement sur SBC.</p>
-                        <button id="closeModal" style="
-                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                            color: white;
-                            border: none;
-                            border-radius: 12px;
-                            padding: 12px 24px;
-                            font-size: 16px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            transition: transform 0.2s ease;
-                        " onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-                            Compris
-                        </button>
-                    `;
-
-                    // Add animation keyframes
-                    if (!document.getElementById('modal-animations')) {
-                        const style = document.createElement('style');
-                        style.id = 'modal-animations';
-                        style.textContent = `
-                            @keyframes modalSlideIn {
-                                from {
-                                    opacity: 0;
-                                    transform: translateY(-50px) scale(0.9);
-                                }
-                                to {
-                                    opacity: 1;
-                                    transform: translateY(0) scale(1);
-                                }
-                            }
-                        `;
-                        document.head.appendChild(style);
-                    }
-
-                    overlay.appendChild(modal);
-                    document.body.appendChild(overlay);
-
-                    // Close modal functionality
-                    const closeModal = () => {
-                        modal.style.animation = 'modalSlideIn 0.2s ease-out reverse';
-                        setTimeout(() => {
-                            document.body.removeChild(overlay);
-                        }, 200);
-                    };
-
-                    modal.querySelector('#closeModal').addEventListener('click', closeModal);
-                    overlay.addEventListener('click', function (e) {
-                        if (e.target === overlay) {
-                            closeModal();
-                        }
-                    });
-
-                    // Close on Escape key
-                    document.addEventListener('keydown', function escapeHandler(e) {
-                        if (e.key === 'Escape') {
-                            closeModal();
-                            document.removeEventListener('keydown', escapeHandler);
-                        }
-                    });
-                }
-
-                // Generate QR code if crypto address available
-                if (cryptoAddress && cryptoAddress.trim() !== '' && document.getElementById('qrcode-container')) {
-                    console.log('Generating QR code for address:', cryptoAddress);
-                    setTimeout(function () {
-                        displayCryptoQrCode(cryptoAddress);
-                    }, 200);
-                } else {
-                    console.log('No crypto address available for QR generation or container not found');
-                }
-            });
+            console.log('EJS Variables:');
+            console.log('  sessionId:', sessionId);
+            console.log('  paymentStatus:', paymentStatus);
+            console.log('  cryptoAddress:', cryptoAddress);
+            console.log('  cryptoQrCodeBase64 length:', cryptoQrCodeBase64.length > 0 ? cryptoQrCodeBase64.length : 'empty');
         </script>
         <script src="<%= assetBasePath %>/js/payment.js?v=<%= cacheBuster %>"></script>
     </body>

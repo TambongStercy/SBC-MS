@@ -4,6 +4,12 @@
 function createQrCode(address) {
   console.log('createQrCode called with address:', address);
 
+  const container = document.getElementById('qrcode-container');
+  if (container && container.querySelector('img')) {
+    console.log('Base64 QR code image already present, skipping JS QR generation');
+    return;
+  }
+
   if (createQrCode.processing) {
     console.log('QR code generation already in progress');
     return;

@@ -35,7 +35,8 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Phone Number</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance FCFA</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance USD</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Country</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
           <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>
@@ -54,7 +55,8 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100">{user.name}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.email}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.phoneNumber || 'N/A'}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.balance !== undefined ? user.balance.toFixed(2) : 'N/A'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.balance !== undefined ? user.balance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' FCFA' : 'N/A'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.usdBalance !== undefined ? user.usdBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : '0.00 USD'}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.country || 'N/A'}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm">
               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.blocked ? 'bg-red-500 text-red-100' : user.deleted ? 'bg-gray-500 text-gray-100' : 'bg-green-500 text-green-100'}`}>

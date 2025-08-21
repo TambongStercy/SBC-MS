@@ -312,8 +312,17 @@ function TransactionManagementPage() {
                                                 <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(tx.status)}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                     {tx.amount?.toLocaleString() || 'N/A'} {tx.currency}
-                                                    {tx.paidAmount && tx.paidAmount !== tx.amount && (
-                                                        <span className="block text-xs text-gray-400"> (Paid: {tx.paidAmount.toLocaleString()} {tx.paidCurrency})</span>
+                                                    {/* Show crypto payment details for NOWPAYMENTS */}
+                                                    {tx.gateway === 'nowpayments' && tx.payAmount && tx.payCurrency && (
+                                                        <span className="block text-xs text-gray-400">
+                                                            Crypto: {tx.payAmount.toLocaleString()} {tx.payCurrency}
+                                                        </span>
+                                                    )}
+                                                    {/* Show regular payment details for other gateways */}
+                                                    {tx.gateway !== 'nowpayments' && tx.paidAmount && tx.paidAmount !== tx.amount && (
+                                                        <span className="block text-xs text-gray-400">
+                                                            Paid: {tx.paidAmount.toLocaleString()} {tx.paidCurrency}
+                                                        </span>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{tx.gateway}</td>

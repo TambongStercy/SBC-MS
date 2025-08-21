@@ -63,10 +63,14 @@ export class UserController {
                 return;
             }
 
+            const { netXaf, netUsd, debtXaf } = await this.userService.getEffectiveBalances(userId);
+
             res.status(200).json({
                 success: true,
                 data: {
-                    balance: user.balance
+                    balance: netXaf,
+                    usdBalance: netUsd,
+                    debt: debtXaf
                 }
             });
         } catch (error: any) {
@@ -123,6 +127,445 @@ export class UserController {
     }
 
     /**
+     * Get user USD balance
+     * @route GET /api/users/:userId/usd-balance
+     */
+    async getUserUsdBalance(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.userId;
+            const { netUsd } = await this.userService.getEffectiveBalances(userId);
+
+            if (netUsd === null || netUsd === undefined) {
+                res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                usdBalance: netUsd
+            });
+        } catch (error: any) {
+            log.error(`Error getting user USD balance: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error getting user USD balance'
+            });
+        }
+    }
+
+    /**
+     * Update user USD balance
+     * @route POST /api/users/:userId/usd-balance
+     */
+    async updateUserUsdBalance(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.userId;
+            const { amount } = req.body;
+
+            // Validate input
+            if (amount === undefined || isNaN(Number(amount))) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid amount is required'
+                });
+                return;
+            }
+
+            const numericAmount = Number(amount);
+
+            // Update USD balance
+            const newUsdBalance = await this.userService.updateUsdBalance(userId, numericAmount);
+
+            if (newUsdBalance === null) {
+                res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                usdBalance: newUsdBalance
+            });
+        } catch (error: any) {
+            log.error(`Error updating user USD balance: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error updating user USD balance'
+            });
+        }
+    }
+
+    /**
+     * Convert USD to XAF balance
+     * @route POST /api/users/:userId/convert-usd-to-xaf
+     */
+    async convertUsdToXaf(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.userId;
+            const { usdAmount } = req.body;
+
+            // Validate input
+            if (usdAmount === undefined || isNaN(Number(usdAmount)) || Number(usdAmount) <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid USD amount is required'
+                });
+                return;
+            }
+
+            const numericUsdAmount = Number(usdAmount);
+            const result = await this.userService.convertUsdToXaf(userId, numericUsdAmount);
+
+            if (!result.success) {
+                res.status(400).json({
+                    success: false,
+                    message: result.message
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: result.message,
+                convertedAmount: result.convertedAmount
+            });
+        } catch (error: any) {
+            log.error(`Error converting USD to XAF: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error converting USD to XAF'
+            });
+        }
+    }
+
+    /**
+     * Convert XAF to USD balance
+     * @route POST /api/users/:userId/convert-xaf-to-usd
+     */
+    async convertXafToUsd(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.userId;
+            const { xafAmount } = req.body;
+
+            // Validate input
+            if (xafAmount === undefined || isNaN(Number(xafAmount)) || Number(xafAmount) <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid XAF amount is required'
+                });
+                return;
+            }
+
+            const numericXafAmount = Number(xafAmount);
+            const result = await this.userService.convertXafToUsd(userId, numericXafAmount);
+
+            if (!result.success) {
+                res.status(400).json({
+                    success: false,
+                    message: result.message
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: result.message,
+                convertedAmount: result.convertedAmount
+            });
+        } catch (error: any) {
+            log.error(`Error converting XAF to USD: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error converting XAF to USD'
+            });
+        }
+    }
+
+    /**
+     * Convert user's own USD to XAF balance
+     * @route POST /api/users/convert-usd-to-xaf
+     */
+    async convertOwnUsdToXaf(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user!.id;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication error: User ID not found.' });
+                return;
+            }
+            const { usdAmount } = req.body;
+
+            // Validate input
+            if (usdAmount === undefined || isNaN(Number(usdAmount)) || Number(usdAmount) <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid USD amount is required'
+                });
+                return;
+            }
+
+            const numericUsdAmount = Number(usdAmount);
+            const result = await this.userService.convertUsdToXaf(userId, numericUsdAmount);
+
+            if (!result.success) {
+                res.status(400).json({
+                    success: false,
+                    message: result.message
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: result.message,
+                convertedAmount: result.convertedAmount
+            });
+        } catch (error: any) {
+            log.error(`Error converting user's USD to XAF: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error converting USD to XAF'
+            });
+        }
+    }
+
+    /**
+     * Convert user's own XAF to USD balance
+     * @route POST /api/users/convert-xaf-to-usd
+     */
+    async convertOwnXafToUsd(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user!.id;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication error: User ID not found.' });
+                return;
+            }
+            const { xafAmount } = req.body;
+
+            // Validate input
+            if (xafAmount === undefined || isNaN(Number(xafAmount)) || Number(xafAmount) <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid XAF amount is required'
+                });
+                return;
+            }
+
+            const numericXafAmount = Number(xafAmount);
+            const result = await this.userService.convertXafToUsd(userId, numericXafAmount);
+
+            if (!result.success) {
+                res.status(400).json({
+                    success: false,
+                    message: result.message
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: result.message,
+                convertedAmount: result.convertedAmount
+            });
+        } catch (error: any) {
+            log.error(`Error converting user's XAF to USD: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error converting XAF to USD'
+            });
+        }
+    }
+
+    /**
+     * Check crypto withdrawal limits for the authenticated user
+     * @route POST /api/users/crypto/check-limits
+     */
+    async checkCryptoWithdrawalLimits(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user!.id;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication error: User ID not found.' });
+                return;
+            }
+
+            const { usdAmount, amount, currency } = req.body;
+
+            // Support both usdAmount and amount/currency formats
+            let finalAmount: number;
+            if (usdAmount !== undefined) {
+                finalAmount = Number(usdAmount);
+            } else if (amount !== undefined && currency === 'USD') {
+                finalAmount = Number(amount);
+            } else {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid USD amount is required. Use either "usdAmount" or "amount" with "currency": "USD"'
+                });
+                return;
+            }
+
+            // Validate input
+            if (isNaN(finalAmount) || finalAmount <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid USD amount is required'
+                });
+                return;
+            }
+
+            const numericUsdAmount = finalAmount;
+            const result = await this.userService.checkCryptoWithdrawalLimits(userId, numericUsdAmount);
+
+            res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: any) {
+            log.error(`Error checking crypto withdrawal limits: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error checking crypto withdrawal limits'
+            });
+        }
+    }
+
+    /**
+     * Process successful withdrawal (internal service call)
+     * @route POST /api/users/internal/:userId/withdrawal/success
+     */
+    async processSuccessfulWithdrawal(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.userId;
+            const { amount, currency } = req.body;
+
+            // Validate input
+            if (amount === undefined || isNaN(Number(amount)) || Number(amount) <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid amount is required'
+                });
+                return;
+            }
+
+            if (!currency || !['USD', 'XAF'].includes(currency)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Valid currency (USD or XAF) is required'
+                });
+                return;
+            }
+
+            const numericAmount = Number(amount);
+            const result = await this.userService.processSuccessfulWithdrawal(userId, numericAmount, currency);
+
+            if (!result.success) {
+                res.status(400).json({
+                    success: false,
+                    message: result.message
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: `Withdrawal of ${numericAmount} ${currency} processed successfully`
+            });
+        } catch (error: any) {
+            log.error(`Error processing successful withdrawal: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error processing withdrawal'
+            });
+        }
+    }
+
+    /**
+     * Update user's crypto wallet information
+     * @route PUT /api/users/crypto/wallet
+     */
+    async updateCryptoWallet(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user!.id;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication error: User ID not found.' });
+                return;
+            }
+
+            const { cryptoWalletAddress, cryptoWalletCurrency } = req.body;
+
+            // Validate input
+            if (!cryptoWalletAddress || !cryptoWalletCurrency) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Crypto wallet address and currency are required'
+                });
+                return;
+            }
+
+            const validCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'LTC', 'XRP', 'ADA', 'DOT', 'SOL', 'MATIC', 'TRX', 'BCH'];
+            if (!validCurrencies.includes(cryptoWalletCurrency.toUpperCase())) {
+                res.status(400).json({
+                    success: false,
+                    message: `Invalid currency. Supported currencies: ${validCurrencies.join(', ')}`
+                });
+                return;
+            }
+
+            const result = await this.userService.updateUserCryptoWallet(userId, cryptoWalletAddress.trim(), cryptoWalletCurrency.toUpperCase());
+
+            if (!result.success) {
+                res.status(400).json({
+                    success: false,
+                    message: result.message
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Crypto wallet information updated successfully'
+            });
+        } catch (error: any) {
+            log.error(`Error updating crypto wallet: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error updating crypto wallet information'
+            });
+        }
+    }
+
+    /**
+     * Get user's crypto wallet information
+     * @route GET /api/users/crypto/wallet
+     */
+    async getCryptoWallet(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user!.id;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication error: User ID not found.' });
+                return;
+            }
+
+            const result = await this.userService.getUserCryptoWallet(userId);
+
+            res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: any) {
+            log.error(`Error getting crypto wallet: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: 'Error retrieving crypto wallet information'
+            });
+        }
+    }
+
+    /**
      * Validate user exists and is active
      * @route GET /api/users/:userId/validate
      */
@@ -154,7 +597,7 @@ export class UserController {
     async checkWithdrawalLimits(req: Request, res: Response): Promise<void> {
         try {
             const userId = req.params.userId;
-            const { amount } = req.body;
+            const { amount, currency } = req.body;
 
             // Validate input
             if (amount === undefined || isNaN(Number(amount))) {
@@ -172,9 +615,10 @@ export class UserController {
             }
 
             const numericAmount = Number(amount);
+            const withdrawalCurrency = currency || 'XAF'; // Default to XAF if not specified
 
-            // Temporary implementation until service method is properly implemented
-            const result = await this.userService.checkWithdrawalLimits(userId, numericAmount);
+            // Check withdrawal limits with currency support
+            const result = await this.userService.checkWithdrawalLimits(userId, numericAmount, withdrawalCurrency);
 
             res.status(200).json({
                 success: true,

@@ -18,12 +18,17 @@ export interface UserDetails {
     country?: string;
     region?: string;
     city?: string;
+    // Crypto wallet fields for crypto withdrawals
+    cryptoWalletAddress?: string;
+    cryptoWalletCurrency?: string;
     // Ensure all fields used by PaymentService are included here
 }
 
 export interface UserDetailsWithMomo extends UserDetails {
     momoNumber?: string;
     momoOperator?: string;
+    cryptoWalletAddress?: string;
+    cryptoWalletCurrency?: string;
 }
 
 interface ReferrerIds {
@@ -240,15 +245,27 @@ class UserServiceClient {
         }
     }
 
-    async checkWithdrawalLimits(userId: string, amount: number): Promise<WithdrawalLimitCheckResponse> {
+    async checkWithdrawalLimits(userId: string, amount: number, currency: 'USD' | 'XAF' = 'XAF'): Promise<WithdrawalLimitCheckResponse> {
         const path = `/users/internal/${userId}/withdrawal-limits/check`;
         try {
-            log.info(`Checking withdrawal limits for user ${userId} via request method`);
-            const response = await this.request<{ success: boolean, data: WithdrawalLimitCheckResponse } | null>('post', path, { amount });
+            log.info(`Checking withdrawal limits for user ${userId} (${currency}) via request method`);
+            const response = await this.request<{ success: boolean, data: WithdrawalLimitCheckResponse } | null>('post', path, { amount, currency });
             return response?.data ?? { allowed: false, reason: 'Error processing request or invalid response' };
         } catch (error: any) {
             log.error(`Failed to check withdrawal limits for user ${userId} via User Service (request method):`, error.message);
             return { allowed: false, reason: 'Error communicating with User Service' };
+        }
+    }
+
+    async processSuccessfulWithdrawal(userId: string, amount: number, currency: 'USD' | 'XAF'): Promise<{ success: boolean; message?: string }> {
+        const path = `/users/internal/${userId}/withdrawal/success`;
+        try {
+            log.info(`Processing successful withdrawal for user ${userId}: ${amount} ${currency}`);
+            const response = await this.request<{ success: boolean; message?: string }>('post', path, { amount, currency });
+            return response ?? { success: false, message: 'Error processing request or invalid response' };
+        } catch (error: any) {
+            log.error(`Failed to process successful withdrawal for user ${userId} via User Service:`, error.message);
+            return { success: false, message: 'Error communicating with User Service' };
         }
     }
 
@@ -330,6 +347,50 @@ class UserServiceClient {
     }
 
 
+    // USD Balance methods for crypto payments
+    async updateUserUsdBalance(userId: string, amount: number): Promise<void> {
+        if (!this.baseUrl) {
+            log.error('Cannot update user USD balance: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/${userId}/usd-balance`;
+        try {
+            log.debug(`Updating USD balance for user ${userId} by ${amount}`);
+            const response = await this.request<{ success: boolean; usdBalance?: number }>('post', path, { amount });
+
+            if (response?.success) {
+                log.info(`Successfully updated USD balance for user ${userId}`);
+            } else {
+                throw new AppError('Failed to update user USD balance', 500);
+            }
+        } catch (error: any) {
+            log.error(`Error updating USD balance for user ${userId}:`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for USD balance update.`, 503);
+        }
+    }
+
+    async getUsdBalance(userId: string): Promise<number> {
+        if (!this.baseUrl) {
+            log.error('Cannot get user USD balance: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/${userId}/usd-balance`;
+        try {
+            log.debug(`Fetching USD balance for user ${userId}`);
+            const response = await this.request<{ success: boolean; usdBalance: number }>('get', path);
+
+            if (response?.success && typeof response.usdBalance === 'number') {
+                return response.usdBalance;
+            } else {
+                throw new AppError('Failed to fetch user USD balance', 500);
+            }
+        } catch (error: any) {
+            log.error(`Error fetching USD balance for user ${userId}:`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for USD balance.`, 503);
+        }
+    }
 }
 
 export const userServiceClient = new UserServiceClient(); 

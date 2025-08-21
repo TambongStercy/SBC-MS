@@ -131,6 +131,20 @@ export class UserRepository {
     }
 
     /**
+     * Atomically updates the USD balance for a user.
+     * @param userId - The ID of the user.
+     * @param amountChange - The amount to add (positive) or subtract (negative).
+     * @returns The updated user document or null.
+     */
+    async updateUsdBalance(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
+        return UserModel.findByIdAndUpdate(
+            userId,
+            { $inc: { usdBalance: amountChange } }, // Use $inc for atomic update
+            { new: true } // Return the updated document
+        ).exec();
+    }
+
+    /**
      * Adds an OTP to the specified array for a user.
      * @param userId - The ID of the user.
      * @param otpType - 'otps' or 'contactsOtps'.
@@ -404,7 +418,7 @@ export class UserRepository {
             _id: { $in: userIds },
             deleted: { $ne: true } // Ensure user is not soft-deleted
         })
-            .select('_id name email phoneNumber avatar momoNumber momoOperator balance notificationPreference role language') // Select fields matching the updated UserDetails interface
+            .select('_id name email phoneNumber avatar momoNumber momoOperator balance notificationPreference role language cryptoWalletAddress cryptoWalletCurrency') // Select fields matching the updated UserDetails interface
             .lean() // Use lean for performance as we only need plain objects
             .exec();
     }

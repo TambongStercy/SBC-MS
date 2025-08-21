@@ -25,11 +25,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const cryptoAmount = document.getElementById('crypto-amount');
     const cryptoRate = document.getElementById('crypto-rate');
 
-    // sessionId, paymentStatus, prefillPhoneNumber, prefillCountryCode, prefillOperator are defined globally by EJS
-    // NEW: Pass gateway and gatewayPaymentId from EJS to JS
-    var gateway = "<%= gateway %>";
-    var gatewayPaymentId = "<%= gatewayPaymentId %>";
-
     const formPresent = !!form; // Check if the form element itself exists on the page
 
     // Only run full form setup if the form is actually rendered by EJS
@@ -46,7 +41,7 @@ document.addEventListener('DOMContentLoaded', function () {
             'ML', // Mali
             'NE', // Niger
             // 'BJ', // Bénin - Now using FeexPay for both payments and withdrawals
-            'CI', // Côte d'Ivoire
+            'CI', // Côte d\'Ivoire
             'CM', // Cameroun
             'SN', // Sénégal
             'TG'  // Togo (payments only; withdrawals use FeexPay in backend)
@@ -107,26 +102,28 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const handleCryptoCurrencyChange = async () => {
             const selectedCrypto = cryptoCurrencySelect?.value;
-            if (!selectedCrypto || !paymentAmount || !paymentCurrency) {
+            if (!selectedCrypto || !window.paymentAmount || !window.paymentCurrency) {
                 if (cryptoEstimate) cryptoEstimate.classList.add('hidden');
                 return;
             }
 
             try {
                 // Get crypto estimate
-                const response = await fetch(`/api/payments/crypto/estimate?amount=${paymentAmount}&fromCurrency=${paymentCurrency}&toCurrency=${selectedCrypto}`);
+                const response = await fetch(`/api/payments/crypto/estimate?amount=${window.paymentAmount}&fromCurrency=${window.paymentCurrency}&toCurrency=${selectedCrypto}`);
                 const result = await response.json();
 
                 if (response.ok && result.success) {
                     const estimate = result.data;
                     if (cryptoAmount) cryptoAmount.textContent = `${estimate.estimatedAmount} ${selectedCrypto}`;
-                    if (cryptoRate) cryptoRate.textContent = `1 ${paymentCurrency} = ${(estimate.estimatedAmount / paymentAmount).toFixed(8)} ${selectedCrypto}`;
+                    if (cryptoRate) cryptoRate.textContent = `1 ${window.paymentCurrency} = ${(estimate.estimatedAmount / window.paymentAmount).toFixed(8)} ${selectedCrypto}`;
                     if (cryptoEstimate) cryptoEstimate.classList.remove('hidden');
-                } else {
+                }
+                else {
                     console.error('Failed to get crypto estimate:', result.message);
                     if (cryptoEstimate) cryptoEstimate.classList.add('hidden');
                 }
-            } catch (error) {
+            }
+            catch (error) {
                 console.error('Error getting crypto estimate:', error);
                 if (cryptoEstimate) cryptoEstimate.classList.add('hidden');
             }
@@ -139,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const countryOperators = feexpayOperators[selectedCountry] || [];
             const selectedOperator = operatorSelect.value; // Get value after potential prefill
 
-            operatorSelect.innerHTML = '<option value="" disabled selected>-- Sélectionnez l\'opérateur de paiement --</option>';
+            operatorSelect.innerHTML = '<option value="" disabled selected>-- Sélectionner l\'opérateur de paiement --</option>';
             operatorSelect.required = false;
             operatorSelectGroup.classList.add('hidden');
             otpInputGroup.classList.add('hidden'); // Hide OTP by default
@@ -159,8 +156,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     operatorSelectGroup.classList.remove('hidden');
                     operatorSelect.required = true;
 
-                    if (typeof prefillOperator !== 'undefined' && prefillOperator && countryOperators.includes(prefillOperator)) {
-                        operatorSelect.value = prefillOperator;
+                    if (typeof window.prefillOperator !== 'undefined' && window.prefillOperator && countryOperators.includes(window.prefillOperator)) {
+                        operatorSelect.value = window.prefillOperator;
                     }
                     // Removed Orange Senegal OTP logic since SN now uses CinetPay
                     // Show/hide OTP field based on selected country and newly set operator value
@@ -172,13 +169,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     //     otpInput.required = false;
                     //     otpInput.value = ''; // Clear OTP if not applicable
                     // }
-                } else {
+                }
+                else {
                     // Hide OTP field if no operator selection or not applicable
                     otpInputGroup.classList.add('hidden');
                     otpInput.required = false;
                     otpInput.value = '';
                 }
-            } else {
+            }
+            else {
                 // CinetPay countries don't require phone number or operator selection
                 phoneInputGroup.classList.add('hidden');
                 phoneInput.required = false;
@@ -224,23 +223,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
         // Handle page load based on paymentStatus if the form is meant to be interactive
-        if (paymentStatus === 'PENDING_USER_INPUT') {
+        if (window.paymentStatus === 'PENDING_USER_INPUT') {
             console.log('Status is PENDING_USER_INPUT. Initializing form for user input.');
-            if (prefillCountryCode && countrySelect) {
-                countrySelect.value = prefillCountryCode;
+            if (window.prefillCountryCode && countrySelect) {
+                countrySelect.value = window.prefillCountryCode;
                 // updateFormForCountry(); // This will be called after operator prefill to ensure correct state
             }
-            if (prefillPhoneNumber && phoneInput) {
-                phoneInput.value = prefillPhoneNumber;
+            if (window.prefillPhoneNumber && phoneInput) {
+                phoneInput.value = window.prefillPhoneNumber;
             }
             // Operator prefill is handled by updateFormForCountry, now ensure updateFormForCountry is called *after* operator might be prefilled.
             // If prefillOperator is present, updateFormForCountry inside countrySelect change listener might not have run yet with the prefilled operator.
             // So, manually call it again if prefillOperator is set to ensure OTP field logic runs based on the prefilled operator.
-            if (prefillOperator && operatorSelect) {
+            if (window.prefillOperator && operatorSelect) {
                 // The operator select options are populated within updateFormForCountry, so we need to ensure it runs once to populate,
                 // then potentially again if prefillOperator is set to correctly show/hide OTP based on the prefilled operator.
-                // The initial call to updateFormForCountry() below the event listener handles the initial population.
-                // If prefillOperator is set, the operatorSelect.value will be set within updateFormForCountry if the option exists.
                 // We need a slight adjustment here: updateFormForCountry already handles operator pre-selection if prefillOperator is set.
                 // The key is that updateFormForCountry must run to set the operator value and then decide OTP visibility.
             }
@@ -248,7 +245,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (submitButton) submitButton.disabled = false; // Ensure button is enabled
 
-        } else if (paymentStatus === 'PENDING_PROVIDER') {
+        }
+        else if (window.paymentStatus === 'PENDING_PROVIDER') {
             // This case is special: EJS might render a simplified view.
             // JS here will primarily manage the button state if the button is part of that simplified view.
             // The EJS for PENDING_PROVIDER now includes the button structure.
@@ -299,7 +297,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 };
 
                 console.log(`Crypto payment selected: ${selectedCrypto}`);
-            } else {
+            }
+            else {
                 // Handle mobile money payment (existing logic)
                 const selectedCountry = countrySelect.value;
                 const requiresPhone = feexpayCountries.includes(selectedCountry);
@@ -347,7 +346,7 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log('Soumission des données de paiement:', formData);
 
             try {
-                const response = await fetch(`/api/payments/intents/${sessionId}/submit`, {
+                const response = await fetch(`/api/payments/intents/${window.sessionId}/submit`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', },
                     body: JSON.stringify(formData),
@@ -363,7 +362,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     console.log('Redirection vers la passerelle de paiement:', result.data.gatewayCheckoutUrl);
                     window.location.href = result.data.gatewayCheckoutUrl;
                     if (buttonText) buttonText.textContent = 'Redirection...';
-                } else {
+                }
+                else {
                     // Handle different payment flows based on method
                     if (selectedPaymentMethod === 'cryptocurrency') {
                         // Crypto payment flow
@@ -373,26 +373,29 @@ document.addEventListener('DOMContentLoaded', function () {
 
                         // Update global status and start polling for crypto payments
                         if (result.data && result.data.status === 'WAITING_FOR_CRYPTO_DEPOSIT') {
-                            paymentStatus = 'WAITING_FOR_CRYPTO_DEPOSIT';
+                            window.paymentStatus = 'WAITING_FOR_CRYPTO_DEPOSIT';
                             console.log('Paiement crypto initié, nouveau statut WAITING_FOR_CRYPTO_DEPOSIT. Rechargement de la page pour afficher les instructions.');
                             // Refresh the page to show crypto deposit instructions
                             setTimeout(() => {
                                 window.location.reload();
                             }, 1000); // Small delay to let user see the success message
-                        } else if (result.data && result.data.status === 'PROCESSING') {
-                            paymentStatus = 'PROCESSING';
+                        }
+                        else if (result.data && result.data.status === 'PROCESSING') {
+                            window.paymentStatus = 'PROCESSING';
                             errorMessage.textContent = 'Votre paiement crypto est en cours de traitement. Vérification des mises à jour...';
                             errorMessage.className = 'text-center mt-4 p-3 bg-blue-100 text-blue-800 border border-blue-300 rounded-md text-base min-h-[2.5rem] font-medium';
                             console.log('Paiement crypto initié, nouveau statut PROCESSING. Démarrage du sondage.');
                             startPolling();
-                        } else {
+                        }
+                        else {
                             // For any other status, also refresh to show the updated state
                             console.log('Paiement crypto initié avec statut:', result.data?.status || 'unknown');
                             setTimeout(() => {
                                 window.location.reload();
                             }, 1500);
                         }
-                    } else {
+                    }
+                    else {
                         // This is likely a request-to-pay flow (e.g., FeexPay USSD)
                         const requiresPhone = selectedPaymentMethod === 'mobile_money' && feexpayCountries.includes(countrySelect.value);
                         if (requiresPhone) { // Check if it was a flow that involves a phone (most request-to-pay)
@@ -403,24 +406,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
                             // Update global status and start polling if now PENDING_PROVIDER
                             if (result.data && result.data.status === 'PENDING_PROVIDER') {
-                                paymentStatus = 'PENDING_PROVIDER'; // Update global JS status variable
+                                window.paymentStatus = 'PENDING_PROVIDER'; // Update global JS status variable
                                 console.log('Demande de paiement réussie, nouveau statut PENDING_PROVIDER. Démarrage du sondage.');
                                 startPolling();
-                            } else if (result.data && result.data.status === 'PROCESSING') {
-                                paymentStatus = 'PROCESSING';
+                            }
+                            else if (result.data && result.data.status === 'PROCESSING') {
+                                window.paymentStatus = 'PROCESSING';
                                 errorMessage.textContent = 'Votre paiement est en cours de traitement. Vérification des mises à jour...';
                                 // Apply yellow styling for this specific message as well (or a slightly different one for processing)
                                 errorMessage.className = 'text-center mt-4 p-3 bg-blue-100 text-blue-800 border border-blue-300 rounded-md text-base min-h-[2.5rem] font-medium';
                                 console.log('Demande de paiement réussie, nouveau statut PROCESSING. Démarrage du sondage.');
                                 startPolling();
                             }
-                        } else {
+                        }
+                        else {
                             // Should not happen if no redirect and not a phone-based payment
                             throw new Error('Paiement initié, mais aucune URL de redirection reçue et non un paiement par téléphone.');
                         }
                     }
                 }
-            } catch (error) {
+            }
+            catch (error) {
                 console.error('Erreur lors de la soumission du paiement:', error);
                 errorMessage.textContent = error.message || 'Une erreur inattendue est survenue. Veuillez réessayer.';
                 // Reset to default red error styling if an actual error occurs during submission
@@ -437,17 +443,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (form) { // The form element itself
             form.addEventListener('submit', handleSubmission);
         }
-        if (submitButton && paymentStatus === 'PENDING_USER_INPUT') { // Only allow click submission if form is active
+        if (submitButton && window.paymentStatus === 'PENDING_USER_INPUT') { // Only allow click submission if form is active
             submitButton.addEventListener('click', function (e) {
                 e.preventDefault(); // Prevent default form submission via button click
                 handleSubmission(e);
             });
         }
-    } else {
+    }
+    else {
         // Logic for when the payment form is NOT rendered by EJS (e.g. status is SUCCEEDED, FAILED, etc.)
         // This block can be used to initialize any JS behavior for those non-form pages if needed.
         // For PENDING_PROVIDER, EJS now includes the button, so JS needs to set its state.
-        if (paymentStatus === 'PENDING_PROVIDER') {
+        if (window.paymentStatus === 'PENDING_PROVIDER') {
             console.log('Le statut est PENDING_PROVIDER (pas de formulaire). Réglage de l\'état du bouton si le bouton existe.');
             // The submitButton, buttonText, buttonSpinner are already potentially grabbed at the top.
             // EJS for PENDING_PROVIDER should be rendering these button elements.
@@ -460,7 +467,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 errorMessage.textContent = 'Veuillez vérifier votre téléphone pour approuver la demande de paiement.';
             }
         }
-        console.log(`Page de paiement chargée avec le statut : ${paymentStatus}. Le formulaire n'est pas actif ou entièrement rendu.`);
+        console.log(`Page de paiement chargée avec le statut : ${window.paymentStatus}. Le formulaire n'est pas actif ou entièrement rendu.`);
     }
 
     // --- NEW: J'ai payé button logic ---
@@ -471,7 +478,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (checkFeexpayStatusButton) {
         checkFeexpayStatusButton.addEventListener('click', async () => {
-            if (!sessionId) {
+            if (!window.sessionId) {
                 console.error('ID de session non disponible pour la vérification du statut FeexPay.');
                 if (checkFeexpayStatusMessage) checkFeexpayStatusMessage.textContent = 'Erreur : ID de session manquant.';
                 return;
@@ -483,8 +490,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (checkFeexpayStatusMessage) checkFeexpayStatusMessage.textContent = ''; // Clear previous messages
 
             try {
-                console.log(`Vérification manuelle du statut FeexPay pour la session : ${sessionId}`);
-                const response = await fetch(`/api/payments/intents/${sessionId}/feexpay-status`);
+                console.log(`Vérification manuelle du statut FeexPay pour la session : ${window.sessionId}`);
+                const response = await fetch(`/api/payments/intents/${window.sessionId}/feexpay-status`);
                 const result = await response.json();
 
                 if (response.ok && result.success) {
@@ -492,14 +499,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (checkFeexpayStatusMessage) checkFeexpayStatusMessage.textContent = 'Statut vérifié avec succès. Mise à jour...';
                     // Reload the page to reflect the new status
                     window.location.reload();
-                } else {
+                }
+                else {
                     console.error('Échec de la vérification du statut FeexPay :', result.message);
                     if (checkFeexpayStatusMessage) checkFeexpayStatusMessage.textContent = result.message || 'Échec de la vérification du statut. Veuillez réessayer.';
                 }
-            } catch (error) {
+            }
+            catch (error) {
                 console.error('Erreur lors de la vérification du statut FeexPay :', error);
                 if (checkFeexpayStatusMessage) checkFeexpayStatusMessage.textContent = 'Une erreur est survenue. Veuillez réessayer.';
-            } finally {
+            }
+            finally {
                 if (checkFeexpayButtonText) checkFeexpayButtonText.textContent = 'J\'ai payé - Vérifier le statut';
                 if (checkFeexpayLoadingSpinner) checkFeexpayLoadingSpinner.classList.add('hidden');
                 checkFeexpayStatusButton.disabled = false;
@@ -514,14 +524,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const pollInterval = 5000; // 5 seconds
 
     const startPolling = () => {
-        if (!sessionId) {
+        if (!window.sessionId) {
             console.error('ID de session non disponible, impossible de démarrer le sondage.');
             return;
         }
         // Clear any existing interval to avoid multiple pollers
         if (pollingIntervalId) clearInterval(pollingIntervalId);
 
-        console.log(`Démarrage du sondage du statut pour la session : ${sessionId}`);
+        console.log(`Démarrage du sondage du statut pour la session : ${window.sessionId}`);
         pollCount = 0; // Reset poll count
         pollingIntervalId = setInterval(checkPaymentStatus, pollInterval);
         // Optionally, call it once immediately
@@ -529,17 +539,17 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     const checkPaymentStatus = async () => {
-        if (!sessionId) {
+        if (!window.sessionId) {
             console.error('ID de session non disponible pour le sondage.');
             if (pollingIntervalId) clearInterval(pollingIntervalId);
             return;
         }
 
         pollCount++;
-        console.log(`Sondage du statut de paiement (Tentative ${pollCount}/${maxPolls}) : ${sessionId}`);
+        console.log(`Sondage du statut de paiement (Tentative ${pollCount}/${maxPolls}) : ${window.sessionId}`);
 
         try {
-            const response = await fetch(`/api/payments/intents/${sessionId}/status`);
+            const response = await fetch(`/api/payments/intents/${window.sessionId}/status`);
             if (!response.ok) {
                 console.error('Erreur lors de la récupération du statut de paiement :', response.statusText);
                 // Optionally stop polling on network errors or specific HTTP error codes
@@ -547,7 +557,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     console.log('Nombre maximal de tentatives de sondage atteint. Arrêt du sondage.');
                     if (pollingIntervalId) clearInterval(pollingIntervalId);
                     // Update UI to inform user polling has stopped, if desired
-                    if (errorMessage && (paymentStatus === 'PENDING_PROVIDER' || paymentStatus === 'PROCESSING')) {
+                    if (errorMessage && (window.paymentStatus === 'PENDING_PROVIDER' || window.paymentStatus === 'PROCESSING')) {
                         errorMessage.textContent = 'Le délai de vérification du statut a expiré. Veuillez rafraîchir la page pour voir le dernier statut.';
                     }
                 }
@@ -567,17 +577,21 @@ document.addEventListener('DOMContentLoaded', function () {
                     console.log(`Le statut de paiement est final : ${newStatus}. Rechargement de la page.`);
                     if (pollingIntervalId) clearInterval(pollingIntervalId);
                     window.location.reload();
-                } else if (newStatus === 'PENDING_PROVIDER' || newStatus === 'PROCESSING' || newStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' || newStatus === 'PARTIALLY_PAID') {
+                }
+                else if (newStatus === 'PENDING_PROVIDER' || newStatus === 'PROCESSING' || newStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' || newStatus === 'PARTIALLY_PAID') {
                     // Continue polling
-                    if (paymentStatus !== newStatus && errorMessage) { // If status changed but still pending, update message
-                        paymentStatus = newStatus; // Update local JS variable for consistency
+                    if (window.paymentStatus !== newStatus && errorMessage) { // If status changed but still pending, update message
+                        window.paymentStatus = newStatus; // Update local JS variable for consistency
                         if (newStatus === 'PROCESSING') {
                             errorMessage.textContent = 'Le paiement est maintenant en cours de traitement avec le fournisseur...';
-                        } else if (newStatus === 'WAITING_FOR_CRYPTO_DEPOSIT') {
+                        }
+                        else if (newStatus === 'WAITING_FOR_CRYPTO_DEPOSIT') {
                             errorMessage.textContent = 'En attente de votre dépôt crypto. Veuillez envoyer le montant exact à l\'adresse fournie.';
-                        } else if (newStatus === 'PARTIALLY_PAID') {
+                        }
+                        else if (newStatus === 'PARTIALLY_PAID') {
                             errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant.';
-                        } else {
+                        }
+                        else {
                             errorMessage.textContent = 'Toujours en attente de confirmation sur votre téléphone...';
                         }
                     }
@@ -588,15 +602,18 @@ document.addEventListener('DOMContentLoaded', function () {
                             errorMessage.textContent = 'Toujours en attente de confirmation de paiement. Vous pouvez rafraîchir la page pour vérifier ou continuer d\'attendre.';
                         }
                     }
-                } else {
+                }
+                else {
                     // Unexpected status or PENDING_USER_INPUT (should not happen if polling started correctly)
                     console.log(`Statut inattendu du sondage : ${newStatus}. Arrêt du sondage.`);
                     if (pollingIntervalId) clearInterval(pollingIntervalId);
                 }
-            } else {
+            }
+            else {
                 console.error('Échec de la récupération du statut de paiement depuis le sondage :', result.message);
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Erreur lors du sondage du statut de paiement :', error);
             if (pollCount >= maxPolls) {
                 console.log('Nombre maximal de tentatives de sondage atteint en raison d\'une erreur. Arrêt du sondage.');
@@ -605,18 +622,47 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
-    if (paymentStatus === 'PENDING_PROVIDER' || paymentStatus === 'PROCESSING' || paymentStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' || paymentStatus === 'PARTIALLY_PAID') {
-        console.log(`Le statut initial est ${paymentStatus}. Démarrage du sondage du statut pour la session : ${sessionId}`);
+    if (window.paymentStatus === 'PENDING_PROVIDER' || window.paymentStatus === 'PROCESSING' || window.paymentStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' || window.paymentStatus === 'PARTIALLY_PAID') {
+        console.log(`Le statut initial est ${window.paymentStatus}. Démarrage du sondage du statut pour la session : ${window.sessionId}`);
+        console.log('JS Initial Load - cryptoQrCodeBase64 length:', window.cryptoQrCodeBase64 ? window.cryptoQrCodeBase64.length : 'empty');
+        console.log('JS Initial Load - cryptoAddress:', window.cryptoAddress);
         // Initial message update for different statuses if not already set by other logic
-        if (paymentStatus === 'PROCESSING' && errorMessage) {
+        if (window.paymentStatus === 'PROCESSING' && errorMessage) {
             errorMessage.textContent = 'Votre paiement est en cours de traitement. Vérification des mises à jour...';
-        } else if (paymentStatus === 'WAITING_FOR_CRYPTO_DEPOSIT' && errorMessage) {
-            errorMessage.textContent = 'En attente de votre dépôt crypto. Veuillez envoyer le montant exact à l\'adresse fournie.';
-        } else if (paymentStatus === 'PARTIALLY_PAID' && errorMessage) {
+        }
+        else if (window.paymentStatus === 'WAITING_FOR_CRYPTO_DEPOSIT') {
+            if (errorMessage) { // Keep errorMessage logic separate
+                errorMessage.textContent = 'En attente de votre dépôt crypto. Veuillez envoyer le montant exact à l\'adresse fournie.';
+            }
+            // NEW: Display QR code if available from backend
+            if (window.cryptoQrCodeBase64 && window.cryptoQrCodeBase64.trim() !== '') {
+                const qrContainer = document.getElementById('qrcode-container');
+                if (qrContainer) {
+                    console.log('JS: Rendering QR code from base64 data.');
+                    qrContainer.innerHTML = `<img src="data:image/png;base64,${window.cryptoQrCodeBase64}" alt="QR Code" style="width:200px;height:200px;border-radius:12px;border:2px solid #f1f5f9;box-shadow:0 4px 12px rgba(0,0,0,0.1);margin-bottom:16px;" />`;
+                }
+            }
+            else if (window.cryptoAddress && window.cryptoAddress.trim() !== '') { // Fallback to JS generation if no base64 but address exists
+                // Only call JS QR code generation if the container is empty (i.e., no base64 QR from backend)
+                const qrContainer = document.getElementById('qrcode-container');
+                if (qrContainer && !qrContainer.querySelector('img')) {
+                    console.log('JS: No base64 QR code found, generating QR code for address:', window.cryptoAddress);
+                    // Delay to allow DOM to settle and avoid conflicts
+                    setTimeout(function () {
+                        if (typeof window.createQrCode === 'function') {
+                            window.createQrCode(window.cryptoAddress);
+                        }
+                        else {
+                            console.error('JS: QR Code library (qrcode.js) not loaded properly for fallback.');
+                            // Potentially show a fallback message here or rely on the qrcode.js error handling
+                        }
+                    }, 200);
+                }
+            }
+        }
+        else if (window.paymentStatus === 'PARTIALLY_PAID' && errorMessage) {
             errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant.';
         }
-        // if (pollingIntervalId) clearInterval(pollingIntervalId); // Clear any existing interval - MOVED TO startPolling()
-        // pollingIntervalId = setInterval(checkPaymentStatus, pollInterval); // MOVED TO startPolling()
         startPolling(); // Call the new function
     }
 

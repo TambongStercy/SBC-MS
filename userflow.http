@@ -424,17 +424,17 @@ Authorization: Bearer {{screte}}
 Content-Type: application/json
 
 {
-  "reference": "F202D83E-8FBA-4DAF-A2A9-C1D96EA65694",
+  "reference": "B3C378FB-3ADE-4D02-BE74-40ADC30585E0",
   "amount": 2070,
   "status": "SUCCESSFUL",
   "callback_info": {
-    "sessionId":"az3QIYIFbeP5",
-    "userId":"685f22383248e6cfcf763926",
-    "userName":"TCHONDA mehiwa",
-    "userPhoneNumber":"22871602613",
-    "userEmail":"tchondajerome408@gmail.com",
-    "userCountry":"Togo",
-    "userCity":"Hohotoe"
+    "sessionId":"FbCV54q9DiGP",
+    "userId":"68a0a474b259c00840d90b26",
+    "userName":"Issifou chamssiyath",
+    "userPhoneNumber":"2290145750353",
+    "userEmail":"issifouchamssiyath23@gmail.com",
+    "userCountry":"Benin",
+    "userCity":"Cotonou"  
   }
 }
 

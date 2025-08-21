@@ -18,9 +18,23 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            scriptSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "'unsafe-eval'",
+                "https://cdn.jsdelivr.net", // Allow QR code library from CDN
+                "https://cdnjs.cloudflare.com" // Allow other CDN libraries if needed
+            ],
+            scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers
             styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-            imgSrc: ["'self'", "data:", "https:", "http:"],
+            imgSrc: [
+                "'self'",
+                "data:",
+                "https:",
+                "http:",
+                "https://chart.googleapis.com", // Allow Google Charts API for QR fallback
+                "https://api.qrserver.com" // Allow QR server API as fallback
+            ],
             connectSrc: ["'self'", "https:"],
             fontSrc: ["'self'", "data:", "https:"],
             objectSrc: ["'none'"],

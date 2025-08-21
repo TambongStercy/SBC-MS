@@ -4,7 +4,8 @@ import { Schema, Document, Types, model } from 'mongoose';
 export interface IDailyWithdrawal extends Document {
     userId: Types.ObjectId;
     date: Date; // Changed from string to Date type
-    count: number;
+    count: number; // Total number of withdrawal attempts
+    successfulCount: number; // Number of successful withdrawals (max 3 per 24h)
     totalAmount: number;
     createdAt: Date;
     updatedAt: Date;
@@ -27,6 +28,12 @@ const DailyWithdrawalSchema = new Schema<IDailyWithdrawal>(
             type: Number,
             default: 0,
             min: 0
+        },
+        successfulCount: {
+            type: Number,
+            default: 0,
+            min: 0,
+            max: 3 // Maximum 3 successful withdrawals per 24 hours
         },
         totalAmount: {
             type: Number,

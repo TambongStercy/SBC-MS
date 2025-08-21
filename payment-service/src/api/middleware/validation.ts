@@ -129,13 +129,29 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
  * Validate user withdrawal request
  */
 export const validateWithdrawal = (req: Request, res: Response, next: NextFunction) => {
-    const { amount } = req.body;
+    const { amount, withdrawalType } = req.body;
 
     if (!amount) {
         log.warn('Validation failed for user withdrawal: Missing amount');
         return res.status(400).json({
             success: false,
             message: 'Amount is required'
+        });
+    }
+
+    if (!withdrawalType) {
+        log.warn('Validation failed for user withdrawal: Missing withdrawalType');
+        return res.status(400).json({
+            success: false,
+            message: 'Withdrawal type is required. Use "mobile_money" or "crypto".'
+        });
+    }
+
+    if (!['mobile_money', 'crypto'].includes(withdrawalType)) {
+        log.warn('Validation failed for user withdrawal: Invalid withdrawalType', { withdrawalType });
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid withdrawal type. Use "mobile_money" or "crypto".'
         });
     }
 
@@ -147,20 +163,33 @@ export const validateWithdrawal = (req: Request, res: Response, next: NextFuncti
         });
     }
 
-    // Check minimum withdrawal amount (500 for most countries)
-    if (amount < 500) {
-        return res.status(400).json({
-            success: false,
-            message: 'Minimum withdrawal amount is 500'
-        });
-    }
+    // Apply different minimum amounts based on withdrawal type
+    if (withdrawalType === 'mobile_money') {
+        // Mobile money minimum: 500 XAF
+        if (amount < 500) {
+            return res.status(400).json({
+                success: false,
+                message: 'Minimum mobile money withdrawal amount is 500 XAF'
+            });
+        }
 
-    // Check if amount is multiple of 5 (CinetPay requirement)
-    if (amount % 5 !== 0) {
-        return res.status(400).json({
-            success: false,
-            message: 'Amount must be a multiple of 5'
-        });
+        // Check if amount is multiple of 5 (CinetPay requirement for mobile money)
+        if (amount % 5 !== 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Mobile money withdrawal amount must be a multiple of 5'
+            });
+        }
+    } else if (withdrawalType === 'crypto') {
+        // Crypto minimum: $15 USD
+        if (amount < 15) {
+            return res.status(400).json({
+                success: false,
+                message: 'Minimum crypto withdrawal amount is $15 USD'
+            });
+        }
+
+        // No multiple of 5 requirement for crypto withdrawals
     }
 
     next();

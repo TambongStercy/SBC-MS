@@ -61,7 +61,8 @@ export interface IPaymentIntent extends Document {
     paidAmount?: number;
     paidCurrency?: string;
 
-    webhookHistory: { timestamp: Date; status: PaymentStatus; providerData?: any }[]; // Log of webhook events
+    webhookHistory: { timestamp: Date; status: PaymentStatus; providerData?: any }[]; // Log of we
+    // bhook events
 
     metadata?: Record<string, any>; // Any other relevant data
 

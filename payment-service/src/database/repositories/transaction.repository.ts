@@ -35,6 +35,8 @@ export interface CreateTransactionInput {
     relatedTransactions?: (string | Types.ObjectId)[];
     ipAddress?: string;
     deviceInfo?: string;
+    verificationCode?: string;
+    verificationExpiry?: Date;
 }
 
 // Interface for updating a transaction

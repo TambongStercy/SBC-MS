@@ -21,11 +21,22 @@ serviceRouter.use(authenticateServiceRequest); // Apply service auth HERE
 serviceRouter.get('/:userId/balance', (req, res) => userController.getUserBalance(req, res));
 serviceRouter.post('/:userId/balance', (req, res) => userController.updateUserBalance(req, res));
 
+// USD Balance routes
+serviceRouter.get('/:userId/usd-balance', (req, res) => userController.getUserUsdBalance(req, res));
+serviceRouter.post('/:userId/usd-balance', (req, res) => userController.updateUserUsdBalance(req, res));
+
+// Currency conversion routes
+serviceRouter.post('/:userId/convert-usd-to-xaf', (req, res) => userController.convertUsdToXaf(req, res));
+serviceRouter.post('/:userId/convert-xaf-to-usd', (req, res) => userController.convertXafToUsd(req, res));
+
 // Validation route
 serviceRouter.get('/:userId/validate', (req, res) => userController.validateUser(req, res));
 
 // Withdrawal limits route
 serviceRouter.post('/:userId/withdrawal-limits/check', (req, res) => userController.checkWithdrawalLimits(req, res));
+
+// Process successful withdrawal route
+serviceRouter.post('/:userId/withdrawal/success', (req, res) => userController.processSuccessfulWithdrawal(req, res));
 
 // Internal route to get referrer IDs for commission
 serviceRouter.get('/:userId/referrers', (req, res) => userController.getReferrerIdsForCommission(req, res));
@@ -88,6 +99,17 @@ router.get('/get-refered-users', (req, res) => userController.getReferredUsers(r
 router.get('/get-referals', (req, res) => userController.getReferredUsersInfo(req as AuthenticatedRequest, res));
 router.get('/get-products', (req, res) => userController.getUserProducts(req as AuthenticatedRequest, res));
 router.get('/get-product', (req, res) => userController.getUserProduct(req as AuthenticatedRequest, res));
+
+// --- Currency Conversion Routes (Public for authenticated users) ---
+router.post('/convert-usd-to-xaf', mediumLimiter, (req, res) => userController.convertOwnUsdToXaf(req as AuthenticatedRequest, res));
+router.post('/convert-xaf-to-usd', mediumLimiter, (req, res) => userController.convertOwnXafToUsd(req as AuthenticatedRequest, res));
+
+// --- Crypto Withdrawal Routes ---
+router.post('/crypto/check-limits', mediumLimiter, (req, res) => userController.checkCryptoWithdrawalLimits(req as AuthenticatedRequest, res));
+
+// --- Crypto Wallet Management Routes ---
+router.get('/crypto/wallet', (req, res) => userController.getCryptoWallet(req as AuthenticatedRequest, res));
+router.put('/crypto/wallet', mediumLimiter, (req, res) => userController.updateCryptoWallet(req as AuthenticatedRequest, res));
 
 // --- Public Profile View Route ---
 router.get('/:userId', (req, res, next) => userController.viewUserProfile(req, res, next));

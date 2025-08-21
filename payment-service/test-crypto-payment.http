@@ -1,0 +1,30 @@
+# Test crypto payment functionality
+
+### Test crypto estimate with USD
+POST http://localhost:3002/api/payments/crypto-estimate
+Content-Type: application/json
+
+{
+  "amount": 4.65,
+  "currency": "USD",
+  "cryptoCurrency": "BTC"
+}
+
+### Test crypto estimate with XAF (should convert to USD)
+POST http://localhost:3002/api/payments/crypto-estimate
+Content-Type: application/json
+
+{
+  "amount": 3070,
+  "currency": "XAF", 
+  "cryptoCurrency": "BTC"
+}
+
+### Test creating crypto payment (replace sessionId with actual one)
+POST http://localhost:3002/api/payments/crypto-payment
+Content-Type: application/json
+
+{
+  "sessionId": "your-session-id-here",
+  "cryptoCurrency": "BTC"
+}

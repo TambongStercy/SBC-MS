@@ -24,6 +24,7 @@ import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
 import { AppError } from '../utils/errors';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes } from '../utils/phone.utils';
+import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -274,6 +275,26 @@ export class UserService {
             }
         }
         // --- End IP Update --- 
+
+        // --- Process Transaction Recovery ---
+        try {
+            log.info(`Checking for recoverable transactions for user: ${newUser.email}`);
+            const recoveryResult = await paymentService.processUserRegistrationForRecovery(
+                newUser._id.toString(),
+                newUser.email,
+                newUser.phoneNumber
+            );
+            
+            if (recoveryResult.restoredCount > 0) {
+                log.info(`Successfully restored ${recoveryResult.restoredCount} transactions for user ${newUser._id}`);
+            } else if (recoveryResult.message !== 'Recovery service unavailable') {
+                log.info(`No transactions found for recovery for user ${newUser._id}`);
+            }
+        } catch (recoveryError) {
+            log.error(`Transaction recovery failed during registration for ${newUser.email}:`, recoveryError);
+            // Don't fail the registration if recovery fails
+        }
+        // --- End Transaction Recovery ---
 
         // --- Trigger OTP Generation --- 
         try {
@@ -744,18 +765,191 @@ export class UserService {
     // --- Balance and Withdrawal Management ---
 
     /**
-     * Updates a user's balance.
-     * @param userId - The ID of the user.
-     * @param amount - Amount to add (positive) or subtract (negative).
-     * @returns Updated balance or null if user not found.
+     * Compute effective balances after netting debt (XAF first, then USD at 660 XAF/USD)
+     */
+    async getEffectiveBalances(userId: string | Types.ObjectId): Promise<{ netXaf: number; netUsd: number; debtXaf: number }> {
+        const user = await userRepository.findById(userId);
+        if (!user) return { netXaf: 0, netUsd: 0, debtXaf: 0 };
+        const debtXAF = Math.max(0, user.debt || 0);
+        let netXaf = user.balance;
+        let netUsd = user.usdBalance;
+        if (debtXAF > 0) {
+            const remainingDebtAfterXaf = Math.max(0, debtXAF - netXaf);
+            netXaf = Math.max(0, netXaf - debtXAF);
+            const remainingDebtUSD = CurrencyConverter.xafToUsd(remainingDebtAfterXaf);
+            netUsd = Math.max(0, Math.round((netUsd - remainingDebtUSD) * 100) / 100);
+        }
+        return { netXaf, netUsd, debtXaf: debtXAF };
+    }
+
+    /**
+     * Updates a user's balance with debt settlement (XAF).
      */
     async updateBalance(userId: string | Types.ObjectId, amount: number): Promise<number | null> {
         try {
-            const user = await userRepository.updateBalance(userId, amount);
-            return user ? user.balance : null;
+            const user = await userRepository.findById(userId);
+            if (!user) return null;
+
+            let remainingAmountXaf = amount;
+            let currentDebt = Math.max(0, user.debt || 0);
+            let currentXaf = user.balance;
+
+            // Settle debt BEFORE applying credit
+            if (remainingAmountXaf > 0 && currentDebt > 0) {
+                const payXaf = Math.min(remainingAmountXaf, currentDebt);
+                remainingAmountXaf -= payXaf;
+                currentDebt -= payXaf;
+            }
+
+            // Apply remaining XAF change to balance
+            if (remainingAmountXaf !== 0) {
+                currentXaf += remainingAmountXaf;
+            }
+
+            // Settle debt AFTER update if there is still positive XAF balance
+            if (currentDebt > 0 && currentXaf > 0) {
+                const settle = Math.min(currentDebt, currentXaf);
+                currentDebt -= settle;
+                currentXaf -= settle;
+            }
+
+            // Persist updates atomically as best-effort: set debt & balance
+            const updated = await userRepository.updateById(userId, { balance: currentXaf, debt: currentDebt });
+            return updated ? updated.balance : null;
         } catch (error) {
             log.error(`Error updating balance for user ${userId}`, error);
             throw error;
+        }
+    }
+
+    /**
+     * Update user's USD balance with debt settlement. Debt is in XAF.
+     * When adding USD, first convert to XAF at 590 XAF/USD to pay debt, then credit leftover USD.
+     */
+    async updateUsdBalance(userId: string | Types.ObjectId, amount: number): Promise<number | null> {
+        try {
+            const user = await userRepository.findById(userId);
+            if (!user) return null;
+
+            let remainingAmountUsd = amount;
+            let currentDebt = Math.max(0, user.debt || 0); // XAF
+            let currentUsd = user.usdBalance;
+
+            // Settle debt BEFORE applying USD credit (convert USD->XAF at 590)
+            if (remainingAmountUsd > 0 && currentDebt > 0) {
+                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(remainingAmountUsd); // 590 XAF per USD
+                const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
+                const usdUsed = Math.round((xafPaid / 590) * 100) / 100; // inverse of withdrawal rate
+                remainingAmountUsd = Math.max(0, Math.round((remainingAmountUsd - usdUsed) * 100) / 100);
+                currentDebt -= xafPaid;
+            }
+
+            // Apply remaining USD change to balance
+            if (remainingAmountUsd !== 0) {
+                currentUsd = Math.round((currentUsd + remainingAmountUsd) * 100) / 100;
+            }
+
+            // Settle debt AFTER update using any remaining USD
+            if (currentDebt > 0 && currentUsd > 0) {
+                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(currentUsd);
+                const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
+                const usdUsed = Math.round((xafPaid / 590) * 100) / 100;
+                currentUsd = Math.max(0, Math.round((currentUsd - usdUsed) * 100) / 100);
+                currentDebt -= xafPaid;
+            }
+
+            const updated = await userRepository.updateById(userId, { usdBalance: currentUsd, debt: currentDebt });
+            return updated ? updated.usdBalance : null;
+        } catch (error) {
+            log.error(`Error updating USD balance for user ${userId}`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get user's USD balance
+     * @param userId - The ID of the user.
+     * @returns USD balance or null if user not found.
+     */
+    async getUsdBalance(userId: string | Types.ObjectId): Promise<number | null> {
+        try {
+            const user = await userRepository.findById(userId);
+            return user ? user.usdBalance : null;
+        } catch (error) {
+            log.error(`Error getting USD balance for user ${userId}`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Convert USD balance to XAF balance
+     * @param userId - The ID of the user.
+     * @param usdAmount - Amount in USD to convert.
+     * @returns Success status and converted amount.
+     */
+    async convertUsdToXaf(userId: string | Types.ObjectId, usdAmount: number): Promise<{ success: boolean; convertedAmount?: number; message?: string }> {
+        try {
+            const user = await userRepository.findById(userId);
+            if (!user) {
+                return { success: false, message: 'User not found' };
+            }
+
+            if (user.usdBalance < usdAmount) {
+                return { success: false, message: 'Insufficient USD balance' };
+            }
+
+            const xafAmount = CurrencyConverter.usdToXafWithdrawal(usdAmount);
+
+            // Update both balances
+            await userRepository.updateUsdBalance(userId, -usdAmount);
+            await userRepository.updateBalance(userId, xafAmount);
+
+            log.info(`Converted ${usdAmount} USD to ${xafAmount} XAF for user ${userId}`);
+
+            return {
+                success: true,
+                convertedAmount: xafAmount,
+                message: `Successfully converted ${usdAmount} USD to ${xafAmount} XAF`
+            };
+        } catch (error) {
+            log.error(`Error converting USD to XAF for user ${userId}`, error);
+            return { success: false, message: 'Conversion failed' };
+        }
+    }
+
+    /**
+     * Convert XAF balance to USD balance
+     * @param userId - The ID of the user.
+     * @param xafAmount - Amount in XAF to convert.
+     * @returns Success status and converted amount.
+     */
+    async convertXafToUsd(userId: string | Types.ObjectId, xafAmount: number): Promise<{ success: boolean; convertedAmount?: number; message?: string }> {
+        try {
+            const user = await userRepository.findById(userId);
+            if (!user) {
+                return { success: false, message: 'User not found' };
+            }
+
+            if (user.balance < xafAmount) {
+                return { success: false, message: 'Insufficient XAF balance' };
+            }
+
+            const usdAmount = CurrencyConverter.xafToUsd(xafAmount);
+
+            // Update both balances
+            await userRepository.updateBalance(userId, -xafAmount);
+            await userRepository.updateUsdBalance(userId, usdAmount);
+
+            log.info(`Converted ${xafAmount} XAF to ${usdAmount} USD for user ${userId}`);
+
+            return {
+                success: true,
+                convertedAmount: usdAmount,
+                message: `Successfully converted ${xafAmount} XAF to ${usdAmount} USD`
+            };
+        } catch (error) {
+            log.error(`Error converting XAF to USD for user ${userId}`, error);
+            return { success: false, message: 'Conversion failed' };
         }
     }
 
@@ -1190,13 +1384,15 @@ export class UserService {
      * Checks if a withdrawal is allowed based on user limits
      * @param userId User ID
      * @param amount Amount to withdraw
+     * @param currency Currency of withdrawal (USD for crypto, XAF for mobile money)
      * @returns Whether the withdrawal is allowed and reason if not
      */
-    async checkWithdrawalLimits(userId: string | Types.ObjectId, amount: number): Promise<{
+    async checkWithdrawalLimits(userId: string | Types.ObjectId, amount: number, currency: 'USD' | 'XAF' = 'XAF'): Promise<{
         allowed: boolean;
         reason?: string;
         dailyLimit?: number;
         dailyRemaining?: number;
+        successfulTransactionCount?: number;
     }> {
         try {
             const user = await userRepository.findById(userId);
@@ -1216,13 +1412,38 @@ export class UserService {
                 return { allowed: false, reason: 'Amount must be greater than zero' };
             }
 
-            // Check if user has sufficient balance
-            if (user.balance < amount) {
-                return { allowed: false, reason: 'Insufficient balance' };
+            // --- Debt-aware effective balances ---
+            const debtXAF = Math.max(0, user.debt || 0);
+            let effectiveXaf = user.balance;
+            let effectiveUsd = user.usdBalance;
+            if (debtXAF > 0) {
+                // Use XAF balance to cover debt first
+                const remainingDebtAfterXaf = Math.max(0, debtXAF - user.balance);
+                effectiveXaf = Math.max(0, user.balance - debtXAF);
+                // Convert remaining XAF debt to USD at 1 USD = 660 XAF
+                const remainingDebtUSD = Math.round(CurrencyConverter.xafToUsd(remainingDebtAfterXaf) * 100) / 100;
+                effectiveUsd = Math.max(0, user.usdBalance - remainingDebtUSD);
+            }
+
+            // Check if user has sufficient balance based on currency (after debt is netted out)
+            if (currency === 'USD') {
+                // For crypto withdrawals, check USD balance
+                if (effectiveUsd < amount) {
+                    return { allowed: false, reason: 'Insufficient USD balance (after debt deduction)' };
+                }
+                // Minimum $15 for crypto withdrawals
+                if (amount < 15) {
+                    return { allowed: false, reason: 'Minimum withdrawal amount is $15 USD' };
+                }
+            } else {
+                // For mobile money withdrawals, check XAF balance
+                if (effectiveXaf < amount) {
+                    return { allowed: false, reason: 'Insufficient XAF balance (after debt deduction)' };
+                }
             }
 
             // Get daily withdrawal limit from config
-            const dailyWithdrawalLimit = config.withdrawal?.dailyLimit || 50000;
+            const dailyWithdrawalLimit = config.withdrawal?.dailyLimit;
 
             // Get today's date
             const today = new Date();
@@ -1230,8 +1451,18 @@ export class UserService {
             // Get daily withdrawal data for today
             const todayWithdrawals = await dailyWithdrawalRepository.getDailyWithdrawalByUserAndDate(userId, today);
 
-            // Calculate today's total withdrawal amount
+            // Calculate today's total withdrawal amount and successful transaction count
             const todayTotalAmount = todayWithdrawals?.totalAmount || 0;
+            const todaySuccessfulCount = todayWithdrawals?.successfulCount || 0;
+
+            // Check 24-hour successful transaction limit (max 3 transactions)
+            if (todaySuccessfulCount >= 3) {
+                return {
+                    allowed: false,
+                    reason: 'Maximum 3 successful withdrawals per 24 hours exceeded',
+                    successfulTransactionCount: todaySuccessfulCount
+                };
+            }
 
             // Check if this withdrawal would exceed daily limit
             if (todayTotalAmount + amount > dailyWithdrawalLimit) {
@@ -1248,11 +1479,133 @@ export class UserService {
             return {
                 allowed: true,
                 dailyLimit: dailyWithdrawalLimit,
-                dailyRemaining: dailyWithdrawalLimit - (todayTotalAmount + amount)
+                dailyRemaining: dailyWithdrawalLimit - (todayTotalAmount + amount),
+                successfulTransactionCount: todaySuccessfulCount
             };
         } catch (error: any) {
             log.error(`Error checking withdrawal limits for user ${userId}:`, error);
             return { allowed: false, reason: 'Error checking withdrawal limits' };
+        }
+    }
+
+    /**
+     * Check if crypto withdrawal is allowed and return withdrawal limits
+     * @param userId User ID
+     * @param usdAmount Amount in USD to withdraw
+     * @returns Whether the crypto withdrawal is allowed
+     */
+    async checkCryptoWithdrawalLimits(userId: string | Types.ObjectId, usdAmount: number): Promise<{
+        allowed: boolean;
+        reason?: string;
+        remainingTransactions?: number;
+        usdBalance?: number;
+    }> {
+        try {
+            const result = await this.checkWithdrawalLimits(userId, usdAmount, 'USD');
+
+            if (!result.allowed) {
+                return {
+                    allowed: false,
+                    reason: result.reason
+                };
+            }
+
+            const user = await userRepository.findById(userId);
+            return {
+                allowed: true,
+                remainingTransactions: 3 - (result.successfulTransactionCount || 0),
+                usdBalance: user?.usdBalance || 0
+            };
+        } catch (error: any) {
+            log.error(`Error checking crypto withdrawal limits for user ${userId}:`, error);
+            return { allowed: false, reason: 'Error checking crypto withdrawal limits' };
+        }
+    }
+
+    /**
+     * Process successful withdrawal (deduct balance and update withdrawal tracking)
+     * @param userId User ID
+     * @param amount Amount withdrawn
+     * @param currency Currency of withdrawal
+     * @returns Success status
+     */
+    async processSuccessfulWithdrawal(userId: string | Types.ObjectId, amount: number, currency: 'USD' | 'XAF'): Promise<{
+        success: boolean;
+        message?: string;
+    }> {
+        try {
+            // Deduct from appropriate balance
+            if (currency === 'USD') {
+                await userRepository.updateUsdBalance(userId, -amount);
+            } else {
+                await userRepository.updateBalance(userId, -amount);
+            }
+
+            // Increment successful withdrawal count for today
+            await dailyWithdrawalRepository.incrementSuccessfulWithdrawal(userId, new Date(), amount);
+
+            log.info(`Successful withdrawal processed: ${amount} ${currency} for user ${userId}`);
+            return { success: true };
+        } catch (error: any) {
+            log.error(`Error processing successful withdrawal for user ${userId}:`, error);
+            return { success: false, message: 'Error processing withdrawal' };
+        }
+    }
+
+    /**
+     * Update user's crypto wallet information
+     * @param userId User ID
+     * @param walletAddress Crypto wallet address
+     * @param currency Crypto currency
+     * @returns Success status
+     */
+    async updateUserCryptoWallet(userId: string | Types.ObjectId, walletAddress: string, currency: string): Promise<{
+        success: boolean;
+        message?: string;
+    }> {
+        try {
+            const user = await userRepository.findById(userId);
+            if (!user) {
+                return { success: false, message: 'User not found' };
+            }
+
+            await userRepository.updateById(userId, {
+                cryptoWalletAddress: walletAddress,
+                cryptoWalletCurrency: currency
+            });
+
+            log.info(`Crypto wallet updated for user ${userId}: ${currency} - ${walletAddress.substring(0, 10)}...`);
+            return { success: true };
+        } catch (error: any) {
+            log.error(`Error updating crypto wallet for user ${userId}:`, error);
+            return { success: false, message: 'Error updating crypto wallet' };
+        }
+    }
+
+    /**
+     * Get user's crypto wallet information
+     * @param userId User ID
+     * @returns Crypto wallet info
+     */
+    async getUserCryptoWallet(userId: string | Types.ObjectId): Promise<{
+        cryptoWalletAddress?: string;
+        cryptoWalletCurrency?: string;
+        hasWallet: boolean;
+    }> {
+        try {
+            const user = await userRepository.findById(userId);
+            if (!user) {
+                return { hasWallet: false };
+            }
+
+            return {
+                cryptoWalletAddress: user.cryptoWalletAddress,
+                cryptoWalletCurrency: user.cryptoWalletCurrency,
+                hasWallet: !!(user.cryptoWalletAddress && user.cryptoWalletCurrency)
+            };
+        } catch (error: any) {
+            log.error(`Error getting crypto wallet for user ${userId}:`, error);
+            return { hasWallet: false };
         }
     }
 

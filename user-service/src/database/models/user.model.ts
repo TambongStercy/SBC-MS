@@ -82,6 +82,10 @@ export interface IUser extends Document {
     ipLastUpdated?: Date;
     referralCode?: string;
     balance: number;
+    usdBalance: number;
+    // Crypto wallet information
+    cryptoWalletAddress?: string;
+    cryptoWalletCurrency?: string; // e.g., 'BTC', 'ETH', 'USDT'
     sex?: UserSex;
     birthDate?: Date;
     language?: string[];
@@ -160,6 +164,19 @@ const UserSchema = new Schema<IUser>(
         ipLastUpdated: { type: Date },
         referralCode: { type: String, unique: true, sparse: true, index: true, lowercase: true },
         balance: { type: Number, default: 0, required: true },
+        usdBalance: { type: Number, default: 0, required: true },
+        // Crypto wallet information
+        cryptoWalletAddress: { 
+            type: String, 
+            trim: true,
+            sparse: true // Allow multiple users to have null/undefined values
+        },
+        cryptoWalletCurrency: { 
+            type: String, 
+            trim: true, 
+            uppercase: true,
+            enum: ['BTC', 'ETH', 'USDT', 'USDC', 'LTC', 'XRP', 'ADA', 'DOT', 'SOL', 'MATIC', 'TRX', 'BCH'] // Supported currencies
+        },
         sex: {
             type: String,
             enum: Object.values(UserSex),

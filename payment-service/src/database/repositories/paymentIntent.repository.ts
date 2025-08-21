@@ -44,6 +44,20 @@ export interface UpdatePaymentIntentInput {
     }>;
     paidAmount?: number;
     paidCurrency?: string;
+    
+    // Crypto-specific fields
+    payCurrency?: string; // Crypto currency for payment (e.g., 'BTC', 'ETH', 'USDT')
+    payAmount?: number; // Amount in crypto currency
+    cryptoAddress?: string; // Crypto deposit address
+    cryptoQrCode?: string; // QR code for crypto payment
+    exchangeRate?: number; // Exchange rate from fiat to crypto
+    networkFee?: number; // Network fee for crypto transaction
+    minConfirmations?: number; // Required confirmations for crypto payment
+    expiresAt?: Date; // Payment expiration time for crypto
+    
+    // Additional fields that might be updated
+    amount?: number;
+    currency?: string;
 }
 
 // Define structure for pagination options used internally

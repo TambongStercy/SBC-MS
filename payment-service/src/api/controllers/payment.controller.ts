@@ -5,6 +5,7 @@ import logger from '../../utils/logger';
 import config from '../../config';
 import { Currency } from '../../database/models/transaction.model';
 import { AppError } from '../../utils/errors';
+import QRCode from 'qrcode';
 
 const log = logger.getLogger('PaymentController');
 
@@ -38,6 +39,7 @@ export class PaymentController {
         const { sessionId } = req.params;
         let paymentIntent: IPaymentIntent | null = null;
         let errorMessage: string | undefined;
+        let cryptoQrCodeBase64: string | undefined;
 
         try {
             paymentIntent = await paymentService.getPaymentIntentDetails(sessionId);
@@ -62,28 +64,49 @@ export class PaymentController {
                 }
             }
 
+            // Generate QR code for crypto payments if needed
+            if (
+                paymentIntent &&
+                paymentIntent.status === PaymentStatus.WAITING_FOR_CRYPTO_DEPOSIT &&
+                paymentIntent.cryptoAddress &&
+                paymentIntent.payCurrency
+            ) {
+                // Include amount and currency in the crypto URI for QR code
+                const cryptoUri = `${paymentIntent.payCurrency.toLowerCase()}:${paymentIntent.cryptoAddress}?amount=${paymentIntent.payAmount}`;
+                try {
+                    let qr = await QRCode.toDataURL(cryptoUri, { type: 'image/png' });
+                    if (qr.startsWith('data:image/png;base64,')) {
+                        qr = qr.replace('data:image/png;base64,', '');
+                    }
+                    cryptoQrCodeBase64 = qr;
+                } catch (err) {
+                    log.error('Failed to generate QR code for payment page', err);
+                }
+            }
+
             const viewData = {
-                sessionId: paymentIntent?.sessionId,
-                amount: paymentIntent?.amount,
-                currency: paymentIntent?.currency || 'XAF', // Default to XAF if not set
-                paymentStatus: paymentIntent?.status,
-                phoneNumber: paymentIntent?.phoneNumber,
+                sessionId: paymentIntent ? paymentIntent.sessionId : sessionId, // Ensure sessionId is always passed
+                amount: paymentIntent ? paymentIntent.amount : undefined,
+                currency: paymentIntent ? (paymentIntent.currency || 'XAF') : 'XAF',
+                paymentStatus: paymentIntent ? paymentIntent.status : undefined,
+                phoneNumber: paymentIntent ? paymentIntent.phoneNumber : undefined,
                 // Don't pass "CRYPTO" as country code - it's not a real country
-                countryCode: (paymentIntent?.countryCode === 'CRYPTO') ? undefined : paymentIntent?.countryCode,
-                operator: paymentIntent?.operator,
+                countryCode: paymentIntent && paymentIntent.countryCode === 'CRYPTO' ? undefined : (paymentIntent ? paymentIntent.countryCode : undefined),
+                operator: paymentIntent ? paymentIntent.operator : undefined,
                 errorMessage: errorMessage,
                 assetBasePath: '/api/payments/static', // Path to static assets
                 // NEW: Add gateway and gatewayPaymentId
-                gateway: paymentIntent?.gateway || '',
-                gatewayPaymentId: paymentIntent?.gatewayPaymentId || '',
+                gateway: paymentIntent ? (paymentIntent.gateway || '') : '',
+                gatewayPaymentId: paymentIntent ? (paymentIntent.gatewayPaymentId || '') : '',
                 // NEW: Add crypto payment specific fields
-                cryptoAddress: paymentIntent?.cryptoAddress,
-                payAmount: paymentIntent?.payAmount,
-                payCurrency: paymentIntent?.payCurrency,
-                isCryptoPayment: paymentIntent?.gateway === 'nowpayments',
-                paymentType: paymentIntent?.paymentType,
-                subscriptionType: paymentIntent?.subscriptionType,
-                subscriptionPlan: paymentIntent?.subscriptionPlan
+                cryptoAddress: paymentIntent ? paymentIntent.cryptoAddress : undefined,
+                payAmount: paymentIntent ? paymentIntent.payAmount : undefined,
+                payCurrency: paymentIntent ? paymentIntent.payCurrency : undefined,
+                isCryptoPayment: paymentIntent ? paymentIntent.gateway === 'nowpayments' : false,
+                paymentType: paymentIntent ? paymentIntent.paymentType : undefined,
+                subscriptionType: paymentIntent ? paymentIntent.subscriptionType : undefined,
+                subscriptionPlan: paymentIntent ? paymentIntent.subscriptionPlan : undefined,
+                cryptoQrCodeBase64 // <-- inject QR code for EJS
             };
 
             res.render('payment', viewData);
@@ -173,19 +196,7 @@ export class PaymentController {
         }
     };
 
-    /**
-     * Get current payment status
-     */
-    public getPaymentStatus = async (req: Request, res: Response) => {
-        try {
-            const { sessionId } = req.params;
-            const paymentIntent = await paymentService.getPaymentIntentDetails(sessionId);
-            res.status(200).json({ success: true, data: paymentIntent?.status });
-        } catch (error) {
-            log.error('Error getting payment status:', error);
-            res.status(500).json({ success: false, message: 'Failed to get payment status' });
-        }
-    };
+
 
     /**
      * Handle Feexpay webhook notifications
@@ -431,16 +442,25 @@ export class PaymentController {
     };
 
     /**
-     * Create crypto payout
+     * Create crypto payout (user withdrawal from USD balance)
      */
     public createCryptoPayout = async (req: Request, res: Response) => {
         try {
-            const { userId, amount, cryptoCurrency, cryptoAddress, description } = req.body;
+            const { amount, cryptoCurrency, cryptoAddress, description } = req.body;
 
-            if (!userId || !amount || !cryptoCurrency || !cryptoAddress) {
+            // Get userId from authenticated request
+            const userId = (req as any).user?.id;
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Authentication required'
+                });
+            }
+
+            if (!amount || !cryptoCurrency || !cryptoAddress) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Missing required fields: userId, amount, cryptoCurrency, cryptoAddress'
+                    message: 'Missing required fields: amount, cryptoCurrency, cryptoAddress'
                 });
             }
 
@@ -448,6 +468,14 @@ export class PaymentController {
                 return res.status(400).json({
                     success: false,
                     message: 'Invalid amount: must be a positive number'
+                });
+            }
+
+            // Minimum $15 check
+            if (amount < 15) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Minimum withdrawal amount is $15 USD'
                 });
             }
 
@@ -459,7 +487,7 @@ export class PaymentController {
                 amount,
                 cryptoCurrency,
                 cryptoAddress,
-                description || 'Crypto payout',
+                description || 'Crypto withdrawal',
                 ipAddress,
                 deviceInfo
             );
@@ -870,6 +898,154 @@ export class PaymentController {
             next(error); // Pass error to central error handler
         }
     }
+
+    /**
+     * Get crypto estimate for payment
+     */
+    public getCryptoEstimate = async (req: Request, res: Response) => {
+        try {
+            const { amount, currency, cryptoCurrency } = req.body;
+
+            if (!amount || !currency || !cryptoCurrency) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Amount, currency, and cryptoCurrency are required'
+                });
+            }
+
+            log.info(`Getting crypto estimate: ${amount} ${currency} -> ${cryptoCurrency}`);
+
+            const estimate = await paymentService.getCryptoPaymentEstimate(
+                parseFloat(amount as string),
+                currency as string,
+                cryptoCurrency as string
+            );
+
+            log.info(`Crypto estimate result:`, estimate);
+
+            res.status(200).json({
+                success: true,
+                data: estimate
+            });
+
+        } catch (error: any) {
+            log.error(`Error getting crypto estimate: ${error.message}`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    /**
+     * Create crypto payment intent
+     */
+    public createCryptoPayment = async (req: Request, res: Response) => {
+        try {
+            const { amount, cryptoCurrency, cryptoAddress, description } = req.body; // Add amount, cryptoAddress, description
+
+            // Get userId from authenticated request
+            const userId = (req as any).user?.id; // Assuming authentication middleware attaches user
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Authentication required'
+                });
+            }
+
+            if (!amount || !cryptoCurrency || !cryptoAddress) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields: amount, cryptoCurrency, cryptoAddress'
+                });
+            }
+
+            if (typeof amount !== 'number' || amount <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid amount: must be a positive number'
+                });
+            }
+
+            // Minimum $15 check (as per current payment.controller.ts logic)
+            if (amount < 15) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Minimum withdrawal amount is $15 USD'
+                });
+            }
+
+            const ipAddress = req.ip;
+            const deviceInfo = req.headers['user-agent'] || 'unknown';
+
+            const result = await paymentService.createCryptoPayout(
+                userId,
+                amount,
+                cryptoCurrency,
+                cryptoAddress,
+                description || 'Crypto withdrawal',
+                ipAddress,
+                deviceInfo
+            );
+
+            if (!result.success) {
+                return res.status(400).json({
+                    success: false,
+                    message: result.message
+                });
+            }
+
+            res.json({
+                success: true,
+                message: result.message, // Include message from service
+                data: {
+                    transactionId: result.transactionId,
+                    payoutId: result.payoutId,
+                    status: result.status,
+                    amount: result.amount, // Return amount from service
+                    currency: 'USD' // Assuming USD for crypto payouts
+                }
+            });
+
+        } catch (error: any) {
+            log.error(`Error creating crypto payout: ${error.message}`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    /**
+     * Get payment status
+     */
+    public getPaymentStatus = async (req: Request, res: Response) => {
+        try {
+            const { sessionId } = req.params;
+
+            const paymentIntent = await paymentService.getPaymentIntentDetails(sessionId);
+
+            if (!paymentIntent) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Payment not found'
+                });
+            }
+
+            res.json({
+                success: true,
+                status: paymentIntent.status,
+                sessionId: paymentIntent.sessionId
+            });
+
+        } catch (error: any) {
+            log.error(`Error getting payment status: ${error.message}`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    };
 }
 
 // Export singleton instance
