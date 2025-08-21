@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { recoveryController } from '../controllers/recovery.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -14,23 +14,23 @@ router.get('/internal/recovery/user-stats', (req, res, next) =>
 );
 
 // Admin routes (require authentication)
-router.get('/admin/recovery/stats', authMiddleware, (req, res, next) => 
+router.get('/admin/recovery/stats', authenticate, (req, res, next) => 
     recoveryController.getRecoveryStats(req, res, next)
 );
 
-router.get('/admin/recovery/records', authMiddleware, (req, res, next) => 
+router.get('/admin/recovery/records', authenticate, (req, res, next) => 
     recoveryController.listRecoveryRecords(req, res, next)
 );
 
-router.post('/admin/recovery/run', authMiddleware, (req, res, next) => 
+router.post('/admin/recovery/run', authenticate, (req, res, next) => 
     recoveryController.runRecovery(req, res, next)
 );
 
-router.get('/admin/recovery/records/:id', authMiddleware, (req, res, next) => 
+router.get('/admin/recovery/records/:id', authenticate, (req, res, next) => 
     recoveryController.getRecoveryRecord(req, res, next)
 );
 
-router.post('/admin/recovery/records/:id/mark-restored', authMiddleware, (req, res, next) => 
+router.post('/admin/recovery/records/:id/mark-restored', authenticate, (req, res, next) => 
     recoveryController.markRecordAsRestored(req, res, next)
 );
 

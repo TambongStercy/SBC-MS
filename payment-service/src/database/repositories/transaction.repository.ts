@@ -37,6 +37,10 @@ export interface CreateTransactionInput {
     deviceInfo?: string;
     verificationCode?: string;
     verificationExpiry?: Date;
+    reference?: string;
+    serviceProvider?: string;
+    paymentMethod?: string;
+    externalTransactionId?: string;
 }
 
 // Interface for updating a transaction

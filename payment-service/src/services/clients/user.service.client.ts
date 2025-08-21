@@ -391,6 +391,56 @@ class UserServiceClient {
             throw new AppError(`Failed to communicate with user service for USD balance.`, 503);
         }
     }
+
+    async getUserByEmail(email: string): Promise<{ id: string; email?: string; phoneNumber?: string } | null> {
+        if (!this.baseUrl) {
+            log.error('Cannot find user by email: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/find-by-email`;
+        try {
+            log.debug(`Finding user by email: ${email}`);
+            const response = await this.request<{ success: boolean; data: { id: string; email?: string; phoneNumber?: string } | null }>('post', path, { email });
+            if (response?.success && response.data) {
+                log.info(`Successfully found user by email: ${email}`);
+                return response.data;
+            } else {
+                log.debug(`User not found by email: ${email}`);
+                return null;
+            }
+        } catch (error: any) {
+            if (error instanceof AppError && error.statusCode === 404) {
+                return null;
+            }
+            log.error(`Error finding user by email ${email}:`, error);
+            return null; // Don't throw error, just return null for user not found
+        }
+    }
+
+    async getUserByPhoneNumber(phoneNumber: string): Promise<{ id: string; email?: string; phoneNumber?: string } | null> {
+        if (!this.baseUrl) {
+            log.error('Cannot find user by phone: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/find-by-phone`;
+        try {
+            log.debug(`Finding user by phone: ${phoneNumber}`);
+            const response = await this.request<{ success: boolean; data: { id: string; email?: string; phoneNumber?: string } | null }>('post', path, { phoneNumber });
+            if (response?.success && response.data) {
+                log.info(`Successfully found user by phone: ${phoneNumber}`);
+                return response.data;
+            } else {
+                log.debug(`User not found by phone: ${phoneNumber}`);
+                return null;
+            }
+        } catch (error: any) {
+            if (error instanceof AppError && error.statusCode === 404) {
+                return null;
+            }
+            log.error(`Error finding user by phone ${phoneNumber}:`, error);
+            return null; // Don't throw error, just return null for user not found
+        }
+    }
 }
 
 export const userServiceClient = new UserServiceClient(); 

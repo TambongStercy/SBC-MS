@@ -24,6 +24,8 @@ export interface CreatePaymentIntentInput {
     phoneNumber?: string;
     countryCode?: string;
     metadata?: Record<string, any>;
+    gatewayPaymentId?: string;
+    gatewayRawResponse?: any;
 }
 
 // Interface for updating a payment intent

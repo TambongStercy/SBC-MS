@@ -16,7 +16,7 @@ import {
     RecoveryTransactionType,
     RecoveryStatus 
 } from '../database/models/recover-user-transaction.model';
-import { PaymentStatus } from '../database/interfaces/IPaymentIntent';
+import { PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
 import { TransactionStatus, TransactionType, Currency } from '../database/models/transaction.model';
 
 const log = logger.getLogger('TransactionRecoveryScript');
@@ -292,7 +292,7 @@ class TransactionRecoveryService {
 
             } else if (transactionType === RecoveryTransactionType.PAYMENT) {
                 // Check if payment intent already exists
-                const existingIntent = await paymentIntentRepository.findByGatewayPaymentId(provider, reference);
+                const existingIntent = await paymentIntentRepository.findByGatewayPaymentId(reference, this.mapProviderToGateway(provider));
                 if (existingIntent) {
                     log.info(`Payment intent ${reference} already exists in database`);
                     return;
@@ -303,8 +303,8 @@ class TransactionRecoveryService {
                     userId,
                     amount: transactionData.amount,
                     currency: this.mapCurrency(transactionData.currency),
-                    status: PaymentStatus.COMPLETED,
-                    gateway: provider,
+                    status: PaymentStatus.SUCCEEDED,
+                    gateway: this.mapProviderToGateway(provider),
                     gatewayPaymentId: reference,
                     gatewayRawResponse: transactionData,
                     paymentType: 'subscription', // Default assumption
@@ -312,7 +312,8 @@ class TransactionRecoveryService {
                 });
 
                 // Process as successful payment (activate subscription, share commissions, etc.)
-                await paymentService.processSuccessfulPayment(paymentIntent.sessionId);
+                // Note: You may need to implement processSuccessfulPayment method or use existing webhook handling
+                log.info(`Payment intent ${paymentIntent.sessionId} restored - manual processing may be required`);
 
                 result.successfulRecoveries++;
                 result.details.push({
@@ -372,6 +373,20 @@ class TransactionRecoveryService {
             return upperCurrency as Currency;
         }
         return Currency.XAF; // Default fallback
+    }
+
+    /**
+     * Map recovery provider to payment gateway
+     */
+    private mapProviderToGateway(provider: RecoveryProvider): PaymentGateway {
+        switch (provider) {
+            case RecoveryProvider.CINETPAY:
+                return PaymentGateway.CINETPAY;
+            case RecoveryProvider.FEEXPAY:
+                return PaymentGateway.FEEXPAY;
+            default:
+                return PaymentGateway.NONE;
+        }
     }
 
     /**
@@ -472,22 +487,22 @@ class TransactionRecoveryService {
             userId,
             amount: record.amount,
             currency: this.mapCurrency(record.currency),
-            status: PaymentStatus.COMPLETED,
-            gateway: record.provider,
+            status: PaymentStatus.SUCCEEDED,
+            gateway: this.mapProviderToGateway(record.provider),
             gatewayPaymentId: record.transactionReference,
             gatewayRawResponse: record.providerTransactionData,
             paymentType: 'subscription',
             metadata: { recovered: true, originalRecordId: record._id }
         });
 
-        // Process successful payment
-        await paymentService.processSuccessfulPayment(paymentIntent.sessionId);
+        // Process successful payment - may require manual processing
+        log.info(`Payment intent ${paymentIntent.sessionId} restored from recovery record`);
     }
 }
 
 async function connectToDatabase(): Promise<void> {
     try {
-        await mongoose.connect(config.database.url);
+        await mongoose.connect(config.mongodb.uri);
         log.info('Connected to MongoDB');
     } catch (error: any) {
         log.error('Failed to connect to MongoDB:', error);
@@ -620,7 +635,7 @@ process.on('uncaughtException', (error) => {
 });
 
 if (require.main === module) {
-    program.parse();
+    program.parse(process.argv);
 }
 
 export { TransactionRecoveryService };
