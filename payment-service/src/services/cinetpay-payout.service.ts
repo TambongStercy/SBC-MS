@@ -618,6 +618,7 @@ export class CinetPayPayoutService {
             if (!statusData) {
                 return null;
             }
+            console.log(statusData)
 
             return {
                 transactionId: statusData.client_transaction_id,

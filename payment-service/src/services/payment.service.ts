@@ -454,6 +454,12 @@ class PaymentService {
             let providerName: 'CinetPay' | 'FeexPay';
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
+                
+                const cinetpayBalance = await cinetpayPayoutService.getBalance();
+                if (netAmountDesired > cinetpayBalance.available) {
+                    throw new AppError('Withdrawals unavailable for now', 400);
+                }   
+
                 payoutService = cinetpayPayoutService;
                 providerName = 'CinetPay';
                 payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`;
@@ -512,8 +518,21 @@ class PaymentService {
 
             // Check if user has sufficient balance (important to do upfront) against the GROSS amount in XAF
             const userBalance = await userServiceClient.getBalance(userId.toString());
+            
+            // Explicit debt/negative balance prevention
+            if (userBalance < 0) {
+                log.warn(`User ${userId} has negative balance (debt): ${userBalance} XAF. Blocking withdrawal.`);
+                throw new AppError('Withdrawal not permitted: Your account has a negative balance. Please contact support to resolve this issue.', 400);
+            }
+            
+            if (userBalance === 0) {
+                log.warn(`User ${userId} has zero balance. Blocking withdrawal.`);
+                throw new AppError('Withdrawal not permitted: Your account balance is zero.', 400);
+            }
+            
             if (userBalance < grossAmountToDebitInXAF) {
-                throw new AppError('Insufficient balance', 400);
+                log.warn(`User ${userId} has insufficient balance for withdrawal. Balance: ${userBalance} XAF, Required: ${grossAmountToDebitInXAF} XAF`);
+                throw new AppError('Insufficient balance for this withdrawal amount including fees.', 400);
             }
 
             const withdrawalTransaction = await transactionRepository.create({
@@ -2081,7 +2100,7 @@ class PaymentService {
      * Handles actions common to both successful and failed payment completions,
      * including notifying the originating service.
      */
-    private async handlePaymentCompletion(paymentIntent: IPaymentIntent): Promise<void> {
+    public async handlePaymentCompletion(paymentIntent: IPaymentIntent): Promise<void> {
         log.info(`Handling payment completion for PaymentIntent ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
         try {
             // Notify originating service (do this regardless of commission outcome)
@@ -4446,9 +4465,15 @@ class PaymentService {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
         }
 
-        // Prevent processing if already completed/failed
-        if (transaction.status === TransactionStatus.COMPLETED || transaction.status === TransactionStatus.FAILED) {
-            log.warn(`Payout webhook: Transaction ${internalTransactionId} already in final status (${transaction.status}). Skipping update.`);
+        // Prevent processing if already completed (but allow updating failed transactions to completed)
+        if (transaction.status === TransactionStatus.COMPLETED) {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} already completed. Skipping update.`);
+            return;
+        }
+        
+        // Allow processing of failed transactions if the provider status is now successful
+        if (transaction.status === TransactionStatus.FAILED && providerStatusMessage !== 'completed') {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} already failed and provider status is not successful. Skipping update.`);
             return;
         }
 
@@ -4924,9 +4949,15 @@ class PaymentService {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
         }
 
-        // Prevent processing if already completed/failed
-        if (transaction.status === TransactionStatus.COMPLETED || transaction.status === TransactionStatus.FAILED) {
-            log.warn(`Payout webhook: Transaction ${internalTransactionId} already in final status (${transaction.status}). Skipping update.`);
+        // Prevent processing if already completed (but allow updating failed transactions to completed)
+        if (transaction.status === TransactionStatus.COMPLETED) {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} already completed. Skipping update.`);
+            return;
+        }
+        
+        // Allow processing of failed transactions if the provider status is now successful
+        if (transaction.status === TransactionStatus.FAILED && providerStatus !== 'completed') {
+            log.warn(`Payout webhook: Transaction ${internalTransactionId} already failed and provider status is not successful. Skipping update.`);
             return;
         }
 
@@ -5156,4 +5187,4 @@ class PaymentService {
 
 // Export singleton instance
 const paymentService = new PaymentService();
-export default paymentService; 
+export default paymentService;

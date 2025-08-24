@@ -6,6 +6,7 @@ import { TransactionType, Currency, TransactionStatus } from '../../database/mod
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { PaginationOptions } from '../../types/pagination';
+import { cinetpayPayoutService } from '../../services/cinetpay-payout.service';
 
 const log = logger.getLogger('TransactionController');
 
@@ -253,6 +254,7 @@ export class TransactionController {
                     deviceInfo
                 );
             } else {
+                
                 // Mobile money withdrawal (existing flow)
                 withdrawalResult = await paymentService.initiateWithdrawal(
                     userId,

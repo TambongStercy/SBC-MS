@@ -53,6 +53,11 @@ serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsB
 // NEW: Internal route to get active subscriptions for a user
 serviceRouter.get('/:userId/active-subscriptions', (req, res) => userController.getUserActiveSubscriptions(req, res));
 
+// NEW: Internal routes for finding users by different identifiers
+serviceRouter.post('/find-by-email', (req, res) => userController.findUserByEmail(req, res));
+serviceRouter.post('/find-by-phone', (req, res) => userController.findUserByPhoneNumber(req, res));
+serviceRouter.post('/find-by-momo', (req, res) => userController.findUserByMomoNumber(req, res));
+
 // Mount the service router under a dedicated path *before* user auth middleware
 router.use('/internal', serviceRouter);
 

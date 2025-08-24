@@ -13,6 +13,8 @@ import { normalizePhoneNumber } from '../../utils/phone.utils';
 import { UserRole } from '../../database/models/user.model';
 import { authorize } from '../middleware/rbac.middleware';
 import { notificationService, DeliveryChannel } from '../../services/clients/notification.service.client';
+import config from '../../config';
+import axios from 'axios';
 
 const log = logger.getLogger('UserController');
 
@@ -46,6 +48,48 @@ export class UserController {
 
     constructor() {
         // Constructor body if any
+    }
+
+    /**
+     * Process user recovery after registration (async - don't block registration)
+     */
+    private async processUserRecovery(userId: string, email?: string, phoneNumber?: string): Promise<void> {
+        try {
+            if (!email && !phoneNumber) {
+                log.debug('No email or phone number provided for recovery processing');
+                return;
+            }
+
+            log.info(`Processing recovery for newly registered user: ${userId}`);
+
+            const response = await axios.post(
+                `${config.services.paymentService}/api/internal/recovery/process-user-registration`,
+                {
+                    userId,
+                    email,
+                    phoneNumber
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${config.services.serviceSecret}`,
+                        'X-Service-Name': 'user-service',
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 30000 // 30 second timeout
+                }
+            );
+
+            if (response.data.success && response.data.data.restoredCount > 0) {
+                log.info(`Successfully restored ${response.data.data.restoredCount} transactions for user ${userId}`);
+            } else {
+                log.info(`No recoverable transactions found for user ${userId}`);
+            }
+
+        } catch (error: any) {
+            // Recovery failure should not affect registration success
+            log.warn(`Recovery processing failed for user ${userId}: ${error.message}`);
+            // Could optionally queue for retry later or send notification to admin
+        }
     }
 
     /**
@@ -678,6 +722,10 @@ export class UserController {
             // Now returns { message, userId }
             const result = await this.userService.registerUser(registrationData, req.ip);
 
+            // Process recovery after successful registration (async - don't wait for completion)  
+            // Temporarily disabled to avoid conflicts with existing recovery mechanism
+            // this.processUserRecovery(result.userId, registrationData.email, registrationData.phoneNumber);
+
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
         } catch (error: any) {
             log.error('Error registering a new user', error);
@@ -686,17 +734,105 @@ export class UserController {
     }
 
     /**
-     * Login a user
+     * Login a user with email or phone number
      * @route POST /api/users/login
      */
     async login(req: Request, res: Response): Promise<void> {
+        // Declare variables outside try block so they're accessible in catch
+        let email: string | undefined;
+        let normalizedPhone: string | undefined;
+        
         try {
-            const { email, password } = req.body;
+            const { email: reqEmail, phoneNumber, password } = req.body;
+            email = reqEmail; // Assign to outer scope variable
+            
+            // Validate that at least one identifier is provided
+            if (!email && !phoneNumber) {
+                res.status(400).json({ 
+                    success: false, 
+                    message: 'Email or phone number is required' 
+                });
+                return;
+            }
+            
+            // Normalize phone number if provided
+            if (phoneNumber && typeof phoneNumber === 'string') {
+                // Try to normalize without country code first (user might have entered full number)
+                normalizedPhone = normalizePhoneNumber(phoneNumber, undefined);
+                if (!normalizedPhone) {
+                    log.warn(`Phone number normalization failed for login. Raw: ${phoneNumber}`);
+                    res.status(400).json({ 
+                        success: false, 
+                        message: 'Invalid phone number format. Please include country code (e.g., 237670123456)' 
+                    });
+                    return;
+                }
+                log.info(`Phone number normalized during login to: ${normalizedPhone}`);
+            }
+            
             // Now returns { message, userId }
-            const result = await this.userService.loginUser(email, password, req.ip);
+            const result = await this.userService.loginUser(email, normalizedPhone, password, req.ip);
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
         } catch (error: any) {
-            res.status(401).json({ success: false, message: error.message });
+            // Check if the error is due to user not found (potential recovery case)
+            const isUserNotFound = error.message?.startsWith('USER_NOT_FOUND:');
+            const isWrongPassword = error.message?.startsWith('WRONG_PASSWORD:');
+            
+            if (isUserNotFound && (email || normalizedPhone)) {
+                // Check if this email/phone has already been recovered to avoid suggesting duplicate recovery
+                try {
+                    const checkRecoveryResponse = await axios.post(
+                        `${config.services.paymentService}/recovery/check-login`,
+                        {
+                            email: email || undefined,
+                            phoneNumber: normalizedPhone || undefined
+                        },
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${config.services.serviceSecret}`,
+                                'Content-Type': 'application/json',
+                                'X-Service-Name': 'user-service'
+                            },
+                            timeout: 5000
+                        }
+                    );
+
+                    // If recovery endpoint returns recoverable transactions, suggest recovery
+                    if (checkRecoveryResponse.status === 200 && checkRecoveryResponse.data?.data?.hasRecoverableTransactions) {
+                        res.status(404).json({ 
+                            success: false, 
+                            message: error.message.replace('USER_NOT_FOUND: ', ''),
+                            errorType: 'USER_NOT_FOUND',
+                            checkRecovery: {
+                                email: email || undefined,
+                                phoneNumber: normalizedPhone || undefined
+                            }
+                        });
+                        return;
+                    }
+                } catch (recoveryCheckError: any) {
+                    this.log.warn(`Failed to check recovery status for login: ${recoveryCheckError.message}`);
+                    // Continue with normal error handling if recovery check fails
+                }
+                
+                // If no recoverable transactions found or recovery check failed, return normal error
+                res.status(404).json({ 
+                    success: false, 
+                    message: error.message.replace('USER_NOT_FOUND: ', ''),
+                    errorType: 'USER_NOT_FOUND'
+                    // No checkRecovery field - don't suggest recovery
+                });
+            } else if (isWrongPassword) {
+                // Wrong password for existing user - don't check recovery
+                res.status(401).json({ 
+                    success: false, 
+                    message: error.message.replace('WRONG_PASSWORD: ', ''),
+                    errorType: 'WRONG_PASSWORD'
+                });
+            } else {
+                // Other login errors (validation errors, blocked account, etc.)
+                res.status(401).json({ success: false, message: error.message });
+            }
         }
     }
 
@@ -2177,6 +2313,90 @@ export class UserController {
         } catch (error: any) {
             this.log.error(`Error getting active subscriptions for user ${userId}:`, error);
             res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Failed to retrieve active subscriptions.' });
+        }
+    }
+
+    // NEW: Find User by Email (Internal Route)
+    async findUserByEmail(req: Request, res: Response): Promise<void> {
+        const { email } = req.body;
+        try {
+            if (!email) {
+                res.status(400).json({ success: false, message: 'Email is required.' });
+                return;
+            }
+
+            const user = await this.userService.findUserByEmail(email);
+            if (user) {
+                res.status(200).json({ 
+                    success: true, 
+                    data: { 
+                        id: user._id.toString(), 
+                        email: user.email, 
+                        phoneNumber: user.phoneNumber 
+                    } 
+                });
+            } else {
+                res.status(404).json({ success: false, message: 'User not found.' });
+            }
+        } catch (error: any) {
+            this.log.error(`Error finding user by email ${email}:`, error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Failed to find user by email.' });
+        }
+    }
+
+    // NEW: Find User by Phone Number (Internal Route)
+    async findUserByPhoneNumber(req: Request, res: Response): Promise<void> {
+        const { phoneNumber } = req.body;
+        try {
+            if (!phoneNumber) {
+                res.status(400).json({ success: false, message: 'Phone number is required.' });
+                return;
+            }
+
+            const user = await this.userService.findUserByPhoneNumber(phoneNumber);
+            if (user) {
+                res.status(200).json({ 
+                    success: true, 
+                    data: { 
+                        id: user._id.toString(), 
+                        email: user.email, 
+                        phoneNumber: user.phoneNumber 
+                    } 
+                });
+            } else {
+                res.status(404).json({ success: false, message: 'User not found.' });
+            }
+        } catch (error: any) {
+            this.log.error(`Error finding user by phone ${phoneNumber}:`, error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Failed to find user by phone number.' });
+        }
+    }
+
+    // NEW: Find User by Momo Number (Internal Route)
+    async findUserByMomoNumber(req: Request, res: Response): Promise<void> {
+        const { momoNumber } = req.body;
+        try {
+            if (!momoNumber) {
+                res.status(400).json({ success: false, message: 'Momo number is required.' });
+                return;
+            }
+
+            const user = await this.userService.findUserByMomoNumber(momoNumber);
+            if (user) {
+                res.status(200).json({ 
+                    success: true, 
+                    data: { 
+                        id: user._id.toString(), 
+                        email: user.email, 
+                        phoneNumber: user.phoneNumber 
+                    } 
+                });
+            } else {
+                res.status(404).json({ success: false, message: 'User not found.' });
+            }
+        } catch (error: any) {
+            this.log.error(`Error finding user by momo number ${momoNumber}:`, error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Failed to find user by momo number.' });
         }
     }
 

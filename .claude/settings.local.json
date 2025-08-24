@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run recovery:*)",
+      "Bash(npm run build:*)",
+      "WebFetch(domain:docs.feexpay.me)",
+      "Bash(find:*)",
+      "Bash(mongosh:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

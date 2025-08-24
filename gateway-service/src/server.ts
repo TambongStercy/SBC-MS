@@ -120,6 +120,14 @@ app.use('/api/webhook', proxy(config.services.notificationServiceUrl, {
   }
 }));
 
+// Recovery service (payment service)
+app.use('/api/recovery', proxy(config.services.paymentServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to recovery service (payment service)`);
+    return '/api/recovery' + req.url;
+  }
+}));
+
 // Payment service
 app.use('/api/payments', proxy(config.services.paymentServiceUrl, {
   proxyReqPathResolver: (req) => {

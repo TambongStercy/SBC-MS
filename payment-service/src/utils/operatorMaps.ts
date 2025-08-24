@@ -71,6 +71,27 @@ export const getPrefixFromOperator = (operatorSlug: string): string | undefined 
     return undefined;
 };
 
+// Helper to get country code from phone number
+export const getCountryCodeFromPhoneNumber = (phoneNumber: string | number): string | undefined => {
+    const phone = phoneNumber.toString();
+    
+    // Remove any leading + or 00
+    const cleanPhone = phone.replace(/^\+?0*/, '');
+    
+    // Check each dialing prefix (sorted by length descending to match longest first)
+    const prefixes = Object.entries(countryCodeToDialingPrefix)
+        .map(([countryCode, prefix]) => ({ countryCode, prefix }))
+        .sort((a, b) => b.prefix.length - a.prefix.length);
+    
+    for (const { countryCode, prefix } of prefixes) {
+        if (cleanPhone.startsWith(prefix)) {
+            return countryCode;
+        }
+    }
+    
+    return undefined;
+};
+
 
 export const correspondents = {
     'BJ': {

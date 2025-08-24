@@ -7,6 +7,7 @@ import RecoverUserTransactionModel, {
 } from '../models/recover-user-transaction.model';
 import { Types } from 'mongoose';
 import logger from '../../utils/logger';
+import { generatePhoneMatchQuery } from '../../utils/phone-normalizer';
 
 const log = logger.getLogger('RecoverUserTransactionRepository');
 
@@ -44,29 +45,40 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
 
     /**
      * Find records by phone number that are not restored
+     * Now supports multiple phone number formats and nested fields
      */
     async findByPhoneNotRestored(phoneNumber: string): Promise<IRecoverUserTransaction[]> {
+        const phoneConditions = generatePhoneMatchQuery(phoneNumber);
+        
         return await RecoverUserTransactionModel.find({
-            userPhoneNumber: phoneNumber,
+            $or: phoneConditions,
             recoveryStatus: RecoveryStatus.NOT_RESTORED
         }).sort({ createdAt: -1 });
     }
 
     /**
-     * Find records by email or phone that are not restored
+     * Find records by email, phone, or userId that are not restored
+     * Now supports multiple phone number formats and nested fields
      */
-    async findByEmailOrPhoneNotRestored(email?: string, phoneNumber?: string): Promise<IRecoverUserTransaction[]> {
+    async findByEmailOrPhoneNotRestored(email?: string, phoneNumber?: string, userId?: string): Promise<IRecoverUserTransaction[]> {
         const query: any = {
             recoveryStatus: RecoveryStatus.NOT_RESTORED
         };
 
-        if (email || phoneNumber) {
+        if (email || phoneNumber || userId) {
             query.$or = [];
+            
             if (email) {
                 query.$or.push({ userEmail: email });
             }
+            
             if (phoneNumber) {
-                query.$or.push({ userPhoneNumber: phoneNumber });
+                const phoneConditions = generatePhoneMatchQuery(phoneNumber);
+                query.$or.push(...phoneConditions);
+            }
+            
+            if (userId) {
+                query.$or.push({ userIdFromProvider: userId });
             }
         }
 
@@ -102,6 +114,7 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
 
     /**
      * Mark multiple records as restored for a user
+     * Now supports multiple phone number formats and nested fields
      */
     async markMultipleAsRestored(userEmail?: string, userPhoneNumber?: string, restoredUserId?: Types.ObjectId): Promise<number> {
         const query: any = {
@@ -110,11 +123,14 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
 
         if (userEmail || userPhoneNumber) {
             query.$or = [];
+            
             if (userEmail) {
                 query.$or.push({ userEmail });
             }
+            
             if (userPhoneNumber) {
-                query.$or.push({ userPhoneNumber });
+                const phoneConditions = generatePhoneMatchQuery(userPhoneNumber);
+                query.$or.push(...phoneConditions);
             }
         }
 
@@ -172,6 +188,34 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
     }
 
     /**
+     * Find recently restored records by email or phone within specified hours
+     * Now supports multiple phone number formats and nested fields
+     */
+    async findRecentlyRestored(email?: string, phoneNumber?: string, hoursBack: number = 24): Promise<IRecoverUserTransaction[]> {
+        const query: any = {
+            recoveryStatus: RecoveryStatus.RESTORED,
+            restoredAt: {
+                $gte: new Date(Date.now() - hoursBack * 60 * 60 * 1000)
+            }
+        };
+
+        if (email || phoneNumber) {
+            query.$or = [];
+            
+            if (email) {
+                query.$or.push({ userEmail: email });
+            }
+            
+            if (phoneNumber) {
+                const phoneConditions = generatePhoneMatchQuery(phoneNumber);
+                query.$or.push(...phoneConditions);
+            }
+        }
+
+        return await RecoverUserTransactionModel.find(query).sort({ restoredAt: -1 });
+    }
+
+    /**
      * Find records by provider and transaction type with pagination
      */
     async findWithFilters(
@@ -195,7 +239,10 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
         if (filters.transactionType) query.transactionType = filters.transactionType;
         if (filters.recoveryStatus) query.recoveryStatus = filters.recoveryStatus;
         if (filters.userEmail) query.userEmail = new RegExp(filters.userEmail, 'i');
-        if (filters.userPhoneNumber) query.userPhoneNumber = new RegExp(filters.userPhoneNumber, 'i');
+        if (filters.userPhoneNumber) {
+            const phoneConditions = generatePhoneMatchQuery(filters.userPhoneNumber);
+            query.$or = (query.$or || []).concat(phoneConditions);
+        }
 
         const sortBy = options.sortBy || 'createdAt';
         const sortOrder = options.sortOrder === 'asc' ? 1 : -1;

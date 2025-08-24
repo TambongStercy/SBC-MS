@@ -3,6 +3,7 @@ import logger from '../../utils/logger';
 import { TransactionRecoveryService } from '../../scripts/transaction-recovery.script';
 import { recoverUserTransactionRepository } from '../../database/repositories/recover-user-transaction.repository';
 import { RecoveryProvider, RecoveryTransactionType, RecoveryStatus } from '../../database/models/recover-user-transaction.model';
+import { userServiceClient } from '../../services/clients/user.service.client';
 
 const log = logger.getLogger('RecoveryController');
 
@@ -62,13 +63,14 @@ export class RecoveryController {
      */
     public getUserRecoveryStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
-            const { email, phoneNumber } = req.query;
+            const { email, phoneNumber, userId } = req.query;
 
-            log.info(`Getting user recovery stats for email: ${email}, phone: ${phoneNumber}`);
+            log.info(`Getting user recovery stats for email: ${email}, phone: ${phoneNumber}, userId: ${userId}`);
 
             const records = await recoverUserTransactionRepository.findByEmailOrPhoneNotRestored(
                 email as string,
-                phoneNumber as string
+                phoneNumber as string,
+                userId as string
             );
 
             const stats = {
@@ -297,6 +299,262 @@ export class RecoveryController {
 
         } catch (error: any) {
             log.error('Error getting recovery record:', error);
+            next(error);
+        }
+    };
+
+    /**
+     * [PUBLIC] Check if email/phone has recoverable transactions for login attempts
+     * @route POST /api/recovery/check-login
+     * @access Public
+     */
+    public checkLoginRecovery = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { email, phoneNumber } = req.body;
+
+            if (!email && !phoneNumber) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Email or phone number is required'
+                });
+                return;
+            }
+
+            log.info(`Checking login recovery for email: ${email}, phone: ${phoneNumber}`);
+
+            // Find recoverable transactions for this email/phone
+            const records = await recoverUserTransactionRepository.findByEmailOrPhoneNotRestored(
+                email,
+                phoneNumber
+            );
+
+            if (records.length === 0) {
+                res.status(404).json({
+                    success: false,
+                    message: 'No recoverable transactions found'
+                });
+                return;
+            }
+
+            // Calculate total amount and transaction counts
+            const paymentRecords = records.filter(r => r.transactionType === RecoveryTransactionType.PAYMENT);
+            const payoutRecords = records.filter(r => r.transactionType === RecoveryTransactionType.PAYOUT);
+            
+            const totalAmount = records.reduce((sum, record) => sum + record.amount, 0);
+
+            res.status(200).json({
+                success: true,
+                message: 'Recoverable transactions found',
+                data: {
+                    hasRecoverableTransactions: true,
+                    totalTransactions: records.length,
+                    paymentTransactions: paymentRecords.length,
+                    payoutTransactions: payoutRecords.length,
+                    totalAmount,
+                    registrationRequired: true,
+                    suggestedIdentifiers: {
+                        email: email || records[0]?.userEmail,
+                        phoneNumber: phoneNumber || records[0]?.userPhoneNumber,
+                        countryCode: records[0]?.providerTransactionData?.country || 'CM'
+                    },
+                    message: `You have ${records.length} recoverable transactions worth ${totalAmount} XAF. Please register with the same email/phone to recover them.`
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error checking login recovery:', error);
+            next(error);
+        }
+    };
+
+    /**
+     * [PUBLIC] Check if email/phone has pending recoveries during registration
+     * @route POST /api/recovery/check-registration
+     * @access Public
+     */
+    public checkRegistrationRecovery = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { email, phoneNumber } = req.body;
+
+            if (!email && !phoneNumber) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Email or phone number is required'
+                });
+                return;
+            }
+
+            log.info(`Checking registration recovery for email: ${email}, phone: ${phoneNumber}`);
+
+            // Check if email/phone is already used by existing user
+            let existingUser = null;
+            let existingUserIdentifier = null;
+
+            if (email) {
+                existingUser = await userServiceClient.getUserByEmail(email);
+                if (existingUser) {
+                    existingUserIdentifier = 'email';
+                }
+            }
+
+            if (!existingUser && phoneNumber) {
+                existingUser = await userServiceClient.getUserByPhoneNumber(phoneNumber);
+                if (existingUser) {
+                    existingUserIdentifier = 'phone number';
+                }
+            }
+
+            // If user already exists, return error
+            if (existingUser) {
+                res.status(409).json({
+                    success: false,
+                    message: `An account with this ${existingUserIdentifier} already exists`,
+                    errorType: 'USER_ALREADY_EXISTS',
+                    data: {
+                        hasPendingRecoveries: false,
+                        canProceedWithRegistration: false,
+                        existingUserIdentifier,
+                        conflictType: existingUserIdentifier === 'email' ? 'EMAIL_TAKEN' : 'PHONE_TAKEN'
+                    }
+                });
+                return;
+            }
+
+            // Find recoverable transactions for this email/phone
+            const records = await recoverUserTransactionRepository.findByEmailOrPhoneNotRestored(
+                email,
+                phoneNumber
+            );
+
+            if (records.length === 0) {
+                res.status(200).json({
+                    success: true,
+                    message: 'No pending recoveries and identifier available',
+                    data: {
+                        hasPendingRecoveries: false,
+                        canProceedWithRegistration: true,
+                        identifierAvailable: true
+                    }
+                });
+                return;
+            }
+
+            // Calculate recovery details
+            const paymentRecords = records.filter(r => r.transactionType === RecoveryTransactionType.PAYMENT);
+            const payoutRecords = records.filter(r => r.transactionType === RecoveryTransactionType.PAYOUT);
+            const totalAmount = records.reduce((sum, record) => sum + record.amount, 0);
+
+            // Get unique providers and countries
+            const providers = [...new Set(records.map(r => r.provider))];
+            const countries = [...new Set(records.map(r => r.providerTransactionData?.country).filter(Boolean))];
+
+            res.status(200).json({
+                success: true,
+                message: 'Pending recoveries found and identifier available',
+                data: {
+                    hasPendingRecoveries: true,
+                    canProceedWithRegistration: true,
+                    identifierAvailable: true,
+                    recoveryDetails: {
+                        totalTransactions: records.length,
+                        paymentTransactions: paymentRecords.length,
+                        payoutTransactions: payoutRecords.length,
+                        totalAmount,
+                        providers,
+                        countries: countries.length > 0 ? countries : ['CM']
+                    },
+                    notification: {
+                        title: 'Account Recovery Available',
+                        message: `Good news! We found ${records.length} previous transactions (${totalAmount} XAF) that will be restored to your new account.`,
+                        details: [
+                            paymentRecords.length > 0 ? `${paymentRecords.length} subscription payments will be restored` : null,
+                            payoutRecords.length > 0 ? `${payoutRecords.length} withdrawal transactions will be restored` : null,
+                            'Your account will be automatically updated after registration'
+                        ].filter(Boolean)
+                    }
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error checking registration recovery:', error);
+            next(error);
+        }
+    };
+
+    /**
+     * [PUBLIC] Get recovery notification for user after registration
+     * @route POST /api/recovery/notification
+     * @access Public
+     */
+    public getRecoveryNotification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { email, phoneNumber } = req.body;
+
+            if (!email && !phoneNumber) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Email or phone number is required'
+                });
+                return;
+            }
+
+            log.info(`Getting recovery notification for email: ${email}, phone: ${phoneNumber}`);
+
+            // Find recently restored transactions (within last 24 hours)
+            const records = await recoverUserTransactionRepository.findRecentlyRestored(email, phoneNumber, 24);
+
+            if (records.length === 0) {
+                res.status(404).json({
+                    success: false,
+                    message: 'No recent recoveries found'
+                });
+                return;
+            }
+
+            const paymentRecords = records.filter(r => r.transactionType === RecoveryTransactionType.PAYMENT);
+            const payoutRecords = records.filter(r => r.transactionType === RecoveryTransactionType.PAYOUT);
+            const totalAmount = records.reduce((sum, record) => sum + record.amount, 0);
+
+            res.status(200).json({
+                success: true,
+                message: 'Recovery notification generated',
+                data: {
+                    hasRecoveries: true,
+                    recoveryCompleted: true,
+                    recoveryDetails: {
+                        totalTransactions: records.length,
+                        paymentTransactions: paymentRecords.length,
+                        payoutTransactions: payoutRecords.length,
+                        totalAmount,
+                        restoredAt: new Date().toISOString()
+                    },
+                    notification: {
+                        title: 'Account Recovery Completed!',
+                        message: `Successfully restored ${records.length} transactions worth ${totalAmount} XAF to your account.`,
+                        details: [
+                            paymentRecords.length > 0 ? `✅ ${paymentRecords.length} subscription(s) activated` : null,
+                            payoutRecords.length > 0 ? `✅ ${payoutRecords.length} withdrawal(s) processed` : null,
+                            '✅ Your account balance has been updated',
+                            '✅ All services are now available'
+                        ].filter(Boolean),
+                        actions: [
+                            {
+                                type: 'navigate',
+                                label: 'View Transactions',
+                                target: '/dashboard/transactions'
+                            },
+                            {
+                                type: 'navigate', 
+                                label: 'Check Subscriptions',
+                                target: '/dashboard/subscriptions'
+                            }
+                        ]
+                    }
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error getting recovery notification:', error);
             next(error);
         }
     };

@@ -4,6 +4,8 @@ import logger from '../utils/logger'; // Assuming default export for logger
 
 // Load environment variables from .env file (assuming it's in the root of payment-service)
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Also load local environment file for development
+dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
 
 // Define Config Interface (based on user-service and payment needs)
 interface IConfig {

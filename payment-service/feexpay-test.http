@@ -1,0 +1,79 @@
+### FeexPay Transaction Status API Tests
+### Uses environment variables from .env file
+
+@baseUrl = {{$dotenv FEEXPAY_BASE_URL}}
+@apiKey = {{$dotenv FEEXPAY_API_KEY}}
+
+### Test Transaction Status - 
+GET {{baseUrl}}/transactions/public/single/status/edbcc16f-3099-486c-935c-8824548d3b1a
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+### Test Transaction Status -
+GET {{baseUrl}}/payouts/status/public/edbcc16f-3099-486c-935c-8824548d3b1a
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+### Test Both Endpoints - Warmup Pattern for Reference 3
+# First call payout endpoint
+GET {{baseUrl}}/payouts/status/public/2a84c61c-b5f6-4ca8-9f14-2818007e003e
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+# Then immediately call main endpoint
+GET {{baseUrl}}/transactions/public/single/status/2a84c61c-b5f6-4ca8-9f14-2818007e003e
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+### Test Both Endpoints - Warmup Pattern for Reference 4
+# First call payout endpoint
+GET {{baseUrl}}/payouts/status/public/8aad832b-ac1b-438a-bab1-94d3ca786d62
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+# Then immediately call main endpoint  
+GET {{baseUrl}}/transactions/public/single/status/8aad832b-ac1b-438a-bab1-94d3ca786d62
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+### Test Both Endpoints - Warmup Pattern for Timeout Reference
+# First call payout endpoint
+GET {{baseUrl}}/payouts/status/public/d4610f8a-707b-4e5d-bac8-c5f6570c1f2a
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+# Then immediately call main endpoint
+GET {{baseUrl}}/transactions/public/single/status/d4610f8a-707b-4e5d-bac8-c5f6570c1f2a
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+### Test Custom Reference - Replace with your own
+# First call payout endpoint
+GET {{baseUrl}}/payouts/status/public/YOUR_REFERENCE_HERE
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###
+
+# Then immediately call main endpoint
+GET {{baseUrl}}/transactions/public/single/status/YOUR_REFERENCE_HERE
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+###

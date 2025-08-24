@@ -4,6 +4,19 @@ import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
+// Public routes (no auth required - for frontend integration)
+router.post('/recovery/check-login', (req, res, next) => 
+    recoveryController.checkLoginRecovery(req, res, next)
+);
+
+router.post('/recovery/check-registration', (req, res, next) => 
+    recoveryController.checkRegistrationRecovery(req, res, next)
+);
+
+router.post('/recovery/notification', (req, res, next) => 
+    recoveryController.getRecoveryNotification(req, res, next)
+);
+
 // Internal routes (no auth required, using service-to-service authentication)
 router.post('/internal/recovery/process-user-registration', (req, res, next) => 
     recoveryController.processUserRegistration(req, res, next)

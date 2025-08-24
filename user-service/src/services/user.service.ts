@@ -380,20 +380,65 @@ export class UserService {
         }
     }
 
-    // Login user - MODIFIED FOR 2FA
+    // Login user - MODIFIED FOR 2FA - Supports both email and phone number
     async loginUser(
-        email: string,
-        passwordAttempt: string,
+        email?: string,
+        phoneNumber?: string,
+        passwordAttempt?: string,
         ipAddress?: string
         // No longer returns token directly
     ): Promise<{ message: string; userId: string }> {
-        if (!email || !passwordAttempt) { throw new Error('Email and password are required'); }
+        // Validate input parameters
+        if ((!email && !phoneNumber) || !passwordAttempt) { 
+            throw new Error('Email or phone number and password are required'); 
+        }
 
-        const user = await userRepository.findByEmail(email, true);
-        if (!user || !user.password) { throw new Error('Invalid email or password'); }
+        // Find user by email or phone number
+        let user: any = null;
+        let identifierUsed = '';
+        
+        if (email) {
+            user = await userRepository.findByEmail(email, true);
+            identifierUsed = 'email';
+        } else if (phoneNumber) {
+            user = await userRepository.findByPhoneNumber(phoneNumber);
+            identifierUsed = 'phone number';
+        }
+
+        // If user not found by normalized phone, try additional phone number formats
+        if (!user && phoneNumber) {
+            const originalPhoneFromRequest = phoneNumber; // This is the normalized version
+            log.info(`User not found with normalized phone: ${originalPhoneFromRequest}. Trying alternative formats.`);
+            
+            // Try with common country prefixes if normalization failed or was wrong
+            const commonPrefixes = ['237', '228', '229', '225', '226', '233', '234'];
+            for (const prefix of commonPrefixes) {
+                if (originalPhoneFromRequest.startsWith(prefix)) {
+                    // Try without prefix
+                    const withoutPrefix = originalPhoneFromRequest.substring(prefix.length);
+                    user = await userRepository.findByPhoneNumber(withoutPrefix);
+                    if (user) {
+                        log.info(`User found using phone format without prefix: ${withoutPrefix}`);
+                        break;
+                    }
+                } else {
+                    // Try with prefix
+                    const withPrefix = prefix + originalPhoneFromRequest;
+                    user = await userRepository.findByPhoneNumber(withPrefix);
+                    if (user) {
+                        log.info(`User found using phone format with prefix: ${withPrefix}`);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!user || !user.password) { 
+            throw new Error(`USER_NOT_FOUND: Invalid ${identifierUsed} or password`); 
+        }
 
         const isMatch = await bcrypt.compare(passwordAttempt, user.password);
-        if (!isMatch) { throw new Error('Invalid email or password'); }
+        if (!isMatch) { throw new Error('WRONG_PASSWORD: Invalid email or password'); }
 
         if (user.blocked) { throw new Error('User account is blocked'); }
 
@@ -4094,6 +4139,78 @@ export class UserService {
             await this.sendContactsVcfEmail(userId, userEmail, vcfContent, fileName);
         } catch (error) {
             log.error(`Failed to send VCF via WhatsApp and email for user ${userId}:`, error);
+        }
+    }
+
+    // NEW: Find user by email
+    async findUserByEmail(email: string): Promise<IUser | null> {
+        try {
+            const user = await UserModel.findOne({ email: email }).exec();
+            return user;
+        } catch (error: any) {
+            log.error(`Error finding user by email ${email}:`, error);
+            return null;
+        }
+    }
+
+    // NEW: Find user by phone number  
+    async findUserByPhoneNumber(phoneNumber: string): Promise<IUser | null> {
+        try {
+            // Try exact match first
+            let user = await UserModel.findOne({ phoneNumber: phoneNumber }).exec();
+            
+            // If no exact match, try different phone number formats
+            if (!user) {
+                // Remove all non-digits and try again
+                const digitsOnly = phoneNumber.replace(/\D/g, '');
+                user = await UserModel.findOne({ 
+                    phoneNumber: { 
+                        $regex: new RegExp(digitsOnly.slice(-8) + '$') // Match last 8 digits
+                    } 
+                }).exec();
+            }
+            
+            return user;
+        } catch (error: any) {
+            log.error(`Error finding user by phone number ${phoneNumber}:`, error);
+            return null;
+        }
+    }
+
+    // NEW: Find user by momo number
+    async findUserByMomoNumber(momoNumber: string): Promise<IUser | null> {
+        try {
+            // Try exact match first
+            let user = await UserModel.findOne({ momoNumber: momoNumber }).exec();
+            
+            // If no exact match, try different formats
+            if (!user) {
+                // Remove all non-digits and try again
+                const digitsOnly = momoNumber.replace(/\D/g, '');
+                user = await UserModel.findOne({ 
+                    momoNumber: { 
+                        $regex: new RegExp(digitsOnly.slice(-8) + '$') // Match last 8 digits
+                    } 
+                }).exec();
+            }
+
+            // Also check if the momo number matches phoneNumber field
+            if (!user) {
+                user = await UserModel.findOne({ phoneNumber: momoNumber }).exec();
+                if (!user) {
+                    const digitsOnly = momoNumber.replace(/\D/g, '');
+                    user = await UserModel.findOne({ 
+                        phoneNumber: { 
+                            $regex: new RegExp(digitsOnly.slice(-8) + '$')
+                        } 
+                    }).exec();
+                }
+            }
+            
+            return user;
+        } catch (error: any) {
+            log.error(`Error finding user by momo number ${momoNumber}:`, error);
+            return null;
         }
     }
 }

@@ -441,6 +441,31 @@ class UserServiceClient {
             return null; // Don't throw error, just return null for user not found
         }
     }
+
+    async getUserByMomoNumber(momoNumber: string): Promise<{ id: string; email?: string; phoneNumber?: string } | null> {
+        if (!this.baseUrl) {
+            log.error('Cannot find user by momo number: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/find-by-momo`;
+        try {
+            log.debug(`Finding user by momo number: ${momoNumber}`);
+            const response = await this.request<{ success: boolean; data: { id: string; email?: string; phoneNumber?: string } | null }>('post', path, { momoNumber });
+            if (response?.success && response.data) {
+                log.info(`Successfully found user by momo number: ${momoNumber}`);
+                return response.data;
+            } else {
+                log.debug(`User not found by momo number: ${momoNumber}`);
+                return null;
+            }
+        } catch (error: any) {
+            if (error instanceof AppError && error.statusCode === 404) {
+                return null;
+            }
+            log.error(`Error finding user by momo number ${momoNumber}:`, error);
+            return null; // Don't throw error, just return null for user not found
+        }
+    }
 }
 
 export const userServiceClient = new UserServiceClient(); 
