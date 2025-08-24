@@ -740,7 +740,7 @@ export class UserController {
     async login(req: Request, res: Response): Promise<void> {
         // Declare variables outside try block so they're accessible in catch
         let email: string | undefined;
-        let normalizedPhone: string | undefined;
+        let normalizedPhone: string | null | undefined;
         
         try {
             const { email: reqEmail, phoneNumber, password } = req.body;
@@ -758,8 +758,8 @@ export class UserController {
             // Normalize phone number if provided
             if (phoneNumber && typeof phoneNumber === 'string') {
                 // Try to normalize without country code first (user might have entered full number)
-                normalizedPhone = normalizePhoneNumber(phoneNumber, undefined);
-                if (!normalizedPhone) {
+                const normalized = normalizePhoneNumber(phoneNumber, undefined);
+                if (!normalized) {
                     log.warn(`Phone number normalization failed for login. Raw: ${phoneNumber}`);
                     res.status(400).json({ 
                         success: false, 
@@ -767,11 +767,12 @@ export class UserController {
                     });
                     return;
                 }
+                normalizedPhone = normalized;
                 log.info(`Phone number normalized during login to: ${normalizedPhone}`);
             }
             
             // Now returns { message, userId }
-            const result = await this.userService.loginUser(email, normalizedPhone, password, req.ip);
+            const result = await this.userService.loginUser(email, normalizedPhone || '', password, req.ip);
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
         } catch (error: any) {
             // Check if the error is due to user not found (potential recovery case)

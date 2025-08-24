@@ -1267,6 +1267,9 @@ class TransactionRecoveryService {
                         });
                         return;
                     } else {
+                        // Parse original transaction date before using it
+                        const originalDate = this.parseTransactionDate(transactionData, provider);
+                        
                         // Update existing payment intent to SUCCEEDED and process webhooks
                         log.info(`Payment intent with sessionId ${sessionId} exists but is ${existingIntentBySessionId.status}, updating to SUCCEEDED`);
                         
@@ -1313,7 +1316,9 @@ class TransactionRecoveryService {
                         });
                         return;
                     } else {
-                        // Update existing payment intent to SUCCEEDED and process webhooks
+                        // Parse original transaction date before using it
+                        const originalDate = this.parseTransactionDate(transactionData, provider);
+                        
                         log.info(`Payment intent ${reference} exists but is ${existingIntent.status}, updating to SUCCEEDED`);
                         
                         await PaymentIntentModel.findByIdAndUpdate(existingIntent._id, {
@@ -1375,7 +1380,7 @@ class TransactionRecoveryService {
                     return;
                 }
 
-                // Parse original transaction date
+                // Parse original transaction date before using it
                 const originalDate = this.parseTransactionDate(transactionData, provider);
 
                 // Create payment intent with original date using model directly
