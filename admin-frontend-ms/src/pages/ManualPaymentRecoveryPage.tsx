@@ -8,7 +8,8 @@ import {
     createManualPaymentIntent, 
     searchUsersForFeexPayFix, 
     ManualPaymentIntentRequest,
-    ManualPaymentIntentResponse 
+    ManualPaymentIntentResponse,
+    SubscriptionType
 } from '../services/adminPaymentApi';
 import { AdminUserData } from '../services/adminUserApi';
 import { getAvatarUrl } from '../api/apiClient';
@@ -167,6 +168,18 @@ function ManualPaymentRecoveryPage() {
         setSelectedUser(user);
         setSearchTerm(''); // Clear search
         setUsers([]); // Clear users list
+        
+        // Auto-select appropriate subscription type based on user's current subscriptions
+        const availableOptions = getAvailableSubscriptionOptions(user.activeSubscriptionTypes || []);
+        const validOptions = availableOptions.filter(opt => !opt.disabled);
+        
+        if (validOptions.length > 0) {
+            // Set to first available option
+            setFormData(prev => ({
+                ...prev,
+                subscriptionType: validOptions[0].value as 'CLASSIQUE' | 'CIBLE' | 'UPGRADE'
+            }));
+        }
     };
 
     const handleFormChange = (field: string, value: any) => {
@@ -185,9 +198,55 @@ function ManualPaymentRecoveryPage() {
         return SUBSCRIPTION_PRICING[formData.provider].currency;
     };
 
+    // Get available subscription options based on current user subscriptions
+    const getAvailableSubscriptionOptions = (userSubscriptions: SubscriptionType[]): { value: string; label: string; disabled?: boolean }[] => {
+        const hasClassique = userSubscriptions.includes(SubscriptionType.CLASSIQUE);
+        const hasCible = userSubscriptions.includes(SubscriptionType.CIBLE);
+        
+        if (hasCible) {
+            // User has CIBLE, can't do any subscription
+            return [
+                { value: 'CLASSIQUE', label: 'Classique - Basic country targeting (Lifetime)', disabled: true },
+                { value: 'CIBLE', label: 'Ciblé - Advanced targeting all criteria (Lifetime)', disabled: true },
+                { value: 'UPGRADE', label: 'Upgrade - From Classique to Ciblé (Lifetime)', disabled: true }
+            ];
+        } else if (hasClassique) {
+            // User has CLASSIQUE, can only upgrade
+            return [
+                { value: 'CLASSIQUE', label: 'Classique - Basic country targeting (Lifetime)', disabled: true },
+                { value: 'CIBLE', label: 'Ciblé - Advanced targeting all criteria (Lifetime)', disabled: true },
+                { value: 'UPGRADE', label: 'Upgrade - From Classique to Ciblé (Lifetime)', disabled: false }
+            ];
+        } else {
+            // User has no subscription, can do CLASSIQUE or CIBLE
+            return [
+                { value: 'CLASSIQUE', label: 'Classique - Basic country targeting (Lifetime)', disabled: false },
+                { value: 'CIBLE', label: 'Ciblé - Advanced targeting all criteria (Lifetime)', disabled: false },
+                { value: 'UPGRADE', label: 'Upgrade - From Classique to Ciblé (Lifetime)', disabled: true }
+            ];
+        }
+    };
+
+    // Get subscription display text
+    const getSubscriptionDisplayText = (subscriptions: SubscriptionType[]): string => {
+        if (!subscriptions || subscriptions.length === 0) {
+            return 'Aucun abonnement actif';
+        }
+        return subscriptions.join(', ');
+    };
+
     const handleCreatePaymentIntent = async () => {
         if (!selectedUser) {
             toast.error('Veuillez sélectionner un utilisateur d\'abord');
+            return;
+        }
+
+        // Check if the selected subscription type is valid for this user
+        const availableOptions = getAvailableSubscriptionOptions(selectedUser.activeSubscriptionTypes || []);
+        const selectedOption = availableOptions.find(opt => opt.value === formData.subscriptionType);
+        
+        if (!selectedOption || selectedOption.disabled) {
+            toast.error('Type d\'abonnement sélectionné non valide pour cet utilisateur');
             return;
         }
 
@@ -451,6 +510,9 @@ function ManualPaymentRecoveryPage() {
                                     <p className="text-white font-medium">{selectedUser.name}</p>
                                     <p className="text-gray-400 text-sm">{selectedUser.email}</p>
                                     <p className="text-gray-400 text-sm">{selectedUser.phoneNumber || 'Aucun téléphone'}</p>
+                                    <p className="text-blue-400 text-sm font-medium">
+                                        📊 Abonnement: {getSubscriptionDisplayText(selectedUser.activeSubscriptionTypes || [])}
+                                    </p>
                                 </div>
                             </div>
                             <button
@@ -578,10 +640,27 @@ function ManualPaymentRecoveryPage() {
                                     onChange={(e) => handleFormChange('subscriptionType', e.target.value)}
                                     className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
-                                    <option value="CLASSIQUE">Classique - Basic country targeting (Lifetime)</option>
-                                    <option value="CIBLE">Ciblé - Advanced targeting all criteria (Lifetime)</option>
-                                    <option value="UPGRADE">Upgrade - From Classique to Ciblé (Lifetime)</option>
+                                    {getAvailableSubscriptionOptions(selectedUser?.activeSubscriptionTypes || []).map(option => (
+                                        <option 
+                                            key={option.value} 
+                                            value={option.value}
+                                            disabled={option.disabled}
+                                            className={option.disabled ? 'text-gray-500' : 'text-white'}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
                                 </select>
+                                {selectedUser && getAvailableSubscriptionOptions(selectedUser.activeSubscriptionTypes || []).every(opt => opt.disabled) && (
+                                    <p className="text-red-400 text-sm mt-2">
+                                        ⚠️ Cet utilisateur a déjà l'abonnement CIBLÉ et ne peut pas bénéficier d'autres abonnements.
+                                    </p>
+                                )}
+                                {selectedUser && selectedUser.activeSubscriptionTypes?.includes(SubscriptionType.CLASSIQUE) && !selectedUser.activeSubscriptionTypes?.includes(SubscriptionType.CIBLE) && (
+                                    <p className="text-yellow-400 text-sm mt-2">
+                                        💡 Cet utilisateur a l'abonnement CLASSIQUE et peut seulement faire l'UPGRADE vers CIBLÉ.
+                                    </p>
+                                )}
                             </div>
 
                             {/* External Reference */}

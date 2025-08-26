@@ -1112,11 +1112,22 @@ export class PaymentController {
                 adminNote
             });
 
-            // Fetch user information from user service
+            // Fetch user information from user service including subscription info
             let userInfo = null;
             try {
                 const userServiceUrl = config.services.userServiceUrl || 'http://localhost:3001/api';
+                
+                // Fetch user profile information
                 const userResponse = await fetch(`${userServiceUrl}/users/${userId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'service-secret': config.services.serviceSecret || 'fallback-secret'
+                    }
+                });
+
+                // Fetch user active subscriptions
+                const subscriptionResponse = await fetch(`${userServiceUrl}/users/internal/${userId}/active-subscriptions`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1129,9 +1140,19 @@ export class PaymentController {
                     if (userData.success && userData.data) {
                         userInfo = {
                             name: userData.data.name,
-                            email: userData.data.email
+                            email: userData.data.email,
+                            activeSubscriptions: []
                         };
-                        log.info(`Informations utilisateur récupérées pour ${userId}: ${userInfo.name} (${userInfo.email})`);
+
+                        // Add subscription information if available
+                        if (subscriptionResponse.ok) {
+                            const subscriptionData = await subscriptionResponse.json() as any;
+                            if (subscriptionData.success && subscriptionData.data) {
+                                userInfo.activeSubscriptions = subscriptionData.data;
+                            }
+                        }
+
+                        log.info(`Informations utilisateur récupérées pour ${userId}: ${userInfo.name} (${userInfo.email}) avec ${userInfo.activeSubscriptions.length} abonnement(s) actif(s)`);
                     }
                 } else {
                     log.warn(`Impossible de récupérer les informations utilisateur pour ${userId}: ${userResponse.status}`);
@@ -1224,6 +1245,7 @@ export class PaymentController {
                     userId: finalIntent.userId,
                     userName: userInfo?.name,
                     userEmail: userInfo?.email,
+                    userActiveSubscriptions: userInfo?.activeSubscriptions || [],
                     amount: finalIntent.amount,
                     currency: finalIntent.currency,
                     status: finalIntent.status,
@@ -1289,11 +1311,22 @@ export class PaymentController {
 
             log.info(`Intention de paiement trouvée: ${paymentIntent.sessionId}, statut: ${paymentIntent.status}`);
 
-            // Fetch user information from user service
+            // Fetch user information from user service including subscription info
             let userInfo = null;
             try {
                 const userServiceUrl = config.services.userServiceUrl || 'http://localhost:3001/api';
+                
+                // Fetch user profile information
                 const userResponse = await fetch(`${userServiceUrl}/users/${paymentIntent.userId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'service-secret': config.services.serviceSecret || 'fallback-secret'
+                    }
+                });
+
+                // Fetch user active subscriptions
+                const subscriptionResponse = await fetch(`${userServiceUrl}/users/internal/${paymentIntent.userId}/active-subscriptions`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1306,9 +1339,19 @@ export class PaymentController {
                     if (userData.success && userData.data) {
                         userInfo = {
                             name: userData.data.name,
-                            email: userData.data.email
+                            email: userData.data.email,
+                            activeSubscriptions: []
                         };
-                        log.info(`Informations utilisateur récupérées pour ${paymentIntent.userId}: ${userInfo.name} (${userInfo.email})`);
+
+                        // Add subscription information if available
+                        if (subscriptionResponse.ok) {
+                            const subscriptionData = await subscriptionResponse.json() as any;
+                            if (subscriptionData.success && subscriptionData.data) {
+                                userInfo.activeSubscriptions = subscriptionData.data;
+                            }
+                        }
+
+                        log.info(`Informations utilisateur récupérées pour ${paymentIntent.userId}: ${userInfo.name} (${userInfo.email}) avec ${userInfo.activeSubscriptions.length} abonnement(s) actif(s)`);
                     }
                 } else {
                     log.warn(`Impossible de récupérer les informations utilisateur pour ${paymentIntent.userId}: ${userResponse.status}`);
@@ -1325,6 +1368,7 @@ export class PaymentController {
                     userId: paymentIntent.userId,
                     userName: userInfo?.name,
                     userEmail: userInfo?.email,
+                    userActiveSubscriptions: userInfo?.activeSubscriptions || [],
                     amount: paymentIntent.amount,
                     currency: paymentIntent.currency,
                     status: paymentIntent.status,

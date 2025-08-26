@@ -35,6 +35,7 @@ export interface PaymentIntent {
     userId: string;
     userName?: string; // Added by enrichment
     userEmail?: string; // Added by enrichment
+    userActiveSubscriptions?: SubscriptionType[]; // Added by enrichment
     userPhoneNumber?: string;
     paymentType?: string;
     subscriptionType?: string;
@@ -55,6 +56,7 @@ export interface PaymentIntent {
     webhookHistory?: Array<{ timestamp: string; status: PaymentStatus; providerData?: any }>;
     createdAt: string; // Dates will be strings
     updatedAt: string;
+    canRecover?: boolean; // For search functionality
     // Add other relevant fields returned by the backend endpoint
 }
 
@@ -184,6 +186,12 @@ export interface ManualPaymentIntentRequest {
     adminNote?: string;
 }
 
+// Subscription types enum
+export enum SubscriptionType {
+    CLASSIQUE = 'CLASSIQUE',
+    CIBLE = 'CIBLE'
+}
+
 // Response interface for manual payment intent creation
 export interface ManualPaymentIntentResponse {
     success: boolean;
@@ -193,6 +201,7 @@ export interface ManualPaymentIntentResponse {
         userId: string;
         userName?: string;
         userEmail?: string;
+        userActiveSubscriptions?: SubscriptionType[];
         amount: number;
         currency: string;
         status: PaymentStatus;
