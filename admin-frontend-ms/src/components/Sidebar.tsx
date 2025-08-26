@@ -14,7 +14,8 @@ import {
   Send,
   Bell,
   Hammer,
-  HardDrive
+  HardDrive,
+  LifeBuoy
 } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
@@ -30,6 +31,12 @@ const SIDEBAR_ITEMS = [
     icon: Hammer,
     color: "#f59e0b",
     path: "/fix-feexpay-payments",
+  },
+  {
+    name: "Récupération de Paiement",
+    icon: LifeBuoy,
+    color: "#10b981",
+    path: "/manual-payment-recovery",
   },
   {
     name: "Utilisateurs",

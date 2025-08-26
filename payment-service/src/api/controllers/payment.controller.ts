@@ -6,6 +6,7 @@ import config from '../../config';
 import { Currency } from '../../database/models/transaction.model';
 import { AppError } from '../../utils/errors';
 import QRCode from 'qrcode';
+import { paymentIntentRepository } from '../../database/repositories/paymentIntent.repository';
 
 const log = logger.getLogger('PaymentController');
 
@@ -1044,6 +1045,342 @@ export class PaymentController {
                 success: false,
                 message: 'Internal server error'
             });
+        }
+    };
+
+    /**
+     * [ADMIN] Manually create a payment intent for recovery purposes
+     * @route POST /api/admin/payments/create-manual-intent
+     * @access Admin
+     */
+    public createManualPaymentIntent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const {
+                userId,
+                amount,
+                currency,
+                paymentType = 'SUBSCRIPTION',
+                provider = 'cinetpay',
+                externalReference,
+                metadata = {},
+                autoMarkSucceeded = true,
+                triggerWebhook = true,
+                adminNote
+            } = req.body;
+
+            // Validation - Messages en français
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'ID utilisateur requis'
+                });
+                return;
+            }
+
+            if (!amount || amount <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Montant valide et positif requis'
+                });
+                return;
+            }
+
+            if (!['cinetpay', 'feexpay', 'nowpayments'].includes(provider)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Fournisseur invalide. Doit être cinetpay, feexpay, ou nowpayments'
+                });
+                return;
+            }
+
+            // Déterminer la devise basée sur le fournisseur
+            const finalCurrency = provider === 'nowpayments' ? 'USD' : 'XAF';
+            if (currency && currency !== finalCurrency) {
+                res.status(400).json({
+                    success: false,
+                    message: `Devise incompatible. ${provider} utilise ${finalCurrency} mais ${currency} a été fourni`
+                });
+                return;
+            }
+
+            log.info(`Admin créant une intention de paiement manuelle pour l'utilisateur ${userId}`, {
+                amount,
+                currency: finalCurrency,
+                paymentType,
+                provider,
+                externalReference,
+                adminNote
+            });
+
+            // Create the payment intent with proper webhook metadata
+            const paymentIntent = await paymentService.createPaymentIntent({
+                userId,
+                amount,
+                currency: finalCurrency,
+                paymentType,
+                metadata: {
+                    // Core subscription metadata (matches normal payment intent structure)
+                    userId: userId,
+                    planId: metadata.subscriptionType || 'CLASSIQUE',
+                    planName: metadata.subscriptionType === 'CLASSIQUE' ? 'Abonnement Classique' : 
+                              metadata.subscriptionType === 'CIBLE' ? 'Abonnement Ciblé' : 
+                              metadata.subscriptionType === 'UPGRADE' ? 'Upgrade to Ciblé' : 'Abonnement Classique',
+                    planType: metadata.subscriptionType || 'CLASSIQUE',
+                    isUpgrade: metadata.subscriptionType === 'UPGRADE',
+                    
+                    // Service communication metadata
+                    originatingService: 'user-service',
+                    callbackPath: `${config.services.userServiceUrl || 'http://localhost:3001/api'}/subscriptions/webhooks/payment-confirmation`,
+                    
+                    // Additional metadata for admin tracking
+                    ...metadata,
+                    isManualAdmin: true,
+                    adminNote: adminNote || 'Récupération manuelle par admin',
+                    createdBy: 'admin',
+                    externalReference
+                }
+            });
+
+            let finalIntent = paymentIntent;
+
+            // If auto-mark as succeeded is enabled
+            if (autoMarkSucceeded) {
+                log.info(`Marquage automatique de l'intention de paiement ${paymentIntent.sessionId} comme réussie`);
+                
+                // Update the intent with provider information and mark as succeeded
+                const updateData: any = {
+                    status: PaymentStatus.SUCCEEDED,
+                    gateway: provider === 'cinetpay' ? 'cinetpay' : 
+                             provider === 'feexpay' ? 'feexpay' :
+                             provider === 'nowpayments' ? 'nowpayments' : 'testing',
+                    paidAmount: amount,
+                    paidCurrency: finalCurrency
+                };
+
+                if (externalReference) {
+                    updateData.gatewayPaymentId = externalReference;
+                }
+
+                // Use the payment intent repository to update the status directly
+                finalIntent = await paymentIntentRepository.updateBySessionId(
+                    paymentIntent.sessionId,
+                    updateData
+                ) as IPaymentIntent;
+
+                if (!finalIntent) {
+                    log.error(`Échec de mise à jour de l'intention de paiement ${paymentIntent.sessionId} vers réussie`);
+                    throw new Error('Échec de mise à jour du statut de l\'intention de paiement');
+                }
+
+                // Déclencher le traitement de finalisation du paiement si activé (gère les abonnements, commissions, etc.)
+                if (triggerWebhook && finalIntent.status === PaymentStatus.SUCCEEDED) {
+                    try {
+                        log.info(`Déclenchement du traitement de finalisation de paiement pour l'intention manuelle ${paymentIntent.sessionId}`);
+                        
+                        // Utiliser la méthode handlePaymentCompletion existante qui traite les abonnements, commissions, etc.
+                        await (paymentService as any).handlePaymentCompletion(finalIntent);
+
+                        log.info(`Traitement de finalisation de paiement réussi pour l'intention manuelle ${paymentIntent.sessionId}`);
+                    } catch (completionError: any) {
+                        log.error(`Erreur lors du traitement de finalisation de paiement pour l'intention manuelle ${paymentIntent.sessionId}:`, completionError);
+                        // Ne pas faire échouer toute la requête si le traitement de finalisation échoue
+                    }
+                }
+            }
+
+            res.status(201).json({
+                success: true,
+                message: 'Intention de paiement manuelle créée avec succès',
+                data: {
+                    sessionId: finalIntent.sessionId,
+                    userId: finalIntent.userId,
+                    amount: finalIntent.amount,
+                    currency: finalIntent.currency,
+                    status: finalIntent.status,
+                    gateway: finalIntent.gateway,
+                    paymentType: finalIntent.paymentType,
+                    metadata: finalIntent.metadata,
+                    createdAt: finalIntent.createdAt,
+                    isManualAdmin: true,
+                    webhookTriggered: autoMarkSucceeded && triggerWebhook,
+                    subscriptionProcessing: {
+                        subscriptionType: metadata.subscriptionType,
+                        subscriptionPlan: metadata.subscriptionPlan,
+                        webhookConfigured: !!(finalIntent.metadata?.originatingService && finalIntent.metadata?.callbackPath)
+                    }
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Erreur lors de la création de l\'intention de paiement manuelle:', error);
+            next(error);
+        }
+    };
+
+    /**
+     * [ADMIN] Search for existing payment intent by session ID or gateway payment ID
+     * @route GET /api/admin/payments/search-payment-intent/:reference
+     * @access Admin
+     */
+    public searchPaymentIntent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { reference } = req.params;
+
+            if (!reference) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Référence (Session ID ou Gateway Payment ID) requise'
+                });
+                return;
+            }
+
+            log.info(`Admin recherchant l'intention de paiement avec la référence: ${reference}`);
+
+            // Search by session ID first, then by gateway payment ID
+            let paymentIntent = await paymentIntentRepository.findBySessionId(reference);
+            
+            if (!paymentIntent) {
+                // Try searching by gateway payment ID across all gateways
+                const gateways: any[] = ['cinetpay', 'feexpay', 'nowpayments', 'testing'];
+                for (const gateway of gateways) {
+                    paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(reference, gateway);
+                    if (paymentIntent) break;
+                }
+            }
+
+            if (!paymentIntent) {
+                res.status(404).json({
+                    success: false,
+                    message: 'Intention de paiement non trouvée avec cette référence'
+                });
+                return;
+            }
+
+            log.info(`Intention de paiement trouvée: ${paymentIntent.sessionId}, statut: ${paymentIntent.status}`);
+
+            res.status(200).json({
+                success: true,
+                message: 'Intention de paiement trouvée',
+                data: {
+                    sessionId: paymentIntent.sessionId,
+                    userId: paymentIntent.userId,
+                    amount: paymentIntent.amount,
+                    currency: paymentIntent.currency,
+                    status: paymentIntent.status,
+                    gateway: paymentIntent.gateway,
+                    gatewayPaymentId: paymentIntent.gatewayPaymentId,
+                    createdAt: paymentIntent.createdAt,
+                    metadata: paymentIntent.metadata,
+                    canRecover: paymentIntent.status !== PaymentStatus.SUCCEEDED
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Erreur lors de la recherche d\'intention de paiement:', error);
+            next(error);
+        }
+    };
+
+    /**
+     * [ADMIN] Recover existing payment intent by marking as succeeded and triggering webhooks
+     * @route POST /api/admin/payments/recover-payment-intent
+     * @access Admin
+     */
+    public recoverExistingPaymentIntent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { sessionId, adminNote } = req.body;
+
+            if (!sessionId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Session ID requis'
+                });
+                return;
+            }
+
+            log.info(`Admin récupérant l'intention de paiement: ${sessionId}`, { adminNote });
+
+            // Find the existing payment intent
+            const existingIntent = await paymentIntentRepository.findBySessionId(sessionId);
+            
+            if (!existingIntent) {
+                res.status(404).json({
+                    success: false,
+                    message: 'Intention de paiement non trouvée avec ce Session ID'
+                });
+                return;
+            }
+
+            // Check if already succeeded
+            if (existingIntent.status === PaymentStatus.SUCCEEDED) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Cette intention de paiement a déjà été marquée comme réussie'
+                });
+                return;
+            }
+
+            log.info(`Intention de paiement trouvée: ${existingIntent.sessionId}, statut actuel: ${existingIntent.status}`);
+
+            // Update to succeeded status
+            const updateData = {
+                status: PaymentStatus.SUCCEEDED,
+                paidAmount: existingIntent.amount,
+                paidCurrency: existingIntent.currency,
+                metadata: {
+                    ...existingIntent.metadata,
+                    recoveredBy: 'admin',
+                    recoveryDate: new Date().toISOString(),
+                    recoveryNote: adminNote || `Récupération admin de l'intention ${sessionId}`,
+                    originalStatus: existingIntent.status
+                }
+            };
+
+            const updatedIntent = await paymentIntentRepository.updateBySessionId(sessionId, updateData);
+
+            if (!updatedIntent) {
+                log.error(`Échec de mise à jour de l'intention de paiement ${sessionId} vers réussie`);
+                throw new Error('Échec de mise à jour du statut de l\'intention de paiement');
+            }
+
+            log.info(`Intention de paiement ${sessionId} mise à jour avec succès vers SUCCEEDED`);
+
+            // Trigger webhook processing
+            try {
+                log.info(`Déclenchement du traitement de finalisation pour l'intention récupérée ${sessionId}`);
+                await (paymentService as any).handlePaymentCompletion(updatedIntent);
+                log.info(`Traitement de finalisation réussi pour l'intention récupérée ${sessionId}`);
+            } catch (completionError: any) {
+                log.error(`Erreur lors du traitement de finalisation pour l'intention récupérée ${sessionId}:`, completionError);
+                // Don't fail the entire request
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Intention de paiement récupérée avec succès',
+                data: {
+                    sessionId: updatedIntent.sessionId,
+                    userId: updatedIntent.userId,
+                    amount: updatedIntent.amount,
+                    currency: updatedIntent.currency,
+                    status: updatedIntent.status,
+                    gateway: updatedIntent.gateway,
+                    paymentType: updatedIntent.paymentType,
+                    metadata: updatedIntent.metadata,
+                    createdAt: updatedIntent.createdAt,
+                    isRecovered: true,
+                    webhookTriggered: true,
+                    subscriptionProcessing: {
+                        subscriptionType: updatedIntent.metadata?.subscriptionType || updatedIntent.metadata?.planId,
+                        subscriptionPlan: updatedIntent.metadata?.subscriptionPlan || updatedIntent.metadata?.planName,
+                        webhookConfigured: !!(updatedIntent.metadata?.originatingService && updatedIntent.metadata?.callbackPath)
+                    }
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Erreur lors de la récupération de l\'intention de paiement:', error);
+            next(error);
         }
     };
 }

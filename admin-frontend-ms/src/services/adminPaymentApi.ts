@@ -167,4 +167,146 @@ export const searchUsersForFeexPayFix = async (searchTerm: string): Promise<Admi
         console.error('Error searching users for FeexPay fix:', error);
         throw new Error('Failed to search users.');
     }
+};
+
+// Interface for manual payment intent creation
+export interface ManualPaymentIntentRequest {
+    userId: string;
+    amount: number;
+    currency?: string;
+    paymentType?: string;
+    provider?: 'cinetpay' | 'feexpay' | 'nowpayments';
+    externalReference?: string;
+    metadata?: Record<string, any>;
+    autoMarkSucceeded?: boolean;
+    triggerWebhook?: boolean;
+    adminNote?: string;
+}
+
+// Response interface for manual payment intent creation
+export interface ManualPaymentIntentResponse {
+    success: boolean;
+    message: string;
+    data: {
+        sessionId: string;
+        userId: string;
+        amount: number;
+        currency: string;
+        status: PaymentStatus;
+        gateway: PaymentGateway;
+        paymentType: string;
+        metadata: Record<string, any>;
+        createdAt: string;
+        isManualAdmin: boolean;
+        webhookTriggered: boolean;
+        subscriptionProcessing: {
+            subscriptionType: string;
+            subscriptionPlan: string;
+            webhookConfigured: boolean;
+        };
+    };
+}
+
+/**
+ * [ADMIN] Manually create a payment intent for recovery purposes
+ * @param requestData The manual payment intent creation data
+ * @returns A promise resolving to the created payment intent details
+ */
+export const createManualPaymentIntent = async (
+    requestData: ManualPaymentIntentRequest
+): Promise<ManualPaymentIntentResponse> => {
+    try {
+        console.log('[API Call] createManualPaymentIntent with data:', requestData);
+        const response = await apiClient.post<ManualPaymentIntentResponse>(
+            '/payments/admin/create-manual-intent',
+            requestData
+        );
+
+        if (response.data && response.data.success) {
+            console.log('[API Succès] Intention de paiement manuelle créée:', response.data.data.sessionId);
+            return response.data;
+        } else {
+            throw new Error(response.data?.message || 'Échec de création de l\'intention de paiement manuelle: Structure de réponse API invalide');
+        }
+
+    } catch (error) {
+        console.error('[API Erreur] createManualPaymentIntent:', error);
+        if (error instanceof AxiosError && error.response) {
+            // Utiliser le message de la réponse d'erreur du backend si disponible
+            const backendMessage = error.response.data?.message;
+            throw new Error(backendMessage || `Échec de création de l'intention de paiement manuelle: ${error.message}`);
+        } else if (error instanceof Error) {
+            // Utiliser le message de l'objet Error
+            throw new Error(`Échec de création de l'intention de paiement manuelle: ${error.message}`);
+        }
+        throw new Error('Échec de création de l\'intention de paiement manuelle en raison d\'une erreur inconnue.');
+    }
+};
+
+/**
+ * [ADMIN] Search for existing payment intent by session ID or gateway payment ID
+ * @param reference The session ID or gateway payment ID to search for
+ * @returns A promise resolving to the found payment intent
+ */
+export const searchPaymentIntent = async (reference: string): Promise<{ success: boolean; data?: any; message?: string }> => {
+    try {
+        console.log('[API Call] searchPaymentIntent with reference:', reference);
+        const response = await apiClient.get(`/payments/admin/search-payment-intent/${encodeURIComponent(reference)}`);
+
+        if (response.data && response.data.success) {
+            console.log('[API Succès] Intention de paiement trouvée:', response.data.data.sessionId);
+            return response.data;
+        } else {
+            return { success: false, message: response.data?.message || 'Intention de paiement non trouvée' };
+        }
+
+    } catch (error) {
+        console.error('[API Erreur] searchPaymentIntent:', error);
+        if (error instanceof AxiosError && error.response) {
+            const backendMessage = error.response.data?.message;
+            return { success: false, message: backendMessage || `Erreur de recherche: ${error.message}` };
+        } else if (error instanceof Error) {
+            return { success: false, message: `Erreur de recherche: ${error.message}` };
+        }
+        return { success: false, message: 'Erreur de recherche inconnue.' };
+    }
+};
+
+/**
+ * [ADMIN] Recover existing payment intent by marking it as succeeded and triggering webhooks
+ * @param sessionId The session ID of the payment intent to recover
+ * @param adminNote Optional admin note for the recovery
+ * @returns A promise resolving to the recovery result
+ */
+export const recoverExistingPaymentIntent = async (
+    sessionId: string, 
+    adminNote?: string
+): Promise<ManualPaymentIntentResponse> => {
+    try {
+        console.log('[API Call] recoverExistingPaymentIntent with sessionId:', sessionId);
+        const response = await apiClient.post<ManualPaymentIntentResponse>(
+            '/payments/admin/recover-payment-intent',
+            {
+                sessionId,
+                adminNote: adminNote || `Récupération d'intention de paiement existante - ${sessionId}`
+            }
+        );
+
+        if (response.data && response.data.success) {
+            console.log('[API Succès] Intention de paiement récupérée:', response.data.data.sessionId);
+            return response.data;
+        } else {
+            throw new Error(response.data?.message || 'Échec de récupération de l\'intention de paiement: Structure de réponse API invalide');
+        }
+
+    } catch (error) {
+        console.error('[API Erreur] recoverExistingPaymentIntent:', error);
+        if (error instanceof AxiosError && error.response) {
+            const backendMessage = error.response.data?.message;
+            throw new Error(backendMessage || `Échec de récupération de l'intention de paiement: ${error.message}`);
+        } else if (error instanceof Error) {
+            throw new Error(`Échec de récupération de l'intention de paiement: ${error.message}`);
+        }
+        throw new Error('Échec de récupération de l\'intention de paiement en raison d\'une erreur inconnue.');
+    }
 }; 

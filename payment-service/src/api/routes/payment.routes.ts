@@ -25,6 +25,13 @@ adminRouter.use('/stats', statsRouter); // Mount stats routes under /admin/stats
 
 adminRouter.post('/reprocess-feexpay-payments/user/:userId', paymentController.adminReprocessFeexpayUserPayments);
 
+// Manual payment intent creation for recovery
+adminRouter.post('/create-manual-intent', paymentController.createManualPaymentIntent);
+
+// Search and recover existing payment intents
+adminRouter.get('/search-payment-intent/:reference', paymentController.searchPaymentIntent);
+adminRouter.post('/recover-payment-intent', paymentController.recoverExistingPaymentIntent);
+
 router.use('/admin', adminRouter);
 
 // --- Existing Public/General Routes --- 
