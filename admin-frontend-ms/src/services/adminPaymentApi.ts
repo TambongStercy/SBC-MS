@@ -194,6 +194,7 @@ export interface ManualPaymentIntentResponse {
         currency: string;
         status: PaymentStatus;
         gateway: PaymentGateway;
+        gatewayPaymentId?: string;
         paymentType: string;
         metadata: Record<string, any>;
         createdAt: string;
