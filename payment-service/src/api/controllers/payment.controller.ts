@@ -1112,6 +1112,34 @@ export class PaymentController {
                 adminNote
             });
 
+            // Fetch user information from user service
+            let userInfo = null;
+            try {
+                const userServiceUrl = config.services.userServiceUrl || 'http://localhost:3001/api';
+                const userResponse = await fetch(`${userServiceUrl}/users/${userId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'service-secret': config.serviceSecret || 'fallback-secret'
+                    }
+                });
+
+                if (userResponse.ok) {
+                    const userData = await userResponse.json();
+                    if (userData.success) {
+                        userInfo = {
+                            name: userData.data.name,
+                            email: userData.data.email
+                        };
+                        log.info(`Informations utilisateur récupérées pour ${userId}: ${userInfo.name} (${userInfo.email})`);
+                    }
+                } else {
+                    log.warn(`Impossible de récupérer les informations utilisateur pour ${userId}: ${userResponse.status}`);
+                }
+            } catch (userFetchError: any) {
+                log.warn(`Erreur lors de la récupération des informations utilisateur pour ${userId}:`, userFetchError.message);
+            }
+
             // Create the payment intent with proper webhook metadata
             const paymentIntent = await paymentService.createPaymentIntent({
                 userId,
@@ -1194,10 +1222,13 @@ export class PaymentController {
                 data: {
                     sessionId: finalIntent.sessionId,
                     userId: finalIntent.userId,
+                    userName: userInfo?.name,
+                    userEmail: userInfo?.email,
                     amount: finalIntent.amount,
                     currency: finalIntent.currency,
                     status: finalIntent.status,
                     gateway: finalIntent.gateway,
+                    gatewayPaymentId: finalIntent.gatewayPaymentId,
                     paymentType: finalIntent.paymentType,
                     metadata: finalIntent.metadata,
                     createdAt: finalIntent.createdAt,
@@ -1258,12 +1289,42 @@ export class PaymentController {
 
             log.info(`Intention de paiement trouvée: ${paymentIntent.sessionId}, statut: ${paymentIntent.status}`);
 
+            // Fetch user information from user service
+            let userInfo = null;
+            try {
+                const userServiceUrl = config.services.userServiceUrl || 'http://localhost:3001/api';
+                const userResponse = await fetch(`${userServiceUrl}/users/${paymentIntent.userId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'service-secret': config.serviceSecret || 'fallback-secret'
+                    }
+                });
+
+                if (userResponse.ok) {
+                    const userData = await userResponse.json();
+                    if (userData.success) {
+                        userInfo = {
+                            name: userData.data.name,
+                            email: userData.data.email
+                        };
+                        log.info(`Informations utilisateur récupérées pour ${paymentIntent.userId}: ${userInfo.name} (${userInfo.email})`);
+                    }
+                } else {
+                    log.warn(`Impossible de récupérer les informations utilisateur pour ${paymentIntent.userId}: ${userResponse.status}`);
+                }
+            } catch (userFetchError: any) {
+                log.warn(`Erreur lors de la récupération des informations utilisateur pour ${paymentIntent.userId}:`, userFetchError.message);
+            }
+
             res.status(200).json({
                 success: true,
                 message: 'Intention de paiement trouvée',
                 data: {
                     sessionId: paymentIntent.sessionId,
                     userId: paymentIntent.userId,
+                    userName: userInfo?.name,
+                    userEmail: userInfo?.email,
                     amount: paymentIntent.amount,
                     currency: paymentIntent.currency,
                     status: paymentIntent.status,

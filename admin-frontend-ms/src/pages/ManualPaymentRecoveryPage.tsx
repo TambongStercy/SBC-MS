@@ -681,15 +681,15 @@ function ManualPaymentRecoveryPage() {
                                 <span className="text-gray-400">User ID:</span>
                                 <span className="text-white font-mono">{creationResult.data.userId}</span>
                             </div>
-                            {selectedUser && (
+                            {(creationResult.data.userName || creationResult.data.userEmail) && (
                                 <>
                                     <div className="flex justify-between">
                                         <span className="text-gray-400">Nom de l'utilisateur:</span>
-                                        <span className="text-white">{selectedUser.name}</span>
+                                        <span className="text-white">{creationResult.data.userName || 'N/A'}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-400">Email de l'utilisateur:</span>
-                                        <span className="text-white">{selectedUser.email}</span>
+                                        <span className="text-white">{creationResult.data.userEmail || 'N/A'}</span>
                                     </div>
                                 </>
                             )}
