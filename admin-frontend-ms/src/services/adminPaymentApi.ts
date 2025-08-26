@@ -34,6 +34,7 @@ export interface PaymentIntent {
     sessionId: string;
     userId: string;
     userName?: string; // Added by enrichment
+    userEmail?: string; // Added by enrichment
     userPhoneNumber?: string;
     paymentType?: string;
     subscriptionType?: string;
@@ -190,6 +191,8 @@ export interface ManualPaymentIntentResponse {
     data: {
         sessionId: string;
         userId: string;
+        userName?: string;
+        userEmail?: string;
         amount: number;
         currency: string;
         status: PaymentStatus;

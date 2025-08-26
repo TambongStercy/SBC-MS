@@ -1120,13 +1120,13 @@ export class PaymentController {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
-                        'service-secret': config.serviceSecret || 'fallback-secret'
+                        'service-secret': config.services.serviceSecret || 'fallback-secret'
                     }
                 });
 
                 if (userResponse.ok) {
-                    const userData = await userResponse.json();
-                    if (userData.success) {
+                    const userData = await userResponse.json() as any;
+                    if (userData.success && userData.data) {
                         userInfo = {
                             name: userData.data.name,
                             email: userData.data.email
@@ -1297,13 +1297,13 @@ export class PaymentController {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
-                        'service-secret': config.serviceSecret || 'fallback-secret'
+                        'service-secret': config.services.serviceSecret || 'fallback-secret'
                     }
                 });
 
                 if (userResponse.ok) {
-                    const userData = await userResponse.json();
-                    if (userData.success) {
+                    const userData = await userResponse.json() as any;
+                    if (userData.success && userData.data) {
                         userInfo = {
                             name: userData.data.name,
                             email: userData.data.email
