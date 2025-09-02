@@ -5,7 +5,8 @@
       "Bash(npm run build:*)",
       "WebFetch(domain:docs.feexpay.me)",
       "Bash(find:*)",
-      "Bash(mongosh:*)"
+      "Bash(mongosh:*)",
+      "WebFetch(domain:documenter.getpostman.com)"
     ],
     "deny": [],
     "ask": []

@@ -429,7 +429,7 @@ class PaymentService {
             // --- FEEXPAY WITHDRAWALS CONTROL ---
             // Check if FeexPay withdrawals are enabled via configuration
             let selectedGateway: PaymentGateway;
-            const originalGateway = this.selectGateway(countryCode);
+            const originalGateway = this.selectGateway(countryCode, undefined, true);
 
             if (originalGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
                 log.error(`FeexPay withdrawals are currently disabled. Country: ${countryCode}, User: ${userId}`);
@@ -2375,7 +2375,7 @@ class PaymentService {
         return updatedIntent;
     }
 
-    private selectGateway(countryCode: string, currency?: string): PaymentGateway {
+    private selectGateway(countryCode: string, currency?: string, isWithdrawal?: boolean): PaymentGateway {
         // Check if user wants to pay with cryptocurrency
         if (currency && this.isCryptoCurrency(currency)) {
             log.info(`Crypto currency ${currency} selected, using NOWPAYMENTS.`);
@@ -2388,23 +2388,33 @@ class PaymentService {
             throw new Error('Country code is required for fiat currency payments.');
         }
 
-        // Countries that use CinetPay for payments and withdrawals
+        // Special handling for Togo: payments use FeexPay, withdrawals use CinetPay
+        if (countryCode === 'TG') {
+            if (isWithdrawal) {
+                log.info(`Country ${countryCode} withdrawal selected, using CINETPAY.`);
+                return PaymentGateway.CINETPAY;
+            } else {
+                log.info(`Country ${countryCode} payment selected, using FEEXPAY.`);
+                return PaymentGateway.FEEXPAY;
+            }
+        }
+
+        // Countries that use CinetPay for both payments and withdrawals
         const cinetpaySupportedCountries = [
-            'BF', // Burkina Faso - Added for withdrawals as per client request
+            'BF', // Burkina Faso
             'ML', // Mali
             'NE', // Niger
-            'CI', // Côte d'Ivoire - Added for withdrawals as per client request
+            'CI', // Côte d'Ivoire
             'CM', // Cameroun
-            'SN', // Sénégal - Added for withdrawals as per client request
-            'TG'  // Togo (payments only; withdrawals use FeexPay)
+            'SN', // Sénégal
         ];
 
         if (cinetpaySupportedCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using CINETPAY.`);
             return PaymentGateway.CINETPAY;
         } else {
-            // List of remaining countries that should use FeexPay
-            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ']; // Added Benin
+            // List of countries that use FeexPay for both payments and withdrawals
+            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ'];
             if (feexpaySupportedCountries.includes(countryCode)) {
                 log.info(`Country ${countryCode} selected, using FEEXPAY.`);
                 return PaymentGateway.FEEXPAY;
@@ -4026,8 +4036,8 @@ class PaymentService {
             let payoutNotificationUrl: string;
             let providerName: 'CinetPay' | 'FeexPay';
 
-            // Use the same gateway selection logic as payments (now CinetPay for Togo withdrawals too)
-            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode);
+            // Use gateway selection logic with withdrawal flag (CinetPay for Togo withdrawals)
+            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode, undefined, true);
 
             // --- FEEXPAY ADMIN WITHDRAWALS CONTROL ---
             // Ensure admin withdrawals also respect FeexPay blocking
@@ -4315,8 +4325,8 @@ class PaymentService {
                 ? recipientDetails.phoneNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : recipientDetails.phoneNumber.replace(/\D/g, '');
 
-            // Use the same gateway selection logic as other withdrawal methods
-            const selectedGateway = this.selectGateway(recipientDetails.countryCode);
+            // Use gateway selection logic with withdrawal flag (CinetPay for Togo withdrawals)
+            const selectedGateway = this.selectGateway(recipientDetails.countryCode, undefined, true);
 
             // --- FEEXPAY ADMIN DIRECT PAYOUT CONTROL ---
             // Ensure admin direct payouts also respect FeexPay blocking
