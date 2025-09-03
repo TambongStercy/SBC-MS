@@ -44,11 +44,11 @@ document.addEventListener('DOMContentLoaded', function () {
             'CI', // Côte d\'Ivoire
             'CM', // Cameroun
             'SN', // Sénégal
-            'TG'  // Togo (payments only; withdrawals use FeexPay in backend)
+            // 'TG'  // Togo - Now using FeexPay for payments, CinetPay for withdrawals
         ];
 
         // Countries that use FeexPay
-        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ']; // Added Benin to FeexPay
+        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ', 'TG']; // Added Benin and Togo to FeexPay
 
         // Only include FeexPay operators for countries that still use FeexPay
         const feexpayOperators = {
@@ -58,10 +58,10 @@ document.addEventListener('DOMContentLoaded', function () {
             'CD': [], // Democratic Republic of Congo (operators TBD)
             'KE': [], // Kenya (operators TBD)
             'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin mobile money operators
-            // 'TG': ['togocom_tg', 'moov_tg'], // Togo now handled by CinetPay for payments
+            'TG': ['togocom_tg', 'moov_tg'], // Togo operators for FeexPay payments
             // Add operators for GN, GA, CD, KE if needed
         };
-        // NOTE: Withdrawals for Togo are handled by FeexPay in the backend, but payments are CinetPay.
+        // NOTE: Payments for Togo are handled by FeexPay, withdrawals by CinetPay in the backend.
 
         const getCurrencyForCountry = (countryCode) => {
             const countryCurrencyMap = {

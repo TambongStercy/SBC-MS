@@ -23,13 +23,13 @@ The SBC Payout System provides comprehensive money transfer capabilities using C
 | **Côte d'Ivoire** | CI | XOF | `ORANGE`, `MTN`, `MOOV`, `WAVE` | CinetPay | CinetPay ✅ |
 | **Sénégal** | SN | XOF | `ORANGE`, `FREE`, `WAVE` | CinetPay | CinetPay ✅ |
 | **Burkina Faso** | BF | XOF | `ORANGE`, `MOOV` | CinetPay | CinetPay ✅ |
-| **Togo** | TG | XOF | `TMONEY`, `FLOOZ` | CinetPay | FeexPay* |
+| **Togo** | TG | XOF | `TMONEY`, `FLOOZ` | FeexPay* | CinetPay |
 | **Benin** | BJ | XOF | `MTN`, `MOOV` | FeexPay | FeexPay |
 | **Mali** | ML | XOF | `ORANGE`, `MOOV` | CinetPay | CinetPay |
 | **Guinea** | GN | GNF | `ORANGE`, `MTN` | FeexPay | FeexPay |
 | **Congo (RDC)** | CD | CDF | `ORANGE`, `MPESA`, `AIRTEL` | FeexPay | FeexPay |
 
-*Note: Togo uses CinetPay for payments but FeexPay for withdrawals due to better withdrawal support.*
+*Note: Togo uses FeexPay for payments but CinetPay for withdrawals due to client preference.*
 
 ### 🔄 Gateway Routing Logic
 
@@ -40,7 +40,7 @@ The SBC Payout System provides comprehensive money transfer capabilities using C
 - Benin (BJ), Congo Brazzaville (CG), Guinea (GN), Gabon (GA), Congo DRC (CD), Kenya (KE), Nigeria (NG)
 
 **Special Case:**
-- **Togo (TG)**: CinetPay for payments, FeexPay for withdrawals
+- **Togo (TG)**: FeexPay for payments, CinetPay for withdrawals
 
 ### 📞 Valid momoNumber Format
 

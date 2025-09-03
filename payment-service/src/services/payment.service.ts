@@ -2391,10 +2391,10 @@ class PaymentService {
         // Special handling for Togo: payments use FeexPay, withdrawals use CinetPay
         if (countryCode === 'TG') {
             if (isWithdrawal) {
-                log.info(`Country ${countryCode} withdrawal selected, using CINETPAY.`);
+                log.info(`🔄 Country ${countryCode} withdrawal selected, using CINETPAY. [isWithdrawal=true]`);
                 return PaymentGateway.CINETPAY;
             } else {
-                log.info(`Country ${countryCode} payment selected, using FEEXPAY.`);
+                log.info(`🔄 Country ${countryCode} payment selected, using FEEXPAY. [isWithdrawal=${isWithdrawal}]`);
                 return PaymentGateway.FEEXPAY;
             }
         }
