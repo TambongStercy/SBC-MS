@@ -1,8 +1,8 @@
 import { Types, FilterQuery, SortOrder, UpdateQuery } from 'mongoose';
 import { nanoid } from 'nanoid';
 import TransactionModel, { ITransaction, TransactionStatus, TransactionType, Currency } from '../models/transaction.model';
-import PaymentIntentModel, { IPaymentIntent } from '../models/PaymentIntent';
-import { PaymentStatus } from '../interfaces/IPaymentIntent';
+import PaymentIntentModel from '../models/PaymentIntent';
+import { IPaymentIntent, PaymentStatus } from '../interfaces/IPaymentIntent';
 import logger from '../../utils/logger';
 import { BaseRepository } from './base.repository';
 import { PaginationOptions } from '../../types/pagination';
