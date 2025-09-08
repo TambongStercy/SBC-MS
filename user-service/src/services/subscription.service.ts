@@ -493,6 +493,7 @@ export class SubscriptionService {
         this.log.info(`Handling successful payment webhook for subscription. Payment Session ID: ${paymentSessionId}`);
 
         // 1. Validate Metadata
+        this.log.info(`Webhook metadata received:`, { paymentSessionId, metadata });
         const { userId, planId, isUpgrade, planName, paymentMethod } = metadata || {};
         if (!userId || !planId || !(planId in SubscriptionType)) {
             this.log.error('Subscription payment confirmation failed: Missing/invalid required metadata (userId, planId as SubscriptionType).', { paymentSessionId, metadata });
@@ -522,7 +523,7 @@ export class SubscriptionService {
         // --- 3. Distribute Commissions (Only for CIBLE or Upgrade) ---
         if (targetSubscriptionType === SubscriptionType.CIBLE || isUpgrade || targetSubscriptionType === SubscriptionType.CLASSIQUE) {
             // Using .catch() here so commission failure doesn't break the main webhook acknowledgment
-            this.distributeSubscriptionCommission(userId, targetSubscriptionType, isUpgrade, paymentSessionId, planName, paymentMethod)
+            this.distributeSubscriptionCommission(userId, targetSubscriptionType, isUpgrade, paymentSessionId, planName, paymentMethod, metadata)
                 .catch(commissionError => {
                     this.log.error(`Error during background commission distribution for user ${userId}, paymentSession ${paymentSessionId}:`, commissionError);
                     // Consider adding monitoring/alerting for failed commission distributions
@@ -545,7 +546,8 @@ export class SubscriptionService {
         isUpgrade: boolean,
         sourcePaymentSessionId: string,
         planName?: string,
-        paymentMethod?: string
+        paymentMethod?: string,
+        webhookMetadata?: any
     ): Promise<void> {
 
         this.log.info(`Distributing commissions for user ${buyerUserId}, plan ${planType}, isUpgrade: ${isUpgrade}, paymentMethod: ${paymentMethod}`);
@@ -560,25 +562,32 @@ export class SubscriptionService {
             'upgrade': 350 // For upgrades from Classique to Cible
         };
 
-        // Determine if this is a crypto payment
+        // Determine if this is a crypto payment - check multiple indicators
         const isCryptoPayment = paymentMethod === 'crypto' || 
             sourcePaymentSessionId?.includes('crypto') || 
-            sourcePaymentSessionId?.includes('nowpayments');
+            sourcePaymentSessionId?.includes('nowpayments') ||
+            sourcePaymentSessionId?.toLowerCase().includes('np_') ||
+            // Also check if the original payment was made with NOWPayments gateway
+            (sourcePaymentSessionId && sourcePaymentSessionId.length === 12) ||
+            // Fallback: check if metadata indicates USD currency (crypto payments use USD)
+            webhookMetadata?.currency === 'USD';
         
-        this.log.info(`Crypto payment detected: ${isCryptoPayment} (method: ${paymentMethod}, sessionId: ${sourcePaymentSessionId})`);
+        this.log.info(`Crypto payment detected: ${isCryptoPayment} (method: ${paymentMethod}, sessionId: ${sourcePaymentSessionId}, currency: ${webhookMetadata?.currency})`);
 
         let commissionBaseAmount = 0; // This is the base for referral levels
+        let commissionCurrency = 'XAF'; // Default currency
 
         if (isCryptoPayment) {
-            // Use crypto commission amounts (converted to XAF for internal processing)
+            // Use crypto commission amounts in USD (will deposit to USD balances)
+            commissionCurrency = 'USD';
             if (isUpgrade) {
-                commissionBaseAmount = 6 * 660; // $6 USD * 660 XAF/USD = 3960 XAF
+                commissionBaseAmount = 6; // $6 USD
             } else if (planType === SubscriptionType.CIBLE) {
-                commissionBaseAmount = 10 * 660; // $10 USD * 660 XAF/USD = 6600 XAF
+                commissionBaseAmount = 10; // $10 USD
             } else if (planType === SubscriptionType.CLASSIQUE) {
-                commissionBaseAmount = 4 * 660; // $4 USD * 660 XAF/USD = 2640 XAF
+                commissionBaseAmount = 4; // $4 USD
             }
-            this.log.info(`Using crypto commission base: ${commissionBaseAmount} XAF (converted from USD)`);
+            this.log.info(`Using crypto commission base: ${commissionBaseAmount} ${commissionCurrency}`);
         } else {
             // Use traditional XAF commission amounts
             if (isUpgrade) {
@@ -588,7 +597,7 @@ export class SubscriptionService {
             } else if (planType === SubscriptionType.CLASSIQUE) {
                 commissionBaseAmount = 2000; // New CLASSIQUE subscription commission base
             }
-            this.log.info(`Using traditional commission base: ${commissionBaseAmount} XAF`);
+            this.log.info(`Using traditional commission base: ${commissionBaseAmount} ${commissionCurrency}`);
         }
 
         if (commissionBaseAmount <= 0) {
@@ -609,7 +618,7 @@ export class SubscriptionService {
                 return;
             }
 
-            const currency = 'XAF'; // Assuming XAF for commissions
+            const currency = commissionCurrency; // Use determined currency (USD for crypto, XAF for traditional)
             const payoutPromises: Promise<any>[] = [];
             const partnerPayoutPromises: Promise<any>[] = []; // For partner commissions
 

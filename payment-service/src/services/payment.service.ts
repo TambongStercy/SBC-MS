@@ -235,8 +235,14 @@ class PaymentService {
             // Update transaction status to completed
             await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.COMPLETED);
 
-            // Update user balance
-            await userServiceClient.updateUserBalance(userId.toString(), amount);
+            // Update user balance based on currency
+            if (currency === Currency.USD) {
+                await userServiceClient.updateUserUsdBalance(userId.toString(), amount);
+                log.info(`Updated USD balance for user ${userId} by ${amount} USD`);
+            } else {
+                await userServiceClient.updateUserBalance(userId.toString(), amount);
+                log.info(`Updated XAF balance for user ${userId} by ${amount} ${currency}`);
+            }
 
             // Send notification only if email was found
             if (userEmail) {
