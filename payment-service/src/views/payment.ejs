@@ -1,13 +1,29 @@
-<% const cacheBuster=new Date().getTime(); %>
-    <% // 🔧 CRYPTO PAYMENTS CONTROL // Set to 'true' to enable crypto payments (Bitcoin, Ethereum, USDT, etc.) // Set
-        to 'false' to disable crypto payments (production default) const cryptoBetaEnabled=true; // 💰 PARTIAL PAYMENT
-        CALCULATIONS // Calculate remaining amount for partial crypto payments const
-        isPartialPayment=paymentStatus==='PARTIALLY_PAID' && typeof paidAmount !=='undefined' && paidAmount && typeof
-        payAmount !=='undefined' && payAmount; const remainingAmount=isPartialPayment ? (parseFloat(payAmount) -
-        parseFloat(paidAmount)) : null; const paymentProgress=isPartialPayment ? ((parseFloat(paidAmount) /
-        parseFloat(payAmount)) * 100) : 0; const displayPaidAmount=(typeof paidAmount !=='undefined' && paidAmount) ?
-        parseFloat(paidAmount).toFixed(6) : null; const displayRemainingAmount=remainingAmount ?
-        remainingAmount.toFixed(6) : null; %>
+<%
+const cacheBuster = new Date().getTime();
+
+// 🔧 CRYPTO PAYMENTS CONTROL
+// Set to 'true' to enable crypto payments (Bitcoin, Ethereum, USDT, etc.)
+// Set to 'false' to disable crypto payments (production default)
+const cryptoBetaEnabled = true;
+
+// 💰 PARTIAL PAYMENT CALCULATIONS
+// Calculate remaining amount for partial crypto payments
+const isPartialPayment = paymentStatus === 'PARTIALLY_PAID' && 
+    typeof paidAmount !== 'undefined' && paidAmount && 
+    typeof payAmount !== 'undefined' && payAmount;
+
+const remainingAmount = isPartialPayment ? 
+    (parseFloat(payAmount) - parseFloat(paidAmount)) : null;
+
+const paymentProgress = isPartialPayment ? 
+    ((parseFloat(paidAmount) / parseFloat(payAmount)) * 100) : 0;
+
+const displayPaidAmount = (typeof paidAmount !== 'undefined' && paidAmount) ? 
+    parseFloat(paidAmount).toFixed(6) : null;
+
+const displayRemainingAmount = remainingAmount ? 
+    remainingAmount.toFixed(6) : null;
+%>
         <!DOCTYPE html>
         <html lang="fr">
 
@@ -750,20 +766,29 @@
                     </div>
 
                     <!-- Title and Description -->
-                    <% let pageTitle="Confirmer les Détails du Paiement" ; let
-                        descriptiveMessage="Veuillez vérifier les détails de votre paiement et fournir les informations requises."
-                        ; if (paymentStatus==='SUCCEEDED' ) { pageTitle="Paiement Réussi" ;
-                        descriptiveMessage="Merci ! Votre paiement a été traité avec succès." ; } else if
-                        (paymentStatus==='FAILED' ) { pageTitle="Paiement Échoué" ;
-                        descriptiveMessage="Un problème est survenu avec votre paiement. Veuillez vérifier les détails ou contacter le support."
-                        ; } else if (paymentStatus==='PROCESSING' || paymentStatus==='PENDING_PROVIDER' ) {
-                        pageTitle="Paiement en Cours" ; descriptiveMessage=paymentStatus==='PROCESSING'
-                        ? "Votre paiement est en cours de traitement. Veuillez patienter un instant."
-                        : "Veuillez vérifier votre téléphone pour approuver la demande de paiement." ; } else if
-                        (paymentStatus==='WAITING_FOR_CRYPTO_DEPOSIT' ) { pageTitle="Paiement Crypto en Attente" ;
-                        descriptiveMessage="Envoyez le montant exact vers l'adresse crypto fournie ci-dessous." ; } else
-                        if (paymentStatus==='PARTIALLY_PAID' ) { pageTitle="Paiement Partiel Reçu" ;
-                        descriptiveMessage="Montant supplémentaire requis pour compléter votre paiement crypto." ; } %>
+                    <%
+                    let pageTitle = "Confirmer les Détails du Paiement";
+                    let descriptiveMessage = "Veuillez vérifier les détails de votre paiement et fournir les informations requises.";
+                    
+                    if (paymentStatus === 'SUCCEEDED') {
+                        pageTitle = "Paiement Réussi";
+                        descriptiveMessage = "Merci ! Votre paiement a été traité avec succès.";
+                    } else if (paymentStatus === 'FAILED') {
+                        pageTitle = "Paiement Échoué";
+                        descriptiveMessage = "Un problème est survenu avec votre paiement. Veuillez vérifier les détails ou contacter le support.";
+                    } else if (paymentStatus === 'PROCESSING' || paymentStatus === 'PENDING_PROVIDER') {
+                        pageTitle = "Paiement en Cours";
+                        descriptiveMessage = paymentStatus === 'PROCESSING' 
+                            ? "Votre paiement est en cours de traitement. Veuillez patienter un instant."
+                            : "Veuillez vérifier votre téléphone pour approuver la demande de paiement.";
+                    } else if (paymentStatus === 'WAITING_FOR_CRYPTO_DEPOSIT') {
+                        pageTitle = "Paiement Crypto en Attente";
+                        descriptiveMessage = "Envoyez le montant exact vers l'adresse crypto fournie ci-dessous.";
+                    } else if (paymentStatus === 'PARTIALLY_PAID') {
+                        pageTitle = "Paiement Partiel Reçu";
+                        descriptiveMessage = "Montant supplémentaire requis pour compléter votre paiement crypto.";
+                    }
+                    %>
 
                         <h1 class="page-title animate-slide-up delay-200">
                             <%= pageTitle %>
