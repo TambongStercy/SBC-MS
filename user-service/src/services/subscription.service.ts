@@ -361,12 +361,18 @@ export class SubscriptionService {
             callbackPath: `${config.selfBaseUrl}/api/subscriptions/webhooks/payment-confirmation`
         };
 
-        // 3. Call Payment Service Client to create intent
+        // 3. Get standard XAF pricing for PaymentIntent (payment service will handle crypto conversion)
+        const standardPlan = this.getPlanDetails(planType, 'traditional'); // Always get XAF pricing
+        if (!standardPlan) {
+            throw new Error('Standard XAF plan configuration not found');
+        }
+
+        // 4. Call Payment Service Client to create intent with XAF amounts
         try {
             const paymentIntentData = await paymentService.createIntent({
                 userId: userId,
-                amount: plan.price,
-                currency: plan.currency,
+                amount: standardPlan.price, // Always use XAF amount (2070 or 5140)
+                currency: standardPlan.currency, // Always XAF
                 paymentType: 'SUBSCRIPTION',
                 metadata: metadata,
             });
@@ -416,21 +422,10 @@ export class SubscriptionService {
             throw new Error('You already have the CIBLE subscription.'); // Send 400 from controller
         }
 
-        // 3. Define upgrade details based on payment method
-        let upgradePrice: number;
-        let currency: string;
-        
-        if (paymentMethod === 'crypto') {
-            // Crypto upgrade pricing: $6 USD (as specified)
-            upgradePrice = 6;
-            currency = 'USD';
-            this.log.info(`Using crypto upgrade pricing: ${upgradePrice} ${currency}`);
-        } else {
-            // Traditional upgrade pricing: 3070 XAF
-            upgradePrice = 3070;
-            currency = 'XAF';
-            this.log.info(`Using traditional upgrade pricing: ${upgradePrice} ${currency}`);
-        }
+        // 3. Use standard XAF pricing for PaymentIntent creation - payment service will handle crypto conversion
+        const upgradePrice = 3070; // Standard XAF amount (includes 70 XAF service fee)
+        const currency = 'XAF';
+        this.log.info(`Using standard upgrade pricing: ${upgradePrice} ${currency} (payment service will handle crypto conversion if needed)`);
 
         const targetPlan = this.getPlanDetails(SubscriptionType.CIBLE, paymentMethod);
         if (!targetPlan) {

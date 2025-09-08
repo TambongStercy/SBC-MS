@@ -90,6 +90,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
 
+            // Update amount display based on payment method
+            const amountDisplay = document.getElementById('amount-display');
+            if (amountDisplay) {
+                if (selectedMethod === 'cryptocurrency' && window.usdAmount) {
+                    // Show USD amount for crypto payments
+                    amountDisplay.textContent = `Montant dû: ${window.usdAmount.toFixed(2)} USD`;
+                    // Update global payment amount for crypto estimates
+                    window.paymentAmount = window.usdAmount.toString();
+                    window.paymentCurrency = 'USD';
+                } else {
+                    // Show original XAF amount for mobile money
+                    amountDisplay.textContent = `Montant dû: ${window.originalAmount.toFixed(2)} ${window.originalCurrency}`;
+                    // Reset to original amounts
+                    window.paymentAmount = window.originalAmount.toString();
+                    window.paymentCurrency = window.originalCurrency;
+                }
+            }
+
             if (selectedMethod === 'mobile_money') {
                 mobileMoneyFields?.classList.remove('hidden');
                 cryptoFields?.classList.add('hidden');
@@ -124,6 +142,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (operatorSelectGroup) operatorSelectGroup.classList.add('hidden');
                 if (phoneInputGroup) phoneInputGroup.classList.add('hidden');
                 if (otpInputGroup) otpInputGroup.classList.add('hidden');
+                
+                // Refresh crypto estimate if cryptocurrency is already selected
+                if (cryptoCurrencySelect?.value) {
+                    handleCryptoCurrencyChange();
+                }
             }
         };
 
@@ -142,7 +165,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (response.ok && result.success) {
                     const estimate = result.data;
                     if (cryptoAmount) cryptoAmount.textContent = `${estimate.estimatedAmount} ${selectedCrypto}`;
-                    if (cryptoRate) cryptoRate.textContent = `1 ${window.paymentCurrency} = ${(estimate.estimatedAmount / window.paymentAmount).toFixed(8)} ${selectedCrypto}`;
                     if (cryptoEstimate) cryptoEstimate.classList.remove('hidden');
                 }
                 else {

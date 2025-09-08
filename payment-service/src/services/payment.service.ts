@@ -2201,6 +2201,71 @@ class PaymentService {
             throw new Error(`Invalid payment amount: ${paymentIntent.amount}. Amount must be greater than 0.`);
         }
 
+        // 🚀 CRYPTO PAYMENT AMOUNT CONVERSION
+        // Set exact USD amounts for crypto payments based on subscription type
+        const isCryptoPayment = details.paymentCurrency && ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'LTC', 'XRP', 'ADA', 'DOT', 'SOL', 'MATIC', 'TRX'].includes(details.paymentCurrency);
+        
+        if (isCryptoPayment && paymentIntent.currency === 'XAF') {
+            log.info(`Setting exact USD amounts for crypto payment. Original: ${paymentIntent.amount} XAF, Type: ${paymentIntent.subscriptionType}, Plan: ${paymentIntent.subscriptionPlan}`);
+            
+            // Set exact USD amounts based on subscription type or XAF amount (excluding NOWPayments fees)
+            let baseUsdAmount: number;
+            
+            if (paymentIntent.subscriptionType === 'CLASSIQUE') {
+                baseUsdAmount = 4; // $4 USD for Classique
+            } else if (paymentIntent.subscriptionType === 'CIBLE') {
+                baseUsdAmount = 10; // $10 USD for Ciblés  
+            } else if (paymentIntent.subscriptionType === 'UPGRADE') {
+                baseUsdAmount = 6; // $6 USD for Upgrade
+            } else if (paymentIntent.amount === 2070) {
+                // Classique: 2070 XAF = 2000 base + 70 service fee → $4 base + service fee
+                const baseUsd = 4.00; // $4 USD base (equivalent to 2000 XAF)
+                const serviceFeeUsd = 70 / 615; // 70 XAF service fee converted to USD
+                baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
+                log.info(`Converting Classique: 2070 XAF (2000 + 70 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
+            } else if (paymentIntent.amount === 5140) {
+                // Ciblés: 5140 XAF = 5000 base + 140 service fee → $10 base + service fee  
+                const baseUsd = 10.00; // $10 USD base (equivalent to 5000 XAF)
+                const serviceFeeUsd = 140 / 615; // 140 XAF service fee converted to USD
+                baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
+                log.info(`Converting Ciblés: 5140 XAF (5000 + 140 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
+            } else if (paymentIntent.amount === 3070) {
+                // Upgrade: 3070 XAF = 3000 base + 70 service fee → $6 base + service fee
+                const baseUsd = 6.00; // $6 USD base (equivalent to 3000 XAF)
+                const serviceFeeUsd = 70 / 615; // 70 XAF service fee converted to USD
+                baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
+                log.info(`Converting Upgrade: 3070 XAF (3000 + 70 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
+            } else {
+                // Fallback to exchange rate conversion for unknown amounts
+                log.warn(`Unknown XAF amount: ${paymentIntent.amount}. Using exchange rate conversion.`);
+                const xafToUsdRate = 615;
+                baseUsdAmount = Math.round((paymentIntent.amount / xafToUsdRate) * 100) / 100;
+            }
+            
+            if (baseUsdAmount && baseUsdAmount > 0) {
+                // Update PaymentIntent with exact USD base amounts (NOWPayments will add their fees on top)
+                const updateData = {
+                    amount: baseUsdAmount,
+                    currency: 'USD',
+                    // Set crypto-specific fields for display
+                    payAmount: baseUsdAmount,
+                    payCurrency: 'USD'
+                };
+                
+                await paymentIntentRepository.updateBySessionId(sessionId, updateData);
+                
+                // Update local object for processing
+                paymentIntent.amount = baseUsdAmount;
+                paymentIntent.currency = 'USD';
+                paymentIntent.payAmount = baseUsdAmount;
+                paymentIntent.payCurrency = 'USD';
+                
+                log.info(`Set exact USD base amount for crypto payment: ${baseUsdAmount} USD (${paymentIntent.subscriptionType})`);
+            } else {
+                log.warn(`Could not determine USD amount for subscription type: ${paymentIntent.subscriptionType}`);
+            }
+        }
+
         // --- Construct Full Phone Number ---
         let fullPhoneNumber: string | undefined = details.phoneNumber;
         if (details.countryCode && details.phoneNumber) {
@@ -2933,9 +2998,8 @@ class PaymentService {
                 payCurrency: paymentResponse.payCurrency,
                 payAmount: paymentResponse.payAmount,
                 cryptoAddress: paymentResponse.payAddress,
-                // Also update the main currency and amount fields for consistency if needed
-                currency: paymentResponse.payCurrency,
-                amount: paymentResponse.payAmount,
+                // 🚀 Keep original USD amount and currency for display
+                // DO NOT overwrite currency and amount - keep USD values for "Montant dû" display
                 expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes from now for crypto payments
             };
 

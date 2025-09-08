@@ -812,7 +812,7 @@ const displayRemainingAmount = remainingAmount ?
 
                                 <!-- Amount Display -->
                                 <div class="amount-card animate-slide-up delay-400">
-                                    <div class="amount-text">
+                                    <div class="amount-text" id="amount-display">
                                         Montant dû: <%= amount.toFixed(2) %>
                                             <%= currency %>
                                     </div>
@@ -979,8 +979,6 @@ const displayRemainingAmount = remainingAmount ?
                                                         <div>
                                                             <div class="font-semibold">Montant estimé: <span
                                                                     id="crypto-amount">--</span></div>
-                                                            <div class="text-sm">Taux: <span id="crypto-rate">--</span>
-                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1279,8 +1277,9 @@ const displayRemainingAmount = remainingAmount ?
             <!-- JavaScript Variables -->
             <script>
                 var sessionId = "<%= sessionId %>";
-                var paymentAmount = "<%= amount %>";
-                var paymentCurrency = "<%= currency %>";
+                // Use crypto amounts (payAmount/payCurrency) if available, otherwise fallback to regular amounts
+                var paymentAmount = "<%= (typeof payAmount !== 'undefined' && payAmount !== null) ? payAmount : amount %>";
+                var paymentCurrency = "<%= (typeof payCurrency !== 'undefined' && payCurrency !== null) ? payCurrency : currency %>";
                 var paymentStatus = "<%= paymentStatus %>";
                 var prefillPhoneNumber = "<%= (typeof phoneNumber !== 'undefined' && phoneNumber !== null) ? phoneNumber : '' %>";
                 var prefillCountryCode = "<%= (typeof countryCode !== 'undefined' && countryCode !== null) ? countryCode : '' %>";
@@ -1295,6 +1294,41 @@ const displayRemainingAmount = remainingAmount ?
                 var paidAmount = "<%= (typeof displayPaidAmount !== 'undefined' && displayPaidAmount !== null) ? displayPaidAmount : '' %>";
                 var isPartialPayment = <%= (typeof isPartialPayment !== 'undefined' && isPartialPayment) ? 'true' : 'false' %>;
                 var isBeta = <%= cryptoBetaEnabled ? 'true' : 'false' %>; // Crypto payments flag (controlled by EJS variable at top of file)
+                
+                // Amount conversion mapping for different payment methods
+                var originalAmount = <%= amount %>;
+                var originalCurrency = "<%= currency %>";
+                var subscriptionType = "<%= subscriptionType || '' %>";
+                var usdAmount = null; // Will be set based on subscription type or XAF conversion
+                
+                // Set exact USD amounts for crypto payments based on subscription type or XAF amount
+                if (subscriptionType === 'CLASSIQUE') {
+                    usdAmount = 4; // $4 USD for Classique (excluding NOWPayments fees)
+                } else if (subscriptionType === 'CIBLE') {
+                    usdAmount = 10; // $10 USD for Ciblés (excluding NOWPayments fees)
+                } else if (subscriptionType === 'UPGRADE') {
+                    usdAmount = 6; // $6 USD for Upgrade (excluding NOWPayments fees)
+                } else if (originalAmount === 2070) {
+                    // Classique: 2070 XAF = 2000 base + 70 service → $4 base + service fee
+                    var baseUsd = 4.00;
+                    var serviceFeeUsd = 70 / 615;
+                    usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
+                } else if (originalAmount === 5140) {
+                    // Ciblés: 5140 XAF = 5000 base + 140 service → $10 base + service fee
+                    var baseUsd = 10.00;
+                    var serviceFeeUsd = 140 / 615;
+                    usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
+                } else if (originalAmount === 3070) {
+                    // Upgrade: 3070 XAF = 3000 base + 70 service → $6 base + service fee
+                    var baseUsd = 6.00;
+                    var serviceFeeUsd = 70 / 615;
+                    usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
+                } else if (originalCurrency === 'XAF') {
+                    // Fallback to exchange rate conversion for unknown amounts
+                    var xafToUsdRate = 615; // Approximate XAF/USD exchange rate
+                    var calculatedUsd = originalAmount / xafToUsdRate;
+                    usdAmount = Math.round(calculatedUsd * 100) / 100; // Round to 2 decimal places
+                }
 
                 console.log('EJS Variables:');
                 console.log('  sessionId:', sessionId);

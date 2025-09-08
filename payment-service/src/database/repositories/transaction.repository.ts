@@ -1,6 +1,8 @@
 import { Types, FilterQuery, SortOrder, UpdateQuery } from 'mongoose';
 import { nanoid } from 'nanoid';
 import TransactionModel, { ITransaction, TransactionStatus, TransactionType, Currency } from '../models/transaction.model';
+import PaymentIntentModel, { IPaymentIntent } from '../models/PaymentIntent';
+import { PaymentStatus } from '../interfaces/IPaymentIntent';
 import logger from '../../utils/logger';
 import { BaseRepository } from './base.repository';
 import { PaginationOptions } from '../../types/pagination';
@@ -263,6 +265,7 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
 
     /**
      * Get transaction statistics for a user
+     * Now includes crypto payments from PaymentIntents
      */
     async getTransactionStats(userId: string | Types.ObjectId): Promise<any> {
         try {
@@ -352,13 +355,13 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                         overall: [
                             {
                                 $group: {
-                                    _id: { type: '$type', status: '$status' },
+                                    _id: { type: '$type', status: '$status', currency: '$currency' },
                                     count: { $sum: 1 },
                                     totalAmount: { $sum: '$amount' },
                                     totalFees: { $sum: '$fee' }
                                 }
                             },
-                            { $sort: { '_id.type': 1, '_id.status': 1 } }
+                            { $sort: { '_id.type': 1, '_id.status': 1, '_id.currency': 1 } }
                         ],
                         dailyStats: [
                             { $match: { createdAt: { $gte: startOf7DaysAgo } } },
@@ -366,13 +369,14 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                                 $group: {
                                     _id: {
                                         day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-                                        type: '$type'
+                                        type: '$type',
+                                        currency: '$currency'
                                     },
                                     count: { $sum: 1 },
                                     totalAmount: { $sum: '$amount' }
                                 }
                             },
-                            { $sort: { '_id.day': 1, '_id.type': 1 } }
+                            { $sort: { '_id.day': 1, '_id.type': 1, '_id.currency': 1 } }
                         ],
                         weeklyStats: [
                             { $match: { createdAt: { $gte: startOf5WeeksAgo } } }, // Changed to 5 weeks
@@ -382,13 +386,14 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                                         year: { $isoWeekYear: '$createdAt' },
                                         month: { $month: '$createdAt' }, // Added month to group ID
                                         week: { $isoWeek: '$createdAt' },
-                                        type: '$type'
+                                        type: '$type',
+                                        currency: '$currency'
                                     },
                                     count: { $sum: 1 },
                                     totalAmount: { $sum: '$amount' }
                                 }
                             },
-                            { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1, '_id.type': 1 } } // Added month to sort
+                            { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1, '_id.type': 1, '_id.currency': 1 } }
                         ],
                         monthlyStats: [
                             { $match: { createdAt: { $gte: startOf12MonthsAgo } } },
@@ -397,40 +402,176 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                                     _id: {
                                         year: { $year: '$createdAt' },
                                         month: { $month: '$createdAt' },
-                                        type: '$type'
+                                        type: '$type',
+                                        currency: '$currency'
                                     },
                                     count: { $sum: 1 },
                                     totalAmount: { $sum: '$amount' }
                                 }
                             },
-                            { $sort: { '_id.year': 1, '_id.month': 1, '_id.type': 1 } }
+                            { $sort: { '_id.year': 1, '_id.month': 1, '_id.type': 1, '_id.currency': 1 } }
                         ]
                     }
                 }
             ]).exec();
 
-            // 3. Format overall stats, ensuring withdrawal amounts are positive
+            // 3. Get crypto payment stats from PaymentIntents (successful payments only)
+            const cryptoStats = await PaymentIntentModel.aggregate([
+                { 
+                    $match: { 
+                        userId: userId.toString(),
+                        status: PaymentStatus.SUCCEEDED,
+                        gateway: 'nowpayments' // Only crypto payments
+                    }
+                },
+                {
+                    $facet: {
+                        overall: [
+                            {
+                                $group: {
+                                    _id: null,
+                                    count: { $sum: 1 },
+                                    totalAmount: { $sum: '$amount' }, // USD amount
+                                    totalCryptoAmount: { $sum: '$payAmount' }, // Crypto amount
+                                    totalFees: { $sum: 0 } // No fees tracked for crypto payments
+                                }
+                            }
+                        ],
+                        dailyStats: [
+                            { $match: { createdAt: { $gte: startOf7DaysAgo } } },
+                            {
+                                $group: {
+                                    _id: {
+                                        day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }
+                                    },
+                                    count: { $sum: 1 },
+                                    totalAmount: { $sum: '$amount' }
+                                }
+                            },
+                            { $sort: { '_id.day': 1 } }
+                        ],
+                        weeklyStats: [
+                            { $match: { createdAt: { $gte: startOf5WeeksAgo } } },
+                            {
+                                $group: {
+                                    _id: {
+                                        year: { $isoWeekYear: '$createdAt' },
+                                        month: { $month: '$createdAt' },
+                                        week: { $isoWeek: '$createdAt' }
+                                    },
+                                    count: { $sum: 1 },
+                                    totalAmount: { $sum: '$amount' }
+                                }
+                            },
+                            { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1 } }
+                        ],
+                        monthlyStats: [
+                            { $match: { createdAt: { $gte: startOf12MonthsAgo } } },
+                            {
+                                $group: {
+                                    _id: {
+                                        year: { $year: '$createdAt' },
+                                        month: { $month: '$createdAt' }
+                                    },
+                                    count: { $sum: 1 },
+                                    totalAmount: { $sum: '$amount' }
+                                }
+                            },
+                            { $sort: { '_id.year': 1, '_id.month': 1 } }
+                        ]
+                    }
+                }
+            ]).exec();
+
+            // 4. Format overall stats with multi-currency support
             const formattedOverall = stats[0].overall.reduce((result: any, item: any) => {
                 const type = item._id.type;
                 const status = item._id.status;
+                const currency = item._id.currency;
+                
                 if (!result[type]) result[type] = {};
-                result[type][status] = {
-                    count: item.count,
-                    totalAmount: type === TransactionType.WITHDRAWAL ? Math.abs(item.totalAmount) : item.totalAmount,
-                    totalFees: item.totalFees
+                if (!result[type][status]) result[type][status] = {
+                    count: 0,
+                    totalAmount: 0,
+                    totalFees: 0,
+                    currencies: {}
                 };
+
+                // Aggregate counts and fees across all currencies
+                result[type][status].count += item.count;
+                result[type][status].totalFees += item.totalFees;
+
+                // Store amounts by currency
+                if (!result[type][status].currencies[currency]) {
+                    result[type][status].currencies[currency] = {
+                        count: 0,
+                        totalAmount: 0,
+                        totalFees: 0
+                    };
+                }
+
+                result[type][status].currencies[currency].count += item.count;
+                result[type][status].currencies[currency].totalAmount += 
+                    type === TransactionType.WITHDRAWAL ? Math.abs(item.totalAmount) : item.totalAmount;
+                result[type][status].currencies[currency].totalFees += item.totalFees;
+
+                // For backward compatibility, keep totalAmount as XAF if present, otherwise use first currency
+                if (currency === 'XAF' || !result[type][status].totalAmount) {
+                    result[type][status].totalAmount = 
+                        type === TransactionType.WITHDRAWAL ? Math.abs(item.totalAmount) : item.totalAmount;
+                }
+
                 return result;
             }, {});
 
+            // Add crypto payments to overall stats as a "crypto_payment" type
+            if (cryptoStats[0] && cryptoStats[0].overall.length > 0) {
+                const cryptoOverall = cryptoStats[0].overall[0];
+                formattedOverall['crypto_payment'] = {
+                    'completed': {
+                        count: cryptoOverall.count,
+                        totalAmount: cryptoOverall.totalAmount,
+                        totalFees: cryptoOverall.totalFees,
+                        totalCryptoAmount: cryptoOverall.totalCryptoAmount,
+                        currencies: {
+                            'USD': {
+                                count: cryptoOverall.count,
+                                totalAmount: cryptoOverall.totalAmount,
+                                totalFees: cryptoOverall.totalFees
+                            }
+                        }
+                    }
+                };
+            }
+
             // 4. Helper to format period-based stats, filling missing periods with zeros
-            function formatPeriodStats(arr: any[], allPeriods: string[], periodType: 'daily' | 'weekly' | 'monthly', weekMap?: Map<string, string>) {
+            function formatPeriodStats(
+                arr: any[], 
+                allPeriods: string[], 
+                periodType: 'daily' | 'weekly' | 'monthly', 
+                weekMap?: Map<string, string>,
+                cryptoArr?: any[] // Add crypto data parameter
+            ) {
                 const out: any = {};
 
-                // Initialize all periods with 0 values for both deposit and withdrawal
+                // Initialize all periods with 0 values for deposit, withdrawal, and crypto_payment
                 allPeriods.forEach(periodKey => {
                     out[periodKey] = {
-                        [TransactionType.DEPOSIT]: { count: 0, totalAmount: 0 },
-                        [TransactionType.WITHDRAWAL]: { count: 0, totalAmount: 0 }
+                        [TransactionType.DEPOSIT]: { 
+                            count: 0, 
+                            totalAmount: 0,
+                            currencies: {}
+                        },
+                        [TransactionType.WITHDRAWAL]: { 
+                            count: 0, 
+                            totalAmount: 0,
+                            currencies: {}
+                        },
+                        'crypto_payment': { 
+                            count: 0, 
+                            totalAmount: 0,
+                            currencies: { 'USD': { count: 0, totalAmount: 0 } }
+                        }
                     };
                 });
 
@@ -459,26 +600,92 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
 
                     // If the period key exists (it should, as we initialized it), update it
                     if (out[periodKey]) {
-                        if (item._id.type === TransactionType.DEPOSIT) {
-                            out[periodKey][TransactionType.DEPOSIT].count = item.count;
-                            out[periodKey][TransactionType.DEPOSIT].totalAmount = item.totalAmount;
-                        } else if (item._id.type === TransactionType.WITHDRAWAL) {
-                            out[periodKey][TransactionType.WITHDRAWAL].count = item.count;
-                            out[periodKey][TransactionType.WITHDRAWAL].totalAmount = Math.abs(item.totalAmount); // Make payouts positive
+                        const type = item._id.type;
+                        const currency = item._id.currency;
+                        const amount = type === TransactionType.WITHDRAWAL ? Math.abs(item.totalAmount) : item.totalAmount;
+
+                        if (type === TransactionType.DEPOSIT || type === TransactionType.WITHDRAWAL) {
+                            // Aggregate totals across currencies
+                            out[periodKey][type].count += item.count;
+
+                            // Initialize currency if not exists
+                            if (!out[periodKey][type].currencies[currency]) {
+                                out[periodKey][type].currencies[currency] = {
+                                    count: 0,
+                                    totalAmount: 0
+                                };
+                            }
+
+                            // Add to currency-specific totals
+                            out[periodKey][type].currencies[currency].count += item.count;
+                            out[periodKey][type].currencies[currency].totalAmount += amount;
+
+                            // For backward compatibility, set totalAmount to XAF if present, otherwise first currency
+                            if (currency === 'XAF' || !out[periodKey][type].totalAmount) {
+                                out[periodKey][type].totalAmount = amount;
+                            }
                         }
                     } else {
                         // This case should ideally not happen if allPeriods is comprehensive and mapping is correct
                         log.warn(`Aggregated data for period ${periodKey} found outside generated 'allPeriods' range. This might indicate a logic error.`);
                     }
                 });
+
+                // Process crypto payment data if provided
+                if (cryptoArr && cryptoArr.length > 0) {
+                    cryptoArr.forEach(item => {
+                        let periodKey: string;
+                        const id = item._id;
+
+                        if (periodType === 'daily') {
+                            periodKey = id.day;
+                        } else if (periodType === 'weekly') {
+                            const currentAggregatedWeekKey = `${id.year}-${id.month.toString().padStart(2, '0')}-${id.week.toString().padStart(2, '0')}`;
+                            periodKey = weekMap?.get(currentAggregatedWeekKey) || '';
+                            if (!periodKey) {
+                                log.warn(`Could not map crypto aggregated week key ${currentAggregatedWeekKey} to a 'Week X' label.`);
+                                return;
+                            }
+                        } else if (periodType === 'monthly') {
+                            periodKey = `${id.year}-${id.month.toString().padStart(2, '0')}`;
+                        } else {
+                            return;
+                        }
+
+                        // Update crypto_payment data for the period
+                        if (out[periodKey]) {
+                            out[periodKey]['crypto_payment'].count = item.count;
+                            out[periodKey]['crypto_payment'].totalAmount = item.totalAmount;
+                        }
+                    });
+                }
+
                 return out;
             }
 
-            // Apply formatting for each period type
-            const dailyStats = formatPeriodStats(stats[0].dailyStats, allDailyKeys, 'daily');
+            // Apply formatting for each period type, including crypto data
+            const dailyStats = formatPeriodStats(
+                stats[0].dailyStats, 
+                allDailyKeys, 
+                'daily',
+                undefined,
+                cryptoStats[0]?.dailyStats || []
+            );
             // Pass the generated map for weekly stats
-            const weeklyStats = formatPeriodStats(stats[0].weeklyStats, allWeeklyKeys, 'weekly', actualWeekToLabelMap);
-            const monthlyStats = formatPeriodStats(stats[0].monthlyStats, allMonthlyKeys, 'monthly');
+            const weeklyStats = formatPeriodStats(
+                stats[0].weeklyStats, 
+                allWeeklyKeys, 
+                'weekly', 
+                actualWeekToLabelMap,
+                cryptoStats[0]?.weeklyStats || []
+            );
+            const monthlyStats = formatPeriodStats(
+                stats[0].monthlyStats, 
+                allMonthlyKeys, 
+                'monthly',
+                undefined,
+                cryptoStats[0]?.monthlyStats || []
+            );
 
             // Return the combined stats object
             return {
