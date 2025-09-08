@@ -1,8 +1,8 @@
 // Real QR Code generator for cryptocurrency payments
 // Uses proper cryptocurrency URI formats for wallet compatibility
 
-function createQrCode(address) {
-  console.log('createQrCode called with address:', address);
+function createQrCode(address, amount = null, currency = null) {
+  console.log('createQrCode called with:', { address, amount, currency });
 
   const container = document.getElementById('qrcode-container');
   if (container && container.querySelector('img')) {
@@ -27,8 +27,8 @@ function createQrCode(address) {
     // Clear container
     container.innerHTML = '';
 
-    // Create QR code with proper cryptocurrency URI format
-    generateCryptoQR(address, container);
+    // Create QR code with proper cryptocurrency URI format including amount
+    generateCryptoQR(address, container, amount, currency);
 
   } catch (error) {
     console.error('Error in createQrCode:', error);
@@ -38,8 +38,9 @@ function createQrCode(address) {
   }
 }
 
-function generateCryptoQR(address, container) {
+function generateCryptoQR(address, container, amount = null, currency = null) {
   console.log('Creating QR code with cryptocurrency URI format');
+  console.log('Amount:', amount, 'Currency:', currency);
 
   // Create wrapper
   const wrapper = document.createElement('div');
@@ -52,9 +53,9 @@ function generateCryptoQR(address, container) {
     padding: 20px;
   `;
 
-  // Determine cryptocurrency type and format URI
-  const cryptoUri = formatCryptocurrencyURI(address);
-  console.log('Generated crypto URI:', cryptoUri);
+  // Determine cryptocurrency type and format URI with amount
+  const cryptoUri = formatCryptocurrencyURI(address, amount, currency);
+  console.log('Generated crypto URI with amount:', cryptoUri);
 
   // Create loading placeholder
   const loadingDiv = document.createElement('div');
@@ -87,57 +88,68 @@ function generateCryptoQR(address, container) {
   container.appendChild(wrapper);
 
   // Try multiple QR generation methods
-  tryQRGeneration(cryptoUri, address, wrapper, loadingDiv);
+  tryQRGeneration(cryptoUri, address, wrapper, loadingDiv, amount, currency);
 }
 
-function formatCryptocurrencyURI(address) {
+function formatCryptocurrencyURI(address, amount = null, currency = null) {
   // Detect cryptocurrency type based on address format and create proper URI
+  let baseUri;
 
   // Bitcoin (starts with 1, 3, or bc1)
   if (address.match(/^[13][a-km-zA-Z1-9]{25,34}$/) || address.match(/^bc1[a-z0-9]{39,59}$/)) {
-    return `bitcoin:${address}`;
+    baseUri = `bitcoin:${address}`;
   }
-
   // Ethereum (starts with 0x, 42 characters)
-  if (address.match(/^0x[a-fA-F0-9]{40}$/)) {
-    return `ethereum:${address}`;
+  else if (address.match(/^0x[a-fA-F0-9]{40}$/)) {
+    baseUri = `ethereum:${address}`;
   }
-
   // Litecoin (starts with L or M, or ltc1)
-  if (address.match(/^[LM][a-km-zA-Z1-9]{26,33}$/) || address.match(/^ltc1[a-z0-9]{39,59}$/)) {
-    return `litecoin:${address}`;
+  else if (address.match(/^[LM][a-km-zA-Z1-9]{26,33}$/) || address.match(/^ltc1[a-z0-9]{39,59}$/)) {
+    baseUri = `litecoin:${address}`;
   }
-
   // Bitcoin Cash (starts with q, p, or bitcoincash:)
-  if (address.match(/^[qp][a-z0-9]{41}$/) || address.startsWith('bitcoincash:')) {
-    return address.startsWith('bitcoincash:') ? address : `bitcoincash:${address}`;
+  else if (address.match(/^[qp][a-z0-9]{41}$/) || address.startsWith('bitcoincash:')) {
+    baseUri = address.startsWith('bitcoincash:') ? address : `bitcoincash:${address}`;
   }
-
   // Dogecoin (starts with D)
-  if (address.match(/^D[5-9A-HJ-NP-U][1-9A-HJ-NP-Za-km-z]{32}$/)) {
-    return `dogecoin:${address}`;
+  else if (address.match(/^D[5-9A-HJ-NP-U][1-9A-HJ-NP-Za-km-z]{32}$/)) {
+    baseUri = `dogecoin:${address}`;
   }
-
   // TRON (starts with T, 34 characters)
-  if (address.match(/^T[a-zA-Z0-9]{33}$/)) {
-    return `tron:${address}`;
+  else if (address.match(/^T[a-zA-Z0-9]{33}$/)) {
+    baseUri = `tron:${address}`;
   }
-
   // Ripple (starts with r)
-  if (address.match(/^r[a-zA-Z0-9]{24,34}$/)) {
-    return `ripple:${address}`;
+  else if (address.match(/^r[a-zA-Z0-9]{24,34}$/)) {
+    baseUri = `ripple:${address}`;
   }
-
   // Monero (long address starting with 4 or 8)
-  if (address.match(/^[48][a-zA-Z0-9]{94}$/)) {
-    return `monero:${address}`;
+  else if (address.match(/^[48][a-zA-Z0-9]{94}$/)) {
+    baseUri = `monero:${address}`;
+  }
+  // Default: assume Bitcoin for unknown formats (most common)
+  else {
+    baseUri = `bitcoin:${address}`;
   }
 
-  // Default: assume Bitcoin for unknown formats (most common)
-  return `bitcoin:${address}`;
+  // Add amount parameter if provided (for better wallet compatibility)
+  if (amount && amount > 0) {
+    const separator = baseUri.includes('?') ? '&' : '?';
+    baseUri += `${separator}amount=${amount}`;
+    
+    // Add label for better user experience
+    baseUri += `&label=SBC Payment`;
+    
+    // Add message with currency info if available
+    if (currency) {
+      baseUri += `&message=Pay ${amount} ${currency.toUpperCase()} to SBC`;
+    }
+  }
+
+  return baseUri;
 }
 
-function tryQRGeneration(cryptoUri, address, wrapper, loadingDiv) {
+function tryQRGeneration(cryptoUri, address, wrapper, loadingDiv, amount = null, currency = null) {
   // Try QR Server API (more reliable than Google Charts)
   const qrImg = document.createElement('img');
 
@@ -192,17 +204,21 @@ function tryQRGeneration(cryptoUri, address, wrapper, loadingDiv) {
     // Add QR code to wrapper
     wrapper.appendChild(qrImg);
 
-    // Add address info below QR code
+    // Add enhanced address info with amount details
     const addressInfo = document.createElement('div');
     addressInfo.style.cssText = `
       margin-top: 16px;
       text-align: center;
-      max-width: 240px;
+      max-width: 280px;
     `;
 
     const cryptoType = cryptoUri.split(':')[0].toUpperCase();
+    const displayAmount = amount && currency ? `${amount} ${currency.toUpperCase()}` : '';
 
     addressInfo.innerHTML = `
+      <div style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">
+        ${cryptoType} Payment${displayAmount ? ' - ' + displayAmount : ''}
+      </div>
       <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px; font-weight: 500;">
         📱 Scannez avec votre wallet ${cryptoType}
       </div>
@@ -210,7 +226,7 @@ function tryQRGeneration(cryptoUri, address, wrapper, loadingDiv) {
         ${address}
       </div>
       <div style="font-size: 10px; color: #16a34a; margin-top: 6px; font-weight: 500;">
-        ✅ Format URI: ${cryptoType}
+        ✅ Format URI: ${cryptoType}${displayAmount ? ' | Amount: ' + displayAmount : ''}
       </div>
     `;
 
@@ -220,14 +236,14 @@ function tryQRGeneration(cryptoUri, address, wrapper, loadingDiv) {
   // Handle QR generation error - try alternative method
   qrImg.onerror = function () {
     console.log('QR Server API failed, trying alternative method');
-    tryAlternativeQR(cryptoUri, address, wrapper, loadingDiv);
+    tryAlternativeQR(cryptoUri, address, wrapper, loadingDiv, amount, currency);
   };
 
   // Set the QR image source (this triggers the load)
   qrImg.src = qrUrl;
 }
 
-function tryAlternativeQR(cryptoUri, address, wrapper, loadingDiv) {
+function tryAlternativeQR(cryptoUri, address, wrapper, loadingDiv, amount = null, currency = null) {
   // Try QuickChart API as alternative
   const qrImg = document.createElement('img');
 

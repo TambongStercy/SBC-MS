@@ -142,10 +142,19 @@ export class SubscriptionController {
 
     /**
      * GET /plans - Get list of available subscription plans
+     * Query parameter: paymentMethod=crypto|traditional
      */
     async getAvailablePlans(req: Request, res: Response): Promise<void> {
         try {
-            const plans = this.subscriptionService.getAvailablePlans();
+            const paymentMethod = req.query.paymentMethod as string;
+            
+            // Validate payment method if provided
+            if (paymentMethod && !['crypto', 'traditional'].includes(paymentMethod)) {
+                res.status(400).json({ success: false, message: 'Invalid paymentMethod query parameter. Must be "crypto" or "traditional".' });
+                return;
+            }
+
+            const plans = this.subscriptionService.getAvailablePlans(paymentMethod as 'crypto' | 'traditional' | undefined);
             res.status(200).json({ success: true, data: plans });
         } catch (error) {
             this.log.error('Error fetching available plans:', error);
@@ -165,13 +174,23 @@ export class SubscriptionController {
                 return;
             }
 
-            const { planType } = req.body;
+            const { planType, paymentMethod } = req.body;
             if (!planType || !(planType in SubscriptionType)) {
                 res.status(400).json({ success: false, message: 'Missing or invalid planType in request body. Must be CLASSIQUE or CIBLE.' });
                 return;
             }
 
-            const result = await this.subscriptionService.initiateSubscriptionPurchase(userId, planType as SubscriptionType);
+            // Validate payment method if provided
+            if (paymentMethod && !['crypto', 'traditional'].includes(paymentMethod)) {
+                res.status(400).json({ success: false, message: 'Invalid paymentMethod. Must be "crypto" or "traditional".' });
+                return;
+            }
+
+            const result = await this.subscriptionService.initiateSubscriptionPurchase(
+                userId, 
+                planType as SubscriptionType, 
+                paymentMethod as 'crypto' | 'traditional' | undefined
+            );
 
             res.status(200).json({ success: true, data: result });
 
@@ -194,7 +213,18 @@ export class SubscriptionController {
                 return;
             }
 
-            const result = await this.subscriptionService.initiateSubscriptionUpgrade(userId);
+            const { paymentMethod } = req.body;
+
+            // Validate payment method if provided
+            if (paymentMethod && !['crypto', 'traditional'].includes(paymentMethod)) {
+                res.status(400).json({ success: false, message: 'Invalid paymentMethod. Must be "crypto" or "traditional".' });
+                return;
+            }
+
+            const result = await this.subscriptionService.initiateSubscriptionUpgrade(
+                userId, 
+                paymentMethod as 'crypto' | 'traditional' | undefined
+            );
 
             res.status(200).json({ success: true, data: result });
 

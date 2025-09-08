@@ -22,7 +22,8 @@ interface SubscriptionPlan {
     targetingLevel: 'country' | 'all'; // Describe targeting
 }
 
-const AVAILABLE_PLANS: SubscriptionPlan[] = [
+// XAF pricing for traditional payments (Mobile Money, etc.)
+const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
     {
         id: SubscriptionType.CLASSIQUE,
         name: 'Abonnement Classique',
@@ -42,6 +43,31 @@ const AVAILABLE_PLANS: SubscriptionPlan[] = [
         targetingLevel: 'all',
     },
 ];
+
+// USD pricing for crypto payments (NOWPayments)
+const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
+    {
+        id: SubscriptionType.CLASSIQUE,
+        name: 'Abonnement Classique (Crypto)',
+        type: SubscriptionType.CLASSIQUE,
+        price: 4, // $4 USD (excluding fees)
+        currency: 'USD',
+        description: 'Permet le ciblage des contacts par pays.',
+        targetingLevel: 'country',
+    },
+    {
+        id: SubscriptionType.CIBLE,
+        name: 'Abonnement Ciblé (Crypto)',
+        type: SubscriptionType.CIBLE,
+        price: 10, // $10 USD (excluding fees)
+        currency: 'USD',
+        description: 'Permet le ciblage avancé par pays, sexe, langue, âge, profession, centres d\'intérêt et ville.',
+        targetingLevel: 'all',
+    },
+];
+
+// Legacy reference for backward compatibility
+const AVAILABLE_PLANS = AVAILABLE_PLANS_XAF;
 // -------------------------------------------------
 
 
@@ -250,11 +276,24 @@ export class SubscriptionService {
 
     /**
      * Retrieves the list of available subscription plans.
+     * @param paymentMethod Optional payment method to get specific pricing
      */
-    getAvailablePlans(): SubscriptionPlan[] {
-        // Return the new plan definitions
-        this.log.info('Retrieving available subscription plans');
-        return AVAILABLE_PLANS;
+    getAvailablePlans(paymentMethod?: 'crypto' | 'traditional'): SubscriptionPlan[] {
+        this.log.info(`Retrieving available subscription plans for payment method: ${paymentMethod || 'traditional'}`);
+        
+        if (paymentMethod === 'crypto') {
+            return AVAILABLE_PLANS_CRYPTO_USD;
+        }
+        
+        return AVAILABLE_PLANS_XAF;
+    }
+
+    /**
+     * Get plan details for a specific subscription type and payment method
+     */
+    private getPlanDetails(planType: SubscriptionType, paymentMethod?: 'crypto' | 'traditional'): SubscriptionPlan | null {
+        const plans = this.getAvailablePlans(paymentMethod);
+        return plans.find(p => p.id === planType) || null;
     }
 
     /**
@@ -262,15 +301,16 @@ export class SubscriptionService {
      * If purchasing CIBLE while CLASSIQUE is active, triggers the upgrade flow.
      * @param userId The ID of the user purchasing.
      * @param planType The type of plan being purchased (CLASSIQUE or CIBLE).
+     * @param paymentMethod Optional payment method ('crypto' for NOWPayments, 'traditional' for Mobile Money)
      * @returns Payment initiation details (sessionId, paymentPageUrl, etc.)
      */
-    async initiateSubscriptionPurchase(userId: string, planType: SubscriptionType) {
-        this.log.info(`Initiating purchase for plan type '${planType}' by user ${userId}`);
+    async initiateSubscriptionPurchase(userId: string, planType: SubscriptionType, paymentMethod?: 'crypto' | 'traditional') {
+        this.log.info(`Initiating purchase for plan type '${planType}' by user ${userId} with payment method: ${paymentMethod || 'traditional'}`);
 
         // 1. Find the requested plan details using planType as the ID
-        const plan = AVAILABLE_PLANS.find(p => p.id === planType);
+        const plan = this.getPlanDetails(planType, paymentMethod);
         if (!plan) {
-            this.log.warn(`Purchase initiation failed: Plan type '${planType}' not found.`);
+            this.log.warn(`Purchase initiation failed: Plan type '${planType}' not found for payment method '${paymentMethod || 'traditional'}'.`);
             throw new Error('Invalid subscription plan selected.');
         }
 
@@ -289,7 +329,7 @@ export class SubscriptionService {
             } else if (activeClassiqueSub) {
                 // Has CLASSIQUE, no CIBLE -> Trigger upgrade flow
                 this.log.info(`User ${userId} buying CIBLE with active CLASSIQUE. Redirecting to upgrade flow.`);
-                return this.initiateSubscriptionUpgrade(userId);
+                return this.initiateSubscriptionUpgrade(userId, paymentMethod);
             }
             // Else: No active CIBLE or CLASSIQUE -> Proceed with new CIBLE purchase below
 
@@ -316,6 +356,7 @@ export class SubscriptionService {
             planName: plan.name,
             planType: plan.type,
             isUpgrade: false, // This is a new purchase
+            paymentMethod: paymentMethod || 'traditional', // Include payment method
             originatingService: 'user-service',
             callbackPath: `${config.selfBaseUrl}/api/subscriptions/webhooks/payment-confirmation`
         };
@@ -354,10 +395,11 @@ export class SubscriptionService {
      * Initiates the upgrade process from CLASSIQUE to CIBLE.
      * Checks eligibility and calls payment service for the difference.
      * @param userId The ID of the user upgrading.
+     * @param paymentMethod Optional payment method ('crypto' for NOWPayments, 'traditional' for Mobile Money)
      * @returns Payment initiation details.
      */
-    async initiateSubscriptionUpgrade(userId: string) {
-        this.log.info(`Initiating upgrade to CIBLE for user ${userId}`);
+    async initiateSubscriptionUpgrade(userId: string, paymentMethod?: 'crypto' | 'traditional') {
+        this.log.info(`Initiating upgrade to CIBLE for user ${userId} with payment method: ${paymentMethod || 'traditional'}`);
         const userObjectId = new Types.ObjectId(userId);
 
         // 1. Verify user has active CLASSIQUE subscription
@@ -374,12 +416,25 @@ export class SubscriptionService {
             throw new Error('You already have the CIBLE subscription.'); // Send 400 from controller
         }
 
-        // 3. Define upgrade details
-        const upgradePrice = 3070; // Difference: 5000 (CIBLE) - 2000 (CLASSIQUE) ~= 3000
-        const targetPlan = AVAILABLE_PLANS.find(p => p.id === SubscriptionType.CIBLE);
+        // 3. Define upgrade details based on payment method
+        let upgradePrice: number;
+        let currency: string;
+        
+        if (paymentMethod === 'crypto') {
+            // Crypto upgrade pricing: $6 USD (as specified)
+            upgradePrice = 6;
+            currency = 'USD';
+            this.log.info(`Using crypto upgrade pricing: ${upgradePrice} ${currency}`);
+        } else {
+            // Traditional upgrade pricing: 3070 XAF
+            upgradePrice = 3070;
+            currency = 'XAF';
+            this.log.info(`Using traditional upgrade pricing: ${upgradePrice} ${currency}`);
+        }
+
+        const targetPlan = this.getPlanDetails(SubscriptionType.CIBLE, paymentMethod);
         if (!targetPlan) {
-            // This should not happen if AVAILABLE_PLANS is correct
-            this.log.error('Configuration error: CIBLE plan details not found.');
+            this.log.error(`Configuration error: CIBLE plan details not found for payment method '${paymentMethod || 'traditional'}'.`);
             throw new Error('Subscription configuration error.');
         }
 
@@ -399,9 +454,12 @@ export class SubscriptionService {
             const paymentIntentData = await paymentService.createIntent({
                 userId: userId,
                 amount: upgradePrice,
-                currency: targetPlan.currency, // Assuming same currency
+                currency: currency, // Use the determined currency based on payment method
                 paymentType: 'SUBSCRIPTION_UPGRADE', // Use a distinct type
-                metadata: metadata,
+                metadata: {
+                    ...metadata,
+                    paymentMethod: paymentMethod || 'traditional', // Include payment method in metadata
+                },
             });
 
             this.log.info(`Payment intent created for CIBLE upgrade by user ${userId}. Session ID: ${paymentIntentData.sessionId}`);
@@ -413,7 +471,7 @@ export class SubscriptionService {
                     id: targetPlan.id,
                     name: `Upgrade to ${targetPlan.name}`,
                     price: upgradePrice,
-                    currency: targetPlan.currency,
+                    currency: currency, // Use the determined currency
                 },
                 paymentDetails: paymentIntentData,
             };
@@ -435,7 +493,7 @@ export class SubscriptionService {
         this.log.info(`Handling successful payment webhook for subscription. Payment Session ID: ${paymentSessionId}`);
 
         // 1. Validate Metadata
-        const { userId, planId, isUpgrade, planName } = metadata || {};
+        const { userId, planId, isUpgrade, planName, paymentMethod } = metadata || {};
         if (!userId || !planId || !(planId in SubscriptionType)) {
             this.log.error('Subscription payment confirmation failed: Missing/invalid required metadata (userId, planId as SubscriptionType).', { paymentSessionId, metadata });
             throw new Error('Invalid payment confirmation metadata for subscription.');
@@ -464,7 +522,7 @@ export class SubscriptionService {
         // --- 3. Distribute Commissions (Only for CIBLE or Upgrade) ---
         if (targetSubscriptionType === SubscriptionType.CIBLE || isUpgrade || targetSubscriptionType === SubscriptionType.CLASSIQUE) {
             // Using .catch() here so commission failure doesn't break the main webhook acknowledgment
-            this.distributeSubscriptionCommission(userId, targetSubscriptionType, isUpgrade, paymentSessionId, planName)
+            this.distributeSubscriptionCommission(userId, targetSubscriptionType, isUpgrade, paymentSessionId, planName, paymentMethod)
                 .catch(commissionError => {
                     this.log.error(`Error during background commission distribution for user ${userId}, paymentSession ${paymentSessionId}:`, commissionError);
                     // Consider adding monitoring/alerting for failed commission distributions
@@ -486,10 +544,11 @@ export class SubscriptionService {
         planType: SubscriptionType,
         isUpgrade: boolean,
         sourcePaymentSessionId: string,
-        planName?: string
+        planName?: string,
+        paymentMethod?: string
     ): Promise<void> {
 
-        this.log.info(`Distributing commissions for user ${buyerUserId}, plan ${planType}, isUpgrade: ${isUpgrade}`);
+        this.log.info(`Distributing commissions for user ${buyerUserId}, plan ${planType}, isUpgrade: ${isUpgrade}, paymentMethod: ${paymentMethod}`);
 
         const commissionRates = { level1: 0.50, level2: 0.25, level3: 0.125 };
         const PARTNER_RATES = { silver: 0.18, gold: 0.30 }; // Partner commission rates (updated)
@@ -501,17 +560,40 @@ export class SubscriptionService {
             'upgrade': 350 // For upgrades from Classique to Cible
         };
 
+        // Determine if this is a crypto payment
+        const isCryptoPayment = paymentMethod === 'crypto' || 
+            sourcePaymentSessionId?.includes('crypto') || 
+            sourcePaymentSessionId?.includes('nowpayments');
+        
+        this.log.info(`Crypto payment detected: ${isCryptoPayment} (method: ${paymentMethod}, sessionId: ${sourcePaymentSessionId})`);
+
         let commissionBaseAmount = 0; // This is the base for referral levels
 
-        if (isUpgrade) {
-            commissionBaseAmount = 3000; // Fixed upgrade commission base
-        } else if (planType === SubscriptionType.CIBLE) {
-            commissionBaseAmount = 5000; // New CIBLE subscription commission base
-        } else if (planType === SubscriptionType.CLASSIQUE) { // Add condition for CLASSIQUE
-            commissionBaseAmount = 2000; // New CLASSIQUE subscription commission base (use plan price)
+        if (isCryptoPayment) {
+            // Use crypto commission amounts (converted to XAF for internal processing)
+            if (isUpgrade) {
+                commissionBaseAmount = 6 * 660; // $6 USD * 660 XAF/USD = 3960 XAF
+            } else if (planType === SubscriptionType.CIBLE) {
+                commissionBaseAmount = 10 * 660; // $10 USD * 660 XAF/USD = 6600 XAF
+            } else if (planType === SubscriptionType.CLASSIQUE) {
+                commissionBaseAmount = 4 * 660; // $4 USD * 660 XAF/USD = 2640 XAF
+            }
+            this.log.info(`Using crypto commission base: ${commissionBaseAmount} XAF (converted from USD)`);
         } else {
+            // Use traditional XAF commission amounts
+            if (isUpgrade) {
+                commissionBaseAmount = 3000; // Fixed upgrade commission base
+            } else if (planType === SubscriptionType.CIBLE) {
+                commissionBaseAmount = 5000; // New CIBLE subscription commission base
+            } else if (planType === SubscriptionType.CLASSIQUE) {
+                commissionBaseAmount = 2000; // New CLASSIQUE subscription commission base
+            }
+            this.log.info(`Using traditional commission base: ${commissionBaseAmount} XAF`);
+        }
+
+        if (commissionBaseAmount <= 0) {
             this.log.warn(`distributeSubscriptionCommission called for unexpected planType: ${planType}. Aborting.`);
-            return; // Should not happen based on calling logic, but good practice
+            return;
         }
 
         if (commissionBaseAmount <= 0) {

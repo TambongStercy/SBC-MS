@@ -76,6 +76,20 @@ document.addEventListener('DOMContentLoaded', function () {
         const handlePaymentMethodChange = () => {
             const selectedMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value;
 
+            // Update visual selection state
+            const allMethodCards = document.querySelectorAll('.method-card');
+            allMethodCards.forEach(card => {
+                card.classList.remove('selected');
+            });
+
+            // Add selected class to the currently selected method
+            if (selectedMethod) {
+                const selectedMethodCard = document.querySelector(`.method-card[data-method="${selectedMethod}"]`);
+                if (selectedMethodCard) {
+                    selectedMethodCard.classList.add('selected');
+                }
+            }
+
             if (selectedMethod === 'mobile_money') {
                 mobileMoneyFields?.classList.remove('hidden');
                 cryptoFields?.classList.add('hidden');
@@ -87,6 +101,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Update form for current country
                 updateFormForCountry();
             } else if (selectedMethod === 'cryptocurrency') {
+                // Check if beta/crypto features are enabled
+                if (!window.isBeta) {
+                    console.log('Crypto payments are disabled (beta flag is false)');
+                    // Force back to mobile money
+                    const mobileMoneyRadio = document.querySelector('input[name="paymentMethod"][value="mobile_money"]');
+                    if (mobileMoneyRadio) {
+                        mobileMoneyRadio.checked = true;
+                        // Recursively call to handle mobile money selection
+                        handlePaymentMethodChange();
+                        return;
+                    }
+                }
+                
                 mobileMoneyFields?.classList.add('hidden');
                 cryptoFields?.classList.remove('hidden');
 
@@ -197,6 +224,21 @@ document.addEventListener('DOMContentLoaded', function () {
             handlePaymentMethodChange(); // Initial call
         }
 
+        // Add click handlers to method cards for better UX
+        const methodCards = document.querySelectorAll('.method-card');
+        methodCards.forEach(card => {
+            card.addEventListener('click', function(e) {
+                // Prevent double handling if radio button was clicked directly
+                if (e.target.type === 'radio') return;
+                
+                const radio = this.querySelector('input[type="radio"]');
+                if (radio && !radio.checked) {
+                    radio.checked = true;
+                    handlePaymentMethodChange();
+                }
+            });
+        });
+
         if (countrySelect) { // Ensure countrySelect exists before adding listener or calling update
             countrySelect.addEventListener('change', () => {
                 updateFormForCountry(); // Call on country change
@@ -280,6 +322,16 @@ document.addEventListener('DOMContentLoaded', function () {
             let formData = {};
 
             if (selectedPaymentMethod === 'cryptocurrency') {
+                // Check if beta/crypto features are enabled
+                if (!window.isBeta) {
+                    console.log('Crypto payments are disabled (beta flag is false)');
+                    errorMessage.textContent = 'Les paiements en cryptomonnaie ne sont pas disponibles actuellement.';
+                    if (buttonSpinner) buttonSpinner.classList.add('hidden');
+                    if (buttonText) buttonText.textContent = 'Procéder au paiement';
+                    if (submitButton) submitButton.disabled = false;
+                    return;
+                }
+                
                 // Handle crypto payment
                 const selectedCrypto = cryptoCurrencySelect?.value;
 
@@ -589,7 +641,12 @@ document.addEventListener('DOMContentLoaded', function () {
                             errorMessage.textContent = 'En attente de votre dépôt crypto. Veuillez envoyer le montant exact à l\'adresse fournie.';
                         }
                         else if (newStatus === 'PARTIALLY_PAID') {
-                            errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant.';
+                            // Enhanced partial payment message with specific amounts
+                            if (window.paidAmount && window.cryptoPayAmount && window.cryptoPayCurrency) {
+                                errorMessage.textContent = `Paiement partiel reçu: ${window.paidAmount} ${window.cryptoPayCurrency}. Restant à envoyer: ${window.cryptoPayAmount} ${window.cryptoPayCurrency}.`;
+                            } else {
+                                errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant indiqué ci-dessous.';
+                            }
                         }
                         else {
                             errorMessage.textContent = 'Toujours en attente de confirmation sur votre téléphone...';
@@ -650,7 +707,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     // Delay to allow DOM to settle and avoid conflicts
                     setTimeout(function () {
                         if (typeof window.createQrCode === 'function') {
-                            window.createQrCode(window.cryptoAddress);
+                            // Parse amount as number if available
+                            const amount = window.cryptoPayAmount && window.cryptoPayAmount !== '' ? parseFloat(window.cryptoPayAmount) : null;
+                            const currency = window.cryptoPayCurrency && window.cryptoPayCurrency !== '' ? window.cryptoPayCurrency : null;
+                            
+                            console.log('JS: Creating QR code with amount:', amount, 'currency:', currency);
+                            window.createQrCode(window.cryptoAddress, amount, currency);
                         }
                         else {
                             console.error('JS: QR Code library (qrcode.js) not loaded properly for fallback.');
@@ -660,8 +722,39 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
         }
-        else if (window.paymentStatus === 'PARTIALLY_PAID' && errorMessage) {
-            errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant.';
+        else if (window.paymentStatus === 'PARTIALLY_PAID') {
+            if (errorMessage) {
+                // Enhanced partial payment message with specific amounts
+                if (window.paidAmount && window.cryptoPayAmount && window.cryptoPayCurrency) {
+                    errorMessage.textContent = `Paiement partiel reçu: ${window.paidAmount} ${window.cryptoPayCurrency}. Restant à envoyer: ${window.cryptoPayAmount} ${window.cryptoPayCurrency}.`;
+                } else {
+                    errorMessage.textContent = 'Paiement partiel reçu. Veuillez envoyer le montant restant indiqué ci-dessous.';
+                }
+            }
+
+            // Handle QR code for partial payments (remaining amount)
+            if (window.cryptoQrCodeBase64 && window.cryptoQrCodeBase64.trim() !== '') {
+                const qrContainer = document.getElementById('qrcode-container');
+                if (qrContainer) {
+                    console.log('JS: Rendering remaining amount QR code from base64 data for partial payment.');
+                    qrContainer.innerHTML = `<img src="data:image/png;base64,${window.cryptoQrCodeBase64}" alt="Remaining Amount QR Code" style="width:200px;height:200px;border-radius:12px;border:2px solid #e5e7eb;box-shadow:0 4px 12px rgba(99,102,241,0.15);margin-bottom:16px;" />`;
+                }
+            } else if (window.cryptoAddress) {
+                // Generate QR code for remaining amount
+                const qrContainer = document.getElementById('qrcode-container');
+                if (qrContainer && !qrContainer.querySelector('img')) {
+                    console.log('JS: Generating QR code for remaining amount:', window.cryptoPayAmount, window.cryptoPayCurrency);
+                    setTimeout(function () {
+                        if (typeof window.createQrCode === 'function') {
+                            const remainingAmount = window.cryptoPayAmount && window.cryptoPayAmount !== '' ? parseFloat(window.cryptoPayAmount) : null;
+                            const currency = window.cryptoPayCurrency && window.cryptoPayCurrency !== '' ? window.cryptoPayCurrency : null;
+                            
+                            console.log('JS: Creating QR code for partial payment remaining amount:', remainingAmount, 'currency:', currency);
+                            window.createQrCode(window.cryptoAddress, remainingAmount, currency);
+                        }
+                    }, 200);
+                }
+            }
         }
         startPolling(); // Call the new function
     }

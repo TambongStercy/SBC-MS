@@ -429,7 +429,7 @@ class PaymentService {
             // --- FEEXPAY WITHDRAWALS CONTROL ---
             // Check if FeexPay withdrawals are enabled via configuration
             let selectedGateway: PaymentGateway;
-            const originalGateway = this.selectGateway(countryCode, undefined, true);
+            const originalGateway = this.selectGateway(countryCode, undefined, true, undefined);
 
             if (originalGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
                 log.error(`FeexPay withdrawals are currently disabled. Country: ${countryCode}, User: ${userId}`);
@@ -454,11 +454,11 @@ class PaymentService {
             let providerName: 'CinetPay' | 'FeexPay';
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
-                
+
                 const cinetpayBalance = await cinetpayPayoutService.getBalance();
                 if (netAmountDesired > cinetpayBalance.available) {
                     throw new AppError('Withdrawals unavailable for now', 400);
-                }   
+                }
 
                 payoutService = cinetpayPayoutService;
                 providerName = 'CinetPay';
@@ -518,18 +518,18 @@ class PaymentService {
 
             // Check if user has sufficient balance (important to do upfront) against the GROSS amount in XAF
             const userBalance = await userServiceClient.getBalance(userId.toString());
-            
+
             // Explicit debt/negative balance prevention
             if (userBalance < 0) {
                 log.warn(`User ${userId} has negative balance (debt): ${userBalance} XAF. Blocking withdrawal.`);
                 throw new AppError('Withdrawal not permitted: Your account has a negative balance. Please contact support to resolve this issue.', 400);
             }
-            
+
             if (userBalance === 0) {
                 log.warn(`User ${userId} has zero balance. Blocking withdrawal.`);
                 throw new AppError('Withdrawal not permitted: Your account balance is zero.', 400);
             }
-            
+
             if (userBalance < grossAmountToDebitInXAF) {
                 log.warn(`User ${userId} has insufficient balance for withdrawal. Balance: ${userBalance} XAF, Required: ${grossAmountToDebitInXAF} XAF`);
                 throw new AppError('Insufficient balance for this withdrawal amount including fees.', 400);
@@ -1597,7 +1597,7 @@ class PaymentService {
             log.error(`Payment intent not found for CinetPay webhook: ${cpm_trans_id}`);
             throw new Error('Payment intent not found for webhook');
         }
-        if (cpm_payment_token && paymentIntent.gatewayPaymentId && cpm_payment_token !== paymentIntent.gatewayPaymentId) {
+        if (cpm_payment_token && paymentIntent.gatewayPaymentId && String(cpm_payment_token) !== String(paymentIntent.gatewayPaymentId)) {
             log.error(`CinetPay payment token mismatch for ${cpm_trans_id}`);
             throw new Error('Payment token mismatch');
         }
@@ -1688,7 +1688,7 @@ class PaymentService {
                 throw new Error('Payment intent is not a NOWPayments payment');
             }
 
-            if (payment_id !== paymentIntent.gatewayPaymentId) {
+            if (String(payment_id) !== String(paymentIntent.gatewayPaymentId)) {
                 log.error(`NOWPayments payment ID mismatch for ${order_id}. Expected: ${paymentIntent.gatewayPaymentId}, Received: ${payment_id}`);
                 throw new Error('Payment ID mismatch');
             }
@@ -2268,7 +2268,9 @@ class PaymentService {
 
         // Select Gateway first (pass currency to check for crypto)
         // For crypto payments, countryCode might be undefined
-        const selectedGateway = this.selectGateway(details.countryCode || '', finalCurrency);
+        // Extract payment method from metadata if available
+        const paymentMethod = paymentIntent.metadata?.paymentMethod;
+        const selectedGateway = this.selectGateway(details.countryCode || '', finalCurrency, false, paymentMethod);
 
         // Set up update data for the PaymentIntent document
         const updateData: UpdatePaymentIntentInput = { // Use the specific Update type
@@ -2375,10 +2377,16 @@ class PaymentService {
         return updatedIntent;
     }
 
-    private selectGateway(countryCode: string, currency?: string, isWithdrawal?: boolean): PaymentGateway {
+    private selectGateway(countryCode: string, currency?: string, isWithdrawal?: boolean, paymentMethod?: string): PaymentGateway {
         // Check if user wants to pay with cryptocurrency
         if (currency && this.isCryptoCurrency(currency)) {
             log.info(`Crypto currency ${currency} selected, using NOWPAYMENTS.`);
+            return PaymentGateway.NOWPAYMENTS;
+        }
+
+        // Check if payment method is explicitly crypto (for USD crypto payments)
+        if (paymentMethod === 'crypto') {
+            log.info(`Crypto payment method selected, using NOWPAYMENTS for ${currency || 'USD'} crypto payment.`);
             return PaymentGateway.NOWPAYMENTS;
         }
 
@@ -4037,7 +4045,7 @@ class PaymentService {
             let providerName: 'CinetPay' | 'FeexPay';
 
             // Use gateway selection logic with withdrawal flag (CinetPay for Togo withdrawals)
-            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode, undefined, true);
+            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode, undefined, true, undefined);
 
             // --- FEEXPAY ADMIN WITHDRAWALS CONTROL ---
             // Ensure admin withdrawals also respect FeexPay blocking
@@ -4326,7 +4334,7 @@ class PaymentService {
                 : recipientDetails.phoneNumber.replace(/\D/g, '');
 
             // Use gateway selection logic with withdrawal flag (CinetPay for Togo withdrawals)
-            const selectedGateway = this.selectGateway(recipientDetails.countryCode, undefined, true);
+            const selectedGateway = this.selectGateway(recipientDetails.countryCode, undefined, true, undefined);
 
             // --- FEEXPAY ADMIN DIRECT PAYOUT CONTROL ---
             // Ensure admin direct payouts also respect FeexPay blocking
@@ -4480,7 +4488,7 @@ class PaymentService {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} already completed. Skipping update.`);
             return;
         }
-        
+
         // Allow processing of failed transactions if the provider status is now successful
         if (transaction.status === TransactionStatus.FAILED && providerStatusMessage !== 'completed') {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} already failed and provider status is not successful. Skipping update.`);
@@ -4964,7 +4972,7 @@ class PaymentService {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} already completed. Skipping update.`);
             return;
         }
-        
+
         // Allow processing of failed transactions if the provider status is now successful
         if (transaction.status === TransactionStatus.FAILED && providerStatus !== 'completed') {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} already failed and provider status is not successful. Skipping update.`);

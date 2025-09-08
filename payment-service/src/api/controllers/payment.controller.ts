@@ -68,12 +68,20 @@ export class PaymentController {
             // Generate QR code for crypto payments if needed
             if (
                 paymentIntent &&
-                paymentIntent.status === PaymentStatus.WAITING_FOR_CRYPTO_DEPOSIT &&
+                (paymentIntent.status === PaymentStatus.WAITING_FOR_CRYPTO_DEPOSIT || paymentIntent.status === PaymentStatus.PARTIALLY_PAID) &&
                 paymentIntent.cryptoAddress &&
                 paymentIntent.payCurrency
             ) {
+                // Calculate the amount for QR code (remaining amount for partial payments)
+                let qrAmount = paymentIntent.payAmount;
+                if (paymentIntent.status === PaymentStatus.PARTIALLY_PAID && paymentIntent.paidAmount) {
+                    const remainingAmount = parseFloat(paymentIntent.payAmount) - parseFloat(paymentIntent.paidAmount);
+                    qrAmount = remainingAmount.toFixed(6);
+                    log.info(`Generating QR code for partial payment - Remaining amount: ${qrAmount} ${paymentIntent.payCurrency}`);
+                }
+
                 // Include amount and currency in the crypto URI for QR code
-                const cryptoUri = `${paymentIntent.payCurrency.toLowerCase()}:${paymentIntent.cryptoAddress}?amount=${paymentIntent.payAmount}`;
+                const cryptoUri = `${paymentIntent.payCurrency.toLowerCase()}:${paymentIntent.cryptoAddress}?amount=${qrAmount}`;
                 try {
                     let qr = await QRCode.toDataURL(cryptoUri, { type: 'image/png' });
                     if (qr.startsWith('data:image/png;base64,')) {
@@ -107,6 +115,9 @@ export class PaymentController {
                 paymentType: paymentIntent ? paymentIntent.paymentType : undefined,
                 subscriptionType: paymentIntent ? paymentIntent.subscriptionType : undefined,
                 subscriptionPlan: paymentIntent ? paymentIntent.subscriptionPlan : undefined,
+                // NEW: Add partial payment tracking fields
+                paidAmount: paymentIntent ? paymentIntent.paidAmount : undefined,
+                paidCurrency: paymentIntent ? paymentIntent.paidCurrency : undefined,
                 cryptoQrCodeBase64 // <-- inject QR code for EJS
             };
 

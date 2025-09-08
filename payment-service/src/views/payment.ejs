@@ -1,4 +1,18 @@
 <% const cacheBuster=new Date().getTime(); %>
+<% 
+// 🔧 CRYPTO PAYMENTS CONTROL 
+// Set to 'true' to enable crypto payments (Bitcoin, Ethereum, USDT, etc.)
+// Set to 'false' to disable crypto payments (production default)
+const cryptoBetaEnabled = true; 
+
+// 💰 PARTIAL PAYMENT CALCULATIONS
+// Calculate remaining amount for partial crypto payments
+const isPartialPayment = paymentStatus === 'PARTIALLY_PAID' && typeof paidAmount !== 'undefined' && paidAmount && typeof payAmount !== 'undefined' && payAmount;
+const remainingAmount = isPartialPayment ? (parseFloat(payAmount) - parseFloat(paidAmount)) : null;
+const paymentProgress = isPartialPayment ? ((parseFloat(paidAmount) / parseFloat(payAmount)) * 100) : 0;
+const displayPaidAmount = (typeof paidAmount !== 'undefined' && paidAmount) ? parseFloat(paidAmount).toFixed(6) : null;
+const displayRemainingAmount = remainingAmount ? remainingAmount.toFixed(6) : null;
+%>
     <!DOCTYPE html>
     <html lang="fr">
 
@@ -651,15 +665,13 @@
                 display: none !important;
             }
 
-            /* Beta/Coming Soon styling */
+            /* Crypto payment styling */
             .method-card.crypto {
-                opacity: 0.7;
                 position: relative;
             }
 
             .method-card.crypto:hover {
-                opacity: 0.8;
-                cursor: pointer;
+                /* Already has cursor: pointer from base .method-card class */
             }
 
             .method-card.crypto::after {
@@ -753,7 +765,9 @@
                     ? "Votre paiement est en cours de traitement. Veuillez patienter un instant."
                     : "Veuillez vérifier votre téléphone pour approuver la demande de paiement." ; } else if
                     (paymentStatus==='WAITING_FOR_CRYPTO_DEPOSIT' ) { pageTitle="Paiement Crypto en Attente" ;
-                    descriptiveMessage="Envoyez le montant exact vers l'adresse crypto fournie ci-dessous." ; } %>
+                    descriptiveMessage="Envoyez le montant exact vers l'adresse crypto fournie ci-dessous." ; } else if
+                    (paymentStatus==='PARTIALLY_PAID' ) { pageTitle="Paiement Partiel Reçu" ;
+                    descriptiveMessage="Montant supplémentaire requis pour compléter votre paiement crypto." ; } %>
 
                     <h1 class="page-title animate-slide-up delay-200">
                         <%= pageTitle %>
@@ -820,6 +834,8 @@
                                                 </div>
                                             </label>
 
+                                            <!-- Crypto Payment Method -->
+                                            <% if (cryptoBetaEnabled) { %>
                                             <label class="method-card crypto" data-method="cryptocurrency">
                                                 <input type="radio" name="paymentMethod" value="cryptocurrency"
                                                     class="hidden">
@@ -832,11 +848,6 @@
                                                 </div>
                                                 <div class="method-title">Cryptomonnaie</div>
                                                 <div class="method-subtitle">BTC • ETH • USDT</div>
-                                                <!-- Coming Soon Badge -->
-                                                <div
-                                                    style="position: absolute; top: 8px; right: 8px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; font-size: 10px; font-weight: 600; padding: 4px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);">
-                                                    Bientôt
-                                                </div>
                                                 <div class="check-indicator">
                                                     <svg class="w-3 h-3 text-white" fill="currentColor"
                                                         viewBox="0 0 20 20">
@@ -846,6 +857,7 @@
                                                     </svg>
                                                 </div>
                                             </label>
+                                            <% } %>
                                         </div>
                                     </div>
 
@@ -907,6 +919,7 @@
                                     </div>
 
                                     <!-- Crypto Fields -->
+                                    <% if (cryptoBetaEnabled) { %>
                                     <div id="crypto-fields" class="hidden">
                                         <div class="form-section">
                                             <label class="form-label" for="crypto-currency">Cryptomonnaie</label>
@@ -944,6 +957,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <% } %>
 
                                     <!-- Submit Button -->
                                     <button type="button" id="submit-button" class="btn-primary">
@@ -1090,6 +1104,85 @@
                                                                             d'expiration: 30 minutes</p>
                                                                     </div>
                                                 </div>
+                                                <% } else if (paymentStatus==='PARTIALLY_PAID' ) { %>
+                                                    <!-- Partial Payment Display -->
+                                                    <div class="crypto-display animate-scale-in delay-500">
+                                                        <div class="text-center mb-6">
+                                                            <div class="w-16 h-16 mx-auto mb-4 bg-blue-500 rounded-full flex items-center justify-center">
+                                                                <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                                                                </svg>
+                                                            </div>
+                                                            <h3 class="text-xl font-semibold text-blue-900 mb-2">Paiement Partiel Reçu</h3>
+                                                            <p class="text-blue-700">Montant supplémentaire requis pour compléter le paiement</p>
+                                                        </div>
+
+                                                        <% if (isPartialPayment) { %>
+                                                            <!-- Payment Progress -->
+                                                            <div class="form-section">
+                                                                <label class="form-label text-blue-800">Progrès du paiement:</label>
+                                                                <div class="bg-white border-2 border-blue-300 rounded-xl p-4">
+                                                                    <div class="flex justify-between text-sm text-blue-800 mb-2">
+                                                                        <span>Reçu: <%= displayPaidAmount %> <%= paidCurrency || payCurrency %></span>
+                                                                        <span>Total: <%= payAmount %> <%= payCurrency %></span>
+                                                                    </div>
+                                                                    <!-- Progress Bar -->
+                                                                    <div class="w-full bg-blue-100 rounded-full h-3">
+                                                                        <div class="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500" 
+                                                                             style="width: <%= paymentProgress %>%"></div>
+                                                                    </div>
+                                                                    <div class="text-center mt-2">
+                                                                        <span class="text-sm font-semibold text-blue-900">
+                                                                            <%= Math.round(paymentProgress) %>% complété
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <!-- Remaining Amount -->
+                                                            <div class="form-section">
+                                                                <label class="form-label text-blue-800">Montant restant à envoyer:</label>
+                                                                <div class="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-xl p-4 text-center">
+                                                                    <span class="text-3xl font-bold text-orange-900">
+                                                                        <%= displayRemainingAmount %> <%= payCurrency %>
+                                                                    </span>
+                                                                    <p class="text-sm text-orange-700 mt-2">⚠️ Envoyez exactement ce montant</p>
+                                                                </div>
+                                                            </div>
+                                                        <% } %>
+
+                                                        <!-- QR Code Container for Remaining Amount -->
+                                                        <div id="qrcode-container" class="qr-container">
+                                                            <!-- The QR code will be injected here by JavaScript -->
+                                                        </div>
+
+                                                        <!-- Crypto Address -->
+                                                        <% if (typeof cryptoAddress !=='undefined' && cryptoAddress) { %>
+                                                            <div class="form-section">
+                                                                <label class="form-label text-blue-800">Adresse de dépôt:</label>
+                                                                <div class="flex items-center bg-white border-2 border-blue-300 rounded-xl p-4">
+                                                                    <code class="flex-1 text-sm font-mono text-gray-900 break-all" id="crypto-address-text"><%= cryptoAddress %></code>
+                                                                    <button type="button" class="copy-button" id="copy-address-btn">
+                                                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                                                            <path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                                                                        </svg>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        <% } %>
+
+                                                        <div class="text-center mt-6">
+                                                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                                                <h4 class="font-semibold text-blue-900 mb-2">💡 Important:</h4>
+                                                                <ul class="text-sm text-blue-700 text-left space-y-1">
+                                                                    <li>• Envoyez uniquement le montant restant indiqué</li>
+                                                                    <li>• Utilisez la même adresse crypto que précédemment</li>
+                                                                    <li>• Cette page se mettra à jour automatiquement</li>
+                                                                </ul>
+                                                            </div>
+                                                            <p class="text-sm text-blue-600">⏱️ Expiration dans: 30 minutes</p>
+                                                        </div>
+                                                    </div>
                                                 <% } %>
 
                                                     <!-- Footer -->
@@ -1119,13 +1212,120 @@
             var gatewayPaymentId = "<%= gatewayPaymentId %>";
             var cryptoAddress = "<%= (typeof cryptoAddress !== 'undefined' && cryptoAddress !== null) ? cryptoAddress : '' %>";
             var cryptoQrCodeBase64 = "<%= (typeof cryptoQrCodeBase64 !== 'undefined' && cryptoQrCodeBase64 !== null) ? cryptoQrCodeBase64 : '' %>";
-            var isBeta = true; // Flag to control beta features like crypto payments - ENABLED for crypto
+            // For partial payments, use remaining amount; otherwise use full amount
+            var cryptoPayAmount = "<%= isPartialPayment ? displayRemainingAmount : (typeof payAmount !== 'undefined' && payAmount !== null) ? payAmount : '' %>";
+            var cryptoPayCurrency = "<%= (typeof payCurrency !== 'undefined' && payCurrency !== null) ? payCurrency : '' %>";
+            var paidAmount = "<%= (typeof displayPaidAmount !== 'undefined' && displayPaidAmount !== null) ? displayPaidAmount : '' %>";
+            var isPartialPayment = <%= (typeof isPartialPayment !== 'undefined' && isPartialPayment) ? 'true' : 'false' %>;
+            var isBeta = <%= cryptoBetaEnabled ? 'true' : 'false' %>; // Crypto payments flag (controlled by EJS variable at top of file)
 
             console.log('EJS Variables:');
             console.log('  sessionId:', sessionId);
             console.log('  paymentStatus:', paymentStatus);
             console.log('  cryptoAddress:', cryptoAddress);
+            console.log('  cryptoPayAmount:', cryptoPayAmount);
+            console.log('  cryptoPayCurrency:', cryptoPayCurrency);
+            console.log('  paidAmount:', paidAmount);
+            console.log('  isPartialPayment:', isPartialPayment);
             console.log('  cryptoQrCodeBase64 length:', cryptoQrCodeBase64.length > 0 ? cryptoQrCodeBase64.length : 'empty');
+
+            // Copy to clipboard functionality
+            function copyToClipboard(text, button) {
+                if (!text || text.trim() === '') {
+                    console.error('No text to copy');
+                    return;
+                }
+
+                // Try modern clipboard API first
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).then(function() {
+                        showCopySuccess(button);
+                        console.log('Address copied to clipboard successfully');
+                    }).catch(function(err) {
+                        console.error('Failed to copy using clipboard API:', err);
+                        fallbackCopy(text, button);
+                    });
+                } else {
+                    // Fallback for older browsers or non-HTTPS
+                    fallbackCopy(text, button);
+                }
+            }
+
+            function fallbackCopy(text, button) {
+                try {
+                    // Create a temporary textarea
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    
+                    textArea.focus();
+                    textArea.select();
+                    
+                    // Try to execute copy command
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    if (successful) {
+                        showCopySuccess(button);
+                        console.log('Address copied to clipboard using fallback method');
+                    } else {
+                        showCopyError(button);
+                        console.error('Copy command failed');
+                    }
+                } catch (err) {
+                    console.error('Fallback copy failed:', err);
+                    showCopyError(button);
+                }
+            }
+
+            function showCopySuccess(button) {
+                const originalHTML = button.innerHTML;
+                button.classList.add('copied');
+                button.innerHTML = `
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                `;
+                
+                setTimeout(() => {
+                    button.classList.remove('copied');
+                    button.innerHTML = originalHTML;
+                }, 2000);
+            }
+
+            function showCopyError(button) {
+                const originalHTML = button.innerHTML;
+                button.style.color = '#ef4444';
+                button.innerHTML = `
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                `;
+                
+                setTimeout(() => {
+                    button.style.color = '';
+                    button.innerHTML = originalHTML;
+                }, 2000);
+            }
+
+            // Set up copy button event listener when page loads
+            document.addEventListener('DOMContentLoaded', function() {
+                const copyAddressBtn = document.getElementById('copy-address-btn');
+                const cryptoAddressText = document.getElementById('crypto-address-text');
+                
+                if (copyAddressBtn && cryptoAddressText) {
+                    copyAddressBtn.addEventListener('click', function() {
+                        const address = cryptoAddressText.textContent || cryptoAddressText.innerText;
+                        copyToClipboard(address.trim(), copyAddressBtn);
+                    });
+                    console.log('Copy address button initialized successfully');
+                } else {
+                    console.log('Copy address button or text element not found - will be initialized when crypto address is displayed');
+                }
+            });
         </script>
         <script src="<%= assetBasePath %>/js/payment.js?v=<%= cacheBuster %>"></script>
     </body>
