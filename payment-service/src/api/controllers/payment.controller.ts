@@ -73,11 +73,11 @@ export class PaymentController {
                 paymentIntent.payCurrency
             ) {
                 // Calculate the amount for QR code (remaining amount for partial payments)
-                let qrAmount = paymentIntent.payAmount;
-                if (paymentIntent.status === PaymentStatus.PARTIALLY_PAID && paymentIntent.paidAmount) {
-                    const remainingAmount = parseFloat(paymentIntent.payAmount) - parseFloat(paymentIntent.paidAmount);
-                    qrAmount = remainingAmount.toFixed(6);
-                    log.info(`Generating QR code for partial payment - Remaining amount: ${qrAmount} ${paymentIntent.payCurrency}`);
+                let qrAmount: number = paymentIntent.payAmount || 0;
+                if (paymentIntent.status === PaymentStatus.PARTIALLY_PAID && paymentIntent.paidAmount && paymentIntent.payAmount) {
+                    const remainingAmount = paymentIntent.payAmount - paymentIntent.paidAmount;
+                    qrAmount = remainingAmount;
+                    log.info(`Generating QR code for partial payment - Remaining amount: ${qrAmount.toFixed(6)} ${paymentIntent.payCurrency}`);
                 }
 
                 // Include amount and currency in the crypto URI for QR code
