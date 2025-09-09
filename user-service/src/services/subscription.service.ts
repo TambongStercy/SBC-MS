@@ -50,7 +50,7 @@ const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
         id: SubscriptionType.CLASSIQUE,
         name: 'Abonnement Classique (Crypto)',
         type: SubscriptionType.CLASSIQUE,
-        price: 4, // $4 USD (excluding fees)
+        price: 4.8, // $4.8 USD (excluding fees)
         currency: 'USD',
         description: 'Permet le ciblage des contacts par pays.',
         targetingLevel: 'country',
@@ -59,7 +59,7 @@ const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
         id: SubscriptionType.CIBLE,
         name: 'Abonnement Ciblé (Crypto)',
         type: SubscriptionType.CIBLE,
-        price: 10, // $10 USD (excluding fees)
+        price: 11.6, // $11.6 USD (excluding fees)
         currency: 'USD',
         description: 'Permet le ciblage avancé par pays, sexe, langue, âge, profession, centres d\'intérêt et ville.',
         targetingLevel: 'all',
