@@ -550,7 +550,7 @@ export class UserController {
                 return;
             }
 
-            const validCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'LTC', 'XRP', 'ADA', 'DOT', 'SOL', 'MATIC', 'TRX', 'BCH', 'USDTSOL', 'USDTBSC', 'BNBBSC'];
+            const validCurrencies = ['BTC', 'LTC', 'XRP', 'TRX', 'USDTSOL', 'USDTBSC', 'BNBBSC'];
             if (!validCurrencies.includes(cryptoWalletCurrency.toUpperCase())) {
                 res.status(400).json({
                     success: false,

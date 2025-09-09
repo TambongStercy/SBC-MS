@@ -2203,7 +2203,7 @@ class PaymentService {
 
         // 🚀 CRYPTO PAYMENT AMOUNT CONVERSION
         // Set exact USD amounts for crypto payments based on subscription type
-        const isCryptoPayment = details.paymentCurrency && ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'LTC', 'XRP', 'ADA', 'DOT', 'SOL', 'MATIC', 'TRX', 'USDTSOL', 'USDTBSC', 'BNBBSC'].includes(details.paymentCurrency);
+        const isCryptoPayment = details.paymentCurrency && ['BTC', 'LTC', 'XRP', 'TRX', 'USDTSOL', 'USDTBSC', 'BNBBSC'].includes(details.paymentCurrency);
         
         if (isCryptoPayment && paymentIntent.currency === 'XAF') {
             log.info(`Setting exact USD amounts for crypto payment. Original: ${paymentIntent.amount} XAF, Type: ${paymentIntent.subscriptionType}, Plan: ${paymentIntent.subscriptionPlan}`);
@@ -2509,8 +2509,7 @@ class PaymentService {
      */
     private isCryptoCurrency(currency: string): boolean {
         const cryptoCurrencies = [
-            'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'LTC', 'XRP', 'ADA',
-            'DOT', 'SOL', 'MATIC', 'TRX', 'BCH', 'LINK', 'DOGE', 'XMR',
+            'BTC', 'LTC', 'XRP', 'TRX',
             'USDTSOL', 'USDTBSC', 'BNBBSC'
         ];
         return cryptoCurrencies.includes(currency.toUpperCase());
@@ -2868,7 +2867,7 @@ class PaymentService {
                 // We must use the original fiat amount from the payment intent for the price.
                 let priceAmountForRequest;
                 let priceCurrencyForRequest = paymentIntent.currency || 'USD';
-                const isStablecoin = ['USDT', 'USDC', 'USDTSOL', 'USDTBSC'].includes(currency.toUpperCase());
+                const isStablecoin = ['USDTSOL', 'USDTBSC'].includes(currency.toUpperCase());
 
 
                 if (priceCurrencyForRequest === 'XAF') {

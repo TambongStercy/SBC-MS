@@ -350,12 +350,12 @@ const displayRemainingAmount = remainingAmount ?
                     transform: scale(1.1);
                 }
 
-                .mobile-money .method-icon {
-                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-                }
-
+                .mobile-money .method-icon,
                 .crypto .method-icon {
-                    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                    background: transparent;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                 }
 
                 .method-title {
@@ -429,6 +429,157 @@ const displayRemainingAmount = remainingAmount ?
                     background-repeat: no-repeat;
                     background-size: 16px;
                     padding-right: 48px;
+                }
+
+                /* Crypto currency option icons */
+                .crypto-option {
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .crypto-icon {
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: bold;
+                    font-size: 10px;
+                    color: white;
+                    flex-shrink: 0;
+                }
+
+                /* Crypto currency colors */
+                .crypto-icon.btc { background: linear-gradient(135deg, #f7931a, #ff9500); }
+                .crypto-icon.ltc { background: linear-gradient(135deg, #345d9d, #4a90e2); }
+                .crypto-icon.xrp { background: linear-gradient(135deg, #23292f, #000000); }
+                .crypto-icon.trx { background: linear-gradient(135deg, #ff0000, #dc143c); }
+                .crypto-icon.usdt { background: linear-gradient(135deg, #26a17b, #009688); }
+                .crypto-icon.bnb { background: linear-gradient(135deg, #f3ba2f, #f0b90b); }
+
+                /* Payment method icons styles */
+                .method-icon {
+                    width: 48px;
+                    height: 48px;
+                    margin-bottom: 12px;
+                    position: relative;
+                }
+
+                .stacked-icons {
+                    position: relative;
+                    width: 48px;
+                    height: 48px;
+                }
+
+                .stacked-icon {
+                    position: absolute;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 50%;
+                    border: 2px solid white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: bold;
+                    font-size: 10px;
+                    color: white;
+                }
+
+                .stacked-icon:nth-child(1) { top: 0; left: 0; z-index: 3; }
+                .stacked-icon:nth-child(2) { top: 4px; left: 8px; z-index: 2; }
+                .stacked-icon:nth-child(3) { top: 8px; left: 16px; z-index: 1; }
+
+                /* Mobile money operator colors */
+                .mtn { background: linear-gradient(135deg, #ffcc00, #f39c12); }
+                .orange { background: linear-gradient(135deg, #ff6600, #e67e22); }
+                .moov { background: linear-gradient(135deg, #0066cc, #3498db); }
+
+                /* Crypto currency colors for stacked icons */
+                .stacked-icon.btc { background: linear-gradient(135deg, #f7931a, #ff9500); }
+                .stacked-icon.ltc { background: linear-gradient(135deg, #345d9d, #4a90e2); }
+                .stacked-icon.xrp { background: linear-gradient(135deg, #23292f, #000000); }
+                .stacked-icon.trx { background: linear-gradient(135deg, #ff0000, #dc143c); }
+                .stacked-icon.usdt { background: linear-gradient(135deg, #26a17b, #009688); }
+                .stacked-icon.bnb { background: linear-gradient(135deg, #f3ba2f, #f0b90b); }
+
+                /* Custom select dropdown */
+                .custom-select {
+                    position: relative;
+                    width: 100%;
+                }
+
+                .select-display {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    cursor: pointer;
+                    gap: 8px;
+                }
+
+                .select-display.active {
+                    border-color: #6366f1;
+                    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+                }
+
+                .select-arrow {
+                    color: #6b7280;
+                    transition: transform 0.2s;
+                    flex-shrink: 0;
+                }
+
+                .select-arrow.rotated {
+                    transform: rotate(180deg);
+                }
+
+                .select-options {
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    z-index: 50;
+                    background: white;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+                    max-height: 240px;
+                    overflow-y: auto;
+                    margin-top: 4px;
+                }
+
+                .select-option {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 12px 16px;
+                    cursor: pointer;
+                    transition: background-color 0.2s;
+                    border-bottom: 1px solid #f3f4f6;
+                }
+
+                .select-option:last-child {
+                    border-bottom: none;
+                }
+
+                .select-option:hover {
+                    background-color: #f8fafc;
+                }
+
+                .select-option.selected {
+                    background-color: #eff6ff;
+                    color: #1d4ed8;
+                }
+
+                .select-selected {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .select-placeholder {
+                    color: #9ca3af;
                 }
 
                 /* Button styles */
@@ -838,11 +989,11 @@ const displayRemainingAmount = remainingAmount ?
                                                     <input type="radio" name="paymentMethod" value="mobile_money"
                                                         checked class="hidden">
                                                     <div class="method-icon">
-                                                        <svg class="w-6 h-6 text-white" fill="currentColor"
-                                                            viewBox="0 0 24 24">
-                                                            <path
-                                                                d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z" />
-                                                        </svg>
+                                                        <div class="stacked-icons">
+                                                            <div class="stacked-icon mtn">MTN</div>
+                                                            <div class="stacked-icon orange">OM</div>
+                                                            <div class="stacked-icon moov">MV</div>
+                                                        </div>
                                                     </div>
                                                     <div class="method-title">Mobile Money</div>
                                                     <div class="method-subtitle">MTN • Orange • Moov</div>
@@ -862,14 +1013,14 @@ const displayRemainingAmount = remainingAmount ?
                                                         <input type="radio" name="paymentMethod" value="cryptocurrency"
                                                             class="hidden">
                                                         <div class="method-icon">
-                                                            <svg class="w-6 h-6 text-white" fill="currentColor"
-                                                                viewBox="0 0 24 24">
-                                                                <path
-                                                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-                                                            </svg>
+                                                            <div class="stacked-icons">
+                                                                <div class="stacked-icon btc">₿</div>
+                                                                <div class="stacked-icon usdt">₮</div>
+                                                                <div class="stacked-icon trx">T</div>
+                                                            </div>
                                                         </div>
                                                         <div class="method-title">Cryptomonnaie</div>
-                                                        <div class="method-subtitle">BTC • ETH • USDT • BNB • SOL</div>
+                                                        <div class="method-subtitle">BTC • LTC • XRP • TRX</div>
                                                         <div class="check-indicator">
                                                             <svg class="w-3 h-3 text-white" fill="currentColor"
                                                                 viewBox="0 0 20 20">
@@ -947,29 +1098,46 @@ const displayRemainingAmount = remainingAmount ?
                                         <% if (cryptoBetaEnabled) { %>
                                             <div id="crypto-fields" class="hidden">
                                                 <div class="form-section">
-                                                    <label class="form-label"
-                                                        for="crypto-currency">Cryptomonnaie</label>
-                                                    <select id="crypto-currency" name="cryptoCurrency"
-                                                        class="form-input form-select">
-                                                        <option value="" disabled selected>Sélectionnez une
-                                                            cryptomonnaie
-                                                        </option>
-                                                        <option value="BTC">Bitcoin (BTC)</option>
-                                                        <option value="ETH">Ethereum (ETH)</option>
-                                                        <option value="USDT">Tether (USDT)</option>
-                                                        <option value="USDC">USD Coin (USDC)</option>
-                                                        <option value="BNB">Binance Coin (BNB)</option>
-                                                        <option value="LTC">Litecoin (LTC)</option>
-                                                        <option value="XRP">Ripple (XRP)</option>
-                                                        <option value="ADA">Cardano (ADA)</option>
-                                                        <option value="DOT">Polkadot (DOT)</option>
-                                                        <option value="SOL">Solana (SOL)</option>
-                                                        <option value="MATIC">Polygon (MATIC)</option>
-                                                        <option value="TRX">TRON (TRX)</option>
-                                                        <option value="USDTSOL">USDT (Solana)</option>
-                                                        <option value="USDTBSC">USDT (BSC-BEP20)</option>
-                                                        <option value="BNBBSC">BNB (BSC-BEP20)</option>
-                                                    </select>
+                                                    <label class="form-label">Cryptomonnaie</label>
+                                                    <div class="custom-select" id="crypto-select">
+                                                        <div class="select-display form-input" id="crypto-display">
+                                                            <span class="select-placeholder">Sélectionnez une cryptomonnaie</span>
+                                                            <svg class="select-arrow w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                            </svg>
+                                                        </div>
+                                                        <div class="select-options hidden" id="crypto-options">
+                                                            <div class="select-option" data-value="BTC">
+                                                                <div class="crypto-icon btc">₿</div>
+                                                                <span>Bitcoin (BTC)</span>
+                                                            </div>
+                                                            <div class="select-option" data-value="LTC">
+                                                                <div class="crypto-icon ltc">Ł</div>
+                                                                <span>Litecoin (LTC)</span>
+                                                            </div>
+                                                            <div class="select-option" data-value="XRP">
+                                                                <div class="crypto-icon xrp">X</div>
+                                                                <span>Ripple (XRP)</span>
+                                                            </div>
+                                                            <div class="select-option" data-value="TRX">
+                                                                <div class="crypto-icon trx">T</div>
+                                                                <span>TRON (TRX)</span>
+                                                            </div>
+                                                            <div class="select-option" data-value="USDTSOL">
+                                                                <div class="crypto-icon usdt">₮</div>
+                                                                <span>USDT (Solana)</span>
+                                                            </div>
+                                                            <div class="select-option" data-value="USDTBSC">
+                                                                <div class="crypto-icon usdt">₮</div>
+                                                                <span>USDT (BSC-BEP20)</span>
+                                                            </div>
+                                                            <div class="select-option" data-value="BNBBSC">
+                                                                <div class="crypto-icon bnb">B</div>
+                                                                <span>BNB (BSC-BEP20)</span>
+                                                            </div>
+                                                        </div>
+                                                        <input type="hidden" id="crypto-currency" name="cryptoCurrency" value="">
+                                                    </div>
                                                 </div>
 
                                                 <div id="crypto-estimate" class="hidden">
@@ -1439,7 +1607,92 @@ const displayRemainingAmount = remainingAmount ?
                     } else {
                         console.log('Copy address button or text element not found - will be initialized when crypto address is displayed');
                     }
+
+                    // Initialize custom crypto dropdown
+                    initializeCryptoDropdown();
                 });
+
+                // Custom dropdown functionality
+                function initializeCryptoDropdown() {
+                    const dropdown = document.getElementById('crypto-select');
+                    const display = document.getElementById('crypto-display');
+                    const options = document.getElementById('crypto-options');
+                    const arrow = display?.querySelector('.select-arrow');
+                    const hiddenInput = document.getElementById('crypto-currency');
+                    
+                    if (!dropdown || !display || !options) return;
+
+                    // Toggle dropdown
+                    display.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const isOpen = !options.classList.contains('hidden');
+                        
+                        if (isOpen) {
+                            closeDropdown();
+                        } else {
+                            openDropdown();
+                        }
+                    });
+
+                    // Handle option selection
+                    options.querySelectorAll('.select-option').forEach(option => {
+                        option.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            const value = this.dataset.value;
+                            const icon = this.querySelector('.crypto-icon').cloneNode(true);
+                            const text = this.querySelector('span').textContent;
+                            
+                            // Update hidden input
+                            hiddenInput.value = value;
+                            
+                            // Update display
+                            const placeholder = display.querySelector('.select-placeholder');
+                            const selected = display.querySelector('.select-selected');
+                            
+                            if (selected) {
+                                selected.remove();
+                            }
+                            
+                            if (placeholder) {
+                                placeholder.style.display = 'none';
+                            }
+                            
+                            const selectedDiv = document.createElement('div');
+                            selectedDiv.className = 'select-selected';
+                            selectedDiv.appendChild(icon);
+                            selectedDiv.appendChild(document.createTextNode(text));
+                            
+                            display.insertBefore(selectedDiv, arrow);
+                            
+                            // Update option states
+                            options.querySelectorAll('.select-option').forEach(opt => {
+                                opt.classList.remove('selected');
+                            });
+                            this.classList.add('selected');
+                            
+                            closeDropdown();
+                        });
+                    });
+
+                    // Close dropdown when clicking outside
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target)) {
+                            closeDropdown();
+                        }
+                    });
+
+                    function openDropdown() {
+                        options.classList.remove('hidden');
+                        display.classList.add('active');
+                        if (arrow) arrow.classList.add('rotated');
+                    }
+
+                    function closeDropdown() {
+                        options.classList.add('hidden');
+                        display.classList.remove('active');
+                        if (arrow) arrow.classList.remove('rotated');
+                    }
+                }
             </script>
             <script src="<%= assetBasePath %>/js/payment.js?v=<%= cacheBuster %>"></script>
         </body>

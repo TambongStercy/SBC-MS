@@ -151,7 +151,7 @@ class NOWPaymentsService {
             }
 
             // If converting from USD to a USD-pegged stablecoin, bypass the API call and assume 1:1
-            const usdStablecoins = ['USDT', 'USDC', 'USDTSOL', 'USDTBSC'];
+            const usdStablecoins = ['USDTSOL', 'USDTBSC'];
             if (finalFromCurrency === 'USD' && usdStablecoins.includes(toCurrency)) {
                 log.info(`Bypassing NOWPayments estimate for USD -> ${toCurrency} pair. Assuming 1:1 rate.`);
                 return {
@@ -563,8 +563,7 @@ class NOWPaymentsService {
      */
     isCryptoCurrency(currency: string): boolean {
         const cryptoCurrencies = [
-            'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'LTC', 'XRP', 'ADA',
-            'DOT', 'SOL', 'MATIC', 'TRX', 'BCH', 'LINK', 'DOGE', 'XMR',
+            'BTC', 'LTC', 'XRP', 'TRX',
             'USDTSOL', 'USDTBSC', 'BNBBSC'
         ];
         return cryptoCurrencies.includes(currency.toUpperCase());

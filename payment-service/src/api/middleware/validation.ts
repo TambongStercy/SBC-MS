@@ -71,8 +71,7 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
     // Validate paymentCurrency format/value
     const validFiatCurrencies = ['XOF', 'XAF', 'KES', 'CDF', 'GNF']; // Fiat currencies
     const validCryptoCurrencies = [
-        'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'LTC', 'XRP', 'ADA',
-        'DOT', 'SOL', 'MATIC', 'TRX', 'BCH', 'LINK', 'DOGE', 'XMR',
+        'BTC', 'LTC', 'XRP', 'TRX',
         'USDTSOL', 'USDTBSC', 'BNBBSC'
     ]; // Crypto currencies
     const validCurrencies = [...validFiatCurrencies, ...validCryptoCurrencies];
