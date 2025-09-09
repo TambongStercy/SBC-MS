@@ -93,15 +93,16 @@ document.addEventListener('DOMContentLoaded', function () {
             // Update amount display based on payment method
             const amountDisplay = document.getElementById('amount-display');
             if (amountDisplay) {
-                if (selectedMethod === 'cryptocurrency' && window.usdAmount) {
+                if (selectedMethod === 'cryptocurrency' && window.usdAmount && typeof window.usdAmount === 'number') {
                     // Show USD amount for crypto payments
                     amountDisplay.textContent = `Montant dû: ${window.usdAmount.toFixed(2)} USD`;
                     // Update global payment amount for crypto estimates
                     window.paymentAmount = window.usdAmount.toString();
                     window.paymentCurrency = 'USD';
                 } else {
-                    // Show original XAF amount for mobile money
-                    amountDisplay.textContent = `Montant dû: ${window.originalAmount.toFixed(2)} ${window.originalCurrency}`;
+                    // Show original XAF amount for mobile money or fallback
+                    const displayAmount = (typeof window.originalAmount === 'number') ? window.originalAmount.toFixed(2) : window.originalAmount;
+                    amountDisplay.textContent = `Montant dû: ${displayAmount} ${window.originalCurrency}`;
                     // Reset to original amounts
                     window.paymentAmount = window.originalAmount.toString();
                     window.paymentCurrency = window.originalCurrency;

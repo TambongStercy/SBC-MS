@@ -573,17 +573,34 @@ export class SubscriptionService {
         let commissionBaseAmount = 0; // This is the base for referral levels
         let commissionCurrency = 'XAF'; // Default currency
 
+        let cryptoCommissionAmounts: { level1: number, level2: number, level3: number } | null = null;
+        
         if (isCryptoPayment) {
             // Use crypto commission amounts in USD (will deposit to USD balances)
             commissionCurrency = 'USD';
             if (isUpgrade) {
+                cryptoCommissionAmounts = {
+                    level1: CRYPTO_SUBSCRIPTION_PRICING.upgrade.level1Commission,
+                    level2: CRYPTO_SUBSCRIPTION_PRICING.upgrade.level2Commission,
+                    level3: CRYPTO_SUBSCRIPTION_PRICING.upgrade.level3Commission
+                };
                 commissionBaseAmount = CRYPTO_SUBSCRIPTION_PRICING.upgrade.level1Commission + CRYPTO_SUBSCRIPTION_PRICING.upgrade.level2Commission + CRYPTO_SUBSCRIPTION_PRICING.upgrade.level3Commission; // Total commission base for upgrade
             } else if (planType === SubscriptionType.CIBLE) {
+                cryptoCommissionAmounts = {
+                    level1: CRYPTO_SUBSCRIPTION_PRICING.cible.level1Commission,
+                    level2: CRYPTO_SUBSCRIPTION_PRICING.cible.level2Commission,
+                    level3: CRYPTO_SUBSCRIPTION_PRICING.cible.level3Commission
+                };
                 commissionBaseAmount = CRYPTO_SUBSCRIPTION_PRICING.cible.level1Commission + CRYPTO_SUBSCRIPTION_PRICING.cible.level2Commission + CRYPTO_SUBSCRIPTION_PRICING.cible.level3Commission; // Total commission base for cible
             } else if (planType === SubscriptionType.CLASSIQUE) {
+                cryptoCommissionAmounts = {
+                    level1: CRYPTO_SUBSCRIPTION_PRICING.classique.level1Commission,
+                    level2: CRYPTO_SUBSCRIPTION_PRICING.classique.level2Commission,
+                    level3: CRYPTO_SUBSCRIPTION_PRICING.classique.level3Commission
+                };
                 commissionBaseAmount = CRYPTO_SUBSCRIPTION_PRICING.classique.level1Commission + CRYPTO_SUBSCRIPTION_PRICING.classique.level2Commission + CRYPTO_SUBSCRIPTION_PRICING.classique.level3Commission; // Total commission base for classique
             }
-            this.log.info(`Using crypto commission base: ${commissionBaseAmount} ${commissionCurrency}`);
+            this.log.info(`Using crypto commission amounts: L1=${cryptoCommissionAmounts?.level1}, L2=${cryptoCommissionAmounts?.level2}, L3=${cryptoCommissionAmounts?.level3} ${commissionCurrency}`);
         } else {
             // Use traditional XAF commission amounts
             if (isUpgrade) {
@@ -635,8 +652,8 @@ export class SubscriptionService {
 
             // Level 1
             if (referrers.level1) {
-                l1Amount = commissionBaseAmount * commissionRates.level1;
-                const description = `Level 1 (50%) commission from ${planDesc} purchase by user ${buyerUserId}`;
+                l1Amount = cryptoCommissionAmounts ? cryptoCommissionAmounts.level1 : commissionBaseAmount * commissionRates.level1;
+                const description = `Level 1 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level1 : '50%'}) commission from ${planDesc} purchase by user ${buyerUserId}`;
                 this.log.info(`Recording L1 commission deposit of ${l1Amount} ${currency} for referrer ${referrers.level1}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level1,
@@ -654,8 +671,8 @@ export class SubscriptionService {
             }
             // Level 2
             if (referrers.level2) {
-                l2Amount = commissionBaseAmount * commissionRates.level2;
-                const description = `Level 2 (25%) commission from ${planDesc} purchase by user ${buyerUserId}`;
+                l2Amount = cryptoCommissionAmounts ? cryptoCommissionAmounts.level2 : commissionBaseAmount * commissionRates.level2;
+                const description = `Level 2 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level2 : '25%'}) commission from ${planDesc} purchase by user ${buyerUserId}`;
                 this.log.info(`Recording L2 commission deposit of ${l2Amount} ${currency} for referrer ${referrers.level2}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level2,
@@ -673,8 +690,8 @@ export class SubscriptionService {
             }
             // Level 3
             if (referrers.level3) {
-                l3Amount = commissionBaseAmount * commissionRates.level3;
-                const description = `Level 3 (12.5%) commission from ${planDesc} purchase by user ${buyerUserId}`;
+                l3Amount = cryptoCommissionAmounts ? cryptoCommissionAmounts.level3 : commissionBaseAmount * commissionRates.level3;
+                const description = `Level 3 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level3 : '12.5%'}) commission from ${planDesc} purchase by user ${buyerUserId}`;
                 this.log.info(`Recording L3 commission deposit of ${l3Amount} ${currency} for referrer ${referrers.level3}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level3,

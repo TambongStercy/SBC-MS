@@ -1571,7 +1571,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
             var originalCurrency = "<%= currency %>";
             var subscriptionType = "<%= subscriptionType || '' %>";
             // var usdAmount = <%= (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) ? cryptoUsdAmount : 'null' %>;
-            var usdAmount = <%= processedUsdAmount %>;
+            var usdAmount = <%= processedUsdAmount !== null ? processedUsdAmount : 'null' %>;
 
             console.log('EJS Variables:');
             console.log('  sessionId:', sessionId);
