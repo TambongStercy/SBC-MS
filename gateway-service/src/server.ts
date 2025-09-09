@@ -128,6 +128,14 @@ app.use('/api/recovery', proxy(config.services.paymentServiceUrl, {
   }
 }));
 
+// Payment service static assets (images)
+app.use('/images', proxy(config.services.paymentServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to payment service static assets`);
+    return '/api/payments/static' + req.url;
+  }
+}));
+
 // Payment service
 app.use('/api/payments', proxy(config.services.paymentServiceUrl, {
   proxyReqPathResolver: (req) => {
