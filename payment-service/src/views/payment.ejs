@@ -210,7 +210,8 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 max-width: 480px;
                 padding: 40px;
                 position: relative;
-                overflow: hidden;
+                overflow: visible;
+                z-index: auto;
             }
 
             .payment-card::before {
@@ -909,6 +910,8 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 margin-top: 40px;
                 padding-top: 24px;
                 border-top: 1px solid #e5e7eb;
+                position: relative;
+                z-index: 1;
             }
 
             .provider-logos {
