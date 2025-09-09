@@ -500,33 +500,66 @@ const displayRemainingAmount = remainingAmount ?
 
                 /* Mobile money operator images */
                 .mtn { 
-                    background: #ffcc00 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23ffcc00' stroke='%23f5c842' stroke-width='3'/%3E%3Cpath d='M20 40 L35 30 L50 40 L65 30 L80 40 L65 50 L50 60 L35 50 Z' fill='%23000000'/%3E%3Ctext x='50' y='75' text-anchor='middle' fill='%23000000' font-size='14' font-weight='bold'%3EMTN%3C/text%3E%3C/svg%3E") center/cover;
+                    background: url('/images/mtn-momo.png') center/cover;
+                    border: 2px solid #ffcc00;
                 }
                 .orange { 
-                    background: #ff6600 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23ff6600' stroke='%23e55a00' stroke-width='3'/%3E%3Ccircle cx='50' cy='35' r='15' fill='white'/%3E%3Cpath d='M35 45 Q50 30 65 45 Q50 60 35 45' fill='white'/%3E%3Ctext x='50' y='75' text-anchor='middle' fill='white' font-size='12' font-weight='bold'%3EORANGE%3C/text%3E%3C/svg%3E") center/cover;
+                    background: url('/images/orange-money.jpg') center/cover;
+                    border: 2px solid #ff6600;
                 }
                 .airtel { 
-                    background: #e60000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23e60000' stroke='%23cc0000' stroke-width='3'/%3E%3Cpath d='M35 25 Q50 10 65 25 Q50 35 35 25' fill='white'/%3E%3Cpath d='M30 40 L70 40 L70 45 L30 45 Z' fill='white'/%3E%3Cpath d='M35 55 L65 55 L65 60 L35 60 Z' fill='white'/%3E%3Ctext x='50' y='75' text-anchor='middle' fill='white' font-size='11' font-weight='bold'%3EAIRTEL%3C/text%3E%3C/svg%3E") center/cover;
+                    background: url('/images/airtel.png') center/cover;
+                    border: 2px solid #e60000;
                 }
 
                 /* Crypto currency images */
                 .stacked-icon.btc { 
-                    background: #f7931a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23f7931a' stroke='%23e8850f' stroke-width='3'/%3E%3Cpath d='M35 25 L35 75 M35 25 L55 25 Q65 25 65 35 Q65 45 55 45 L35 45 M35 45 L58 45 Q70 45 70 57 Q70 69 58 69 L35 69 M45 20 L45 80 M55 20 L55 80' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") center/cover;
+                    background: url('/images/btc.png') center/cover;
+                    border: 2px solid #f7931a;
                 }
                 .stacked-icon.ltc { 
-                    background: #345d9d url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23345d9d' stroke='%232a4a80' stroke-width='3'/%3E%3Cpath d='M35 25 L35 70 L65 70 M35 50 L55 45' stroke='white' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='50' cy='50' r='25' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E") center/cover;
+                    background: #345d9d;
+                    color: white;
+                    font-size: 22px;
+                    font-weight: bold;
+                    border: 2px solid #345d9d;
+                }
+                .stacked-icon.ltc::after {
+                    content: 'LTC';
                 }
                 .stacked-icon.xrp { 
-                    background: #23292f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23000000' stroke='%23333333' stroke-width='3'/%3E%3Cpath d='M25 35 Q35 25 45 35 Q50 30 55 35 Q65 25 75 35 Q65 45 55 35 Q50 40 45 35 Q35 45 25 35' fill='white'/%3E%3Cpath d='M30 65 Q50 45 70 65' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E") center/cover;
+                    background: #000000;
+                    color: white;
+                    font-size: 22px;
+                    font-weight: bold;
+                    border: 2px solid #000000;
+                }
+                .stacked-icon.xrp::after {
+                    content: 'XRP';
                 }
                 .stacked-icon.trx { 
-                    background: #ff0000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23ff0000' stroke='%23e60000' stroke-width='3'/%3E%3Cpath d='M50 20 L70 40 L50 60 L30 40 Z' fill='white'/%3E%3Cpath d='M40 70 L50 75 L60 70 L50 80 Z' fill='white'/%3E%3C/svg%3E") center/cover;
+                    background: #ff0000;
+                    color: white;
+                    font-size: 22px;
+                    font-weight: bold;
+                    border: 2px solid #ff0000;
+                }
+                .stacked-icon.trx::after {
+                    content: 'TRX';
                 }
                 .stacked-icon.usdt { 
-                    background: #26a17b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%2326a17b' stroke='%23228f6b' stroke-width='3'/%3E%3Cpath d='M35 35 L65 35 L65 45 Q65 55 50 55 Q35 55 35 45 Z' fill='white'/%3E%3Cpath d='M40 25 L60 25 L60 35 L40 35 Z' fill='white'/%3E%3Cpath d='M50 55 L50 70' stroke='white' stroke-width='3'/%3E%3C/svg%3E") center/cover;
+                    background: url('/images/usdt.svg') center/cover;
+                    border: 2px solid #26a17b;
                 }
                 .stacked-icon.bnb { 
-                    background: #f3ba2f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23f3ba2f' stroke='%23e6a826' stroke-width='3'/%3E%3Cpath d='M50 25 L40 35 L50 45 L60 35 Z' fill='black'/%3E%3Cpath d='M30 45 L40 35 L40 55 L30 65 Z' fill='black'/%3E%3Cpath d='M70 45 L60 35 L60 55 L70 65 Z' fill='black'/%3E%3Cpath d='M50 55 L40 65 L50 75 L60 65 Z' fill='black'/%3E%3Cpath d='M45 45 L55 45 L55 55 L45 55 Z' fill='black'/%3E%3C/svg%3E") center/cover;
+                    background: #f3ba2f;
+                    color: black;
+                    font-size: 22px;
+                    font-weight: bold;
+                    border: 2px solid #f3ba2f;
+                }
+                .stacked-icon.bnb::after {
+                    content: 'BNB';
                 }
 
                 /* Custom select dropdown */
@@ -559,18 +592,14 @@ const displayRemainingAmount = remainingAmount ?
                 }
 
                 .select-options {
-                    position: absolute;
-                    top: 100%;
-                    left: 0;
-                    right: 0;
-                    z-index: 9999;
-                    background: #ffffff;
+                    position: fixed !important;
+                    z-index: 999999 !important;
+                    background: #ffffff !important;
                     border: 1px solid #e5e7eb;
                     border-radius: 12px;
-                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25) !important;
                     max-height: 280px;
                     overflow-y: auto;
-                    margin-top: 4px;
                     backdrop-filter: blur(10px);
                 }
 
@@ -1707,6 +1736,14 @@ const displayRemainingAmount = remainingAmount ?
                     });
 
                     function openDropdown() {
+                        // Get position of display element
+                        const rect = display.getBoundingClientRect();
+                        
+                        // Position the fixed dropdown
+                        options.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+                        options.style.left = rect.left + 'px';
+                        options.style.width = rect.width + 'px';
+                        
                         options.classList.remove('hidden');
                         display.classList.add('active');
                         if (arrow) arrow.classList.add('rotated');
