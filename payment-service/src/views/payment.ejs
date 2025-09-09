@@ -7,21 +7,30 @@ const cacheBuster = new Date().getTime();
 
 // 💰 PARTIAL PAYMENT CALCULATIONS
 // Calculate remaining amount for partial crypto payments
-const isPartialPayment = paymentStatus === 'PARTIALLY_PAID' && 
-    typeof paidAmount !== 'undefined' && paidAmount && 
+const isPartialPayment = paymentStatus === 'PARTIALLY_PAID' &&
+    typeof paidAmount !== 'undefined' && paidAmount &&
     typeof payAmount !== 'undefined' && payAmount;
 
-const remainingAmount = isPartialPayment ? 
+const remainingAmount = isPartialPayment ?
     (parseFloat(payAmount) - parseFloat(paidAmount)) : null;
 
-const paymentProgress = isPartialPayment ? 
+const paymentProgress = isPartialPayment ?
     ((parseFloat(paidAmount) / parseFloat(payAmount)) * 100) : 0;
 
-const displayPaidAmount = (typeof paidAmount !== 'undefined' && paidAmount) ? 
+const displayPaidAmount = (typeof paidAmount !== 'undefined' && paidAmount) ?
     parseFloat(paidAmount).toFixed(6) : null;
 
-const displayRemainingAmount = remainingAmount ? 
+const displayRemainingAmount = remainingAmount ?
     remainingAmount.toFixed(6) : null;
+
+// Process USD amount server-side to avoid JavaScript parsing issues
+let processedUsdAmount = null;
+if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
+    processedUsdAmount = cryptoUsdAmount;
+} else {
+    // Default fallback logic
+    processedUsdAmount = null;
+}
 %>
     <!DOCTYPE html>
     <html lang="fr">
@@ -1538,8 +1547,8 @@ const displayRemainingAmount = remainingAmount ?
 
         <!-- JavaScript Variables -->
         <script>
+            // Server-side processed variables (no EJS template syntax in JavaScript)
             var sessionId = "<%= sessionId %>";
-            // Use crypto amounts (payAmount/payCurrency) if available, otherwise fallback to regular amounts
             var paymentAmount = "<%= (typeof payAmount !== 'undefined' && payAmount !== null) ? payAmount : amount %>";
             var paymentCurrency = "<%= (typeof payCurrency !== 'undefined' && payCurrency !== null) ? payCurrency : currency %>";
             var paymentStatus = "<%= paymentStatus %>";
@@ -1550,66 +1559,19 @@ const displayRemainingAmount = remainingAmount ?
             var gatewayPaymentId = "<%= gatewayPaymentId %>";
             var cryptoAddress = "<%= (typeof cryptoAddress !== 'undefined' && cryptoAddress !== null) ? cryptoAddress : '' %>";
             var cryptoQrCodeBase64 = "<%= (typeof cryptoQrCodeBase64 !== 'undefined' && cryptoQrCodeBase64 !== null) ? cryptoQrCodeBase64 : '' %>";
-            // For partial payments, use remaining amount; otherwise use full amount
             var cryptoPayAmount = "<%= isPartialPayment ? displayRemainingAmount : (typeof payAmount !== 'undefined' && payAmount !== null) ? payAmount : '' %>";
             var cryptoPayCurrency = "<%= (typeof payCurrency !== 'undefined' && payCurrency !== null) ? payCurrency : '' %>";
             var paidAmount = "<%= (typeof displayPaidAmount !== 'undefined' && displayPaidAmount !== null) ? displayPaidAmount : '' %>";
             var isPartialPayment = <%= (typeof isPartialPayment !== 'undefined' && isPartialPayment) ? 'true' : 'false' %>;
-            var isBeta = <%= cryptoBetaEnabled ? 'true' : 'false' %>; // Crypto payments flag (controlled by EJS variable at top of file)
-            window.isBeta = isBeta; // Make it available globally for JavaScript
+            var isBeta = <%= cryptoBetaEnabled ? 'true' : 'false' %>;
+            window.isBeta = isBeta;
 
             // Amount conversion mapping for different payment methods
             var originalAmount = <%= amount %>;
             var originalCurrency = "<%= currency %>";
             var subscriptionType = "<%= subscriptionType || '' %>";
-            var usdAmount = null; // Will be set based on subscription type or XAF conversion
-
-                // Set exact USD amounts for crypto payments based on subscription type or XAF amount
-                <% if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) { %>
-                usdAmount = <%= cryptoUsdAmount %>; // USD amount from backend config
-                <% } else { %>
-                    // Fallback to hardcoded values if config not available
-                    if (subscriptionType === 'CLASSIQUE') {
-                    usdAmount = 4.8; // USD for Classique (fallback)
-                } else if (subscriptionType === 'CIBLE') {
-                    usdAmount = 11.6; // USD for Ciblés (fallback)
-                } else if (subscriptionType === 'UPGRADE') {
-                    usdAmount = 7; // USD for Upgrade (fallback)
-                }
-                <% } %>
-                } else if (originalAmount === 2070) {
-                    // Classique: 2070 XAF = 2000 base + 70 service → base + service fee
-                    <% if (typeof cryptoUsdAmount !== 'undefined' && subscriptionType === 'CLASSIQUE') { %>
-                        var baseUsd = <%= cryptoUsdAmount %>;
-                    <% } else { %>
-                        var baseUsd = 4.80; // Fallback
-                    <% } %>
-                    var serviceFeeUsd = 70 / 615;
-                usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
-            } else if (originalAmount === 5140) {
-                    // Ciblés: 5140 XAF = 5000 base + 140 service → base + service fee
-                    <% if (typeof cryptoUsdAmount !== 'undefined' && subscriptionType === 'CIBLE') { %>
-                        var baseUsd = <%= cryptoUsdAmount %>;
-                    <% } else { %>
-                        var baseUsd = 11.60; // Fallback
-                    <% } %>
-                    var serviceFeeUsd = 140 / 615;
-                usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
-            } else if (originalAmount === 3070) {
-                    // Upgrade: 3070 XAF = 3000 base + 70 service → base + service fee
-                    <% if (typeof cryptoUsdAmount !== 'undefined' && subscriptionType === 'UPGRADE') { %>
-                        var baseUsd = <%= cryptoUsdAmount %>;
-                    <% } else { %>
-                        var baseUsd = 7.00; // Fallback
-                    <% } %>
-                    var serviceFeeUsd = 70 / 615;
-                usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
-            } else if (originalCurrency === 'XAF') {
-                // Fallback to exchange rate conversion for unknown amounts
-                var xafToUsdRate = 615; // Approximate XAF/USD exchange rate
-                var calculatedUsd = originalAmount / xafToUsdRate;
-                usdAmount = Math.round(calculatedUsd * 100) / 100; // Round to 2 decimal places
-            }
+            // var usdAmount = <%= (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) ? cryptoUsdAmount : 'null' %>;
+            var usdAmount = <%= processedUsdAmount %>;
 
             console.log('EJS Variables:');
             console.log('  sessionId:', sessionId);
