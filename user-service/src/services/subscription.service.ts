@@ -2,6 +2,7 @@ import { UserRepository } from '../database/repositories/user.repository';
 import { SubscriptionRepository, SubscriptionPaginationResponse } from '../database/repositories/subscription.repository';
 import { Types } from 'mongoose';
 import { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model';
+import { CRYPTO_SUBSCRIPTION_PRICING } from '../config/crypto-pricing';
 import logger from '../utils/logger';
 // Import the payment service client
 import { paymentService } from './clients/payment.service.client';
@@ -50,7 +51,7 @@ const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
         id: SubscriptionType.CLASSIQUE,
         name: 'Abonnement Classique (Crypto)',
         type: SubscriptionType.CLASSIQUE,
-        price: 4.8, // $4.8 USD (excluding fees)
+        price: CRYPTO_SUBSCRIPTION_PRICING.classique.inscription, // $4.8 USD (excluding fees)
         currency: 'USD',
         description: 'Permet le ciblage des contacts par pays.',
         targetingLevel: 'country',
@@ -59,7 +60,7 @@ const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
         id: SubscriptionType.CIBLE,
         name: 'Abonnement Ciblé (Crypto)',
         type: SubscriptionType.CIBLE,
-        price: 11.6, // $11.6 USD (excluding fees)
+        price: CRYPTO_SUBSCRIPTION_PRICING.cible.inscription, // $11.6 USD (excluding fees)
         currency: 'USD',
         description: 'Permet le ciblage avancé par pays, sexe, langue, âge, profession, centres d\'intérêt et ville.',
         targetingLevel: 'all',
@@ -576,11 +577,11 @@ export class SubscriptionService {
             // Use crypto commission amounts in USD (will deposit to USD balances)
             commissionCurrency = 'USD';
             if (isUpgrade) {
-                commissionBaseAmount = 6; // $6 USD
+                commissionBaseAmount = CRYPTO_SUBSCRIPTION_PRICING.upgrade.level1Commission + CRYPTO_SUBSCRIPTION_PRICING.upgrade.level2Commission + CRYPTO_SUBSCRIPTION_PRICING.upgrade.level3Commission; // Total commission base for upgrade
             } else if (planType === SubscriptionType.CIBLE) {
-                commissionBaseAmount = 10; // $10 USD
+                commissionBaseAmount = CRYPTO_SUBSCRIPTION_PRICING.cible.level1Commission + CRYPTO_SUBSCRIPTION_PRICING.cible.level2Commission + CRYPTO_SUBSCRIPTION_PRICING.cible.level3Commission; // Total commission base for cible
             } else if (planType === SubscriptionType.CLASSIQUE) {
-                commissionBaseAmount = 4; // $4 USD
+                commissionBaseAmount = CRYPTO_SUBSCRIPTION_PRICING.classique.level1Commission + CRYPTO_SUBSCRIPTION_PRICING.classique.level2Commission + CRYPTO_SUBSCRIPTION_PRICING.classique.level3Commission; // Total commission base for classique
             }
             this.log.info(`Using crypto commission base: ${commissionBaseAmount} ${commissionCurrency}`);
         } else {

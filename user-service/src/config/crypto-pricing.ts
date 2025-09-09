@@ -17,19 +17,19 @@ export interface SubscriptionCryptoPricing {
 // Crypto pricing structure in USD
 export const CRYPTO_SUBSCRIPTION_PRICING: SubscriptionCryptoPricing = {
     classique: {
-        inscription: 4.8, // $4.8 USD
+        inscription: 4.8, // $4.8 USD but commissions are calculated as 4$
         level1Commission: 2, // $2 USD
         level2Commission: 1, // $1 USD
         level3Commission: 0.5, // $0.5 USD
     },
     cible: {
-        inscription: 11.6, // $11.6 USD
+        inscription: 11.6, // $11.6 USD but commissions are calculated as 10$
         level1Commission: 5, // $5 USD
         level2Commission: 2.5, // $2.5 USD
         level3Commission: 1.25, // $1.25 USD
     },
     upgrade: {
-        inscription: 7, // $7 USD (upgrade payment)
+        inscription: 7, // $7 USD (upgrade payment) but commissions are calculated as 6$
         level1Commission: 3, // $3 USD
         level2Commission: 1.5, // $1.5 USD
         level3Commission: 0.75, // $0.75 USD

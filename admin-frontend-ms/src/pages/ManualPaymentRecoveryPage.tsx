@@ -42,9 +42,9 @@ function ManualPaymentRecoveryPage() {
         nowpayments: {
             currency: 'USD',
             plans: {
-                CLASSIQUE: { amount: 4, label: 'Classique ($4 USD)' },
-                CIBLE: { amount: 10, label: 'Ciblé ($10 USD)' },
-                UPGRADE: { amount: 6, label: 'Mise à niveau ($6 USD)' }
+                CLASSIQUE: { amount: 4.8, label: 'Classique ($4.8 USD)' }, // TODO: Import from config
+                CIBLE: { amount: 11.6, label: 'Ciblé ($11.6 USD)' }, // TODO: Import from config
+                UPGRADE: { amount: 7, label: 'Mise à niveau ($7 USD)' } // TODO: Import from config
             }
         }
     };

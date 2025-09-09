@@ -1530,25 +1530,43 @@ const displayRemainingAmount = remainingAmount ?
                 var usdAmount = null; // Will be set based on subscription type or XAF conversion
                 
                 // Set exact USD amounts for crypto payments based on subscription type or XAF amount
-                if (subscriptionType === 'CLASSIQUE') {
-                    usdAmount = 4; // $4 USD for Classique (excluding NOWPayments fees)
-                } else if (subscriptionType === 'CIBLE') {
-                    usdAmount = 10; // $10 USD for Ciblés (excluding NOWPayments fees)
-                } else if (subscriptionType === 'UPGRADE') {
-                    usdAmount = 6; // $6 USD for Upgrade (excluding NOWPayments fees)
+                <% if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) { %>
+                    usdAmount = <%= cryptoUsdAmount %>; // USD amount from backend config
+                <% } else { %>
+                    // Fallback to hardcoded values if config not available
+                    if (subscriptionType === 'CLASSIQUE') {
+                        usdAmount = 4.8; // USD for Classique (fallback)
+                    } else if (subscriptionType === 'CIBLE') {
+                        usdAmount = 11.6; // USD for Ciblés (fallback)
+                    } else if (subscriptionType === 'UPGRADE') {
+                        usdAmount = 7; // USD for Upgrade (fallback)
+                    }
+                <% } %>
                 } else if (originalAmount === 2070) {
-                    // Classique: 2070 XAF = 2000 base + 70 service → $4 base + service fee
-                    var baseUsd = 4.00;
+                    // Classique: 2070 XAF = 2000 base + 70 service → base + service fee
+                    <% if (typeof cryptoUsdAmount !== 'undefined' && subscriptionType === 'CLASSIQUE') { %>
+                        var baseUsd = <%= cryptoUsdAmount %>;
+                    <% } else { %>
+                        var baseUsd = 4.80; // Fallback
+                    <% } %>
                     var serviceFeeUsd = 70 / 615;
                     usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
                 } else if (originalAmount === 5140) {
-                    // Ciblés: 5140 XAF = 5000 base + 140 service → $10 base + service fee
-                    var baseUsd = 10.00;
+                    // Ciblés: 5140 XAF = 5000 base + 140 service → base + service fee
+                    <% if (typeof cryptoUsdAmount !== 'undefined' && subscriptionType === 'CIBLE') { %>
+                        var baseUsd = <%= cryptoUsdAmount %>;
+                    <% } else { %>
+                        var baseUsd = 11.60; // Fallback
+                    <% } %>
                     var serviceFeeUsd = 140 / 615;
                     usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
                 } else if (originalAmount === 3070) {
-                    // Upgrade: 3070 XAF = 3000 base + 70 service → $6 base + service fee
-                    var baseUsd = 6.00;
+                    // Upgrade: 3070 XAF = 3000 base + 70 service → base + service fee
+                    <% if (typeof cryptoUsdAmount !== 'undefined' && subscriptionType === 'UPGRADE') { %>
+                        var baseUsd = <%= cryptoUsdAmount %>;
+                    <% } else { %>
+                        var baseUsd = 7.00; // Fallback
+                    <% } %>
                     var serviceFeeUsd = 70 / 615;
                     usdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
                 } else if (originalCurrency === 'XAF') {

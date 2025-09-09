@@ -1,6 +1,7 @@
 import paymentService from '../../services/payment.service';
 import { Request, Response, NextFunction } from 'express';
 import { IPaymentIntent, PaymentStatus } from '../../database/interfaces/IPaymentIntent';
+import { CRYPTO_SUBSCRIPTION_PRICING } from '../../config/crypto-pricing';
 import logger from '../../utils/logger';
 import config from '../../config';
 import { Currency } from '../../database/models/transaction.model';
@@ -93,6 +94,22 @@ export class PaymentController {
                 }
             }
 
+            // Calculate crypto USD amount based on subscription type
+            let cryptoUsdAmount: number | undefined;
+            if (paymentIntent && paymentIntent.subscriptionType) {
+                switch (paymentIntent.subscriptionType) {
+                    case 'CLASSIQUE':
+                        cryptoUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.classique.inscription;
+                        break;
+                    case 'CIBLE':
+                        cryptoUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.cible.inscription;
+                        break;
+                    case 'UPGRADE':
+                        cryptoUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription;
+                        break;
+                }
+            }
+
             const viewData = {
                 sessionId: paymentIntent ? paymentIntent.sessionId : sessionId, // Ensure sessionId is always passed
                 amount: paymentIntent ? paymentIntent.amount : undefined,
@@ -118,7 +135,9 @@ export class PaymentController {
                 // NEW: Add partial payment tracking fields
                 paidAmount: paymentIntent ? paymentIntent.paidAmount : undefined,
                 paidCurrency: paymentIntent ? paymentIntent.paidCurrency : undefined,
-                cryptoQrCodeBase64 // <-- inject QR code for EJS
+                cryptoQrCodeBase64, // <-- inject QR code for EJS
+                // NEW: Add crypto USD amount from config
+                cryptoUsdAmount: cryptoUsdAmount
             };
 
             res.render('payment', viewData);

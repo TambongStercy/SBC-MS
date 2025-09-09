@@ -13,6 +13,7 @@ import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
 import { countryCodeToDialingPrefix, momoOperatorToCinetpayPaymentMethod, momoOperatorToCountryCode, getPrefixFromOperator, momoOperatorToCurrency } from '../utils/operatorMaps'; // NEW: Import all necessary maps and helper
+import { CRYPTO_SUBSCRIPTION_PRICING } from '../config/crypto-pricing';
 import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
@@ -2212,26 +2213,26 @@ class PaymentService {
             let baseUsdAmount: number;
             
             if (paymentIntent.subscriptionType === 'CLASSIQUE') {
-                baseUsdAmount = 4; // $4 USD for Classique
+                baseUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.classique.inscription; // $4.8 USD for Classique
             } else if (paymentIntent.subscriptionType === 'CIBLE') {
-                baseUsdAmount = 10; // $10 USD for Ciblés  
+                baseUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.cible.inscription; // $11.6 USD for Ciblés  
             } else if (paymentIntent.subscriptionType === 'UPGRADE') {
-                baseUsdAmount = 6; // $6 USD for Upgrade
+                baseUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription; // $7 USD for Upgrade
             } else if (paymentIntent.amount === 2070) {
-                // Classique: 2070 XAF = 2000 base + 70 service fee → $4 base + service fee
-                const baseUsd = 4.00; // $4 USD base (equivalent to 2000 XAF)
+                // Classique: 2070 XAF = 2000 base + 70 service fee → $4.8 base + service fee
+                const baseUsd = CRYPTO_SUBSCRIPTION_PRICING.classique.inscription; // $4.8 USD base (equivalent to 2000 XAF)
                 const serviceFeeUsd = 70 / 615; // 70 XAF service fee converted to USD
                 baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
                 log.info(`Converting Classique: 2070 XAF (2000 + 70 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
             } else if (paymentIntent.amount === 5140) {
-                // Ciblés: 5140 XAF = 5000 base + 140 service fee → $10 base + service fee  
-                const baseUsd = 10.00; // $10 USD base (equivalent to 5000 XAF)
+                // Ciblés: 5140 XAF = 5000 base + 140 service fee → $11.6 base + service fee  
+                const baseUsd = CRYPTO_SUBSCRIPTION_PRICING.cible.inscription; // $11.6 USD base (equivalent to 5000 XAF)
                 const serviceFeeUsd = 140 / 615; // 140 XAF service fee converted to USD
                 baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
                 log.info(`Converting Ciblés: 5140 XAF (5000 + 140 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
             } else if (paymentIntent.amount === 3070) {
-                // Upgrade: 3070 XAF = 3000 base + 70 service fee → $6 base + service fee
-                const baseUsd = 6.00; // $6 USD base (equivalent to 3000 XAF)
+                // Upgrade: 3070 XAF = 3000 base + 70 service fee → base + service fee
+                const baseUsd = CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription; // $7 USD base (equivalent to 3000 XAF)
                 const serviceFeeUsd = 70 / 615; // 70 XAF service fee converted to USD
                 baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
                 log.info(`Converting Upgrade: 3070 XAF (3000 + 70 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
