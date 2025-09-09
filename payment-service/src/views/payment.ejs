@@ -336,8 +336,8 @@ const displayRemainingAmount = remainingAmount ?
                 }
 
                 .method-icon {
-                    width: 48px;
-                    height: 48px;
+                    width: 120px;
+                    height: 80px;
                     border-radius: 12px;
                     display: flex;
                     align-items: center;
@@ -462,48 +462,72 @@ const displayRemainingAmount = remainingAmount ?
 
                 /* Payment method icons styles */
                 .method-icon {
-                    width: 48px;
-                    height: 48px;
+                    width: 80px;
+                    height: 60px;
                     margin-bottom: 12px;
                     position: relative;
                 }
 
                 .stacked-icons {
                     position: relative;
-                    width: 48px;
-                    height: 48px;
+                    width: 120px;
+                    height: 80px;
                 }
 
                 .stacked-icon {
                     position: absolute;
-                    width: 28px;
-                    height: 28px;
+                    width: 60px;
+                    height: 60px;
                     border-radius: 50%;
-                    border: 2px solid white;
+                    border: 4px solid white;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     font-weight: bold;
-                    font-size: 10px;
+                    font-size: 18px;
                     color: white;
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
+                    overflow: hidden;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                    transition: transform 0.3s ease;
                 }
 
                 .stacked-icon:nth-child(1) { top: 0; left: 0; z-index: 3; }
-                .stacked-icon:nth-child(2) { top: 4px; left: 8px; z-index: 2; }
-                .stacked-icon:nth-child(3) { top: 8px; left: 16px; z-index: 1; }
+                .stacked-icon:nth-child(2) { top: 8px; left: 22px; z-index: 2; }
+                .stacked-icon:nth-child(3) { top: 16px; left: 44px; z-index: 1; }
 
-                /* Mobile money operator colors */
-                .mtn { background: linear-gradient(135deg, #ffcc00, #f39c12); }
-                .orange { background: linear-gradient(135deg, #ff6600, #e67e22); }
-                .moov { background: linear-gradient(135deg, #0066cc, #3498db); }
+                /* Mobile money operator images */
+                .mtn { 
+                    background: #ffcc00 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23ffcc00' stroke='%23f5c842' stroke-width='3'/%3E%3Cpath d='M20 40 L35 30 L50 40 L65 30 L80 40 L65 50 L50 60 L35 50 Z' fill='%23000000'/%3E%3Ctext x='50' y='75' text-anchor='middle' fill='%23000000' font-size='14' font-weight='bold'%3EMTN%3C/text%3E%3C/svg%3E") center/cover;
+                }
+                .orange { 
+                    background: #ff6600 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23ff6600' stroke='%23e55a00' stroke-width='3'/%3E%3Ccircle cx='50' cy='35' r='15' fill='white'/%3E%3Cpath d='M35 45 Q50 30 65 45 Q50 60 35 45' fill='white'/%3E%3Ctext x='50' y='75' text-anchor='middle' fill='white' font-size='12' font-weight='bold'%3EORANGE%3C/text%3E%3C/svg%3E") center/cover;
+                }
+                .airtel { 
+                    background: #e60000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23e60000' stroke='%23cc0000' stroke-width='3'/%3E%3Cpath d='M35 25 Q50 10 65 25 Q50 35 35 25' fill='white'/%3E%3Cpath d='M30 40 L70 40 L70 45 L30 45 Z' fill='white'/%3E%3Cpath d='M35 55 L65 55 L65 60 L35 60 Z' fill='white'/%3E%3Ctext x='50' y='75' text-anchor='middle' fill='white' font-size='11' font-weight='bold'%3EAIRTEL%3C/text%3E%3C/svg%3E") center/cover;
+                }
 
-                /* Crypto currency colors for stacked icons */
-                .stacked-icon.btc { background: linear-gradient(135deg, #f7931a, #ff9500); }
-                .stacked-icon.ltc { background: linear-gradient(135deg, #345d9d, #4a90e2); }
-                .stacked-icon.xrp { background: linear-gradient(135deg, #23292f, #000000); }
-                .stacked-icon.trx { background: linear-gradient(135deg, #ff0000, #dc143c); }
-                .stacked-icon.usdt { background: linear-gradient(135deg, #26a17b, #009688); }
-                .stacked-icon.bnb { background: linear-gradient(135deg, #f3ba2f, #f0b90b); }
+                /* Crypto currency images */
+                .stacked-icon.btc { 
+                    background: #f7931a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23f7931a' stroke='%23e8850f' stroke-width='3'/%3E%3Cpath d='M35 25 L35 75 M35 25 L55 25 Q65 25 65 35 Q65 45 55 45 L35 45 M35 45 L58 45 Q70 45 70 57 Q70 69 58 69 L35 69 M45 20 L45 80 M55 20 L55 80' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") center/cover;
+                }
+                .stacked-icon.ltc { 
+                    background: #345d9d url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23345d9d' stroke='%232a4a80' stroke-width='3'/%3E%3Cpath d='M35 25 L35 70 L65 70 M35 50 L55 45' stroke='white' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='50' cy='50' r='25' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E") center/cover;
+                }
+                .stacked-icon.xrp { 
+                    background: #23292f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23000000' stroke='%23333333' stroke-width='3'/%3E%3Cpath d='M25 35 Q35 25 45 35 Q50 30 55 35 Q65 25 75 35 Q65 45 55 35 Q50 40 45 35 Q35 45 25 35' fill='white'/%3E%3Cpath d='M30 65 Q50 45 70 65' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E") center/cover;
+                }
+                .stacked-icon.trx { 
+                    background: #ff0000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23ff0000' stroke='%23e60000' stroke-width='3'/%3E%3Cpath d='M50 20 L70 40 L50 60 L30 40 Z' fill='white'/%3E%3Cpath d='M40 70 L50 75 L60 70 L50 80 Z' fill='white'/%3E%3C/svg%3E") center/cover;
+                }
+                .stacked-icon.usdt { 
+                    background: #26a17b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%2326a17b' stroke='%23228f6b' stroke-width='3'/%3E%3Cpath d='M35 35 L65 35 L65 45 Q65 55 50 55 Q35 55 35 45 Z' fill='white'/%3E%3Cpath d='M40 25 L60 25 L60 35 L40 35 Z' fill='white'/%3E%3Cpath d='M50 55 L50 70' stroke='white' stroke-width='3'/%3E%3C/svg%3E") center/cover;
+                }
+                .stacked-icon.bnb { 
+                    background: #f3ba2f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23f3ba2f' stroke='%23e6a826' stroke-width='3'/%3E%3Cpath d='M50 25 L40 35 L50 45 L60 35 Z' fill='black'/%3E%3Cpath d='M30 45 L40 35 L40 55 L30 65 Z' fill='black'/%3E%3Cpath d='M70 45 L60 35 L60 55 L70 65 Z' fill='black'/%3E%3Cpath d='M50 55 L40 65 L50 75 L60 65 Z' fill='black'/%3E%3Cpath d='M45 45 L55 45 L55 55 L45 55 Z' fill='black'/%3E%3C/svg%3E") center/cover;
+                }
 
                 /* Custom select dropdown */
                 .custom-select {
@@ -539,14 +563,15 @@ const displayRemainingAmount = remainingAmount ?
                     top: 100%;
                     left: 0;
                     right: 0;
-                    z-index: 50;
-                    background: white;
+                    z-index: 9999;
+                    background: #ffffff;
                     border: 1px solid #e5e7eb;
                     border-radius: 12px;
-                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-                    max-height: 240px;
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+                    max-height: 280px;
                     overflow-y: auto;
                     margin-top: 4px;
+                    backdrop-filter: blur(10px);
                 }
 
                 .select-option {
@@ -990,13 +1015,13 @@ const displayRemainingAmount = remainingAmount ?
                                                         checked class="hidden">
                                                     <div class="method-icon">
                                                         <div class="stacked-icons">
-                                                            <div class="stacked-icon mtn">MTN</div>
-                                                            <div class="stacked-icon orange">OM</div>
-                                                            <div class="stacked-icon moov">MV</div>
+                                                            <div class="stacked-icon mtn"></div>
+                                                            <div class="stacked-icon orange"></div>
+                                                            <div class="stacked-icon airtel"></div>
                                                         </div>
                                                     </div>
                                                     <div class="method-title">Mobile Money</div>
-                                                    <div class="method-subtitle">MTN • Orange • Moov</div>
+                                                    <div class="method-subtitle">MTN • Orange • Airtel</div>
                                                     <div class="check-indicator">
                                                         <svg class="w-3 h-3 text-white" fill="currentColor"
                                                             viewBox="0 0 20 20">
@@ -1014,9 +1039,9 @@ const displayRemainingAmount = remainingAmount ?
                                                             class="hidden">
                                                         <div class="method-icon">
                                                             <div class="stacked-icons">
-                                                                <div class="stacked-icon btc">₿</div>
-                                                                <div class="stacked-icon usdt">₮</div>
-                                                                <div class="stacked-icon trx">T</div>
+                                                                <div class="stacked-icon btc"></div>
+                                                                <div class="stacked-icon usdt"></div>
+                                                                <div class="stacked-icon trx"></div>
                                                             </div>
                                                         </div>
                                                         <div class="method-title">Cryptomonnaie</div>
