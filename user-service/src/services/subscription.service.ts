@@ -564,9 +564,7 @@ export class SubscriptionService {
             sourcePaymentSessionId?.includes('nowpayments') ||
             sourcePaymentSessionId?.toLowerCase().includes('np_') ||
             // Also check if the original payment was made with NOWPayments gateway
-            (sourcePaymentSessionId && sourcePaymentSessionId.length === 12) ||
-            // Fallback: check if metadata indicates USD currency (crypto payments use USD)
-            webhookMetadata?.currency === 'USD';
+            (sourcePaymentSessionId && sourcePaymentSessionId.length === 12);
         
         this.log.info(`Crypto payment detected: ${isCryptoPayment} (method: ${paymentMethod}, sessionId: ${sourcePaymentSessionId}, currency: ${webhookMetadata?.currency})`);
 

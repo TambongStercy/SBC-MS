@@ -404,6 +404,14 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
             /* Form elements */
             .form-section {
                 margin-bottom: 24px;
+                position: relative;
+                z-index: auto;
+            }
+            
+            .form-section:has(.custom-select) {
+                position: relative;
+                z-index: 100000;
+                overflow: visible;
             }
 
             .form-label {
@@ -647,7 +655,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 top: 100%;
                 left: 0;
                 right: 0;
-                z-index: 99999;
+                z-index: 100001;
                 background: #ffffff;
                 border: 1px solid #e5e7eb;
                 border-radius: 12px;
