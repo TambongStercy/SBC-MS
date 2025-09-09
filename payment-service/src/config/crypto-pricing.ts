@@ -17,19 +17,19 @@ export interface SubscriptionCryptoPricing {
 // Crypto pricing structure in USD
 export const CRYPTO_SUBSCRIPTION_PRICING: SubscriptionCryptoPricing = {
     classique: {
-        inscription: 4, // $4 USD
+        inscription: 4.8, // $4.8 USD
         level1Commission: 2, // $2 USD
         level2Commission: 1, // $1 USD
         level3Commission: 0.5, // $0.5 USD
     },
     cible: {
-        inscription: 10, // $10 USD
+        inscription: 11.6, // $11.6 USD
         level1Commission: 5, // $5 USD
         level2Commission: 2.5, // $2.5 USD
         level3Commission: 1.25, // $1.25 USD
     },
     upgrade: {
-        inscription: 6, // $6 USD (upgrade payment)
+        inscription: 7, // $7 USD (upgrade payment)
         level1Commission: 3, // $3 USD
         level2Commission: 1.5, // $1.5 USD
         level3Commission: 0.75, // $0.75 USD
@@ -42,9 +42,9 @@ export const CURRENCY_CONVERSION_RATES = {
     XAF_TO_USD: 1 / 660,
     USD_TO_XAF_DEPOSIT: 660,
     
-    // USD to XAF: 1 USD = 590 XAF (when converting USD to XAF - better rate for users)
-    USD_TO_XAF_WITHDRAWAL: 590,
-    XAF_TO_USD_DEPOSIT: 1 / 590,
+    // USD to XAF: 1 USD = 500 XAF (when converting USD to XAF - better rate for users)
+    USD_TO_XAF_WITHDRAWAL: 500,
+    XAF_TO_USD_DEPOSIT: 1 / 500,
 };
 
 // Helper functions for currency conversion
@@ -66,7 +66,7 @@ export class CurrencyConverter {
     }
 
     /**
-     * Convert USD to XAF for user conversions (rate: 1 USD = 590 XAF - better rate for users)
+     * Convert USD to XAF for user conversions (rate: 1 USD = 500 XAF - better rate for users)
      * When users convert USD to XAF
      */
     static usdToXafWithdrawal(usdAmount: number): number {
@@ -74,7 +74,7 @@ export class CurrencyConverter {
     }
 
     /**
-     * Convert XAF to USD for deposits (rate: 1 USD = 590 XAF)
+     * Convert XAF to USD for deposits (rate: 1 USD = 500 XAF)
      * When system needs to convert XAF to USD for payment processing
      */
     static xafToUsdDeposit(xafAmount: number): number {
