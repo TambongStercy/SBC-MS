@@ -592,15 +592,18 @@ const displayRemainingAmount = remainingAmount ?
                 }
 
                 .select-options {
-                    position: fixed !important;
-                    z-index: 999999 !important;
-                    background: #ffffff !important;
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    z-index: 99999;
+                    background: #ffffff;
                     border: 1px solid #e5e7eb;
                     border-radius: 12px;
-                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25) !important;
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
                     max-height: 280px;
                     overflow-y: auto;
-                    backdrop-filter: blur(10px);
+                    margin-top: 4px;
                 }
 
                 .select-option {
@@ -1736,14 +1739,6 @@ const displayRemainingAmount = remainingAmount ?
                     });
 
                     function openDropdown() {
-                        // Get position of display element
-                        const rect = display.getBoundingClientRect();
-                        
-                        // Position the fixed dropdown
-                        options.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-                        options.style.left = rect.left + 'px';
-                        options.style.width = rect.width + 'px';
-                        
                         options.classList.remove('hidden');
                         display.classList.add('active');
                         if (arrow) arrow.classList.add('rotated');
