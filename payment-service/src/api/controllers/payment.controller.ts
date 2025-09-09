@@ -137,7 +137,9 @@ export class PaymentController {
                 paidCurrency: paymentIntent ? paymentIntent.paidCurrency : undefined,
                 cryptoQrCodeBase64, // <-- inject QR code for EJS
                 // NEW: Add crypto USD amount from config
-                cryptoUsdAmount: cryptoUsdAmount
+                cryptoUsdAmount: cryptoUsdAmount,
+                // NEW: Add crypto beta enabled flag
+                cryptoBetaEnabled: true // Enable crypto payments
             };
 
             res.render('payment', viewData);
