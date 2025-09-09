@@ -869,7 +869,7 @@ export class UserService {
 
     /**
      * Update user's USD balance with debt settlement. Debt is in XAF.
-     * When adding USD, first convert to XAF at 590 XAF/USD to pay debt, then credit leftover USD.
+     * When adding USD, first convert to XAF at 500 XAF/USD to pay debt, then credit leftover USD.
      */
     async updateUsdBalance(userId: string | Types.ObjectId, amount: number): Promise<number | null> {
         try {
@@ -880,11 +880,11 @@ export class UserService {
             let currentDebt = Math.max(0, user.debt || 0); // XAF
             let currentUsd = user.usdBalance;
 
-            // Settle debt BEFORE applying USD credit (convert USD->XAF at 590)
+            // Settle debt BEFORE applying USD credit (convert USD->XAF at 500)
             if (remainingAmountUsd > 0 && currentDebt > 0) {
-                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(remainingAmountUsd); // 590 XAF per USD
+                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(remainingAmountUsd); // 500 XAF per USD
                 const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
-                const usdUsed = Math.round((xafPaid / 590) * 100) / 100; // inverse of withdrawal rate
+                const usdUsed = Math.round((xafPaid / 500) * 100) / 100; // inverse of withdrawal rate
                 remainingAmountUsd = Math.max(0, Math.round((remainingAmountUsd - usdUsed) * 100) / 100);
                 currentDebt -= xafPaid;
             }
@@ -898,7 +898,7 @@ export class UserService {
             if (currentDebt > 0 && currentUsd > 0) {
                 const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(currentUsd);
                 const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
-                const usdUsed = Math.round((xafPaid / 590) * 100) / 100;
+                const usdUsed = Math.round((xafPaid / 500) * 100) / 100;
                 currentUsd = Math.max(0, Math.round((currentUsd - usdUsed) * 100) / 100);
                 currentDebt -= xafPaid;
             }

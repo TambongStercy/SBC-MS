@@ -175,7 +175,7 @@ const UserSchema = new Schema<IUser>(
             type: String, 
             trim: true, 
             uppercase: true,
-            enum: ['BTC', 'ETH', 'USDT', 'USDC', 'LTC', 'XRP', 'ADA', 'DOT', 'SOL', 'MATIC', 'TRX', 'BCH'] // Supported currencies
+            enum: ['BTC', 'ETH', 'USDT', 'USDC', 'LTC', 'XRP', 'ADA', 'DOT', 'SOL', 'MATIC', 'TRX', 'BCH', 'USDTSOL', 'USDTBSC', 'BNBBSC'] // Supported currencies
         },
         sex: {
             type: String,
