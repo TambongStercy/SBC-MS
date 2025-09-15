@@ -257,8 +257,11 @@ export class TransactionStatusChecker {
             log.error(`Failed to check or update status for NOWPayments transaction ${transaction.transactionId}:`, error);
 
             // If it's a network error, don't mark as failed - just log and retry next cycle
-            if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-                log.warn(`Network error checking NOWPayments status for ${transaction.transactionId}. Will retry next cycle.`);
+            if (error && typeof error === 'object' && 'code' in error) {
+                const errorCode = (error as any).code;
+                if (errorCode === 'ENOTFOUND' || errorCode === 'ECONNREFUSED' || errorCode === 'ETIMEDOUT') {
+                    log.warn(`Network error checking NOWPayments status for ${transaction.transactionId}. Will retry next cycle.`);
+                }
             }
         }
     }
