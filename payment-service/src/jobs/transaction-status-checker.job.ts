@@ -4,6 +4,7 @@ import { TransactionType } from '../database/models/transaction.model';
 import transactionRepository from '../database/repositories/transaction.repository';
 import paymentService from '../services/payment.service';
 import { feexPayPayoutService } from '../services/feexpay-payout.service'; // Import FeexPay service
+import nowPaymentsService from '../services/nowpayments.service'; // Import NOWPayments service
 
 const log = logger.getLogger('TransactionStatusChecker');
 
@@ -141,6 +142,11 @@ export class TransactionStatusChecker {
                     await this.reconcileFeexPayTransaction(transaction);
                     break;
 
+                case 'nowpayments':
+                case 'NOWPayments':
+                    await this.reconcileNOWPaymentsTransaction(transaction);
+                    break;
+
                 default:
                     log.warn(`Unknown service provider '${serviceProvider}' for transaction ${transaction.transactionId}.`);
                     break;
@@ -199,6 +205,61 @@ export class TransactionStatusChecker {
             }
         } catch (error) {
             log.error(`Failed to check or update status for FeexPay transaction ${transaction.transactionId}:`, error);
+        }
+    }
+
+    /**
+     * Reconciles a transaction handled by NOWPayments.
+     */
+    private async reconcileNOWPaymentsTransaction(transaction: any): Promise<void> {
+        log.info(`Reconciling NOWPayments transaction ${transaction.transactionId}...`);
+
+        // The NOWPayments payout ID is stored in the externalTransactionId field
+        const nowpaymentsPayoutId = transaction.externalTransactionId;
+
+        if (!nowpaymentsPayoutId) {
+            log.error(`NOWPayments payout ID not found for transaction ${transaction.transactionId}. Cannot check status.`);
+            return;
+        }
+
+        try {
+            const currentStatus = transaction.status;
+
+            // Get current status from NOWPayments
+            const nowpaymentsStatus = await nowPaymentsService.getPayoutStatus(nowpaymentsPayoutId);
+
+            // Map NOWPayments status to our internal status
+            const newInternalStatus = nowPaymentsService.mapPayoutStatusToInternal(nowpaymentsStatus.status);
+
+            // If the status from NOWPayments is different from our DB status, update it
+            if (newInternalStatus !== currentStatus) {
+                log.info(`Status for NOWPayments transaction ${transaction.transactionId} has changed from '${currentStatus}' to '${newInternalStatus}'. Updating...`);
+
+                // Process the status update through the existing webhook handler
+                await paymentService.handleNowPaymentsPayoutWebhook({
+                    id: nowpaymentsPayoutId,
+                    withdrawal_id: nowpaymentsStatus.withdrawalId,
+                    status: nowpaymentsStatus.status,
+                    hash: nowpaymentsStatus.hash,
+                    amount: nowpaymentsStatus.amount,
+                    currency: nowpaymentsStatus.currency,
+                    address: nowpaymentsStatus.address,
+                    extra_id: nowpaymentsStatus.extraId,
+                    fee_paid_by_user: nowpaymentsStatus.feePaidByUser,
+                    batch_withdrawal_id: nowpaymentsStatus.batchWithdrawalId
+                });
+
+                log.info(`Successfully updated NOWPayments transaction ${transaction.transactionId} status to ${newInternalStatus}`);
+            } else {
+                log.info(`NOWPayments transaction ${transaction.transactionId} status is still '${currentStatus}'. No update needed.`);
+            }
+        } catch (error) {
+            log.error(`Failed to check or update status for NOWPayments transaction ${transaction.transactionId}:`, error);
+
+            // If it's a network error, don't mark as failed - just log and retry next cycle
+            if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+                log.warn(`Network error checking NOWPayments status for ${transaction.transactionId}. Will retry next cycle.`);
+            }
         }
     }
 

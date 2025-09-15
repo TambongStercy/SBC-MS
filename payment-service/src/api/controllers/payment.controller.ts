@@ -528,11 +528,11 @@ export class PaymentController {
                 });
             }
 
-            // Minimum $15 check
-            if (amount < 15) {
+            // Minimum $10 check
+            if (amount < 10) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Minimum withdrawal amount is $15 USD'
+                    message: 'Minimum withdrawal amount is $10 USD'
                 });
             }
 
@@ -1024,11 +1024,11 @@ export class PaymentController {
                 });
             }
 
-            // Minimum $15 check (as per current payment.controller.ts logic)
-            if (amount < 15) {
+            // Minimum $10 check (as per current payment.controller.ts logic)
+            if (amount < 10) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Minimum withdrawal amount is $15 USD'
+                    message: 'Minimum withdrawal amount is $10 USD'
                 });
             }
 

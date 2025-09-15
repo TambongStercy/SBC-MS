@@ -305,6 +305,65 @@ export class TransactionController {
     }
 
     /**
+     * Estimate withdrawal fees and final amounts
+     * @route GET /api/transactions/withdrawal/estimate
+     */
+    async estimateWithdrawal(req: Request, res: Response) {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'User not authenticated' });
+            }
+
+            const { amount, withdrawalType } = req.query;
+
+            if (!amount || !withdrawalType) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Amount and withdrawal type are required. Use "mobile_money" or "crypto" for withdrawalType.'
+                });
+            }
+
+            if (!['mobile_money', 'crypto'].includes(withdrawalType as string)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid withdrawal type. Use "mobile_money" or "crypto".'
+                });
+            }
+
+            const withdrawalAmount = parseFloat(amount as string);
+            if (isNaN(withdrawalAmount) || withdrawalAmount <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Amount must be a positive number.'
+                });
+            }
+
+            const estimation = await paymentService.estimateWithdrawal(
+                userId,
+                withdrawalAmount,
+                withdrawalType as 'crypto' | 'mobile_money'
+            );
+
+            return res.status(200).json({
+                success: true,
+                data: estimation,
+                message: 'Withdrawal estimation completed successfully.'
+            });
+
+        } catch (error: any) {
+            log.error(`Error in estimateWithdrawal: ${error.message}`, error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to estimate withdrawal'
+            });
+        }
+    }
+
+    /**
      * Verify a withdrawal with verification code
      * @route POST /api/transactions/withdrawal/verify
      */

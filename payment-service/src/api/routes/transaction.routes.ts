@@ -26,6 +26,7 @@ router.post('/deposit/initiate', authenticate, (req, res) => transactionControll
 router.post('/deposit/callback', authenticateServiceRequest, (req, res) => transactionController.processDepositCallback(req, res));
 
 // Withdrawal routes (unified endpoint for both mobile money and crypto withdrawals)
+router.get('/withdrawal/estimate', authenticate, (req, res) => transactionController.estimateWithdrawal(req, res));
 router.post('/withdrawal/initiate', authenticate, validateWithdrawal, (req, res) => transactionController.initiateWithdrawal(req, res));
 router.post('/withdrawal/verify', authenticate, (req, res) => transactionController.verifyWithdrawal(req, res));
 router.delete('/withdrawal/:transactionId/cancel', authenticate, (req, res) => transactionController.cancelWithdrawal(req, res));

@@ -95,6 +95,12 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                 relatedTransactions: input.relatedTransactions as Types.ObjectId[] | undefined, // Ensure type match
                 ipAddress: input.ipAddress,
                 deviceInfo: input.deviceInfo,
+                verificationCode: input.verificationCode,
+                verificationExpiry: input.verificationExpiry,
+                reference: input.reference,
+                serviceProvider: input.serviceProvider,
+                paymentMethod: input.paymentMethod,
+                externalTransactionId: input.externalTransactionId,
             };
 
             const transaction = await this.model.create(transactionData); // Use this.model

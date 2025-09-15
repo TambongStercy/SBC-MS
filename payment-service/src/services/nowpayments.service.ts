@@ -1,4 +1,5 @@
 import NowPaymentsApi from '@nowpaymentsio/nowpayments-api-js';
+import axios from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
 import { PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
@@ -66,7 +67,6 @@ export interface NOWPayoutResponse {
 
 class NOWPaymentsService {
     private api: any;
-    private payoutApi: any;
 
     constructor() {
         if (!config.nowpayments.apiKey) {
@@ -81,19 +81,8 @@ class NOWPaymentsService {
             this.api.base_url = 'https://api.sandbox.nowpayments.io/v1/';
         }
 
-        // Initialize payout API if payout key is available
-        if (config.nowpayments.payoutApiKey) {
-            this.payoutApi = new NowPaymentsApi({
-                apiKey: config.nowpayments.payoutApiKey
-            });
-            if (config.nowpayments.sandbox) {
-                this.payoutApi.base_url = 'https://api.sandbox.nowpayments.io/v1/';
-            }
-        }
-
         log.info('NOWPayments service initialized', {
             sandbox: config.nowpayments.sandbox,
-            hasPayoutApi: !!config.nowpayments.payoutApiKey,
             hasApiKey: !!config.nowpayments.apiKey
         });
     }
@@ -424,49 +413,168 @@ class NOWPaymentsService {
     }
 
     /**
+     * Authenticate with NOWPayments mass payouts API to get Bearer token
+     */
+    private async authenticateMassPayouts(): Promise<string> {
+        const baseUrl = config.nowpayments.sandbox
+            ? 'https://api.sandbox.nowpayments.io/v1'
+            : 'https://api.nowpayments.io/v1';
+
+        try {
+            log.info('Authenticating with NOWPayments mass payouts API...');
+
+            // For mass payouts, we need email/password credentials
+            // Since we only have API key, we'll use the regular API for now
+            // This is a limitation - mass payouts require separate credentials
+            if (!config.nowpayments.email || !config.nowpayments.password) {
+                throw new Error('NOWPayments mass payouts requires NOWPAYMENTS_EMAIL and NOWPAYMENTS_PASSWORD environment variables');
+            }
+
+            const authResponse = await axios.post(`${baseUrl}/auth`, {
+                email: config.nowpayments.email,
+                password: config.nowpayments.password
+            }, {
+                headers: {
+                    'x-api-key': config.nowpayments.apiKey,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const token = authResponse.data.token;
+            if (!token) {
+                throw new Error('No token received from authentication');
+            }
+
+            log.info('Successfully authenticated with NOWPayments mass payouts API');
+            return token;
+
+        } catch (error: any) {
+            log.error('NOWPayments mass payouts authentication failed:', {
+                error: error.message,
+                status: error.response?.status,
+                data: error.response?.data
+            });
+            throw new Error(`Failed to authenticate with NOWPayments: ${error.message}`);
+        }
+    }
+
+    /**
      * Create a crypto payout (mass payout)
      */
     async createPayout(request: NOWPayoutRequest): Promise<NOWPayoutResponse> {
-        if (!this.payoutApi) {
-            throw new Error('Payout API not configured. Please set NOWPAYMENTS_PAYOUT_API_KEY');
+        if (!config.nowpayments.apiKey) {
+            throw new Error('Payout API not configured. Please check NOWPAYMENTS_API_KEY');
         }
 
-        try {
-            const payoutData = {
-                withdrawals: [{
-                    address: request.address,
-                    currency: request.currency.toUpperCase(),
-                    amount: request.amount,
-                    extra_id: request.extraId
-                }],
-                ipn_callback_url: request.ipnCallbackUrl,
-                fee_paid_by_user: request.feePaidByUser || false
-            };
+        const maxRetries = config.nowpayments.maxRetries;
+        let lastError: any;
 
-            log.info('Creating NOWPayments payout', payoutData);
+        const baseUrl = config.nowpayments.sandbox
+            ? 'https://api.sandbox.nowpayments.io/v1'
+            : 'https://api.nowpayments.io/v1';
 
-            const response = await this.payoutApi.createPayout(payoutData);
-            const withdrawal = response.withdrawals?.[0];
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // Get authentication token for mass payouts
+                const token = await this.authenticateMassPayouts();
 
-            if (!withdrawal) {
-                throw new Error('No withdrawal response received');
+                const payoutData = {
+                    ipn_callback_url: request.ipnCallbackUrl,
+                    withdrawals: [{
+                        address: request.address,
+                        currency: request.currency.toLowerCase(),
+                        amount: request.amount,
+                        extra_id: request.extraId,
+                        ipn_callback_url: request.ipnCallbackUrl
+                    }]
+                };
+
+                log.info(`Creating NOWPayments payout (attempt ${attempt}/${maxRetries})`, payoutData);
+
+                const response = await Promise.race([
+                    axios.post(`${baseUrl}/payout`, payoutData, {
+                        headers: {
+                            'x-api-key': config.nowpayments.apiKey,
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: config.nowpayments.timeoutMs
+                    }),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Request timeout')), config.nowpayments.timeoutMs)
+                    )
+                ]) as any;
+
+                const responseData = response.data;
+                const withdrawal = responseData.withdrawals?.[0];
+
+                if (!withdrawal) {
+                    throw new Error('No withdrawal response received');
+                }
+
+                log.info(`NOWPayments payout created successfully on attempt ${attempt}`, {
+                    withdrawalId: withdrawal.withdrawal_id,
+                    status: withdrawal.status
+                });
+
+                return {
+                    id: withdrawal.id,
+                    withdrawalId: withdrawal.withdrawal_id,
+                    status: withdrawal.status,
+                    hash: withdrawal.hash,
+                    amount: withdrawal.amount,
+                    currency: withdrawal.currency,
+                    address: withdrawal.address,
+                    extraId: withdrawal.extra_id,
+                    feePaidByUser: withdrawal.fee_paid_by_user,
+                    batchWithdrawalId: responseData.batch_withdrawal_id
+                };
+
+            } catch (error: any) {
+                lastError = error;
+                log.warn(`NOWPayments payout attempt ${attempt} failed:`, {
+                    error: error.message,
+                    status: error.response?.status,
+                    data: error.response?.data,
+                    request
+                });
+
+                // Check if error is retryable
+                const isNetworkError = ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'].includes(error.code) ||
+                    error.message.includes('getaddrinfo') ||
+                    error.message.includes('timeout') ||
+                    error.message.includes('Request timeout');
+
+                const isServerError = error.response?.status >= 500;
+                const isRateLimited = error.response?.status === 429;
+
+                if ((isNetworkError || isServerError || isRateLimited) && attempt < maxRetries) {
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Max 10s delay
+                    log.info(`Retrying NOWPayments payout in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+
+                // If not retryable or last attempt, break
+                break;
             }
+        }
 
-            return {
-                id: withdrawal.id,
-                withdrawalId: withdrawal.withdrawal_id,
-                status: withdrawal.status,
-                hash: withdrawal.hash,
-                amount: withdrawal.amount,
-                currency: withdrawal.currency,
-                address: withdrawal.address,
-                extraId: withdrawal.extra_id,
-                feePaidByUser: withdrawal.fee_paid_by_user,
-                batchWithdrawalId: response.batch_withdrawal_id
-            };
-        } catch (error: any) {
-            log.error('Error creating payout', { error: error.message, request });
-            throw new Error(`Failed to create payout: ${error.message}`);
+        // All attempts failed
+        log.error('All NOWPayments payout attempts failed', { error: lastError.message, request });
+
+        if (lastError.response?.data?.message) {
+            throw new Error(`Failed to create payout: ${lastError.response.data.message}`);
+        } else if (lastError.response?.status === 401) {
+            throw new Error('Failed to create payout: Invalid NOWPayments credentials or authentication failed. Please check NOWPAYMENTS_EMAIL and NOWPAYMENTS_PASSWORD');
+        } else if (lastError.response?.status === 400) {
+            throw new Error(`Failed to create payout: Invalid payout parameters - ${lastError.response?.data?.message || 'Bad request'}`);
+        } else if (lastError.code === 'ENOTFOUND' || lastError.code === 'EAI_AGAIN') {
+            throw new Error('Failed to create payout: Network connectivity issue with NOWPayments API');
+        } else if (lastError.message.includes('timeout')) {
+            throw new Error('Failed to create payout: Request timeout to NOWPayments API');
+        } else {
+            throw new Error(`Failed to create payout: ${lastError.message}`);
         }
     }
 
@@ -474,28 +582,103 @@ class NOWPaymentsService {
      * Get payout status
      */
     async getPayoutStatus(withdrawalId: string): Promise<NOWPayoutResponse> {
-        if (!this.payoutApi) {
+        if (!config.nowpayments.apiKey) {
             throw new Error('Payout API not configured');
         }
 
-        try {
-            const response = await this.payoutApi.getPayoutStatus({ withdrawal_id: withdrawalId });
+        const maxRetries = Math.max(config.nowpayments.maxRetries - 1, 1); // Fewer retries for status checks
+        let lastError: any;
 
-            return {
-                id: response.id,
-                withdrawalId: response.withdrawal_id,
-                status: response.status,
-                hash: response.hash,
-                amount: response.amount,
-                currency: response.currency,
-                address: response.address,
-                extraId: response.extra_id,
-                feePaidByUser: response.fee_paid_by_user,
-                batchWithdrawalId: response.batch_withdrawal_id
-            };
-        } catch (error: any) {
-            log.error('Error getting payout status', { error: error.message, withdrawalId });
-            throw new Error('Failed to get payout status');
+        const baseUrl = config.nowpayments.sandbox
+            ? 'https://api.sandbox.nowpayments.io/v1'
+            : 'https://api.nowpayments.io/v1';
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // Get authentication token for payout status
+                const token = await this.authenticateMassPayouts();
+
+                log.debug(`Getting NOWPayments payout status (attempt ${attempt}/${maxRetries})`, { withdrawalId });
+
+                const response = await Promise.race([
+                    axios.get(`${baseUrl}/payout/${withdrawalId}`, {
+                        headers: {
+                            'x-api-key': config.nowpayments.apiKey,
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: config.nowpayments.timeoutMs
+                    }),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Request timeout')), config.nowpayments.timeoutMs)
+                    )
+                ]) as any;
+
+                const responseData = response.data;
+
+                log.debug(`NOWPayments payout status retrieved successfully on attempt ${attempt}`, {
+                    withdrawalId,
+                    status: responseData.status
+                });
+
+                return {
+                    id: responseData.id,
+                    withdrawalId: responseData.withdrawal_id,
+                    status: responseData.status,
+                    hash: responseData.hash,
+                    amount: responseData.amount,
+                    currency: responseData.currency,
+                    address: responseData.address,
+                    extraId: responseData.extra_id,
+                    feePaidByUser: responseData.fee_paid_by_user,
+                    batchWithdrawalId: responseData.batch_withdrawal_id
+                };
+
+            } catch (error: any) {
+                lastError = error;
+                log.warn(`NOWPayments payout status check attempt ${attempt} failed:`, {
+                    error: error.message,
+                    status: error.response?.status,
+                    data: error.response?.data,
+                    withdrawalId
+                });
+
+                // Check if error is retryable
+                const isNetworkError = ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'].includes(error.code) ||
+                    error.message.includes('getaddrinfo') ||
+                    error.message.includes('timeout') ||
+                    error.message.includes('Request timeout');
+
+                const isServerError = error.response?.status >= 500;
+                const isRateLimited = error.response?.status === 429;
+
+                if ((isNetworkError || isServerError || isRateLimited) && attempt < maxRetries) {
+                    const delay = Math.min(1000 * attempt, 5000); // Max 5s delay for status checks
+                    log.debug(`Retrying NOWPayments payout status check in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+
+                // If not retryable or last attempt, break
+                break;
+            }
+        }
+
+        // All attempts failed
+        log.error('All NOWPayments payout status check attempts failed', { error: lastError.message, withdrawalId });
+
+        if (lastError.response?.status === 404) {
+            throw new Error(`Payout not found: ${withdrawalId}`);
+        } else if (lastError.response?.data?.message) {
+            throw new Error(`Failed to get payout status: ${lastError.response.data.message}`);
+        } else if (lastError.response?.status === 401) {
+            throw new Error('Failed to get payout status: Invalid NOWPayments API key or authentication failed');
+        } else if (lastError.code === 'ENOTFOUND' || lastError.code === 'EAI_AGAIN') {
+            throw new Error('Failed to get payout status: Network connectivity issue with NOWPayments API');
+        } else if (lastError.message.includes('timeout')) {
+            throw new Error('Failed to get payout status: Request timeout to NOWPayments API');
+        } else {
+            throw new Error(`Failed to get payout status: ${lastError.message}`);
         }
     }
 

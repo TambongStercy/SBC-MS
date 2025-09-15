@@ -6,7 +6,8 @@
       "WebFetch(domain:docs.feexpay.me)",
       "Bash(find:*)",
       "Bash(mongosh:*)",
-      "WebFetch(domain:documenter.getpostman.com)"
+      "WebFetch(domain:documenter.getpostman.com)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

@@ -1476,9 +1476,9 @@ export class UserService {
                 if (effectiveUsd < amount) {
                     return { allowed: false, reason: 'Insufficient USD balance (after debt deduction)' };
                 }
-                // Minimum $15 for crypto withdrawals
-                if (amount < 15) {
-                    return { allowed: false, reason: 'Minimum withdrawal amount is $15 USD' };
+                // Minimum $10 for crypto withdrawals
+                if (amount < 10) {
+                    return { allowed: false, reason: 'Minimum withdrawal amount is $10 USD' };
                 }
             } else {
                 // For mobile money withdrawals, check XAF balance

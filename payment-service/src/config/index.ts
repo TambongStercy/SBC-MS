@@ -39,11 +39,16 @@ interface IConfig {
     };
     nowpayments: {
         apiKey: string;
+        email: string;
+        password: string;
         sandbox: boolean;
         baseUrl: string;
         ipnSecret: string;
-        payoutApiKey?: string; // For mass payouts
-        webhookSecret: string;
+        userPaysNetworkFees: boolean;
+        defaultFeePaidByUser: boolean;
+        maxRetries: number;
+        timeoutMs: number;
+        enableEstimation: boolean;
     };
     services: { // Added based on user-service pattern
         serviceSecret: string;
@@ -103,11 +108,16 @@ const config: IConfig = {
     },
     nowpayments: {
         apiKey: process.env.NOWPAYMENTS_API_KEY || '',
+        email: process.env.NOWPAYMENTS_EMAIL || '',
+        password: process.env.NOWPAYMENTS_PASSWORD || '',
         sandbox: process.env.NOWPAYMENTS_SANDBOX === 'true',
         baseUrl: process.env.NOWPAYMENTS_BASE_URL || 'https://api.nowpayments.io/v1',
         ipnSecret: process.env.NOWPAYMENTS_IPN_SECRET || '',
-        payoutApiKey: process.env.NOWPAYMENTS_PAYOUT_API_KEY,
-        webhookSecret: process.env.NOWPAYMENTS_WEBHOOK_SECRET || ''
+        userPaysNetworkFees: process.env.NOWPAYMENTS_USER_PAYS_FEES !== 'false',
+        defaultFeePaidByUser: process.env.NOWPAYMENTS_DEFAULT_FEE_PAID_BY_USER !== 'false',
+        maxRetries: parseInt(process.env.NOWPAYMENTS_MAX_RETRIES || '3', 10),
+        timeoutMs: parseInt(process.env.NOWPAYMENTS_TIMEOUT_MS || '30000', 10),
+        enableEstimation: process.env.NOWPAYMENTS_ENABLE_ESTIMATION !== 'false'
     },
     services: { // Populate from .env or provide defaults
         userServiceUrl: process.env.USER_SERVICE_URL,

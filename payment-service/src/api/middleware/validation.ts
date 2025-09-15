@@ -181,11 +181,11 @@ export const validateWithdrawal = (req: Request, res: Response, next: NextFuncti
             });
         }
     } else if (withdrawalType === 'crypto') {
-        // Crypto minimum: $15 USD
-        if (amount < 15) {
+        // Crypto minimum: $10 USD
+        if (amount < 10) {
             return res.status(400).json({
                 success: false,
-                message: 'Minimum crypto withdrawal amount is $15 USD'
+                message: 'Minimum crypto withdrawal amount is $10 USD'
             });
         }
 

@@ -680,7 +680,7 @@ class PaymentService {
             const isCryptoWithdrawal = updatedTransaction.metadata?.cryptoWithdrawal;
 
             if (isCryptoWithdrawal) {
-                // Handle crypto withdrawal verification
+                // Handle crypto withdrawal verification (single transaction flow like momo)
                 log.info(`Processing crypto withdrawal verification for transaction ${updatedTransaction.transactionId}`);
 
                 const cryptoAddress = updatedTransaction.metadata?.cryptoAddress;
@@ -714,59 +714,153 @@ class PaymentService {
                     log.info(`Initial crypto withdrawal notification sent for transaction ${transactionId}.`);
                 }
 
-                // Use the existing createCryptoPayout method for the actual payout
-                this.createCryptoPayout(
-                    userId,
-                    usdAmount,
-                    cryptoCurrency,
-                    cryptoAddress,
-                    `Verified crypto withdrawal for Transaction ${updatedTransaction.transactionId}`,
-                    updatedTransaction.ipAddress,
-                    updatedTransaction.deviceInfo
-                ).then(cryptoResult => {
-                    if (cryptoResult.success) {
-                        log.info(`Crypto payout initiated for transaction ${updatedTransaction.transactionId}. NOWPayments Payout ID: ${cryptoResult.payoutId}`);
-                        transactionRepository.update(updatedTransaction._id, {
-                            externalTransactionId: cryptoResult.payoutId,
-                            serviceProvider: 'nowpayments',
-                            status: TransactionStatus.PROCESSING,
-                            metadata: {
-                                ...(updatedTransaction.metadata || {}),
-                                payoutInitiationStatus: 'initiated',
-                                payoutMessage: cryptoResult.message || 'Crypto payout initiated successfully',
-                                nowpaymentsPayoutId: cryptoResult.payoutId,
-                                nowpaymentsWithdrawalId: cryptoResult.withdrawalId
-                            }
-                        }).catch(err => log.error(`Failed to update transaction ${updatedTransaction.transactionId} with NOWPayments payout details:`, err));
-                    } else {
-                        log.error(`Crypto payout failed for transaction ${updatedTransaction.transactionId}: ${cryptoResult.message}`);
-                        transactionRepository.update(updatedTransaction._id, {
-                            status: TransactionStatus.FAILED,
-                            metadata: {
-                                ...(updatedTransaction.metadata || {}),
-                                failureReason: 'Crypto payout failed',
-                                payoutError: cryptoResult.message
-                            }
-                        }).catch(err => log.error(`Failed to update failed crypto transaction ${updatedTransaction.transactionId}:`, err));
+                // Update transaction to PROCESSING before initiating payout (like momo)
+                await transactionRepository.update(updatedTransaction._id, {
+                    status: TransactionStatus.PROCESSING,
+                    metadata: {
+                        ...(updatedTransaction.metadata || {}),
+                        payoutInitiatedAt: new Date(),
+                        serviceProvider: 'nowpayments'
                     }
-                }).catch(error => {
-                    log.error(`Error during crypto payout for transaction ${updatedTransaction.transactionId}:`, error);
-                    transactionRepository.update(updatedTransaction._id, {
+                });
+
+                // Deduct amount from user balance since payout is being initiated
+                await userServiceClient.updateUserBalance(userId.toString(), -usdAmount);
+                log.info(`Deducted ${usdAmount} USD from user ${userId} balance for crypto withdrawal`);
+
+                // Initiate NOWPayments payout directly (no second transaction - like momo)
+                try {
+                    // Authenticate with NOWPayments mass payouts API
+                    const baseUrl = config.nowpayments.sandbox
+                        ? 'https://api.sandbox.nowpayments.io/v1'
+                        : 'https://api.nowpayments.io/v1';
+
+                    if (!config.nowpayments.email || !config.nowpayments.password) {
+                        throw new Error('NOWPayments mass payouts requires NOWPAYMENTS_EMAIL and NOWPAYMENTS_PASSWORD environment variables');
+                    }
+
+                    const authResponse = await axios.post(`${baseUrl}/auth`, {
+                        email: config.nowpayments.email,
+                        password: config.nowpayments.password
+                    }, {
+                        headers: {
+                            'x-api-key': config.nowpayments.apiKey,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    const token = authResponse.data.token;
+                    if (!token) {
+                        throw new Error('No token received from NOWPayments authentication');
+                    }
+
+                    log.info('Successfully authenticated with NOWPayments mass payouts API');
+
+                    // Create payout request according to NOWPayments docs
+                    const payoutData = {
+                        ipn_callback_url: `${config.selfBaseUrl}/api/payments/webhooks/nowpayments/payout`,
+                        withdrawals: [{
+                            address: cryptoAddress,
+                            currency: cryptoCurrency.toLowerCase(),
+                            amount: usdAmount,
+                            ipn_callback_url: `${config.selfBaseUrl}/api/payments/webhooks/nowpayments/payout`
+                        }]
+                    };
+
+                    const payoutResponse = await axios.post(`${baseUrl}/payout`, payoutData, {
+                        headers: {
+                            'x-api-key': config.nowpayments.apiKey,
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: config.nowpayments.timeoutMs
+                    });
+
+                    const responseData = payoutResponse.data;
+                    const withdrawal = responseData.withdrawals?.[0];
+
+                    if (!withdrawal) {
+                        throw new Error('No withdrawal response received from NOWPayments');
+                    }
+
+                    // Update the same transaction with payout details (like momo webhooks do)
+                    await transactionRepository.update(updatedTransaction._id, {
+                        externalTransactionId: withdrawal.id,
+                        status: TransactionStatus.PROCESSING,
+                        metadata: {
+                            ...(updatedTransaction.metadata || {}),
+                            payoutResponse: responseData,
+                            withdrawalId: withdrawal.withdrawal_id,
+                            batchWithdrawalId: responseData.batch_withdrawal_id,
+                            payoutCreatedAt: new Date(),
+                            payoutInitiationStatus: 'success',
+                            payoutMessage: 'Crypto payout initiated successfully with NOWPayments'
+                        }
+                    });
+
+                    log.info(`NOWPayments payout created successfully for transaction ${updatedTransaction.transactionId}. Withdrawal ID: ${withdrawal.withdrawal_id}`);
+
+                } catch (payoutError: any) {
+                    // Enhanced error logging for all types of errors
+                    log.error(`NOWPayments payout failed for transaction ${updatedTransaction.transactionId}:`, {
+                        error: payoutError.message,
+                        code: payoutError.code,
+                        errno: payoutError.errno,
+                        syscall: payoutError.syscall,
+                        hostname: payoutError.hostname,
+                        status: payoutError.response?.status,
+                        statusText: payoutError.response?.statusText,
+                        data: payoutError.response?.data,
+                        headers: payoutError.config?.headers,
+                        url: payoutError.config?.url,
+                        method: payoutError.config?.method,
+                        timeout: payoutError.config?.timeout
+                    });
+
+                    // Refund user balance since payout failed
+                    await userServiceClient.updateUserBalance(userId.toString(), usdAmount);
+                    log.info(`Refunded ${usdAmount} USD to user ${userId} due to payout failure`);
+
+                    // Update the same transaction status to FAILED (like momo)
+                    await transactionRepository.update(updatedTransaction._id, {
                         status: TransactionStatus.FAILED,
                         metadata: {
                             ...(updatedTransaction.metadata || {}),
-                            failureReason: 'Crypto payout exception',
-                            payoutError: error.message
+                            failureReason: payoutError.message,
+                            errorCode: payoutError.code,
+                            apiErrorData: payoutError.response?.data,
+                            apiErrorStatus: payoutError.response?.status,
+                            failedAt: new Date(),
+                            payoutInitiationStatus: 'failed'
                         }
-                    }).catch(err => log.error(`Failed to update failed crypto transaction ${updatedTransaction.transactionId}:`, err));
-                });
+                    });
+
+                    // Provide more specific error message based on error type
+                    let errorMessage = `Crypto payout failed: ${payoutError.message}`;
+
+                    if (payoutError.code === 'ENOTFOUND' || payoutError.code === 'EAI_AGAIN') {
+                        errorMessage = 'Crypto payout failed: Unable to connect to NOWPayments API. Please check your internet connection and try again.';
+                    } else if (payoutError.code === 'ECONNREFUSED') {
+                        errorMessage = 'Crypto payout failed: NOWPayments API connection refused. Service may be temporarily unavailable.';
+                    } else if (payoutError.code === 'ETIMEDOUT') {
+                        errorMessage = 'Crypto payout failed: Request timeout to NOWPayments API. Please try again.';
+                    } else if (payoutError.response?.status === 403) {
+                        errorMessage = 'Crypto payout unavailable: Your NOWPayments account may need additional setup or verification for mass payouts. Please contact support.';
+                    } else if (payoutError.response?.status === 401) {
+                        errorMessage = 'Crypto payout failed: NOWPayments authentication failed. Please check API credentials.';
+                    } else if (payoutError.response?.status === 400) {
+                        errorMessage = `Crypto payout failed: Invalid request to NOWPayments API. ${payoutError.response?.data?.message || ''}`;
+                    }
+
+                    throw new AppError(errorMessage, 500);
+                }
 
                 // Return success response for crypto withdrawal
                 return {
                     success: true,
                     transaction: {
                         transactionId: updatedTransaction.transactionId,
-                        status: updatedTransaction.status,
+                        status: TransactionStatus.PROCESSING,
                         amount: usdAmount,
                         currency: cryptoCurrency,
                         message: `Crypto withdrawal of ${usdAmount} USD to ${cryptoAddress.substring(0, 10)}... initiated successfully.`
@@ -1761,6 +1855,7 @@ class PaymentService {
 
     /**
      * Create a crypto payout using NOWPayments
+     * @deprecated This method creates a second transaction. Use verifyWithdrawal crypto flow instead.
      */
     public async createCryptoPayout(
         userId: string | Types.ObjectId,
@@ -1778,6 +1873,12 @@ class PaymentService {
             const limitCheck = await userServiceClient.checkWithdrawalLimits(userId.toString(), netAmountDesired);
             if (!limitCheck.allowed) {
                 throw new Error(limitCheck.reason || 'Crypto payout not permitted at this time.');
+            }
+
+            // Check if user has sufficient balance for the withdrawal
+            const userBalance = await userServiceClient.getBalance(userId.toString());
+            if (userBalance < netAmountDesired) {
+                throw new Error(`Insufficient balance for withdrawal. Available: ${userBalance}, Required: ${netAmountDesired}`);
             }
 
             // Create a pending transaction to track this payout
@@ -1806,10 +1907,27 @@ class PaymentService {
                 currency: cryptoCurrency,
                 amount: netAmountDesired,
                 ipnCallbackUrl: `${config.selfBaseUrl}/api/payments/webhooks/nowpayments/payout`,
-                feePaidByUser: true // User pays the network fee
+                feePaidByUser: config.nowpayments.userPaysNetworkFees
             };
 
-            const payoutResponse = await nowPaymentsService.createPayout(payoutRequest);
+            let payoutResponse;
+            try {
+                payoutResponse = await nowPaymentsService.createPayout(payoutRequest);
+            } catch (payoutError: any) {
+                log.error(`NOWPayments payout creation failed for transaction ${transaction.transactionId}:`, payoutError);
+
+                // Update transaction status to FAILED
+                await transactionRepository.updateById(transaction._id.toString(), {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...transaction.metadata,
+                        failureReason: payoutError.message,
+                        failedAt: new Date()
+                    }
+                });
+
+                throw new Error(`Failed to create crypto payout: ${payoutError.message}`);
+            }
 
             // Update transaction with payout details
             await transactionRepository.updateById(transaction._id.toString(), {
@@ -1893,6 +2011,16 @@ class PaymentService {
             throw new AppError(limitCheck.reason || 'Crypto withdrawal not permitted at this time.', 400);
         }
 
+        // For crypto withdrawals, check USD balance directly (no conversion needed)
+        const cryptoFeeInUSD = usdAmount * 0.025; // 2.5% fee calculated directly on USD amount
+        const totalRequiredBalanceInUSD = usdAmount + cryptoFeeInUSD;
+
+        // Check if user has sufficient USD balance for the withdrawal (amount + fees)
+        const userUsdBalance = await userServiceClient.getUsdBalance(userId.toString());
+        if (userUsdBalance < totalRequiredBalanceInUSD) {
+            throw new AppError(`Insufficient USD balance for crypto withdrawal. Available: $${userUsdBalance} USD, Required: $${totalRequiredBalanceInUSD.toFixed(2)} USD (${usdAmount} USD + $${cryptoFeeInUSD.toFixed(2)} USD fees)`, 400);
+        }
+
         // Check if there's already a pending crypto withdrawal
         const existingPendingWithdrawal = await TransactionModel.findOne({
             userId: new Types.ObjectId(userId.toString()),
@@ -1915,12 +2043,10 @@ class PaymentService {
             return result;
         }
 
-        // Calculate fees - use existing fee calculation for crypto (method: 'crypto')
-        const cryptoFeeInXAF = this.calculateWithdrawalFee(usdAmount, Currency.XAF, 'crypto');
-        const usdAmountInXAF = await this.convertCurrency(usdAmount, Currency.USD, Currency.XAF);
-        const grossAmountToDebitInXAF = usdAmountInXAF + cryptoFeeInXAF;
+        // For crypto withdrawals, work in USD
+        const grossAmountToDebitInUSD = totalRequiredBalanceInUSD;
 
-        log.info(`Crypto withdrawal: ${usdAmount} USD (${usdAmountInXAF} XAF) + ${cryptoFeeInXAF} XAF fee = ${grossAmountToDebitInXAF} XAF total debit`);
+        log.info(`Crypto withdrawal: ${usdAmount} USD + ${cryptoFeeInUSD.toFixed(2)} USD fee = ${grossAmountToDebitInUSD.toFixed(2)} USD total debit`);
 
         // Generate OTP
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -1930,9 +2056,9 @@ class PaymentService {
         const transactionInput: CreateTransactionInput = {
             userId,
             type: TransactionType.WITHDRAWAL,
-            amount: usdAmountInXAF, // Store in XAF for balance deduction consistency
-            fee: cryptoFeeInXAF,
-            currency: Currency.XAF, // Balance deduction currency
+            amount: usdAmount, // Store in USD for crypto withdrawals
+            fee: cryptoFeeInUSD,
+            currency: Currency.USD, // Balance deduction currency for crypto
             status: TransactionStatus.PENDING_OTP_VERIFICATION,
             description: `Crypto withdrawal request for ${usdAmount} USD to ${userDetails.cryptoWalletAddress.substring(0, 10)}...`,
             metadata: {
@@ -1984,8 +2110,8 @@ class PaymentService {
             success: true,
             transactionId: transaction.transactionId,
             amount: usdAmount, // Return USD amount to user
-            fee: cryptoFeeInXAF / (usdAmountInXAF / usdAmount), // Convert fee back to USD for display
-            total: usdAmount + (cryptoFeeInXAF / (usdAmountInXAF / usdAmount)),
+            fee: cryptoFeeInUSD, // Fee already in USD
+            total: totalRequiredBalanceInUSD,
             status: transaction.status,
             expiresAt: verificationExpiry,
             message: 'Crypto withdrawal OTP sent to your registered contact. Please verify to complete the withdrawal.'
@@ -2072,6 +2198,108 @@ class PaymentService {
         } catch (error: any) {
             log.error('Error getting available crypto currencies:', error);
             throw new Error('Failed to get available cryptocurrencies');
+        }
+    }
+
+    /**
+     * Estimate withdrawal amounts and fees for different withdrawal types
+     */
+    public async estimateWithdrawal(
+        userId: string,
+        amount: number,
+        withdrawalType: 'crypto' | 'mobile_money'
+    ): Promise<{
+        grossAmount: number;
+        platformFee: number;
+        networkFee?: number;
+        netAmount: number;
+        currency: string;
+        estimatedDuration?: string;
+        minAmount?: number;
+        maxAmount?: number;
+    }> {
+        try {
+            log.info(`Estimating withdrawal for user ${userId}: ${amount} USD, type: ${withdrawalType}`);
+
+            // Get user details
+            const userDetails = await userServiceClient.getUserDetails(userId);
+            if (!userDetails) {
+                throw new AppError('User not found.', 404);
+            }
+
+            if (withdrawalType === 'crypto') {
+                // Check if user has crypto wallet configured
+                if (!userDetails.cryptoWalletAddress || !userDetails.cryptoWalletCurrency) {
+                    throw new AppError('Crypto wallet not configured. Please set up your crypto wallet in your profile first.', 400);
+                }
+
+                // Calculate platform fee (internal fee calculation)
+                const platformFeeInXAF = this.calculateWithdrawalFee(amount, Currency.XAF, 'crypto');
+                const usdAmountInXAF = await this.convertCurrency(amount, Currency.USD, Currency.XAF);
+                const platformFeeInUSD = await this.convertCurrency(platformFeeInXAF, Currency.XAF, Currency.USD);
+
+                // Get network fee estimate from NOWPayments if enabled
+                let networkFeeInUSD = 0;
+                let netAmountInCrypto = 0;
+
+                if (config.nowpayments.enableEstimation) {
+                    try {
+                        const estimate = await nowPaymentsService.getEstimatePrice(
+                            amount,
+                            'USD',
+                            userDetails.cryptoWalletCurrency
+                        );
+
+                        netAmountInCrypto = estimate.estimatedAmount;
+                        networkFeeInUSD = await this.convertCurrency(
+                            estimate.networkFee || 0,
+                            userDetails.cryptoWalletCurrency,
+                            Currency.USD
+                        );
+                    } catch (error) {
+                        log.warn(`Failed to get NOWPayments estimate for ${userDetails.cryptoWalletCurrency}:`, error);
+                        // Fallback: assume 1:1 for stablecoins, or use approximate conversion
+                        netAmountInCrypto = amount;
+                        networkFeeInUSD = 0; // User pays network fee, so it doesn't affect the amount they receive
+                    }
+                }
+
+                return {
+                    grossAmount: amount,
+                    platformFee: platformFeeInUSD,
+                    networkFee: config.nowpayments.userPaysNetworkFees ? networkFeeInUSD : 0,
+                    netAmount: netAmountInCrypto,
+                    currency: userDetails.cryptoWalletCurrency,
+                    estimatedDuration: '5-30 minutes',
+                    minAmount: 10, // $10 minimum (matches user service)
+                    maxAmount: 10000 // $10k maximum per transaction
+                };
+
+            } else {
+                // Mobile money withdrawal estimation
+                const platformFeeInXAF = this.calculateWithdrawalFee(amount, Currency.XAF, 'mobile_money');
+                const usdAmountInXAF = await this.convertCurrency(amount, Currency.USD, Currency.XAF);
+                const platformFeeInUSD = await this.convertCurrency(platformFeeInXAF, Currency.XAF, Currency.USD);
+                const netAmountInUSD = amount - platformFeeInUSD;
+                const netAmountInXAF = await this.convertCurrency(netAmountInUSD, Currency.USD, Currency.XAF);
+
+                return {
+                    grossAmount: amount,
+                    platformFee: platformFeeInUSD,
+                    netAmount: netAmountInXAF,
+                    currency: 'XAF',
+                    estimatedDuration: '1-10 minutes',
+                    minAmount: 5, // $5 minimum
+                    maxAmount: 5000 // $5k maximum per transaction
+                };
+            }
+
+        } catch (error: any) {
+            log.error(`Error estimating withdrawal for user ${userId}:`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(`Failed to estimate withdrawal: ${error.message}`, 500);
         }
     }
 
