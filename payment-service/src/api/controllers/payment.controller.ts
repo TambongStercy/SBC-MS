@@ -865,6 +865,34 @@ export class PaymentController {
     }
 
     /**
+     * [INTERNAL] Check if user has pending transactions
+     * @route GET /api/internal/user/:userId/has-pending-transactions
+     * @access Internal Service Request
+     */
+    public checkUserPendingTransactions = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { userId } = req.params;
+        log.info(`Internal request: Check pending transactions for user ${userId}`);
+        try {
+            if (!userId) {
+                return res.status(400).json({ success: false, message: 'User ID parameter is required.' });
+            }
+
+            const hasPending = await paymentService.checkUserHasPendingTransactions(userId);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    userId: userId,
+                    hasPending: hasPending
+                }
+            });
+        } catch (error: any) {
+            log.error(`Error in checkUserPendingTransactions controller for user ${userId}:`, error);
+            next(error); // Pass error to the central error handler
+        }
+    }
+
+    /**
      * [ADMIN] Get Total Transactions Count
      * @route GET /api/payments/admin/stats/transactions
      * @access Admin

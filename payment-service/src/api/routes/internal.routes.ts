@@ -33,6 +33,13 @@ const statsRouter = Router();
  */
 statsRouter.get('/user/:userId/total-withdrawals', (req, res, next) => paymentController.getUserTotalWithdrawals(req, res, next));
 
+/**
+ * @route   GET /api/internal/user/:userId/has-pending-transactions
+ * @desc    Check if user has any pending transactions that would block currency conversion
+ * @access  Private (Service-to-Service)
+ */
+router.get('/user/:userId/has-pending-transactions', (req, res, next) => paymentController.checkUserPendingTransactions(req, res, next));
+
 // General Admin Stats (Consider moving if this file becomes too large)
 statsRouter.get('/transactions', (req, res, next) => paymentController.adminGetTotalTransactionsCount(req, res, next));
 statsRouter.get('/total-withdrawals', (req, res, next) => paymentController.adminGetTotalWithdrawals(req, res, next));

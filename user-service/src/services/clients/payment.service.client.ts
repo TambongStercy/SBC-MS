@@ -500,6 +500,42 @@ class PaymentServiceClient {
             };
         }
     }
+
+    /**
+     * Check if user has any pending transactions that would block currency conversion
+     * @param userId The ID of the user to check
+     * @returns True if user has pending transactions, false otherwise
+     */
+    async hasPendingTransactions(userId: string): Promise<boolean> {
+        const url = `/internal/user/${userId}/has-pending-transactions`;
+        this.log.info(`Checking for pending transactions for user ${userId}`);
+        try {
+            const response = await this.apiClient.get<ApiResponse<{ hasPending: boolean }>>(url);
+
+            if (response.status === 200 && response.data?.success) {
+                const hasPending = response.data.data?.hasPending || false;
+                this.log.info(`User ${userId} pending transactions check: ${hasPending}`);
+                return hasPending;
+            } else {
+                this.log.warn(`Payment service responded with failure for pending transactions check (${userId}).`, {
+                    status: response.status,
+                    responseData: response.data
+                });
+                // On API error, assume no pending transactions to avoid blocking legitimate conversions
+                return false;
+            }
+        } catch (error: any) {
+            this.log.error(`Error checking pending transactions for user ${userId}: ${error.message}`);
+            if (axios.isAxiosError(error)) {
+                this.log.error(`Payment Service Error Response (hasPendingTransactions User: ${userId}):`, {
+                    status: error.response?.status,
+                    data: error.response?.data
+                });
+            }
+            // On communication error, assume no pending transactions to avoid blocking legitimate conversions
+            return false;
+        }
+    }
 }
 
 export const paymentService = new PaymentServiceClient(); 

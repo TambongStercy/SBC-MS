@@ -3851,6 +3851,48 @@ class PaymentService {
         }
     }
 
+    /**
+     * [INTERNAL] Check if user has any pending transactions that would block currency conversion
+     * @param userId - The ID of the user
+     * @returns True if user has pending transactions, false otherwise
+     */
+    async checkUserHasPendingTransactions(userId: string): Promise<boolean> {
+        log.info(`Service: Checking for pending transactions for user ${userId}`);
+        try {
+            // Validate userId
+            if (!userId) {
+                throw new AppError('User ID is required', 400);
+            }
+
+            const userObjectId = new Types.ObjectId(userId);
+
+            // Check for pending transactions that would block currency conversion
+            // Similar to the withdrawal pending transaction check
+            const pendingTransaction = await TransactionModel.findOne({
+                userId: userObjectId,
+                status: {
+                    $in: [
+                        TransactionStatus.PENDING_OTP_VERIFICATION,
+                        TransactionStatus.PENDING,
+                        TransactionStatus.PROCESSING
+                    ]
+                }
+            });
+
+            const hasPending = !!pendingTransaction;
+            log.info(`User ${userId} has pending transactions: ${hasPending}${pendingTransaction ? ` (Transaction: ${pendingTransaction.transactionId})` : ''}`);
+
+            return hasPending;
+        } catch (error: any) {
+            log.error(`Error checking pending transactions for user ${userId}:`, error);
+
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(error.message || 'Failed to check user pending transactions', 500);
+        }
+    }
+
     // --- NEW CINTPAY TRANSFER/PAYOUT METHODS ---
 
     /**

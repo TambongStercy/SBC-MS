@@ -943,6 +943,15 @@ export class UserService {
                 return { success: false, message: 'Insufficient USD balance' };
             }
 
+            // Check for pending transactions that would block conversion
+            const hasPendingTransactions = await paymentService.hasPendingTransactions(userId.toString());
+            if (hasPendingTransactions) {
+                return {
+                    success: false,
+                    message: 'Currency conversion is temporarily unavailable. Please complete or cancel your pending transactions first.'
+                };
+            }
+
             const xafAmount = CurrencyConverter.usdToXafWithdrawal(usdAmount);
 
             // Update both balances
@@ -977,6 +986,15 @@ export class UserService {
 
             if (user.balance < xafAmount) {
                 return { success: false, message: 'Insufficient XAF balance' };
+            }
+
+            // Check for pending transactions that would block conversion
+            const hasPendingTransactions = await paymentService.hasPendingTransactions(userId.toString());
+            if (hasPendingTransactions) {
+                return {
+                    success: false,
+                    message: 'Currency conversion is temporarily unavailable. Please complete or cancel your pending transactions first.'
+                };
             }
 
             const usdAmount = CurrencyConverter.xafToUsd(xafAmount);
