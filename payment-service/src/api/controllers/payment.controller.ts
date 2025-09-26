@@ -5,7 +5,6 @@ import { Currency } from '../../database/models/transaction.model';
 import { CRYPTO_SUBSCRIPTION_PRICING } from '../../config/crypto-pricing';
 import logger from '../../utils/logger';
 import config from '../../config';
-import { Currency } from '../../database/models/transaction.model';
 import { AppError } from '../../utils/errors';
 import QRCode from 'qrcode';
 import { paymentIntentRepository } from '../../database/repositories/paymentIntent.repository';
