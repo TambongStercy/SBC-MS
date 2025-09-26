@@ -21,6 +21,13 @@ router.post('/deposit', (req, res, next) => paymentController.recordInternalDepo
  */
 router.post('/withdrawal', (req, res, next) => paymentController.recordInternalWithdrawal(req, res, next));
 
+/**
+ * @route   POST /api/internal/conversion
+ * @desc    Create a conversion transaction record
+ * @access  Private (Service-to-Service)
+ */
+router.post('/conversion', (req, res, next) => paymentController.createConversionTransaction(req, res, next));
+
 
 // --- Admin Stats Sub-Router ---
 // Note: Keeping general admin stats here for now, but user-specific could be separate

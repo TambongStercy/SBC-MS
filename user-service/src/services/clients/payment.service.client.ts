@@ -536,6 +536,71 @@ class PaymentServiceClient {
             return false;
         }
     }
+    /**
+     * Create a conversion transaction record
+     */
+    async createConversionTransaction(
+        userId: string,
+        fromAmount: number,
+        fromCurrency: string,
+        toAmount: number,
+        toCurrency: string,
+        conversionRate: number,
+        ipAddress?: string
+    ): Promise<{ transactionId: string }> {
+        const url = '/internal/conversion';
+        this.log.info(`Creating conversion transaction: ${fromAmount} ${fromCurrency} -> ${toAmount} ${toCurrency} for user ${userId}`);
+        this.log.info(`Payment service base URL: ${this.apiClient.defaults.baseURL}`);
+        this.log.info(`Full request URL: ${this.apiClient.defaults.baseURL}${url}`);
+        
+        try {
+            const payload = {
+                userId,
+                fromAmount,
+                fromCurrency,
+                toAmount,
+                toCurrency,
+                conversionRate,
+                ipAddress
+            };
+
+            this.log.info('Request payload:', payload);
+            this.log.info('Request headers:', this.apiClient.defaults.headers);
+
+            const response = await this.apiClient.post<PaymentServiceResponse<{ transactionId: string }>>(url, payload);
+            
+            this.log.info('Response received:', {
+                status: response.status,
+                data: response.data
+            });
+            
+            if (response.status === 201 && response.data?.success && response.data.data?.transactionId) {
+                this.log.info('Conversion transaction created successfully.', { transactionId: response.data.data.transactionId });
+                return response.data.data;
+            } else {
+                this.log.warn('Payment service responded with failure for conversion transaction.', {
+                    status: response.status,
+                    responseData: response.data
+                });
+                throw new Error(response.data?.message || 'Failed to create conversion transaction');
+            }
+        } catch (error: any) {
+            this.log.error(`Error creating conversion transaction: ${error.message}`);
+            if (axios.isAxiosError(error)) {
+                this.log.error('Payment Service Error Response (createConversionTransaction):', { 
+                    status: error.response?.status, 
+                    data: error.response?.data,
+                    config: {
+                        url: error.config?.url,
+                        method: error.config?.method,
+                        baseURL: error.config?.baseURL
+                    }
+                });
+                throw new Error(error.response?.data?.message || 'Payment service communication error (createConversionTransaction)');
+            }
+            throw new Error('Payment service communication error (createConversionTransaction)');
+        }
+    }
 }
 
 export const paymentService = new PaymentServiceClient(); 

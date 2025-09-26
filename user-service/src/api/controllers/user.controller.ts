@@ -2401,6 +2401,52 @@ export class UserController {
         }
     }
 
+    /**
+     * Get conversion history for the authenticated user
+     * @route GET /api/users/conversions
+     */
+    async getConversionHistory(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'User not authenticated' });
+                return;
+            }
+
+            const { page = '1', limit = '20' } = req.query;
+
+            // Call payment service to get conversion transactions
+            const response = await axios.get(`${config.services.paymentService}/api/transactions/conversions`, {
+                headers: {
+                    'Authorization': `Bearer ${req.headers.authorization?.replace('Bearer ', '')}`,
+                    'X-Internal-Service': 'user-service'
+                },
+                params: {
+                    page,
+                    limit
+                }
+            });
+
+            if (response.data.success) {
+                res.status(200).json({
+                    success: true,
+                    data: response.data.data,
+                    message: 'Conversion history retrieved successfully'
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to retrieve conversion history'
+                });
+            }
+        } catch (error: any) {
+            this.log.error('Error getting conversion history:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to retrieve conversion history'
+            });
+        }
+    }
 }
 
 // Export singleton instance

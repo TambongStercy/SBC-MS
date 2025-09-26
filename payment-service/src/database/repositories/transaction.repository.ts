@@ -573,6 +573,11 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                             totalAmount: 0,
                             currencies: {}
                         },
+                        [TransactionType.CONVERSION]: { 
+                            count: 0, 
+                            totalAmount: 0,
+                            currencies: {}
+                        },
                         'crypto_payment': { 
                             count: 0, 
                             totalAmount: 0,
@@ -610,7 +615,7 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                         const currency = item._id.currency;
                         const amount = type === TransactionType.WITHDRAWAL ? Math.abs(item.totalAmount) : item.totalAmount;
 
-                        if (type === TransactionType.DEPOSIT || type === TransactionType.WITHDRAWAL) {
+                        if (type === TransactionType.DEPOSIT || type === TransactionType.WITHDRAWAL || type === TransactionType.CONVERSION) {
                             // Aggregate totals across currencies
                             out[periodKey][type].count += item.count;
 
@@ -817,13 +822,13 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
     }
 
     /**
-     * Find all processing withdrawal transactions for status checking
+     * Find all pending and processing withdrawal transactions for status checking
      */
     async findProcessingWithdrawals(limit: number = 100): Promise<ITransaction[]> {
         try {
             const query = {
                 type: TransactionType.WITHDRAWAL,
-                status: TransactionStatus.PROCESSING,
+                status: { $in: [TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
                 deleted: { $ne: true }
             };
 

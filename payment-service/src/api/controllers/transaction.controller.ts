@@ -663,6 +663,55 @@ export class TransactionController {
             });
         }
     }
+    /**
+     * Get conversion transactions for the authenticated user
+     * @route GET /api/transactions/conversions
+     */
+    async getUserConversionTransactions(req: Request, res: Response) {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'User not authenticated' });
+            }
+
+            const {
+                page = '1',
+                limit = '50',
+                sortBy = 'createdAt',
+                sortOrder = 'desc'
+            } = req.query;
+
+            const options: any = {
+                type: TransactionType.CONVERSION,
+                limit: parseInt(limit as string, 10),
+                page: parseInt(page as string, 10),
+                sortBy: sortBy as string,
+                sortOrder: sortOrder as 'asc' | 'desc',
+            };
+
+            const result = await paymentService.getTransactionHistory(userId, options);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    transactions: result.transactions,
+                    pagination: {
+                        page: options.page,
+                        limit: options.limit,
+                        total: result.total,
+                        totalPages: Math.ceil(result.total / options.limit)
+                    }
+                },
+                message: 'Conversion transactions retrieved successfully'
+            });
+        } catch (error: any) {
+            log.error('Error getting user conversion transactions:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to retrieve conversion transactions'
+            });
+        }
+    }
 }
 
 // Export singleton instance

@@ -108,6 +108,7 @@ router.get('/get-product', (req, res) => userController.getUserProduct(req as Au
 // --- Currency Conversion Routes (Public for authenticated users) ---
 router.post('/convert-usd-to-xaf', mediumLimiter, (req, res) => userController.convertOwnUsdToXaf(req as AuthenticatedRequest, res));
 router.post('/convert-xaf-to-usd', mediumLimiter, (req, res) => userController.convertOwnXafToUsd(req as AuthenticatedRequest, res));
+router.get('/conversions', generalLimiter, (req, res) => userController.getConversionHistory(req as AuthenticatedRequest, res));
 
 // --- Crypto Withdrawal Routes ---
 router.post('/crypto/check-limits', mediumLimiter, (req, res) => userController.checkCryptoWithdrawalLimits(req as AuthenticatedRequest, res));

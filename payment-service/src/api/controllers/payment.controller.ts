@@ -1,6 +1,7 @@
 import paymentService from '../../services/payment.service';
 import { Request, Response, NextFunction } from 'express';
 import { IPaymentIntent, PaymentStatus } from '../../database/interfaces/IPaymentIntent';
+import { Currency } from '../../database/models/transaction.model';
 import { CRYPTO_SUBSCRIPTION_PRICING } from '../../config/crypto-pricing';
 import logger from '../../utils/logger';
 import config from '../../config';
@@ -419,9 +420,12 @@ export class PaymentController {
             const payload = req.body;
             const signature = req.headers['x-nowpayments-sig'] as string;
 
-            log.info(`Received NOWPayments payout webhook for withdrawal: ${payload?.withdrawal_id || payload?.id}`);
+            // Handle both array and single object responses
+            const payoutData = Array.isArray(payload) ? payload[0] : payload;
 
-            if (!payload.id || !payload.status) {
+            log.info(`Received NOWPayments payout webhook for payout: ${payoutData?.id}, batch: ${payoutData?.batch_withdrawal_id}`);
+
+            if (!payoutData?.id || !payoutData?.status) {
                 log.warn('NOWPayments payout webhook missing required fields');
                 return res.status(400).json({
                     success: false,
@@ -429,8 +433,8 @@ export class PaymentController {
                 });
             }
 
-            await paymentService.handleNowPaymentsPayoutWebhook(payload, signature);
-            log.info(`Successfully processed NOWPayments payout webhook for withdrawal: ${payload.withdrawal_id || payload.id}`);
+            await paymentService.handleNowPaymentsPayoutWebhook(payoutData, signature);
+            log.info(`Successfully processed NOWPayments payout webhook for payout: ${payoutData.id}`);
 
             res.status(200).json({ success: true });
         } catch (error: any) {
@@ -888,6 +892,89 @@ export class PaymentController {
             });
         } catch (error: any) {
             log.error(`Error in checkUserPendingTransactions controller for user ${userId}:`, error);
+            next(error); // Pass error to the central error handler
+        }
+    }
+
+    /**
+     * [INTERNAL] Create a conversion transaction record
+     * @route POST /api/internal/conversion
+     * @access Internal Service Request
+     */
+    public createConversionTransaction = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { 
+            userId, 
+            fromAmount, 
+            fromCurrency, 
+            toAmount, 
+            toCurrency, 
+            conversionRate,
+            ipAddress 
+        } = req.body;
+
+        log.info(`Internal request: Create conversion transaction for user ${userId}: ${fromAmount} ${fromCurrency} -> ${toAmount} ${toCurrency}`);
+        log.info('Full request body received:', req.body);
+        log.info('Individual field validation:', {
+            userId: { value: userId, type: typeof userId, exists: !!userId },
+            fromAmount: { value: fromAmount, type: typeof fromAmount, exists: !!fromAmount },
+            fromCurrency: { value: fromCurrency, type: typeof fromCurrency, exists: !!fromCurrency },
+            toAmount: { value: toAmount, type: typeof toAmount, exists: !!toAmount },
+            toCurrency: { value: toCurrency, type: typeof toCurrency, exists: !!toCurrency },
+            conversionRate: { value: conversionRate, type: typeof conversionRate, exists: !!conversionRate }
+        });
+
+        try {
+            // Validate required fields
+            if (!userId || !fromAmount || !fromCurrency || !toAmount || !toCurrency || !conversionRate) {
+                const missingFields = [];
+                if (!userId) missingFields.push('userId');
+                if (!fromAmount) missingFields.push('fromAmount');
+                if (!fromCurrency) missingFields.push('fromCurrency');
+                if (!toAmount) missingFields.push('toAmount');
+                if (!toCurrency) missingFields.push('toCurrency');
+                if (!conversionRate) missingFields.push('conversionRate');
+                
+                log.error('Missing required fields:', missingFields);
+                return res.status(400).json({
+                    success: false,
+                    message: `Missing required fields: ${missingFields.join(', ')}`
+                });
+            }
+
+            // Validate amounts are positive
+            if (fromAmount <= 0 || toAmount <= 0 || conversionRate <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Amounts and conversion rate must be positive numbers'
+                });
+            }
+
+            // Validate currencies
+            const validCurrencies = ['XAF', 'USD', 'EUR', 'XOF'];
+            if (!validCurrencies.includes(fromCurrency.toUpperCase()) || !validCurrencies.includes(toCurrency.toUpperCase())) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid currency. Supported currencies: XAF, USD, EUR, XOF'
+                });
+            }
+
+            const transaction = await paymentService.createConversionTransaction(
+                userId,
+                fromAmount,
+                fromCurrency.toUpperCase() as Currency,
+                toAmount,
+                toCurrency.toUpperCase() as Currency,
+                conversionRate,
+                ipAddress || req.ip
+            );
+
+            return res.status(201).json({
+                success: true,
+                data: { transactionId: transaction.transactionId },
+                message: 'Conversion transaction created successfully'
+            });
+        } catch (error: any) {
+            log.error(`Error in createConversionTransaction controller for user ${userId}:`, error);
             next(error); // Pass error to the central error handler
         }
     }

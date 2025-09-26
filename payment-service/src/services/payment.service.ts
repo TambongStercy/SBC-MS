@@ -700,19 +700,8 @@ class PaymentService {
                     throw new AppError('Incomplete crypto withdrawal details in transaction record. Cannot proceed with payout.', 500);
                 }
 
-                // Send initial crypto withdrawal notification
-                if (userEmail) {
-                    await notificationService.sendTransactionSuccessEmail({
-                        email: userEmail,
-                        name: userName || 'Customer',
-                        transactionType: 'crypto_withdrawal_initiated',
-                        transactionId: updatedTransaction.transactionId,
-                        amount: usdAmount,
-                        currency: cryptoCurrency,
-                        date: updatedTransaction.createdAt.toISOString()
-                    });
-                    log.info(`Initial crypto withdrawal notification sent for transaction ${transactionId}.`);
-                }
+                // Removed: Excess crypto withdrawal initiated email notification
+                log.debug(`Crypto withdrawal transaction ${transactionId} created. Email notification will be sent on completion.`);
 
                 // Update transaction to PROCESSING before initiating payout (like momo)
                 await transactionRepository.update(updatedTransaction._id, {
@@ -887,21 +876,8 @@ class PaymentService {
             }
 
 
-            // Send initial notification (user's balance is not yet debited, but transaction is "in progress")
-            if (userEmail) {
-                await notificationService.sendTransactionSuccessEmail({ // Maybe a specific "Withdrawal Initiated" email
-                    email: userEmail,
-                    name: userName || 'Customer',
-                    transactionType: 'withdrawal_initiated', // More accurate type
-                    transactionId: updatedTransaction.transactionId,
-                    amount: netAmountForPayout, // Send net amount in its target currency for notification
-                    currency: targetPayoutCurrency, // Send target currency for notification
-                    date: updatedTransaction.createdAt.toISOString()
-                });
-                log.info(`Initial notification sent for withdrawal transaction ${transactionId}.`);
-            } else {
-                log.warn(`Skipping initial withdrawal notification for transaction ${transactionId} as user email was not available.`);
-            }
+            // Removed: Excess withdrawal initiated email notification
+            log.debug(`Withdrawal transaction ${transactionId} created. Email notifications will be sent for OTP and on completion only.`);
 
             // CRITICAL - Trigger the actual asynchronous payout process.
             log.info(`Triggering asynchronous payout process for transaction ${updatedTransaction.transactionId}.`);
@@ -1936,8 +1912,7 @@ class PaymentService {
                 metadata: {
                     ...transaction.metadata,
                     payoutResponse: payoutResponse,
-                    withdrawalId: payoutResponse.withdrawalId,
-                    batchWithdrawalId: payoutResponse.batchWithdrawalId
+                    batchWithdrawalId: payoutResponse.batch_withdrawal_id
                 }
             });
 
@@ -1950,7 +1925,7 @@ class PaymentService {
                 success: true,
                 transactionId: transaction.transactionId,
                 payoutId: payoutResponse.id,
-                withdrawalId: payoutResponse.withdrawalId,
+                batchWithdrawalId: payoutResponse.batch_withdrawal_id,
                 status: payoutResponse.status,
                 amount: netAmountDesired, // Added this line
                 message: 'Crypto payout initiated successfully'
@@ -2041,6 +2016,44 @@ class PaymentService {
                 message: 'You have a pending crypto withdrawal. Please verify it using the OTP sent to your registered contact or cancel it before initiating a new one.'
             };
             return result;
+        }
+
+        // Check NOWPayments balance before initiating withdrawal
+        try {
+            log.info(`Checking NOWPayments balance for ${userDetails.cryptoWalletCurrency} withdrawal of ${usdAmount} USD`);
+
+            // Convert USD amount to crypto currency amount for balance check
+            // Note: This is an estimation since we need to check if the provider has enough crypto
+            const estimatedCryptoAmount = await this.convertCurrency(usdAmount, 'USD', userDetails.cryptoWalletCurrency);
+
+            const balanceCheck = await nowPaymentsService.checkSufficientBalance(
+                userDetails.cryptoWalletCurrency,
+                estimatedCryptoAmount
+            );
+
+            if (!balanceCheck.sufficient) {
+                log.warn(`Insufficient NOWPayments balance for ${userDetails.cryptoWalletCurrency}`, {
+                    requested: estimatedCryptoAmount,
+                    available: balanceCheck.available,
+                    pending: balanceCheck.pending
+                });
+                throw new AppError('Les retraits dans cette crypto-monnaie sont indisponibles pour le moment. Réessayez plus tard.', 503);
+            }
+
+            log.info(`NOWPayments balance check passed for ${userDetails.cryptoWalletCurrency}`, {
+                requested: estimatedCryptoAmount,
+                available: balanceCheck.available,
+                sufficient: balanceCheck.sufficient
+            });
+
+        } catch (error: any) {
+            if (error instanceof AppError) {
+                throw error; // Re-throw our custom error message
+            }
+
+            log.error(`Error checking NOWPayments balance for ${userDetails.cryptoWalletCurrency}:`, error);
+            // If balance check fails due to API issues, show user-friendly message
+            throw new AppError('Les retraits dans cette crypto-monnaie sont indisponibles pour le moment. Réessayez plus tard.', 503);
         }
 
         // For crypto withdrawals, work in USD
@@ -2135,17 +2148,35 @@ class PaymentService {
                 }
             }
 
-            const { id, withdrawal_id, status, hash, amount, currency, address } = payload;
+            // Extract fields using actual NOWPayments webhook field names from API documentation
+            const {
+                id,
+                address,
+                currency,
+                amount,
+                batch_withdrawal_id,
+                status,
+                extra_id,
+                hash,
+                error,
+                is_request_payouts,
+                ipn_callback_url,
+                unique_external_id,
+                payout_description,
+                created_at,
+                requested_at,
+                updated_at
+            } = payload;
 
             if (!id || !status) {
                 log.warn('Received NOWPayments payout webhook with missing required fields', payload);
-                throw new Error('Webhook payload missing required fields');
+                throw new Error('Webhook payload missing required fields (id, status)');
             }
 
-            log.info(`Processing NOWPayments payout webhook for withdrawal: ${withdrawal_id || id}, status: ${status}`);
+            log.info(`Processing NOWPayments payout webhook for payout: ${id}, batch: ${batch_withdrawal_id}, status: ${status}`);
 
             // Find transaction by external transaction ID
-            const transaction = await transactionRepository.findByExternalTransactionId(id);
+            const transaction = await transactionRepository.findByExternalTransactionId(id.toString());
 
             if (!transaction) {
                 log.error(`Transaction not found for NOWPayments payout webhook: ${id}`);
@@ -2168,19 +2199,41 @@ class PaymentService {
                     ...transaction.metadata,
                     payoutWebhookPayload: payload,
                     transactionHash: hash,
-                    finalAmount: amount,
+                    finalAmount: parseFloat(amount || '0'), // Convert string amount to number
                     finalCurrency: currency,
                     finalAddress: address,
+                    batchWithdrawalId: batch_withdrawal_id,
+                    extraId: extra_id,
+                    error: error,
+                    payoutDescription: payout_description,
+                    uniqueExternalId: unique_external_id,
+                    isRequestPayouts: is_request_payouts,
+                    createdAt: created_at,
+                    requestedAt: requested_at,
+                    updatedAt: updated_at,
                     completedAt: newStatus === TransactionStatus.COMPLETED ? new Date() : undefined
                 }
             });
 
             log.info(`Transaction ${transaction.transactionId} status updated to ${newStatus} via NOWPayments payout webhook.`);
 
-            // If payout failed, refund the user
-            if (newStatus === TransactionStatus.FAILED) {
-                await userServiceClient.updateUserBalance(transaction.userId.toString(), transaction.amount);
-                log.info(`Refunded ${transaction.amount} ${transaction.currency} to user ${transaction.userId.toString()} due to failed payout`);
+            // Handle balance updates for withdrawal transactions
+            if (transaction.type === 'withdrawal') {
+                if (newStatus === TransactionStatus.COMPLETED) {
+                    // For successful crypto withdrawals, debit the user's USD balance
+                    // This is the final deduction when the payout is confirmed successful
+                    const totalAmountToDebit = -(transaction.amount + (transaction.fee || 0));
+
+                    await userServiceClient.updateUserUsdBalance(transaction.userId.toString(), totalAmountToDebit);
+                    log.info(`Debited ${Math.abs(totalAmountToDebit)} USD from user ${transaction.userId.toString()} for completed NOWPayments withdrawal`);
+
+                } else if (newStatus === TransactionStatus.FAILED) {
+                    // For failed withdrawals, only update transaction status
+                    // No balance refund needed since balance is only deducted on success
+                    log.info(`NOWPayments withdrawal failed/rejected for transaction ${transaction.transactionId}. No balance changes needed.`);
+                }
+            } else {
+                log.info(`Transaction ${transaction.transactionId} is not a withdrawal, skipping balance update`);
             }
 
         } catch (error: any) {
@@ -2328,6 +2381,49 @@ class PaymentService {
         } catch (error: any) {
             log.error('Error testing NOWPayments connection:', error);
             throw new Error('Failed to test NOWPayments connection');
+        }
+    }
+
+    /**
+     * Create a conversion transaction record
+     */
+    public async createConversionTransaction(
+        userId: string,
+        fromAmount: number,
+        fromCurrency: Currency,
+        toAmount: number,
+        toCurrency: Currency,
+        conversionRate: number,
+        ipAddress?: string
+    ): Promise<ITransaction> {
+        try {
+            log.info(`Creating conversion transaction: ${fromAmount} ${fromCurrency} -> ${toAmount} ${toCurrency} for user ${userId}`);
+
+            const conversionTransaction = await transactionRepository.create({
+                userId,
+                type: TransactionType.CONVERSION,
+                amount: fromAmount, // Store the source amount
+                currency: fromCurrency, // Store the source currency
+                fee: 0, // No fees for conversions currently
+                status: TransactionStatus.COMPLETED, // Conversions are immediate
+                description: `Conversion de solde: ${fromAmount} ${fromCurrency} vers ${toAmount} ${toCurrency}`,
+                metadata: {
+                    conversionType: `${fromCurrency}_to_${toCurrency}`,
+                    sourceAmount: fromAmount,
+                    sourceCurrency: fromCurrency,
+                    targetAmount: toAmount,
+                    targetCurrency: toCurrency,
+                    conversionRate: conversionRate,
+                    timestamp: new Date().toISOString()
+                },
+                ipAddress
+            });
+
+            log.info(`Created conversion transaction ${conversionTransaction.transactionId} for user ${userId}`);
+            return conversionTransaction;
+        } catch (error: any) {
+            log.error('Error creating conversion transaction:', error);
+            throw new Error('Failed to create conversion transaction');
         }
     }
 

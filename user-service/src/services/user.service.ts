@@ -953,10 +953,32 @@ export class UserService {
             }
 
             const xafAmount = CurrencyConverter.usdToXafWithdrawal(usdAmount);
+            const conversionRate = CURRENCY_CONVERSION_RATES.USD_TO_XAF_WITHDRAWAL;
 
             // Update both balances
             await userRepository.updateUsdBalance(userId, -usdAmount);
             await userRepository.updateBalance(userId, xafAmount);
+
+            // Create conversion transaction record
+            try {
+                log.info(`Attempting to create conversion transaction record for ${usdAmount} USD -> ${xafAmount} XAF conversion`);
+                const result = await paymentService.createConversionTransaction(
+                    userId.toString(),
+                    usdAmount,
+                    'USD',
+                    xafAmount,
+                    'XAF',
+                    conversionRate
+                );
+                log.info(`Successfully created conversion transaction record:`, result);
+            } catch (error: any) {
+                log.error(`Failed to create conversion transaction record for user ${userId}:`, {
+                    error: error.message,
+                    stack: error.stack,
+                    response: error.response?.data
+                });
+                // Don't fail the conversion if transaction recording fails
+            }
 
             log.info(`Converted ${usdAmount} USD to ${xafAmount} XAF for user ${userId}`);
 
@@ -998,10 +1020,32 @@ export class UserService {
             }
 
             const usdAmount = CurrencyConverter.xafToUsd(xafAmount);
+            const conversionRate = CURRENCY_CONVERSION_RATES.XAF_TO_USD;
 
             // Update both balances
             await userRepository.updateBalance(userId, -xafAmount);
             await userRepository.updateUsdBalance(userId, usdAmount);
+
+            // Create conversion transaction record
+            try {
+                log.info(`Attempting to create conversion transaction record for ${xafAmount} XAF -> ${usdAmount} USD conversion`);
+                const result = await paymentService.createConversionTransaction(
+                    userId.toString(),
+                    xafAmount,
+                    'XAF',
+                    usdAmount,
+                    'USD',
+                    conversionRate
+                );
+                log.info(`Successfully created conversion transaction record:`, result);
+            } catch (error: any) {
+                log.error(`Failed to create conversion transaction record for user ${userId}:`, {
+                    error: error.message,
+                    stack: error.stack,
+                    response: error.response?.data
+                });
+                // Don't fail the conversion if transaction recording fails
+            }
 
             log.info(`Converted ${xafAmount} XAF to ${usdAmount} USD for user ${userId}`);
 

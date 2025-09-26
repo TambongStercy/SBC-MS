@@ -19,6 +19,7 @@ router.use('/admin', adminRouter);
 // User transaction routes (protected)
 router.get('/history', authenticate, (req, res) => transactionController.getTransactionHistory(req, res));
 router.get('/stats', authenticate, (req, res) => transactionController.getTransactionStats(req, res));
+router.get('/conversions', authenticate, (req, res) => transactionController.getUserConversionTransactions(req, res));
 router.get('/:transactionId', authenticate, (req, res) => transactionController.getTransaction(req, res));
 
 // Deposit routes

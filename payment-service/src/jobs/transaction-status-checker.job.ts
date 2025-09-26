@@ -63,13 +63,13 @@ export class TransactionStatusChecker {
             // 1. Check and cancel stale OTP verification withdrawals
             await this.checkStaleOtpVerifications();
 
-            // 2. Find all withdrawal transactions with processing status
+            // 2. Find all withdrawal transactions with pending or processing status
             const processingTransactions = await transactionRepository.findProcessingWithdrawals(100);
 
             if (processingTransactions.length === 0) {
-                log.info('No processing withdrawal transactions found to reconcile.');
+                log.info('No pending/processing withdrawal transactions found to reconcile.');
             } else {
-                log.info(`Found ${processingTransactions.length} processing withdrawal transactions to reconcile`);
+                log.info(`Found ${processingTransactions.length} pending/processing withdrawal transactions to reconcile`);
 
                 // Process each transaction
                 for (const transaction of processingTransactions) {
@@ -124,10 +124,13 @@ export class TransactionStatusChecker {
             }
 
             // Determine the payout service provider from transaction metadata
-            const serviceProvider = transaction.metadata?.selectedPayoutService;
+            // Check multiple possible field names for service provider
+            const serviceProvider = transaction.metadata?.selectedPayoutService ||
+                                  transaction.metadata?.serviceProvider ||
+                                  transaction.metadata?.payoutMethod;
 
             if (!serviceProvider) {
-                log.warn(`Cannot determine service provider for transaction ${transaction.transactionId}. Skipping.`);
+                log.warn(`Cannot determine service provider for transaction ${transaction.transactionId}. Metadata: ${JSON.stringify(transaction.metadata)}. Skipping.`);
                 return;
             }
 
@@ -228,6 +231,12 @@ export class TransactionStatusChecker {
             // Get current status from NOWPayments
             const nowpaymentsStatus = await nowPaymentsService.getPayoutStatus(nowpaymentsPayoutId);
 
+            log.debug(`NOWPayments status response for transaction ${transaction.transactionId}:`, {
+                nowpaymentsStatus,
+                statusField: nowpaymentsStatus.status,
+                hasStatus: 'status' in nowpaymentsStatus
+            });
+
             // Map NOWPayments status to our internal status
             const newInternalStatus = nowPaymentsService.mapPayoutStatusToInternal(nowpaymentsStatus.status);
 
@@ -236,17 +245,24 @@ export class TransactionStatusChecker {
                 log.info(`Status for NOWPayments transaction ${transaction.transactionId} has changed from '${currentStatus}' to '${newInternalStatus}'. Updating...`);
 
                 // Process the status update through the existing webhook handler
+                // Use the correct NOWPayments API response structure
                 await paymentService.handleNowPaymentsPayoutWebhook({
-                    id: nowpaymentsPayoutId,
-                    withdrawal_id: nowpaymentsStatus.withdrawalId,
-                    status: nowpaymentsStatus.status,
-                    hash: nowpaymentsStatus.hash,
-                    amount: nowpaymentsStatus.amount,
-                    currency: nowpaymentsStatus.currency,
+                    id: nowpaymentsStatus.id,
                     address: nowpaymentsStatus.address,
-                    extra_id: nowpaymentsStatus.extraId,
-                    fee_paid_by_user: nowpaymentsStatus.feePaidByUser,
-                    batch_withdrawal_id: nowpaymentsStatus.batchWithdrawalId
+                    currency: nowpaymentsStatus.currency,
+                    amount: nowpaymentsStatus.amount,
+                    batch_withdrawal_id: nowpaymentsStatus.batch_withdrawal_id,
+                    status: nowpaymentsStatus.status,
+                    extra_id: nowpaymentsStatus.extra_id,
+                    hash: nowpaymentsStatus.hash,
+                    error: nowpaymentsStatus.error,
+                    is_request_payouts: nowpaymentsStatus.is_request_payouts,
+                    ipn_callback_url: nowpaymentsStatus.ipn_callback_url,
+                    unique_external_id: nowpaymentsStatus.unique_external_id,
+                    payout_description: nowpaymentsStatus.payout_description,
+                    created_at: nowpaymentsStatus.created_at,
+                    requested_at: nowpaymentsStatus.requested_at,
+                    updated_at: nowpaymentsStatus.updated_at
                 });
 
                 log.info(`Successfully updated NOWPayments transaction ${transaction.transactionId} status to ${newInternalStatus}`);

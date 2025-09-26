@@ -19,6 +19,7 @@ export enum TransactionType {
     PAYMENT = 'payment',
     REFUND = 'refund',
     FEE = 'fee',
+    CONVERSION = 'conversion', // New transaction type for balance conversions
 }
 
 // Define Currency

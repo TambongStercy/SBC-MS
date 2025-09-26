@@ -54,15 +54,21 @@ export interface NOWPayoutRequest {
 
 export interface NOWPayoutResponse {
     id: string;
-    withdrawalId?: string;
-    status: string;
-    hash?: string;
-    amount: number;
-    currency: string;
     address: string;
-    extraId?: string;
-    feePaidByUser: boolean;
-    batchWithdrawalId?: string;
+    currency: string;
+    amount: string; // NOWPayments returns amount as string
+    batch_withdrawal_id?: string;
+    status: string;
+    extra_id?: string | null;
+    hash?: string | null;
+    error?: string | null;
+    is_request_payouts?: boolean;
+    ipn_callback_url?: string | null;
+    unique_external_id?: string | null;
+    payout_description?: string | null;
+    created_at?: string;
+    requested_at?: string | null;
+    updated_at?: string | null;
 }
 
 class NOWPaymentsService {
@@ -519,15 +525,21 @@ class NOWPaymentsService {
 
                 return {
                     id: withdrawal.id,
-                    withdrawalId: withdrawal.withdrawal_id,
-                    status: withdrawal.status,
-                    hash: withdrawal.hash,
-                    amount: withdrawal.amount,
-                    currency: withdrawal.currency,
                     address: withdrawal.address,
-                    extraId: withdrawal.extra_id,
-                    feePaidByUser: withdrawal.fee_paid_by_user,
-                    batchWithdrawalId: responseData.batch_withdrawal_id
+                    currency: withdrawal.currency,
+                    amount: withdrawal.amount.toString(), // Ensure amount is string
+                    batch_withdrawal_id: responseData.batch_withdrawal_id,
+                    status: withdrawal.status,
+                    extra_id: withdrawal.extra_id,
+                    hash: withdrawal.hash,
+                    error: withdrawal.error,
+                    is_request_payouts: withdrawal.is_request_payouts || false,
+                    ipn_callback_url: withdrawal.ipn_callback_url,
+                    unique_external_id: withdrawal.unique_external_id,
+                    payout_description: withdrawal.payout_description,
+                    created_at: withdrawal.created_at,
+                    requested_at: withdrawal.requested_at,
+                    updated_at: withdrawal.updated_at
                 };
 
             } catch (error: any) {
@@ -614,24 +626,55 @@ class NOWPaymentsService {
                     )
                 ]) as any;
 
-                const responseData = response.data;
-
-                log.debug(`NOWPayments payout status retrieved successfully on attempt ${attempt}`, {
-                    withdrawalId,
-                    status: responseData.status
+                // NOWPayments API returns an array with a single payout object
+                log.info(`Raw NOWPayments API response for payout ${withdrawalId}:`, {
+                    responseType: Array.isArray(response.data) ? 'array' : typeof response.data,
+                    responseData: response.data,
+                    dataLength: Array.isArray(response.data) ? response.data.length : 'not_array'
                 });
+
+                let batchData = Array.isArray(response.data) ? response.data[0] : response.data;
+
+                if (!batchData) {
+                    throw new Error(`No batch data found for withdrawal ID: ${withdrawalId}`);
+                }
+
+                // The actual payout data is in the withdrawals array
+                const payoutData = batchData.withdrawals?.find((w: any) => w.id === withdrawalId);
+
+                if (!payoutData) {
+                    throw new Error(`No payout found with ID ${withdrawalId} in batch ${batchData.id}`);
+                }
+
+                log.info(`NOWPayments payout status retrieved successfully on attempt ${attempt}`, {
+                    withdrawalId,
+                    batchId: batchData.id,
+                    payoutStatus: payoutData.status,
+                    payoutAmount: payoutData.amount,
+                    payoutError: payoutData.error,
+                    payoutHash: payoutData.hash
+                });
+
+                // Use the actual payout data, not the batch data
+                const responseData = payoutData;
 
                 return {
                     id: responseData.id,
-                    withdrawalId: responseData.withdrawal_id,
-                    status: responseData.status,
-                    hash: responseData.hash,
-                    amount: responseData.amount,
-                    currency: responseData.currency,
                     address: responseData.address,
-                    extraId: responseData.extra_id,
-                    feePaidByUser: responseData.fee_paid_by_user,
-                    batchWithdrawalId: responseData.batch_withdrawal_id
+                    currency: responseData.currency,
+                    amount: responseData.amount ? responseData.amount.toString() : '0', // Safe toString with fallback
+                    batch_withdrawal_id: responseData.batch_withdrawal_id,
+                    status: responseData.status,
+                    extra_id: responseData.extra_id,
+                    hash: responseData.hash,
+                    error: responseData.error,
+                    is_request_payouts: responseData.is_request_payouts || false,
+                    ipn_callback_url: responseData.ipn_callback_url,
+                    unique_external_id: responseData.unique_external_id,
+                    payout_description: responseData.payout_description,
+                    created_at: responseData.created_at,
+                    requested_at: responseData.requested_at,
+                    updated_at: responseData.updated_at
                 };
 
             } catch (error: any) {
@@ -706,18 +749,28 @@ class NOWPaymentsService {
      */
     mapPayoutStatusToInternal(nowPaymentsStatus: string): TransactionStatus {
         const statusMap: { [key: string]: TransactionStatus } = {
+            // NOWPayments payout-specific statuses (from API documentation)
+            'creating': TransactionStatus.PROCESSING,
+            'processing': TransactionStatus.PROCESSING,
+            'sending': TransactionStatus.PROCESSING,
+            'finished': TransactionStatus.COMPLETED,
+            'failed': TransactionStatus.FAILED,
+            'rejected': TransactionStatus.FAILED,
+
+            // Legacy statuses (keep for backward compatibility)
             'waiting': TransactionStatus.PENDING,
             'confirming': TransactionStatus.PROCESSING,
             'confirmed': TransactionStatus.PROCESSING,
-            'sending': TransactionStatus.PROCESSING,
             'partially_paid': TransactionStatus.PROCESSING,
-            'finished': TransactionStatus.COMPLETED,
-            'failed': TransactionStatus.FAILED,
             'refunded': TransactionStatus.REFUNDED,
             'expired': TransactionStatus.FAILED
         };
 
-        return statusMap[nowPaymentsStatus] || TransactionStatus.PENDING;
+        if (!nowPaymentsStatus) {
+            log.warn('NOWPayments status is undefined or null, defaulting to PENDING');
+            return TransactionStatus.PENDING;
+        }
+        return statusMap[nowPaymentsStatus.toLowerCase()] || TransactionStatus.PENDING;
     }
 
     /**
@@ -794,6 +847,137 @@ class NOWPaymentsService {
                 connected: false,
                 error: error.message
             };
+        }
+    }
+
+    /**
+     * Check NOWPayments balance for a specific currency
+     */
+    async getBalance(): Promise<{ [currency: string]: { amount: number; pendingAmount: number } }> {
+        if (!config.nowpayments.apiKey) {
+            throw new Error('NOWPayments API not configured');
+        }
+
+        const maxRetries = Math.max(config.nowpayments.maxRetries, 1);
+        let lastError: any;
+
+        const baseUrl = config.nowpayments.sandbox
+            ? 'https://api.sandbox.nowpayments.io/v1'
+            : 'https://api.nowpayments.io/v1';
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // Get authentication token for balance check
+                const token = await this.authenticateMassPayouts();
+
+                log.debug(`Getting NOWPayments balance (attempt ${attempt}/${maxRetries})`);
+
+                const response = await Promise.race([
+                    axios.get(`${baseUrl}/balance`, {
+                        headers: {
+                            'x-api-key': config.nowpayments.apiKey,
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: config.nowpayments.timeoutMs
+                    }),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Request timeout')), config.nowpayments.timeoutMs)
+                    )
+                ]) as any;
+
+                const balanceData = response.data;
+
+                log.debug(`NOWPayments balance retrieved successfully on attempt ${attempt}`, {
+                    currencies: Object.keys(balanceData)
+                });
+
+                return balanceData;
+
+            } catch (error: any) {
+                lastError = error;
+                log.warn(`NOWPayments balance check attempt ${attempt} failed:`, {
+                    error: error.message,
+                    status: error.response?.status,
+                    data: error.response?.data
+                });
+
+                // Check if we should retry
+                if (attempt < maxRetries) {
+                    const retryableStatusCodes = [500, 502, 503, 504, 429];
+                    const retryableErrors = ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET'];
+
+                    if (
+                        (error.response && retryableStatusCodes.includes(error.response.status)) ||
+                        (error.code && retryableErrors.includes(error.code)) ||
+                        error.message.includes('timeout')
+                    ) {
+                        // Wait before retry with exponential backoff
+                        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+                        log.debug(`Retrying NOWPayments balance check in ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+                }
+
+                // If not retryable or last attempt, break
+                break;
+            }
+        }
+
+        // All attempts failed
+        log.error('All NOWPayments balance check attempts failed', { error: lastError.message });
+
+        if (lastError.response?.status === 401) {
+            throw new Error('Failed to get NOWPayments balance: Invalid API key or authentication failed');
+        } else if (lastError.code === 'ENOTFOUND' || lastError.code === 'EAI_AGAIN') {
+            throw new Error('Failed to get NOWPayments balance: Network connectivity issue');
+        } else if (lastError.message.includes('timeout')) {
+            throw new Error('Failed to get NOWPayments balance: Request timeout');
+        } else {
+            throw new Error(`Failed to get NOWPayments balance: ${lastError.message}`);
+        }
+    }
+
+    /**
+     * Check if there's sufficient balance for a crypto withdrawal
+     */
+    async checkSufficientBalance(currency: string, amount: number): Promise<{ sufficient: boolean; available: number; pending: number }> {
+        try {
+            const balances = await this.getBalance();
+            const currencyLower = currency.toLowerCase();
+
+            const currencyBalance = balances[currencyLower];
+
+            if (!currencyBalance) {
+                log.warn(`Currency ${currency} not found in NOWPayments balance`);
+                return {
+                    sufficient: false,
+                    available: 0,
+                    pending: 0
+                };
+            }
+
+            const available = currencyBalance.amount;
+            const pending = currencyBalance.pendingAmount;
+            const sufficient = available >= amount;
+
+            log.info(`NOWPayments balance check for ${currency}:`, {
+                requested: amount,
+                available,
+                pending,
+                sufficient
+            });
+
+            return {
+                sufficient,
+                available,
+                pending
+            };
+
+        } catch (error: any) {
+            log.error(`Error checking NOWPayments balance for ${currency}:`, error);
+            throw error;
         }
     }
 }
