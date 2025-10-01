@@ -173,12 +173,28 @@ class PaymentService {
     }
 
     /**
+     * Check if CinetPay withdrawals are currently enabled
+     */
+    public isCinetPayWithdrawalsEnabled(): boolean {
+        return config.cinetpay.withdrawalsEnabled;
+    }
+
+    /**
+     * Check if NowPayments withdrawals are currently enabled
+     */
+    public isNowPaymentsWithdrawalsEnabled(): boolean {
+        return config.nowpayments.withdrawalsEnabled;
+    }
+
+    /**
      * Get withdrawal service status for admin monitoring
      */
     public getWithdrawalServiceStatus() {
         return {
             feexpayWithdrawalsEnabled: config.feexpay.withdrawalsEnabled,
-            cinetpayEnabled: true, // CinetPay is always enabled
+            lygosEnabled: true, // Lygos is always enabled
+            cinetpayWithdrawalsEnabled: config.cinetpay.withdrawalsEnabled,
+            nowpaymentsWithdrawalsEnabled: config.nowpayments.withdrawalsEnabled,
             lastChecked: new Date().toISOString()
         };
     }
@@ -292,13 +308,27 @@ class PaymentService {
         try {
             log.info(`Processing internal withdrawal of ${amount} ${currency} for user ${userId}. Reason: ${description}`);
 
-            // Optional: Check balance before proceeding (depends on use case - might be okay to go negative for corrections)
-            // const userBalance = await userServiceClient.getBalance(userId.toString());
-            // if (userBalance < amount) {
-            //     log.warn(`User ${userId} has insufficient balance (${userBalance}) for internal withdrawal of ${amount}`);
-            //     // Decide whether to throw or allow (e.g., for reversals)
-            //     // throw new Error('Insufficient balance for internal withdrawal');
-            // }
+            // STRICT BALANCE CHECK: Prevent internal withdrawals that create debt
+            // Only allow if explicitly marked as an admin correction/reversal
+            const isAdminCorrection = metadata?.adminCorrection === true || metadata?.isReversal === true;
+
+            if (!isAdminCorrection) {
+                const userBalance = await userServiceClient.getBalance(userId.toString());
+
+                if (typeof userBalance !== 'number') {
+                    log.error(`Failed to retrieve balance for user ${userId} during internal withdrawal. Balance: ${userBalance}`);
+                    throw new Error('Unable to verify user balance for internal withdrawal.');
+                }
+
+                if (userBalance < amount) {
+                    log.warn(`User ${userId} has insufficient balance (${userBalance} ${currency}) for internal withdrawal of ${amount} ${currency}. Reason: ${description}`);
+                    throw new Error(`Insufficient balance for internal withdrawal. User has ${userBalance} ${currency}, but ${amount} ${currency} required. Reason: ${description}`);
+                }
+
+                log.info(`Balance check passed for internal withdrawal: User ${userId} has ${userBalance} ${currency} >= ${amount} ${currency} required`);
+            } else {
+                log.warn(`ADMIN CORRECTION: Bypassing balance check for internal withdrawal. User: ${userId}, Amount: ${amount} ${currency}, Reason: ${description}`);
+            }
 
             // Create a transaction record
             const transaction = await transactionRepository.create({
@@ -347,6 +377,13 @@ class PaymentService {
         deviceInfo?: string
     ) {
         log.info(`Initiating withdrawal request for user ${userId}: NET ${netAmountDesired} (target currency will be derived)`);
+
+        // --- GLOBAL WITHDRAWAL CONTROL CHECK ---
+        if (!config.withdrawalsEnabled) {
+            log.warn(`Withdrawal initiation blocked for user ${userId}: Global withdrawals are currently disabled.`);
+            throw new AppError('Withdrawals are currently unavailable. Please try again later or contact support.', 503);
+        }
+        // --- End Global Withdrawal Control Check ---
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -448,6 +485,22 @@ class PaymentService {
                     countryCode: countryCode,
                     timestamp: new Date(),
                     reason: 'FeexPay withdrawals disabled'
+                });
+
+                throw new AppError('Withdrawals are temporarily unavailable for your region. Please contact support for assistance.', 503);
+            }
+
+            // --- CINETPAY WITHDRAWALS CONTROL ---
+            if (originalGateway === PaymentGateway.CINETPAY && !config.cinetpay.withdrawalsEnabled) {
+                log.error(`CinetPay withdrawals are currently disabled. Country: ${countryCode}, User: ${userId}`);
+
+                // Track the blocked attempt
+                withdrawalMonitor.logBlockedAttempt({
+                    userId: userId.toString(),
+                    amount: netAmountDesired,
+                    countryCode: countryCode,
+                    timestamp: new Date(),
+                    reason: 'CinetPay withdrawals disabled'
                 });
 
                 throw new AppError('Withdrawals are temporarily unavailable for your region. Please contact support for assistance.', 503);
@@ -605,6 +658,13 @@ class PaymentService {
         log.info(`Verifying withdrawal transaction ${transactionId}`);
 
         try {
+            // --- GLOBAL WITHDRAWAL CONTROL CHECK ---
+            if (!config.withdrawalsEnabled) {
+                log.warn(`Withdrawal OTP verification blocked for transaction ${transactionId}: Global withdrawals are currently disabled.`);
+                throw new AppError('Withdrawals are currently unavailable. Please try again later or contact support.', 503);
+            }
+            // --- End Global Withdrawal Control Check ---
+
             const transaction = await transactionRepository.findByTransactionId(transactionId, { select: '+verificationCode +verificationExpiry' });
 
             if (!transaction) {
@@ -643,6 +703,67 @@ class PaymentService {
             // Get withdrawal details from transaction metadata
             const { userId, amount, fee, currency, metadata } = transaction; // amount here is already in XAF
 
+            // ===== BALANCE VALIDATION BEFORE PROCESSING WITHDRAWAL =====
+            // Check if this is a crypto withdrawal to determine which balance to check
+            const isCryptoWithdrawal = metadata?.cryptoWithdrawal;
+
+            if (isCryptoWithdrawal) {
+                // For crypto withdrawals, check USD balance
+                const usdAmount = metadata?.usdAmount;
+                if (!usdAmount) {
+                    log.error(`Transaction ${transactionId} missing USD amount for crypto withdrawal`);
+                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
+                        failureReason: 'Missing USD amount for crypto withdrawal'
+                    });
+                    throw new AppError('Invalid crypto withdrawal transaction data.', 500);
+                }
+
+                const userUsdBalance = await userServiceClient.getUsdBalance(userId.toString());
+
+                // Check if user has sufficient USD balance (amount already includes fees from initiation)
+                if (userUsdBalance < usdAmount) {
+                    log.warn(`User ${userId} has insufficient USD balance for crypto withdrawal. Required: ${usdAmount} USD, Available: ${userUsdBalance} USD`);
+                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
+                        failureReason: `Insufficient USD balance. Required: ${usdAmount} USD, Available: ${userUsdBalance} USD`
+                    });
+                    throw new AppError(`Insufficient USD balance for crypto withdrawal. Available: ${userUsdBalance} USD, Required: ${usdAmount} USD`, 400);
+                }
+
+                if (userUsdBalance <= 0) {
+                    log.warn(`User ${userId} has zero or negative USD balance: ${userUsdBalance} USD`);
+                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
+                        failureReason: 'Insufficient USD balance (zero or negative)'
+                    });
+                    throw new AppError('Your USD balance is zero or negative. Cannot process crypto withdrawal.', 400);
+                }
+
+                log.info(`USD balance check passed for user ${userId}: ${userUsdBalance} USD >= ${usdAmount} USD`);
+            } else {
+                // For mobile money withdrawals, check XAF balance
+                const userXafBalance = await userServiceClient.getBalance(userId.toString());
+
+                // amount is the gross amount (amount + fee) in XAF that was debited during initiation
+                // We need to ensure user still has sufficient balance before processing
+                if (userXafBalance < amount) {
+                    log.warn(`User ${userId} has insufficient XAF balance for mobile money withdrawal. Required: ${amount} XAF, Available: ${userXafBalance} XAF`);
+                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
+                        failureReason: `Insufficient XAF balance. Required: ${amount} XAF, Available: ${userXafBalance} XAF`
+                    });
+                    throw new AppError(`Insufficient XAF balance for mobile money withdrawal. Available: ${userXafBalance} XAF, Required: ${amount} XAF`, 400);
+                }
+
+                if (userXafBalance <= 0) {
+                    log.warn(`User ${userId} has zero or negative XAF balance: ${userXafBalance} XAF`);
+                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
+                        failureReason: 'Insufficient XAF balance (zero or negative)'
+                    });
+                    throw new AppError('Your XAF balance is zero or negative. Cannot process mobile money withdrawal.', 400);
+                }
+
+                log.info(`XAF balance check passed for user ${userId}: ${userXafBalance} XAF >= ${amount} XAF`);
+            }
+            // ===== END BALANCE VALIDATION =====
+
             // Update transaction status to PENDING (ready for external payout)
             // Clear OTP fields now that verification is complete
             const updatedTransaction = await transactionRepository.update(transaction._id, {
@@ -676,12 +797,25 @@ class PaymentService {
                 log.warn(`Continuing withdrawal processing for ${userId} despite failing to fetch user details.`);
             }
 
-            // Check if this is a crypto withdrawal
-            const isCryptoWithdrawal = updatedTransaction.metadata?.cryptoWithdrawal;
+            // isCryptoWithdrawal already declared earlier in balance validation section
 
             if (isCryptoWithdrawal) {
                 // Handle crypto withdrawal verification (single transaction flow like momo)
                 log.info(`Processing crypto withdrawal verification for transaction ${updatedTransaction.transactionId}`);
+
+                // Check if NowPayments withdrawals are enabled
+                if (!config.nowpayments.withdrawalsEnabled) {
+                    log.warn(`NowPayments (crypto) withdrawals are currently disabled. Cannot process crypto withdrawal ${updatedTransaction.transactionId}.`);
+                    await transactionRepository.update(updatedTransaction._id, {
+                        status: TransactionStatus.FAILED,
+                        metadata: {
+                            ...(updatedTransaction.metadata || {}),
+                            failureReason: 'Crypto withdrawals are currently disabled.',
+                            statusDetails: 'NowPayments withdrawals are temporarily unavailable.'
+                        }
+                    });
+                    throw new AppError('Crypto withdrawals are currently disabled. Please try again later or contact support.', 503);
+                }
 
                 const cryptoAddress = updatedTransaction.metadata?.cryptoAddress;
                 const cryptoCurrency = updatedTransaction.metadata?.cryptoCurrency;
@@ -1949,6 +2083,13 @@ class PaymentService {
         deviceInfo?: string
     ) {
         log.info(`Initiating crypto withdrawal with OTP for user ${userId}: ${usdAmount} USD`);
+
+        // --- GLOBAL WITHDRAWAL CONTROL CHECK ---
+        if (!config.withdrawalsEnabled) {
+            log.warn(`Crypto withdrawal initiation blocked for user ${userId}: Global withdrawals are currently disabled.`);
+            throw new AppError('Withdrawals are currently unavailable. Please try again later or contact support.', 503);
+        }
+        // --- End Global Withdrawal Control Check ---
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -4428,9 +4569,34 @@ class PaymentService {
                 log.info(`Target currency is XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
             }
 
+            // --- GLOBAL WITHDRAWAL CONTROL CHECK ---
+            if (!config.withdrawalsEnabled) {
+                log.warn(`Admin withdrawal blocked by admin ${adminId} for user ${targetUserId}: Global withdrawals are currently disabled.`);
+                throw new AppError('Withdrawals are currently unavailable. Please try again later or contact support.', 503);
+            }
+            // --- End Global Withdrawal Control Check ---
+
             const userBalance = await userServiceClient.getBalance(targetUserId.toString());
-            if (userBalance && userBalance < grossAmountToDebitInXAF) {
-                throw new AppError('Insufficient balance for this user.', 400);
+
+            // Strict balance validation - prevent withdrawals with zero or negative balance
+            if (typeof userBalance !== 'number') {
+                log.error(`Failed to retrieve balance for user ${targetUserId}. Balance: ${userBalance}`);
+                throw new AppError('Unable to verify user balance. Please try again.', 500);
+            }
+
+            if (userBalance < 0) {
+                log.warn(`Admin ${adminId} attempted withdrawal for user ${targetUserId} with negative balance: ${userBalance} XAF`);
+                throw new AppError(`User has negative balance (${userBalance} XAF). Cannot process withdrawal.`, 400);
+            }
+
+            if (userBalance === 0) {
+                log.warn(`Admin ${adminId} attempted withdrawal for user ${targetUserId} with zero balance.`);
+                throw new AppError('User balance is zero. Cannot process withdrawal.', 400);
+            }
+
+            if (userBalance < grossAmountToDebitInXAF) {
+                log.warn(`Admin ${adminId} attempted withdrawal for user ${targetUserId}. Insufficient balance: ${userBalance} XAF < ${grossAmountToDebitInXAF} XAF required`);
+                throw new AppError(`Insufficient balance. User has ${userBalance} XAF, but ${grossAmountToDebitInXAF} XAF required (including fees).`, 400);
             }
 
             // Create a transaction record directly in PENDING status (no OTP verification needed for admin)
@@ -4510,6 +4676,32 @@ class PaymentService {
                 throw new AppError('FeexPay withdrawals are currently disabled. Please contact support for assistance.', 503);
             }
 
+            // --- CINETPAY ADMIN WITHDRAWALS CONTROL ---
+            // Ensure admin withdrawals also respect CinetPay blocking
+            if (selectedGateway === PaymentGateway.CINETPAY && !config.cinetpay.withdrawalsEnabled) {
+                log.error(`Admin attempted CinetPay withdrawal but it's disabled. Admin: ${adminId}, Country: ${withdrawalDetails.accountInfo.countryCode}, User: ${targetUserId}`);
+
+                // Track the blocked admin attempt
+                withdrawalMonitor.logBlockedAttempt({
+                    userId: targetUserId.toString(),
+                    amount: netAmountDesired,
+                    countryCode: withdrawalDetails.accountInfo.countryCode,
+                    timestamp: new Date(),
+                    reason: 'CinetPay admin withdrawal disabled',
+                    adminId: adminId
+                });
+
+                await transactionRepository.update(withdrawalTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(withdrawalTransaction.metadata || {}),
+                        failureReason: 'CinetPay withdrawals are currently disabled',
+                        statusDetails: 'Admin withdrawal blocked due to CinetPay restrictions'
+                    }
+                });
+                throw new AppError('CinetPay withdrawals are currently disabled. Please contact support for assistance.', 503);
+            }
+
             // --- FEEXPAY ADMIN WITHDRAWALS CONTROL ---
             // Ensure admin withdrawals also respect FeexPay blocking
             if (selectedGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
@@ -4523,6 +4715,21 @@ class PaymentService {
                     }
                 });
                 throw new AppError('FeexPay withdrawals are currently disabled. Please contact support for assistance.', 503);
+            }
+
+            // --- CINETPAY ADMIN WITHDRAWALS CONTROL ---
+            // Ensure admin withdrawals also respect CinetPay blocking
+            if (selectedGateway === PaymentGateway.CINETPAY && !config.cinetpay.withdrawalsEnabled) {
+                log.error(`Admin attempted CinetPay withdrawal but it's disabled. Admin: ${adminId}, Country: ${withdrawalDetails.accountInfo.countryCode}, User: ${targetUserId}`);
+                await transactionRepository.update(withdrawalTransaction._id, {
+                    status: TransactionStatus.FAILED,
+                    metadata: {
+                        ...(withdrawalTransaction.metadata || {}),
+                        failureReason: 'CinetPay withdrawals are currently disabled',
+                        statusDetails: 'Admin withdrawal blocked due to CinetPay restrictions'
+                    }
+                });
+                throw new AppError('CinetPay withdrawals are currently disabled. Please contact support for assistance.', 503);
             }
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
@@ -4708,6 +4915,13 @@ class PaymentService {
         log.info(`Admin ${adminId} initiating direct payout: NET ${netAmountDesired} ${recipientDetails.currency} to ${recipientDetails.phoneNumber}`);
 
         try {
+            // --- GLOBAL WITHDRAWAL CONTROL CHECK ---
+            if (!config.withdrawalsEnabled) {
+                log.warn(`Admin direct payout blocked by admin ${adminId}: Global withdrawals are currently disabled.`);
+                throw new AppError('Withdrawals are currently unavailable. Please try again later or contact support.', 503);
+            }
+            // --- End Global Withdrawal Control Check ---
+
             const targetPayoutCurrency = recipientDetails.currency; // Use currency from recipientDetails
 
             let grossAmountToDebitInXAF: number;
@@ -4802,6 +5016,12 @@ class PaymentService {
             let payoutResult: any;
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
+                // Check if CinetPay withdrawals are enabled
+                if (!config.cinetpay.withdrawalsEnabled) {
+                    log.warn(`CinetPay withdrawals are currently disabled. Cannot process admin direct payout ${directPayoutTransaction.transactionId}.`);
+                    throw new AppError('CinetPay withdrawals are currently disabled. Please try again later or contact support.', 503);
+                }
+
                 log.info(`Using CinetPay for admin direct payout to ${recipientDetails.countryCode} based on gateway selection.`);
                 payoutResult = await cinetpayPayoutService.initiatePayout({
                     userId: adminId, // Use admin's ID as userId for CinetPay's internal tracking

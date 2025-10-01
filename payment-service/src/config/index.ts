@@ -49,6 +49,7 @@ interface IConfig {
         maxRetries: number;
         timeoutMs: number;
         enableEstimation: boolean;
+        withdrawalsEnabled: boolean;
     };
     services: { // Added based on user-service pattern
         serviceSecret: string;
@@ -71,8 +72,10 @@ interface IConfig {
         siteId: string;
         notificationKey: string;
         alternateNotifyUrl?: string; // Optional HTTPS webhook URL for production
+        withdrawalsEnabled: boolean;
     };
     selfBaseUrl: string; // Base URL of this service for webhooks
+    withdrawalsEnabled: boolean; // Global withdrawal control switch
 }
 
 // Configuration object
@@ -117,7 +120,8 @@ const config: IConfig = {
         defaultFeePaidByUser: process.env.NOWPAYMENTS_DEFAULT_FEE_PAID_BY_USER !== 'false',
         maxRetries: parseInt(process.env.NOWPAYMENTS_MAX_RETRIES || '3', 10),
         timeoutMs: parseInt(process.env.NOWPAYMENTS_TIMEOUT_MS || '30000', 10),
-        enableEstimation: process.env.NOWPAYMENTS_ENABLE_ESTIMATION !== 'false'
+        enableEstimation: process.env.NOWPAYMENTS_ENABLE_ESTIMATION !== 'false',
+        withdrawalsEnabled: process.env.NOWPAYMENTS_WITHDRAWALS_ENABLED === 'true'
     },
     services: { // Populate from .env or provide defaults
         userServiceUrl: process.env.USER_SERVICE_URL,
@@ -139,9 +143,11 @@ const config: IConfig = {
         transferPassword: process.env.CINETPAY_TRANSFER_PASSWORD || '',
         siteId: process.env.CINETPAY_SITE_ID || '',
         notificationKey: process.env.CINETPAY_NOTIFICATION_KEY || '',
-        alternateNotifyUrl: process.env.CINETPAY_ALTERNATE_NOTIFY_URL || ''
+        alternateNotifyUrl: process.env.CINETPAY_ALTERNATE_NOTIFY_URL || '',
+        withdrawalsEnabled: process.env.CINETPAY_WITHDRAWALS_ENABLED === 'true'
     },
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3003',
+    withdrawalsEnabled: process.env.WITHDRAWALS_ENABLED === 'true', // Global withdrawal control - default false
 };
 
 // Validation function

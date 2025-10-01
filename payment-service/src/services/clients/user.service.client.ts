@@ -49,7 +49,7 @@ interface UserValidationResponse {
 }
 
 // Locally define SubscriptionType to avoid direct dependency on user-service model
-type SubscriptionType = 'CLASSIQUE' | 'CIBLE' | 'NONE';
+type SubscriptionType = 'CLASSIQUE' | 'CIBLE' | 'RELANCE' | 'NONE';
 
 class UserServiceClient {
     private baseUrl = config.services.userServiceUrl;
@@ -182,20 +182,44 @@ class UserServiceClient {
         }
         const path = `/users/internal/${userId}/balance`;
         try {
-            log.debug(`Fetching balance for user ${userId} via user-service request method.`);
+            log.debug(`Fetching XAF balance for user ${userId} via user-service request method.`);
             const response = await this.request<{ success: boolean; data: { balance: number } }>('get', path);
 
             if (response?.success && typeof response.data?.balance === 'number') {
-                log.info(`Successfully fetched balance for user ${userId}: ${response.data.balance}`);
+                log.info(`Successfully fetched XAF balance for user ${userId}: ${response.data.balance}`);
                 return response.data.balance;
             } else {
-                log.error(`Failed to parse balance from user-service response for user ${userId}`, response);
-                throw new AppError('Failed to fetch user balance from user-service (invalid response format).', 500);
+                log.error(`Failed to parse XAF balance from user-service response for user ${userId}`, response);
+                throw new AppError('Failed to fetch user XAF balance from user-service (invalid response format).', 500);
             }
         } catch (error: any) {
-            log.error(`Error fetching balance for user ${userId} (via request method):`, error.message);
+            log.error(`Error fetching XAF balance for user ${userId} (via request method):`, error.message);
             if (error instanceof AppError) throw error;
-            throw new AppError(`Failed to communicate with user service for balance.`, 503);
+            throw new AppError(`Failed to communicate with user service for XAF balance.`, 503);
+        }
+    }
+
+    async getUsdBalance(userId: string): Promise<number> {
+        if (!this.baseUrl) {
+            log.error('Cannot get user USD balance: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/${userId}/usd-balance`;
+        try {
+            log.debug(`Fetching USD balance for user ${userId} via user-service request method.`);
+            const response = await this.request<{ success: boolean; data: { usdBalance: number } }>('get', path);
+
+            if (response?.success && typeof response.data?.usdBalance === 'number') {
+                log.info(`Successfully fetched USD balance for user ${userId}: ${response.data.usdBalance}`);
+                return response.data.usdBalance;
+            } else {
+                log.error(`Failed to parse USD balance from user-service response for user ${userId}`, response);
+                throw new AppError('Failed to fetch user USD balance from user-service (invalid response format).', 500);
+            }
+        } catch (error: any) {
+            log.error(`Error fetching USD balance for user ${userId} (via request method):`, error.message);
+            if (error instanceof AppError) throw error;
+            throw new AppError(`Failed to communicate with user service for USD balance.`, 503);
         }
     }
 
