@@ -394,28 +394,6 @@ class UserServiceClient {
         }
     }
 
-    async getUsdBalance(userId: string): Promise<number> {
-        if (!this.baseUrl) {
-            log.error('Cannot get user USD balance: User service URL not configured.');
-            throw new AppError('User service is not configured.', 503);
-        }
-        const path = `/users/internal/${userId}/usd-balance`;
-        try {
-            log.debug(`Fetching USD balance for user ${userId}`);
-            const response = await this.request<{ success: boolean; usdBalance: number }>('get', path);
-
-            if (response?.success && typeof response.usdBalance === 'number') {
-                return response.usdBalance;
-            } else {
-                throw new AppError('Failed to fetch user USD balance', 500);
-            }
-        } catch (error: any) {
-            log.error(`Error fetching USD balance for user ${userId}:`, error.message);
-            if (error instanceof AppError) throw error;
-            throw new AppError(`Failed to communicate with user service for USD balance.`, 503);
-        }
-    }
-
     async getUserByEmail(email: string): Promise<{ id: string; email?: string; phoneNumber?: string } | null> {
         if (!this.baseUrl) {
             log.error('Cannot find user by email: User service URL not configured.');
