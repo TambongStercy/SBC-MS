@@ -1,4 +1,4 @@
-import apiClient from './api';
+import apiClient from '../api/apiClient';
 
 // Types
 export interface RelanceMessage {

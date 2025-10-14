@@ -1,4 +1,4 @@
-import apiClient from './api';
+import apiClient from '../api/apiClient';
 
 // Define the expected response structure from the backend
 interface AdminLoginResponse {
