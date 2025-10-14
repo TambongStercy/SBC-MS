@@ -7,9 +7,10 @@ export interface PaginationOptions {
 }
 
 // Define SubscriptionType locally for the placeholder
-enum SubscriptionType {
+export enum SubscriptionType {
     CLASSIQUE = 'CLASSIQUE',
     CIBLE = 'CIBLE',
+    RELANCE = 'RELANCE',
 }
 
 // Define PartnerPack enum
@@ -42,7 +43,7 @@ export interface AdminUserData {
     momoOperator?: string;
     createdAt?: string;
     lastLogin?: string;
-    activeSubscriptionTypes?: ('CLASSIQUE' | 'CIBLE' | 'RELANCE')[];
+    activeSubscriptionTypes?: SubscriptionType[];
     partnerPack?: PartnerPack;
     // Add other relevant fields from IUser model if needed
 }

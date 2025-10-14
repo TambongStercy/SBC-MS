@@ -10,7 +10,7 @@ import {
   // UserRound,
 } from "lucide-react";
 import Loader from "../components/common/loader";
-import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats } from '../services/adminUserApi';
+import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats, SubscriptionType } from '../services/adminUserApi';
 import { PaginationOptions } from '../services/adminUserApi'; // Import PaginationOptions if needed elsewhere or keep local
 import toast from 'react-hot-toast'; // Import react-hot-toast
 import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
@@ -60,19 +60,19 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
             <td className="px-6 py-4 whitespace-nowrap text-sm">
               {user.activeSubscriptionTypes && user.activeSubscriptionTypes.length > 0 ? (
                 <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                  user.activeSubscriptionTypes.includes('CIBLE') ? 'bg-amber-500 text-amber-100' :
-                  user.activeSubscriptionTypes.includes('CLASSIQUE') ? 'bg-green-500 text-green-100' :
+                  user.activeSubscriptionTypes.includes(SubscriptionType.CIBLE) ? 'bg-amber-500 text-amber-100' :
+                  user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'bg-green-500 text-green-100' :
                   'bg-gray-500 text-gray-100'
                 }`}>
-                  {user.activeSubscriptionTypes.includes('CIBLE') ? 'Cible' :
-                   user.activeSubscriptionTypes.includes('CLASSIQUE') ? 'Classique' : 'None'}
+                  {user.activeSubscriptionTypes.includes(SubscriptionType.CIBLE) ? 'Cible' :
+                   user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'Classique' : 'None'}
                 </span>
               ) : (
                 <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">None</span>
               )}
             </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm">
-              {user.activeSubscriptionTypes && user.activeSubscriptionTypes.includes('RELANCE') ? (
+              {user.activeSubscriptionTypes && user.activeSubscriptionTypes.includes(SubscriptionType.RELANCE) ? (
                 <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-500 text-blue-100">Active</span>
               ) : (
                 <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">Inactive</span>

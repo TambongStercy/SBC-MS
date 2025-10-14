@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import CampaignModel, { ICampaign, CampaignType, CampaignStatus, TargetFilter } from '../database/models/relance-campaign.model';
 import RelanceTargetModel, { TargetStatus } from '../database/models/relance-target.model';
 import RelanceConfigModel from '../database/models/relance-config.model';
@@ -240,7 +241,7 @@ class CampaignService {
                 return { success: false, error: `Cannot pause campaign with status: ${campaign.status}` };
             }
 
-            campaign.pause(userId);
+            campaign.pause(new mongoose.Types.ObjectId(userId));
             await campaign.save();
 
             log.info(`Paused campaign ${campaignId} for user ${userId}`);
@@ -296,7 +297,7 @@ class CampaignService {
                 return { success: false, error: `Cannot cancel campaign with status: ${campaign.status}` };
             }
 
-            campaign.cancel(userId, reason);
+            campaign.cancel(new mongoose.Types.ObjectId(userId), reason);
             await campaign.save();
 
             // Exit all active targets for this campaign

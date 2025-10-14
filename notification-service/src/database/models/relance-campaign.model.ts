@@ -83,6 +83,14 @@ export interface ICampaign extends Document {
     cancelledAt?: Date;
     cancelledBy?: mongoose.Types.ObjectId;
     cancelReason?: string;
+
+    // Methods
+    canStart(userSubscriptionEndDate: Date): boolean;
+    estimateEndDate(targetsCount: number): Date;
+    pause(userId: mongoose.Types.ObjectId): void;
+    resume(): void;
+    cancel(userId: mongoose.Types.ObjectId, reason?: string): void;
+    complete(): void;
 }
 
 const CampaignSchema = new Schema<ICampaign>(

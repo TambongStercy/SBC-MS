@@ -189,7 +189,8 @@ export interface ManualPaymentIntentRequest {
 // Subscription types enum
 export enum SubscriptionType {
     CLASSIQUE = 'CLASSIQUE',
-    CIBLE = 'CIBLE'
+    CIBLE = 'CIBLE',
+    RELANCE = 'RELANCE'
 }
 
 // Response interface for manual payment intent creation
