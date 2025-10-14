@@ -36,6 +36,13 @@ Thumbs.db
 
 service-account.json
 
+# WhatsApp session directories (contain auth credentials)
+**/.wwebjs_auth/
+**/.baileys_auth/
+
+# Uploaded files
+**/uploads/
+
 # Ignore node_modules in all subdirectories (microservices)
 */node_modules/
 

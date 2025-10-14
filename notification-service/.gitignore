@@ -1,2 +1,6 @@
-# Ignore .wwebjs_auth/ directory which contains session data and cache
-.wwebjs_auth/ 
+# Ignore WhatsApp session directories (contain auth credentials and session data)
+.wwebjs_auth/
+.baileys_auth/
+
+# Ignore uploaded files directory
+uploads/ 
