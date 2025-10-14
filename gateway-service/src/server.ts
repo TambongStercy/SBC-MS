@@ -120,6 +120,14 @@ app.use('/api/webhook', proxy(config.services.notificationServiceUrl, {
   }
 }));
 
+// Relance service (notification service)
+app.use('/api/relance', proxy(config.services.notificationServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to relance service (notification service)`);
+    return '/api/relance' + req.url;
+  }
+}));
+
 // Recovery service (payment service)
 app.use('/api/recovery', proxy(config.services.paymentServiceUrl, {
   proxyReqPathResolver: (req) => {

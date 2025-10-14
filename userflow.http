@@ -446,24 +446,24 @@ Content-Type: application/json
 # This simulates a POST request from CinetPay to your payment webhook endpoint.
 # Used when a payment is successfully completed.
 # The endpoint validates site_id, transaction_id, and processes payment completion.
-POST {{baseUrl}}/payments/webhooks/cinetpay
+POST {{local}}/payments/webhooks/cinetpay
 Content-Type: application/json
 
 {
   "cpm_site_id": "5876842",
-  "cpm_trans_id": "kgBbDHI_3iGF",
-  "cpm_trans_date": "2025-08-13 14:02:41",
-  "cpm_amount": "2142",
+  "cpm_trans_id": "FXQ-LruE5xxY",
+  "cpm_trans_date": "2025-26-01 16:26:41",
+  "cpm_amount": "1000",
   "cpm_currency": "XOF",
   "signature": "8b3c8b70e3457f0ded283b18bdf6a40f82866f18cfeeace2381597b8e769a3c2",
-  "payment_method": "WAVESN",
-  "cel_phone_num": "221000",
-  "cpm_phone_prefixe": "221",
+  "payment_method": "MTNCM",
+  "cel_phone_num": "675080477",
+  "cpm_phone_prefixe": "237",
   "cpm_language": "fr",
   "cpm_version": "V3",
   "cpm_payment_config": "SINGLE",
   "cpm_page_action": "PAYMENT",
-  "cpm_custom": "{\"sessionId\":\"kgBbDHI_3iGF\"}",
+  "cpm_custom": "{\"sessionId\":\"FXQ-LruE5xxY\"}",
   "cpm_designation": "undefined - undefined",
   "cpm_error_message": "SUCCES"
 }

@@ -2426,7 +2426,7 @@ export class UserService {
     /**
      * [Admin] List users with filtering and pagination.
      */
-    async adminListUsers(filters: { status?: string; role?: string; search?: string }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold' })[], paginationInfo: any }> {
+    async adminListUsers(filters: { status?: string; role?: string; search?: string }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold', activeSubscriptionTypes?: SubscriptionType[] })[], paginationInfo: any }> {
         log.info('Admin request to list users with filters:', { filters, pagination });
         const { page = 1, limit = 10 } = pagination;
         const skip = (page - 1) * limit;
@@ -2467,25 +2467,38 @@ export class UserService {
                 skip,
                 limit,
                 sort: { createdAt: -1 },
-                select: '_id name email role balance blocked isVerified createdAt ipAddress referralCode phoneNumber region country city avatar avatarId'
+                select: '_id name email role balance usdBalance blocked deleted isVerified createdAt ipAddress referralCode phoneNumber region country city avatar avatarId'
             });
 
-            // Extract user IDs to fetch partner statuses
+            // Extract user IDs to fetch partner statuses and subscription types
             const userIds = usersFromDb.map(u => u._id);
             let partnerPackMap = new Map<string, 'silver' | 'gold'>();
+            let subscriptionTypesMap = new Map<string, SubscriptionType[]>();
 
             if (userIds.length > 0) {
                 // Ensure all IDs are ObjectIds before passing to the service method
                 const objectIdsToFetch = userIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
-                const activePartners = await partnerService.getActivePartnersByUserIds(objectIdsToFetch);
+                const [activePartners, subscriptionTypesResults] = await Promise.all([
+                    partnerService.getActivePartnersByUserIds(objectIdsToFetch),
+                    Promise.all(objectIdsToFetch.map(async (userId) => ({
+                        userId: userId.toString(),
+                        types: await subscriptionService.getActiveSubscriptionTypes(userId.toString())
+                    })))
+                ]);
+
                 activePartners.forEach(partner => {
                     partnerPackMap.set(partner.user.toString(), partner.pack);
+                });
+
+                subscriptionTypesResults.forEach(result => {
+                    subscriptionTypesMap.set(result.userId, result.types);
                 });
             }
 
             const usersWithPartnerPack = usersFromDb.map(user => ({
                 ...(typeof user.toObject === 'function' ? user.toObject() : { ...user }),
-                partnerPack: partnerPackMap.get(user._id.toString())
+                partnerPack: partnerPackMap.get(user._id.toString()),
+                activeSubscriptionTypes: subscriptionTypesMap.get(user._id.toString()) || []
             }));
 
             const totalPages = Math.ceil(totalCount / limit);

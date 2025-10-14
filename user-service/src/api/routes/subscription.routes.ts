@@ -15,7 +15,7 @@ router.get('/plans', (req, res) => subscriptionController.getAvailablePlans(req,
 
 /**
  * @route   POST /api/subscriptions/purchase
- * @desc    Initiate purchase for a specific subscription plan type (CLASSIQUE or CIBLE)
+ * @desc    Initiate purchase for a specific subscription plan type (CLASSIQUE, CIBLE, or RELANCE)
  * @access  Private
  */
 router.post('/purchase', authenticate as any, generalLimiter, (req, res) => subscriptionController.initiatePurchase(req as any, res));
@@ -37,7 +37,7 @@ router.post('/webhooks/payment-confirmation', webhookLimiter, (req, res) => subs
 
 /**
  * @route   GET /api/subscriptions
- * @desc    Get all user subscriptions with pagination
+ * @desc    Get all user subscriptions with pagination (supports ?category=registration|feature)
  * @access  Private
  */
 router.get('/', authenticate as any, generalLimiter, (req, res) => subscriptionController.getUserSubscriptions(req as any, res));
@@ -58,7 +58,7 @@ router.get('/expired', authenticate as any, generalLimiter, (req, res) => subscr
 
 /**
  * @route   GET /api/subscriptions/check/:type
- * @desc    Check if user has an active subscription of a specific type (CLASSIQUE or CIBLE)
+ * @desc    Check if user has an active subscription of a specific type (CLASSIQUE, CIBLE, or RELANCE)
  * @access  Private
  */
 router.get('/check/:type', authenticate as any, generalLimiter, (req, res) => subscriptionController.checkSubscription(req as any, res));

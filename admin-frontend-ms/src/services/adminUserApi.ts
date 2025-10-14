@@ -42,7 +42,7 @@ export interface AdminUserData {
     momoOperator?: string;
     createdAt?: string;
     lastLogin?: string;
-    activeSubscriptionTypes?: SubscriptionType[];
+    activeSubscriptionTypes?: ('CLASSIQUE' | 'CIBLE' | 'RELANCE')[];
     partnerPack?: PartnerPack;
     // Add other relevant fields from IUser model if needed
 }

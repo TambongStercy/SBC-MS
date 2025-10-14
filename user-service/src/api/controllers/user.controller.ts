@@ -2447,6 +2447,87 @@ export class UserController {
             });
         }
     }
+
+    /**
+     * Get unpaid referrals for a user (for relance feature)
+     * @route GET /api/users/internal/:userId/unpaid-referrals
+     */
+    async getUnpaidReferrals(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId } = req.params;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'User ID is required'
+                });
+                return;
+            }
+
+            // Get all referrals for this user (unpaid = subType 'none')
+            const result = await this.userService.getReferredUsersInfoPaginated(
+                userId,
+                undefined, // level (all levels)
+                undefined, // nameFilter
+                1,         // page
+                10000,     // limit (get all)
+                'none'     // subType - users with no subscriptions
+            );
+
+            const unpaidReferrals = result.referredUsers.map(user => ({
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                createdAt: user.createdAt
+            }));
+
+            res.status(200).json({
+                success: true,
+                data: unpaidReferrals
+            });
+        } catch (error: any) {
+            this.log.error(`Error getting unpaid referrals for user ${req.params.userId}:`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get unpaid referrals'
+            });
+        }
+    }
+
+    /**
+     * Check if user has active RELANCE subscription
+     * @route GET /api/users/internal/:userId/has-relance-subscription
+     */
+    async hasRelanceSubscription(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId } = req.params;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'User ID is required'
+                });
+                return;
+            }
+
+            const { subscriptionService } = await import('../../services/subscription.service');
+            const { SubscriptionType } = await import('../../database/models/subscription.model');
+            const activeSubTypes = await subscriptionService.getActiveSubscriptionTypes(userId);
+            const hasRelance = activeSubTypes.includes(SubscriptionType.RELANCE);
+
+            res.status(200).json({
+                success: true,
+                data: { hasRelance }
+            });
+        } catch (error: any) {
+            this.log.error(`Error checking RELANCE subscription for user ${req.params.userId}:`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to check RELANCE subscription'
+            });
+        }
+    }
 }
 
 // Export singleton instance

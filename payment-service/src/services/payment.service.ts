@@ -5242,7 +5242,7 @@ class PaymentService {
         if (finalStatus === TransactionStatus.COMPLETED) {
             log.info(`Payout for transaction ${internalTransactionId} is COMPLETED. Debiting user balance.`);
             try {
-                // Debit user's balance ONLY IF it's a successful withdrawal and has not been debited yet.
+                // Debit user's balance - allowing negative balance if insufficient
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
 
@@ -5258,7 +5258,7 @@ class PaymentService {
                 // NOTE: updateStatus is NOT changed here. It remains COMPLETED.
             }
         } else if (finalStatus === TransactionStatus.FAILED) {
-            log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit/refund needed.`);
+            log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
             updateMetadata.failureReason = `External payout failed: ${verifiedPayoutStatus?.comment || providerStatusMessage}`;
 
             // Send failure notification (only if it's a regular user withdrawal)
@@ -5663,7 +5663,7 @@ class PaymentService {
         if (finalStatus === TransactionStatus.COMPLETED) {
             log.info(`Payout for transaction ${internalTransactionId} is COMPLETED. Debiting user balance.`);
             try {
-                // Debit user's balance ONLY IF it's a successful withdrawal.
+                // Debit user's balance - allowing negative balance if insufficient
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
 

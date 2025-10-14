@@ -9,6 +9,8 @@ import { notificationProcessor } from './jobs/notificationProcessor';
 import { queueService } from './services/queue.service';
 import logger from './utils/logger';
 import { initializeWhatsAppConfig } from './utils/whatsapp-config-initializer';
+import { startRelanceEnrollmentJob } from './jobs/relance-enrollment.job';
+import { startRelanceSenderJob } from './jobs/relance-sender.job';
 
 // Create Express server
 const app = express();
@@ -74,6 +76,17 @@ async function startServer() {
 
         // Start notification processor
         notificationProcessor.start();
+
+        // Start relance cron jobs
+        // For testing: enrollment runs first, then sender runs after a delay
+        await startRelanceEnrollmentJob();
+
+        // Wait 3 seconds for enrollment to complete before starting sender
+        setTimeout(() => {
+            startRelanceSenderJob();
+        }, 3000);
+
+        logger.info('[Server] Relance cron jobs initialized');
 
         // Start Express server
         app.listen(PORT, () => {

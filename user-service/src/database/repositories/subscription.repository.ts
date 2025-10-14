@@ -1,4 +1,4 @@
-import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType } from '../models/subscription.model';
+import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType, SubscriptionCategory } from '../models/subscription.model';
 import mongoose, { Types, UpdateWriteOpResult } from 'mongoose';
 import logger from '../../utils/logger';
 
@@ -301,16 +301,23 @@ export class SubscriptionRepository {
      * @param userId User ID
      * @param page Page number for pagination (default: 1)
      * @param limit Number of items per page (default: 10)
+     * @param category Optional category filter (registration or feature)
      * @returns Paginated user subscriptions
      */
     async findUserSubscriptions(
         userId: string | Types.ObjectId,
         page: number = 1,
-        limit: number = 10
+        limit: number = 10,
+        category?: SubscriptionCategory
     ): Promise<SubscriptionPaginationResponse> {
         try {
             const skip = (page - 1) * limit;
-            const query = { user: userId };
+            const query: mongoose.FilterQuery<ISubscription> = { user: userId };
+
+            // Add category filter if provided
+            if (category) {
+                query.category = category;
+            }
 
             const subscriptions = await SubscriptionModel.find(query)
                 .sort({ createdAt: -1 })

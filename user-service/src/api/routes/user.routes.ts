@@ -58,6 +58,10 @@ serviceRouter.post('/find-by-email', (req, res) => userController.findUserByEmai
 serviceRouter.post('/find-by-phone', (req, res) => userController.findUserByPhoneNumber(req, res));
 serviceRouter.post('/find-by-momo', (req, res) => userController.findUserByMomoNumber(req, res));
 
+// Relance-specific endpoints (for notification service)
+serviceRouter.get('/:userId/unpaid-referrals', (req, res) => userController.getUnpaidReferrals(req, res));
+serviceRouter.get('/:userId/has-relance-subscription', (req, res) => userController.hasRelanceSubscription(req, res));
+
 // Mount the service router under a dedicated path *before* user auth middleware
 router.use('/internal', serviceRouter);
 

@@ -249,6 +249,33 @@ class NotificationService {
             return false;
         }
     }
+
+    /**
+     * Exit user from relance loop (called when user pays subscription)
+     */
+    async exitUserFromRelanceLoop(userId: string): Promise<boolean> {
+        try {
+            log.info(`Exiting user ${userId} from relance loop`);
+
+            const response = await this.apiClient.post('/relance/internal/exit-user', {
+                userId
+            });
+
+            if (response.status === 200 && response.data.success) {
+                log.info(`User ${userId} successfully exited from relance loop`);
+                return true;
+            } else {
+                log.warn(`Failed to exit user ${userId} from relance loop: ${response.data.message}`);
+                return false;
+            }
+        } catch (error: any) {
+            log.error(`Error exiting user ${userId} from relance loop: ${error.message}`, {
+                userId,
+                error: error.response?.data || error.message,
+            });
+            return false;
+        }
+    }
 }
 
 // Export singleton instance

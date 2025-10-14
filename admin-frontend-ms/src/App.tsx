@@ -17,6 +17,9 @@ import Partners from './pages/Partners';
 import FixFeexpayPaymentsPage from './pages/FixFeexpayPaymentsPage';
 import ManualPaymentRecoveryPage from './pages/ManualPaymentRecoveryPage';
 import StorageMonitoringPage from './pages/StorageMonitoringPage';
+import RelanceDashboardPage from './pages/RelanceDashboardPage';
+import RelanceMessagesPage from './pages/RelanceMessagesPage';
+import RelanceCampaignsPage from './pages/RelanceCampaignsPage';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -69,6 +72,9 @@ function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/fix-feexpay-payments" element={<FixFeexpayPaymentsPage />} />
             <Route path="/manual-payment-recovery" element={<ManualPaymentRecoveryPage />} />
+            <Route path="/relance/dashboard" element={<RelanceDashboardPage />} />
+            <Route path="/relance/messages" element={<RelanceMessagesPage />} />
+            <Route path="/relance/campaigns" element={<RelanceCampaignsPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

@@ -35,6 +35,8 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Phone Number</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Subscription</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Relance</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance FCFA</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance USD</th>
           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Country</th>
@@ -55,6 +57,27 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100">{user.name}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.email}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.phoneNumber || 'N/A'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm">
+              {user.activeSubscriptionTypes && user.activeSubscriptionTypes.length > 0 ? (
+                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                  user.activeSubscriptionTypes.includes('CIBLE') ? 'bg-amber-500 text-amber-100' :
+                  user.activeSubscriptionTypes.includes('CLASSIQUE') ? 'bg-green-500 text-green-100' :
+                  'bg-gray-500 text-gray-100'
+                }`}>
+                  {user.activeSubscriptionTypes.includes('CIBLE') ? 'Cible' :
+                   user.activeSubscriptionTypes.includes('CLASSIQUE') ? 'Classique' : 'None'}
+                </span>
+              ) : (
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">None</span>
+              )}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm">
+              {user.activeSubscriptionTypes && user.activeSubscriptionTypes.includes('RELANCE') ? (
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-500 text-blue-100">Active</span>
+              ) : (
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">Inactive</span>
+              )}
+            </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.balance !== undefined ? user.balance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' FCFA' : 'N/A'}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.usdBalance !== undefined ? user.usdBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : '0.00 USD'}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.country || 'N/A'}</td>
@@ -75,7 +98,7 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
         ))}
         {users.length === 0 && (
           <tr>
-            <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-400">No users match the current filters.</td>
+            <td colSpan={11} className="px-6 py-4 text-center text-sm text-gray-400">No users match the current filters.</td>
           </tr>
         )}
       </tbody>

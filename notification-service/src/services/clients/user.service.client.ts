@@ -67,7 +67,7 @@ class UserServiceClient {
             return [];
         }
 
-        const url = `${this.userServiceUrl}/api/users/internal/find-by-criteria`;
+        const url = `${this.userServiceUrl}/users/internal/find-by-criteria`;
         log.info(`Calling User Service to find users by criteria at ${url}`);
         log.debug('Criteria for user search:', criteria);
 
@@ -106,7 +106,7 @@ class UserServiceClient {
             return null;
         }
 
-        const url = `${this.userServiceUrl}/api/users/internal/batch-details`;
+        const url = `${this.userServiceUrl}/users/internal/batch-details`;
         log.debug(`Calling User Service to get details for user: ${userId} at ${url}`);
 
         try {
@@ -130,6 +130,78 @@ class UserServiceClient {
         } catch (error: any) {
             log.error(`Error calling User Service batch-details at ${url} for user ${userId}:`, error.response?.data || error.message);
             return null;
+        }
+    }
+
+    /**
+     * Get unpaid referrals for a user (for relance feature)
+     * @param userId The ID of the user
+     * @returns Array of unpaid referral objects
+     */
+    async getUnpaidReferrals(userId: string): Promise<any[]> {
+        if (!this.userServiceUrl) {
+            log.error('User Service URL not configured. Cannot get unpaid referrals.');
+            return [];
+        }
+
+        const url = `${this.userServiceUrl}/users/internal/${userId}/unpaid-referrals`;
+        log.debug(`Fetching unpaid referrals for user ${userId} at ${url}`);
+
+        try {
+            const response = await axios.get<{ success: boolean; data: any[] }>(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.serviceSecret}`,
+                    'X-Service-Name': 'notification-service'
+                },
+                timeout: 10000
+            });
+
+            if (response.data?.success && Array.isArray(response.data.data)) {
+                log.info(`Successfully fetched ${response.data.data.length} unpaid referrals for user ${userId}`);
+                return response.data.data;
+            } else {
+                log.warn(`User Service call for unpaid referrals returned no data for user ${userId}`);
+                return [];
+            }
+        } catch (error: any) {
+            log.error(`Error fetching unpaid referrals for user ${userId}:`, error.response?.data || error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Check if user has active RELANCE subscription
+     * @param userId The ID of the user
+     * @returns Boolean indicating if user has active RELANCE subscription
+     */
+    async hasRelanceSubscription(userId: string): Promise<boolean> {
+        if (!this.userServiceUrl) {
+            log.error('User Service URL not configured. Cannot check RELANCE subscription.');
+            return false;
+        }
+
+        const url = `${this.userServiceUrl}/users/internal/${userId}/has-relance-subscription`;
+        log.debug(`Checking RELANCE subscription for user ${userId} at ${url}`);
+
+        try {
+            const response = await axios.get<{ success: boolean; data: { hasRelance: boolean } }>(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.serviceSecret}`,
+                    'X-Service-Name': 'notification-service'
+                },
+                timeout: 5000
+            });
+
+            if (response.data?.success && typeof response.data.data?.hasRelance === 'boolean') {
+                log.info(`User ${userId} has RELANCE subscription: ${response.data.data.hasRelance}`);
+                return response.data.data.hasRelance;
+            } else {
+                log.warn(`User Service call for RELANCE subscription check returned invalid data for user ${userId}`);
+                return false;
+            }
+        } catch (error: any) {
+            log.error(`Error checking RELANCE subscription for user ${userId}:`, error.response?.data || error.message);
+            return false;
         }
     }
 }

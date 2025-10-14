@@ -1,14 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run recovery:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
       "Bash(npm run build:*)",
-      "WebFetch(domain:docs.feexpay.me)",
-      "Bash(find:*)",
-      "Bash(mongosh:*)",
-      "WebFetch(domain:documenter.getpostman.com)",
-      "WebFetch(domain:github.com)",
-      "WebSearch"
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

@@ -15,7 +15,10 @@ import {
   Bell,
   Hammer,
   HardDrive,
-  LifeBuoy
+  LifeBuoy,
+  MessageSquare,
+  Activity,
+  Target
 } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
@@ -91,6 +94,24 @@ const SIDEBAR_ITEMS = [
     icon: Send,
     color: "#10b981",
     path: "/notifications",
+  },
+  {
+    name: "Relance Dashboard",
+    icon: Activity,
+    color: "#06b6d4",
+    path: "/relance/dashboard",
+  },
+  {
+    name: "Relance Messages",
+    icon: MessageSquare,
+    color: "#8b5cf6",
+    path: "/relance/messages",
+  },
+  {
+    name: "Relance Campaigns",
+    icon: Target,
+    color: "#a855f7",
+    path: "/relance/campaigns",
   },
   {
     name: "Deconnexion",

@@ -1,7 +1,7 @@
 import { UserRepository } from '../database/repositories/user.repository';
 import { SubscriptionRepository, SubscriptionPaginationResponse } from '../database/repositories/subscription.repository';
 import { Types } from 'mongoose';
-import { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model';
+import { SubscriptionType, SubscriptionStatus, ISubscription, SubscriptionCategory, SubscriptionDuration } from '../database/models/subscription.model';
 import { CRYPTO_SUBSCRIPTION_PRICING } from '../config/crypto-pricing';
 import logger from '../utils/logger';
 // Import the payment service client
@@ -20,7 +20,9 @@ interface SubscriptionPlan {
     price: number;
     currency: string;
     description: string; // Add description
-    targetingLevel: 'country' | 'all'; // Describe targeting
+    targetingLevel?: 'country' | 'all'; // Describe targeting (optional - not all plans have this)
+    category: SubscriptionCategory; // NEW: registration or feature
+    duration: SubscriptionDuration; // NEW: lifetime or monthly
 }
 
 // XAF pricing for traditional payments (Mobile Money, etc.)
@@ -33,6 +35,8 @@ const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
         currency: 'XAF',
         description: 'Permet le ciblage des contacts par pays.',
         targetingLevel: 'country',
+        category: SubscriptionCategory.REGISTRATION,
+        duration: SubscriptionDuration.LIFETIME,
     },
     {
         id: SubscriptionType.CIBLE,
@@ -42,6 +46,18 @@ const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
         currency: 'XAF',
         description: 'Permet le ciblage avancé par pays, sexe, langue, âge, profession, centres d\'intérêt et ville.',
         targetingLevel: 'all',
+        category: SubscriptionCategory.REGISTRATION,
+        duration: SubscriptionDuration.LIFETIME,
+    },
+    {
+        id: SubscriptionType.RELANCE,
+        name: 'Abonnement Relance',
+        type: SubscriptionType.RELANCE,
+        price: 1000,
+        currency: 'XAF',
+        description: 'Suivi automatique de vos prospects via WhatsApp pendant 7 jours.',
+        category: SubscriptionCategory.FEATURE,
+        duration: SubscriptionDuration.MONTHLY,
     },
 ];
 
@@ -55,6 +71,8 @@ const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
         currency: 'USD',
         description: 'Permet le ciblage des contacts par pays.',
         targetingLevel: 'country',
+        category: SubscriptionCategory.REGISTRATION,
+        duration: SubscriptionDuration.LIFETIME,
     },
     {
         id: SubscriptionType.CIBLE,
@@ -64,6 +82,18 @@ const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
         currency: 'USD',
         description: 'Permet le ciblage avancé par pays, sexe, langue, âge, profession, centres d\'intérêt et ville.',
         targetingLevel: 'all',
+        category: SubscriptionCategory.REGISTRATION,
+        duration: SubscriptionDuration.LIFETIME,
+    },
+    {
+        id: SubscriptionType.RELANCE,
+        name: 'Abonnement Relance (Crypto)',
+        type: SubscriptionType.RELANCE,
+        price: 2.2, // ~1000 XAF / 500 = $2 USD
+        currency: 'USD',
+        description: 'Suivi automatique de vos prospects via WhatsApp pendant 7 jours.',
+        category: SubscriptionCategory.FEATURE,
+        duration: SubscriptionDuration.MONTHLY,
     },
 ];
 
@@ -154,18 +184,21 @@ export class SubscriptionService {
      * @param userId The user ID
      * @param page Page number (default: 1)
      * @param limit Items per page (default: 10)
+     * @param category Optional category filter (registration or feature)
      * @returns Paginated subscriptions
      */
     async getUserSubscriptions(
         userId: string,
         page: number = 1,
-        limit: number = 10
+        limit: number = 10,
+        category?: SubscriptionCategory
     ): Promise<SubscriptionPaginationResponse> {
         try {
             return await this.subscriptionRepository.findUserSubscriptions(
                 new Types.ObjectId(userId),
                 page,
-                limit
+                limit,
+                category
             );
         } catch (error) {
             this.log.error(`Error getting subscriptions for user ${userId}:`, error);
@@ -529,6 +562,15 @@ export class SubscriptionService {
         }
         // --- End Commission Distribution ---
 
+        // --- 4. Exit user from relance loop if they were in one ---
+        const { notificationService } = await import('./clients/notification.service.client');
+        notificationService.exitUserFromRelanceLoop(userId)
+            .catch(relanceError => {
+                this.log.error(`Error exiting user ${userId} from relance loop:`, relanceError);
+                // Non-critical error, just log it
+            });
+        // --- End Relance Exit ---
+
         return activatedSubscription;
     }
 
@@ -783,20 +825,23 @@ export class SubscriptionService {
     }
 
     /**
-     * Activates or Upgrades a LIFETIME subscription for a user.
+     * Activates or Upgrades a subscription for a user.
      * Handles overlaps: CIBLE supersedes CLASSIQUE.
-     * If activating CIBLE and CLASSIQUE exists, it upgrades CLASSIQUE.
-     * If the user already has an active subscription of the target type or higher, it returns the existing one.
-     * Otherwise, it creates a new lifetime subscription or updates the existing CLASSIQUE one.
+     * RELANCE subscriptions are independent monthly subscriptions.
      * @param userId User ID
-     * @param type Subscription Type (CLASSIQUE or CIBLE)
+     * @param type Subscription Type (CLASSIQUE, CIBLE, or RELANCE)
      * @returns The created or existing active subscription document.
      */
     async activateSubscription(userId: string, type: SubscriptionType): Promise<ISubscription | null> {
-        this.log.info(`Activating LIFETIME subscription type ${type} for user ${userId}`);
+        this.log.info(`Activating subscription type ${type} for user ${userId}`);
         try {
             const userObjectId = new Types.ObjectId(userId);
             const now = new Date();
+
+            // Handle RELANCE subscription (independent monthly subscription)
+            if (type === SubscriptionType.RELANCE) {
+                return await this.activateRelanceSubscription(userObjectId, now);
+            }
 
             // 1. Check for existing *active* CIBLE subscription first
             const activeCibleSub = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CIBLE);
@@ -880,6 +925,54 @@ export class SubscriptionService {
             this.log.error(`Error activating subscription type ${type} for user ${userId}:`, error);
             throw error; // Re-throw original error
         }
+    }
+
+    /**
+     * Activates a RELANCE subscription (monthly recurring)
+     * @param userObjectId User's ObjectId
+     * @param now Current timestamp
+     * @returns The created or existing RELANCE subscription
+     */
+    private async activateRelanceSubscription(userObjectId: Types.ObjectId, now: Date): Promise<ISubscription | null> {
+        this.log.info(`Activating RELANCE subscription for user ${userObjectId.toString()}`);
+
+        // Check for existing active RELANCE subscription
+        const activeRelanceSub = await this.subscriptionRepository.findActiveSubscriptionByType(
+            userObjectId,
+            SubscriptionType.RELANCE
+        );
+
+        if (activeRelanceSub) {
+            this.log.info(`User ${userObjectId} already has active RELANCE subscription`);
+            return activeRelanceSub;
+        }
+
+        // Calculate next renewal date (60 days from now / 2 months)
+        const nextRenewalDate = new Date(now);
+        nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 2);
+
+        // End date is 1 day after renewal for grace period
+        const endDate = new Date(nextRenewalDate);
+        endDate.setDate(endDate.getDate() + 1);
+
+        // Create new RELANCE subscription
+        const newSubscriptionData: Partial<ISubscription> = {
+            user: userObjectId,
+            subscriptionType: SubscriptionType.RELANCE,
+            category: SubscriptionCategory.FEATURE,
+            duration: SubscriptionDuration.MONTHLY,
+            startDate: now,
+            endDate: endDate,
+            nextRenewalDate: nextRenewalDate,
+            autoRenew: true, // Default to auto-renew
+            status: SubscriptionStatus.ACTIVE,
+        };
+
+        const result = await this.subscriptionRepository.create(newSubscriptionData as any);
+        this.log.info(`Created new RELANCE subscription for user ${userObjectId}`);
+
+        // No VCF cache regeneration needed for RELANCE (feature subscription)
+        return result;
     }
 
     /**

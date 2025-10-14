@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { SubscriptionService } from '../../services/subscription.service';
 import logger from '../../utils/logger';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { SubscriptionType } from '../../database/models/subscription.model';
+import { SubscriptionType, SubscriptionCategory } from '../../database/models/subscription.model';
 import { Types } from 'mongoose'; // Import Types for ObjectId validation
 
 export class SubscriptionController {
@@ -15,7 +15,7 @@ export class SubscriptionController {
 
     /**
      * Get all user subscriptions with pagination
-     * @param req Express request
+     * @param req Express request (supports ?category=registration|feature)
      * @param res Express response
      */
     async getUserSubscriptions(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -28,8 +28,23 @@ export class SubscriptionController {
 
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 10;
+            const category = req.query.category as string;
 
-            const result = await this.subscriptionService.getUserSubscriptions(userId, page, limit);
+            // Validate category if provided
+            if (category && !['registration', 'feature'].includes(category)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Invalid category parameter. Must be "registration" or "feature".'
+                });
+                return;
+            }
+
+            const result = await this.subscriptionService.getUserSubscriptions(
+                userId,
+                page,
+                limit,
+                category as SubscriptionCategory | undefined
+            );
 
             res.status(200).json({
                 success: true,
@@ -121,7 +136,7 @@ export class SubscriptionController {
 
             const subscriptionType = req.params.type as string;
             if (!subscriptionType || !(subscriptionType.toUpperCase() in SubscriptionType)) {
-                res.status(400).json({ success: false, message: 'Invalid subscription type provided. Must be CLASSIQUE or CIBLE.' });
+                res.status(400).json({ success: false, message: 'Invalid subscription type provided. Must be CLASSIQUE, CIBLE, or RELANCE.' });
                 return;
             }
 
@@ -176,7 +191,7 @@ export class SubscriptionController {
 
             const { planType, paymentMethod } = req.body;
             if (!planType || !(planType in SubscriptionType)) {
-                res.status(400).json({ success: false, message: 'Missing or invalid planType in request body. Must be CLASSIQUE or CIBLE.' });
+                res.status(400).json({ success: false, message: 'Missing or invalid planType in request body. Must be CLASSIQUE, CIBLE, or RELANCE.' });
                 return;
             }
 
