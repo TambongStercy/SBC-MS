@@ -764,15 +764,17 @@ class PaymentService {
             }
             // ===== END BALANCE VALIDATION =====
 
-            // Update transaction status to PENDING (ready for external payout)
+            // NEW FLOW: After OTP verification, set status to PENDING_ADMIN_APPROVAL
+            // Update transaction status to PENDING_ADMIN_APPROVAL (awaiting admin approval)
             // Clear OTP fields now that verification is complete
             const updatedTransaction = await transactionRepository.update(transaction._id, {
-                status: TransactionStatus.PENDING, // Now PENDING, awaiting external payout success
+                status: TransactionStatus.PENDING_ADMIN_APPROVAL, // Awaiting admin approval
                 verificationCode: undefined,
                 verificationExpiry: undefined,
                 metadata: {
                     ...(metadata || {}),
-                    statusDetails: 'OTP verified, external payout initiated (pending provider confirmation)' // Updated message
+                    statusDetails: 'OTP verified, awaiting admin approval',
+                    withdrawalType: isCryptoWithdrawal ? 'crypto' : 'mobile_money'
                 }
             });
 
@@ -781,22 +783,38 @@ class PaymentService {
                 throw new AppError('Failed to finalize withdrawal verification.', 500);
             }
 
-            // Fetch user details for notification
-            let userEmail: string | undefined;
-            let userName: string | undefined;
+            // NEW FLOW: No automatic processing - just notify user and return
+            // Send notification to user that withdrawal is awaiting admin approval
             try {
-                const userDetails = await userServiceClient.getUserDetails(userId.toString());
-                if (!userDetails?.email) {
-                    log.warn(`Could not find email for user ${userId} for withdrawal notification.`);
-                } else {
-                    userEmail = userDetails.email;
-                    userName = userDetails.name;
-                }
-            } catch (userError: any) {
-                log.error(`Failed to fetch user details for ${userId} during withdrawal verification for notification: ${userError.message}`);
-                log.warn(`Continuing withdrawal processing for ${userId} despite failing to fetch user details.`);
+                await notificationService.sendTransactionNotification(
+                    userId.toString(),
+                    'withdrawal_pending_approval',
+                    {
+                        transactionId: updatedTransaction.transactionId,
+                        amount: updatedTransaction.amount,
+                        currency: updatedTransaction.currency,
+                        status: 'pending_admin_approval'
+                    }
+                );
+            } catch (notifError: any) {
+                log.error(`Failed to send pending approval notification for ${transactionId}:`, notifError);
             }
 
+            log.info(`Withdrawal ${transactionId} verified and set to PENDING_ADMIN_APPROVAL status`);
+
+            return {
+                success: true,
+                transaction: {
+                    transactionId: updatedTransaction.transactionId,
+                    amount: updatedTransaction.amount,
+                    fee: updatedTransaction.fee,
+                    total: updatedTransaction.amount - updatedTransaction.fee,
+                    status: updatedTransaction.status,
+                    message: "Withdrawal verified successfully. Your request is now awaiting admin approval. You will be notified once it is processed."
+                }
+            };
+
+            /* OLD AUTOMATIC PROCESSING LOGIC - NOW HANDLED BY ADMIN APPROVAL
             // isCryptoWithdrawal already declared earlier in balance validation section
 
             if (isCryptoWithdrawal) {
@@ -816,11 +834,23 @@ class PaymentService {
                     });
                     throw new AppError('Crypto withdrawals are currently disabled. Please try again later or contact support.', 503);
                 }
+            */
 
-                const cryptoAddress = updatedTransaction.metadata?.cryptoAddress;
-                const cryptoCurrency = updatedTransaction.metadata?.cryptoCurrency;
-                const usdAmount = updatedTransaction.metadata?.usdAmount;
+                // const cryptoAddress = updatedTransaction.metadata?.cryptoAddress;
+                // const cryptoCurrency = updatedTransaction.metadata?.cryptoCurrency;
+                // const usdAmount = updatedTransaction.metadata?.usdAmount;
+            // END OF COMMENTED OLD LOGIC */
 
+        } catch (error: any) {
+            log.error(`Error verifying withdrawal transaction ${transactionId}: ${error.message}`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(`Failed to verify withdrawal: ${error.message}`, 500);
+        }
+    }
+
+    /* REMOVED OLD AUTO-PROCESSING LOGIC - KEPT FOR REFERENCE
                 if (!cryptoAddress || !cryptoCurrency || !usdAmount) {
                     log.error(`Transaction ${updatedTransaction.transactionId} missing crypto withdrawal details.`);
                     await transactionRepository.update(updatedTransaction._id, {
@@ -1161,25 +1191,7 @@ class PaymentService {
                 }
             });
 
-            return {
-                success: true,
-                transaction: {
-                    transactionId: updatedTransaction.transactionId,
-                    amount: updatedTransaction.amount, // Gross amount in XAF
-                    fee: updatedTransaction.fee, // Fee in XAF
-                    total: netAmountForPayout, // Net amount in target payout currency
-                    status: updatedTransaction.status,
-                    message: "Withdrawal verified. Your payout is now being processed."
-                }
-            };
-        } catch (error: any) {
-            log.error(`Error verifying withdrawal transaction ${transactionId}: ${error.message}`, error);
-            if (error instanceof AppError) {
-                throw error;
-            }
-            throw new AppError(`Failed to verify withdrawal: ${error.message}`, 500);
-        }
-    }
+    END OF REMOVED OLD AUTO-PROCESSING LOGIC */
 
     /**
      * Process a payment between users
@@ -5856,6 +5868,292 @@ class PaymentService {
         }
 
         return { cancelledCount };
+    }
+
+    /**
+     * Approve a pending withdrawal (Admin Action)
+     * Processes the withdrawal after admin approval
+     */
+    async approveWithdrawal(
+        transactionId: string,
+        adminId: string,
+        adminNotes?: string
+    ): Promise<{ success: boolean; transaction?: any; error?: string }> {
+        try {
+            log.info(`Admin ${adminId} approving withdrawal ${transactionId}`);
+
+            // Find the transaction (without lean to get Mongoose document)
+            const transaction = await TransactionModel.findOne({ transactionId });
+            if (!transaction) {
+                return { success: false, error: 'Transaction not found' };
+            }
+
+            // Validate transaction type and status
+            if (transaction.type !== TransactionType.WITHDRAWAL) {
+                return { success: false, error: 'Transaction is not a withdrawal' };
+            }
+
+            if (transaction.status !== TransactionStatus.PENDING_ADMIN_APPROVAL) {
+                return { success: false, error: `Cannot approve withdrawal with status: ${transaction.status}` };
+            }
+
+            // Update transaction with approval details
+            transaction.approvedBy = new Types.ObjectId(adminId);
+            transaction.approvedAt = new Date();
+            transaction.status = TransactionStatus.PROCESSING;
+            if (adminNotes) {
+                transaction.adminNotes = adminNotes;
+            }
+
+            if (!transaction.metadata) {
+                transaction.metadata = {};
+            }
+            transaction.metadata.approvalStatus = 'approved';
+            transaction.metadata.approvedByAdmin = adminId;
+
+            await transaction.save();
+
+            // Notify user about approval
+            try {
+                await notificationService.sendTransactionNotification(
+                    transaction.userId.toString(),
+                    'withdrawal_approved',
+                    {
+                        transactionId: transaction.transactionId,
+                        amount: transaction.amount,
+                        currency: transaction.currency,
+                        status: 'approved'
+                    }
+                );
+            } catch (notifError: any) {
+                log.error(`Failed to send approval notification for ${transactionId}:`, notifError);
+            }
+
+            // Initiate external payout based on withdrawal type
+            const withdrawalType = transaction.metadata?.withdrawalType || 'mobile_money';
+
+            if (withdrawalType === 'crypto') {
+                // Process crypto withdrawal
+                await this.processCryptoWithdrawalPayout(transaction);
+            } else {
+                // Process mobile money withdrawal
+                await this.processMobileMoneyWithdrawalPayout(transaction);
+            }
+
+            log.info(`Withdrawal ${transactionId} approved by admin ${adminId} and processing initiated`);
+
+            return { success: true, transaction };
+
+        } catch (error: any) {
+            log.error(`Error approving withdrawal ${transactionId}:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Reject a pending withdrawal (Admin Action)
+     * Refunds the user's balance
+     */
+    async rejectWithdrawal(
+        transactionId: string,
+        adminId: string,
+        rejectionReason: string,
+        adminNotes?: string
+    ): Promise<{ success: boolean; transaction?: any; error?: string }> {
+        try {
+            log.info(`Admin ${adminId} rejecting withdrawal ${transactionId}: ${rejectionReason}`);
+
+            // Find the transaction (without lean to get Mongoose document)
+            const transaction = await TransactionModel.findOne({ transactionId });
+            if (!transaction) {
+                return { success: false, error: 'Transaction not found' };
+            }
+
+            // Validate transaction type and status
+            if (transaction.type !== TransactionType.WITHDRAWAL) {
+                return { success: false, error: 'Transaction is not a withdrawal' };
+            }
+
+            if (transaction.status !== TransactionStatus.PENDING_ADMIN_APPROVAL) {
+                return { success: false, error: `Cannot reject withdrawal with status: ${transaction.status}` };
+            }
+
+            // Refund the user's balance (amount + fee that was deducted)
+            const refundAmount = transaction.amount; // This includes the fee
+            const userId = transaction.userId.toString();
+
+            await userServiceClient.updateUserBalance(userId, refundAmount);
+
+            // Update transaction with rejection details
+            transaction.rejectedBy = new Types.ObjectId(adminId);
+            transaction.rejectedAt = new Date();
+            transaction.rejectionReason = rejectionReason;
+            transaction.status = TransactionStatus.REJECTED_BY_ADMIN;
+            if (adminNotes) {
+                transaction.adminNotes = adminNotes;
+            }
+
+            if (!transaction.metadata) {
+                transaction.metadata = {};
+            }
+            transaction.metadata.approvalStatus = 'rejected';
+            transaction.metadata.rejectedByAdmin = adminId;
+            transaction.metadata.refundedAmount = refundAmount;
+
+            await transaction.save();
+
+            // Notify user about rejection
+            try {
+                await notificationService.sendTransactionNotification(
+                    userId,
+                    'withdrawal_rejected',
+                    {
+                        transactionId: transaction.transactionId,
+                        amount: transaction.amount,
+                        currency: transaction.currency,
+                        rejectionReason,
+                        refundedAmount: refundAmount,
+                        status: 'rejected'
+                    }
+                );
+            } catch (notifError: any) {
+                log.error(`Failed to send rejection notification for ${transactionId}:`, notifError);
+            }
+
+            log.info(`Withdrawal ${transactionId} rejected by admin ${adminId}. ${refundAmount} ${transaction.currency} refunded to user ${userId}`);
+
+            return { success: true, transaction };
+
+        } catch (error: any) {
+            log.error(`Error rejecting withdrawal ${transactionId}:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Process mobile money withdrawal payout after approval
+     * (Helper method extracted from existing withdrawal flow)
+     */
+    private async processMobileMoneyWithdrawalPayout(transaction: any): Promise<void> {
+        try {
+            const accountInfo = transaction.metadata?.accountInfo;
+            if (!accountInfo) {
+                throw new Error('Missing account info for mobile money withdrawal');
+            }
+
+            const countryCode = accountInfo.countryCode;
+            const momoOperator = accountInfo.momoOperator;
+            const fullMomoNumber = accountInfo.fullMomoNumber;
+            const recipientName = accountInfo.recipientName || 'User';
+
+            // Select gateway based on country
+            const selectedGateway = this.selectGateway(countryCode, undefined, true, undefined);
+
+            // Calculate net amount (amount - fee)
+            const netAmount = transaction.amount - transaction.fee;
+
+            // Initiate payout via selected gateway
+            if (selectedGateway === PaymentGateway.CINETPAY) {
+                // Use CinetPay payout service directly
+                const dialingPrefix = countryCodeToDialingPrefix[countryCode];
+                const nationalPhoneNumber = fullMomoNumber.replace(/\D/g, '').startsWith(dialingPrefix || '')
+                    ? fullMomoNumber.replace(/\D/g, '').substring((dialingPrefix || '').length)
+                    : fullMomoNumber.replace(/\D/g, '');
+
+                const result = await cinetpayPayoutService.initiatePayout({
+                    userId: transaction.userId.toString(),
+                    amount: netAmount,
+                    phoneNumber: nationalPhoneNumber,
+                    countryCode,
+                    recipientName,
+                    paymentMethod: momoOperatorToCinetpayPaymentMethod[momoOperator],
+                    client_transaction_id: transaction.transactionId
+                });
+
+                if (!result.success) {
+                    throw new Error(result.message);
+                }
+            } else if (selectedGateway === PaymentGateway.FEEXPAY) {
+                // Use existing processFeexpayPayout method
+                const targetCurrency = momoOperatorToCurrency[momoOperator] || Currency.XOF;
+                await this.processFeexpayPayout(
+                    transaction.transactionId,
+                    fullMomoNumber,
+                    momoOperator,
+                    netAmount,
+                    targetCurrency
+                );
+            }
+
+        } catch (error: any) {
+            log.error(`Error processing mobile money payout for ${transaction.transactionId}:`, error);
+            // Update transaction to failed
+            await transactionRepository.update(transaction._id, {
+                status: TransactionStatus.FAILED,
+                metadata: {
+                    ...(transaction.metadata || {}),
+                    failureReason: error.message
+                }
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Process crypto withdrawal payout after approval
+     * (Helper method for crypto withdrawals)
+     */
+    private async processCryptoWithdrawalPayout(transaction: any): Promise<void> {
+        try {
+            const userId = transaction.userId.toString();
+            const netAmount = transaction.amount - transaction.fee;
+
+            // Get user's crypto wallet info
+            const userDetails = await userServiceClient.getUserDetails(userId);
+            if (!userDetails) {
+                throw new Error('User not found');
+            }
+
+            const cryptoWalletAddress = (userDetails as any).cryptoWalletAddress;
+            const cryptoWalletCurrency = (userDetails as any).cryptoWalletCurrency;
+
+            if (!cryptoWalletAddress || !cryptoWalletCurrency) {
+                throw new Error('User crypto wallet not configured');
+            }
+
+            // Initiate crypto payout via NOWPayments
+            const payoutResult = await nowPaymentsService.createPayout({
+                address: cryptoWalletAddress,
+                currency: cryptoWalletCurrency,
+                amount: netAmount, // Amount in USD
+                ipnCallbackUrl: `${config.selfBaseUrl}/api/payouts/webhooks/nowpayments`
+            });
+
+            // Update transaction with external payout info
+            await transactionRepository.update(transaction._id, {
+                externalTransactionId: payoutResult.id,
+                metadata: {
+                    ...(transaction.metadata || {}),
+                    cryptoPayoutId: payoutResult.id,
+                    cryptoWalletAddress,
+                    cryptoWalletCurrency
+                }
+            });
+
+            log.info(`Crypto payout initiated for ${transaction.transactionId}: ${payoutResult.id}`);
+
+        } catch (error: any) {
+            log.error(`Error processing crypto payout for ${transaction.transactionId}:`, error);
+            // Update transaction to failed
+            await transactionRepository.update(transaction._id, {
+                status: TransactionStatus.FAILED,
+                metadata: {
+                    ...(transaction.metadata || {}),
+                    failureReason: error.message
+                }
+            });
+            throw error;
+        }
     }
 
 }

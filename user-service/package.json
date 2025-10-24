@@ -15,7 +15,8 @@
         "recalc:partners:apply": "ts-node --swc src/scripts/partner-recalc-simple.ts --apply",
         "recalc:partners:full": "ts-node --swc src/scripts/recalculate-partner-transactions.ts",
         "recalc:partners:full:apply": "ts-node --swc src/scripts/recalculate-partner-transactions.ts --apply",
-        "migrate:subscriptions": "ts-node --swc src/scripts/migrate-subscription-fields.ts"
+        "migrate:subscriptions": "ts-node --swc src/scripts/migrate-subscription-fields.ts",
+        "find:suspicious": "ts-node --swc src/scripts/find-suspicious-users.ts"
     },
     "keywords": [],
     "author": "",

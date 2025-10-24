@@ -109,11 +109,11 @@ class CampaignService {
      */
     private async estimateTargetCount(userId: string, filter: TargetFilter): Promise<number> {
         try {
-            // Get all unpaid referrals for this user
-            const unpaidReferrals = await userServiceClient.getUnpaidReferrals(userId);
+            // Get ALL referrals for this user (not just unpaid) for campaign filtering
+            const allReferrals = await userServiceClient.getReferralsForCampaign(userId);
 
             // Apply filters
-            let filtered = unpaidReferrals;
+            let filtered = allReferrals;
 
             // Filter by registration date
             if (filter.registrationDateFrom || filter.registrationDateTo) {
@@ -130,6 +130,22 @@ class CampaignService {
                 filtered = filtered.filter(ref =>
                     filter.countries!.includes(ref.country)
                 );
+            }
+
+            // Filter by subscription status (CLASSIQUE/CIBLE inscription payment)
+            if (filter.subscriptionStatus && filter.subscriptionStatus !== 'all') {
+                filtered = filtered.filter(ref => {
+                    const hasSubscription = ref.activeSubscriptionTypes &&
+                        ref.activeSubscriptionTypes.length > 0 &&
+                        (ref.activeSubscriptionTypes.includes('CLASSIQUE') ||
+                         ref.activeSubscriptionTypes.includes('CIBLE'));
+
+                    if (filter.subscriptionStatus === 'subscribed') {
+                        return hasSubscription;
+                    } else { // 'non-subscribed'
+                        return !hasSubscription;
+                    }
+                });
             }
 
             // Filter by gender

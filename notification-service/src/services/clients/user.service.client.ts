@@ -170,6 +170,42 @@ class UserServiceClient {
     }
 
     /**
+     * Get all referrals for a user for campaign filtering (includes subscribed and non-subscribed)
+     * @param userId The ID of the user
+     * @returns Array of all referral objects with full data for filtering
+     */
+    async getReferralsForCampaign(userId: string): Promise<any[]> {
+        if (!this.userServiceUrl) {
+            log.error('User Service URL not configured. Cannot get referrals for campaign.');
+            return [];
+        }
+
+        const url = `${this.userServiceUrl}/users/internal/${userId}/referrals-for-campaign`;
+        log.debug(`Fetching all referrals for campaign for user ${userId} at ${url}`);
+
+        try {
+            const response = await axios.get<{ success: boolean; data: any[] }>(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.serviceSecret}`,
+                    'X-Service-Name': 'notification-service'
+                },
+                timeout: 10000
+            });
+
+            if (response.data?.success && Array.isArray(response.data.data)) {
+                log.info(`Successfully fetched ${response.data.data.length} referrals for campaign for user ${userId}`);
+                return response.data.data;
+            } else {
+                log.warn(`User Service call for referrals for campaign returned no data for user ${userId}`);
+                return [];
+            }
+        } catch (error: any) {
+            log.error(`Error fetching referrals for campaign for user ${userId}:`, error.response?.data || error.message);
+            return [];
+        }
+    }
+
+    /**
      * Check if user has active RELANCE subscription
      * @param userId The ID of the user
      * @returns Boolean indicating if user has active RELANCE subscription

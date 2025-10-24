@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { campaignService } from '../../services/campaign.service';
 import CampaignModel, { CampaignStatus, CampaignType, TargetFilter } from '../../database/models/relance-campaign.model';
-import RelanceTargetModel from '../../database/models/relance-target.model';
+import RelanceTargetModel, { TargetStatus } from '../../database/models/relance-target.model';
 import RelanceConfigModel from '../../database/models/relance-config.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
 import logger from '../../utils/logger';
@@ -40,15 +40,15 @@ class RelanceCampaignController {
                 return;
             }
 
-            // Get all unpaid referrals for this user
-            let unpaidReferrals = await userServiceClient.getUnpaidReferrals(userId);
+            // Get ALL referrals for this user (not just unpaid) for campaign filtering
+            let allReferrals = await userServiceClient.getReferralsForCampaign(userId);
 
             // Apply filters (same logic as enrollment job)
             const filter: TargetFilter = targetFilter;
 
             // Filter by registration date
             if (filter.registrationDateFrom || filter.registrationDateTo) {
-                unpaidReferrals = unpaidReferrals.filter((ref: any) => {
+                allReferrals = allReferrals.filter((ref: any) => {
                     const regDate = new Date(ref.createdAt);
                     if (filter.registrationDateFrom && regDate < filter.registrationDateFrom) return false;
                     if (filter.registrationDateTo && regDate > filter.registrationDateTo) return false;
@@ -58,28 +58,44 @@ class RelanceCampaignController {
 
             // Filter by country
             if (filter.countries && filter.countries.length > 0) {
-                unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+                allReferrals = allReferrals.filter((ref: any) =>
                     filter.countries!.includes(ref.country)
                 );
             }
 
+            // Filter by subscription status (CLASSIQUE/CIBLE inscription payment)
+            if (filter.subscriptionStatus && filter.subscriptionStatus !== 'all') {
+                allReferrals = allReferrals.filter((ref: any) => {
+                    const hasSubscription = ref.activeSubscriptionTypes &&
+                        ref.activeSubscriptionTypes.length > 0 &&
+                        (ref.activeSubscriptionTypes.includes('CLASSIQUE') ||
+                         ref.activeSubscriptionTypes.includes('CIBLE'));
+
+                    if (filter.subscriptionStatus === 'subscribed') {
+                        return hasSubscription;
+                    } else { // 'non-subscribed'
+                        return !hasSubscription;
+                    }
+                });
+            }
+
             // Filter by gender
             if (filter.gender && filter.gender !== 'all') {
-                unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+                allReferrals = allReferrals.filter((ref: any) =>
                     ref.gender === filter.gender
                 );
             }
 
             // Filter by profession
             if (filter.professions && filter.professions.length > 0) {
-                unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+                allReferrals = allReferrals.filter((ref: any) =>
                     filter.professions!.includes(ref.profession)
                 );
             }
 
             // Filter by age
             if (filter.minAge || filter.maxAge) {
-                unpaidReferrals = unpaidReferrals.filter((ref: any) => {
+                allReferrals = allReferrals.filter((ref: any) => {
                     if (!ref.age) return false;
                     if (filter.minAge && ref.age < filter.minAge) return false;
                     if (filter.maxAge && ref.age > filter.maxAge) return false;
@@ -93,15 +109,15 @@ class RelanceCampaignController {
                     status: { $in: ['active', 'paused'] }
                 });
 
-                unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+                allReferrals = allReferrals.filter((ref: any) =>
                     !existingTargetIds.some((id: any) => id.toString() === ref._id.toString())
                 );
             }
 
-            const totalCount = unpaidReferrals.length;
+            const totalCount = allReferrals.length;
 
             // Get sample of 5 users
-            const sampleUsers = unpaidReferrals.slice(0, 5).map((ref: any) => ({
+            const sampleUsers = allReferrals.slice(0, 5).map((ref: any) => ({
                 _id: ref._id,
                 name: ref.name,
                 email: ref.email,
@@ -513,6 +529,70 @@ class RelanceCampaignController {
     }
 
     /**
+     * Delete a campaign
+     * DELETE /api/relance/campaigns/:id
+     */
+    async deleteCampaign(req: Request, res: Response): Promise<void> {
+        try {
+            const { id } = req.params;
+            const userId = (req as any).user?.userId || req.body.userId;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'User ID is required'
+                });
+                return;
+            }
+
+            // Find campaign
+            const campaign = await CampaignModel.findOne({ _id: id, userId });
+
+            if (!campaign) {
+                res.status(404).json({
+                    success: false,
+                    message: 'Campaign not found'
+                });
+                return;
+            }
+
+            // Only allow deletion of draft, cancelled, or completed campaigns
+            if (campaign.status === CampaignStatus.ACTIVE || campaign.status === CampaignStatus.PAUSED) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Cannot delete active or paused campaigns. Please cancel the campaign first.'
+                });
+                return;
+            }
+
+            // Delete all targets associated with this campaign
+            const deletedTargets = await RelanceTargetModel.deleteMany({ campaignId: id });
+
+            // Delete the campaign
+            await CampaignModel.deleteOne({ _id: id });
+
+            log.info(`Deleted campaign ${id} for user ${userId} (removed ${deletedTargets.deletedCount} targets)`);
+
+            res.status(200).json({
+                success: true,
+                message: 'Campaign deleted successfully',
+                data: {
+                    campaignId: id,
+                    targetsDeleted: deletedTargets.deletedCount
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error deleting campaign:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to delete campaign',
+                error: error.message
+            });
+        }
+    }
+
+    /**
      * Update relance config
      * PATCH /api/relance/config
      */
@@ -575,6 +655,166 @@ class RelanceCampaignController {
     }
 
     // ===== ADMIN ENDPOINTS =====
+
+    /**
+     * Get default relance statistics (targets without campaignId)
+     * GET /api/relance/default/stats
+     */
+    async getDefaultRelanceStats(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = (req as any).user?.userId;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'User ID is required'
+                });
+                return;
+            }
+
+            // Get config to check pause status
+            const config = await RelanceConfigModel.findOne({ userId });
+
+            // Count targets without campaignId (default enrollment)
+            const activeTargets = await RelanceTargetModel.countDocuments({
+                referrerUserId: userId,
+                campaignId: { $exists: false },
+                status: TargetStatus.ACTIVE
+            });
+
+            const completedTargets = await RelanceTargetModel.countDocuments({
+                referrerUserId: userId,
+                campaignId: { $exists: false },
+                status: TargetStatus.COMPLETED
+            });
+
+            const totalTargets = activeTargets + completedTargets;
+
+            // Get all default targets for detailed stats
+            const targets = await RelanceTargetModel.find({
+                referrerUserId: userId,
+                campaignId: { $exists: false }
+            });
+
+            // Calculate overall message stats
+            let totalMessagesSent = 0;
+            let totalMessagesDelivered = 0;
+
+            targets.forEach(target => {
+                totalMessagesSent += target.messagesDelivered.length;
+                totalMessagesDelivered += target.messagesDelivered.filter(
+                    m => m.status === 'delivered'
+                ).length;
+            });
+
+            const deliveryPercentage = totalMessagesSent > 0
+                ? (totalMessagesDelivered / totalMessagesSent) * 100
+                : 0;
+
+            // Calculate day-by-day progression (Day 1 through Day 7)
+            const dayProgression = [];
+            for (let day = 1; day <= 7; day++) {
+                const targetsOnDay = targets.filter(target => target.currentDay === day && target.status === TargetStatus.ACTIVE);
+                dayProgression.push({
+                    day,
+                    count: targetsOnDay.length
+                });
+            }
+
+            // Count completed relance (those who finished 7 days or exited)
+            const completedRelance = targets.filter(
+                target => target.status === TargetStatus.COMPLETED
+            ).length;
+
+            // Count enrolled (total ever enrolled in default relance)
+            const totalEnrolled = targets.length;
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    isPaused: config?.defaultCampaignPaused || false,
+                    totalEnrolled,
+                    activeTargets,
+                    completedRelance,
+                    totalMessagesSent,
+                    totalMessagesDelivered,
+                    deliveryPercentage: parseFloat(deliveryPercentage.toFixed(2)),
+                    dayProgression,
+                    // Legacy fields for backward compatibility
+                    completedTargets,
+                    totalTargets,
+                    successRate: parseFloat(deliveryPercentage.toFixed(2))
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error getting default relance stats:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get default relance statistics',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get default relance targets (enrolled referrals without campaign)
+     * GET /api/relance/default/targets
+     */
+    async getDefaultRelanceTargets(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = (req as any).user?.userId;
+            const { page = '1', limit = '20', status } = req.query;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'User ID is required'
+                });
+                return;
+            }
+
+            const pageNum = parseInt(page as string);
+            const limitNum = parseInt(limit as string);
+            const skip = (pageNum - 1) * limitNum;
+
+            const filter: any = {
+                referrerUserId: userId,
+                campaignId: { $exists: false }
+            };
+
+            if (status) {
+                filter.status = status;
+            }
+
+            const targets = await RelanceTargetModel.find(filter)
+                .sort({ enteredLoopAt: -1 })
+                .skip(skip)
+                .limit(limitNum)
+                .populate('referralUserId', 'name email phoneNumber');
+
+            const total = await RelanceTargetModel.countDocuments(filter);
+            const totalPages = Math.ceil(total / limitNum);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    targets,
+                    total,
+                    page: pageNum,
+                    totalPages
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error getting default relance targets:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get default relance targets',
+                error: error.message
+            });
+        }
+    }
 
     /**
      * Get campaign statistics (Admin)

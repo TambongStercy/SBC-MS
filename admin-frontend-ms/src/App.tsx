@@ -20,6 +20,7 @@ import StorageMonitoringPage from './pages/StorageMonitoringPage';
 import RelanceDashboardPage from './pages/RelanceDashboardPage';
 import RelanceMessagesPage from './pages/RelanceMessagesPage';
 import RelanceCampaignsPage from './pages/RelanceCampaignsPage';
+import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -75,6 +76,7 @@ function App() {
             <Route path="/relance/dashboard" element={<RelanceDashboardPage />} />
             <Route path="/relance/messages" element={<RelanceMessagesPage />} />
             <Route path="/relance/campaigns" element={<RelanceCampaignsPage />} />
+            <Route path="/withdrawals/approvals" element={<WithdrawalApprovalPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

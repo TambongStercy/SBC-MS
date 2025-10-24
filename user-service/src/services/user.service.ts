@@ -66,6 +66,13 @@ interface IReferredUserInfo {
     referralLevel: number;
     createdAt: Date;
     activeSubscriptions?: SubscriptionType[]; // Added optional field
+
+    // Additional fields for relance campaign filtering
+    country?: string;
+    gender?: string;
+    profession?: string;
+    age?: number;
+    activeSubscriptionTypes?: string[]; // For checking CLASSIQUE/CIBLE subscription status
 }
 
 // Define interface specifically for populated referrer info (matching repository)
@@ -1228,7 +1235,12 @@ export class UserService {
                             avatar: ref?.avatar ?? '',
                             avatarId: ref?.avatarId ?? '',
                             createdAt: ref.createdAt,
-                            // activeSubscriptions will be added later
+                            // Additional fields for relance filtering
+                            country: ref?.country,
+                            gender: ref?.gender,
+                            profession: ref?.profession,
+                            age: ref?.age,
+                            // activeSubscriptions and activeSubscriptionTypes will be added later
                         };
                     } else {
                         // For other types, data has nested referredUser structure
@@ -1242,7 +1254,12 @@ export class UserService {
                             avatar: user?.avatar ?? '',
                             avatarId: user?.avatarId ?? '',
                             createdAt: ref.createdAt,
-                            // activeSubscriptions will be added later
+                            // Additional fields for relance filtering
+                            country: user?.country,
+                            gender: user?.gender,
+                            profession: user?.profession,
+                            age: user?.age,
+                            // activeSubscriptions and activeSubscriptionTypes will be added later
                         };
                     }
                 }).filter((info: any) => info.name !== 'N/A');
@@ -1280,7 +1297,8 @@ export class UserService {
                 const subscriptions = activeSubscriptionsMap.get(userIdStr);
                 return {
                     ...user,
-                    activeSubscriptions: subscriptions && subscriptions.length > 0 ? subscriptions : undefined
+                    activeSubscriptions: subscriptions && subscriptions.length > 0 ? subscriptions : undefined,
+                    activeSubscriptionTypes: subscriptions && subscriptions.length > 0 ? subscriptions : []
                 };
             });
 

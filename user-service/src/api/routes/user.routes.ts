@@ -60,6 +60,7 @@ serviceRouter.post('/find-by-momo', (req, res) => userController.findUserByMomoN
 
 // Relance-specific endpoints (for notification service)
 serviceRouter.get('/:userId/unpaid-referrals', (req, res) => userController.getUnpaidReferrals(req, res));
+serviceRouter.get('/:userId/referrals-for-campaign', (req, res) => userController.getReferralsForCampaign(req, res));
 serviceRouter.get('/:userId/has-relance-subscription', (req, res) => userController.hasRelanceSubscription(req, res));
 
 // Mount the service router under a dedicated path *before* user auth middleware

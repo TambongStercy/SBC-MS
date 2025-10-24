@@ -12,6 +12,9 @@ import {
   // Ticket,
   Landmark,
   ChevronDown,
+  Target,
+  MessageSquare,
+  TrendingUp,
 } from "lucide-react";
 import UsersOverViewCahrt from "../components/charts/usersOverViewCahrt";
 import ComparisonChart from "../components/charts/ComparisonChart";
@@ -21,6 +24,8 @@ import RecentTransactionsList from "../components/common/RecentTransactionsList"
 
 import { fetchDashboard, fetchRecentTransactions } from "../api"; // Import the API functions
 import { AccountTransaction } from "../services/adminAccountTransactionApi"; // Import the shared AccountTransaction type
+import { getRelanceStats, getRecentWithdrawals, RelanceStats, RecentWithdrawal } from "../services/adminDashboardApi";
+import RecentWithdrawalsList from "../components/common/RecentWithdrawalsList";
 
 import Loader from "../components/common/loader";
 import { getCountryName } from "../utils/countryUtils"; // Import the new helper
@@ -47,6 +52,7 @@ export interface ActivityOverviewData {
 
 interface AdminDashboardData {
   adminBalance: number;
+  adminUSDBalance?: number; // USD balance
   count: number;
   classiqueSubCount: number; // Updated: Separate Classique subscription count
   cibleSubCount: number; // Updated: Separate Cible subscription count
@@ -91,6 +97,8 @@ const OverViewPage = () => {
   // State to store dashboard and users data
   const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<AccountTransaction[]>([]);
+  const [relanceStats, setRelanceStats] = useState<RelanceStats | null>(null);
+  const [recentWithdrawals, setRecentWithdrawals] = useState<RecentWithdrawal[]>([]);
   const [loading, setLoading] = useState(true);
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +110,11 @@ const OverViewPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const [dashboardResponse, recentTransactionsResponse] = await Promise.all([
+        const [dashboardResponse, recentTransactionsResponse, relanceStatsData, recentWithdrawalsData] = await Promise.all([
           fetchDashboard(),
-          fetchRecentTransactions(5)
+          fetchRecentTransactions(5),
+          getRelanceStats(),
+          getRecentWithdrawals(5)
         ]);
 
         console.log("Raw Dashboard Response:", dashboardResponse);
@@ -118,6 +128,8 @@ const OverViewPage = () => {
 
         setDashboardData(actualDashboardData);
         setRecentTransactions(recentTransactionsResponse);
+        setRelanceStats(relanceStatsData);
+        setRecentWithdrawals(recentWithdrawalsData);
 
         if (actualDashboardData.balancesByCountry && Object.keys(actualDashboardData.balancesByCountry).length > 0) {
           setSelectedCountryCode(Object.keys(actualDashboardData.balancesByCountry)[0]);
@@ -182,10 +194,16 @@ const OverViewPage = () => {
         >
           {/* CORE STATS */}
           <StatCard
-            name="Solde Admin"
+            name="Solde Admin (XAF)"
             icon={BadgeSwissFranc}
             value={dashboardData?.adminBalance != null ? `${Math.round(dashboardData.adminBalance).toLocaleString('en-US')} F` : "N/A"}
             color="#6366f1"
+          />
+          <StatCard
+            name="Solde Admin (USD)"
+            icon={BadgeSwissFranc}
+            value={dashboardData?.adminUSDBalance != null ? `$${dashboardData.adminUSDBalance.toFixed(2)}` : "$0.00"}
+            color="#10b981"
           />
           <StatCard
             name="Total Utilisateurs"
@@ -235,6 +253,30 @@ const OverViewPage = () => {
             value={dashboardData?.totalCountryBalances != null ? `${Math.round(dashboardData.totalCountryBalances).toLocaleString('en-US')} F` : "N/A"}
             color="#3b82f6"
           />
+
+          {/* RELANCE STATS */}
+          {relanceStats && (
+            <>
+              <StatCard
+                name="Campagnes Actives"
+                icon={Target}
+                value={relanceStats.activeCampaigns || 0}
+                color="#a855f7"
+              />
+              <StatCard
+                name="Messages Envoyés"
+                icon={MessageSquare}
+                value={relanceStats.totalMessagesSent || 0}
+                color="#06b6d4"
+              />
+              <StatCard
+                name="Taux de Livraison"
+                icon={TrendingUp}
+                value={`${(relanceStats.averageDeliveryRate || 0).toFixed(1)}%`}
+                color="#f59e0b"
+              />
+            </>
+          )}
 
           {/* DYNAMIC COUNTRY BALANCE DISPLAY */}
           {dashboardData?.balancesByCountry && Object.keys(dashboardData.balancesByCountry).length > 0 && (
@@ -340,6 +382,14 @@ const OverViewPage = () => {
                 Transactions Récentes
               </h3>
               <RecentTransactionsList transactions={recentTransactions} />
+            </div>
+
+            {/* Recent Withdrawals List */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
+                Retraits Récents
+              </h3>
+              <RecentWithdrawalsList withdrawals={recentWithdrawals} />
             </div>
           </div>
         </div>

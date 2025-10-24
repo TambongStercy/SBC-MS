@@ -21,6 +21,8 @@ export interface UserDetails {
     // Crypto wallet fields for crypto withdrawals
     cryptoWalletAddress?: string;
     cryptoWalletCurrency?: string;
+    // User balance
+    balance?: { [key: string]: number };
     // Ensure all fields used by PaymentService are included here
 }
 

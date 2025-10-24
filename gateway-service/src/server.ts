@@ -136,6 +136,15 @@ app.use('/api/recovery', proxy(config.services.paymentServiceUrl, {
   }
 }));
 
+// Admin withdrawal approval routes (payment service)
+// This must come BEFORE the generic /api/payments route to match first
+app.use('/api/payments/admin/withdrawals', proxy(config.services.paymentServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to admin withdrawals service (payment service)`);
+    return '/api/admin/withdrawals' + req.url;
+  }
+}));
+
 // Payment service
 app.use('/api/payments', proxy(config.services.paymentServiceUrl, {
   proxyReqPathResolver: (req) => {

@@ -9,6 +9,8 @@ export enum TransactionStatus {
     REFUNDED = 'refunded',
     PROCESSING = 'processing',
     PENDING_OTP_VERIFICATION = 'pending_otp_verification',
+    PENDING_ADMIN_APPROVAL = 'pending_admin_approval', // Withdrawal awaiting admin approval
+    REJECTED_BY_ADMIN = 'rejected_by_admin', // Withdrawal rejected by admin
 }
 
 // Define Transaction Type
@@ -81,11 +83,19 @@ export interface ITransaction extends Document {
     verificationCode?: string;     // Store OTP for this transaction
     verificationExpiry?: Date;     // Expiry for the OTP
 
-    // --- Added Fields --- 
+    // --- Added Fields ---
     reference?: string;           // Optional general reference
     serviceProvider?: string;     // Optional specific service provider (e.g., mobile money operator)
     paymentMethod?: string;       // Optional specific payment method (e.g., 'MTN', 'ORANGE_MONEY')
     externalTransactionId?: string; // Optional ID from external system/provider
+
+    // --- Admin Approval Fields ---
+    approvedBy?: Types.ObjectId;   // Admin who approved/rejected the withdrawal
+    approvedAt?: Date;             // When the withdrawal was approved
+    rejectedBy?: Types.ObjectId;   // Admin who rejected the withdrawal
+    rejectedAt?: Date;             // When the withdrawal was rejected
+    rejectionReason?: string;      // Reason for rejection
+    adminNotes?: string;           // Additional notes from admin
 }
 
 // Payment Provider Data Schema
@@ -192,6 +202,29 @@ const TransactionSchema = new Schema<ITransaction>(
         },
         verificationExpiry: { // Expiry for the OTP
             type: Date,
+        },
+        // Admin approval fields
+        approvedBy: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            index: true
+        },
+        approvedAt: {
+            type: Date
+        },
+        rejectedBy: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            index: true
+        },
+        rejectedAt: {
+            type: Date
+        },
+        rejectionReason: {
+            type: String
+        },
+        adminNotes: {
+            type: String
         },
     },
     {

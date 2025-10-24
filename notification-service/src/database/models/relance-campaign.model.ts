@@ -21,15 +21,19 @@ export enum CampaignStatus {
 }
 
 export interface TargetFilter {
-    countries?: string[];           // Filter by country codes
-    registrationDateFrom?: Date;    // Registration date range start
-    registrationDateTo?: Date;      // Registration date range end
+    // Primary filters
+    countries?: string[];                    // Filter by country codes
+    registrationDateFrom?: Date;             // Registration date range start (month/year)
+    registrationDateTo?: Date;               // Registration date range end (month/year)
+    subscriptionStatus?: 'subscribed' | 'non-subscribed' | 'all'; // Has paid inscription (CLASSIQUE/CIBLE) or not
+
+    // Additional filters (optional)
+    hasUnpaidReferrals?: boolean;            // Only users with unpaid referrals
+    excludeCurrentTargets?: boolean;         // Exclude users already in a campaign
     gender?: 'male' | 'female' | 'other' | 'all';
     professions?: string[];
     minAge?: number;
     maxAge?: number;
-    hasUnpaidReferrals?: boolean;   // Only users with unpaid referrals
-    excludeCurrentTargets?: boolean; // Exclude users already in a campaign
 }
 
 export interface ICampaign extends Document {
@@ -123,18 +127,25 @@ const CampaignSchema = new Schema<ICampaign>(
 
         // Filtering
         targetFilter: {
+            // Primary filters
             countries: [String],
             registrationDateFrom: Date,
             registrationDateTo: Date,
+            subscriptionStatus: {
+                type: String,
+                enum: ['subscribed', 'non-subscribed', 'all']
+            },
+
+            // Additional filters
+            hasUnpaidReferrals: Boolean,
+            excludeCurrentTargets: Boolean,
             gender: {
                 type: String,
                 enum: ['male', 'female', 'other', 'all']
             },
             professions: [String],
             minAge: Number,
-            maxAge: Number,
-            hasUnpaidReferrals: Boolean,
-            excludeCurrentTargets: Boolean
+            maxAge: Number
         },
         estimatedTargetCount: Number,
         actualTargetCount: Number,

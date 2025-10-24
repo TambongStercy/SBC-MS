@@ -2479,6 +2479,11 @@ export class UserController {
                 name: user.name,
                 email: user.email,
                 phoneNumber: user.phoneNumber,
+                country: user.country,
+                gender: user.gender,
+                profession: user.profession,
+                age: user.age,
+                activeSubscriptionTypes: user.activeSubscriptionTypes || [],
                 createdAt: user.createdAt
             }));
 
@@ -2491,6 +2496,58 @@ export class UserController {
             res.status(500).json({
                 success: false,
                 message: 'Failed to get unpaid referrals'
+            });
+        }
+    }
+
+    /**
+     * Get all referrals for campaign filtering (includes subscribed and non-subscribed)
+     * @route GET /api/users/internal/:userId/referrals-for-campaign
+     */
+    async getReferralsForCampaign(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId } = req.params;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'User ID is required'
+                });
+                return;
+            }
+
+            // Get ALL referrals for this user (no subscription filter)
+            const result = await this.userService.getReferredUsersInfoPaginated(
+                userId,
+                undefined, // level (all levels)
+                undefined, // nameFilter
+                1,         // page
+                10000,     // limit (get all)
+                undefined  // subType - NO FILTER, get everyone
+            );
+
+            const allReferrals = result.referredUsers.map(user => ({
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                country: user.country,
+                gender: user.gender,
+                profession: user.profession,
+                age: user.age,
+                activeSubscriptionTypes: user.activeSubscriptionTypes || [],
+                createdAt: user.createdAt
+            }));
+
+            res.status(200).json({
+                success: true,
+                data: allReferrals
+            });
+        } catch (error: any) {
+            this.log.error(`Error getting referrals for campaign for user ${req.params.userId}:`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get referrals for campaign'
             });
         }
     }

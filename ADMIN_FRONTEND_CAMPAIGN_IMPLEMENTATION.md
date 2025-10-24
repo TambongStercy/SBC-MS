@@ -19,7 +19,21 @@ export interface Campaign {
     name: string;
     type: 'default' | 'filtered';
     status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'cancelled';
-    targetFilter?: { /* ... */ };
+    targetFilter?: {
+        // Primary filters
+        countries?: string[];                          // Filter by country codes
+        registrationDateFrom?: Date;                   // Month/year start
+        registrationDateTo?: Date;                     // Month/year end
+        subscriptionStatus?: 'subscribed' | 'non-subscribed' | 'all'; // Has CLASSIQUE/CIBLE
+
+        // Additional filters (optional)
+        hasUnpaidReferrals?: boolean;
+        excludeCurrentTargets?: boolean;
+        gender?: 'male' | 'female' | 'other' | 'all';
+        professions?: string[];
+        minAge?: number;
+        maxAge?: number;
+    };
     estimatedTargetCount?: number;
     actualTargetCount?: number;
     scheduledStartDate?: string;
