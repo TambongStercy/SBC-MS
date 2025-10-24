@@ -148,7 +148,7 @@ const WithdrawalApprovalPage: React.FC = () => {
             <div className="flex-1 overflow-auto relative z-10 bg-gray-900">
                 <Header title="Withdrawal Approvals" />
                 <div className="flex items-center justify-center h-96">
-                    <Loader />
+                    <Loader name="Withdrawals" />
                 </div>
             </div>
         );

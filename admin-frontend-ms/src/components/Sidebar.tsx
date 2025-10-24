@@ -236,9 +236,9 @@ function Sidebar() {
                   <AnimatePresence>
                     {(isExpanded || !isSidebarOpen) && (
                       <motion.div
-                        initial={isSidebarOpen ? { height: 0, opacity: 0 } : false}
-                        animate={isSidebarOpen ? { height: "auto", opacity: 1 } : false}
-                        exit={isSidebarOpen ? { height: 0, opacity: 0 } : false}
+                        initial={isSidebarOpen ? { height: 0, opacity: 0 } : undefined}
+                        animate={isSidebarOpen ? { height: "auto", opacity: 1 } : undefined}
+                        exit={isSidebarOpen ? { height: 0, opacity: 0 } : undefined}
                         transition={{ duration: 0.2 }}
                         className="space-y-1"
                       >
