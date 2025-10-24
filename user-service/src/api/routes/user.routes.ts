@@ -53,6 +53,9 @@ serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsB
 // NEW: Internal route to get active subscriptions for a user
 serviceRouter.get('/:userId/active-subscriptions', (req, res) => userController.getUserActiveSubscriptions(req, res));
 
+// NEW: Internal route to get referral stats (for payment service)
+serviceRouter.get('/:userId/referral-stats', (req, res) => userController.getReferralStats(req, res));
+
 // NEW: Internal routes for finding users by different identifiers
 serviceRouter.post('/find-by-email', (req, res) => userController.findUserByEmail(req, res));
 serviceRouter.post('/find-by-phone', (req, res) => userController.findUserByPhoneNumber(req, res));
@@ -139,5 +142,9 @@ router.post('/confirm-change-phone', mediumLimiter, (req, res, next) => userCont
 // === Admin Routes ===
 // Apply admin authorization middleware for these routes
 router.post('/admin/fix-referrals', authenticate as any, authorize([UserRole.ADMIN]) as any, (req, res, next) => userController.adminFixReferrals(req as AuthenticatedRequest, res, next));
+
+// Sub-admin management routes (for withdrawal admins)
+import subAdminRoutes from './sub-admin.routes';
+router.use('/sub-admins', subAdminRoutes);
 
 export default router; 

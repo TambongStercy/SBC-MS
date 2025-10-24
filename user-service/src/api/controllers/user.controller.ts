@@ -2317,6 +2317,26 @@ export class UserController {
         }
     }
 
+    // NEW: Get Referral Stats (Internal Route for Payment Service)
+    async getReferralStats(req: Request, res: Response): Promise<void> {
+        const { userId } = req.params;
+        try {
+            if (!userId) {
+                res.status(400).json({ success: false, message: 'User ID is required.' });
+                return;
+            }
+
+            // Import referral stats service
+            const { getReferralStats } = await import('../../services/referral-stats.service');
+            const stats = await getReferralStats(userId);
+
+            res.status(200).json({ success: true, data: stats });
+        } catch (error: any) {
+            this.log.error(`Error getting referral stats for user ${userId}:`, error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Failed to retrieve referral stats.' });
+        }
+    }
+
     // NEW: Find User by Email (Internal Route)
     async findUserByEmail(req: Request, res: Response): Promise<void> {
         const { email } = req.body;

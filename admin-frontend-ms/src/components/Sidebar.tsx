@@ -20,9 +20,12 @@ import {
   Target,
   CheckSquare,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  UserCog,
+  History
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 // Define menu groups with collapsible sections
 const SIDEBAR_GROUPS = [
@@ -42,6 +45,12 @@ const SIDEBAR_GROUPS = [
     id: "admin-tools",
     name: "Admin Tools",
     items: [
+      {
+        name: "Sub-Admins",
+        icon: UserCog,
+        color: "#8b5cf6",
+        path: "/sub-admins",
+      },
       {
         name: "Fix FeexPay Payments",
         icon: Hammer,
@@ -108,6 +117,12 @@ const SIDEBAR_GROUPS = [
         color: "#f59e0b",
         path: "/withdrawals/approvals",
       },
+      {
+        name: "Withdrawal History",
+        icon: History,
+        color: "#06b6d4",
+        path: "/withdrawals/history",
+      },
     ]
   },
   {
@@ -167,6 +182,39 @@ function Sidebar() {
     "financial", // Financial expanded to show new Withdrawal Approvals
   ]);
   const location = useLocation();
+  const { adminUser } = useAuth();
+
+  // Check if user is withdrawal admin
+  const isWithdrawalAdmin = adminUser?.role === 'withdrawal_admin';
+
+  // Filter sidebar groups based on user role
+  const filteredSidebarGroups = SIDEBAR_GROUPS.map(group => {
+    if (isWithdrawalAdmin) {
+      // Withdrawal admins only see specific items
+      if (group.id === 'dashboard') {
+        return group; // Show dashboard
+      }
+      if (group.id === 'financial') {
+        // Only show withdrawal-related items
+        return {
+          ...group,
+          items: group.items.filter(item =>
+            item.path === '/withdrawals/approvals' ||
+            item.path === '/withdrawals/history'
+          )
+        };
+      }
+      // Hide all other groups for withdrawal admins
+      return { ...group, items: [] };
+    }
+
+    // Admins see everything, but hide sub-admin management from withdrawal admins
+    if (group.id === 'admin-tools' && adminUser?.role !== 'admin') {
+      return { ...group, items: [] };
+    }
+
+    return group;
+  }).filter(group => group.items.length > 0); // Remove empty groups
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups((prev) =>
@@ -202,7 +250,7 @@ function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
           <div className="space-y-3">
-            {SIDEBAR_GROUPS.map((group) => {
+            {filteredSidebarGroups.map((group) => {
               const isExpanded = expandedGroups.includes(group.id);
               const isActive = isGroupActive(group.items);
 

@@ -69,6 +69,23 @@ export interface WithdrawalMetadata {
     [key: string]: any;
 }
 
+export interface ReferralStats {
+    directReferrals: number;
+    indirectReferrals: number;
+    totalReferrals: number;
+    directSubscribedReferrals: number;
+    indirectSubscribedReferrals: number;
+    totalSubscribedReferrals: number;
+}
+
+export interface WithdrawalHistoryItem {
+    transactionId: string;
+    amount: number;
+    currency?: string;
+    status: string;
+    createdAt: string;
+}
+
 export interface WithdrawalTransaction {
     _id: string;
     transactionId: string;
@@ -97,6 +114,12 @@ export interface WithdrawalTransaction {
     userEmail?: string;
     userPhoneNumber?: string;
     userBalance?: { [key: string]: number };
+
+    // Referral statistics
+    referralStats?: ReferralStats;
+
+    // Withdrawal history
+    withdrawalHistory?: WithdrawalHistoryItem[];
 }
 
 export interface WithdrawalStats {
@@ -299,6 +322,61 @@ export async function bulkApproveWithdrawals(
             axiosError.response?.data?.message ||
             axiosError.response?.data?.error ||
             'Failed to bulk approve withdrawals'
+        );
+    }
+}
+
+/**
+ * Get validated withdrawals (completed, rejected, failed)
+ */
+export async function getValidatedWithdrawals(
+    page: number = 1,
+    limit: number = 20,
+    status?: 'completed' | 'rejected_by_admin' | 'failed'
+): Promise<PendingWithdrawalsResponse> {
+    try {
+        const params: any = { page, limit };
+        if (status) {
+            params.status = status;
+        }
+
+        const response = await apiClient.get<PendingWithdrawalsResponse>(
+            '/payments/admin/withdrawals/validated',
+            { params }
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching validated withdrawals:', error);
+        const axiosError = error as AxiosError<ApiResponse>;
+        throw new Error(
+            axiosError.response?.data?.message ||
+            axiosError.response?.data?.error ||
+            'Failed to fetch validated withdrawals'
+        );
+    }
+}
+
+/**
+ * Get user-specific withdrawal history
+ */
+export async function getUserWithdrawalHistory(
+    userId: string,
+    page: number = 1,
+    limit: number = 20
+): Promise<PendingWithdrawalsResponse> {
+    try {
+        const response = await apiClient.get<PendingWithdrawalsResponse>(
+            `/payments/admin/withdrawals/history/${userId}`,
+            { params: { page, limit } }
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching user withdrawal history:', error);
+        const axiosError = error as AxiosError<ApiResponse>;
+        throw new Error(
+            axiosError.response?.data?.message ||
+            axiosError.response?.data?.error ||
+            'Failed to fetch user withdrawal history'
         );
     }
 }

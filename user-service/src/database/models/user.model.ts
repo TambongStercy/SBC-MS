@@ -4,7 +4,8 @@ import bcrypt from 'bcrypt';
 // Define User Roles
 export enum UserRole {
     USER = 'user',
-    ADMIN = 'admin', // Consider if admin users are stored here or in a separate AdminModel
+    ADMIN = 'admin', // Super admin with full access
+    WITHDRAWAL_ADMIN = 'withdrawal_admin', // Sub-admin for managing withdrawals only
 }
 
 // Define User Sex options

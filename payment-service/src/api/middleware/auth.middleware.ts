@@ -17,7 +17,8 @@ declare global {
 // Define User Roles
 export enum UserRole {
     USER = 'user',
-    ADMIN = 'admin', // Consider if admin users are stored here or in a separate AdminModel
+    ADMIN = 'admin', // Super admin with full access
+    WITHDRAWAL_ADMIN = 'withdrawal_admin', // Sub-admin for managing withdrawals only
 }
 
 // Define the expected structure of the JWT payload
@@ -143,6 +144,32 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction) =>
         return res.status(403).json({
             success: false,
             message: 'Admin access required'
+        });
+    }
+
+    next();
+};
+
+/**
+ * Middleware to check for admin or withdrawal_admin role
+ * Used for withdrawal management routes
+ */
+export const requireWithdrawalAccess = (req: Request, res: Response, next: NextFunction) => {
+    // Must run after authenticate middleware
+    if (!req.user) {
+        return res.status(401).json({
+            success: false,
+            message: 'Authentication required'
+        });
+    }
+
+    const allowedRoles = ['admin', 'withdrawal_admin'];
+
+    if (!allowedRoles.includes(req.user.role)) {
+        log.warn(`Access denied for role '${req.user.role}' to withdrawal route. User: ${req.user.email}`);
+        return res.status(403).json({
+            success: false,
+            message: 'Insufficient permissions. Only admins and withdrawal managers can access this resource.'
         });
     }
 

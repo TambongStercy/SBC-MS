@@ -50,6 +50,15 @@ interface UserValidationResponse {
     valid: boolean;
 }
 
+export interface ReferralStats {
+    directReferrals: number;
+    indirectReferrals: number;
+    totalReferrals: number;
+    directSubscribedReferrals: number;
+    indirectSubscribedReferrals: number;
+    totalSubscribedReferrals: number;
+}
+
 // Locally define SubscriptionType to avoid direct dependency on user-service model
 type SubscriptionType = 'CLASSIQUE' | 'CIBLE' | 'RELANCE' | 'NONE';
 
@@ -468,6 +477,44 @@ class UserServiceClient {
             }
             log.error(`Error finding user by momo number ${momoNumber}:`, error);
             return null; // Don't throw error, just return null for user not found
+        }
+    }
+
+    /**
+     * Get referral statistics for a user
+     * @param userId - User ID to get stats for
+     * @returns Referral stats including direct/indirect referrals with active subscriptions
+     */
+    async getReferralStats(userId: string): Promise<ReferralStats | null> {
+        if (!this.baseUrl) {
+            log.error('Cannot get referral stats: User service URL not configured.');
+            return null;
+        }
+
+        const path = `/users/internal/${userId}/referral-stats`;
+
+        try {
+            log.debug(`Getting referral stats for user: ${userId}`);
+            const response = await this.request<{ success: boolean; data: ReferralStats }>('get', path);
+
+            if (response?.success && response.data) {
+                log.info(`Successfully retrieved referral stats for user: ${userId}`);
+                return response.data;
+            } else {
+                log.warn(`No referral stats found for user: ${userId}`);
+                return null;
+            }
+        } catch (error: any) {
+            log.error(`Error getting referral stats for user ${userId}:`, error);
+            // Return zeros on error instead of throwing
+            return {
+                directReferrals: 0,
+                indirectReferrals: 0,
+                totalReferrals: 0,
+                directSubscribedReferrals: 0,
+                indirectSubscribedReferrals: 0,
+                totalSubscribedReferrals: 0
+            };
         }
     }
 }

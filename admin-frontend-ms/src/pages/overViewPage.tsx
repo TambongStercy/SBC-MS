@@ -136,22 +136,24 @@ const OverViewPage = () => {
         }
 
         // Now directly use the pre-aggregated monthly data from the backend
-        const formattedUsersData = actualDashboardData.monthlyAllUsers.map((allUserMonth: MonthlyCountData) => {
-          const classiqueMonth = actualDashboardData.monthlyClassiqueSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
-          const cibleMonth = actualDashboardData.monthlyCibleSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
+        const formattedUsersData = actualDashboardData.monthlyAllUsers
+          .filter((allUserMonth: MonthlyCountData) => allUserMonth.month) // Filter out null/undefined months
+          .map((allUserMonth: MonthlyCountData) => {
+            const classiqueMonth = actualDashboardData.monthlyClassiqueSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
+            const cibleMonth = actualDashboardData.monthlyCibleSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
 
-          // Convert month format from "2024-02" to "Feb 24"
-          const [year, month] = allUserMonth.month.split('-');
-          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          const monthLabel = `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`;
+            // Convert month format from "2024-02" to "Feb 24"
+            const [year, month] = allUserMonth.month.split('-');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthLabel = `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`;
 
-          return {
-            monthLabel: monthLabel, // Chart expects "monthLabel"
-            Users: allUserMonth.count, // Chart expects "Users" (capital U)
-            Classique: classiqueMonth?.count || 0, // Chart expects "Classique" (capital C)
-            Cible: cibleMonth?.count || 0, // Chart expects "Cible" (capital C)
-          };
-        });
+            return {
+              monthLabel: monthLabel, // Chart expects "monthLabel"
+              Users: allUserMonth.count, // Chart expects "Users" (capital U)
+              Classique: classiqueMonth?.count || 0, // Chart expects "Classique" (capital C)
+              Cible: cibleMonth?.count || 0, // Chart expects "Cible" (capital C)
+            };
+          });
         setMonthlyData(formattedUsersData);
 
         setLoading(false);

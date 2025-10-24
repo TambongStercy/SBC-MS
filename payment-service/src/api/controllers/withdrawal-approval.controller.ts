@@ -54,12 +54,29 @@ export class WithdrawalApprovalController {
 
             log.info(`[ENRICHMENT] Starting user enrichment for ${transactions.length} transactions`);
 
-            // Enrich transactions with user information
+            // Enrich transactions with user information, referral stats, and withdrawal history
             const enrichedTransactions = await Promise.all(
                 transactions.map(async (transaction: any) => {
                     try {
                         log.info(`Fetching user details for user ${transaction.userId}`);
-                        const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                        const userId = transaction.userId.toString();
+
+                        // Fetch user details and referral stats in parallel
+                        const [userDetails, referralStats] = await Promise.all([
+                            userServiceClient.getUserDetails(userId),
+                            userServiceClient.getReferralStats(userId)
+                        ]);
+
+                        // Fetch user's withdrawal history (last 5 completed/rejected withdrawals)
+                        const withdrawalHistory = await TransactionModel.find({
+                            userId: transaction.userId,
+                            type: 'withdrawal',
+                            status: { $in: ['completed', 'rejected_by_admin', 'failed'] }
+                        })
+                            .select('transactionId amount currency status createdAt')
+                            .sort({ createdAt: -1 })
+                            .limit(5)
+                            .lean();
 
                         if (!userDetails) {
                             log.warn(`User details returned null for user ${transaction.userId}`);
@@ -68,7 +85,16 @@ export class WithdrawalApprovalController {
                                 userName: 'Unknown',
                                 userEmail: 'Unknown',
                                 userPhoneNumber: 'Unknown',
-                                userBalance: {}
+                                userBalance: {},
+                                referralStats: referralStats || {
+                                    directReferrals: 0,
+                                    indirectReferrals: 0,
+                                    totalReferrals: 0,
+                                    directSubscribedReferrals: 0,
+                                    indirectSubscribedReferrals: 0,
+                                    totalSubscribedReferrals: 0
+                                },
+                                withdrawalHistory: withdrawalHistory || []
                             };
                         }
 
@@ -78,7 +104,16 @@ export class WithdrawalApprovalController {
                             userName: userDetails.name || 'Unknown',
                             userEmail: userDetails.email || 'Unknown',
                             userPhoneNumber: userDetails.phoneNumber?.toString() || 'Unknown',
-                            userBalance: userDetails.balance || {}
+                            userBalance: userDetails.balance || {},
+                            referralStats: referralStats || {
+                                directReferrals: 0,
+                                indirectReferrals: 0,
+                                totalReferrals: 0,
+                                directSubscribedReferrals: 0,
+                                indirectSubscribedReferrals: 0,
+                                totalSubscribedReferrals: 0
+                            },
+                            withdrawalHistory: withdrawalHistory || []
                         };
                     } catch (error: any) {
                         log.error(`Failed to fetch user details for ${transaction.userId}:`, error?.message || error);
@@ -87,7 +122,16 @@ export class WithdrawalApprovalController {
                             userName: 'Error fetching',
                             userEmail: 'Error fetching',
                             userPhoneNumber: 'Error fetching',
-                            userBalance: {}
+                            userBalance: {},
+                            referralStats: {
+                                directReferrals: 0,
+                                indirectReferrals: 0,
+                                totalReferrals: 0,
+                                directSubscribedReferrals: 0,
+                                indirectSubscribedReferrals: 0,
+                                totalSubscribedReferrals: 0
+                            },
+                            withdrawalHistory: []
                         };
                     }
                 })
@@ -153,17 +197,45 @@ export class WithdrawalApprovalController {
                 return;
             }
 
-            // Enrich transaction with user information
+            // Enrich transaction with user information, referral stats, and withdrawal history
             let enrichedTransaction: any = { ...transaction };
             try {
-                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                const userId = transaction.userId.toString();
+
+                // Fetch user details and referral stats in parallel
+                const [userDetails, referralStats] = await Promise.all([
+                    userServiceClient.getUserDetails(userId),
+                    userServiceClient.getReferralStats(userId)
+                ]);
+
+                // Fetch user's withdrawal history (last 10 completed/rejected withdrawals)
+                const withdrawalHistory = await TransactionModel.find({
+                    userId: transaction.userId,
+                    type: 'withdrawal',
+                    status: { $in: ['completed', 'rejected_by_admin', 'failed'] },
+                    _id: { $ne: transaction._id } // Exclude current transaction
+                })
+                    .select('transactionId amount currency status createdAt')
+                    .sort({ createdAt: -1 })
+                    .limit(10)
+                    .lean();
+
                 if (!userDetails) {
                     enrichedTransaction = {
                         ...transaction,
                         userName: 'Unknown',
                         userEmail: 'Unknown',
                         userPhoneNumber: 'Unknown',
-                        userBalance: {}
+                        userBalance: {},
+                        referralStats: referralStats || {
+                            directReferrals: 0,
+                            indirectReferrals: 0,
+                            totalReferrals: 0,
+                            directSubscribedReferrals: 0,
+                            indirectSubscribedReferrals: 0,
+                            totalSubscribedReferrals: 0
+                        },
+                        withdrawalHistory: withdrawalHistory || []
                     };
                 } else {
                     enrichedTransaction = {
@@ -171,7 +243,16 @@ export class WithdrawalApprovalController {
                         userName: userDetails.name || 'Unknown',
                         userEmail: userDetails.email || 'Unknown',
                         userPhoneNumber: userDetails.phoneNumber || 'Unknown',
-                        userBalance: userDetails.balance || {}
+                        userBalance: userDetails.balance || {},
+                        referralStats: referralStats || {
+                            directReferrals: 0,
+                            indirectReferrals: 0,
+                            totalReferrals: 0,
+                            directSubscribedReferrals: 0,
+                            indirectSubscribedReferrals: 0,
+                            totalSubscribedReferrals: 0
+                        },
+                        withdrawalHistory: withdrawalHistory || []
                     };
                 }
             } catch (error) {
@@ -181,7 +262,16 @@ export class WithdrawalApprovalController {
                     userName: 'Unknown',
                     userEmail: 'Unknown',
                     userPhoneNumber: 'Unknown',
-                    userBalance: {}
+                    userBalance: {},
+                    referralStats: {
+                        directReferrals: 0,
+                        indirectReferrals: 0,
+                        totalReferrals: 0,
+                        directSubscribedReferrals: 0,
+                        indirectSubscribedReferrals: 0,
+                        totalSubscribedReferrals: 0
+                    },
+                    withdrawalHistory: []
                 };
             }
 
@@ -427,6 +517,158 @@ export class WithdrawalApprovalController {
             res.status(500).json({
                 success: false,
                 message: 'Failed to process bulk approval',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get withdrawal history for a specific user
+     * GET /api/admin/withdrawals/history/:userId
+     */
+    async getUserWithdrawalHistory(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                res.status(401).json({ success: false, message: 'Admin not authenticated' });
+                return;
+            }
+
+            const { userId } = req.params;
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 20;
+            const skip = (page - 1) * limit;
+
+            // Get all withdrawal transactions for this user (not just pending)
+            const withdrawals = await TransactionModel.find({
+                userId,
+                type: 'withdrawal'
+            })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean();
+
+            const total = await TransactionModel.countDocuments({
+                userId,
+                type: 'withdrawal'
+            });
+
+            // Get user details
+            const userDetails = await userServiceClient.getUserDetails(userId);
+
+            log.info(`Admin ${adminId} fetched withdrawal history for user ${userId}`);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    user: {
+                        id: userId,
+                        name: userDetails?.name || 'Unknown',
+                        email: userDetails?.email || 'Unknown'
+                    },
+                    withdrawals,
+                    pagination: {
+                        page,
+                        limit,
+                        total,
+                        totalPages: Math.ceil(total / limit)
+                    }
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error fetching user withdrawal history:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch withdrawal history',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get all validated (completed/rejected) withdrawals
+     * GET /api/admin/withdrawals/validated
+     */
+    async getValidatedWithdrawals(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                res.status(401).json({ success: false, message: 'Admin not authenticated' });
+                return;
+            }
+
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 20;
+            const skip = (page - 1) * limit;
+            const status = req.query.status as string; // 'completed' or 'rejected_by_admin' or 'all'
+
+            // Build filter
+            const filter: any = {
+                type: 'withdrawal',
+                deleted: false
+            };
+
+            if (status === 'completed') {
+                filter.status = 'completed';
+            } else if (status === 'rejected_by_admin') {
+                filter.status = 'rejected_by_admin';
+            } else {
+                // Default: show all validated (completed and rejected)
+                filter.status = { $in: ['completed', 'rejected_by_admin', 'failed'] };
+            }
+
+            const withdrawals = await TransactionModel.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean();
+
+            const total = await TransactionModel.countDocuments(filter);
+
+            // Enrich with user information
+            const enrichedWithdrawals = await Promise.all(
+                withdrawals.map(async (withdrawal: any) => {
+                    try {
+                        const userDetails = await userServiceClient.getUserDetails(withdrawal.userId.toString());
+                        return {
+                            ...withdrawal,
+                            userName: userDetails?.name || 'Unknown',
+                            userEmail: userDetails?.email || 'Unknown',
+                            userPhoneNumber: userDetails?.phoneNumber || 'Unknown'
+                        };
+                    } catch (error) {
+                        return {
+                            ...withdrawal,
+                            userName: 'Unknown',
+                            userEmail: 'Unknown',
+                            userPhoneNumber: 'Unknown'
+                        };
+                    }
+                })
+            );
+
+            log.info(`Admin ${adminId} fetched ${withdrawals.length} validated withdrawals`);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    withdrawals: enrichedWithdrawals,
+                    pagination: {
+                        page,
+                        limit,
+                        total,
+                        totalPages: Math.ceil(total / limit)
+                    }
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error fetching validated withdrawals:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch validated withdrawals',
                 error: error.message
             });
         }

@@ -202,6 +202,87 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                         </div>
                     )}
 
+                    {/* Referral Statistics */}
+                    {withdrawal.referralStats && (
+                        <div>
+                            <h3 className="text-lg font-semibold mb-3 text-white">Referral Statistics</h3>
+                            <div className="bg-purple-900 bg-opacity-30 border border-purple-700 rounded-lg p-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <p className="text-sm text-gray-400">Direct Referrals</p>
+                                        <p className="text-2xl font-bold text-purple-400">
+                                            {withdrawal.referralStats.directReferrals}
+                                        </p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {withdrawal.referralStats.directSubscribedReferrals} with active subscriptions
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-400">Indirect Referrals</p>
+                                        <p className="text-2xl font-bold text-purple-400">
+                                            {withdrawal.referralStats.indirectReferrals}
+                                        </p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {withdrawal.referralStats.indirectSubscribedReferrals} with active subscriptions
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-400">Total Subscribed Referrals</p>
+                                        <p className="text-2xl font-bold text-purple-300">
+                                            {withdrawal.referralStats.totalSubscribedReferrals}
+                                        </p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            out of {withdrawal.referralStats.totalReferrals} total
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Withdrawal History */}
+                    {withdrawal.withdrawalHistory && withdrawal.withdrawalHistory.length > 0 && (
+                        <div>
+                            <h3 className="text-lg font-semibold mb-3 text-white">Recent Withdrawal History</h3>
+                            <div className="bg-gray-700 border border-gray-600 rounded-lg overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-600">
+                                            <tr>
+                                                <th className="px-4 py-2 text-left text-gray-300 font-medium">Transaction ID</th>
+                                                <th className="px-4 py-2 text-left text-gray-300 font-medium">Amount</th>
+                                                <th className="px-4 py-2 text-left text-gray-300 font-medium">Status</th>
+                                                <th className="px-4 py-2 text-left text-gray-300 font-medium">Date</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-600">
+                                            {withdrawal.withdrawalHistory.map((item, index) => (
+                                                <tr key={index} className="hover:bg-gray-650">
+                                                    <td className="px-4 py-2 font-mono text-xs text-gray-300">{item.transactionId}</td>
+                                                    <td className="px-4 py-2 font-semibold text-white">
+                                                        {formatCurrency(item.amount, (item.currency || withdrawal.currency) as any)}
+                                                    </td>
+                                                    <td className="px-4 py-2">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                            item.status === 'completed' ? 'bg-green-900 text-green-300' :
+                                                            item.status === 'rejected_by_admin' ? 'bg-red-900 text-red-300' :
+                                                            'bg-gray-600 text-gray-300'
+                                                        }`}>
+                                                            {item.status === 'completed' ? 'Completed' :
+                                                             item.status === 'rejected_by_admin' ? 'Rejected' :
+                                                             item.status === 'failed' ? 'Failed' : item.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-gray-300">{formatDate(item.createdAt)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Account Info */}
                     {isMobileMoneyWithdrawal && withdrawal.metadata?.accountInfo && (
                         <div>
