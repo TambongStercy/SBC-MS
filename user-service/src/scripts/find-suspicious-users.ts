@@ -13,7 +13,8 @@
  */
 
 import mongoose from 'mongoose';
-import User from '../database/models/user.model';
+import User, { IUser } from '../database/models/user.model';
+import SubscriptionModel, { SubscriptionStatus, SubscriptionType } from '../database/models/subscription.model';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -81,6 +82,37 @@ async function connectDB() {
 }
 
 /**
+ * Get active subscription type for a user (CLASSIQUE or CIBLE)
+ * Returns null if user has no active registration subscription
+ */
+async function getActiveSubscriptionType(userId: string): Promise<'classique' | 'cible' | null> {
+    try {
+        const subscription = await SubscriptionModel.findOne({
+            user: userId,
+            status: SubscriptionStatus.ACTIVE,
+            category: 'registration', // Only count registration subscriptions (CLASSIQUE/CIBLE)
+            endDate: { $gt: new Date() } // Ensure not expired
+        }).lean();
+
+        if (!subscription) {
+            return null;
+        }
+
+        // Map subscription type to lowercase for consistency
+        if (subscription.subscriptionType === SubscriptionType.CLASSIQUE) {
+            return 'classique';
+        } else if (subscription.subscriptionType === SubscriptionType.CIBLE) {
+            return 'cible';
+        }
+
+        return null;
+    } catch (error) {
+        logger.error(`[Script] Error getting subscription for user ${userId}:`, error);
+        return null;
+    }
+}
+
+/**
  * Calculate expected earnings from referrals
  */
 async function calculateExpectedEarnings(userId: string): Promise<ReferralEarnings> {
@@ -96,12 +128,11 @@ async function calculateExpectedEarnings(userId: string): Promise<ReferralEarnin
 
         for (const referral of level1Referrals) {
             // Check subscription status
-            if (referral.subscription?.isActive) {
-                if (referral.subscription.plan === 'classique') {
-                    earnings.classique.level1 += COMMISSIONS.CLASSIQUE.LEVEL1;
-                } else if (referral.subscription.plan === 'cible') {
-                    earnings.cible.level1 += COMMISSIONS.CIBLE.LEVEL1;
-                }
+            const subscriptionType = await getActiveSubscriptionType(referral._id.toString());
+            if (subscriptionType === 'classique') {
+                earnings.classique.level1 += COMMISSIONS.CLASSIQUE.LEVEL1;
+            } else if (subscriptionType === 'cible') {
+                earnings.cible.level1 += COMMISSIONS.CIBLE.LEVEL1;
             }
         }
 
@@ -113,12 +144,11 @@ async function calculateExpectedEarnings(userId: string): Promise<ReferralEarnin
             }).lean();
 
             for (const referral of level2Referrals) {
-                if (referral.subscription?.isActive) {
-                    if (referral.subscription.plan === 'classique') {
-                        earnings.classique.level2 += COMMISSIONS.CLASSIQUE.LEVEL2;
-                    } else if (referral.subscription.plan === 'cible') {
-                        earnings.cible.level2 += COMMISSIONS.CIBLE.LEVEL2;
-                    }
+                const subscriptionType = await getActiveSubscriptionType(referral._id.toString());
+                if (subscriptionType === 'classique') {
+                    earnings.classique.level2 += COMMISSIONS.CLASSIQUE.LEVEL2;
+                } else if (subscriptionType === 'cible') {
+                    earnings.cible.level2 += COMMISSIONS.CIBLE.LEVEL2;
                 }
             }
 
@@ -130,12 +160,11 @@ async function calculateExpectedEarnings(userId: string): Promise<ReferralEarnin
                 }).lean();
 
                 for (const referral of level3Referrals) {
-                    if (referral.subscription?.isActive) {
-                        if (referral.subscription.plan === 'classique') {
-                            earnings.classique.level3 += COMMISSIONS.CLASSIQUE.LEVEL3;
-                        } else if (referral.subscription.plan === 'cible') {
-                            earnings.cible.level3 += COMMISSIONS.CIBLE.LEVEL3;
-                        }
+                    const subscriptionType = await getActiveSubscriptionType(referral._id.toString());
+                    if (subscriptionType === 'classique') {
+                        earnings.classique.level3 += COMMISSIONS.CLASSIQUE.LEVEL3;
+                    } else if (subscriptionType === 'cible') {
+                        earnings.cible.level3 += COMMISSIONS.CIBLE.LEVEL3;
                     }
                 }
             }
@@ -173,14 +202,15 @@ async function countReferralsByLevel(userId: string): Promise<{
 
         // Count subscriptions at all levels
         for (const referral of level1Referrals) {
-            if (referral.subscription?.isActive) {
-                if (referral.subscription.plan === 'classique') classiqueCount++;
-                else if (referral.subscription.plan === 'cible') cibleCount++;
-            }
+            const subscriptionType = await getActiveSubscriptionType(referral._id.toString());
+            if (subscriptionType === 'classique') classiqueCount++;
+            else if (subscriptionType === 'cible') cibleCount++;
         }
 
         // Level 2
         let level2Count = 0;
+        let level3Count = 0;
+
         if (level1Referrals.length > 0) {
             const level1Ids = level1Referrals.map(r => r._id.toString());
             const level2Referrals = await User.find({
@@ -189,14 +219,12 @@ async function countReferralsByLevel(userId: string): Promise<{
             level2Count = level2Referrals.length;
 
             for (const referral of level2Referrals) {
-                if (referral.subscription?.isActive) {
-                    if (referral.subscription.plan === 'classique') classiqueCount++;
-                    else if (referral.subscription.plan === 'cible') cibleCount++;
-                }
+                const subscriptionType = await getActiveSubscriptionType(referral._id.toString());
+                if (subscriptionType === 'classique') classiqueCount++;
+                else if (subscriptionType === 'cible') cibleCount++;
             }
 
             // Level 3
-            let level3Count = 0;
             if (level2Referrals.length > 0) {
                 const level2Ids = level2Referrals.map(r => r._id.toString());
                 const level3Referrals = await User.find({
@@ -205,26 +233,17 @@ async function countReferralsByLevel(userId: string): Promise<{
                 level3Count = level3Referrals.length;
 
                 for (const referral of level3Referrals) {
-                    if (referral.subscription?.isActive) {
-                        if (referral.subscription.plan === 'classique') classiqueCount++;
-                        else if (referral.subscription.plan === 'cible') cibleCount++;
-                    }
+                    const subscriptionType = await getActiveSubscriptionType(referral._id.toString());
+                    if (subscriptionType === 'classique') classiqueCount++;
+                    else if (subscriptionType === 'cible') cibleCount++;
                 }
             }
-
-            return {
-                level1: level1Count,
-                level2: level2Count,
-                level3: level3Count,
-                classiqueSubscribers: classiqueCount,
-                cibleSubscribers: cibleCount
-            };
         }
 
         return {
             level1: level1Count,
-            level2: 0,
-            level3: 0,
+            level2: level2Count,
+            level3: level3Count,
             classiqueSubscribers: classiqueCount,
             cibleSubscribers: cibleCount
         };
@@ -240,7 +259,7 @@ async function findSuspiciousUsers(): Promise<SuspiciousUser[]> {
 
         // Find users with significant balances
         const usersWithBalance = await User.find({
-            'balance.XAF': { $gt: 5000 }
+            balance: { $gt: 5000 }
         }).select('_id name email phoneNumber balance createdAt').lean();
 
         logger.info(`[Script] Found ${usersWithBalance.length} users with balance > 5000 XAF`);
@@ -256,7 +275,7 @@ async function findSuspiciousUsers(): Promise<SuspiciousUser[]> {
             }
 
             const userId = user._id.toString();
-            const actualBalance = user.balance?.XAF || 0;
+            const actualBalance = user.balance || 0;
 
             // Calculate expected earnings from referrals
             const earnings = await calculateExpectedEarnings(userId);
