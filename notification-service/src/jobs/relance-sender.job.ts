@@ -7,15 +7,44 @@ import { whatsappRelanceService } from '../services/whatsapp.relance.service';
 import { userServiceClient } from '../services/clients/user.service.client';
 
 /**
+ * Wave Configuration
+ * Based on client specifications for natural, safe WhatsApp message delivery
+ */
+interface WaveConfig {
+    messages: number;           // Number of messages in this wave
+    delayBetween: number;       // Milliseconds between messages in this wave
+    pauseAfter: number;         // Milliseconds to pause after completing this wave
+}
+
+const WAVE_CONFIGS: WaveConfig[] = [
+    { messages: 10, delayBetween: 2.5 * 60 * 1000, pauseAfter: 5 * 60 * 1000 },   // Wave 1: 10 msgs, 2.5min between, 5min pause
+    { messages: 10, delayBetween: 3.5 * 60 * 1000, pauseAfter: 5 * 60 * 1000 },   // Wave 2: 10 msgs, 3.5min between, 5min pause
+    { messages: 10, delayBetween: 4.0 * 60 * 1000, pauseAfter: 15 * 60 * 1000 },  // Wave 3: 10 msgs, 4min between, 15min pause
+    { messages: 10, delayBetween: 2.5 * 60 * 1000, pauseAfter: 0 },               // Wave 4: 10 msgs, 2.5min between, no pause
+    { messages: 10, delayBetween: 3.0 * 60 * 1000, pauseAfter: 0 }                // Wave 5: remaining 10 msgs, 3min between
+];
+
+/**
+ * Add random jitter to delay for more natural timing
+ * Jitter: ±30 seconds
+ */
+function addJitter(baseDelay: number): number {
+    const jitterRange = 30 * 1000; // ±30 seconds
+    const jitter = (Math.random() - 0.5) * 2 * jitterRange; // Random between -30s and +30s
+    return Math.max(1000, baseDelay + jitter); // Minimum 1 second
+}
+
+/**
  * Message Sender Cron Job
  * Runs immediately on startup (for testing), then every 6 hours
  *
- * Process:
+ * NEW Wave-Based Process:
  * 1. Find all active targets whose nextMessageDue time has passed
- * 2. Get the message template (campaign custom or default)
- * 3. Send personalized WhatsApp message
- * 4. Update target progress and campaign stats
- * 5. Check if campaign should be completed
+ * 2. Process targets in waves with varying delays and strategic pauses
+ * 3. Get the message template (campaign custom or default)
+ * 4. Send personalized WhatsApp message with natural timing
+ * 5. Update target progress and campaign stats
+ * 6. Check if campaign should be completed
  */
 
 async function runMessageSendingJob() {
@@ -37,7 +66,12 @@ async function runMessageSendingJob() {
         let totalFailed = 0;
         let totalExited = 0;
 
-        for (const target of targetsToProcess) {
+        // Process targets in waves
+        let currentWaveIndex = 0;
+        let messagesInCurrentWave = 0;
+
+        for (let i = 0; i < targetsToProcess.length; i++) {
+            const target = targetsToProcess[i];
             try {
                 const referrerId = target.referrerUserId.toString();
                 const referralId = target.referralUserId.toString();
@@ -242,8 +276,33 @@ async function runMessageSendingJob() {
                 // Keep client connected for future messages (no need to disconnect)
                 // The client will auto-disconnect on connection issues or manual disconnect
 
-                // Add delay to avoid rate limiting (2 minutes)
-                await new Promise(resolve => setTimeout(resolve, 2 * 60 * 1000));
+                // Wave-based delay system with random jitter
+                messagesInCurrentWave++;
+
+                // Check if we need to move to the next wave
+                const currentWave = WAVE_CONFIGS[currentWaveIndex] || WAVE_CONFIGS[WAVE_CONFIGS.length - 1];
+
+                if (messagesInCurrentWave >= currentWave.messages) {
+                    // Wave completed - apply pause if specified
+                    if (currentWave.pauseAfter > 0) {
+                        const pauseWithJitter = addJitter(currentWave.pauseAfter);
+                        console.log(`[Relance Sender] Wave ${currentWaveIndex + 1} completed (${messagesInCurrentWave} messages). Pausing for ${Math.round(pauseWithJitter / 1000 / 60)} minutes...`);
+                        await new Promise(resolve => setTimeout(resolve, pauseWithJitter));
+                    }
+
+                    // Move to next wave
+                    currentWaveIndex++;
+                    messagesInCurrentWave = 0;
+
+                    if (currentWaveIndex < WAVE_CONFIGS.length) {
+                        console.log(`[Relance Sender] Starting Wave ${currentWaveIndex + 1}...`);
+                    }
+                } else {
+                    // Still in current wave - apply message delay
+                    const delayWithJitter = addJitter(currentWave.delayBetween);
+                    console.log(`[Relance Sender] Wave ${currentWaveIndex + 1}, message ${messagesInCurrentWave}/${currentWave.messages}. Waiting ${Math.round(delayWithJitter / 1000)} seconds before next message...`);
+                    await new Promise(resolve => setTimeout(resolve, delayWithJitter));
+                }
 
             } catch (targetError) {
                 console.error(`[Relance Sender] Error processing target ${target._id}:`, targetError);
@@ -255,8 +314,10 @@ async function runMessageSendingJob() {
         await checkAndCompleteCampaigns();
 
         const duration = Date.now() - startTime;
-        console.log(`[Relance Sender] Message sending job completed in ${duration}ms`);
+        const durationMinutes = Math.round(duration / 1000 / 60);
+        console.log(`[Relance Sender] Message sending job completed in ${durationMinutes} minutes`);
         console.log(`[Relance Sender] Summary: ${totalSent} sent, ${totalFailed} failed, ${totalExited} exited`);
+        console.log(`[Relance Sender] Waves processed: ${currentWaveIndex + 1}/${WAVE_CONFIGS.length}`);
 
     } catch (error) {
         console.error('[Relance Sender] Fatal error in sender job:', error);
@@ -313,6 +374,12 @@ async function checkAndCompleteCampaigns() {
 
 export function startRelanceSenderJob() {
     console.log('[Relance Sender] Scheduling sender job - runs immediately on startup (for testing), then every 6 hours');
+    console.log('[Relance Sender] Wave-based sending configured:');
+    WAVE_CONFIGS.forEach((wave, index) => {
+        const delayMin = Math.round(wave.delayBetween / 1000 / 60 * 10) / 10;
+        const pauseMin = Math.round(wave.pauseAfter / 1000 / 60 * 10) / 10;
+        console.log(`  Wave ${index + 1}: ${wave.messages} messages, ${delayMin}min between, ${pauseMin}min pause after`);
+    });
 
     // Run immediately on startup for testing
     runMessageSendingJob();

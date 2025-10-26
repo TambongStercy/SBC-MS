@@ -153,8 +153,10 @@ export class CinetPayPayoutService {
     // Supported payment methods by country
     // Note: CinetPay auto-detects operators from phone numbers, so payment_method is often optional
     // These are the confirmed working payment methods, but auto-detection is recommended
+    // IMPORTANT: For CI (Côte d'Ivoire), we do NOT set payment_method explicitly due to API rejections
+    // CinetPay auto-detects from phone number instead (05/07 = MTN, 01/02/03 = Orange, etc.)
     private readonly paymentMethods: Record<string, string[]> = {
-        'CI': ['OM', 'FLOOZ', 'MOMO', 'WAVECI'],
+        'CI': ['OM', 'FLOOZ', 'MOMO', 'WAVECI'], // Not used - auto-detection only
         'SN': ['OMSN', 'FREESN', 'WAVESN'],
         'CM': ['OMCM'], // Only Orange confirmed working, MTN auto-detected
         'TG': ['TMONEYTG', 'FLOOZTG'],
@@ -517,11 +519,17 @@ export class CinetPayPayoutService {
             };
 
             // payment_method is optional for CinetPay. Only set if explicitly provided and valid.
-            if (request.paymentMethod && request.paymentMethod !== 'OMCM' && this.isValidPaymentMethod(request.paymentMethod, request.countryCode)) {
+            // For Côte d'Ivoire and Cameroon (OMCM), rely on auto-detection due to API rejections
+            if (request.paymentMethod &&
+                request.paymentMethod !== 'OMCM' &&
+                request.countryCode !== 'CI' &&
+                this.isValidPaymentMethod(request.paymentMethod, request.countryCode)) {
                 transferRequest.payment_method = request.paymentMethod;
                 log.info(`Using specified payment method: ${request.paymentMethod}`);
             } else if (request.paymentMethod === 'OMCM') {
                 log.warn(`Explicitly not setting payment_method 'OMCM' for CinetPay transfer due to API rejection. Relying on auto-detection.`);
+            } else if (request.countryCode === 'CI') {
+                log.warn(`Côte d'Ivoire (CI): Not setting payment_method explicitly due to API issues. Relying on auto-detection from phone number ${finalFormattedPhone}`);
             }
             else {
                 log.info(`Using auto-detection for operator (no payment_method specified or invalid)`);

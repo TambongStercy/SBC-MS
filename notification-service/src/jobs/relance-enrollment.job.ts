@@ -36,10 +36,10 @@ async function enrollDefaultTargets(userId: string, config: any): Promise<number
             try {
                 const referralId = referral._id;
                 const referralCreatedAt = new Date(referral.createdAt);
-                const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000); // Testing: 10 minutes
+                const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000); // 15 minutes delay
 
-                // Check if referral is older than 10 minutes
-                if (referralCreatedAt > tenMinutesAgo) {
+                // Check if referral is older than 15 minutes
+                if (referralCreatedAt > fifteenMinutesAgo) {
                     continue;
                 }
 
