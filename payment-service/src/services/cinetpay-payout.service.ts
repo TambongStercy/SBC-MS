@@ -150,21 +150,22 @@ export class CinetPayPayoutService {
         'CD': '243', // Congo (RDC)
     };
 
-    // Supported payment methods by country
-    // Note: CinetPay auto-detects operators from phone numbers, so payment_method is often optional
-    // These are the confirmed working payment methods, but auto-detection is recommended
-    // IMPORTANT: For CI (Côte d'Ivoire), we do NOT set payment_method explicitly due to API rejections
-    // CinetPay auto-detects from phone number instead (05/07 = MTN, 01/02/03 = Orange, etc.)
+    // Supported payment methods by country (REFERENCE ONLY - NOT USED IN TRANSFERS)
+    // IMPORTANT: We do NOT set payment_method explicitly for ANY country
+    // CinetPay auto-detects operators from phone numbers to avoid API errors:
+    // - 417 errors (Expectation Failed) in BF, SN, CI
+    // - 811 errors (INVALID_PAYMENT_METHOD) in CI, CM
+    // This list is kept for reference only and for getSupportedCountries() method
     private readonly paymentMethods: Record<string, string[]> = {
-        'CI': ['OM', 'FLOOZ', 'MOMO', 'WAVECI'], // Not used - auto-detection only
-        'SN': ['OMSN', 'FREESN', 'WAVESN'],
-        'CM': ['OMCM'], // Only Orange confirmed working, MTN auto-detected
-        'TG': ['TMONEYTG', 'FLOOZTG'],
-        'BJ': ['MTNBJ', 'MOOVBJ'],
-        'ML': ['OMML', 'MOOVML'],
-        'BF': ['OMBF', 'MOOVBF'],
-        'GN': ['OMGN', 'MTNGN'],
-        'CD': ['OMCD', 'MPESACD', 'AIRTELCD'],
+        'CI': ['OM', 'FLOOZ', 'MOMO', 'WAVECI'], // Reference only - auto-detection used
+        'SN': ['OMSN', 'FREESN', 'WAVESN'],      // Reference only - auto-detection used
+        'CM': ['OMCM'],                          // Reference only - auto-detection used
+        'TG': ['TMONEYTG', 'FLOOZTG'],           // Reference only - auto-detection used
+        'BJ': ['MTNBJ', 'MOOVBJ'],               // Reference only - auto-detection used
+        'ML': ['OMML', 'MOOVML'],                // Reference only - auto-detection used
+        'BF': ['OMBF', 'MOOVBF'],                // Reference only - auto-detection used
+        'GN': ['OMGN', 'MTNGN'],                 // Reference only - auto-detection used
+        'CD': ['OMCD', 'MPESACD', 'AIRTELCD'],   // Reference only - auto-detection used
     };
 
     // Minimum amounts by country (in local currency)
@@ -518,23 +519,12 @@ export class CinetPayPayoutService {
                 client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
             };
 
-            // payment_method is optional for CinetPay. Only set if explicitly provided and valid.
-            // For Côte d'Ivoire and Cameroon (OMCM), rely on auto-detection due to API rejections
-            if (request.paymentMethod &&
-                request.paymentMethod !== 'OMCM' &&
-                request.countryCode !== 'CI' &&
-                this.isValidPaymentMethod(request.paymentMethod, request.countryCode)) {
-                transferRequest.payment_method = request.paymentMethod;
-                log.info(`Using specified payment method: ${request.paymentMethod}`);
-            } else if (request.paymentMethod === 'OMCM') {
-                log.warn(`Explicitly not setting payment_method 'OMCM' for CinetPay transfer due to API rejection. Relying on auto-detection.`);
-            } else if (request.countryCode === 'CI') {
-                log.warn(`Côte d'Ivoire (CI): Not setting payment_method explicitly due to API issues. Relying on auto-detection from phone number ${finalFormattedPhone}`);
-            }
-            else {
-                log.info(`Using auto-detection for operator (no payment_method specified or invalid)`);
-                // No need to explicitly delete, as it's not set if this path is taken
-            }
+            // payment_method is optional for CinetPay - ALWAYS use auto-detection
+            // CinetPay automatically detects the operator from the phone number prefix
+            // This avoids 417 errors (Expectation Failed) and 811 errors (INVALID_PAYMENT_METHOD)
+            // Affected countries: CI (Côte d'Ivoire), SN (Senegal), BF (Burkina Faso), and others
+            log.info(`Using CinetPay auto-detection for operator from phone number ${finalFormattedPhone} in country ${request.countryCode}. Not setting explicit payment_method parameter.`);
+            // Do NOT set transferRequest.payment_method - let CinetPay detect from phone number
 
             const token = await this.authenticate();
 
