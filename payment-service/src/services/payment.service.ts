@@ -4611,6 +4611,24 @@ class PaymentService {
                 throw new AppError(`Insufficient balance. User has ${userBalance} XAF, but ${grossAmountToDebitInXAF} XAF required (including fees).`, 400);
             }
 
+            // Check for duplicate withdrawal requests (prevent multiple submissions within 30 seconds)
+            const thirtySecondsAgo = new Date();
+            thirtySecondsAgo.setSeconds(thirtySecondsAgo.getSeconds() - 30);
+
+            const recentWithdrawal = await transactionRepository.findOneByFilters({
+                userId: new Types.ObjectId(targetUserId.toString()),
+                type: TransactionType.WITHDRAWAL,
+                status: TransactionStatus.PENDING,
+                createdAt: { $gte: thirtySecondsAgo },
+                deleted: { $ne: true }
+            });
+
+            if (recentWithdrawal) {
+                const secondsAgo = Math.floor((Date.now() - new Date(recentWithdrawal.createdAt).getTime()) / 1000);
+                log.warn(`Admin ${adminId} attempted duplicate withdrawal for user ${targetUserId}. Recent withdrawal ${recentWithdrawal.transactionId} created ${secondsAgo} seconds ago.`);
+                throw new AppError(`A withdrawal request was already created ${secondsAgo} seconds ago (ID: ${recentWithdrawal.transactionId}). Please wait before creating another withdrawal.`, 409);
+            }
+
             // Create a transaction record directly in PENDING status (no OTP verification needed for admin)
             const withdrawalTransaction = await transactionRepository.create({
                 userId: new Types.ObjectId(targetUserId.toString()),
@@ -4951,6 +4969,25 @@ class PaymentService {
                 feeInXAF = this.calculateWithdrawalFee(netAmountDesired, Currency.XAF, recipientDetails.paymentMethod || 'UNKNOWN');
                 grossAmountToDebitInXAF = netAmountDesired + feeInXAF;
                 log.info(`Target currency is XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
+            }
+
+            // Check for duplicate direct payout requests (prevent multiple submissions within 30 seconds to same recipient)
+            const thirtySecondsAgo = new Date();
+            thirtySecondsAgo.setSeconds(thirtySecondsAgo.getSeconds() - 30);
+
+            const recentDirectPayout = await transactionRepository.findOneByFilters({
+                type: TransactionType.WITHDRAWAL,
+                status: { $in: [TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
+                'metadata.recipientPhoneNumber': recipientDetails.phoneNumber,
+                'metadata.adminDirectPayout': true,
+                createdAt: { $gte: thirtySecondsAgo },
+                deleted: { $ne: true }
+            });
+
+            if (recentDirectPayout) {
+                const secondsAgo = Math.floor((Date.now() - new Date(recentDirectPayout.createdAt).getTime()) / 1000);
+                log.warn(`Admin ${adminId} attempted duplicate direct payout to ${recipientDetails.phoneNumber}. Recent payout ${recentDirectPayout.transactionId} created ${secondsAgo} seconds ago.`);
+                throw new AppError(`A direct payout to ${recipientDetails.phoneNumber} was already created ${secondsAgo} seconds ago (ID: ${recentDirectPayout.transactionId}). Please wait before creating another payout.`, 409);
             }
 
             // Create a transaction record for auditing the direct payout

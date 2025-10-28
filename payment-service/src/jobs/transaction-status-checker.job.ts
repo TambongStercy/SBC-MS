@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import logger from '../utils/logger';
-import { TransactionType } from '../database/models/transaction.model';
+import TransactionModel, { TransactionType, TransactionStatus } from '../database/models/transaction.model';
 import transactionRepository from '../database/repositories/transaction.repository';
 import paymentService from '../services/payment.service';
 import { feexPayPayoutService } from '../services/feexpay-payout.service'; // Import FeexPay service
@@ -63,7 +63,10 @@ export class TransactionStatusChecker {
             // 1. Check and cancel stale OTP verification withdrawals
             await this.checkStaleOtpVerifications();
 
-            // 2. Find all withdrawal transactions with pending or processing status
+            // 2. Auto-reject pending withdrawals older than 24 hours
+            await this.autoRejectExpiredWithdrawals();
+
+            // 3. Find all withdrawal transactions with pending or processing status
             const processingTransactions = await transactionRepository.findProcessingWithdrawals(100);
 
             if (processingTransactions.length === 0) {
@@ -93,7 +96,7 @@ export class TransactionStatusChecker {
     }
 
     /**
-     * Checks for and cancels withdrawal transactions stuck in PENDING_OTP_VERIFICATION 
+     * Checks for and cancels withdrawal transactions stuck in PENDING_OTP_VERIFICATION
      * status for more than 20 minutes.
      */
     private async checkStaleOtpVerifications(): Promise<void> {
@@ -107,6 +110,67 @@ export class TransactionStatusChecker {
             }
         } catch (error) {
             log.error('Error checking stale OTP verifications:', error);
+        }
+    }
+
+    /**
+     * Auto-rejects pending withdrawal transactions that are older than 24 hours
+     */
+    private async autoRejectExpiredWithdrawals(): Promise<void> {
+        try {
+            log.info('Checking for pending withdrawals older than 24 hours...');
+
+            const twentyFourHoursAgo = new Date();
+            twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+            // Find all PENDING withdrawals older than 24 hours
+            const expiredWithdrawals = await TransactionModel.find({
+                type: TransactionType.WITHDRAWAL,
+                status: TransactionStatus.PENDING,
+                createdAt: { $lt: twentyFourHoursAgo },
+                deleted: { $ne: true }
+            }).lean();
+
+            if (expiredWithdrawals.length === 0) {
+                log.debug('No expired pending withdrawals found.');
+                return;
+            }
+
+            log.info(`Found ${expiredWithdrawals.length} pending withdrawals older than 24 hours. Auto-rejecting...`);
+
+            let rejectedCount = 0;
+            let failedCount = 0;
+
+            for (const withdrawal of expiredWithdrawals) {
+                try {
+                    const hoursOld = Math.floor((Date.now() - new Date(withdrawal.createdAt).getTime()) / (1000 * 60 * 60));
+
+                    await transactionRepository.updateStatus(
+                        withdrawal.transactionId,
+                        TransactionStatus.REJECTED_BY_ADMIN,
+                        {
+                            metadata: {
+                                ...(withdrawal.metadata || {}),
+                                rejectionReason: `Auto-rejected: Pending approval window expired after ${hoursOld} hours (24 hour limit)`,
+                                autoRejectedAt: new Date(),
+                                autoRejected: true
+                            }
+                        }
+                    );
+
+                    log.info(`Auto-rejected withdrawal ${withdrawal.transactionId} for user ${withdrawal.userId} (${hoursOld} hours old)`);
+                    rejectedCount++;
+
+                } catch (error) {
+                    log.error(`Error auto-rejecting withdrawal ${withdrawal.transactionId}:`, error);
+                    failedCount++;
+                }
+            }
+
+            log.info(`Auto-rejection complete: ${rejectedCount} rejected, ${failedCount} failed`);
+
+        } catch (error) {
+            log.error('Error in autoRejectExpiredWithdrawals:', error);
         }
     }
 
