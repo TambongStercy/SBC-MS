@@ -4,7 +4,7 @@
 
 import User from '../database/models/user.model';
 import ReferralModel from '../database/models/referral.model';
-import SubscriptionModel, { SubscriptionStatus } from '../database/models/subscription.model';
+import SubscriptionModel, { SubscriptionStatus, SubscriptionType } from '../database/models/subscription.model';
 import logger from '../utils/logger';
 
 export interface ReferralStats {
@@ -32,6 +32,9 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
             totalSubscribedReferrals: 0
         };
 
+        const now = new Date();
+        logger.info(`[ReferralStatsService] Calculating stats for user ${userId}`);
+
         // Get direct referrals (Level 1) using Referral model
         const directReferralRecords = await ReferralModel.find({
             referrer: userId,
@@ -40,19 +43,22 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
         }).lean();
 
         stats.directReferrals = directReferralRecords.length;
+        logger.info(`[ReferralStatsService] Found ${stats.directReferrals} direct referrals`);
 
-        // Count direct referrals with active subscriptions
-        for (const referralRecord of directReferralRecords) {
-            const hasActiveSubscription = await SubscriptionModel.exists({
-                user: referralRecord.referredUser,
+        // Get all direct referral user IDs
+        const directReferralUserIds = directReferralRecords.map(r => r.referredUser);
+
+        // Count direct referrals with active CLASSIQUE/CIBLE subscriptions
+        // Query by subscriptionType directly to handle both new and legacy data
+        if (directReferralUserIds.length > 0) {
+            const directSubscribedCount = await SubscriptionModel.countDocuments({
+                user: { $in: directReferralUserIds },
                 status: SubscriptionStatus.ACTIVE,
-                category: 'registration', // Only count CLASSIQUE/CIBLE subscriptions
-                endDate: { $gt: new Date() }
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                endDate: { $gt: now }
             });
-
-            if (hasActiveSubscription) {
-                stats.directSubscribedReferrals++;
-            }
+            stats.directSubscribedReferrals = directSubscribedCount;
+            logger.info(`[ReferralStatsService] Found ${directSubscribedCount} direct referrals with active CLASSIQUE/CIBLE subscriptions`);
         }
 
         // Get indirect referrals (Level 2 and Level 3)
@@ -63,26 +69,36 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
         }).lean();
 
         stats.indirectReferrals = indirectReferralRecords.length;
+        logger.info(`[ReferralStatsService] Found ${stats.indirectReferrals} indirect referrals`);
 
-        // Count indirect referrals with active subscriptions
-        for (const referralRecord of indirectReferralRecords) {
-            const hasActiveSubscription = await SubscriptionModel.exists({
-                user: referralRecord.referredUser,
+        // Get all indirect referral user IDs
+        const indirectReferralUserIds = indirectReferralRecords.map(r => r.referredUser);
+
+        // Count indirect referrals with active CLASSIQUE/CIBLE subscriptions
+        // Query by subscriptionType directly to handle both new and legacy data
+        if (indirectReferralUserIds.length > 0) {
+            const indirectSubscribedCount = await SubscriptionModel.countDocuments({
+                user: { $in: indirectReferralUserIds },
                 status: SubscriptionStatus.ACTIVE,
-                category: 'registration',
-                endDate: { $gt: new Date() }
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                endDate: { $gt: now }
             });
-
-            if (hasActiveSubscription) {
-                stats.indirectSubscribedReferrals++;
-            }
+            stats.indirectSubscribedReferrals = indirectSubscribedCount;
+            logger.info(`[ReferralStatsService] Found ${indirectSubscribedCount} indirect referrals with active CLASSIQUE/CIBLE subscriptions`);
         }
 
         // Calculate totals
         stats.totalReferrals = stats.directReferrals + stats.indirectReferrals;
         stats.totalSubscribedReferrals = stats.directSubscribedReferrals + stats.indirectSubscribedReferrals;
 
-        logger.info(`[ReferralStatsService] Stats for user ${userId}:`, stats);
+        logger.info(`[ReferralStatsService] Final stats for user ${userId}:`, {
+            directReferrals: stats.directReferrals,
+            directSubscribedReferrals: stats.directSubscribedReferrals,
+            indirectReferrals: stats.indirectReferrals,
+            indirectSubscribedReferrals: stats.indirectSubscribedReferrals,
+            totalReferrals: stats.totalReferrals,
+            totalSubscribedReferrals: stats.totalSubscribedReferrals
+        });
 
         return stats;
     } catch (error) {
