@@ -105,7 +105,9 @@ router.put('/me', (req, res) => userController.modify(req as AuthenticatedReques
 
 // --- Avatar Upload Route ---
 // Apply upload limiter before the upload middleware
+// Support both PUT and POST methods for avatar upload
 router.put('/me/avatar', uploadLimiter, uploadAvatar, (req, res, next) => userController.uploadAvatar(req as AuthenticatedRequest, res, next));
+router.post('/me/avatar', uploadLimiter, uploadAvatar, (req, res, next) => userController.uploadAvatar(req as AuthenticatedRequest, res, next));
 // --- End Avatar Upload ---
 
 router.get('/get-refered-users', (req, res) => userController.getReferredUsers(req as AuthenticatedRequest, res));
