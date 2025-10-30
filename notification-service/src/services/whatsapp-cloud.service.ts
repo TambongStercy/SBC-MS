@@ -144,18 +144,9 @@ class WhatsAppCloudService extends EventEmitter {
         components: any[];
     }): Promise<WhatsAppSendResult> {
         try {
-            // Check rate limit before sending template message
-            const rateLimiter = require('../../rate-limit-checker');
-            const limiter = new rateLimiter();
-
-            if (!limiter.canSendMessage()) {
-                const status = limiter.getStatus();
-                log.warn(`Rate limit reached. ${status.remaining} messages remaining. Reset in ${status.hoursUntilReset} hours.`);
-                return {
-                    success: false,
-                    error: `Rate limit exceeded. Can send again in ${status.hoursUntilReset} hours.`
-                };
-            }
+            // Rate limiting disabled - WhatsApp Business API has its own rate limits
+            // TODO: Implement proper rate limiting if needed in the future
+            // Note: WhatsApp Business API enforces 1000 marketing conversations per day
 
             const formattedPhoneNumber = this.formatPhoneNumber(params.phoneNumber);
 
@@ -189,8 +180,7 @@ class WhatsAppCloudService extends EventEmitter {
             if (responseData.messages && responseData.messages.length > 0) {
                 const messageId = responseData.messages[0].id;
 
-                // Increment rate limit counter after successful send
-                limiter.incrementCount();
+                // Rate limiting removed - handled by WhatsApp Business API
 
                 log.info(`WhatsApp template message sent successfully to ${formattedPhoneNumber}, message ID: ${messageId}`);
                 return {
