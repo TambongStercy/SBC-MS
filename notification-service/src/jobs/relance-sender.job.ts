@@ -6,9 +6,20 @@ import CampaignModel, { CampaignStatus } from '../database/models/relance-campai
 import { whatsappRelanceService } from '../services/whatsapp.relance.service';
 import { userServiceClient } from '../services/clients/user.service.client';
 
+// Track disconnected referrers to avoid log spam
+const disconnectedWarnings = new Map<string, number>();
+const WARNING_COOLDOWN_MS = 10 * 60 * 1000; // Only log once every 10 minutes per referrer
+
 /**
  * Wave Configuration
  * Based on client specifications for natural, safe WhatsApp message delivery
+ *
+ * New Strategy (50 messages/day):
+ * - Wave 1: 10 messages, 3min between, 30min pause after
+ * - Wave 2: 10 messages, 4min between, 1h pause after
+ * - Wave 3: 10 messages, 5min between, 1h30 pause after
+ * - Wave 4: 10 messages, 6min between, 2h pause after
+ * - Wave 5: 10 messages, 7min between (final wave)
  */
 interface WaveConfig {
     messages: number;           // Number of messages in this wave
@@ -17,11 +28,11 @@ interface WaveConfig {
 }
 
 const WAVE_CONFIGS: WaveConfig[] = [
-    { messages: 10, delayBetween: 2.5 * 60 * 1000, pauseAfter: 5 * 60 * 1000 },   // Wave 1: 10 msgs, 2.5min between, 5min pause
-    { messages: 10, delayBetween: 3.5 * 60 * 1000, pauseAfter: 5 * 60 * 1000 },   // Wave 2: 10 msgs, 3.5min between, 5min pause
-    { messages: 10, delayBetween: 4.0 * 60 * 1000, pauseAfter: 15 * 60 * 1000 },  // Wave 3: 10 msgs, 4min between, 15min pause
-    { messages: 10, delayBetween: 2.5 * 60 * 1000, pauseAfter: 0 },               // Wave 4: 10 msgs, 2.5min between, no pause
-    { messages: 10, delayBetween: 3.0 * 60 * 1000, pauseAfter: 0 }                // Wave 5: remaining 10 msgs, 3min between
+    { messages: 10, delayBetween: 3 * 60 * 1000, pauseAfter: 30 * 60 * 1000 },    // Wave 1: 10 msgs, 3min between, 30min pause
+    { messages: 10, delayBetween: 4 * 60 * 1000, pauseAfter: 60 * 60 * 1000 },    // Wave 2: 10 msgs, 4min between, 1h pause
+    { messages: 10, delayBetween: 5 * 60 * 1000, pauseAfter: 90 * 60 * 1000 },    // Wave 3: 10 msgs, 5min between, 1h30 pause
+    { messages: 10, delayBetween: 6 * 60 * 1000, pauseAfter: 120 * 60 * 1000 },   // Wave 4: 10 msgs, 6min between, 2h pause
+    { messages: 10, delayBetween: 7 * 60 * 1000, pauseAfter: 0 }                  // Wave 5: 10 msgs, 7min between, no pause (final)
 ];
 
 /**
@@ -94,7 +105,14 @@ async function runMessageSendingJob() {
 
                 // Check WhatsApp connection status
                 if (config.whatsappStatus !== WhatsAppStatus.CONNECTED) {
-                    console.log(`${campaignLabel} WhatsApp not connected for referrer ${referrerId} (status: ${config.whatsappStatus}), skipping`);
+                    // Throttle disconnected warnings to avoid log spam
+                    const lastWarning = disconnectedWarnings.get(referrerId) || 0;
+                    const now = Date.now();
+
+                    if (now - lastWarning > WARNING_COOLDOWN_MS) {
+                        console.log(`${campaignLabel} WhatsApp not connected for referrer ${referrerId} (status: ${config.whatsappStatus}), skipping messages`);
+                        disconnectedWarnings.set(referrerId, now);
+                    }
                     continue;
                 }
 
@@ -374,11 +392,15 @@ async function checkAndCompleteCampaigns() {
 
 export function startRelanceSenderJob() {
     console.log('[Relance Sender] Scheduling sender job - runs immediately on startup (for testing), then every 6 hours');
-    console.log('[Relance Sender] Wave-based sending configured:');
+    console.log('[Relance Sender] Wave-based sending configured (50 messages/day max):');
     WAVE_CONFIGS.forEach((wave, index) => {
-        const delayMin = Math.round(wave.delayBetween / 1000 / 60 * 10) / 10;
-        const pauseMin = Math.round(wave.pauseAfter / 1000 / 60 * 10) / 10;
-        console.log(`  Wave ${index + 1}: ${wave.messages} messages, ${delayMin}min between, ${pauseMin}min pause after`);
+        const delayMin = Math.round(wave.delayBetween / 1000 / 60);
+        const pauseMin = Math.round(wave.pauseAfter / 1000 / 60);
+        if (pauseMin > 0) {
+            console.log(`  Wave ${index + 1}: ${wave.messages} messages, ${delayMin}min between, ${pauseMin}min pause after`);
+        } else {
+            console.log(`  Wave ${index + 1}: ${wave.messages} messages, ${delayMin}min between (final wave)`);
+        }
     });
 
     // Run immediately on startup for testing
