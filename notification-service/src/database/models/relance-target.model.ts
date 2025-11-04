@@ -55,6 +55,8 @@ export interface IRelanceTarget extends Document {
     exitReason?: ExitReason;            // Why they left
     status: TargetStatus;               // active, completed, paused
     language: string;                   // Referral's preferred language (fr/en)
+    waveId?: string;                    // Wave batch ID (prevents duplicate sends)
+    waveJoinedAt?: Date;                // When they joined current wave
     createdAt: Date;
     updatedAt: Date;
 }
@@ -125,6 +127,13 @@ const RelanceTargetSchema = new Schema<IRelanceTarget>(
             type: String,
             default: 'fr',
             enum: ['fr', 'en']
+        },
+        waveId: {
+            type: String,
+            index: true             // For finding all targets in same wave
+        },
+        waveJoinedAt: {
+            type: Date
         }
     },
     {

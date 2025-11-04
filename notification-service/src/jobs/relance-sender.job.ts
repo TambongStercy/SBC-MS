@@ -46,32 +46,85 @@ function addJitter(baseDelay: number): number {
 }
 
 /**
- * Message Sender Cron Job
- * Runs immediately on startup (for testing), then every 6 hours
+ * Wave-Based Message Sender
  *
- * NEW Wave-Based Process:
- * 1. Find all active targets whose nextMessageDue time has passed
- * 2. Process targets in waves with varying delays and strategic pauses
- * 3. Get the message template (campaign custom or default)
- * 4. Send personalized WhatsApp message with natural timing
- * 5. Update target progress and campaign stats
- * 6. Check if campaign should be completed
+ * New Logic (to prevent spam and duplicates):
+ * 1. Check if there's an ACTIVE wave (targets with waveId and day < 7)
+ * 2. If active wave exists:
+ *    - Send messages to those targets whose nextMessageDue has passed
+ *    - Continue with same wave until all reach day 7
+ * 3. If no active wave (or current wave completed):
+ *    - Pick up to 60 NEW targets (no waveId, status ACTIVE, nextMessageDue passed)
+ *    - Assign them a new waveId
+ *    - Send their messages
+ *
+ * This ensures:
+ * - Max 60 people per wave
+ * - No duplicates (same person won't be in 2 waves)
+ * - Controlled sending (~60 people/week = ~240/month)
+ * - Each wave completes 7-day cycle before new wave starts
  */
 
+const WAVE_SIZE_LIMIT = 60; // Max 60 targets per wave
+
 async function runMessageSendingJob() {
-    console.log('[Relance Sender] Starting message sending job...');
+    console.log('[Relance Sender] Starting wave-based message sending job...');
     const startTime = Date.now();
 
     try {
         const now = new Date();
 
-        // Find all active targets that need a message sent
-        const targetsToProcess = await RelanceTargetModel.find({
+        // Step 1: Check for active wave (targets with waveId that haven't completed 7 days)
+        const activeWaveTargets = await RelanceTargetModel.find({
             status: TargetStatus.ACTIVE,
+            waveId: { $exists: true, $ne: null },
+            currentDay: { $lte: 7 },
             nextMessageDue: { $lte: now }
         }).populate('campaignId');
 
-        console.log(`[Relance Sender] Found ${targetsToProcess.length} targets ready for messages`);
+        console.log(`[Relance Sender] Found ${activeWaveTargets.length} active wave targets ready for messages`);
+
+        let targetsToProcess = activeWaveTargets;
+
+        // Step 2: If no active wave or active wave is small, pick new targets
+        if (activeWaveTargets.length === 0) {
+            console.log('[Relance Sender] No active wave found. Creating new wave...');
+
+            // Get up to 60 new targets without a waveId
+            const newTargets = await RelanceTargetModel.find({
+                status: TargetStatus.ACTIVE,
+                waveId: { $exists: false },
+                nextMessageDue: { $lte: now }
+            })
+            .limit(WAVE_SIZE_LIMIT)
+            .populate('campaignId');
+
+            if (newTargets.length === 0) {
+                console.log('[Relance Sender] No new targets available for wave. Job completed.');
+                return;
+            }
+
+            // Assign new waveId to these targets
+            const newWaveId = `wave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const newWaveDate = new Date();
+
+            console.log(`[Relance Sender] Creating new wave ${newWaveId} with ${newTargets.length} targets`);
+
+            for (const target of newTargets) {
+                target.waveId = newWaveId;
+                target.waveJoinedAt = newWaveDate;
+                await target.save();
+            }
+
+            targetsToProcess = newTargets;
+            console.log(`[Relance Sender] New wave ${newWaveId} created with ${newTargets.length} targets`);
+        } else {
+            // Get the waveId from existing active targets
+            const currentWaveId = activeWaveTargets[0]?.waveId;
+            console.log(`[Relance Sender] Continuing with active wave: ${currentWaveId}`);
+        }
+
+        console.log(`[Relance Sender] Processing ${targetsToProcess.length} targets...`);
 
         let totalSent = 0;
         let totalFailed = 0;
@@ -149,6 +202,23 @@ async function runMessageSendingJob() {
                         console.log(`${campaignLabel} Campaign reached daily limit (${campaignMaxMessages}), skipping`);
                         continue;
                     }
+                }
+
+                // CRITICAL: Check if message already sent for this day (prevent duplicates)
+                const alreadySentToday = target.messagesDelivered.some((msg: any) => {
+                    return msg.day === target.currentDay && msg.status === 'delivered';
+                });
+
+                if (alreadySentToday) {
+                    console.log(`${campaignLabel} Message already sent for day ${target.currentDay} to target ${target._id}, skipping to prevent duplicate`);
+
+                    // Update nextMessageDue to tomorrow to prevent re-processing
+                    const nextDue = new Date();
+                    nextDue.setHours(nextDue.getHours() + 24);
+                    target.nextMessageDue = nextDue;
+                    target.currentDay += 1;
+                    await target.save();
+                    continue;
                 }
 
                 // Get message template (campaign custom or default)
