@@ -1,25 +1,20 @@
 import cron from 'node-cron';
-import RelanceConfigModel, { WhatsAppStatus } from '../database/models/relance-config.model';
+import RelanceConfigModel from '../database/models/relance-config.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
 import RelanceMessageModel from '../database/models/relance-message.model';
 import CampaignModel, { CampaignStatus } from '../database/models/relance-campaign.model';
-import { whatsappRelanceService } from '../services/whatsapp.relance.service';
+import { emailRelanceService } from '../services/email.relance.service';
 import { userServiceClient } from '../services/clients/user.service.client';
-
-// Track disconnected referrers to avoid log spam
-const disconnectedWarnings = new Map<string, number>();
-const WARNING_COOLDOWN_MS = 10 * 60 * 1000; // Only log once every 10 minutes per referrer
 
 /**
  * Wave Configuration
- * Based on client specifications for natural, safe WhatsApp message delivery
+ * Email-based delivery with pacing to avoid spam filters
  *
- * New Strategy (50 messages/day):
- * - Wave 1: 10 messages, 3min between, 30min pause after
- * - Wave 2: 10 messages, 4min between, 1h pause after
- * - Wave 3: 10 messages, 5min between, 1h30 pause after
- * - Wave 4: 10 messages, 6min between, 2h pause after
- * - Wave 5: 10 messages, 7min between (final wave)
+ * Strategy (60 messages/day for email):
+ * - Wave 1: 15 messages, 1min between, 15min pause after
+ * - Wave 2: 15 messages, 1min between, 15min pause after
+ * - Wave 3: 15 messages, 1min between, 15min pause after
+ * - Wave 4: 15 messages, 1min between (final wave)
  */
 interface WaveConfig {
     messages: number;           // Number of messages in this wave
@@ -28,20 +23,19 @@ interface WaveConfig {
 }
 
 const WAVE_CONFIGS: WaveConfig[] = [
-    { messages: 10, delayBetween: 3 * 60 * 1000, pauseAfter: 30 * 60 * 1000 },    // Wave 1: 10 msgs, 3min between, 30min pause
-    { messages: 10, delayBetween: 4 * 60 * 1000, pauseAfter: 60 * 60 * 1000 },    // Wave 2: 10 msgs, 4min between, 1h pause
-    { messages: 10, delayBetween: 5 * 60 * 1000, pauseAfter: 90 * 60 * 1000 },    // Wave 3: 10 msgs, 5min between, 1h30 pause
-    { messages: 10, delayBetween: 6 * 60 * 1000, pauseAfter: 120 * 60 * 1000 },   // Wave 4: 10 msgs, 6min between, 2h pause
-    { messages: 10, delayBetween: 7 * 60 * 1000, pauseAfter: 0 }                  // Wave 5: 10 msgs, 7min between, no pause (final)
+    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 15 * 60 * 1000 },    // Wave 1: 15 msgs, 1min between, 15min pause
+    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 15 * 60 * 1000 },    // Wave 2: 15 msgs, 1min between, 15min pause
+    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 15 * 60 * 1000 },    // Wave 3: 15 msgs, 1min between, 15min pause
+    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 0 }                   // Wave 4: 15 msgs, 1min between (final wave)
 ];
 
 /**
  * Add random jitter to delay for more natural timing
- * Jitter: ±30 seconds
+ * Jitter: ±10 seconds (shorter for email)
  */
 function addJitter(baseDelay: number): number {
-    const jitterRange = 30 * 1000; // ±30 seconds
-    const jitter = (Math.random() - 0.5) * 2 * jitterRange; // Random between -30s and +30s
+    const jitterRange = 10 * 1000; // ±10 seconds
+    const jitter = (Math.random() - 0.5) * 2 * jitterRange; // Random between -10s and +10s
     return Math.max(1000, baseDelay + jitter); // Minimum 1 second
 }
 
@@ -156,19 +150,6 @@ async function runMessageSendingJob() {
                     continue;
                 }
 
-                // Check WhatsApp connection status
-                if (config.whatsappStatus !== WhatsAppStatus.CONNECTED) {
-                    // Throttle disconnected warnings to avoid log spam
-                    const lastWarning = disconnectedWarnings.get(referrerId) || 0;
-                    const now = Date.now();
-
-                    if (now - lastWarning > WARNING_COOLDOWN_MS) {
-                        console.log(`${campaignLabel} WhatsApp not connected for referrer ${referrerId} (status: ${config.whatsappStatus}), skipping messages`);
-                        disconnectedWarnings.set(referrerId, now);
-                    }
-                    continue;
-                }
-
                 // Verify referrer still has active relance subscription
                 const hasRelance = await userServiceClient.hasRelanceSubscription(referrerId);
                 if (!hasRelance) {
@@ -268,31 +249,26 @@ async function runMessageSendingJob() {
                     .replace(/\{\{referrerName\}\}/g, referrerInfo.name || 'your referrer')
                     .replace(/\{\{day\}\}/g, target.currentDay.toString());
 
-                // Initialize WhatsApp client
-                const client = await whatsappRelanceService.initializeClient(referrerId);
-                if (!client) {
-                    console.log(`${campaignLabel} Could not initialize WhatsApp client for ${referrerId}, skipping target ${target._id}`);
+                // Check for email address
+                const recipientEmail = referralInfo.email;
+                if (!recipientEmail) {
+                    console.log(`${campaignLabel} Referral ${referralId} has no email address, skipping target ${target._id}`);
                     totalFailed++;
                     continue;
                 }
 
-                // Send message
-                const phoneNumber = referralInfo.phoneNumber;
-                if (!phoneNumber) {
-                    console.log(`${campaignLabel} Referral ${referralId} has no phone number, skipping target ${target._id}`);
-                    totalFailed++;
-                    continue;
-                }
-
-                const sendResult = await whatsappRelanceService.sendMessage(
-                    client,
-                    phoneNumber,
+                // Send email
+                const sendResult = await emailRelanceService.sendRelanceEmail(
+                    recipientEmail,
+                    referralInfo.name || 'Member',
+                    referrerInfo.name || 'Your Referrer',
                     messageText,
+                    target.currentDay,
                     messageTemplate.mediaUrls
                 );
 
                 if (sendResult.success) {
-                    console.log(`${campaignLabel} ✓ Message sent to ${phoneNumber} (Day ${target.currentDay}) for target ${target._id}`);
+                    console.log(`${campaignLabel} ✓ Email sent to ${recipientEmail} (Day ${target.currentDay}) for target ${target._id}`);
 
                     // Update target
                     target.messagesDelivered.push({
@@ -341,7 +317,7 @@ async function runMessageSendingJob() {
                     totalSent++;
 
                 } else {
-                    console.error(`${campaignLabel} Failed to send message to ${phoneNumber} for target ${target._id}:`, sendResult.error);
+                    console.error(`${campaignLabel} Failed to send email to ${recipientEmail} for target ${target._id}:`, sendResult.error);
 
                     // Log failed delivery
                     target.messagesDelivered.push({
@@ -360,9 +336,6 @@ async function runMessageSendingJob() {
 
                     totalFailed++;
                 }
-
-                // Keep client connected for future messages (no need to disconnect)
-                // The client will auto-disconnect on connection issues or manual disconnect
 
                 // Wave-based delay system with random jitter
                 messagesInCurrentWave++;
@@ -461,8 +434,8 @@ async function checkAndCompleteCampaigns() {
 }
 
 export function startRelanceSenderJob() {
-    console.log('[Relance Sender] Scheduling sender job - runs immediately on startup (for testing), then every 6 hours');
-    console.log('[Relance Sender] Wave-based sending configured (50 messages/day max):');
+    console.log('[Relance Sender] Scheduling email sender job - runs immediately on startup, then every 6 hours');
+    console.log('[Relance Sender] Wave-based email sending configured (60 messages/day max):');
     WAVE_CONFIGS.forEach((wave, index) => {
         const delayMin = Math.round(wave.delayBetween / 1000 / 60);
         const pauseMin = Math.round(wave.pauseAfter / 1000 / 60);

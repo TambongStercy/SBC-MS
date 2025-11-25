@@ -1,17 +1,16 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 /**
- * WhatsApp connection status for relance feature
+ * Relance delivery channel - now email-only
+ * Kept as enum for potential future expansion
  */
-export enum WhatsAppStatus {
-    CONNECTED = 'connected',
-    DISCONNECTED = 'disconnected',
-    EXPIRED = 'expired'
+export enum RelanceChannel {
+    EMAIL = 'email'
 }
 
 /**
  * RelanceConfig Interface
- * Stores WhatsApp connection details for each user
+ * Stores relance configuration for each user (email-based)
  */
 export interface IRelanceConfig extends Document {
     _id: Types.ObjectId;
@@ -24,19 +23,15 @@ export interface IRelanceConfig extends Document {
     defaultCampaignPaused: boolean;          // Pause default auto-enrollment campaign
     allowSimultaneousCampaigns: boolean;      // Allow default + filtered to run together
 
-    whatsappAuthData: string;                 // Encrypted session credentials
-    whatsappStatus: WhatsAppStatus;           // Connection status
-    lastQrScanDate?: Date;                    // When user last scanned QR
-    lastConnectionCheck?: Date;               // Last time we verified connection
-    connectionFailureCount: number;           // Track consecutive connection failures
-    lastConnectionFailure?: Date;             // When last failure occurred
-    failureNotificationSent: boolean;         // Track if we've notified about failures
-    lastFailureNotifiedAt?: Date;             // When we last sent failure notification
+    // Delivery channel (email)
+    channel: RelanceChannel;                  // Currently only EMAIL
+
+    // Rate limiting
     messagesSentToday: number;                // Rate limiting counter
     lastResetDate: Date;                      // When counter was last reset
 
     // Safety limits
-    maxMessagesPerDay: number;                // User-configurable daily limit (default 50)
+    maxMessagesPerDay: number;                // User-configurable daily limit (default 60 for email)
     maxTargetsPerCampaign: number;            // Max targets per filtered campaign (default 500)
 
     createdAt: Date;
@@ -77,36 +72,14 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
             default: false  // By default, filtered campaigns pause default
         },
 
-        whatsappAuthData: {
+        // Delivery channel
+        channel: {
             type: String,
-            default: ''  // Empty until user connects
+            enum: Object.values(RelanceChannel),
+            default: RelanceChannel.EMAIL
         },
-        whatsappStatus: {
-            type: String,
-            enum: Object.values(WhatsAppStatus),
-            default: WhatsAppStatus.DISCONNECTED,
-            index: true
-        },
-        lastQrScanDate: {
-            type: Date
-        },
-        lastConnectionCheck: {
-            type: Date
-        },
-        connectionFailureCount: {
-            type: Number,
-            default: 0
-        },
-        lastConnectionFailure: {
-            type: Date
-        },
-        failureNotificationSent: {
-            type: Boolean,
-            default: false
-        },
-        lastFailureNotifiedAt: {
-            type: Date
-        },
+
+        // Rate limiting
         messagesSentToday: {
             type: Number,
             default: 0
@@ -119,7 +92,7 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
         // Safety limits
         maxMessagesPerDay: {
             type: Number,
-            default: 50  // Conservative limit to avoid spam
+            default: 60  // Email allows slightly higher limit than WhatsApp
         },
         maxTargetsPerCampaign: {
             type: Number,
@@ -131,8 +104,8 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
     }
 );
 
-// Index for finding users with connected WhatsApp
-RelanceConfigSchema.index({ whatsappStatus: 1, enabled: 1 });
+// Index for finding enabled configs
+RelanceConfigSchema.index({ enabled: 1 });
 
 // Index for daily counter reset queries
 RelanceConfigSchema.index({ lastResetDate: 1 });

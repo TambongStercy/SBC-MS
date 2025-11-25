@@ -6015,11 +6015,11 @@ class PaymentService {
                 return { success: false, error: `Cannot reject withdrawal with status: ${transaction.status}` };
             }
 
-            // Refund the user's balance (amount + fee that was deducted)
-            const refundAmount = transaction.amount; // This includes the fee
             const userId = transaction.userId.toString();
 
-            await userServiceClient.updateUserBalance(userId, refundAmount);
+            // NOTE: No balance refund needed here because the user's balance is only debited
+            // when the payment provider confirms successful payout via webhook.
+            // At PENDING_ADMIN_APPROVAL stage, no balance has been deducted yet.
 
             // Update transaction with rejection details
             transaction.rejectedBy = new Types.ObjectId(adminId);
@@ -6035,7 +6035,6 @@ class PaymentService {
             }
             transaction.metadata.approvalStatus = 'rejected';
             transaction.metadata.rejectedByAdmin = adminId;
-            transaction.metadata.refundedAmount = refundAmount;
 
             await transaction.save();
 
@@ -6049,7 +6048,6 @@ class PaymentService {
                         amount: transaction.amount,
                         currency: transaction.currency,
                         rejectionReason,
-                        refundedAmount: refundAmount,
                         status: 'rejected'
                     }
                 );
@@ -6057,7 +6055,7 @@ class PaymentService {
                 log.error(`Failed to send rejection notification for ${transactionId}:`, notifError);
             }
 
-            log.info(`Withdrawal ${transactionId} rejected by admin ${adminId}. ${refundAmount} ${transaction.currency} refunded to user ${userId}`);
+            log.info(`Withdrawal ${transactionId} rejected by admin ${adminId}. No balance changes (balance only debited on provider confirmation).`);
 
             return { success: true, transaction };
 
@@ -6110,16 +6108,44 @@ class PaymentService {
                 if (!result.success) {
                     throw new Error(result.message);
                 }
+
+                // Store the CinetPay transaction ID in the externalTransactionId field
+                if (result.cinetpayTransactionId) {
+                    await transactionRepository.update(transaction._id, {
+                        externalTransactionId: result.cinetpayTransactionId,
+                        metadata: {
+                            ...(transaction.metadata || {}),
+                            cinetpayTransactionId: result.cinetpayTransactionId
+                        }
+                    });
+                    log.info(`Stored CinetPay transaction ID ${result.cinetpayTransactionId} for transaction ${transaction.transactionId}`);
+                }
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
                 // Use existing processFeexpayPayout method
                 const targetCurrency = momoOperatorToCurrency[momoOperator] || Currency.XOF;
-                await this.processFeexpayPayout(
+                const feexpayResult = await this.processFeexpayPayout(
                     transaction.transactionId,
                     fullMomoNumber,
                     momoOperator,
                     netAmount,
                     targetCurrency
                 );
+
+                // Store the FeexPay reference in the externalTransactionId field
+                if (feexpayResult.success && feexpayResult.providerTransactionId) {
+                    await transactionRepository.update(transaction._id, {
+                        externalTransactionId: feexpayResult.providerTransactionId,
+                        metadata: {
+                            ...(transaction.metadata || {}),
+                            feexpayReference: feexpayResult.providerTransactionId
+                        }
+                    });
+                    log.info(`Stored FeexPay reference ${feexpayResult.providerTransactionId} for transaction ${transaction.transactionId}`);
+                }
+
+                if (!feexpayResult.success) {
+                    throw new Error(feexpayResult.message || 'FeexPay payout failed');
+                }
             }
 
         } catch (error: any) {

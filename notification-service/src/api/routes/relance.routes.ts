@@ -11,30 +11,12 @@ const router = Router();
 // ===== USER ROUTES (Authenticated) =====
 
 /**
- * @route   POST /api/relance/connect
- * @desc    Generate QR code for WhatsApp connection
- * @access  Private
- */
-router.post('/connect', authenticate, (req, res) =>
-    relanceController.connectWhatsApp(req, res)
-);
-
-/**
  * @route   GET /api/relance/status
- * @desc    Check WhatsApp connection status
+ * @desc    Check relance configuration status (email-based)
  * @access  Private
  */
 router.get('/status', authenticate, (req, res) =>
     relanceController.getStatus(req, res)
-);
-
-/**
- * @route   DELETE /api/relance/disconnect
- * @desc    Disconnect WhatsApp session
- * @access  Private
- */
-router.delete('/disconnect', authenticate, (req, res) =>
-    relanceController.disconnectWhatsApp(req, res)
 );
 
 /**

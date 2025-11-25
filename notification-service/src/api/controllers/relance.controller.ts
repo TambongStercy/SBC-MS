@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import logger from '../../utils/logger';
-import { whatsappRelanceService } from '../../services/whatsapp.relance.service';
-import RelanceConfigModel, { WhatsAppStatus } from '../../database/models/relance-config.model';
+import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
 
@@ -16,60 +15,8 @@ interface AuthenticatedRequest extends Request {
 
 class RelanceController {
     /**
-     * POST /api/relance/connect
-     * Generate QR code for WhatsApp connection
-     */
-    async connectWhatsApp(req: AuthenticatedRequest, res: Response): Promise<void> {
-        try {
-            const userId = req.user?.userId;
-            if (!userId) {
-                res.status(401).json({ success: false, message: 'Unauthorized' });
-                return;
-            }
-
-            log.info(`User ${userId} requesting WhatsApp QR code`);
-
-            // Check if already connected
-            const config = await RelanceConfigModel.findOne({ userId });
-            if (config && config.whatsappStatus === 'connected') {
-                log.info(`User ${userId} already connected, returning success`);
-                res.status(200).json({
-                    success: true,
-                    message: 'WhatsApp already connected',
-                    data: {
-                        alreadyConnected: true,
-                        whatsappStatus: 'connected'
-                    }
-                });
-                return;
-            }
-
-            const result = await whatsappRelanceService.generateQRCode(userId);
-
-            if (result.error) {
-                res.status(500).json({
-                    success: false,
-                    message: result.error
-                });
-                return;
-            }
-
-            res.status(200).json({
-                success: true,
-                data: { qr: result.qr }
-            });
-        } catch (error: any) {
-            log.error('Error in connectWhatsApp:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to generate QR code'
-            });
-        }
-    }
-
-    /**
      * GET /api/relance/status
-     * Check WhatsApp connection status
+     * Check relance configuration status (email-based)
      */
     async getStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
         try {
@@ -80,17 +27,16 @@ class RelanceController {
             }
 
             const config = await RelanceConfigModel.findOne({ userId });
-            const status = await whatsappRelanceService.checkStatus(userId);
 
             res.status(200).json({
                 success: true,
                 data: {
-                    whatsappStatus: status,
+                    channel: config?.channel || 'email',
                     enabled: config?.enabled || false,
                     enrollmentPaused: config?.enrollmentPaused || false,
                     sendingPaused: config?.sendingPaused || false,
                     messagesSentToday: config?.messagesSentToday || 0,
-                    lastConnectionCheck: config?.lastConnectionCheck
+                    maxMessagesPerDay: config?.maxMessagesPerDay || 60
                 }
             });
         } catch (error: any) {
@@ -98,35 +44,6 @@ class RelanceController {
             res.status(500).json({
                 success: false,
                 message: 'Failed to get status'
-            });
-        }
-    }
-
-    /**
-     * DELETE /api/relance/disconnect
-     * Disconnect WhatsApp session
-     */
-    async disconnectWhatsApp(req: AuthenticatedRequest, res: Response): Promise<void> {
-        try {
-            const userId = req.user?.userId;
-            if (!userId) {
-                res.status(401).json({ success: false, message: 'Unauthorized' });
-                return;
-            }
-
-            const { force } = req.body; // Optional: force=true to delete session files immediately
-
-            await whatsappRelanceService.disconnect(userId, force === true);
-
-            res.status(200).json({
-                success: true,
-                message: force ? 'WhatsApp session completely reset' : 'WhatsApp disconnected successfully'
-            });
-        } catch (error: any) {
-            log.error('Error in disconnectWhatsApp:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to disconnect WhatsApp'
             });
         }
     }
@@ -357,7 +274,7 @@ class RelanceController {
             ] = await Promise.all([
                 RelanceTargetModel.countDocuments({ status: TargetStatus.ACTIVE }),
                 RelanceTargetModel.countDocuments({ status: TargetStatus.COMPLETED }),
-                RelanceConfigModel.countDocuments({ enabled: true, whatsappStatus: WhatsAppStatus.CONNECTED }),
+                RelanceConfigModel.countDocuments({ enabled: true }),
                 RelanceTargetModel.countDocuments({ enteredLoopAt: { $gte: todayStart } }),
                 RelanceConfigModel.aggregate([
                     { $match: { lastResetDate: { $gte: todayStart } } },
@@ -487,7 +404,7 @@ class RelanceController {
     async getActiveConfigs(req: AuthenticatedRequest, res: Response): Promise<void> {
         try {
             const configs = await RelanceConfigModel.find({ enabled: true })
-                .sort({ lastQrScanDate: -1 })
+                .sort({ updatedAt: -1 })
                 .lean();
 
             res.status(200).json({
