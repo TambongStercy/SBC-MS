@@ -63,8 +63,8 @@ export class TransactionStatusChecker {
             // 1. Check and cancel stale OTP verification withdrawals
             await this.checkStaleOtpVerifications();
 
-            // 2. Auto-reject pending withdrawals older than 24 hours
-            await this.autoRejectExpiredWithdrawals();
+            // 2. Auto-expire pending withdrawals older than 24 hours
+            await this.autoExpireOldWithdrawals();
 
             // 3. Find all withdrawal transactions with pending or processing status
             const processingTransactions = await transactionRepository.findProcessingWithdrawals(100);
@@ -114,19 +114,23 @@ export class TransactionStatusChecker {
     }
 
     /**
-     * Auto-rejects pending withdrawal transactions that are older than 24 hours
+     * Auto-expires pending withdrawal transactions that are older than 24 hours.
+     * This includes both PENDING and PENDING_ADMIN_APPROVAL statuses.
+     *
+     * NOTE: No balance refund is needed because user balance is only debited
+     * when the payment provider confirms successful payout via webhook.
      */
-    private async autoRejectExpiredWithdrawals(): Promise<void> {
+    private async autoExpireOldWithdrawals(): Promise<void> {
         try {
             log.info('Checking for pending withdrawals older than 24 hours...');
 
             const twentyFourHoursAgo = new Date();
             twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-            // Find all PENDING withdrawals older than 24 hours
+            // Find all PENDING or PENDING_ADMIN_APPROVAL withdrawals older than 24 hours
             const expiredWithdrawals = await TransactionModel.find({
                 type: TransactionType.WITHDRAWAL,
-                status: TransactionStatus.PENDING,
+                status: { $in: [TransactionStatus.PENDING, TransactionStatus.PENDING_ADMIN_APPROVAL] },
                 createdAt: { $lt: twentyFourHoursAgo },
                 deleted: { $ne: true }
             }).lean();
@@ -136,41 +140,45 @@ export class TransactionStatusChecker {
                 return;
             }
 
-            log.info(`Found ${expiredWithdrawals.length} pending withdrawals older than 24 hours. Auto-rejecting...`);
+            log.info(`Found ${expiredWithdrawals.length} pending withdrawals older than 24 hours. Auto-expiring...`);
 
-            let rejectedCount = 0;
+            let expiredCount = 0;
             let failedCount = 0;
 
             for (const withdrawal of expiredWithdrawals) {
                 try {
                     const hoursOld = Math.floor((Date.now() - new Date(withdrawal.createdAt).getTime()) / (1000 * 60 * 60));
+                    const previousStatus = withdrawal.status;
 
+                    // Use EXPIRED status - no balance refund needed since balance
+                    // is only debited when payment provider confirms success
                     await transactionRepository.updateStatus(
                         withdrawal.transactionId,
-                        TransactionStatus.REJECTED_BY_ADMIN,
+                        TransactionStatus.EXPIRED,
                         {
                             metadata: {
                                 ...(withdrawal.metadata || {}),
-                                rejectionReason: `Auto-rejected: Pending approval window expired after ${hoursOld} hours (24 hour limit)`,
-                                autoRejectedAt: new Date(),
-                                autoRejected: true
+                                expirationReason: `Auto-expired: Approval window expired after ${hoursOld} hours (24 hour limit)`,
+                                previousStatus: previousStatus,
+                                autoExpiredAt: new Date(),
+                                autoExpired: true
                             }
                         }
                     );
 
-                    log.info(`Auto-rejected withdrawal ${withdrawal.transactionId} for user ${withdrawal.userId} (${hoursOld} hours old)`);
-                    rejectedCount++;
+                    log.info(`Auto-expired withdrawal ${withdrawal.transactionId} for user ${withdrawal.userId} (was ${previousStatus}, ${hoursOld} hours old). No balance changes.`);
+                    expiredCount++;
 
                 } catch (error) {
-                    log.error(`Error auto-rejecting withdrawal ${withdrawal.transactionId}:`, error);
+                    log.error(`Error auto-expiring withdrawal ${withdrawal.transactionId}:`, error);
                     failedCount++;
                 }
             }
 
-            log.info(`Auto-rejection complete: ${rejectedCount} rejected, ${failedCount} failed`);
+            log.info(`Auto-expiration complete: ${expiredCount} expired, ${failedCount} failed`);
 
         } catch (error) {
-            log.error('Error in autoRejectExpiredWithdrawals:', error);
+            log.error('Error in autoExpireOldWithdrawals:', error);
         }
     }
 

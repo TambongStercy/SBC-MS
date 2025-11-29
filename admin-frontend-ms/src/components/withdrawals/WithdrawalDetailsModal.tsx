@@ -184,23 +184,25 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                     </div>
 
                     {/* User Balance */}
-                    {withdrawal.userBalance && Object.keys(withdrawal.userBalance).length > 0 && (
-                        <div>
-                            <h3 className="text-lg font-semibold mb-3 text-white">Current Balance</h3>
-                            <div className="bg-green-900 bg-opacity-30 border border-green-700 rounded-lg p-4">
+                    <div>
+                        <h3 className="text-lg font-semibold mb-3 text-white">💰 Current User Balance</h3>
+                        <div className="bg-green-900 bg-opacity-30 border border-green-700 rounded-lg p-4">
+                            {withdrawal.userBalance && Object.keys(withdrawal.userBalance).length > 0 ? (
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     {Object.entries(withdrawal.userBalance).map(([currency, amount]) => (
                                         <div key={currency}>
                                             <p className="text-sm text-gray-400">{currency}</p>
                                             <p className="text-lg font-bold text-green-400">
-                                                {formatCurrency(amount, currency as any)}
+                                                {formatCurrency(amount as number, currency as any)}
                                             </p>
                                         </div>
                                     ))}
                                 </div>
-                            </div>
+                            ) : (
+                                <p className="text-gray-400 text-sm">Balance information not available</p>
+                            )}
                         </div>
-                    )}
+                    </div>
 
                     {/* Referral Statistics */}
                     {withdrawal.referralStats && (

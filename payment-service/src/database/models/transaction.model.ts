@@ -11,6 +11,7 @@ export enum TransactionStatus {
     PENDING_OTP_VERIFICATION = 'pending_otp_verification',
     PENDING_ADMIN_APPROVAL = 'pending_admin_approval', // Withdrawal awaiting admin approval
     REJECTED_BY_ADMIN = 'rejected_by_admin', // Withdrawal rejected by admin
+    EXPIRED = 'expired', // Withdrawal expired due to timeout (no admin action)
 }
 
 // Define Transaction Type
