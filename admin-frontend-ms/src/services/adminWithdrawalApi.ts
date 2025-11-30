@@ -113,7 +113,7 @@ export interface WithdrawalTransaction {
     userName?: string;
     userEmail?: string;
     userPhoneNumber?: string;
-    userBalance?: { [key: string]: number };
+    userBalance?: number | { [key: string]: number }; // Can be a number or object with currency keys
 
     // Referral statistics
     referralStats?: ReferralStats;
