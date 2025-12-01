@@ -84,41 +84,39 @@ export class FeexPayPayoutService {
 
     // Map momoOperator slugs to FeexPay payout endpoints and their network parameter value
     // This mapping is crucial for routing to the correct FeexPay API endpoint
-    // Updated based on official FeexPay Payout API documentation
+    // Updated based on official FeexPay Payout API documentation (December 2025)
+    // Reference: https://docs.feexpay.me/
     private readonly feexPayPayoutEndpoints: Record<string, {
         endpoint: string;
         networkParam: string; // The 'network' parameter expected by FeexPay
         minAmount: number; // Minimum amount for this endpoint/network
     }> = {
-            // Benin - Using global endpoint for MTN and MOOV
+            // Benin - Using global endpoint for MTN and MOOV (min 50 FCFA)
             'MTN_MOMO_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MTN', minAmount: 50 },
             'MOOV_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MOOV', minAmount: 50 },
+            // Benin - CELTIIS (dedicated endpoint)
+            'CELTIIS_BEN': { endpoint: '/payouts/public/celtiis_bj', networkParam: 'CELTIIS BJ', minAmount: 50 },
 
-            // Togo - Using dedicated Togo endpoint as per documentation
+            // Togo - Using dedicated Togo endpoint as per documentation (min 100 FCFA)
             'TOGOCOM_TG': { endpoint: '/payouts/public/togo', networkParam: 'TOGOCOM TG', minAmount: 100 },
             'MOOV_TG': { endpoint: '/payouts/public/togo', networkParam: 'MOOV TG', minAmount: 100 },
 
-            // Congo Brazzaville (Republic of the Congo)
+            // Congo Brazzaville (Republic of the Congo) - Only MTN is supported per FeexPay docs
             'MTN_MOMO_COG': { endpoint: '/payouts/public/mtn_cg', networkParam: 'MTN CG', minAmount: 100 },
-            'AIRTEL_COG': { endpoint: '/payouts/public/airtel_cg', networkParam: 'AIRTEL CG', minAmount: 100 },
+            // NOTE: AIRTEL_COG is NOT supported by FeexPay payout API - use CinetPay instead
 
-            // DRC (Democratic Republic of Congo)
-            'VODACOM_MPESA_COD': { endpoint: '/payouts/public/vodacom_cd', networkParam: 'VODACOM CD', minAmount: 100 },
-            'AIRTEL_COD': { endpoint: '/payouts/public/airtel_cd', networkParam: 'AIRTEL CD', minAmount: 100 },
-            'ORANGE_COD': { endpoint: '/payouts/public/orange_cd', networkParam: 'ORANGE CD', minAmount: 100 },
+            // Côte d'Ivoire - Per updated FeexPay docs (December 2025)
+            'MTN_MOMO_CIV': { endpoint: '/payouts/public/mtn_ci', networkParam: 'MTN CI', minAmount: 100 },
+            'MOOV_CIV': { endpoint: '/payouts/public/moov_ci', networkParam: 'MOOV CI', minAmount: 100 },
+            'ORANGE_CIV': { endpoint: '/payouts/public/orange_ci', networkParam: 'ORANGE CI', minAmount: 100 },
+            'WAVE_CIV': { endpoint: '/payouts/public/wave_ci', networkParam: 'WAVE CI', minAmount: 100 },
 
-            // Kenya
-            'MPESA_KEN': { endpoint: '/payouts/public/mpesa_ke', networkParam: 'MPESA KE', minAmount: 100 },
+            // Senegal - Per updated FeexPay docs (December 2025)
+            'ORANGE_SEN': { endpoint: '/payouts/public/orange_sn', networkParam: 'ORANGE SN', minAmount: 100 },
+            'FREE_SEN': { endpoint: '/payouts/public/free_sn', networkParam: 'FREE SN', minAmount: 100 },
 
-            // Nigeria
-            'MTN_MOMO_NGA': { endpoint: '/payouts/public/mtn_ng', networkParam: 'MTN NG', minAmount: 100 },
-            'AIRTEL_NGA': { endpoint: '/payouts/public/airtel_ng', networkParam: 'AIRTEL NG', minAmount: 100 },
-
-            // Gabon
-            'AIRTEL_GAB': { endpoint: '/payouts/public/airtel_ga', networkParam: 'AIRTEL GA', minAmount: 100 },
-
-            // Note: Côte d'Ivoire, Senegal, and Burkina Faso should now use CinetPay for withdrawals
-            // Removing them from FeexPay endpoints to avoid confusion
+            // Note: DRC, Kenya, Nigeria, Gabon endpoints were not found in current FeexPay documentation
+            // These may require verification with FeexPay support before use
         };
 
     private readonly countryDialingCodes: Record<string, string> = {
@@ -236,14 +234,27 @@ export class FeexPayPayoutService {
      * Selects the appropriate FeexPay endpoint based on country and operator.
      */
     public async initiatePayout(request: PayoutRequest): Promise<PayoutResult> {
-        log.info(`Initiating FeexPay payout for user ${request.userId} to ${request.phoneNumber} via ${request.momoOperator}. Amount: ${request.amount}`);
+        // Enhanced logging for debugging phone number issues
+        log.info(`[FeexPay Payout] Initiating payout:`, {
+            userId: request.userId,
+            originalPhone: request.phoneNumber,
+            countryCode: request.countryCode,
+            operator: request.momoOperator,
+            amount: request.amount,
+            transactionId: request.client_transaction_id
+        });
 
         try {
             const endpointConfig = this.feexPayPayoutEndpoints[request.momoOperator];
 
             if (!endpointConfig) {
-                const message = `Unsupported mobile money operator for FeexPay payout: ${request.momoOperator}.`;
-                log.error(message);
+                const message = `Unsupported mobile money operator for FeexPay payout: ${request.momoOperator}. Country: ${request.countryCode}. Please use CinetPay for this operator/country.`;
+                log.error(`[FeexPay Payout] ${message}`, {
+                    operator: request.momoOperator,
+                    countryCode: request.countryCode,
+                    phoneNumber: request.phoneNumber,
+                    supportedOperators: Object.keys(this.feexPayPayoutEndpoints)
+                });
                 throw new AppError(message, 400);
             }
 
@@ -252,14 +263,41 @@ export class FeexPayPayoutService {
                 throw new AppError(`Minimum payout amount for ${request.momoOperator} is ${endpointConfig.minAmount} FCFA.`, 400);
             }
 
+            // Validate country code is known
+            const dialingPrefix = this.countryDialingCodes[request.countryCode];
+            if (!dialingPrefix) {
+                const message = `Unknown country code: ${request.countryCode}. Cannot determine phone number prefix.`;
+                log.error(`[FeexPay Payout] ${message}`, {
+                    countryCode: request.countryCode,
+                    phoneNumber: request.phoneNumber,
+                    knownCountries: Object.keys(this.countryDialingCodes)
+                });
+                throw new AppError(message, 400);
+            }
+
             // Ensure phone number has country prefix if required by FeexPay for specific endpoints
             let formattedPhoneNumber = request.phoneNumber;
-            const dialingPrefix = this.countryDialingCodes[request.countryCode];
-            if (dialingPrefix && !formattedPhoneNumber.startsWith(dialingPrefix)) {
-                formattedPhoneNumber = dialingPrefix + formattedPhoneNumber.replace(/\D/g, ''); // Ensure no spaces/dashes and add prefix
-                log.info(`Formatted phone number for FeexPay: ${formattedPhoneNumber}`);
+
+            // Log the original phone number for debugging
+            log.debug(`[FeexPay Payout] Phone formatting - Original: ${request.phoneNumber}, Country: ${request.countryCode}, Expected prefix: ${dialingPrefix}`);
+
+            if (!formattedPhoneNumber.startsWith(dialingPrefix)) {
+                // Remove any non-digit characters first
+                const cleanedNumber = formattedPhoneNumber.replace(/\D/g, '');
+                formattedPhoneNumber = dialingPrefix + cleanedNumber;
+                log.info(`[FeexPay Payout] Formatted phone number: ${formattedPhoneNumber} (added prefix ${dialingPrefix})`);
             } else {
-                formattedPhoneNumber = formattedPhoneNumber.replace(/\D/g, ''); // Ensure no spaces/dashes if prefix already there or not needed
+                formattedPhoneNumber = formattedPhoneNumber.replace(/\D/g, ''); // Ensure no spaces/dashes if prefix already there
+                log.info(`[FeexPay Payout] Phone number already has prefix: ${formattedPhoneNumber}`);
+            }
+
+            // Validate the formatted phone number looks reasonable
+            if (formattedPhoneNumber.length < 10 || formattedPhoneNumber.length > 15) {
+                log.warn(`[FeexPay Payout] Phone number length seems unusual: ${formattedPhoneNumber.length} digits`, {
+                    formattedPhone: formattedPhoneNumber,
+                    originalPhone: request.phoneNumber,
+                    countryCode: request.countryCode
+                });
             }
 
             // Validate and prepare motif (description) according to FeexPay documentation
@@ -293,14 +331,20 @@ export class FeexPayPayoutService {
                 requestBody.email = request.recipientEmail;
             }
 
-            log.info(`Sending FeexPay payout request to ${endpointConfig.endpoint} with body:`, {
-                ...requestBody,
-                phoneNumber: '***' + requestBody.phoneNumber.slice(-4) // Hide phone number in logs
+            // Log full request details for debugging (but mask sensitive data in production)
+            log.info(`[FeexPay Payout] Sending request to ${endpointConfig.endpoint}:`, {
+                endpoint: endpointConfig.endpoint,
+                phoneNumber: formattedPhoneNumber, // Full number for debugging
+                network: requestBody.network,
+                amount: requestBody.amount,
+                shop: requestBody.shop,
+                motif: requestBody.motif,
+                transactionId: request.client_transaction_id
             });
 
             const response = await this.apiClient.post(endpointConfig.endpoint, requestBody);
 
-            log.info(`FeexPay payout response for ${request.client_transaction_id}:`, response.data);
+            log.info(`[FeexPay Payout] Response for ${request.client_transaction_id}:`, response.data);
 
             if (response.data.status === 'SUCCESSFUL' || response.data.status === 'PENDING') {
                 return {
@@ -314,7 +358,20 @@ export class FeexPayPayoutService {
                 };
             } else {
                 const message = response.data.message || `FeexPay payout failed: ${response.data.status}`;
-                log.error(`FeexPay payout initiation failed for ${request.client_transaction_id}: ${message}`, response.data);
+                // Enhanced error logging with full details for debugging
+                log.error(`[FeexPay Payout] FAILED for ${request.client_transaction_id}:`, {
+                    errorMessage: message,
+                    responseData: response.data,
+                    requestDetails: {
+                        phoneNumber: formattedPhoneNumber,
+                        originalPhone: request.phoneNumber,
+                        countryCode: request.countryCode,
+                        operator: request.momoOperator,
+                        network: requestBody.network,
+                        endpoint: endpointConfig.endpoint,
+                        amount: request.amount
+                    }
+                });
                 return {
                     success: false,
                     status: 'failed',
@@ -326,7 +383,18 @@ export class FeexPayPayoutService {
             }
 
         } catch (error: any) {
-            log.error(`Error initiating FeexPay payout for ${request.client_transaction_id}: ${error.message}`, error.response?.data || error);
+            // Enhanced error logging with full context
+            log.error(`[FeexPay Payout] ERROR for ${request.client_transaction_id}:`, {
+                errorMessage: error.message,
+                errorResponse: error.response?.data,
+                errorStatus: error.response?.status,
+                requestDetails: {
+                    phoneNumber: request.phoneNumber,
+                    countryCode: request.countryCode,
+                    operator: request.momoOperator,
+                    amount: request.amount
+                }
+            });
 
             // Enhanced error handling for IP whitelisting
             if (this.isIPWhitelistingError(error)) {
@@ -336,7 +404,13 @@ export class FeexPayPayoutService {
                 throw new AppError(detailedMessage, 403);
             }
 
-            throw new AppError(`Failed to initiate FeexPay payout: ${error.response?.data?.message || error.message}`, error.response?.status || 500);
+            // Check for country not supported error
+            const errorMsg = error.response?.data?.message || error.message || '';
+            if (errorMsg.includes('pays non pris en charge') || errorMsg.includes('country not supported')) {
+                log.error(`[FeexPay Payout] COUNTRY NOT SUPPORTED - Phone: ${request.phoneNumber}, Country: ${request.countryCode}, Operator: ${request.momoOperator}`);
+            }
+
+            throw new AppError(`Échec du paiement FeexPay: ${error.response?.data?.message || error.message}`, error.response?.status || 500);
         }
     }
 
