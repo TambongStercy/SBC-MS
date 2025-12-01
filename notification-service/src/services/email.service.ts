@@ -3,6 +3,7 @@ import config from '../config';
 import logger from '../utils/logger';
 import { Attachment } from 'nodemailer/lib/mailer';
 import { BounceHandlerService } from './bounceHandler.service';
+import { spamChecker, SpamCheckResult } from '../utils/spam-checker';
 
 // Create a component-specific logger
 const log = logger.getLogger('EmailService');
@@ -105,9 +106,54 @@ class EmailService {
     }
 
     /**
-     * Enhanced email sending with bounce checking
+     * Enhanced email sending with bounce checking and spam detection
      */
     async sendEmail(options: EmailOptions): Promise<boolean> {
+        // Validate email address format
+        const emailValidation = spamChecker.validateEmailAddress(options.to);
+        if (!emailValidation.isValid) {
+            log.warn('Email not sent - invalid email address', {
+                email: options.to,
+                warnings: emailValidation.warnings
+            });
+            return false;
+        }
+
+        // Log any email address warnings (disposable domains, typos)
+        if (emailValidation.warnings.length > 0) {
+            log.warn('Email address warnings detected', {
+                email: options.to,
+                warnings: emailValidation.warnings
+            });
+        }
+
+        // Check content for spam patterns
+        const spamCheck = spamChecker.checkContent(
+            options.subject,
+            options.html,
+            options.text
+        );
+
+        if (spamCheck.isSpam) {
+            log.warn('Email blocked - spam content detected', {
+                email: options.to,
+                subject: options.subject,
+                spamScore: spamCheck.score,
+                reasons: spamCheck.reasons
+            });
+            return false;
+        }
+
+        // Log moderate spam scores for monitoring
+        if (spamCheck.score > 25) {
+            log.info('Email passed spam check with elevated score', {
+                email: options.to,
+                subject: options.subject,
+                spamScore: spamCheck.score,
+                reasons: spamCheck.reasons
+            });
+        }
+
         // Check if email is blacklisted before sending
         if (this.bounceHandler.isBlacklisted(options.to)) {
             log.warn('Email not sent - recipient is blacklisted', {

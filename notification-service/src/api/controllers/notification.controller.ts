@@ -160,7 +160,7 @@ export class NotificationController {
 
             res.status(200).json({
                 success: true,
-                message: 'OTP sent successfully',
+                message: 'OTP sent successfully. If you don\'t see the email, please check your spam folder.',
                 data: {
                     notificationId: notification._id,
                     status: notification.status
@@ -255,9 +255,14 @@ export class NotificationController {
                 body
             });
 
+            // Include spam folder hint for email channel
+            const emailHint = channel === DeliveryChannel.EMAIL
+                ? ' If you don\'t see the email, please check your spam folder.'
+                : '';
+
             res.status(200).json({
                 success: true,
-                message: 'Notification sent successfully',
+                message: `Notification sent successfully.${emailHint}`,
                 data: {
                     notificationId: notification._id,
                     status: notification.status
@@ -335,9 +340,14 @@ export class NotificationController {
                 variables
             });
 
+            // Include spam folder hint for email channel
+            const emailHint = channel === DeliveryChannel.EMAIL
+                ? ' If you don\'t see the email, please check your spam folder.'
+                : '';
+
             res.status(200).json({
                 success: true,
-                message: 'Templated notification sent successfully',
+                message: `Templated notification sent successfully.${emailHint}`,
                 data: {
                     notificationId: notification._id,
                     status: notification.status
@@ -512,7 +522,10 @@ export class NotificationController {
             });
 
             if (success) {
-                res.status(200).json({ success: true, message: 'Commission earned email sent successfully.' });
+                res.status(200).json({
+                    success: true,
+                    message: 'Commission earned email sent successfully. If you don\'t see the email, please check your spam folder.'
+                });
             } else {
                 // emailService already logs the error, so we send a generic server error
                 res.status(500).json({ success: false, message: 'Failed to send commission earned email.' });
@@ -555,7 +568,10 @@ export class NotificationController {
             });
 
             if (success) {
-                res.status(200).json({ success: true, message: 'Transaction successful email sent successfully.' });
+                res.status(200).json({
+                    success: true,
+                    message: 'Transaction successful email sent successfully. If you don\'t see the email, please check your spam folder.'
+                });
             } else {
                 res.status(500).json({ success: false, message: 'Failed to send transaction successful email.' });
             }
@@ -591,7 +607,10 @@ export class NotificationController {
             });
 
             if (success) {
-                res.status(200).json({ success: true, message: 'Transaction failure email sent successfully.' });
+                res.status(200).json({
+                    success: true,
+                    message: 'Transaction failure email sent successfully. If you don\'t see the email, please check your spam folder.'
+                });
             } else {
                 res.status(500).json({ success: false, message: 'Failed to send transaction failure email.' });
             }
@@ -629,7 +648,10 @@ export class NotificationController {
                 fileName: fileName || 'contacts.vcf'
             });
 
-            res.status(200).json({ success: true, message: 'Contact export email sent successfully.' });
+            res.status(200).json({
+                success: true,
+                message: 'Contact export email sent successfully. If you don\'t see the email, please check your spam folder.'
+            });
 
         } catch (error: any) {
             log.error(`Error handling contact export email request from ${callingService}:`, error);
@@ -669,7 +691,10 @@ export class NotificationController {
                 attachmentContentType,
             });
 
-            res.status(200).json({ success: true, message: 'Email with attachment sent successfully.' });
+            res.status(200).json({
+                success: true,
+                message: 'Email with attachment sent successfully. If you don\'t see the email, please check your spam folder.'
+            });
         } catch (error: any) {
             log.error(`Error sending email with attachment to ${recipientEmail}: ${error.message}`, error);
             if (error instanceof AppError) {

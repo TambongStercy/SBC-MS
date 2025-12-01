@@ -153,6 +153,10 @@ RelanceTargetSchema.index({ referralUserId: 1, status: 1 });
 // Compound index for queries by referrer and current day
 RelanceTargetSchema.index({ referrerUserId: 1, currentDay: 1 });
 
+// TTL index: Auto-delete completed targets after 90 days
+// Only applies to documents where exitedLoopAt is set (completed targets)
+RelanceTargetSchema.index({ exitedLoopAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 }); // 90 days
+
 const RelanceTargetModel = mongoose.model<IRelanceTarget>('RelanceTarget', RelanceTargetSchema);
 
 export default RelanceTargetModel;

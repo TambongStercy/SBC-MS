@@ -164,6 +164,10 @@ const NotificationSchema = new Schema<INotification>(
 NotificationSchema.index({ userId: 1, createdAt: -1 });
 NotificationSchema.index({ status: 1, createdAt: 1 });
 
+// TTL index: Auto-delete notifications older than 30 days
+// This helps keep the database size manageable as old notifications have no business value
+NotificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // 30 days
+
 // Create and export the model
 const NotificationModel = model<INotification>('Notification', NotificationSchema);
 
