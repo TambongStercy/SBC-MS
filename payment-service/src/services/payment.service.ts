@@ -2945,15 +2945,11 @@ class PaymentService {
             throw new Error('Country code is required for fiat currency payments.');
         }
 
-        // Special handling for Togo: payments use FeexPay, withdrawals use CinetPay
+        // Togo: Use FeexPay for BOTH payments and withdrawals
+        // CinetPay hasn't supported Togo payouts for 2+ months (as of Dec 2025)
         if (countryCode === 'TG') {
-            if (isWithdrawal) {
-                log.info(`🔄 Country ${countryCode} withdrawal selected, using CINETPAY. [isWithdrawal=true]`);
-                return PaymentGateway.CINETPAY;
-            } else {
-                log.info(`🔄 Country ${countryCode} payment selected, using FEEXPAY. [isWithdrawal=${isWithdrawal}]`);
-                return PaymentGateway.FEEXPAY;
-            }
+            log.info(`🔄 Country ${countryCode} selected, using FEEXPAY. [isWithdrawal=${isWithdrawal}]`);
+            return PaymentGateway.FEEXPAY;
         }
 
         // Countries that use CinetPay for both payments and withdrawals
