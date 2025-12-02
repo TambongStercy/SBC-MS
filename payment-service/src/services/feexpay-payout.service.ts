@@ -86,12 +86,19 @@ export class FeexPayPayoutService {
     // This mapping is crucial for routing to the correct FeexPay API endpoint
     // Updated based on official FeexPay Payout API documentation (December 2025)
     // Reference: https://docs.feexpay.me/
+    //
+    // IMPORTANT PHONE FORMAT FOR BENIN:
+    // Benin requires "01" prefix after country code: 229 + 01 + local number
+    // Example: 2290166000000 (NOT 22966000000)
+    // This is handled in the phone formatting logic below.
+    //
     private readonly feexPayPayoutEndpoints: Record<string, {
         endpoint: string;
         networkParam: string; // The 'network' parameter expected by FeexPay
         minAmount: number; // Minimum amount for this endpoint/network
     }> = {
             // Benin - Using global endpoint for MTN and MOOV (min 50 FCFA)
+            // IMPORTANT: Phone format must be 229 + 01 + local number (e.g., 2290166000000)
             'MTN_MOMO_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MTN', minAmount: 50 },
             'MOOV_BEN': { endpoint: '/payouts/public/transfer/global', networkParam: 'MOOV', minAmount: 50 },
             // Benin - CELTIIS (dedicated endpoint)
@@ -281,22 +288,43 @@ export class FeexPayPayoutService {
             // Log the original phone number for debugging
             log.debug(`[FeexPay Payout] Phone formatting - Original: ${request.phoneNumber}, Country: ${request.countryCode}, Expected prefix: ${dialingPrefix}`);
 
-            if (!formattedPhoneNumber.startsWith(dialingPrefix)) {
-                // Remove any non-digit characters first
-                const cleanedNumber = formattedPhoneNumber.replace(/\D/g, '');
-                formattedPhoneNumber = dialingPrefix + cleanedNumber;
-                log.info(`[FeexPay Payout] Formatted phone number: ${formattedPhoneNumber} (added prefix ${dialingPrefix})`);
+            // Remove any non-digit characters first
+            let cleanedNumber = formattedPhoneNumber.replace(/\D/g, '');
+
+            // IMPORTANT: FeexPay Benin requires a special "01" prefix after the country code
+            // Format: 229 + 01 + localNumber = 2290166000000
+            // This is specific to Benin (BJ) as per FeexPay documentation
+            if (request.countryCode === 'BJ') {
+                // Remove country code if present
+                if (cleanedNumber.startsWith('229')) {
+                    cleanedNumber = cleanedNumber.substring(3);
+                }
+                // Remove "01" prefix if already present (to avoid duplication)
+                if (cleanedNumber.startsWith('01')) {
+                    cleanedNumber = cleanedNumber.substring(2);
+                }
+                // Build final number: 229 + 01 + local number
+                formattedPhoneNumber = '229' + '01' + cleanedNumber;
+                log.info(`[FeexPay Payout] Formatted Benin phone number with 01 prefix: ${formattedPhoneNumber}`);
             } else {
-                formattedPhoneNumber = formattedPhoneNumber.replace(/\D/g, ''); // Ensure no spaces/dashes if prefix already there
-                log.info(`[FeexPay Payout] Phone number already has prefix: ${formattedPhoneNumber}`);
+                // For other countries, just add the country code prefix if not present
+                if (!cleanedNumber.startsWith(dialingPrefix)) {
+                    formattedPhoneNumber = dialingPrefix + cleanedNumber;
+                    log.info(`[FeexPay Payout] Formatted phone number: ${formattedPhoneNumber} (added prefix ${dialingPrefix})`);
+                } else {
+                    formattedPhoneNumber = cleanedNumber;
+                    log.info(`[FeexPay Payout] Phone number already has prefix: ${formattedPhoneNumber}`);
+                }
             }
 
             // Validate the formatted phone number looks reasonable
+            const expectedLength = request.countryCode === 'BJ' ? 13 : -1; // Benin: 229 + 01 + 8 digits = 13
             if (formattedPhoneNumber.length < 10 || formattedPhoneNumber.length > 15) {
                 log.warn(`[FeexPay Payout] Phone number length seems unusual: ${formattedPhoneNumber.length} digits`, {
                     formattedPhone: formattedPhoneNumber,
                     originalPhone: request.phoneNumber,
-                    countryCode: request.countryCode
+                    countryCode: request.countryCode,
+                    expectedLength: expectedLength > 0 ? expectedLength : 'varies'
                 });
             }
 
