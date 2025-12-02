@@ -4391,14 +4391,19 @@ class PaymentService {
 
             // Map dialing code to country code
             const countryCodeMap: Record<string, string> = {
+                '229': 'BJ', // Benin
                 '228': 'TG', // Togo
                 '225': 'CI', // Côte d'Ivoire
                 '221': 'SN', // Senegal
-                '242': 'CG', // Congo
+                '242': 'CG', // Congo Brazzaville
+                '226': 'BF', // Burkina Faso
                 '224': 'GN', // Guinea
+                '223': 'ML', // Mali
+                '227': 'NE', // Niger
                 '241': 'GA', // Gabon
                 '243': 'CD', // DRC
                 '254': 'KE', // Kenya
+                '234': 'NG', // Nigeria
             };
 
             const countryCode = countryCodeMap[dialingCode];
