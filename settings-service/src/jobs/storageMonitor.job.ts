@@ -26,8 +26,9 @@ class StorageMonitorJob {
         log.info('- Quick check: Every hour');
         log.info('- Detailed check: Daily at 2 AM');
 
-        // Run initial check
-        setImmediate(() => this.runQuickCheck());
+        // Initial check disabled to prevent memory spike on startup
+        // The hourly cron job will handle regular checks
+        // setImmediate(() => this.runQuickCheck());
     }
 
     /**
