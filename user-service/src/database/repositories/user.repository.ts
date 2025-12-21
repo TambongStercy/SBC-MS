@@ -145,6 +145,150 @@ export class UserRepository {
     }
 
     /**
+     * Atomically updates the activation balance for a user.
+     * Activation balance is used for sponsoring referral account activations.
+     * @param userId - The ID of the user.
+     * @param amountChange - The amount to add (positive) or subtract (negative).
+     * @returns The updated user document or null.
+     */
+    async updateActivationBalance(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
+        return UserModel.findByIdAndUpdate(
+            userId,
+            { $inc: { activationBalance: amountChange } }, // Use $inc for atomic update
+            { new: true } // Return the updated document
+        ).exec();
+    }
+
+    /**
+     * Atomically transfers funds from main balance to activation balance.
+     * This is a one-way transfer for BEAC compliance.
+     * @param userId - The ID of the user.
+     * @param amount - The amount to transfer (must be positive).
+     * @returns The updated user document or null.
+     */
+    async transferToActivationBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Transfer amount must be positive');
+        }
+
+        // Atomically decrement balance and increment activationBalance
+        return UserModel.findOneAndUpdate(
+            {
+                _id: userId,
+                balance: { $gte: amount } // Ensure sufficient balance
+            },
+            {
+                $inc: {
+                    balance: -amount,
+                    activationBalance: amount
+                }
+            },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Atomically transfers activation balance between two users.
+     * @param fromUserId - The sender's user ID.
+     * @param toUserId - The recipient's user ID.
+     * @param amount - The amount to transfer (must be positive).
+     * @returns True if transfer succeeded, false otherwise.
+     */
+    async transferActivationBetweenUsers(
+        fromUserId: string | Types.ObjectId,
+        toUserId: string | Types.ObjectId,
+        amount: number
+    ): Promise<{ success: boolean; fromUser?: IUser; toUser?: IUser }> {
+        if (amount <= 0) {
+            throw new Error('Transfer amount must be positive');
+        }
+
+        // Try transaction-based approach first, fall back to sequential updates
+        // Transactions require MongoDB replica set which may not be available in dev
+        try {
+            const session = await UserModel.startSession();
+            try {
+                let fromUser: IUser | null = null;
+                let toUser: IUser | null = null;
+
+                await session.withTransaction(async () => {
+                    // Decrement sender's activation balance
+                    fromUser = await UserModel.findOneAndUpdate(
+                        {
+                            _id: fromUserId,
+                            activationBalance: { $gte: amount }
+                        },
+                        { $inc: { activationBalance: -amount } },
+                        { new: true, session }
+                    ).exec();
+
+                    if (!fromUser) {
+                        throw new Error('Insufficient activation balance or user not found');
+                    }
+
+                    // Increment recipient's activation balance
+                    toUser = await UserModel.findByIdAndUpdate(
+                        toUserId,
+                        { $inc: { activationBalance: amount } },
+                        { new: true, session }
+                    ).exec();
+
+                    if (!toUser) {
+                        throw new Error('Recipient user not found');
+                    }
+                });
+
+                return { success: true, fromUser: fromUser!, toUser: toUser! };
+            } catch (txError: any) {
+                log.error(`Transaction failed for activation transfer: ${txError.message}`);
+                throw txError; // Re-throw to try fallback
+            } finally {
+                session.endSession();
+            }
+        } catch (error: any) {
+            // Fallback: Sequential atomic updates (less safe but works without replica set)
+            log.warn(`Falling back to non-transactional activation transfer: ${error.message}`);
+
+            try {
+                // Step 1: Atomically decrement sender's balance (with balance check)
+                const fromUser = await UserModel.findOneAndUpdate(
+                    {
+                        _id: fromUserId,
+                        activationBalance: { $gte: amount }
+                    },
+                    { $inc: { activationBalance: -amount } },
+                    { new: true }
+                ).exec();
+
+                if (!fromUser) {
+                    log.error('Fallback transfer failed: Insufficient activation balance or sender not found');
+                    return { success: false };
+                }
+
+                // Step 2: Increment recipient's balance
+                const toUser = await UserModel.findByIdAndUpdate(
+                    toUserId,
+                    { $inc: { activationBalance: amount } },
+                    { new: true }
+                ).exec();
+
+                if (!toUser) {
+                    // Rollback: Restore sender's balance
+                    log.error('Fallback transfer failed: Recipient not found, rolling back sender balance');
+                    await UserModel.findByIdAndUpdate(fromUserId, { $inc: { activationBalance: amount } });
+                    return { success: false };
+                }
+
+                log.info(`Fallback activation transfer succeeded: ${amount} XAF from ${fromUserId} to ${toUserId}`);
+                return { success: true, fromUser, toUser };
+            } catch (fallbackError: any) {
+                log.error(`Fallback activation transfer failed: ${fallbackError.message}`);
+                return { success: false };
+            }
+        }
+    }
+
+    /**
      * Adds an OTP to the specified array for a user.
      * @param userId - The ID of the user.
      * @param otpType - 'otps' or 'contactsOtps'.
@@ -454,6 +598,21 @@ export class UserRepository {
         if (filters.city) query.city = filters.city;
         if (filters.sex) query.sex = filters.sex;
         if (filters.language) query.language = filters.language; // Assuming IUser.language is string
+
+        // Unified search filter (searches across name, email, and phoneNumber)
+        if (filters.search) {
+            const searchRegex = { $regex: filters.search, $options: 'i' };
+            query.$or = [
+                { name: searchRegex },
+                { email: searchRegex },
+                { phoneNumber: searchRegex }
+            ];
+        }
+
+        // Name-only filter (if search is not provided but name is)
+        if (filters.name && !filters.search) {
+            query.name = { $regex: filters.name, $options: 'i' };
+        }
 
         // Handle professions array filter (takes priority over single profession)
         if (filters.professions && filters.professions.length > 0) {

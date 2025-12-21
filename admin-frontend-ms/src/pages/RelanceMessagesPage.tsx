@@ -2,12 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { MessageSquare, Save, Eye, EyeOff, Image, Video, FileText, X, Plus, Loader2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAllMessages, upsertMessage, deactivateMessage, RelanceMessage, uploadMediaFile } from '../services/adminRelanceApi';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const RelanceMessagesPage: React.FC = () => {
     const [messages, setMessages] = useState<RelanceMessage[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDay, setSelectedDay] = useState<number>(1);
     const [saving, setSaving] = useState(false);
+
+    // Confirmation modal
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmAction, setConfirmAction] = useState<{
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    } | null>(null);
 
     // Form state
     const [messageFr, setMessageFr] = useState('');
@@ -83,21 +92,25 @@ const RelanceMessagesPage: React.FC = () => {
     };
 
     const handleDeactivate = async () => {
-        if (!window.confirm(`Are you sure you want to deactivate Day ${selectedDay} message?`)) {
-            return;
-        }
-
-        try {
-            setSaving(true);
-            await deactivateMessage(selectedDay);
-            toast.success(`Day ${selectedDay} message deactivated`);
-            await loadMessages();
-        } catch (error: any) {
-            console.error('Error deactivating message:', error);
-            toast.error('Failed to deactivate message: ' + (error.response?.data?.message || error.message));
-        } finally {
-            setSaving(false);
-        }
+        setConfirmAction({
+            title: '⚠️ Deactivate Message',
+            message: `Are you sure you want to deactivate Day ${selectedDay} message?`,
+            onConfirm: async () => {
+                try {
+                    setSaving(true);
+                    await deactivateMessage(selectedDay);
+                    toast.success(`Day ${selectedDay} message deactivated`);
+                    await loadMessages();
+                    setShowConfirmModal(false);
+                } catch (error: any) {
+                    console.error('Error deactivating message:', error);
+                    toast.error('Failed to deactivate message: ' + (error.response?.data?.message || error.message));
+                } finally {
+                    setSaving(false);
+                }
+            }
+        });
+        setShowConfirmModal(true);
     };
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -321,6 +334,19 @@ const RelanceMessagesPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Confirmation Modal */}
+            {confirmAction && (
+                <ConfirmationModal
+                    isOpen={showConfirmModal}
+                    title={confirmAction.title}
+                    message={confirmAction.message}
+                    confirmText="Confirm"
+                    cancelText="Cancel"
+                    onConfirm={confirmAction.onConfirm}
+                    onCancel={() => setShowConfirmModal(false)}
+                />
+            )}
         </div>
     );
 };

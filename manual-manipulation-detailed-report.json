@@ -1,0 +1,1724 @@
+{
+  "generatedAt": "2025-12-05T10:37:31.546Z",
+  "summary": {
+    "totalUsersAnalyzed": 372,
+    "flaggedUsers": 20,
+    "criteria": {
+      "maxReferrals": 20,
+      "minWithdrawals": 50000
+    },
+    "totalWithdrawals": 2695358.7100000004,
+    "totalCurrentBalance": 25499.55,
+    "totalExpectedCommissions": 67750,
+    "totalActualEarnings": 2720858.2600000002,
+    "totalDiscrepancy": 2653108.2600000002,
+    "usersWithZeroReferrals": 2,
+    "usersWithZeroSubscribedReferrals": 4,
+    "highSuspicionUsers": 4
+  },
+  "flaggedUsers": [
+    {
+      "userId": "65d06c20644793ef52ca6e11",
+      "name": "Bemjamin Aime",
+      "email": "georgesyvan12@gmail.com",
+      "phoneNumber": "237691996470",
+      "role": "user",
+      "createdAt": "2024-02-17T08:19:44.000Z",
+      "currentBalance": 10,
+      "totalReferrals": 1,
+      "subscribedReferrals": {
+        "total": 0,
+        "byLevel": {
+          "level1": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": []
+      },
+      "expectedCommissions": {
+        "total": 0,
+        "level1": 0,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 478592,
+      "discrepancy": 478592,
+      "withdrawals": {
+        "count": 20,
+        "totalAmount": 478582
+      },
+      "suspicionScore": 85
+    },
+    {
+      "userId": "668c04b4840a5553b8baf637",
+      "name": "ngah belinda",
+      "email": "belindangah@gmail.com",
+      "phoneNumber": "237674369679",
+      "role": "user",
+      "createdAt": "2024-07-08T15:24:36.000Z",
+      "currentBalance": 460,
+      "totalReferrals": 8,
+      "subscribedReferrals": {
+        "total": 7,
+        "byLevel": {
+          "level1": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 3000
+          },
+          "level2": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 1000
+          },
+          "level3": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 500
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "669a6500db8c900ca205e7bd",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-21T09:30:26.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6696955da37a82281192f3c9",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-16T15:47:59.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668ee9fa27a4a04b107a6a0c",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-18T20:26:56.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669698b5a37a822811930679",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-16T16:01:56.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6696a291a37a822811933745",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-16T16:43:47.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6706c395b691021c72f89bc9",
+            "referralLevel": 3,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 250,
+            "startDate": "2024-10-09T17:57:21.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669fd1075bd729571f075ff9",
+            "referralLevel": 3,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 250,
+            "startDate": "2024-07-23T15:56:18.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 4500,
+        "level1": 3000,
+        "level2": 1000,
+        "level3": 500
+      },
+      "actualEarnings": 399107,
+      "discrepancy": 394607,
+      "withdrawals": {
+        "count": 116,
+        "totalAmount": 398647
+      },
+      "suspicionScore": 55
+    },
+    {
+      "userId": "65d8934ca95f5692725ef543",
+      "name": "Batouri Julien",
+      "email": "",
+      "phoneNumber": "",
+      "role": "user",
+      "createdAt": "2024-02-23T12:45:00.000Z",
+      "currentBalance": -10227.1,
+      "totalReferrals": 1,
+      "subscribedReferrals": {
+        "total": 0,
+        "byLevel": {
+          "level1": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": []
+      },
+      "expectedCommissions": {
+        "total": 0,
+        "level1": 0,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 286305.4,
+      "discrepancy": 286305.4,
+      "withdrawals": {
+        "count": 25,
+        "totalAmount": 296532.5
+      },
+      "suspicionScore": 85
+    },
+    {
+      "userId": "6685a3993bf5cda4b65915e2",
+      "name": "sebgo abdoul",
+      "email": "abdoulazizesebgo@gmail.com",
+      "phoneNumber": "22675833237",
+      "role": "user",
+      "createdAt": "2024-07-03T19:16:41.000Z",
+      "currentBalance": 1748,
+      "totalReferrals": 11,
+      "subscribedReferrals": {
+        "total": 8,
+        "byLevel": {
+          "level1": {
+            "classique": 6,
+            "cible": 0,
+            "total": 6,
+            "expectedCommission": 6000
+          },
+          "level2": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 1000
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "668c1be0840a5553b8bb5ba4",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-09T16:17:08.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6698ff091ba2f88dce6f3ffa",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-21T12:50:02.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669027ec27a4a04b1082f5fe",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-13T20:34:08.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669a4f1fdb8c900ca205ba9c",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-21T12:47:57.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669d196bd4e87af31f295cda",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-27T17:03:16.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66ae3285b725baaf81c8c2b5",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-08-19T09:57:45.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669f710e5bd729571f058572",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-29T13:57:02.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669f73145bd729571f0585f0",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-28T11:44:45.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 7000,
+        "level1": 6000,
+        "level2": 1000,
+        "level3": 0
+      },
+      "actualEarnings": 258591,
+      "discrepancy": 251591,
+      "withdrawals": {
+        "count": 52,
+        "totalAmount": 256843
+      },
+      "suspicionScore": 45
+    },
+    {
+      "userId": "6688d849840a5553b8a34e5b",
+      "name": "𝐕𝐀𝐒𝐈𝐗𝐁𝐄𝐀𝐔𝐓𝐘 𝐄𝐌𝐏𝐈𝐑𝐄",
+      "email": "audreyselmara@gmail.com",
+      "phoneNumber": "237620351375",
+      "role": "user",
+      "createdAt": "2024-07-06T05:38:17.000Z",
+      "currentBalance": 389,
+      "totalReferrals": 8,
+      "subscribedReferrals": {
+        "total": 2,
+        "byLevel": {
+          "level1": {
+            "classique": 1,
+            "cible": 0,
+            "total": 1,
+            "expectedCommission": 1000
+          },
+          "level2": {
+            "classique": 1,
+            "cible": 0,
+            "total": 1,
+            "expectedCommission": 500
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "668abc11840a5553b8b24e1b",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-08T09:52:59.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668dc5994b2728608dc5132d",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-10T12:07:48.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 1500,
+        "level1": 1000,
+        "level2": 500,
+        "level3": 0
+      },
+      "actualEarnings": 136284.5,
+      "discrepancy": 134784.5,
+      "withdrawals": {
+        "count": 56,
+        "totalAmount": 135895.5
+      },
+      "suspicionScore": 57
+    },
+    {
+      "userId": "65d09ec65c96a8ab00a6eb3d",
+      "name": "Tchaleu Diane",
+      "email": "Dianetchaleu2@gmail.com",
+      "phoneNumber": "237659325347",
+      "role": "user",
+      "createdAt": "2024-02-17T11:55:50.000Z",
+      "currentBalance": 3102.5,
+      "totalReferrals": 0,
+      "subscribedReferrals": {
+        "total": 0,
+        "byLevel": {
+          "level1": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": []
+      },
+      "expectedCommissions": {
+        "total": 0,
+        "level1": 0,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 114802,
+      "discrepancy": 114802,
+      "withdrawals": {
+        "count": 6,
+        "totalAmount": 111699.5
+      },
+      "suspicionScore": 87
+    },
+    {
+      "userId": "669772d5b8a59e6c9725b76b",
+      "name": "jessie momo",
+      "email": "momojessie34@gmail.com",
+      "phoneNumber": "237650076676",
+      "role": "user",
+      "createdAt": "2024-07-17T07:29:25.000Z",
+      "currentBalance": 3000,
+      "totalReferrals": 6,
+      "subscribedReferrals": {
+        "total": 3,
+        "byLevel": {
+          "level1": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 3000
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "669fa4315bd729571f0665f3",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-23T13:28:39.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669f87a75bd729571f0601fa",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-23T11:24:18.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66b78562df5be38efa9bad4b",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-08-10T15:26:17.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 3000,
+        "level1": 3000,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 98950,
+      "discrepancy": 95950,
+      "withdrawals": {
+        "count": 54,
+        "totalAmount": 95950
+      },
+      "suspicionScore": 50
+    },
+    {
+      "userId": "666ef2b14b08104253b26b6c",
+      "name": "theophile steven",
+      "email": "mbosteven37@gmail.com",
+      "phoneNumber": "237656307860",
+      "role": "user",
+      "createdAt": "2024-06-16T14:12:01.000Z",
+      "currentBalance": 126.5,
+      "totalReferrals": 19,
+      "subscribedReferrals": {
+        "total": 3,
+        "byLevel": {
+          "level1": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 2000
+          },
+          "level2": {
+            "classique": 1,
+            "cible": 0,
+            "total": 1,
+            "expectedCommission": 500
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "666f00044b08104253b2aec1",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-16T18:58:38.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "666f52ae4b08104253b542cc",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-16T21:04:13.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "666f5f944b08104253b59c90",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-06-16T22:09:14.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 2500,
+        "level1": 2000,
+        "level2": 500,
+        "level3": 0
+      },
+      "actualEarnings": 95228.1,
+      "discrepancy": 92728.1,
+      "withdrawals": {
+        "count": 45,
+        "totalAmount": 95101.6
+      },
+      "suspicionScore": 40
+    },
+    {
+      "userId": "663a308b746c84c20da89c6f",
+      "name": "agble yaovi jérôme",
+      "email": "yaovijeromea@gmail.com",
+      "phoneNumber": "22898628917",
+      "role": "user",
+      "createdAt": "2024-05-07T13:45:47.000Z",
+      "currentBalance": 1485,
+      "totalReferrals": 6,
+      "subscribedReferrals": {
+        "total": 3,
+        "byLevel": {
+          "level1": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 3000
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "665e5789c945eeaca73281ee",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-06T22:36:46.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6665ca154a3a1acf375244f5",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-17T19:31:44.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66940fd8de37fb81f14c62f4",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-17T10:25:39.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 3000,
+        "level1": 3000,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 88850,
+      "discrepancy": 85850,
+      "withdrawals": {
+        "count": 35,
+        "totalAmount": 87365
+      },
+      "suspicionScore": 50
+    },
+    {
+      "userId": "65d6bc4676d8df79515899c7",
+      "name": "lanvin deffeu",
+      "email": "lanvindeffeu@gmail.com",
+      "phoneNumber": "237678378219",
+      "role": "user",
+      "createdAt": "2024-02-22T03:15:18.000Z",
+      "currentBalance": 86.3,
+      "totalReferrals": 16,
+      "subscribedReferrals": {
+        "total": 6,
+        "byLevel": {
+          "level1": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 3000
+          },
+          "level2": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 1500
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "6610740062372d1b53649606",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-04-05T22:02:37.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6672c651338851de961d8dd6",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-05T13:58:15.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668a79b9840a5553b8b0869f",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-29T15:53:26.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67019a6cad9e5746436fb44f",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-10-05T20:01:29.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67b79f5010bd0df265ee1ed2",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2025-02-20T21:40:19.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67b9b94204f95a0428d233a3",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2025-02-22T11:54:45.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 4500,
+        "level1": 3000,
+        "level2": 1500,
+        "level3": 0
+      },
+      "actualEarnings": 85895.90000000001,
+      "discrepancy": 81395.90000000001,
+      "withdrawals": {
+        "count": 83,
+        "totalAmount": 85809.6
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "6631e98c655c2c2d23703453",
+      "name": "ndoumbe maeva",
+      "email": "maevandoumbe237@gmail.com",
+      "phoneNumber": "237657371584",
+      "role": "user",
+      "createdAt": "2024-05-01T07:04:44.000Z",
+      "currentBalance": 738,
+      "totalReferrals": 16,
+      "subscribedReferrals": {
+        "total": 9,
+        "byLevel": {
+          "level1": {
+            "classique": 5,
+            "cible": 0,
+            "total": 5,
+            "expectedCommission": 5000
+          },
+          "level2": {
+            "classique": 4,
+            "cible": 0,
+            "total": 4,
+            "expectedCommission": 2000
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "665b41a3a4b9f71754543a51",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-01T15:50:03.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6661a0401b27cd21c65febd3",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-06T11:44:36.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6644ebc2327f913f513b68d9",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-15T17:45:41.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66538fc696ab4c92ecfae51a",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-26T20:07:40.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6655cf1e96ab4c92ec073dd0",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-28T12:35:37.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668fbeef27a4a04b10801c62",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-11T11:23:26.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66470801327f913f51467a25",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-05-17T07:55:42.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668537b9b95d9458922ddb22",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-03T11:40:38.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "68278844b01a76a5d68263f3",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2025-05-17T09:42:17.198Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 7000,
+        "level1": 5000,
+        "level2": 2000,
+        "level3": 0
+      },
+      "actualEarnings": 78912,
+      "discrepancy": 71912,
+      "withdrawals": {
+        "count": 45,
+        "totalAmount": 78174
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "65e4b87918ad508a37398ce2",
+      "name": "ATS Produits & Services",
+      "email": "atindosteve1@gmail.com",
+      "phoneNumber": "237693011187",
+      "role": "user",
+      "createdAt": "2024-03-03T17:50:49.000Z",
+      "currentBalance": 45.85,
+      "totalReferrals": 18,
+      "subscribedReferrals": {
+        "total": 4,
+        "byLevel": {
+          "level1": {
+            "classique": 4,
+            "cible": 0,
+            "total": 4,
+            "expectedCommission": 4000
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "65e61e9359ec50016d47b202",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-03-04T19:20:22.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "65e6384ec9d22b22657dde32",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-03-04T22:03:25.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6628cca22a6cb747a5a4de0e",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-08-26T12:16:07.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "667e6c68daf7ee59cca93c6b",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-01T12:24:03.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 4000,
+        "level1": 4000,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 77342.16,
+      "discrepancy": 73342.16,
+      "withdrawals": {
+        "count": 74,
+        "totalAmount": 77296.31
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "65d4ddea8ce5ffe48a44a8dd",
+      "name": "mouhamed fadil",
+      "email": "ngabakoe@gmail.com",
+      "phoneNumber": "237697414652",
+      "role": "user",
+      "createdAt": "2024-02-20T17:14:18.000Z",
+      "currentBalance": 17000,
+      "totalReferrals": 0,
+      "subscribedReferrals": {
+        "total": 0,
+        "byLevel": {
+          "level1": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": []
+      },
+      "expectedCommissions": {
+        "total": 0,
+        "level1": 0,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 88750,
+      "discrepancy": 88750,
+      "withdrawals": {
+        "count": 8,
+        "totalAmount": 71750
+      },
+      "suspicionScore": 80
+    },
+    {
+      "userId": "65d2b0344a7e2b9efbf6205d",
+      "name": "sterling black",
+      "email": "tambongsterling@gmail.com",
+      "phoneNumber": "237675080477",
+      "role": "admin",
+      "createdAt": "2024-02-19T01:34:44.000Z",
+      "currentBalance": 4800,
+      "totalReferrals": 11,
+      "subscribedReferrals": {
+        "total": 6,
+        "byLevel": {
+          "level1": {
+            "classique": 4,
+            "cible": 2,
+            "total": 6,
+            "expectedCommission": 6000
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "65d4d3912e551260541b257f",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-03-09T20:09:20.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "678660a85503d6834130ea8c",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2025-01-14T13:04:27.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "678595582e8955a8a08bd24e",
+            "referralLevel": 1,
+            "subscriptionType": "CIBLE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2025-01-13T22:40:55.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67a003b36cff45c14210964f",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2025-02-03T03:21:10.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67a04087293a219ccd105574",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2025-02-03T09:38:08.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67ae2559ff13aee2af0ed51c",
+            "referralLevel": 1,
+            "subscriptionType": "CIBLE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2025-12-03T13:48:48.929Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 6000,
+        "level1": 6000,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 74386.7,
+      "discrepancy": 68386.7,
+      "withdrawals": {
+        "count": 55,
+        "totalAmount": 69586.7
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "6643caa863d9f5c1b455e7f5",
+      "name": "robert sandje loko",
+      "email": "rsandje@gmail.com",
+      "phoneNumber": "237676894131",
+      "role": "user",
+      "createdAt": "2024-05-14T20:33:44.000Z",
+      "currentBalance": 212.5,
+      "totalReferrals": 18,
+      "subscribedReferrals": {
+        "total": 5,
+        "byLevel": {
+          "level1": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 3000
+          },
+          "level2": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 1000
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "664dc28191d317d3fcfbe364",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-22T10:41:25.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "664684d0327f913f51450543",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-21T07:40:01.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "666b01b53088787e7511be96",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-13T14:29:20.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "665d8570c945eeaca72abe77",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-06-03T09:07:23.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "665dab98c945eeaca72b76c2",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-06-03T11:42:07.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 4000,
+        "level1": 3000,
+        "level2": 1000,
+        "level3": 0
+      },
+      "actualEarnings": 66620,
+      "discrepancy": 62620,
+      "withdrawals": {
+        "count": 21,
+        "totalAmount": 66407.5
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "6645a4c7327f913f513e7e79",
+      "name": "soete jean claude",
+      "email": "soeteclaude@gmail.com",
+      "phoneNumber": "237671277569",
+      "role": "user",
+      "createdAt": "2024-05-16T06:16:39.000Z",
+      "currentBalance": 2000,
+      "totalReferrals": 5,
+      "subscribedReferrals": {
+        "total": 2,
+        "byLevel": {
+          "level1": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 2000
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "6681c30f9a38200f66259015",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-30T20:48:24.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6693ce8f217db3159c768875",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-16T11:18:04.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 2000,
+        "level1": 2000,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 65630,
+      "discrepancy": 63630,
+      "withdrawals": {
+        "count": 40,
+        "totalAmount": 63630
+      },
+      "suspicionScore": 60
+    },
+    {
+      "userId": "660bbfbdda59bf5c5992cb87",
+      "name": "djemeya yoanest dipoko",
+      "email": "yoanestdipokodjemeya@gmail.com",
+      "phoneNumber": "237656291577",
+      "role": "user",
+      "createdAt": "2024-04-02T08:20:13.000Z",
+      "currentBalance": 265.5,
+      "totalReferrals": 17,
+      "subscribedReferrals": {
+        "total": 5,
+        "byLevel": {
+          "level1": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 3000
+          },
+          "level2": {
+            "classique": 1,
+            "cible": 0,
+            "total": 1,
+            "expectedCommission": 500
+          },
+          "level3": {
+            "classique": 1,
+            "cible": 0,
+            "total": 1,
+            "expectedCommission": 250
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "6665fbd14a3a1acf3752ce69",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-10T11:46:52.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6692d4d1217db3159c73118e",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-09-05T18:01:15.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66f1699e059d03ddb378a4c2",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-09-23T13:38:05.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66680f563088787e75febc7d",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-06-19T22:45:29.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67acb0539757adf55ea9ce4e",
+            "referralLevel": 3,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 250,
+            "startDate": "2025-03-02T10:03:33.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 3750,
+        "level1": 3000,
+        "level2": 500,
+        "level3": 250
+      },
+      "actualEarnings": 60057.5,
+      "discrepancy": 56307.5,
+      "withdrawals": {
+        "count": 87,
+        "totalAmount": 59792
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "667b2addec7bb602e1b268fd",
+      "name": "bernard mengue",
+      "email": "bernardkross193@gmail.com",
+      "phoneNumber": "237692448324",
+      "role": "user",
+      "createdAt": "2024-06-25T20:38:53.000Z",
+      "currentBalance": 119,
+      "totalReferrals": 9,
+      "subscribedReferrals": {
+        "total": 6,
+        "byLevel": {
+          "level1": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 2000
+          },
+          "level2": {
+            "classique": 1,
+            "cible": 0,
+            "total": 1,
+            "expectedCommission": 500
+          },
+          "level3": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 750
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "6687f3f0840a5553b89c2b19",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-05T13:47:03.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668baef7840a5553b8b7b1a5",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-07-08T15:02:49.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668c04b4840a5553b8baf637",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-08T15:34:15.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6696955da37a82281192f3c9",
+            "referralLevel": 3,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 250,
+            "startDate": "2024-07-16T15:47:59.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668ee9fa27a4a04b107a6a0c",
+            "referralLevel": 3,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 250,
+            "startDate": "2024-07-18T20:26:56.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "669a6500db8c900ca205e7bd",
+            "referralLevel": 3,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 250,
+            "startDate": "2024-07-21T09:30:26.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 3250,
+        "level1": 2000,
+        "level2": 500,
+        "level3": 750
+      },
+      "actualEarnings": 59608,
+      "discrepancy": 56358,
+      "withdrawals": {
+        "count": 25,
+        "totalAmount": 59489
+      },
+      "suspicionScore": 40
+    },
+    {
+      "userId": "65d11f60bba28a9b65a945c2",
+      "name": "jerry tawamba",
+      "email": "tbjk500@gmail.com",
+      "phoneNumber": "237679011117",
+      "role": "user",
+      "createdAt": "2024-02-17T21:04:32.000Z",
+      "currentBalance": 75,
+      "totalReferrals": 14,
+      "subscribedReferrals": {
+        "total": 8,
+        "byLevel": {
+          "level1": {
+            "classique": 8,
+            "cible": 0,
+            "total": 8,
+            "expectedCommission": 8000
+          },
+          "level2": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          },
+          "level3": {
+            "classique": 0,
+            "cible": 0,
+            "total": 0,
+            "expectedCommission": 0
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "65d714e876d8df795158d78b",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-09T21:25:52.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "65e04e2f5cc9084808445eec",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-02-29T09:32:07.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "65e5af430d424545e6cbf9c9",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-03-04T11:28:23.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "663d008ad9f041b4f5b7fb22",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-09T17:00:26.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "663d31881c91e9973f1def6d",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-09T20:31:01.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "663cbf47d9f041b4f5b61842",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-09T13:07:17.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "663d42a91c91e9973f1ee55f",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-09T21:46:03.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "67765d8a7cde71663fb8b6a9",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2025-01-02T09:36:10.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 8000,
+        "level1": 8000,
+        "level2": 0,
+        "level3": 0
+      },
+      "actualEarnings": 54110,
+      "discrepancy": 46110,
+      "withdrawals": {
+        "count": 16,
+        "totalAmount": 54035
+      },
+      "suspicionScore": 25
+    },
+    {
+      "userId": "66519619b65190134e376380",
+      "name": "aurélie laure",
+      "email": "chatchengaurelie@gmail.com",
+      "phoneNumber": "237659142723",
+      "role": "user",
+      "createdAt": "2024-05-25T07:41:13.000Z",
+      "currentBalance": 63.5,
+      "totalReferrals": 16,
+      "subscribedReferrals": {
+        "total": 6,
+        "byLevel": {
+          "level1": {
+            "classique": 2,
+            "cible": 0,
+            "total": 2,
+            "expectedCommission": 2000
+          },
+          "level2": {
+            "classique": 3,
+            "cible": 0,
+            "total": 3,
+            "expectedCommission": 1500
+          },
+          "level3": {
+            "classique": 1,
+            "cible": 0,
+            "total": 1,
+            "expectedCommission": 250
+          }
+        },
+        "details": [
+          {
+            "referredUserId": "6651e07f4ae4964936725f81",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-05-26T03:15:27.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "665df769c945eeaca72dac14",
+            "referralLevel": 1,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 1000,
+            "startDate": "2024-06-06T12:34:45.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "6666bb1a4a3a1acf375563e5",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-07-04T05:48:44.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "66863ad03bf5cda4b6625b31",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2025-01-16T16:08:05.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "668649303bf5cda4b6628698",
+            "referralLevel": 2,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 500,
+            "startDate": "2024-09-14T17:41:59.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          },
+          {
+            "referredUserId": "671a7ec8f80f7bbdccd946ac",
+            "referralLevel": 3,
+            "subscriptionType": "CLASSIQUE",
+            "subscriptionStatus": "active",
+            "commission": 250,
+            "startDate": "2024-10-24T17:09:16.000Z",
+            "endDate": "9999-12-31T23:59:59.999Z"
+          }
+        ]
+      },
+      "expectedCommissions": {
+        "total": 3750,
+        "level1": 2000,
+        "level2": 1500,
+        "level3": 250
+      },
+      "actualEarnings": 52836,
+      "discrepancy": 49086,
+      "withdrawals": {
+        "count": 57,
+        "totalAmount": 52772.5
+      },
+      "suspicionScore": 25
+    }
+  ]
+}

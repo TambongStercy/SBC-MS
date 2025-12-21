@@ -1,0 +1,166 @@
+{
+  "generatedAt": "2025-12-04T08:24:06.290Z",
+  "thresholds": {
+    "MIN_BALANCE": 50000,
+    "MIN_TRANSACTION_VOLUME": 100000,
+    "MAX_REFERRALS_FOR_HIGH_BALANCE": 10,
+    "SUSPICIOUS_BALANCE_PER_REFERRAL": 10000,
+    "SUSPICIOUS_TRANSACTION_PER_REFERRAL": 20000
+  },
+  "totalSuspiciousUsers": 7,
+  "users": [
+    {
+      "userId": "65d07017411f423f597c8ee5",
+      "name": "rufus herma promoteur",
+      "email": "snipertradebusiness@gmail.com",
+      "phoneNumber": "225681925635",
+      "role": "admin",
+      "balance": "535888.40",
+      "usdBalance": "1.00",
+      "totalBalance": "536488.40",
+      "referralCount": 0,
+      "transactionCount": 0,
+      "totalTransactionVolume": "0.00",
+      "balancePerReferral": "536488.40",
+      "transactionPerReferral": "0.00",
+      "createdAt": "2024-02-17T08:36:39.000Z",
+      "flags": [
+        "⚠️ HIGH BALANCE - NO REFERRALS",
+        "⚠️ HIGH BALANCE - FEW REFERRALS",
+        "🚨 VERY HIGH BALANCE PER REFERRAL"
+      ]
+    },
+    {
+      "userId": "65d07c0d5c96a8ab00a6cf24",
+      "name": "Jamelle Esmeralda",
+      "email": "assimeziojamelleesmeralda@gmail.com",
+      "phoneNumber": "237676939404",
+      "role": "admin",
+      "balance": "290898.61",
+      "usdBalance": "181.50",
+      "totalBalance": "399798.61",
+      "referralCount": 0,
+      "transactionCount": 0,
+      "totalTransactionVolume": "0.00",
+      "balancePerReferral": "399798.61",
+      "transactionPerReferral": "0.00",
+      "createdAt": "2024-02-17T09:27:41.000Z",
+      "flags": [
+        "⚠️ HIGH BALANCE - NO REFERRALS",
+        "⚠️ HIGH BALANCE - FEW REFERRALS",
+        "🚨 VERY HIGH BALANCE PER REFERRAL"
+      ]
+    },
+    {
+      "userId": "65d204c9980d0e50b1efbb93",
+      "name": "le futuriste",
+      "email": "momochristianlefuturiste@gmail.com",
+      "phoneNumber": "237693655135",
+      "role": "user",
+      "balance": "348751.00",
+      "usdBalance": "0.00",
+      "totalBalance": "348751.00",
+      "referralCount": 0,
+      "transactionCount": 0,
+      "totalTransactionVolume": "0.00",
+      "balancePerReferral": "348751.00",
+      "transactionPerReferral": "0.00",
+      "createdAt": "2024-02-18T13:23:21.000Z",
+      "flags": [
+        "⚠️ HIGH BALANCE - NO REFERRALS",
+        "⚠️ HIGH BALANCE - FEW REFERRALS",
+        "🚨 VERY HIGH BALANCE PER REFERRAL"
+      ]
+    },
+    {
+      "userId": "6845d3e0f1c851659f473d60",
+      "name": "Mathieu André",
+      "email": "mathieuandreacademie@gmail.com",
+      "phoneNumber": "237683603849",
+      "role": "user",
+      "balance": "220625.00",
+      "usdBalance": "61.00",
+      "totalBalance": "257225.00",
+      "referralCount": 0,
+      "transactionCount": 0,
+      "totalTransactionVolume": "0.00",
+      "balancePerReferral": "257225.00",
+      "transactionPerReferral": "0.00",
+      "createdAt": "2025-06-08T18:18:08.022Z",
+      "flags": [
+        "⚠️ HIGH BALANCE - NO REFERRALS",
+        "⚠️ HIGH BALANCE - FEW REFERRALS",
+        "🚨 VERY HIGH BALANCE PER REFERRAL"
+      ]
+    },
+    {
+      "userId": "684599bda6291ce441744cd7",
+      "name": "Michaêl",
+      "email": "kuetiarnold@gmail.com",
+      "phoneNumber": "237671110545",
+      "role": "user",
+      "balance": "58375.00",
+      "usdBalance": "123.25",
+      "totalBalance": "132325.00",
+      "referralCount": 0,
+      "transactionCount": 0,
+      "totalTransactionVolume": "0.00",
+      "balancePerReferral": "132325.00",
+      "transactionPerReferral": "0.00",
+      "createdAt": "2025-06-08T14:10:05.366Z",
+      "flags": [
+        "⚠️ HIGH BALANCE - NO REFERRALS",
+        "⚠️ HIGH BALANCE - FEW REFERRALS",
+        "🚨 VERY HIGH BALANCE PER REFERRAL"
+      ]
+    },
+    {
+      "userId": "66708c68de0002d5d2d6a5a0",
+      "name": "beckhamxp",
+      "email": "tchiekenxp237@gmail.com",
+      "phoneNumber": "237683588898",
+      "role": "user",
+      "balance": "237.50",
+      "usdBalance": "133.36",
+      "totalBalance": "80253.50",
+      "referralCount": 0,
+      "transactionCount": 0,
+      "totalTransactionVolume": "0.00",
+      "balancePerReferral": "80253.50",
+      "transactionPerReferral": "0.00",
+      "createdAt": "2024-06-17T19:20:08.000Z",
+      "flags": [
+        "⚠️ HIGH BALANCE - NO REFERRALS",
+        "⚠️ HIGH BALANCE - FEW REFERRALS",
+        "🚨 VERY HIGH BALANCE PER REFERRAL"
+      ]
+    },
+    {
+      "userId": "6670876ade0002d5d2d669d8",
+      "name": "pixels",
+      "email": "djetkarpro1@gmail.com",
+      "phoneNumber": "237656673514",
+      "role": "user",
+      "balance": "1510.00",
+      "usdBalance": "83.67",
+      "totalBalance": "51712.00",
+      "referralCount": 0,
+      "transactionCount": 0,
+      "totalTransactionVolume": "0.00",
+      "balancePerReferral": "51712.00",
+      "transactionPerReferral": "0.00",
+      "createdAt": "2024-06-17T18:58:50.000Z",
+      "flags": [
+        "⚠️ HIGH BALANCE - NO REFERRALS",
+        "⚠️ HIGH BALANCE - FEW REFERRALS",
+        "🚨 VERY HIGH BALANCE PER REFERRAL"
+      ]
+    }
+  ],
+  "summary": {
+    "avgBalance": 258079.07285714286,
+    "avgReferrals": 0,
+    "avgTransactions": 0,
+    "totalSuspiciousBalance": 1806553.51
+  }
+}

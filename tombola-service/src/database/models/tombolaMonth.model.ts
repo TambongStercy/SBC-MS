@@ -25,9 +25,14 @@ export interface ITombolaMonth extends Document {
     endDate?: Date;         // When ticket sales closed (optional)
     drawDate?: Date;        // When the draw was performed
     winners: Types.DocumentArray<IWinner>; // Array of winners
+    lastTicketNumber: number; // Counter for sequential ticket numbers
+
+    // NEW FIELDS for Impact Challenge integration
+    previousMonthWinners: Types.ObjectId[]; // User IDs excluded from this month's draw (anti-consecutive-win rule)
+    linkedChallengeId?: Types.ObjectId;     // Link to ImpactChallenge if this tombola is for a challenge
+
     createdAt: Date;
     updatedAt: Date;
-    lastTicketNumber: number; // Counter for sequential ticket numbers
 }
 
 // Schema for Winner
@@ -93,6 +98,15 @@ const TombolaMonthSchema = new Schema<ITombolaMonth>(
             type: Number,
             required: true,
             default: 0,
+        },
+        // NEW FIELDS for Impact Challenge
+        previousMonthWinners: [{
+            type: Schema.Types.ObjectId,
+            index: true,
+        }],
+        linkedChallengeId: {
+            type: Schema.Types.ObjectId,
+            index: true,
         },
     },
     {

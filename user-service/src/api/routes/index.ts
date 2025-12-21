@@ -6,6 +6,7 @@ import dailyWithdrawalRoutes from './daily-withdrawal.routes';
 import partnerRoutes from './partner.routes';
 import adminRoutes from './admin.routes';
 import vcfCacheRoutes from './vcf-cache.routes';
+import activationBalanceRoutes from './activation-balance.routes';
 const router = Router();
 
 
@@ -18,5 +19,6 @@ router.use('/contacts', contactRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/withdrawals', dailyWithdrawalRoutes);
 router.use('/partners', partnerRoutes);
+router.use('/activation-balance', activationBalanceRoutes);
 
 export default router;

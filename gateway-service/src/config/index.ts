@@ -34,6 +34,7 @@ interface IConfig {
         tombolaServiceUrl: string;
         advertisingServiceUrl: string;
         settingsServiceUrl: string;
+        chatServiceUrl: string;
     };
 }
 
@@ -62,7 +63,8 @@ const config: IConfig = {
         productServiceUrl: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3004',
         tombolaServiceUrl: process.env.TOMBOLA_SERVICE_URL || 'http://localhost:3005',
         advertisingServiceUrl: process.env.ADVERTISING_SERVICE_URL || 'http://localhost:3006',
-        settingsServiceUrl: process.env.SETTINGS_SERVICE_URL || 'http://localhost:3007'
+        settingsServiceUrl: process.env.SETTINGS_SERVICE_URL || 'http://localhost:3007',
+        chatServiceUrl: process.env.CHAT_SERVICE_URL || 'http://localhost:3008'
     }
 };
 

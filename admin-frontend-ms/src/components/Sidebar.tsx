@@ -22,7 +22,10 @@ import {
   ChevronDown,
   ChevronRight,
   UserCog,
-  History
+  History,
+  MessagesSquare,
+  Rss,
+  Trophy
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -46,10 +49,10 @@ const SIDEBAR_GROUPS = [
     name: "Admin Tools",
     items: [
       {
-        name: "Sub-Admins",
+        name: "User Roles",
         icon: UserCog,
         color: "#8b5cf6",
-        path: "/sub-admins",
+        path: "/user-roles",
       },
       {
         name: "Fix FeexPay Payments",
@@ -93,6 +96,12 @@ const SIDEBAR_GROUPS = [
         color: "#3b82f6",
         path: "/tombola",
       },
+      {
+        name: "Impact Challenge",
+        icon: Trophy,
+        color: "#f59e0b",
+        path: "/impact-challenges",
+      },
     ]
   },
   {
@@ -122,6 +131,24 @@ const SIDEBAR_GROUPS = [
         icon: History,
         color: "#06b6d4",
         path: "/withdrawals/history",
+      },
+    ]
+  },
+  {
+    id: "communication",
+    name: "Communication",
+    items: [
+      {
+        name: "Chat",
+        icon: MessagesSquare,
+        color: "#3b82f6",
+        path: "/chat",
+      },
+      {
+        name: "Statuses",
+        icon: Rss,
+        color: "#10b981",
+        path: "/statuses",
       },
     ]
   },

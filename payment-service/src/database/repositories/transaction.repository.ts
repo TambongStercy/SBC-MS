@@ -167,6 +167,7 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             page?: number;
             sortBy?: string;
             sortOrder?: 'asc' | 'desc';
+            excludeTypes?: TransactionType[]; // Exclude specific transaction types
         } = {}
     ): Promise<{ transactions: ITransaction[]; total: number }> {
         try {
@@ -178,13 +179,19 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                 limit = 50,
                 page = 0,
                 sortBy = 'createdAt',
-                sortOrder = 'desc'
+                sortOrder = 'desc',
+                excludeTypes
             } = options;
 
             // Build query
             const query: FilterQuery<ITransaction> = { userId };
             if (type) query.type = type;
             if (status) query.status = status;
+
+            // Exclude specific transaction types (e.g., activation-only transactions)
+            if (excludeTypes && excludeTypes.length > 0) {
+                query.type = { $nin: excludeTypes };
+            }
 
             // Date range
             if (startDate || endDate) {
@@ -209,6 +216,57 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             return { transactions, total };
         } catch (error) {
             log.error(`Error finding transactions for user ${userId}: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Find transactions for a specific user with specific types only
+     * Used for activation balance transaction history
+     */
+    async findByUserIdWithTypes(
+        userId: string | Types.ObjectId,
+        options: {
+            limit?: number;
+            page?: number;
+            sortBy?: string;
+            sortOrder?: 'asc' | 'desc';
+            includeOnlyTypes?: TransactionType[];
+        } = {}
+    ): Promise<{ transactions: ITransaction[]; total: number }> {
+        try {
+            const {
+                limit = 50,
+                page = 1,
+                sortBy = 'createdAt',
+                sortOrder = 'desc',
+                includeOnlyTypes
+            } = options;
+
+            // Build query
+            const query: FilterQuery<ITransaction> = { userId };
+
+            // Include only specific transaction types
+            if (includeOnlyTypes && includeOnlyTypes.length > 0) {
+                query.type = { $in: includeOnlyTypes };
+            }
+
+            const skip = (page - 1) * limit;
+
+            // Find transactions
+            const transactions = await this.model.find(query)
+                .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean<ITransaction[]>()
+                .exec();
+
+            // Count total for pagination
+            const total = await this.model.countDocuments(query).exec();
+
+            return { transactions, total };
+        } catch (error) {
+            log.error(`Error finding transactions with types for user ${userId}: ${error}`);
             throw error;
         }
     }

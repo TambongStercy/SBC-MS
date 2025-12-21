@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check } from "lucide-react";
-import { AdminUserData, updateUser, PartnerPack } from "../services/adminUserApi"; // <-- Update import to include PartnerPack
+import { Check, ShieldAlert } from "lucide-react";
+import { AdminUserData, updateUser, PartnerPack, updateUserRole } from "../services/adminUserApi"; // <-- Update import to include PartnerPack and updateUserRole
+import { useToast } from "../hooks/useToast";
+import ToastContainer from "../components/common/ToastContainer";
 
 import Dropdown from "../components/common/dropdown";
 
@@ -46,6 +48,7 @@ interface UserCardProps {
 }
 
 const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartnerPackChange }) => {
+  const { toasts, removeToast, showSuccess, showError } = useToast();
   const [name, setName] = useState(data.name);
   const [phoneNumber, setPhoneNumber] = useState<string>(String(data.phoneNumber || ''));
   const [selectedSubscription, setSelectedSubscription] = useState<SubscriptionType | 'NONE'>(() => {
@@ -69,6 +72,11 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     if (data.partnerPack === PartnerPack.GOLD) return 'gold';
     return 'none';
   });
+
+  // Add state for user role
+  const [selectedRole, setSelectedRole] = useState<string>(data.role || 'user');
+  const [showRoleConfirmDialog, setShowRoleConfirmDialog] = useState(false);
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
 
   const [momoNumber, setMomoNumber] = useState<string>(String(data.momoNumber || ''));
   const [momoOperator, setMomoOperator] = useState(data.momoOperator);
@@ -218,6 +226,57 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Add handler for role selection
+  const handleRoleSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRole = event.target.value;
+
+    // Show confirmation dialog for sensitive roles (admin, withdrawal_admin)
+    if (newRole === 'admin' || newRole === 'withdrawal_admin') {
+      setPendingRole(newRole);
+      setShowRoleConfirmDialog(true);
+    } else {
+      // Direct update for user and tester roles
+      confirmRoleChange(newRole);
+    }
+  };
+
+  const confirmRoleChange = async (newRole: string) => {
+    const originalRole = selectedRole;
+    setSelectedRole(newRole);
+    setIsSubmitting(true);
+    setShowRoleConfirmDialog(false);
+
+    try {
+      await updateUserRole(data._id, newRole);
+      console.log(`Successfully updated role to ${newRole} for user ${data._id}`);
+      showSuccess(`Rôle mis à jour avec succès: ${getRoleDisplayName(newRole)}`);
+    } catch (error: any) {
+      console.error("Failed to update role from UserCard", error);
+      showError(`Échec de la mise à jour du rôle: ${error.message}`);
+      // Revert local state if the API call fails
+      setSelectedRole(originalRole);
+    } finally {
+      setIsSubmitting(false);
+      setPendingRole(null);
+    }
+  };
+
+  const cancelRoleChange = () => {
+    setShowRoleConfirmDialog(false);
+    setPendingRole(null);
+  };
+
+  // Helper to get role display name
+  const getRoleDisplayName = (role: string): string => {
+    const roleNames: Record<string, string> = {
+      'user': 'Utilisateur',
+      'admin': 'Administrateur',
+      'withdrawal_admin': 'Admin Retraits',
+      'tester': 'Testeur'
+    };
+    return roleNames[role] || role;
   };
 
   const handleOperatorSelect = (item: string) => {
@@ -430,7 +489,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             <select
               id="partnerPack"
               name="partnerPack"
-              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors 
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors
                 ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
               onChange={handlePartnerPackSelect}
               value={selectedPartnerPack}
@@ -441,7 +500,67 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               <option value="gold">Gold</option>
             </select>
           </div>
+
+          {/* Role Selector */}
+          <div className="mb-4 sm:mb-0 flex-1">
+            <label htmlFor="role" className="flex items-center gap-1 text-sm font-medium mb-1 text-gray-300">
+              <ShieldAlert size={16} />
+              Rôle Utilisateur
+            </label>
+            <select
+              id="role"
+              name="role"
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border ${
+                selectedRole === 'admin' ? 'border-red-500' :
+                selectedRole === 'withdrawal_admin' ? 'border-yellow-500' :
+                selectedRole === 'tester' ? 'border-purple-500' : 'border-gray-600'
+              } focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors
+                ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+              onChange={handleRoleSelect}
+              value={selectedRole}
+              disabled={isSubmitting}
+            >
+              <option value="user">👤 Utilisateur</option>
+              <option value="tester">🧪 Testeur</option>
+              <option value="withdrawal_admin">💳 Admin Retraits</option>
+              <option value="admin">🛡️ Administrateur</option>
+            </select>
+          </div>
         </div>
+
+        {/* Role Confirmation Dialog */}
+        {showRoleConfirmDialog && pendingRole && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-red-500">
+              <div className="flex items-center gap-2 mb-4">
+                <ShieldAlert className="text-red-500" size={24} />
+                <h3 className="text-xl font-bold text-white">Confirmation Requise</h3>
+              </div>
+              <p className="text-gray-300 mb-4">
+                Vous êtes sur le point de changer le rôle de <strong>{data.name}</strong> en <strong className="text-red-400">{getRoleDisplayName(pendingRole)}</strong>.
+              </p>
+              <p className="text-yellow-400 text-sm mb-6">
+                ⚠️ Cette action donnera des privilèges administratifs à cet utilisateur. Êtes-vous sûr de vouloir continuer ?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => confirmRoleChange(pendingRole)}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  disabled={isSubmitting}
+                >
+                  Confirmer
+                </button>
+                <button
+                  onClick={cancelRoleChange}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  disabled={isSubmitting}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Momo Number Input */}
         <div className="flex flex-row gap-2 items-center justify-center mb-6">
@@ -496,6 +615,9 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
           </motion.button>
         </div>
       </div>
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 };

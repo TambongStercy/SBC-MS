@@ -11,8 +11,12 @@ import WithdrawalDetailsModal from '../components/withdrawals/WithdrawalDetailsM
 import Pagination from '../components/common/Pagination';
 import Loader from '../components/common/loader';
 import Header from '../components/common/Header';
+import ToastContainer from '../components/common/ToastContainer';
+import { useToast } from '../hooks/useToast';
 
 const WithdrawalHistoryPage: React.FC = () => {
+    const { toasts, removeToast, showWarning, showSuccess, showError } = useToast();
+
     // State
     const [withdrawals, setWithdrawals] = useState<WithdrawalTransaction[]>([]);
     const [selectedWithdrawal, setSelectedWithdrawal] = useState<WithdrawalTransaction | null>(null);
@@ -96,7 +100,7 @@ const WithdrawalHistoryPage: React.FC = () => {
 
     const handleExportCSV = () => {
         if (filteredWithdrawals.length === 0) {
-            alert('No data to export');
+            showWarning('No data to export');
             return;
         }
 
@@ -130,6 +134,8 @@ const WithdrawalHistoryPage: React.FC = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        showSuccess('CSV exported successfully!');
     };
 
     // Calculate summary stats
@@ -392,7 +398,12 @@ const WithdrawalHistoryPage: React.FC = () => {
                 onClose={handleCloseModal}
                 onApproved={fetchData}
                 onRejected={fetchData}
+                showSuccess={showSuccess}
+                showError={showError}
             />
+
+            {/* Toast Container */}
+            <ToastContainer toasts={toasts} onRemove={removeToast} />
         </div>
     );
 };

@@ -22,7 +22,12 @@ export enum TransactionType {
     PAYMENT = 'payment',
     REFUND = 'refund',
     FEE = 'fee',
-    CONVERSION = 'conversion', // New transaction type for balance conversions
+    CONVERSION = 'conversion', // Balance conversions between currencies
+
+    // Activation balance transaction types (for BEAC compliance)
+    ACTIVATION_TRANSFER_IN = 'activation_transfer_in',   // Main balance → Activation balance
+    ACTIVATION_TRANSFER_OUT = 'activation_transfer_out', // Activation balance → Another user's activation balance
+    SPONSOR_ACTIVATION = 'sponsor_activation',           // Using activation balance to activate a referral's account
 }
 
 // Define Currency

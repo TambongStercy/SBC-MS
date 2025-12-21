@@ -15,6 +15,8 @@ export class TransactionController {
 
     /**
      * Get transaction history for the authenticated user
+     * Excludes activation-only transactions (sponsor_activation, activation_transfer_out)
+     * but includes activation_transfer_in since it affects main balance
      * @route GET /api/transactions/history
      */
     async getTransactionHistory(req: Request, res: Response) {
@@ -28,7 +30,8 @@ export class TransactionController {
                 type, status, startDate, endDate,
                 page = '1',
                 limit = '50',
-                sortBy = 'createdAt', sortOrder = 'desc'
+                sortBy = 'createdAt', sortOrder = 'desc',
+                includeActivation = 'false' // New param to include all activation transactions
             } = req.query;
 
             // Convert and validate query params
@@ -43,6 +46,16 @@ export class TransactionController {
             if (status) options.status = status;
             if (startDate) options.startDate = new Date(startDate as string);
             if (endDate) options.endDate = new Date(endDate as string);
+
+            // Exclude activation-only transactions unless explicitly requested
+            // sponsor_activation and activation_transfer_out only affect activation balance
+            // activation_transfer_in affects BOTH main balance (deduct) and activation balance (add)
+            if (includeActivation !== 'true') {
+                options.excludeTypes = [
+                    TransactionType.SPONSOR_ACTIVATION,
+                    TransactionType.ACTIVATION_TRANSFER_OUT
+                ];
+            }
 
             const result = await paymentService.getTransactionHistory(userId, options);
 
@@ -663,6 +676,61 @@ export class TransactionController {
             });
         }
     }
+    /**
+     * Get activation balance transactions for the authenticated user
+     * Shows sponsor_activation, activation_transfer_in, and activation_transfer_out
+     * @route GET /api/transactions/activation-history
+     */
+    async getActivationTransactionHistory(req: Request, res: Response) {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'User not authenticated' });
+            }
+
+            const {
+                page = '1',
+                limit = '50',
+                sortBy = 'createdAt',
+                sortOrder = 'desc'
+            } = req.query;
+
+            // Only include activation-related transaction types
+            const activationTypes = [
+                TransactionType.ACTIVATION_TRANSFER_IN,
+                TransactionType.ACTIVATION_TRANSFER_OUT,
+                TransactionType.SPONSOR_ACTIVATION
+            ];
+
+            const options: any = {
+                limit: parseInt(limit as string, 10),
+                page: parseInt(page as string, 10),
+                sortBy: sortBy as string,
+                sortOrder: sortOrder as 'asc' | 'desc',
+                includeOnlyTypes: activationTypes
+            };
+
+            const result = await paymentService.getActivationTransactionHistory(userId, options);
+
+            return res.status(200).json({
+                success: true,
+                transactions: result.transactions,
+                pagination: {
+                    total: result.total,
+                    limit: options.limit,
+                    page: options.page,
+                    totalPages: Math.ceil(result.total / options.limit)
+                }
+            });
+        } catch (error) {
+            log.error(`Error in getActivationTransactionHistory: ${error}`);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to retrieve activation transaction history'
+            });
+        }
+    }
+
     /**
      * Get conversion transactions for the authenticated user
      * @route GET /api/transactions/conversions

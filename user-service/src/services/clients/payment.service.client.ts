@@ -23,6 +23,22 @@ interface InternalTransactionPayload {
     metadata?: Record<string, any>;
 }
 
+// Payload for activation balance transactions
+interface ActivationTransactionPayload {
+    userId: string;
+    type: 'activation_transfer_in' | 'activation_transfer_out' | 'sponsor_activation';
+    amount: number;
+    description: string;
+    metadata?: Record<string, any>;
+    recipientId?: string;
+    ipAddress?: string;
+}
+
+interface ActivationTransactionResponseData {
+    transactionId: string;
+    status: string;
+}
+
 // Define expected successful response data from payment service
 interface PaymentIntentData {
     sessionId: string;
@@ -552,7 +568,7 @@ class PaymentServiceClient {
         this.log.info(`Creating conversion transaction: ${fromAmount} ${fromCurrency} -> ${toAmount} ${toCurrency} for user ${userId}`);
         this.log.info(`Payment service base URL: ${this.apiClient.defaults.baseURL}`);
         this.log.info(`Full request URL: ${this.apiClient.defaults.baseURL}${url}`);
-        
+
         try {
             const payload = {
                 userId,
@@ -568,12 +584,12 @@ class PaymentServiceClient {
             this.log.info('Request headers:', this.apiClient.defaults.headers);
 
             const response = await this.apiClient.post<PaymentServiceResponse<{ transactionId: string }>>(url, payload);
-            
+
             this.log.info('Response received:', {
                 status: response.status,
                 data: response.data
             });
-            
+
             if (response.status === 201 && response.data?.success && response.data.data?.transactionId) {
                 this.log.info('Conversion transaction created successfully.', { transactionId: response.data.data.transactionId });
                 return response.data.data;
@@ -587,8 +603,8 @@ class PaymentServiceClient {
         } catch (error: any) {
             this.log.error(`Error creating conversion transaction: ${error.message}`);
             if (axios.isAxiosError(error)) {
-                this.log.error('Payment Service Error Response (createConversionTransaction):', { 
-                    status: error.response?.status, 
+                this.log.error('Payment Service Error Response (createConversionTransaction):', {
+                    status: error.response?.status,
                     data: error.response?.data,
                     config: {
                         url: error.config?.url,
@@ -599,6 +615,42 @@ class PaymentServiceClient {
                 throw new Error(error.response?.data?.message || 'Payment service communication error (createConversionTransaction)');
             }
             throw new Error('Payment service communication error (createConversionTransaction)');
+        }
+    }
+
+    /**
+     * Records an activation balance transaction via the payment service.
+     * Used for activation balance transfers (in/out) and sponsored activations.
+     * @param payload The activation transaction details
+     * @returns Transaction ID and status
+     */
+    async recordActivationTransaction(payload: ActivationTransactionPayload): Promise<ActivationTransactionResponseData> {
+        const url = '/internal/activation-transaction';
+        this.log.info(`Recording activation transaction for user ${payload.userId}, type: ${payload.type}, amount: ${payload.amount}`);
+
+        try {
+            const response = await this.apiClient.post<PaymentServiceResponse<ActivationTransactionResponseData>>(url, payload);
+
+            if (response.status === 201 && response.data?.success && response.data.data?.transactionId) {
+                this.log.info('Activation transaction recorded successfully.', { transactionId: response.data.data.transactionId });
+                return response.data.data;
+            } else {
+                this.log.warn('Payment service responded with failure for activation transaction.', {
+                    status: response.status,
+                    responseData: response.data
+                });
+                throw new Error(response.data?.message || 'Failed to record activation transaction');
+            }
+        } catch (error: any) {
+            this.log.error(`Error recording activation transaction: ${error.message}`);
+            if (axios.isAxiosError(error)) {
+                this.log.error('Payment Service Error Response (recordActivationTransaction):', {
+                    status: error.response?.status,
+                    data: error.response?.data
+                });
+                throw new Error(error.response?.data?.message || 'Payment service communication error (recordActivationTransaction)');
+            }
+            throw new Error('Payment service communication error (recordActivationTransaction)');
         }
     }
 }

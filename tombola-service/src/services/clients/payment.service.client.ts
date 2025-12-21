@@ -81,6 +81,63 @@ const createIntent = async (payload: CreateIntentPayload): Promise<PaymentIntent
     }
 };
 
+// Define payload for internal deposit
+interface InternalDepositPayload {
+    userId: string;
+    amount: number;
+    currency?: string;
+    description: string;
+    metadata?: Record<string, any>;
+}
+
+// Define expected response from internal deposit
+interface InternalDepositResponse {
+    success: boolean;
+    data?: {
+        transactionId: string;
+    };
+    message?: string;
+}
+
+/**
+ * Calls the payment service to record an internal deposit (for fund distribution).
+ */
+const recordInternalDeposit = async (payload: InternalDepositPayload): Promise<{ transactionId: string }> => {
+    const url = '/internal/deposit';
+    log.info(`Sending internal deposit request to ${paymentServiceClient.defaults.baseURL}${url}`);
+    log.debug('Internal deposit payload:', payload);
+    try {
+        const response = await paymentServiceClient.post<InternalDepositResponse>(url, {
+            ...payload,
+            currency: payload.currency || 'XAF',
+        });
+
+        if ((response.status === 201 || response.status === 200) && response.data?.success && response.data.data?.transactionId) {
+            log.info('Internal deposit recorded successfully.', {
+                transactionId: response.data.data.transactionId,
+                userId: payload.userId,
+                amount: payload.amount,
+            });
+            return { transactionId: response.data.data.transactionId };
+        } else {
+            log.warn('Payment service responded with failure for internal deposit.', {
+                status: response.status,
+                responseData: response.data
+            });
+            throw new AppError(response.data?.message || 'Failed to record internal deposit', response.status);
+        }
+    } catch (error: any) {
+        log.error(`Error calling payment service ${url}: ${error.message}`);
+        if (axios.isAxiosError(error)) {
+            log.error('Payment Service Error Response (internalDeposit):', { status: error.response?.status, data: error.response?.data });
+            throw new AppError(error.response?.data?.message || 'Payment service communication error', error.response?.status || 500);
+        }
+        if (error instanceof AppError) throw error;
+        throw new AppError('Payment service communication error', 500);
+    }
+};
+
 export const paymentService = {
     createIntent,
+    recordInternalDeposit,
 }; 

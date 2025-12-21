@@ -15,6 +15,7 @@ import { authorize } from '../middleware/rbac.middleware';
 import { notificationService, DeliveryChannel } from '../../services/clients/notification.service.client';
 import config from '../../config';
 import axios from 'axios';
+import { userRepository } from '../../database/repositories/user.repository';
 
 const log = logger.getLogger('UserController');
 
@@ -613,20 +614,40 @@ export class UserController {
      * Validate user exists and is active
      * @route GET /api/users/:userId/validate
      */
-    async validateUser(req: Request, res: Response): Promise<void> {
+    async validateUser(req: Request, res: Response): Promise<Response> {
         try {
             const userId = req.params.userId;
 
-            // Temporary implementation until service method is properly implemented
-            const isValid = await this.userService.validateUser(userId); // Assume user is valid for now
+            // Get user details to validate and return user data
+            const user = await userRepository.findById(userId);
 
-            res.status(200).json({
+            if (!user || user.blocked || user.deleted) {
+                return res.status(200).json({
+                    success: true,
+                    valid: false,
+                    data: null
+                });
+            }
+
+            // Return user data with essential fields for service-to-service communication
+            return res.status(200).json({
                 success: true,
-                valid: isValid
+                valid: true,
+                data: {
+                    _id: user._id.toString(),
+                    name: user.name,
+                    email: user.email,
+                    phoneNumber: user.phoneNumber,
+                    avatar: user.avatar,
+                    country: user.country,
+                    city: user.city,
+                    region: user.region,
+                    role: user.role // IMPORTANT: Include role for admin checks
+                }
             });
         } catch (error: any) {
             log.error(`Error validating user: ${error.message}`);
-            res.status(500).json({
+            return res.status(500).json({
                 success: false,
                 message: 'Error validating user',
                 valid: false
@@ -1575,6 +1596,32 @@ export class UserController {
         } catch (error) {
             log.error(`Error getting referrer IDs for user ${userId}:`, error);
             res.status(500).json({ success: false, message: 'Failed to get referrer IDs' });
+        }
+    }
+
+    /**
+     * Check if two users have a direct (level 1) referral relationship.
+     * @route POST /api/users/internal/check-direct-referral
+     */
+    async checkDirectReferralRelationship(req: Request, res: Response): Promise<void> {
+        const { user1Id, user2Id } = req.body;
+
+        if (!user1Id || !user2Id) {
+            res.status(400).json({ success: false, message: 'Both user1Id and user2Id are required' });
+            return;
+        }
+
+        if (!isValidObjectId(user1Id) || !isValidObjectId(user2Id)) {
+            res.status(400).json({ success: false, message: 'Invalid userId format' });
+            return;
+        }
+
+        try {
+            const hasDirectReferral = await this.userService.checkDirectReferralRelationship(user1Id, user2Id);
+            res.status(200).json({ success: true, data: { hasDirectReferral } });
+        } catch (error) {
+            log.error(`Error checking direct referral relationship between ${user1Id} and ${user2Id}:`, error);
+            res.status(500).json({ success: false, message: 'Failed to check referral relationship' });
         }
     }
 

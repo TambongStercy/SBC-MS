@@ -6,6 +6,7 @@ export enum UserRole {
     USER = 'user',
     ADMIN = 'admin', // Super admin with full access
     WITHDRAWAL_ADMIN = 'withdrawal_admin', // Sub-admin for managing withdrawals only
+    TESTER = 'tester', // Tester role for testing features
 }
 
 // Define User Sex options
@@ -84,6 +85,7 @@ export interface IUser extends Document {
     referralCode?: string;
     balance: number;
     usdBalance: number;
+    activationBalance: number; // Dedicated balance for activating referrals' accounts (BEAC compliance)
     // Crypto wallet information
     cryptoWalletAddress?: string;
     cryptoWalletCurrency?: string; // e.g., 'BTC', 'ETH', 'USDT'
@@ -166,6 +168,7 @@ const UserSchema = new Schema<IUser>(
         referralCode: { type: String, unique: true, sparse: true, index: true, lowercase: true },
         balance: { type: Number, default: 0, required: true },
         usdBalance: { type: Number, default: 0, required: true },
+        activationBalance: { type: Number, default: 0, required: true }, // For sponsoring referral activations (BEAC compliance)
         // Crypto wallet information
         cryptoWalletAddress: { 
             type: String, 

@@ -31,7 +31,8 @@ app.get('/health', (req, res) => {
       userService: config.services.userServiceUrl,
       notificationService: config.services.notificationServiceUrl,
       paymentService: config.services.paymentServiceUrl,
-      productService: config.services.productServiceUrl
+      productService: config.services.productServiceUrl,
+      chatService: config.services.chatServiceUrl
     }
   });
 });
@@ -81,6 +82,14 @@ app.use('/api/subscriptions', proxy(config.services.userServiceUrl, {
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to subscriptions service`);
     return '/api/subscriptions' + req.url;
+  }
+}));
+
+// Activation Balance service (user service)
+app.use('/api/activation-balance', proxy(config.services.userServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to activation-balance service (user service)`);
+    return '/api/activation-balance' + req.url;
   }
 }));
 
@@ -194,6 +203,15 @@ app.use('/api/tombolas', proxy(config.services.tombolaServiceUrl, {
   }
 }));
 
+// Impact Challenge service (part of tombola service)
+app.use('/api/challenges', proxy(config.services.tombolaServiceUrl, {
+  parseReqBody: false, // Allow for file uploads in entrepreneur video submissions
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to challenges service (tombola)`);
+    return '/api/challenges' + req.url;
+  }
+}));
+
 // Advertising service
 app.use('/api/advertising', proxy(config.services.advertisingServiceUrl, {
   proxyReqPathResolver: (req) => {
@@ -226,6 +244,15 @@ app.use('/api/events', proxy(config.services.settingsServiceUrl, {
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to event service`);
     return '/api/events' + req.url;
+  }
+}));
+
+// Chat service (messaging and status/stories)
+app.use('/api/chat', proxy(config.services.chatServiceUrl, {
+  parseReqBody: false,
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to chat service`);
+    return '/api/chat' + req.url;
   }
 }));
 

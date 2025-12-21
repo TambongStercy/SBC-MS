@@ -1,0 +1,4219 @@
+{
+  "generatedAt": "2025-12-05T09:53:21.720Z",
+  "summary": {
+    "totalUsersAnalyzed": 139,
+    "totalSuspiciousDeposits": 8045,
+    "totalSuspiciousDepositAmount": 35112718.95999999,
+    "totalWithdrawalAmount": 46723947.10345823,
+    "totalCurrentBalance": 1479029.5200000003,
+    "netImpactTotal": -11611228.143458221,
+    "usersWithGains": 0,
+    "usersWithLosses": 132,
+    "usersBalanced": 7
+  },
+  "users": [
+    {
+      "userId": "65d07017411f423f597c8ee5",
+      "name": "rufus herma promoteur",
+      "email": "snipertradebusiness@gmail.com",
+      "phoneNumber": "225681925635",
+      "accountDiscrepancy": 170519.45,
+      "suspiciousDeposits": {
+        "count": 132,
+        "totalAmount": 239315.56000000006
+      },
+      "withdrawals": {
+        "total": 595,
+        "completed": 577,
+        "totalAmount": 2757131.05
+      },
+      "matching": {
+        "matched": 20,
+        "unmatched": 112,
+        "unmatchedSample": [
+          {
+            "depositAmount": 19500,
+            "expectedWithdrawalAmount": 19500,
+            "date": "2025-02-01T21:22:03.000Z",
+            "transactionId": "17cc27c6-122a-44e0-9d68-13ed0227dc71"
+          },
+          {
+            "depositAmount": 87251.06000000006,
+            "expectedWithdrawalAmount": 87251,
+            "date": "2025-02-02T23:33:47.000Z",
+            "transactionId": "b13ada6b-310e-4655-ae92-4acea67e8822"
+          },
+          {
+            "depositAmount": 90,
+            "expectedWithdrawalAmount": 90,
+            "date": "2025-05-11T01:52:46.731Z",
+            "transactionId": "iaSqMwPQQWXTobLS"
+          },
+          {
+            "depositAmount": 750,
+            "expectedWithdrawalAmount": 750,
+            "date": "2025-05-12T14:36:58.424Z",
+            "transactionId": "uzz50I2XahE9S9l-"
+          },
+          {
+            "depositAmount": 135,
+            "expectedWithdrawalAmount": 135,
+            "date": "2025-05-12T14:36:58.690Z",
+            "transactionId": "aiJ-cktxPxivAsIU"
+          },
+          {
+            "depositAmount": 90,
+            "expectedWithdrawalAmount": 90,
+            "date": "2025-05-12T14:47:57.464Z",
+            "transactionId": "OC8ZZC2MOpPhgxMA"
+          },
+          {
+            "depositAmount": 45,
+            "expectedWithdrawalAmount": 45,
+            "date": "2025-05-12T15:03:20.111Z",
+            "transactionId": "Ap1DTsRQ5WXwq3H7"
+          },
+          {
+            "depositAmount": 90,
+            "expectedWithdrawalAmount": 90,
+            "date": "2025-05-12T15:28:15.285Z",
+            "transactionId": "9zngyoFld6FPsMxl"
+          },
+          {
+            "depositAmount": 90,
+            "expectedWithdrawalAmount": 90,
+            "date": "2025-05-12T15:32:45.502Z",
+            "transactionId": "4MgcvgMZ3J8wO7TQ"
+          },
+          {
+            "depositAmount": 90,
+            "expectedWithdrawalAmount": 90,
+            "date": "2025-05-12T15:33:38.942Z",
+            "transactionId": "ia0KxI-oS-mTb1xu"
+          }
+        ]
+      },
+      "currentBalance": 535888.3999999999,
+      "netImpact": -2517815.4899999998,
+      "analysis": "User lost 2517815.49 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d204c9980d0e50b1efbb93",
+      "name": "le futuriste",
+      "email": "momochristianlefuturiste@gmail.com",
+      "phoneNumber": "237693655135",
+      "accountDiscrepancy": 42750,
+      "suspiciousDeposits": {
+        "count": 17,
+        "totalAmount": 38750
+      },
+      "withdrawals": {
+        "total": 10,
+        "completed": 10,
+        "totalAmount": 424249
+      },
+      "matching": {
+        "matched": 0,
+        "unmatched": 17,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-05-30T14:07:55.781Z",
+            "transactionId": "Q0cNwqUTFgr-85H4"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-04T13:06:03.803Z",
+            "transactionId": "NQhzv0c9LL-E2V4W"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-07T11:10:07.418Z",
+            "transactionId": "Nstdt8DgAxMKOpCS"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-09T10:42:12.988Z",
+            "transactionId": "uMpW1gzOy3DRYpWt"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-09T15:10:30.248Z",
+            "transactionId": "KuJ3M4hDZfNJMFYK"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-10T19:21:54.407Z",
+            "transactionId": "hJUhFL9f4aIJbYe3"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-11T10:32:03.216Z",
+            "transactionId": "GOUk9yOnDnXBFggA"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-22T18:11:45.122Z",
+            "transactionId": "9lS31_Fs0yk6z_o8"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-08-07T12:24:55.100Z",
+            "transactionId": "Jgroq5BGIrvsuPdL"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-07T13:46:58.147Z",
+            "transactionId": "GRT0q2cOy1SnCCbU"
+          }
+        ]
+      },
+      "currentBalance": 348751,
+      "netImpact": -385499,
+      "analysis": "User lost 385499.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d07c0d5c96a8ab00a6cf24",
+      "name": "Jamelle Esmeralda",
+      "email": "assimeziojamelleesmeralda@gmail.com",
+      "phoneNumber": "237676939404",
+      "accountDiscrepancy": 84856,
+      "suspiciousDeposits": {
+        "count": 94,
+        "totalAmount": 132981
+      },
+      "withdrawals": {
+        "total": 360,
+        "completed": 234,
+        "totalAmount": 1429957.39
+      },
+      "matching": {
+        "matched": 65,
+        "unmatched": 29,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-05-13T21:22:48.687Z",
+            "transactionId": "V6XXm1t5G4BVScy0"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-05-15T07:06:34.028Z",
+            "transactionId": "REsrnv-pRcbE-k_3"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-05-18T13:20:06.594Z",
+            "transactionId": "nzbaLqEAqGrlFxBw"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-05-18T13:50:02.768Z",
+            "transactionId": "V2UhqO0doSoqqJqL"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-05-24T07:06:39.367Z",
+            "transactionId": "TqjRb_15jJi63W5S"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-02T06:18:50.449Z",
+            "transactionId": "th2g6ksoRz-LlDcb"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-02T17:22:44.740Z",
+            "transactionId": "tEeFzld6uzVpAUW-"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-04T16:38:21.260Z",
+            "transactionId": "lgbgMNG6K8W4Uf6d"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-05T15:40:02.942Z",
+            "transactionId": "k3k59FeDUZ128ghy"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-05T19:50:31.561Z",
+            "transactionId": "LmWztP5vkHGZLwXI"
+          }
+        ]
+      },
+      "currentBalance": 290898.61,
+      "netImpact": -1296976.39,
+      "analysis": "User lost 1296976.39 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "664e137a91d317d3fcfd60c9",
+      "name": "price epse lawrence ngalah barbara love",
+      "email": "ngalahprice@gmail.com",
+      "phoneNumber": "237677551640",
+      "accountDiscrepancy": 191900,
+      "suspiciousDeposits": {
+        "count": 9,
+        "totalAmount": 191900
+      },
+      "withdrawals": {
+        "total": 9,
+        "completed": 9,
+        "totalAmount": 191900
+      },
+      "matching": {
+        "matched": 9,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 28000,
+      "netImpact": 0,
+      "analysis": "Balanced (deposits = withdrawals)"
+    },
+    {
+      "userId": "664a2b6f91d317d3fcec4c35",
+      "name": "coach marcel  menkam",
+      "email": "marcelmenkam@gmail.com",
+      "phoneNumber": "237678876296",
+      "accountDiscrepancy": 457760,
+      "suspiciousDeposits": {
+        "count": 105,
+        "totalAmount": 455904.05
+      },
+      "withdrawals": {
+        "total": 295,
+        "completed": 295,
+        "totalAmount": 635970.74
+      },
+      "matching": {
+        "matched": 104,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1500,
+            "expectedWithdrawalAmount": 1500,
+            "date": "2025-08-27T02:06:44.577Z",
+            "transactionId": "oYhoCBkoT12tGBO9"
+          }
+        ]
+      },
+      "currentBalance": 18789.259999999984,
+      "netImpact": -180066.69,
+      "analysis": "User lost 180066.69 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65dda6d94d0a1daf9e67e57c",
+      "name": "Ance Merlin",
+      "email": "merlinotadjuid@gmail.com",
+      "phoneNumber": "237693143837",
+      "accountDiscrepancy": 61514,
+      "suspiciousDeposits": {
+        "count": 28,
+        "totalAmount": 62014
+      },
+      "withdrawals": {
+        "total": 46,
+        "completed": 40,
+        "totalAmount": 85951
+      },
+      "matching": {
+        "matched": 28,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 14563,
+      "netImpact": -23937,
+      "analysis": "User lost 23937.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65e838ca1e09ac01f4c9745c",
+      "name": "kepombia blessing",
+      "email": "fofoudivane75@gmail.com",
+      "phoneNumber": "237681686437",
+      "accountDiscrepancy": 48860.5,
+      "suspiciousDeposits": {
+        "count": 13,
+        "totalAmount": 33235.5
+      },
+      "withdrawals": {
+        "total": 60,
+        "completed": 35,
+        "totalAmount": 77712.2
+      },
+      "matching": {
+        "matched": 11,
+        "unmatched": 2,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-09T17:41:27.704Z",
+            "transactionId": "jAtayfpv-CW5z3ly"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-08-28T14:29:47.404Z",
+            "transactionId": "6iA-zTUxiGpe65zi"
+          }
+        ]
+      },
+      "currentBalance": 14398.3,
+      "netImpact": -44476.7,
+      "analysis": "User lost 44476.70 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d0a9e95c96a8ab00a6fccb",
+      "name": "Stanislas  K",
+      "email": "staniskouopgue@gmail.com",
+      "phoneNumber": "237621721403",
+      "accountDiscrepancy": 29568,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 37068
+      },
+      "withdrawals": {
+        "total": 36,
+        "completed": 24,
+        "totalAmount": 63397
+      },
+      "matching": {
+        "matched": 12,
+        "unmatched": 4,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-16T22:30:44.971Z",
+            "transactionId": "aJtMvGcJpl8_GqAK"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-05T21:47:08.150Z",
+            "transactionId": "PBTbED91RVuCz7Zb"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-25T15:33:23.225Z",
+            "transactionId": "Yhe8oPb8YY9LbjK-"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-08-26T10:02:55.874Z",
+            "transactionId": "QoCeIfGokgA0F6VA"
+          }
+        ]
+      },
+      "currentBalance": 12421,
+      "netImpact": -26329,
+      "analysis": "User lost 26329.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6647af397801ff82b9c09d91",
+      "name": "meva'a robert",
+      "email": "mevaarobertmarie@gmail.com",
+      "phoneNumber": "237694742683",
+      "accountDiscrepancy": 273540,
+      "suspiciousDeposits": {
+        "count": 58,
+        "totalAmount": 269790
+      },
+      "withdrawals": {
+        "total": 64,
+        "completed": 64,
+        "totalAmount": 291890
+      },
+      "matching": {
+        "matched": 57,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-06-02T09:56:32.574Z",
+            "transactionId": "D2X8R3w8RBIqlcGI"
+          }
+        ]
+      },
+      "currentBalance": 11150,
+      "netImpact": -22100,
+      "analysis": "User lost 22100.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "662b62560a53c35ee08ca2c8",
+      "name": "Prince TIOMELA⚡",
+      "email": "tiomelaprince08@gmail.com",
+      "phoneNumber": "237653227376",
+      "accountDiscrepancy": 80569,
+      "suspiciousDeposits": {
+        "count": 19,
+        "totalAmount": 82069
+      },
+      "withdrawals": {
+        "total": 23,
+        "completed": 18,
+        "totalAmount": 84739
+      },
+      "matching": {
+        "matched": 17,
+        "unmatched": 2,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-05-24T09:41:12.215Z",
+            "transactionId": "CbXXZWaczpaaGl2Q"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-07T16:52:15.776Z",
+            "transactionId": "qSCDtrcx84OK_sYD"
+          }
+        ]
+      },
+      "currentBalance": 10580,
+      "netImpact": -2670,
+      "analysis": "User lost 2670.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65da466ca1212e04d4bd72d1",
+      "name": "renault énergie edima",
+      "email": "renaudgeraud30@gmail.com",
+      "phoneNumber": "237699518648",
+      "accountDiscrepancy": 28195,
+      "suspiciousDeposits": {
+        "count": 23,
+        "totalAmount": 30695
+      },
+      "withdrawals": {
+        "total": 56,
+        "completed": 51,
+        "totalAmount": 105081
+      },
+      "matching": {
+        "matched": 18,
+        "unmatched": 5,
+        "unmatchedSample": [
+          {
+            "depositAmount": 3000,
+            "expectedWithdrawalAmount": 3000,
+            "date": "2025-02-01T21:22:10.000Z",
+            "transactionId": "26592930-0f39-4751-9b33-7e66c1da90d7"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-30T11:41:44.464Z",
+            "transactionId": "DT4kz75sYxsgl3eU"
+          },
+          {
+            "depositAmount": 1500,
+            "expectedWithdrawalAmount": 1500,
+            "date": "2025-08-01T09:22:02.833Z",
+            "transactionId": "iNLjuq76PxskB82A"
+          },
+          {
+            "depositAmount": 1500,
+            "expectedWithdrawalAmount": 1500,
+            "date": "2025-08-11T18:34:12.975Z",
+            "transactionId": "W4MEgtsx8ejY5CFz"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-08-25T01:21:30.157Z",
+            "transactionId": "WBDlBV-iPtlJoAtN"
+          }
+        ]
+      },
+      "currentBalance": 9864,
+      "netImpact": -74386,
+      "analysis": "User lost 74386.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d09a3b5c96a8ab00a6e5bc",
+      "name": "fofou divane",
+      "email": "fofoudivane6@gmail.com",
+      "phoneNumber": "237676421267",
+      "accountDiscrepancy": 31696.35,
+      "suspiciousDeposits": {
+        "count": 26,
+        "totalAmount": 32071.350000000002
+      },
+      "withdrawals": {
+        "total": 95,
+        "completed": 78,
+        "totalAmount": 99730.79999999999
+      },
+      "matching": {
+        "matched": 25,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-28T14:29:47.413Z",
+            "transactionId": "JSt6GpHK-mznLyIA"
+          }
+        ]
+      },
+      "currentBalance": 8215.55,
+      "netImpact": -67659.44999999998,
+      "analysis": "User lost 67659.45 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66731fd94fad2a2bf91f8241",
+      "name": "eric fogang",
+      "email": "ericfogang1@gmail.com",
+      "phoneNumber": "237690779942",
+      "accountDiscrepancy": 36360,
+      "suspiciousDeposits": {
+        "count": 14,
+        "totalAmount": 36360
+      },
+      "withdrawals": {
+        "total": 17,
+        "completed": 16,
+        "totalAmount": 46460
+      },
+      "matching": {
+        "matched": 14,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 7400,
+      "netImpact": -10100,
+      "analysis": "User lost 10100.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66859b333bf5cda4b6584a5b",
+      "name": "betsa ngono marie josée",
+      "email": "bedsangonomariejosey@gmail.com",
+      "phoneNumber": "237657014932",
+      "accountDiscrepancy": 94182.5,
+      "suspiciousDeposits": {
+        "count": 56,
+        "totalAmount": 94182.5
+      },
+      "withdrawals": {
+        "total": 64,
+        "completed": 64,
+        "totalAmount": 104080.5
+      },
+      "matching": {
+        "matched": 56,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 6602,
+      "netImpact": -9898,
+      "analysis": "User lost 9898.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66886cdc840a5553b8a1b8cc",
+      "name": "global builders",
+      "email": "globalbuilders237@gmail.com",
+      "phoneNumber": "237697265745",
+      "accountDiscrepancy": 469348.35,
+      "suspiciousDeposits": {
+        "count": 96,
+        "totalAmount": 468593.35
+      },
+      "withdrawals": {
+        "total": 192,
+        "completed": 192,
+        "totalAmount": 537143.25
+      },
+      "matching": {
+        "matched": 95,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-14T16:09:47.391Z",
+            "transactionId": "BTv1wVUM5VMHx56b"
+          }
+        ]
+      },
+      "currentBalance": 6205.1,
+      "netImpact": -68549.90000000002,
+      "analysis": "User lost 68549.90 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6692fdbf217db3159c73dca3",
+      "name": "tchanko tchamandeu anastasie blandine",
+      "email": "madamdigi@gmail.com",
+      "phoneNumber": "237696471837",
+      "accountDiscrepancy": 24240,
+      "suspiciousDeposits": {
+        "count": 6,
+        "totalAmount": 24240
+      },
+      "withdrawals": {
+        "total": 6,
+        "completed": 6,
+        "totalAmount": 24240
+      },
+      "matching": {
+        "matched": 6,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 6000,
+      "netImpact": 0,
+      "analysis": "Balanced (deposits = withdrawals)"
+    },
+    {
+      "userId": "6699362bdb8c900ca2fe7f3e",
+      "name": "kagonbé guinbé innocent",
+      "email": "kagonbeinnocent@gmail.com",
+      "phoneNumber": "23566584726",
+      "accountDiscrepancy": 109282,
+      "suspiciousDeposits": {
+        "count": 20,
+        "totalAmount": 109282
+      },
+      "withdrawals": {
+        "total": 21,
+        "completed": 21,
+        "totalAmount": 115039
+      },
+      "matching": {
+        "matched": 20,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 5743,
+      "netImpact": -5757,
+      "analysis": "User lost 5757.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65fb2b657b52fe8baebd78ce",
+      "name": "𝐌𝐫 𝐃𝐣𝐢𝐛",
+      "email": "djibrilldongmo10@gmail.com",
+      "phoneNumber": "237692184040",
+      "accountDiscrepancy": 137686.5,
+      "suspiciousDeposits": {
+        "count": 24,
+        "totalAmount": 132209
+      },
+      "withdrawals": {
+        "total": 38,
+        "completed": 33,
+        "totalAmount": 163444
+      },
+      "matching": {
+        "matched": 24,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 5492.5,
+      "netImpact": -31235,
+      "analysis": "User lost 31235.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66450d8d327f913f513c8262",
+      "name": "ardine konda",
+      "email": "ardinekonda@gmail.com",
+      "phoneNumber": "237697700739",
+      "accountDiscrepancy": 51875,
+      "suspiciousDeposits": {
+        "count": 13,
+        "totalAmount": 54875
+      },
+      "withdrawals": {
+        "total": 31,
+        "completed": 22,
+        "totalAmount": 134783
+      },
+      "matching": {
+        "matched": 10,
+        "unmatched": 3,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-02-01T21:22:22.000Z",
+            "transactionId": "8046edeb-17c9-48ce-9979-8b03a21ab46d"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-05-16T11:09:48.588Z",
+            "transactionId": "F8Dmhb9gUCF66UsX"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-05-16T11:47:36.396Z",
+            "transactionId": "NxNbQ7ZuuW-3IdZq"
+          }
+        ]
+      },
+      "currentBalance": 5592,
+      "netImpact": -79908,
+      "analysis": "User lost 79908.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d6a2e3dd4056d58e54f613",
+      "name": "millioncfa",
+      "email": "rufusherma@gmail.com",
+      "phoneNumber": "237696921761",
+      "accountDiscrepancy": 112890,
+      "suspiciousDeposits": {
+        "count": 32,
+        "totalAmount": 68750
+      },
+      "withdrawals": {
+        "total": 137,
+        "completed": 110,
+        "totalAmount": 1633862.75
+      },
+      "matching": {
+        "matched": 0,
+        "unmatched": 32,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1500,
+            "expectedWithdrawalAmount": 1500,
+            "date": "2025-05-12T14:36:58.416Z",
+            "transactionId": "MYnMqnT7V94bqLbw"
+          },
+          {
+            "depositAmount": 375,
+            "expectedWithdrawalAmount": 375,
+            "date": "2025-06-05T11:00:05.228Z",
+            "transactionId": "lNHccsuxyIj7JZCR"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-06T07:39:34.437Z",
+            "transactionId": "jLNCczqJavbXW2sn"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-09T07:21:57.747Z",
+            "transactionId": "5bcfpuAT93NRZet8"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-10T22:48:01.005Z",
+            "transactionId": "_v7e0FgA2d2ZqqOv"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-11T19:20:45.484Z",
+            "transactionId": "QEOTqqfdECe1Dz7l"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-15T11:50:59.644Z",
+            "transactionId": "jpYcMPo38LP_-8yc"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-23T21:24:01.172Z",
+            "transactionId": "WRKWPMro7rRZVQhm"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-30T15:24:07.527Z",
+            "transactionId": "5_MSGDN-FNwmmD5e"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-05T12:22:05.630Z",
+            "transactionId": "zBQqLr2dIRvh9ls1"
+          }
+        ]
+      },
+      "currentBalance": 5277.25,
+      "netImpact": -1565112.75,
+      "analysis": "User lost 1565112.75 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65da4fbfa1212e04d4bd7dfa",
+      "name": "Ton Tacticien",
+      "email": "ngongangsimplice08@gmail.com",
+      "phoneNumber": "237692735693",
+      "accountDiscrepancy": 34879,
+      "suspiciousDeposits": {
+        "count": 8,
+        "totalAmount": 36129
+      },
+      "withdrawals": {
+        "total": 11,
+        "completed": 11,
+        "totalAmount": 77467
+      },
+      "matching": {
+        "matched": 6,
+        "unmatched": 2,
+        "unmatchedSample": [
+          {
+            "depositAmount": 4800,
+            "expectedWithdrawalAmount": 4800,
+            "date": "2025-02-01T21:22:10.000Z",
+            "transactionId": "3c5d81e6-5d6c-4aae-b4f7-754fbd9f338c"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-07-19T17:21:05.717Z",
+            "transactionId": "K5YsbBgBFz2r4Ce_"
+          }
+        ]
+      },
+      "currentBalance": 4912,
+      "netImpact": -41338,
+      "analysis": "User lost 41338.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "67af56936e8882d7c2842ee2",
+      "name": "Mr DOPÉ",
+      "email": "authentique.electro@gmail.com",
+      "phoneNumber": "2290197794503",
+      "accountDiscrepancy": 554841,
+      "suspiciousDeposits": {
+        "count": 3,
+        "totalAmount": 2025
+      },
+      "withdrawals": {
+        "total": 63,
+        "completed": 63,
+        "totalAmount": 830591
+      },
+      "matching": {
+        "matched": 1,
+        "unmatched": 2,
+        "unmatchedSample": [
+          {
+            "depositAmount": 25,
+            "expectedWithdrawalAmount": 25,
+            "date": "2025-05-12T18:28:49.488Z",
+            "transactionId": "awajisU-WYYWcDk_"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-05-20T09:39:48.521Z",
+            "transactionId": "jfh5WG6PQofRWNR6"
+          }
+        ]
+      },
+      "currentBalance": 5000,
+      "netImpact": -828566,
+      "analysis": "User lost 828566.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d2b0344a7e2b9efbf6205d",
+      "name": "sterling black",
+      "email": "tambongsterling@gmail.com",
+      "phoneNumber": "237675080477",
+      "accountDiscrepancy": 68386.7,
+      "suspiciousDeposits": {
+        "count": 18,
+        "totalAmount": 58712
+      },
+      "withdrawals": {
+        "total": 94,
+        "completed": 55,
+        "totalAmount": 69586.70345822
+      },
+      "matching": {
+        "matched": 2,
+        "unmatched": 16,
+        "unmatchedSample": [
+          {
+            "depositAmount": 8500,
+            "expectedWithdrawalAmount": 8500,
+            "date": "2025-02-01T21:22:08.000Z",
+            "transactionId": "b36890ea-30b9-4b0e-af00-a10823f9aac7"
+          },
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-01T21:22:08.000Z",
+            "transactionId": "8c6ad273-7156-4cc0-b78d-0f70e73c2746"
+          },
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-01T21:22:08.000Z",
+            "transactionId": "07517688-12f4-4551-8296-b89d428dcf25"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-02-01T21:22:08.000Z",
+            "transactionId": "b72b9790-df03-4ba3-bf3f-26b90ee257c7"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-02-01T21:22:08.000Z",
+            "transactionId": "90e2992e-e4a7-4118-a34b-05ecd6d26a5c"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-02-01T21:22:08.000Z",
+            "transactionId": "67512684-c59d-4f42-81e8-a77886209fcc"
+          },
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-10T13:34:38.000Z",
+            "transactionId": "f2c510c8-c131-469d-8348-9de2126626e1"
+          },
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-10T13:36:28.000Z",
+            "transactionId": "43150ce6-e347-432e-8161-cd3cd219d90f"
+          },
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-10T13:42:58.000Z",
+            "transactionId": "3b3078bd-806b-4956-8d3a-d445e7ccbe6f"
+          },
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-21T20:52:28.000Z",
+            "transactionId": "72ab0743-a7ef-4096-b3eb-1f7a10b89e2e"
+          }
+        ]
+      },
+      "currentBalance": 4800,
+      "netImpact": -10874.70345822,
+      "analysis": "User lost 10874.70 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6645c6dd327f913f51414322",
+      "name": "romaric",
+      "email": "tonymc522@gmail.com",
+      "phoneNumber": "237697659368",
+      "accountDiscrepancy": 747768,
+      "suspiciousDeposits": {
+        "count": 55,
+        "totalAmount": 451380
+      },
+      "withdrawals": {
+        "total": 111,
+        "completed": 107,
+        "totalAmount": 880518
+      },
+      "matching": {
+        "matched": 52,
+        "unmatched": 3,
+        "unmatchedSample": [
+          {
+            "depositAmount": 7750,
+            "expectedWithdrawalAmount": 7750,
+            "date": "2025-02-01T21:22:22.000Z",
+            "transactionId": "639d68c0-96bc-4812-b330-3c1a23e8155b"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-07-27T10:45:25.189Z",
+            "transactionId": "WraYVYHWSEwqeZqJ"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-01T15:19:06.668Z",
+            "transactionId": "M81oNkebcLoIppjA"
+          }
+        ]
+      },
+      "currentBalance": 4500,
+      "netImpact": -429138,
+      "analysis": "User lost 429138.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "663a412c746c84c20da9b27a",
+      "name": "lora rich",
+      "email": "florindasidjine@gmail.com",
+      "phoneNumber": "237652259406",
+      "accountDiscrepancy": 66079.5,
+      "suspiciousDeposits": {
+        "count": 38,
+        "totalAmount": 65579.5
+      },
+      "withdrawals": {
+        "total": 50,
+        "completed": 50,
+        "totalAmount": 87314.5
+      },
+      "matching": {
+        "matched": 37,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-01T21:22:21.000Z",
+            "transactionId": "cb30b9a6-5278-441d-b0a4-9b568b4f2f56"
+          }
+        ]
+      },
+      "currentBalance": 4265,
+      "netImpact": -21735,
+      "analysis": "User lost 21735.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65f88f95910715aa4fef2785",
+      "name": "AROL zydane",
+      "email": "arolzydaneaceaymele@gmail.com",
+      "phoneNumber": "237682295374",
+      "accountDiscrepancy": 20032.5,
+      "suspiciousDeposits": {
+        "count": 8,
+        "totalAmount": 17782.5
+      },
+      "withdrawals": {
+        "total": 53,
+        "completed": 16,
+        "totalAmount": 42765.75
+      },
+      "matching": {
+        "matched": 6,
+        "unmatched": 2,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-05-14T15:54:11.617Z",
+            "transactionId": "A3MO12iS7YVaLsml"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-09-07T07:12:49.060Z",
+            "transactionId": "9rRAfcq8MwkT5s-j"
+          }
+        ]
+      },
+      "currentBalance": 4016.75,
+      "netImpact": -24983.25,
+      "analysis": "User lost 24983.25 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65dfa0e85cc9084808417e8d",
+      "name": "flash",
+      "email": "ferdjoferdinand@gmail.com",
+      "phoneNumber": "237678358268",
+      "accountDiscrepancy": 160640.5,
+      "suspiciousDeposits": {
+        "count": 29,
+        "totalAmount": 160640.5
+      },
+      "withdrawals": {
+        "total": 39,
+        "completed": 39,
+        "totalAmount": 180133.5
+      },
+      "matching": {
+        "matched": 29,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 3757,
+      "netImpact": -19493,
+      "analysis": "User lost 19493.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6679366a7731445b46b39536",
+      "name": "duchesse",
+      "email": "madjiostella678@gmail.com",
+      "phoneNumber": "237678929105",
+      "accountDiscrepancy": 278342,
+      "suspiciousDeposits": {
+        "count": 52,
+        "totalAmount": 268092
+      },
+      "withdrawals": {
+        "total": 77,
+        "completed": 74,
+        "totalAmount": 331999.5
+      },
+      "matching": {
+        "matched": 51,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-06-02T09:56:32.551Z",
+            "transactionId": "WVVLihHN5JlaZtD7"
+          }
+        ]
+      },
+      "currentBalance": 3842.5,
+      "netImpact": -63907.5,
+      "analysis": "User lost 63907.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667e7e1cdaf7ee59cca9ecd9",
+      "name": "zoumi nafira",
+      "email": "zouminafira@gmail.com",
+      "phoneNumber": "237674201498",
+      "accountDiscrepancy": 41443,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 40443
+      },
+      "withdrawals": {
+        "total": 20,
+        "completed": 20,
+        "totalAmount": 49338.5
+      },
+      "matching": {
+        "matched": 15,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 750,
+            "expectedWithdrawalAmount": 750,
+            "date": "2025-07-07T11:58:31.237Z",
+            "transactionId": "AoeZcSTQyofPnP-l"
+          }
+        ]
+      },
+      "currentBalance": 3354.5,
+      "netImpact": -8895.5,
+      "analysis": "User lost 8895.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "666250fa1b27cd21c6631d0e",
+      "name": "fopa marvel",
+      "email": "marvelfopa2004@gmail.com",
+      "phoneNumber": "237691637202",
+      "accountDiscrepancy": 67480,
+      "suspiciousDeposits": {
+        "count": 8,
+        "totalAmount": 49230
+      },
+      "withdrawals": {
+        "total": 30,
+        "completed": 27,
+        "totalAmount": 152555
+      },
+      "matching": {
+        "matched": 7,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 750,
+            "expectedWithdrawalAmount": 750,
+            "date": "2025-02-01T21:22:24.000Z",
+            "transactionId": "ed37a5dc-f86a-42f5-8811-540be608f67d"
+          }
+        ]
+      },
+      "currentBalance": 3425,
+      "netImpact": -103325,
+      "analysis": "User lost 103325.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "669772d5b8a59e6c9725b76b",
+      "name": "jessie momo",
+      "email": "momojessie34@gmail.com",
+      "phoneNumber": "237650076676",
+      "accountDiscrepancy": 95950,
+      "suspiciousDeposits": {
+        "count": 54,
+        "totalAmount": 95950
+      },
+      "withdrawals": {
+        "total": 54,
+        "completed": 54,
+        "totalAmount": 95950
+      },
+      "matching": {
+        "matched": 54,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 3000,
+      "netImpact": 0,
+      "analysis": "Balanced (deposits = withdrawals)"
+    },
+    {
+      "userId": "66942a3cde37fb81f14d056c",
+      "name": "keutchapa  marie-ange",
+      "email": "keutchapamariange@gmail.com",
+      "phoneNumber": "237699667960",
+      "accountDiscrepancy": 29542.5,
+      "suspiciousDeposits": {
+        "count": 12,
+        "totalAmount": 29542.5
+      },
+      "withdrawals": {
+        "total": 12,
+        "completed": 12,
+        "totalAmount": 29542.5
+      },
+      "matching": {
+        "matched": 12,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 3000,
+      "netImpact": 0,
+      "analysis": "Balanced (deposits = withdrawals)"
+    },
+    {
+      "userId": "667bb424ec7bb602e1b60893",
+      "name": "billions lady",
+      "email": "madiecatherine4@gmail.com",
+      "phoneNumber": "237698868887",
+      "accountDiscrepancy": 25149,
+      "suspiciousDeposits": {
+        "count": 11,
+        "totalAmount": 25149
+      },
+      "withdrawals": {
+        "total": 12,
+        "completed": 12,
+        "totalAmount": 27068
+      },
+      "matching": {
+        "matched": 11,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 3081,
+      "netImpact": -1919,
+      "analysis": "User lost 1919.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "663e4e7c1c91e9973f2400f1",
+      "name": "chanel tebou",
+      "email": "chaneltebou295@gmail.com",
+      "phoneNumber": "237696913426",
+      "accountDiscrepancy": 67417.5,
+      "suspiciousDeposits": {
+        "count": 54,
+        "totalAmount": 67417.5
+      },
+      "withdrawals": {
+        "total": 59,
+        "completed": 59,
+        "totalAmount": 75043
+      },
+      "matching": {
+        "matched": 54,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2874.5,
+      "netImpact": -7625.5,
+      "analysis": "User lost 7625.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6647164e327f913f51472ae6",
+      "name": "eddy",
+      "email": "eddyemakam@gmail.com",
+      "phoneNumber": "237655295665",
+      "accountDiscrepancy": 20048.5,
+      "suspiciousDeposits": {
+        "count": 10,
+        "totalAmount": 20048.5
+      },
+      "withdrawals": {
+        "total": 10,
+        "completed": 10,
+        "totalAmount": 20048.5
+      },
+      "matching": {
+        "matched": 10,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2500,
+      "netImpact": 0,
+      "analysis": "Balanced (deposits = withdrawals)"
+    },
+    {
+      "userId": "661af2fac83476f3fff4264f",
+      "name": "avela honoré emmanuel",
+      "email": "avelaemmanuel8@gmail.com",
+      "phoneNumber": "237697082823",
+      "accountDiscrepancy": 22119,
+      "suspiciousDeposits": {
+        "count": 12,
+        "totalAmount": 22119
+      },
+      "withdrawals": {
+        "total": 17,
+        "completed": 17,
+        "totalAmount": 27573
+      },
+      "matching": {
+        "matched": 12,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2546,
+      "netImpact": -5454,
+      "analysis": "User lost 5454.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65e2528418ad508a3732296a",
+      "name": "Mr Al (All Limitless)",
+      "email": "andelsonwamen@gmail.com",
+      "phoneNumber": "237676424157",
+      "accountDiscrepancy": 110090,
+      "suspiciousDeposits": {
+        "count": 19,
+        "totalAmount": 110090
+      },
+      "withdrawals": {
+        "total": 20,
+        "completed": 20,
+        "totalAmount": 116150
+      },
+      "matching": {
+        "matched": 19,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2190,
+      "netImpact": -6060,
+      "analysis": "User lost 6060.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "666d55713088787e751d302d",
+      "name": "sene steeve",
+      "email": "steevesene794@gmail.com",
+      "phoneNumber": "237696324423",
+      "accountDiscrepancy": 141652.5,
+      "suspiciousDeposits": {
+        "count": 97,
+        "totalAmount": 142662.5
+      },
+      "withdrawals": {
+        "total": 106,
+        "completed": 106,
+        "totalAmount": 164680.5
+      },
+      "matching": {
+        "matched": 97,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2222,
+      "netImpact": -22018,
+      "analysis": "User lost 22018.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d39c02d44e704d4728010a",
+      "name": "le g",
+      "email": "drillfr856@gmail.com",
+      "phoneNumber": "237644680941",
+      "accountDiscrepancy": 111582.5,
+      "suspiciousDeposits": {
+        "count": 30,
+        "totalAmount": 109332.5
+      },
+      "withdrawals": {
+        "total": 52,
+        "completed": 41,
+        "totalAmount": 132108
+      },
+      "matching": {
+        "matched": 30,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2224.5,
+      "netImpact": -22775.5,
+      "analysis": "User lost 22775.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6642203363d9f5c1b44e0f5a",
+      "name": "kenne andre marcel",
+      "email": "kamarcel1@yahoo.fr",
+      "phoneNumber": "237674686559",
+      "accountDiscrepancy": 173816,
+      "suspiciousDeposits": {
+        "count": 71,
+        "totalAmount": 173316
+      },
+      "withdrawals": {
+        "total": 89,
+        "completed": 89,
+        "totalAmount": 210938.5
+      },
+      "matching": {
+        "matched": 71,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2127.5,
+      "netImpact": -37622.5,
+      "analysis": "User lost 37622.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6645a4c7327f913f513e7e79",
+      "name": "soete jean claude",
+      "email": "soeteclaude@gmail.com",
+      "phoneNumber": "237671277569",
+      "accountDiscrepancy": 63630,
+      "suspiciousDeposits": {
+        "count": 40,
+        "totalAmount": 63630
+      },
+      "withdrawals": {
+        "total": 40,
+        "completed": 40,
+        "totalAmount": 63630
+      },
+      "matching": {
+        "matched": 40,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2000,
+      "netImpact": 0,
+      "analysis": "Balanced (deposits = withdrawals)"
+    },
+    {
+      "userId": "6617fdd2c83476f3ffe2e49a",
+      "name": "lemofouet teikeng franck",
+      "email": "francklemofouet95@gmail.com",
+      "phoneNumber": "237682646471",
+      "accountDiscrepancy": 20705,
+      "suspiciousDeposits": {
+        "count": 11,
+        "totalAmount": 20705
+      },
+      "withdrawals": {
+        "total": 11,
+        "completed": 11,
+        "totalAmount": 20705
+      },
+      "matching": {
+        "matched": 11,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2000,
+      "netImpact": 0,
+      "analysis": "Balanced (deposits = withdrawals)"
+    },
+    {
+      "userId": "668a090a840a5553b8ad1838",
+      "name": "jouonzo mirabelle",
+      "email": "jouonzomirabelle@gmail.com",
+      "phoneNumber": "237690973373",
+      "accountDiscrepancy": 69084,
+      "suspiciousDeposits": {
+        "count": 21,
+        "totalAmount": 69084
+      },
+      "withdrawals": {
+        "total": 23,
+        "completed": 23,
+        "totalAmount": 75851
+      },
+      "matching": {
+        "matched": 21,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1983,
+      "netImpact": -6767,
+      "analysis": "User lost 6767.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667460a2c88133e02d26a2a2",
+      "name": "sergio andré abada",
+      "email": "abadaandreserges@gmail.com",
+      "phoneNumber": "237655596580",
+      "accountDiscrepancy": 28260,
+      "suspiciousDeposits": {
+        "count": 8,
+        "totalAmount": 26260
+      },
+      "withdrawals": {
+        "total": 34,
+        "completed": 18,
+        "totalAmount": 36981
+      },
+      "matching": {
+        "matched": 8,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 2029,
+      "netImpact": -10721,
+      "analysis": "User lost 10721.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65f3177d15e9ae01574fc3f7",
+      "name": "beldina 🌝🌾🤲🙏",
+      "email": "kengnengougnoub@gmail.com",
+      "phoneNumber": "237657685547",
+      "accountDiscrepancy": 35873,
+      "suspiciousDeposits": {
+        "count": 10,
+        "totalAmount": 32623
+      },
+      "withdrawals": {
+        "total": 17,
+        "completed": 15,
+        "totalAmount": 52634.5
+      },
+      "matching": {
+        "matched": 10,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1988.5,
+      "netImpact": -20011.5,
+      "analysis": "User lost 20011.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "67954e25cbd55adcd54e3d0d",
+      "name": "hindohouenou ehouede viceslue",
+      "email": "modestinehindohouenou@gmail.com",
+      "phoneNumber": "22963858471",
+      "accountDiscrepancy": 28145,
+      "suspiciousDeposits": {
+        "count": 5,
+        "totalAmount": 27895
+      },
+      "withdrawals": {
+        "total": 12,
+        "completed": 12,
+        "totalAmount": 76356
+      },
+      "matching": {
+        "matched": 4,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-25T09:21:08.812Z",
+            "transactionId": "ciZ3eSqnICy_cZXT"
+          }
+        ]
+      },
+      "currentBalance": 2039,
+      "netImpact": -48461,
+      "analysis": "User lost 48461.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d318a6d43c51dc9d331b71",
+      "name": "Gabriella Tientcheu",
+      "email": "latientchgabriella@gmail.com",
+      "phoneNumber": "237677349085",
+      "accountDiscrepancy": 300005,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 307505
+      },
+      "withdrawals": {
+        "total": 33,
+        "completed": 26,
+        "totalAmount": 468985
+      },
+      "matching": {
+        "matched": 14,
+        "unmatched": 2,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-07-21T17:18:20.438Z",
+            "transactionId": "OO-UoxEjhCb66Ph8"
+          },
+          {
+            "depositAmount": 1500,
+            "expectedWithdrawalAmount": 1500,
+            "date": "2025-08-27T11:03:21.843Z",
+            "transactionId": "YX2OT11YD0DOBd6b"
+          }
+        ]
+      },
+      "currentBalance": 2020,
+      "netImpact": -161480,
+      "analysis": "User lost 161480.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6672f4724fad2a2bf91cda9d",
+      "name": "mbogol clémentine",
+      "email": "clementinembogol7@yahoo.fr",
+      "phoneNumber": "237696083219",
+      "accountDiscrepancy": 51904,
+      "suspiciousDeposits": {
+        "count": 17,
+        "totalAmount": 50904
+      },
+      "withdrawals": {
+        "total": 30,
+        "completed": 23,
+        "totalAmount": 90243.5
+      },
+      "matching": {
+        "matched": 17,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1910.5,
+      "netImpact": -39339.5,
+      "analysis": "User lost 39339.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6685a3993bf5cda4b65915e2",
+      "name": "sebgo abdoul",
+      "email": "abdoulazizesebgo@gmail.com",
+      "phoneNumber": "22675833237",
+      "accountDiscrepancy": 251591,
+      "suspiciousDeposits": {
+        "count": 51,
+        "totalAmount": 251591
+      },
+      "withdrawals": {
+        "total": 52,
+        "completed": 52,
+        "totalAmount": 256843
+      },
+      "matching": {
+        "matched": 51,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1748,
+      "netImpact": -5252,
+      "analysis": "User lost 5252.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "666df6374b08104253af2079",
+      "name": "momo jean",
+      "email": "comobenice@gmail.com",
+      "phoneNumber": "237694658947",
+      "accountDiscrepancy": 45955,
+      "suspiciousDeposits": {
+        "count": 10,
+        "totalAmount": 45955
+      },
+      "withdrawals": {
+        "total": 12,
+        "completed": 12,
+        "totalAmount": 55550
+      },
+      "matching": {
+        "matched": 10,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1655,
+      "netImpact": -9595,
+      "analysis": "User lost 9595.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "663a308b746c84c20da89c6f",
+      "name": "agble yaovi jérôme",
+      "email": "yaovijeromea@gmail.com",
+      "phoneNumber": "22898628917",
+      "accountDiscrepancy": 85850,
+      "suspiciousDeposits": {
+        "count": 33,
+        "totalAmount": 83325
+      },
+      "withdrawals": {
+        "total": 35,
+        "completed": 35,
+        "totalAmount": 87365
+      },
+      "matching": {
+        "matched": 33,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1485,
+      "netImpact": -4040,
+      "analysis": "User lost 4040.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "666e09834b08104253af5f91",
+      "name": "tesse belmond",
+      "email": "tessedollard@gmail.com",
+      "phoneNumber": "237699680118",
+      "accountDiscrepancy": 20051,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 20301
+      },
+      "withdrawals": {
+        "total": 24,
+        "completed": 24,
+        "totalAmount": 34037
+      },
+      "matching": {
+        "matched": 16,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1514,
+      "netImpact": -13736,
+      "analysis": "User lost 13736.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66472f7c327f913f5147eaf5",
+      "name": "tsafack ngueiwoh christelle",
+      "email": "christelletsafack33@gmail.com",
+      "phoneNumber": "237657429540",
+      "accountDiscrepancy": 122614,
+      "suspiciousDeposits": {
+        "count": 22,
+        "totalAmount": 122614
+      },
+      "withdrawals": {
+        "total": 24,
+        "completed": 24,
+        "totalAmount": 136552
+      },
+      "matching": {
+        "matched": 22,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1562,
+      "netImpact": -13938,
+      "analysis": "User lost 13938.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66164e7799cdae264052a321",
+      "name": "miriane azangue",
+      "email": "azanguemiriane@gmail.com",
+      "phoneNumber": "237655067276",
+      "accountDiscrepancy": 276686,
+      "suspiciousDeposits": {
+        "count": 103,
+        "totalAmount": 276336
+      },
+      "withdrawals": {
+        "total": 113,
+        "completed": 111,
+        "totalAmount": 298758
+      },
+      "matching": {
+        "matched": 103,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1428,
+      "netImpact": -22422,
+      "analysis": "User lost 22422.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65f6231485233f940693813e",
+      "name": "kotto joseph",
+      "email": "cooperico99@gmail.com",
+      "phoneNumber": "237691846918",
+      "accountDiscrepancy": 32835,
+      "suspiciousDeposits": {
+        "count": 67,
+        "totalAmount": 33835
+      },
+      "withdrawals": {
+        "total": 74,
+        "completed": 74,
+        "totalAmount": 37774
+      },
+      "matching": {
+        "matched": 67,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1311,
+      "netImpact": -3939,
+      "analysis": "User lost 3939.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d1fb4fd51eb8e8ab8ed7b3",
+      "name": "Priscille biliby",
+      "email": "priscillebiliby@gmail.com",
+      "phoneNumber": "237652601209",
+      "accountDiscrepancy": 36663,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 36663
+      },
+      "withdrawals": {
+        "total": 19,
+        "completed": 19,
+        "totalAmount": 47773
+      },
+      "matching": {
+        "matched": 16,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1390,
+      "netImpact": -11110,
+      "analysis": "User lost 11110.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66853051b95d9458922d6e8e",
+      "name": "slam",
+      "email": "beamoualal2018@gmail.com",
+      "phoneNumber": "237656729869",
+      "accountDiscrepancy": 20200,
+      "suspiciousDeposits": {
+        "count": 2,
+        "totalAmount": 20200
+      },
+      "withdrawals": {
+        "total": 5,
+        "completed": 5,
+        "totalAmount": 32825
+      },
+      "matching": {
+        "matched": 2,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1375,
+      "netImpact": -12625,
+      "analysis": "User lost 12625.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65ec92b9845eb94af1e53f1a",
+      "name": "Mr.Rodrigue",
+      "email": "rodriguemehou2004@gmail.com",
+      "phoneNumber": "237679624782",
+      "accountDiscrepancy": 21442.5,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 21326.5
+      },
+      "withdrawals": {
+        "total": 52,
+        "completed": 43,
+        "totalAmount": 54821.38
+      },
+      "matching": {
+        "matched": 16,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1371.12,
+      "netImpact": -33494.88,
+      "analysis": "User lost 33494.88 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d308fa54d78f82dac622ff",
+      "name": "mlove soleilia",
+      "email": "mlovetchoudja707@gmail.com",
+      "phoneNumber": "237655131554",
+      "accountDiscrepancy": 23230,
+      "suspiciousDeposits": {
+        "count": 12,
+        "totalAmount": 23230
+      },
+      "withdrawals": {
+        "total": 16,
+        "completed": 16,
+        "totalAmount": 28987
+      },
+      "matching": {
+        "matched": 12,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1243,
+      "netImpact": -5757,
+      "analysis": "User lost 5757.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6606a181c3fc57b813edf85c",
+      "name": "monsieur__aww🥷🏽",
+      "email": "kingmam237@gmail.com",
+      "phoneNumber": "237695601021",
+      "accountDiscrepancy": 38480.95,
+      "suspiciousDeposits": {
+        "count": 15,
+        "totalAmount": 38980.95
+      },
+      "withdrawals": {
+        "total": 20,
+        "completed": 20,
+        "totalAmount": 53272.45
+      },
+      "matching": {
+        "matched": 15,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1208.5,
+      "netImpact": -14291.5,
+      "analysis": "User lost 14291.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65db91996a8126a9cde5e113",
+      "name": "JUDE TCHIAZE",
+      "email": "whitetchiazal@gmail.com",
+      "phoneNumber": "237657410236",
+      "accountDiscrepancy": 41660,
+      "suspiciousDeposits": {
+        "count": 17,
+        "totalAmount": 41410
+      },
+      "withdrawals": {
+        "total": 32,
+        "completed": 32,
+        "totalAmount": 61963.5
+      },
+      "matching": {
+        "matched": 17,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1196.5,
+      "netImpact": -20553.5,
+      "analysis": "User lost 20553.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "660affadc3fc57b813f8d7c8",
+      "name": "elimbi jeanne",
+      "email": "jeannehestiaenongueelimbi@gmail.com",
+      "phoneNumber": "971543282063",
+      "accountDiscrepancy": 64800,
+      "suspiciousDeposits": {
+        "count": 4,
+        "totalAmount": 64300
+      },
+      "withdrawals": {
+        "total": 10,
+        "completed": 10,
+        "totalAmount": 99283
+      },
+      "matching": {
+        "matched": 3,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 34000,
+            "expectedWithdrawalAmount": 34000,
+            "date": "2025-02-01T21:22:18.000Z",
+            "transactionId": "c6bf6143-e706-43b4-8a2a-2cba7b0f4cf2"
+          }
+        ]
+      },
+      "currentBalance": 1267,
+      "netImpact": -34983,
+      "analysis": "User lost 34983.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66851c0082d0e291f396f2f3",
+      "name": "da royale",
+      "email": "abigaellesimo@yahoo.com",
+      "phoneNumber": "237680385071",
+      "accountDiscrepancy": 140895,
+      "suspiciousDeposits": {
+        "count": 40,
+        "totalAmount": 140895
+      },
+      "withdrawals": {
+        "total": 49,
+        "completed": 49,
+        "totalAmount": 176548
+      },
+      "matching": {
+        "matched": 40,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1347,
+      "netImpact": -35653,
+      "analysis": "User lost 35653.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d081645c96a8ab00a6d35a",
+      "name": "Maxime Flag",
+      "email": "maximebite2@gmail.com",
+      "phoneNumber": "237679910922",
+      "accountDiscrepancy": 111554.5,
+      "suspiciousDeposits": {
+        "count": 200,
+        "totalAmount": 112059.50000000015
+      },
+      "withdrawals": {
+        "total": 210,
+        "completed": 206,
+        "totalAmount": 117942.75000000023
+      },
+      "matching": {
+        "matched": 200,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1111.75,
+      "netImpact": -5883.250000000087,
+      "analysis": "User lost 5883.25 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65da91df40828cfceaa35869",
+      "name": "dilann primus",
+      "email": "dilann869@gmail.com",
+      "phoneNumber": "237676740579",
+      "accountDiscrepancy": 38586.04,
+      "suspiciousDeposits": {
+        "count": 42,
+        "totalAmount": 38586.04000000001
+      },
+      "withdrawals": {
+        "total": 53,
+        "completed": 50,
+        "totalAmount": 46004.49000000001
+      },
+      "matching": {
+        "matched": 42,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1081.5500000000002,
+      "netImpact": -7418.450000000004,
+      "analysis": "User lost 7418.45 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6613aca950aa1247f736fd8c",
+      "name": "intellectual corporation",
+      "email": "chayeprikyel@gmail.com",
+      "phoneNumber": "237692470597",
+      "accountDiscrepancy": 29825.3,
+      "suspiciousDeposits": {
+        "count": 18,
+        "totalAmount": 29825.300000000003
+      },
+      "withdrawals": {
+        "total": 59,
+        "completed": 32,
+        "totalAmount": 40818.99999999999
+      },
+      "matching": {
+        "matched": 18,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1006.3000000000002,
+      "netImpact": -10993.69999999999,
+      "analysis": "User lost 10993.70 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65db354840828cfceaa3a076",
+      "name": "KARA DIGITAL",
+      "email": "karahackingtech@gmail.com",
+      "phoneNumber": "237651683470",
+      "accountDiscrepancy": 20652,
+      "suspiciousDeposits": {
+        "count": 10,
+        "totalAmount": 20402
+      },
+      "withdrawals": {
+        "total": 14,
+        "completed": 14,
+        "totalAmount": 32067.5
+      },
+      "matching": {
+        "matched": 10,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1084.5,
+      "netImpact": -11665.5,
+      "analysis": "User lost 11665.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d0b37a5c96a8ab00a70855",
+      "name": "tene mbe Paul Alexandre",
+      "email": "tenembepaulalexandre@gmail.com",
+      "phoneNumber": "237651070332",
+      "accountDiscrepancy": 26068,
+      "suspiciousDeposits": {
+        "count": 7,
+        "totalAmount": 27068
+      },
+      "withdrawals": {
+        "total": 17,
+        "completed": 12,
+        "totalAmount": 40172.75
+      },
+      "matching": {
+        "matched": 7,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1145.25,
+      "netImpact": -13104.75,
+      "analysis": "User lost 13104.75 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65e742f41e09ac01f4c517a6",
+      "name": "Okoua Bissila Éric",
+      "email": "eokoua@gmail.com",
+      "phoneNumber": "237698235220",
+      "accountDiscrepancy": 20967.6,
+      "suspiciousDeposits": {
+        "count": 17,
+        "totalAmount": 20967.6
+      },
+      "withdrawals": {
+        "total": 50,
+        "completed": 46,
+        "totalAmount": 48237.6
+      },
+      "matching": {
+        "matched": 17,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1230,
+      "netImpact": -27270,
+      "analysis": "User lost 27270.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6672f5864fad2a2bf91cdc21",
+      "name": "jacques  kenfack",
+      "email": "keno.jack20@gmail.com",
+      "phoneNumber": "237690910556",
+      "accountDiscrepancy": 10322320,
+      "suspiciousDeposits": {
+        "count": 1078,
+        "totalAmount": 10335705
+      },
+      "withdrawals": {
+        "total": 1098,
+        "completed": 1097,
+        "totalAmount": 10370377
+      },
+      "matching": {
+        "matched": 1077,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 375,
+            "expectedWithdrawalAmount": 375,
+            "date": "2025-07-07T11:58:31.249Z",
+            "transactionId": "YII0Bi-O-vj9ctJC"
+          }
+        ]
+      },
+      "currentBalance": 943,
+      "netImpact": -34672,
+      "analysis": "User lost 34672.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65ea0e54845eb94af1da8f68",
+      "name": "le doyen",
+      "email": "alexdjoumessi6@gmail.com",
+      "phoneNumber": "237680604239",
+      "accountDiscrepancy": 127041,
+      "suspiciousDeposits": {
+        "count": 9,
+        "totalAmount": 120291
+      },
+      "withdrawals": {
+        "total": 73,
+        "completed": 31,
+        "totalAmount": 250767.38
+      },
+      "matching": {
+        "matched": 9,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 1023.619999999999,
+      "netImpact": -130476.38,
+      "analysis": "User lost 130476.38 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6631e98c655c2c2d23703453",
+      "name": "ndoumbe maeva",
+      "email": "maevandoumbe237@gmail.com",
+      "phoneNumber": "237657371584",
+      "accountDiscrepancy": 71912,
+      "suspiciousDeposits": {
+        "count": 41,
+        "totalAmount": 71912
+      },
+      "withdrawals": {
+        "total": 45,
+        "completed": 45,
+        "totalAmount": 78174
+      },
+      "matching": {
+        "matched": 41,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 738,
+      "netImpact": -6262,
+      "analysis": "User lost 6262.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "664ba0e791d317d3fcf3c16a",
+      "name": "harold momo",
+      "email": "comoharold@gmail.com",
+      "phoneNumber": "237691049911",
+      "accountDiscrepancy": 46460,
+      "suspiciousDeposits": {
+        "count": 7,
+        "totalAmount": 46460
+      },
+      "withdrawals": {
+        "total": 11,
+        "completed": 11,
+        "totalAmount": 71205
+      },
+      "matching": {
+        "matched": 7,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 755,
+      "netImpact": -24745,
+      "analysis": "User lost 24745.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d70eac76d8df795158d074",
+      "name": "TONLEU JEEF COLBERT",
+      "email": "tonleujeefcolbert@gmail.com",
+      "phoneNumber": "237680057492",
+      "accountDiscrepancy": 69904.7,
+      "suspiciousDeposits": {
+        "count": 49,
+        "totalAmount": 51156.5
+      },
+      "withdrawals": {
+        "total": 105,
+        "completed": 99,
+        "totalAmount": 97091.30000000002
+      },
+      "matching": {
+        "matched": 49,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 813.4000000000001,
+      "netImpact": -45934.80000000002,
+      "analysis": "User lost 45934.80 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d07bc85c96a8ab00a6ceaa",
+      "name": "don hill tchap",
+      "email": "tchindangouanyohermanngael@gmail.com",
+      "phoneNumber": "237657690151",
+      "accountDiscrepancy": 28684,
+      "suspiciousDeposits": {
+        "count": 30,
+        "totalAmount": 28684
+      },
+      "withdrawals": {
+        "total": 31,
+        "completed": 31,
+        "totalAmount": 29643.5
+      },
+      "matching": {
+        "matched": 30,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 540.5,
+      "netImpact": -959.5,
+      "analysis": "User lost 959.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6601df22c05e7d54b6a7ad59",
+      "name": "tagne blaise",
+      "email": "tagneromaric34@gmail.com",
+      "phoneNumber": "237653136331",
+      "accountDiscrepancy": 22806,
+      "suspiciousDeposits": {
+        "count": 12,
+        "totalAmount": 22806
+      },
+      "withdrawals": {
+        "total": 31,
+        "completed": 31,
+        "totalAmount": 41713
+      },
+      "matching": {
+        "matched": 11,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2000,
+            "expectedWithdrawalAmount": 2000,
+            "date": "2025-02-01T21:22:17.000Z",
+            "transactionId": "1fffea1f-bd94-417d-9238-ab02e086f2d5"
+          }
+        ]
+      },
+      "currentBalance": 593,
+      "netImpact": -18907,
+      "analysis": "User lost 18907.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6688d849840a5553b8a34e5b",
+      "name": "𝐕𝐀𝐒𝐈𝐗𝐁𝐄𝐀𝐔𝐓𝐘 𝐄𝐌𝐏𝐈𝐑𝐄",
+      "email": "audreyselmara@gmail.com",
+      "phoneNumber": "237620351375",
+      "accountDiscrepancy": 134784.5,
+      "suspiciousDeposits": {
+        "count": 55,
+        "totalAmount": 133370.5
+      },
+      "withdrawals": {
+        "total": 56,
+        "completed": 56,
+        "totalAmount": 135895.5
+      },
+      "matching": {
+        "matched": 55,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 389,
+      "netImpact": -2525,
+      "analysis": "User lost 2525.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "668c04b4840a5553b8baf637",
+      "name": "ngah belinda",
+      "email": "belindangah@gmail.com",
+      "phoneNumber": "237674369679",
+      "accountDiscrepancy": 394607,
+      "suspiciousDeposits": {
+        "count": 114,
+        "totalAmount": 394607
+      },
+      "withdrawals": {
+        "total": 116,
+        "completed": 116,
+        "totalAmount": 398647
+      },
+      "matching": {
+        "matched": 114,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 460,
+      "netImpact": -4040,
+      "analysis": "User lost 4040.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667e42b7daf7ee59cca7c1d1",
+      "name": "chef brainze2",
+      "email": "nkongnaah@gmail.com",
+      "phoneNumber": "237675738907",
+      "accountDiscrepancy": 39390,
+      "suspiciousDeposits": {
+        "count": 10,
+        "totalAmount": 39390
+      },
+      "withdrawals": {
+        "total": 13,
+        "completed": 13,
+        "totalAmount": 45955
+      },
+      "matching": {
+        "matched": 10,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 435,
+      "netImpact": -6565,
+      "analysis": "User lost 6565.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d4e9018ce5ffe48a44b663",
+      "name": "Am Universe",
+      "email": "arthurmbakou4@gmail.com",
+      "phoneNumber": "237690843668",
+      "accountDiscrepancy": 33188.5,
+      "suspiciousDeposits": {
+        "count": 46,
+        "totalAmount": 46250.5
+      },
+      "withdrawals": {
+        "total": 69,
+        "completed": 56,
+        "totalAmount": 59438.5
+      },
+      "matching": {
+        "matched": 45,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 750,
+            "expectedWithdrawalAmount": 750,
+            "date": "2025-06-17T08:20:27.093Z",
+            "transactionId": "J1nLsXNDf4BWlCS9"
+          }
+        ]
+      },
+      "currentBalance": 500,
+      "netImpact": -13188,
+      "analysis": "User lost 13188.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "663d23f51c91e9973f1d844e",
+      "name": "gilles samen",
+      "email": "gilleskeba@gmail.com",
+      "phoneNumber": "237695523001",
+      "accountDiscrepancy": 24038,
+      "suspiciousDeposits": {
+        "count": 13,
+        "totalAmount": 24038
+      },
+      "withdrawals": {
+        "total": 15,
+        "completed": 14,
+        "totalAmount": 25957
+      },
+      "matching": {
+        "matched": 13,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 331,
+      "netImpact": -1919,
+      "analysis": "User lost 1919.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6686cfe33bf5cda4b6699f2a",
+      "name": "aziz dongmo",
+      "email": "williamturnner20021@gmail.com",
+      "phoneNumber": "237692865759",
+      "accountDiscrepancy": 20755.5,
+      "suspiciousDeposits": {
+        "count": 8,
+        "totalAmount": 20755.5
+      },
+      "withdrawals": {
+        "total": 9,
+        "completed": 9,
+        "totalAmount": 23381.5
+      },
+      "matching": {
+        "matched": 8,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 374,
+      "netImpact": -2626,
+      "analysis": "User lost 2626.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667f0871daf7ee59ccaee571",
+      "name": "abdoul mananou liman aminou",
+      "email": "abdoulmannanoul@gmail.com",
+      "phoneNumber": "237699227364",
+      "accountDiscrepancy": 31512,
+      "suspiciousDeposits": {
+        "count": 18,
+        "totalAmount": 31512
+      },
+      "withdrawals": {
+        "total": 19,
+        "completed": 19,
+        "totalAmount": 34188.5
+      },
+      "matching": {
+        "matched": 18,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 323.5,
+      "netImpact": -2676.5,
+      "analysis": "User lost 2676.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "664a375c91d317d3fced575b",
+      "name": "teddy cabrel",
+      "email": "teddycabrel11@gmail.com",
+      "phoneNumber": "237691990554",
+      "accountDiscrepancy": 44137,
+      "suspiciousDeposits": {
+        "count": 31,
+        "totalAmount": 44137
+      },
+      "withdrawals": {
+        "total": 34,
+        "completed": 34,
+        "totalAmount": 47571
+      },
+      "matching": {
+        "matched": 31,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 316,
+      "netImpact": -3434,
+      "analysis": "User lost 3434.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66734e39cba9e733857d5c74",
+      "name": "live pro évents 🎤🎹",
+      "email": "gaetantats@gmail.com",
+      "phoneNumber": "237691564233",
+      "accountDiscrepancy": 25048,
+      "suspiciousDeposits": {
+        "count": 20,
+        "totalAmount": 25048
+      },
+      "withdrawals": {
+        "total": 25,
+        "completed": 25,
+        "totalAmount": 31916
+      },
+      "matching": {
+        "matched": 20,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 382,
+      "netImpact": -6868,
+      "analysis": "User lost 6868.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d07a805c96a8ab00a6ce1f",
+      "name": "sonke chris dylane",
+      "email": "sonkechris708@gmail.com",
+      "phoneNumber": "237691429925",
+      "accountDiscrepancy": 49360,
+      "suspiciousDeposits": {
+        "count": 15,
+        "totalAmount": 49360
+      },
+      "withdrawals": {
+        "total": 44,
+        "completed": 26,
+        "totalAmount": 65264.45
+      },
+      "matching": {
+        "matched": 14,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 375,
+            "expectedWithdrawalAmount": 375,
+            "date": "2025-06-17T08:20:27.088Z",
+            "transactionId": "sW85KKgHsInlju93"
+          }
+        ]
+      },
+      "currentBalance": 345.5500000000002,
+      "netImpact": -15904.449999999997,
+      "analysis": "User lost 15904.45 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "666ca2433088787e751b4ca3",
+      "name": "pefoura donald",
+      "email": "pefouracrepin7@gmail.com",
+      "phoneNumber": "237696536996",
+      "accountDiscrepancy": 37875,
+      "suspiciousDeposits": {
+        "count": 12,
+        "totalAmount": 37875
+      },
+      "withdrawals": {
+        "total": 19,
+        "completed": 19,
+        "totalAmount": 68983
+      },
+      "matching": {
+        "matched": 12,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 392,
+      "netImpact": -31108,
+      "analysis": "User lost 31108.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d11d2ebba28a9b65a94476",
+      "name": "Business digital dévéloper",
+      "email": "brawnminose@gmail.com",
+      "phoneNumber": "237690166362",
+      "accountDiscrepancy": 58837.37,
+      "suspiciousDeposits": {
+        "count": 34,
+        "totalAmount": 59087.899999999994
+      },
+      "withdrawals": {
+        "total": 72,
+        "completed": 71,
+        "totalAmount": 109954.65
+      },
+      "matching": {
+        "matched": 32,
+        "unmatched": 2,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-06-16T22:39:18.491Z",
+            "transactionId": "WMwjrEWFPomhSdvI"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-08-29T05:34:31.995Z",
+            "transactionId": "wwLRSLYpcNF4wn1q"
+          }
+        ]
+      },
+      "currentBalance": 382.72000000000116,
+      "netImpact": -50866.75,
+      "analysis": "User lost 50866.75 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "660bbfbdda59bf5c5992cb87",
+      "name": "djemeya yoanest dipoko",
+      "email": "yoanestdipokodjemeya@gmail.com",
+      "phoneNumber": "237656291577",
+      "accountDiscrepancy": 56307.5,
+      "suspiciousDeposits": {
+        "count": 80,
+        "totalAmount": 56307.5
+      },
+      "withdrawals": {
+        "total": 87,
+        "completed": 87,
+        "totalAmount": 59792
+      },
+      "matching": {
+        "matched": 80,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 265.5,
+      "netImpact": -3484.5,
+      "analysis": "User lost 3484.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66451838327f913f513c9ef2",
+      "name": "balme desire",
+      "email": "balmedesire603@gmail.com",
+      "phoneNumber": "237698804203",
+      "accountDiscrepancy": 41460.5,
+      "suspiciousDeposits": {
+        "count": 24,
+        "totalAmount": 41460.5
+      },
+      "withdrawals": {
+        "total": 30,
+        "completed": 30,
+        "totalAmount": 50964.5
+      },
+      "matching": {
+        "matched": 24,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 246,
+      "netImpact": -9504,
+      "analysis": "User lost 9504.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667dfb93daf7ee59cca6ed94",
+      "name": "millogo zezouma",
+      "email": "joelmillogo35@gmail.com",
+      "phoneNumber": "22674199574",
+      "accountDiscrepancy": 58835,
+      "suspiciousDeposits": {
+        "count": 14,
+        "totalAmount": 59085
+      },
+      "withdrawals": {
+        "total": 20,
+        "completed": 20,
+        "totalAmount": 77073
+      },
+      "matching": {
+        "matched": 14,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 262,
+      "netImpact": -17988,
+      "analysis": "User lost 17988.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6651a223b65190134e379702",
+      "name": "kyra mba",
+      "email": "lachinoisekyra@icloud.com",
+      "phoneNumber": "237650433614",
+      "accountDiscrepancy": 56287.5,
+      "suspiciousDeposits": {
+        "count": 28,
+        "totalAmount": 54287.5
+      },
+      "withdrawals": {
+        "total": 53,
+        "completed": 38,
+        "totalAmount": 75943
+      },
+      "matching": {
+        "matched": 28,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 344.5,
+      "netImpact": -21655.5,
+      "analysis": "User lost 21655.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d0a1b45c96a8ab00a6ef35",
+      "name": "Gaddiel NOUBISSI",
+      "email": "gaddielndeumen431@gmail.com",
+      "phoneNumber": "237698456980",
+      "accountDiscrepancy": 20660,
+      "suspiciousDeposits": {
+        "count": 7,
+        "totalAmount": 16160
+      },
+      "withdrawals": {
+        "total": 48,
+        "completed": 32,
+        "totalAmount": 84594
+      },
+      "matching": {
+        "matched": 7,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 316,
+      "netImpact": -68434,
+      "analysis": "User lost 68434.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "668ad851840a5553b8b2ed8e",
+      "name": "bodo",
+      "email": "christianbodo75@gmail.com",
+      "phoneNumber": "237671635826",
+      "accountDiscrepancy": 27320.5,
+      "suspiciousDeposits": {
+        "count": 21,
+        "totalAmount": 27320.5
+      },
+      "withdrawals": {
+        "total": 24,
+        "completed": 24,
+        "totalAmount": 29138.5
+      },
+      "matching": {
+        "matched": 21,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 182,
+      "netImpact": -1818,
+      "analysis": "User lost 1818.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "666ef2b14b08104253b26b6c",
+      "name": "theophile steven",
+      "email": "mbosteven37@gmail.com",
+      "phoneNumber": "237656307860",
+      "accountDiscrepancy": 92728.1,
+      "suspiciousDeposits": {
+        "count": 44,
+        "totalAmount": 92728.10000000002
+      },
+      "withdrawals": {
+        "total": 45,
+        "completed": 45,
+        "totalAmount": 95101.60000000002
+      },
+      "matching": {
+        "matched": 44,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 126.5,
+      "netImpact": -2373.5,
+      "analysis": "User lost 2373.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667c1c106c31e55d860b4d0a",
+      "name": "niclor éméraude",
+      "email": "orpaganongni@gmail.com",
+      "phoneNumber": "237679371317",
+      "accountDiscrepancy": 28280,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 28280
+      },
+      "withdrawals": {
+        "total": 18,
+        "completed": 18,
+        "totalAmount": 31108
+      },
+      "matching": {
+        "matched": 16,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 172,
+      "netImpact": -2828,
+      "analysis": "User lost 2828.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667b2addec7bb602e1b268fd",
+      "name": "bernard mengue",
+      "email": "bernardkross193@gmail.com",
+      "phoneNumber": "237692448324",
+      "accountDiscrepancy": 56358,
+      "suspiciousDeposits": {
+        "count": 22,
+        "totalAmount": 56358
+      },
+      "withdrawals": {
+        "total": 25,
+        "completed": 25,
+        "totalAmount": 59489
+      },
+      "matching": {
+        "matched": 22,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 119,
+      "netImpact": -3131,
+      "analysis": "User lost 3131.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6617c090c83476f3ffe0417a",
+      "name": "nganso roberto",
+      "email": "robertonganso017@gmail.com",
+      "phoneNumber": "237656308103",
+      "accountDiscrepancy": 84385.5,
+      "suspiciousDeposits": {
+        "count": 85,
+        "totalAmount": 84385.5
+      },
+      "withdrawals": {
+        "total": 90,
+        "completed": 90,
+        "totalAmount": 88173
+      },
+      "matching": {
+        "matched": 85,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 212.5,
+      "netImpact": -3787.5,
+      "analysis": "User lost 3787.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6643caa863d9f5c1b455e7f5",
+      "name": "robert sandje loko",
+      "email": "rsandje@gmail.com",
+      "phoneNumber": "237676894131",
+      "accountDiscrepancy": 62620,
+      "suspiciousDeposits": {
+        "count": 19,
+        "totalAmount": 62620
+      },
+      "withdrawals": {
+        "total": 21,
+        "completed": 21,
+        "totalAmount": 66407.5
+      },
+      "matching": {
+        "matched": 19,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 212.5,
+      "netImpact": -3787.5,
+      "analysis": "User lost 3787.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65fc7d53939ef6b395fe4dac",
+      "name": "couloir  center",
+      "email": "ivankarim237@gmail.com",
+      "phoneNumber": "237696964263",
+      "accountDiscrepancy": 90050.4,
+      "suspiciousDeposits": {
+        "count": 87,
+        "totalAmount": 90050.4
+      },
+      "withdrawals": {
+        "total": 107,
+        "completed": 95,
+        "totalAmount": 100339.5
+      },
+      "matching": {
+        "matched": 86,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-08-05T23:11:24.313Z",
+            "transactionId": "UEBKvqtbVIPhtIY2"
+          }
+        ]
+      },
+      "currentBalance": 210.9000000000001,
+      "netImpact": -10289.100000000006,
+      "analysis": "User lost 10289.10 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66887d35840a5553b8a2008e",
+      "name": "sd dilan soh",
+      "email": "dilansoh7@gmail.com",
+      "phoneNumber": "237654771988",
+      "accountDiscrepancy": 26265,
+      "suspiciousDeposits": {
+        "count": 12,
+        "totalAmount": 26765
+      },
+      "withdrawals": {
+        "total": 21,
+        "completed": 21,
+        "totalAmount": 50298
+      },
+      "matching": {
+        "matched": 12,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 217,
+      "netImpact": -23533,
+      "analysis": "User lost 23533.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "660b1e78c3fc57b813f96534",
+      "name": "sylvie metachomg",
+      "email": "sylviemetachomg@gmail.com",
+      "phoneNumber": "237656435124",
+      "accountDiscrepancy": 33553,
+      "suspiciousDeposits": {
+        "count": 8,
+        "totalAmount": 33053
+      },
+      "withdrawals": {
+        "total": 16,
+        "completed": 16,
+        "totalAmount": 122816
+      },
+      "matching": {
+        "matched": 7,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 7500,
+            "expectedWithdrawalAmount": 7500,
+            "date": "2025-02-01T21:22:18.000Z",
+            "transactionId": "e56734d4-7671-4bff-9255-5709584f99d1"
+          }
+        ]
+      },
+      "currentBalance": 237,
+      "netImpact": -89763,
+      "analysis": "User lost 89763.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d0924f5c96a8ab00a6dce4",
+      "name": "Escargot D'Afrique",
+      "email": "djmpavelt@gmail.com",
+      "phoneNumber": "237692697417",
+      "accountDiscrepancy": 21069.5,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 33569.5
+      },
+      "withdrawals": {
+        "total": 76,
+        "completed": 73,
+        "totalAmount": 147498.25
+      },
+      "matching": {
+        "matched": 12,
+        "unmatched": 4,
+        "unmatchedSample": [
+          {
+            "depositAmount": 3000,
+            "expectedWithdrawalAmount": 3000,
+            "date": "2025-02-01T21:22:06.000Z",
+            "transactionId": "2f671e4e-e2a2-4bfe-acfb-d8ada9ef263d"
+          },
+          {
+            "depositAmount": 1300,
+            "expectedWithdrawalAmount": 1300,
+            "date": "2025-02-01T21:22:06.000Z",
+            "transactionId": "c2da548f-2a1a-4934-8389-0aace3576010"
+          },
+          {
+            "depositAmount": 3950,
+            "expectedWithdrawalAmount": 3950,
+            "date": "2025-02-02T23:33:47.000Z",
+            "transactionId": "e61b6b95-e321-4a17-8aa5-eacc46907678"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-07-17T19:45:54.844Z",
+            "transactionId": "H4gCZBSfpxc96z8L"
+          }
+        ]
+      },
+      "currentBalance": 321.25,
+      "netImpact": -113928.75,
+      "analysis": "User lost 113928.75 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "660c098ada59bf5c599673e1",
+      "name": "paulin rholis",
+      "email": "rholispaulin@gmail.com",
+      "phoneNumber": "237672137038",
+      "accountDiscrepancy": 20039,
+      "suspiciousDeposits": {
+        "count": 22,
+        "totalAmount": 20039
+      },
+      "withdrawals": {
+        "total": 23,
+        "completed": 23,
+        "totalAmount": 20957.5
+      },
+      "matching": {
+        "matched": 22,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 81.5,
+      "netImpact": -918.5,
+      "analysis": "User lost 918.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667185ba266b15d3b65c9854",
+      "name": "lena stela",
+      "email": "lenabayiha5@gmail.com",
+      "phoneNumber": "237693080228",
+      "accountDiscrepancy": 21109,
+      "suspiciousDeposits": {
+        "count": 11,
+        "totalAmount": 21109
+      },
+      "withdrawals": {
+        "total": 12,
+        "completed": 12,
+        "totalAmount": 23028
+      },
+      "matching": {
+        "matched": 11,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 81,
+      "netImpact": -1919,
+      "analysis": "User lost 1919.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d073cb411f423f597c8f27",
+      "name": "momo christian",
+      "email": "christianmomo72@gmail.com",
+      "phoneNumber": "225651069173",
+      "accountDiscrepancy": 30025,
+      "suspiciousDeposits": {
+        "count": 22,
+        "totalAmount": 29400
+      },
+      "withdrawals": {
+        "total": 54,
+        "completed": 52,
+        "totalAmount": 791849
+      },
+      "matching": {
+        "matched": 0,
+        "unmatched": 22,
+        "unmatchedSample": [
+          {
+            "depositAmount": 6750,
+            "expectedWithdrawalAmount": 6750,
+            "date": "2025-02-01T21:22:05.000Z",
+            "transactionId": "909f5594-b5ae-4ba8-afb7-dc6c78fd5565"
+          },
+          {
+            "depositAmount": 25,
+            "expectedWithdrawalAmount": 25,
+            "date": "2025-05-12T18:35:41.063Z",
+            "transactionId": "1pHbnCf9W1itIeAv"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-05-30T14:07:55.785Z",
+            "transactionId": "UdEw9rpI77unuDUt"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-06-09T11:40:16.867Z",
+            "transactionId": "3Jtc-QWyciYzxcAb"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-04T13:06:03.829Z",
+            "transactionId": "-7FatN10LnJo8jx7"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-07T11:10:07.471Z",
+            "transactionId": "2WI76xccmBSBxt6A"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-09T10:42:13.022Z",
+            "transactionId": "jNehYwTNVylHzlXQ"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-09T15:10:30.276Z",
+            "transactionId": "itTj7iKDmtsRFIPQ"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-10T19:21:54.447Z",
+            "transactionId": "Ts8EKBd1rtxkdZfD"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-11T10:32:03.248Z",
+            "transactionId": "ShP56J6BddCH8_4w"
+          }
+        ]
+      },
+      "currentBalance": 176,
+      "netImpact": -762449,
+      "analysis": "User lost 762449.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6677db817731445b46a64e5a",
+      "name": "TAJI AGRO",
+      "email": "tajiagro@gmail.com",
+      "phoneNumber": "237691684361",
+      "accountDiscrepancy": 42420,
+      "suspiciousDeposits": {
+        "count": 38,
+        "totalAmount": 42420
+      },
+      "withdrawals": {
+        "total": 40,
+        "completed": 40,
+        "totalAmount": 45096.5
+      },
+      "matching": {
+        "matched": 38,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 73.5,
+      "netImpact": -2676.5,
+      "analysis": "User lost 2676.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65dd833a4d0a1daf9e679627",
+      "name": "darel sobo",
+      "email": "darelsobo@gmail.com",
+      "phoneNumber": "237695281858",
+      "accountDiscrepancy": 45197.5,
+      "suspiciousDeposits": {
+        "count": 45,
+        "totalAmount": 45197.5
+      },
+      "withdrawals": {
+        "total": 49,
+        "completed": 49,
+        "totalAmount": 48631.5
+      },
+      "matching": {
+        "matched": 45,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 66,
+      "netImpact": -3434,
+      "analysis": "User lost 3434.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66519619b65190134e376380",
+      "name": "aurélie laure",
+      "email": "chatchengaurelie@gmail.com",
+      "phoneNumber": "237659142723",
+      "accountDiscrepancy": 49086,
+      "suspiciousDeposits": {
+        "count": 54,
+        "totalAmount": 49086
+      },
+      "withdrawals": {
+        "total": 57,
+        "completed": 57,
+        "totalAmount": 52772.5
+      },
+      "matching": {
+        "matched": 54,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 63.5,
+      "netImpact": -3686.5,
+      "analysis": "User lost 3686.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6611610e62372d1b5373a135",
+      "name": "leo koumeka",
+      "email": "leonelkoumeka@gmail.com",
+      "phoneNumber": "237694741821",
+      "accountDiscrepancy": 23735,
+      "suspiciousDeposits": {
+        "count": 17,
+        "totalAmount": 23735
+      },
+      "withdrawals": {
+        "total": 19,
+        "completed": 19,
+        "totalAmount": 27674
+      },
+      "matching": {
+        "matched": 17,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 61,
+      "netImpact": -3939,
+      "analysis": "User lost 3939.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65e4b87918ad508a37398ce2",
+      "name": "ATS Produits & Services",
+      "email": "atindosteve1@gmail.com",
+      "phoneNumber": "237693011187",
+      "accountDiscrepancy": 73342.16,
+      "suspiciousDeposits": {
+        "count": 71,
+        "totalAmount": 73342.16
+      },
+      "withdrawals": {
+        "total": 74,
+        "completed": 74,
+        "totalAmount": 77296.31
+      },
+      "matching": {
+        "matched": 71,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 45.85000000000002,
+      "netImpact": -3954.149999999994,
+      "analysis": "User lost 3954.15 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d6bc4676d8df79515899c7",
+      "name": "lanvin deffeu",
+      "email": "lanvindeffeu@gmail.com",
+      "phoneNumber": "237678378219",
+      "accountDiscrepancy": 81395.9,
+      "suspiciousDeposits": {
+        "count": 79,
+        "totalAmount": 81395.8999999999
+      },
+      "withdrawals": {
+        "total": 83,
+        "completed": 83,
+        "totalAmount": 85809.5999999999
+      },
+      "matching": {
+        "matched": 79,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 86.29999999999995,
+      "netImpact": -4413.699999999997,
+      "analysis": "User lost 4413.70 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "666dc38d4b08104253add2fa",
+      "name": "nel~la",
+      "email": "nelladurelle@gmail.com",
+      "phoneNumber": "237693264198",
+      "accountDiscrepancy": 80547.5,
+      "suspiciousDeposits": {
+        "count": 21,
+        "totalAmount": 80547.5
+      },
+      "withdrawals": {
+        "total": 24,
+        "completed": 24,
+        "totalAmount": 88375
+      },
+      "matching": {
+        "matched": 21,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 172.5,
+      "netImpact": -7827.5,
+      "analysis": "User lost 7827.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66367d3968b99b881151ca96",
+      "name": "mr fayol",
+      "email": "tenedavidsuper@gmail.com",
+      "phoneNumber": "237659047087",
+      "accountDiscrepancy": 21048.4,
+      "suspiciousDeposits": {
+        "count": 21,
+        "totalAmount": 20048.5
+      },
+      "withdrawals": {
+        "total": 27,
+        "completed": 27,
+        "totalAmount": 25482.3
+      },
+      "matching": {
+        "matched": 21,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 66.09999999999991,
+      "netImpact": -5433.799999999999,
+      "analysis": "User lost 5433.80 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "662fc86ab53a927cbce88ee0",
+      "name": "nguemo tiogo dinis",
+      "email": "nguemotiogodinis@gmail.com",
+      "phoneNumber": "237655244166",
+      "accountDiscrepancy": 75541.5,
+      "suspiciousDeposits": {
+        "count": 29,
+        "totalAmount": 78041.5
+      },
+      "withdrawals": {
+        "total": 61,
+        "completed": 60,
+        "totalAmount": 133875.5
+      },
+      "matching": {
+        "matched": 28,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-05-16T11:09:48.265Z",
+            "transactionId": "N4sKXLKS_Sggid5Q"
+          }
+        ]
+      },
+      "currentBalance": 166,
+      "netImpact": -55834,
+      "analysis": "User lost 55834.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65df11c87a397921363b51dc",
+      "name": "støńę",
+      "email": "stonejunior140@gmail.com",
+      "phoneNumber": "237689876624",
+      "accountDiscrepancy": 21798.2,
+      "suspiciousDeposits": {
+        "count": 16,
+        "totalAmount": 21798.199999999997
+      },
+      "withdrawals": {
+        "total": 25,
+        "completed": 25,
+        "totalAmount": 28735.509999999995
+      },
+      "matching": {
+        "matched": 15,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1982,
+            "expectedWithdrawalAmount": 1982,
+            "date": "2025-02-01T21:22:11.000Z",
+            "transactionId": "b0e8f499-6972-4581-a331-fd7b86f97640"
+          }
+        ]
+      },
+      "currentBalance": 62.68999999999983,
+      "netImpact": -6937.309999999998,
+      "analysis": "User lost 6937.31 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d11f60bba28a9b65a945c2",
+      "name": "jerry tawamba",
+      "email": "tbjk500@gmail.com",
+      "phoneNumber": "237679011117",
+      "accountDiscrepancy": 46110,
+      "suspiciousDeposits": {
+        "count": 10,
+        "totalAmount": 46110
+      },
+      "withdrawals": {
+        "total": 16,
+        "completed": 16,
+        "totalAmount": 54035
+      },
+      "matching": {
+        "matched": 9,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 4700,
+            "expectedWithdrawalAmount": 4700,
+            "date": "2025-02-01T21:22:07.000Z",
+            "transactionId": "e89f4b66-78b3-4226-b25c-7e70ad01143c"
+          }
+        ]
+      },
+      "currentBalance": 75,
+      "netImpact": -7925,
+      "analysis": "User lost 7925.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "662b98850a53c35ee08e2e96",
+      "name": "nkolo patrik",
+      "email": "bienvenuenkolo81@gmail.com",
+      "phoneNumber": "237693126785",
+      "accountDiscrepancy": 29795,
+      "suspiciousDeposits": {
+        "count": 29,
+        "totalAmount": 29795
+      },
+      "withdrawals": {
+        "total": 47,
+        "completed": 36,
+        "totalAmount": 37761
+      },
+      "matching": {
+        "matched": 29,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 34,
+      "netImpact": -7966,
+      "analysis": "User lost 7966.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667047f9de0002d5d2d3261d",
+      "name": "sontsa alex",
+      "email": "sontsa2004@gmail.com",
+      "phoneNumber": "237652916695",
+      "accountDiscrepancy": 39092.05,
+      "suspiciousDeposits": {
+        "count": 24,
+        "totalAmount": 39092.05
+      },
+      "withdrawals": {
+        "total": 35,
+        "completed": 31,
+        "totalAmount": 47533.05
+      },
+      "matching": {
+        "matched": 24,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 59,
+      "netImpact": -8441,
+      "analysis": "User lost 8441.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "662c8c1f960fdca6f8585a03",
+      "name": "sofack idrice dilan",
+      "email": "dilansofack1@gmail.com",
+      "phoneNumber": "237654164898",
+      "accountDiscrepancy": 22422,
+      "suspiciousDeposits": {
+        "count": 23,
+        "totalAmount": 22422
+      },
+      "withdrawals": {
+        "total": 35,
+        "completed": 35,
+        "totalAmount": 31865.5
+      },
+      "matching": {
+        "matched": 23,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 56.5,
+      "netImpact": -9443.5,
+      "analysis": "User lost 9443.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65f074a3143c7542ebdb6259",
+      "name": "Diamant Blanc Officiel",
+      "email": "batipec@gmail.com",
+      "phoneNumber": "237693051845",
+      "accountDiscrepancy": 68928,
+      "suspiciousDeposits": {
+        "count": 60,
+        "totalAmount": 62428.1
+      },
+      "withdrawals": {
+        "total": 86,
+        "completed": 70,
+        "totalAmount": 75868.95
+      },
+      "matching": {
+        "matched": 60,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 59.05000000000018,
+      "netImpact": -13440.849999999999,
+      "analysis": "User lost 13440.85 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "66854813b95d9458922e2c25",
+      "name": "hoigen",
+      "email": "ndjokson@gmail.com",
+      "phoneNumber": "237696053035",
+      "accountDiscrepancy": 94435,
+      "suspiciousDeposits": {
+        "count": 24,
+        "totalAmount": 94435
+      },
+      "withdrawals": {
+        "total": 27,
+        "completed": 27,
+        "totalAmount": 108373
+      },
+      "matching": {
+        "matched": 24,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 62,
+      "netImpact": -13938,
+      "analysis": "User lost 13938.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65f1d9d015e9ae0157486858",
+      "name": "aaron marketing digital",
+      "email": "aarondibobe91@gmail.com",
+      "phoneNumber": "237655951771",
+      "accountDiscrepancy": 145670,
+      "suspiciousDeposits": {
+        "count": 76,
+        "totalAmount": 143420
+      },
+      "withdrawals": {
+        "total": 92,
+        "completed": 86,
+        "totalAmount": 159039.5
+      },
+      "matching": {
+        "matched": 76,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 130.5,
+      "netImpact": -15619.5,
+      "analysis": "User lost 15619.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6670810cde0002d5d2d61a8a",
+      "name": "arielbrayan",
+      "email": "arielbraayan24@gmail.com",
+      "phoneNumber": "237670885407",
+      "accountDiscrepancy": 139632.5,
+      "suspiciousDeposits": {
+        "count": 46,
+        "totalAmount": 139632.5
+      },
+      "withdrawals": {
+        "total": 53,
+        "completed": 53,
+        "totalAmount": 161954.51
+      },
+      "matching": {
+        "matched": 46,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 177.98999999999978,
+      "netImpact": -22322.01000000001,
+      "analysis": "User lost 22322.01 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65df0dfa7a397921363b4cb7",
+      "name": "danielle e-commerce",
+      "email": "danielledanie38@gmail.com",
+      "phoneNumber": "237674290397",
+      "accountDiscrepancy": 35350,
+      "suspiciousDeposits": {
+        "count": 4,
+        "totalAmount": 35350
+      },
+      "withdrawals": {
+        "total": 17,
+        "completed": 15,
+        "totalAmount": 71767
+      },
+      "matching": {
+        "matched": 4,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 83,
+      "netImpact": -36417,
+      "analysis": "User lost 36417.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6679599c7731445b46b4aa67",
+      "name": "mariline kopguep",
+      "email": "florettedjommechi@gmail.com",
+      "phoneNumber": "237691180351",
+      "accountDiscrepancy": 12872808.5,
+      "suspiciousDeposits": {
+        "count": 1809,
+        "totalAmount": 12877348.5
+      },
+      "withdrawals": {
+        "total": 1826,
+        "completed": 1826,
+        "totalAmount": 12930676.5
+      },
+      "matching": {
+        "matched": 1809,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 132,
+      "netImpact": -53328,
+      "analysis": "User lost 53328.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65e9777a845eb94af1d6efe1",
+      "name": "coach bartex",
+      "email": "bartextchouabe@gmail.com",
+      "phoneNumber": "237692785050",
+      "accountDiscrepancy": 228148.9,
+      "suspiciousDeposits": {
+        "count": 461,
+        "totalAmount": 228148.89999999822
+      },
+      "withdrawals": {
+        "total": 479,
+        "completed": 478,
+        "totalAmount": 242642.49999999822
+      },
+      "matching": {
+        "matched": 461,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 6.400000000000091,
+      "netImpact": -14493.600000000006,
+      "analysis": "User lost 14493.60 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6659f634dad2237ef7ca7431",
+      "name": "_helton_store_",
+      "email": "heltonking50@gmail.com",
+      "phoneNumber": "237696385007",
+      "accountDiscrepancy": 69972.8,
+      "suspiciousDeposits": {
+        "count": 18,
+        "totalAmount": 69972.8
+      },
+      "withdrawals": {
+        "total": 25,
+        "completed": 24,
+        "totalAmount": 84966.05
+      },
+      "matching": {
+        "matched": 18,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 6.75,
+      "netImpact": -14993.25,
+      "analysis": "User lost 14993.25 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "668a4d8c840a5553b8afc14e",
+      "name": "hervé ndzana",
+      "email": "hervendzana32@gmail.com",
+      "phoneNumber": "237689400192",
+      "accountDiscrepancy": 373599,
+      "suspiciousDeposits": {
+        "count": 184,
+        "totalAmount": 373599
+      },
+      "withdrawals": {
+        "total": 208,
+        "completed": 205,
+        "totalAmount": 391084.5
+      },
+      "matching": {
+        "matched": 184,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 14.5,
+      "netImpact": -17485.5,
+      "analysis": "User lost 17485.50 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "667e80bfdaf7ee59ccaa08dd",
+      "name": "mama bonheur",
+      "email": "agnesndongo29@gmail.com",
+      "phoneNumber": "237693020547",
+      "accountDiscrepancy": 59959,
+      "suspiciousDeposits": {
+        "count": 47,
+        "totalAmount": 57959
+      },
+      "withdrawals": {
+        "total": 65,
+        "completed": 63,
+        "totalAmount": 78400
+      },
+      "matching": {
+        "matched": 46,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1500,
+            "expectedWithdrawalAmount": 1500,
+            "date": "2025-07-07T11:58:31.230Z",
+            "transactionId": "8GtELJjn6HXSJ7rq"
+          }
+        ]
+      },
+      "currentBalance": 59,
+      "netImpact": -20441,
+      "analysis": "User lost 20441.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d0934e5c96a8ab00a6dde7",
+      "name": "tonny art",
+      "email": "tchapduer@gmail.com",
+      "phoneNumber": "237690266954",
+      "accountDiscrepancy": 76192,
+      "suspiciousDeposits": {
+        "count": 54,
+        "totalAmount": 76192.00000000001
+      },
+      "withdrawals": {
+        "total": 88,
+        "completed": 77,
+        "totalAmount": 127429.35000000005
+      },
+      "matching": {
+        "matched": 53,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-18T10:02:06.699Z",
+            "transactionId": "ILfKVN7TxX5NnD3-"
+          }
+        ]
+      },
+      "currentBalance": 12.649999999999636,
+      "netImpact": -51237.350000000035,
+      "analysis": "User lost 51237.35 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "67adff819757adf55eace01d",
+      "name": "bignon",
+      "email": "yelianbignon@gmail.com",
+      "phoneNumber": "22941980963",
+      "accountDiscrepancy": 28581,
+      "suspiciousDeposits": {
+        "count": 1,
+        "totalAmount": 625
+      },
+      "withdrawals": {
+        "total": 32,
+        "completed": 32,
+        "totalAmount": 56321
+      },
+      "matching": {
+        "matched": 0,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-07-27T12:34:02.976Z",
+            "transactionId": "2K-VPKYQtH6iu6Pj"
+          }
+        ]
+      },
+      "currentBalance": 10,
+      "netImpact": -55696,
+      "analysis": "User lost 55696.00 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65fa9e177b52fe8baeb9e9cb",
+      "name": "jella lucile",
+      "email": "jellalucile3@gmail.com",
+      "phoneNumber": "237681401009",
+      "accountDiscrepancy": 32383,
+      "suspiciousDeposits": {
+        "count": 18,
+        "totalAmount": 29133
+      },
+      "withdrawals": {
+        "total": 94,
+        "completed": 41,
+        "totalAmount": 85624.35
+      },
+      "matching": {
+        "matched": 15,
+        "unmatched": 3,
+        "unmatchedSample": [
+          {
+            "depositAmount": 1850,
+            "expectedWithdrawalAmount": 1850,
+            "date": "2025-02-01T21:22:17.000Z",
+            "transactionId": "65b4fbc0-5620-48f5-b64f-a84d6fcaafe7"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-05-14T15:54:11.186Z",
+            "transactionId": "RXWQvzG9X864uSvs"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-09-07T07:12:49.053Z",
+            "transactionId": "u43CnqCNXwe8Ywvp"
+          }
+        ]
+      },
+      "currentBalance": 8.649999999999636,
+      "netImpact": -56491.350000000006,
+      "analysis": "User lost 56491.35 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "68ba233ecb279eee6b13a988",
+      "name": "Kabos Kossiwa",
+      "email": "cryptoshop335@gmail.com",
+      "phoneNumber": "2250500887591",
+      "accountDiscrepancy": 22155,
+      "suspiciousDeposits": {
+        "count": 7,
+        "totalAmount": 16250
+      },
+      "withdrawals": {
+        "total": 34,
+        "completed": 25,
+        "totalAmount": 73610.38
+      },
+      "matching": {
+        "matched": 0,
+        "unmatched": 7,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-09-05T16:49:26.706Z",
+            "transactionId": "jnwIHj0EtwRYPyHh"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-09-05T20:15:23.652Z",
+            "transactionId": "OOSEp475Eiv4WV4G"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-09-06T11:30:51.921Z",
+            "transactionId": "NZfQaAJF1FEPSrir"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-09-06T15:29:47.131Z",
+            "transactionId": "B7AoyJgqPWM-j9CB"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-09-06T21:42:02.160Z",
+            "transactionId": "82BPebN11NU8dSyM"
+          },
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-09-07T11:04:28.640Z",
+            "transactionId": "-8h8x_Qe_bfGf3QF"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-09-08T09:33:05.735Z",
+            "transactionId": "bG6QHoQSM2umY4Aa"
+          }
+        ]
+      },
+      "currentBalance": 44.61999999999989,
+      "netImpact": -57360.380000000005,
+      "analysis": "User lost 57360.38 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d07d7d5c96a8ab00a6d0d3",
+      "name": "maxwell medjo",
+      "email": "medjoalain3@gmail.com",
+      "phoneNumber": "237656868830",
+      "accountDiscrepancy": 164909.5,
+      "suspiciousDeposits": {
+        "count": 127,
+        "totalAmount": 165659.5
+      },
+      "withdrawals": {
+        "total": 195,
+        "completed": 157,
+        "totalAmount": 249622.75
+      },
+      "matching": {
+        "matched": 119,
+        "unmatched": 8,
+        "unmatchedSample": [
+          {
+            "depositAmount": 25,
+            "expectedWithdrawalAmount": 25,
+            "date": "2025-05-12T17:22:06.630Z",
+            "transactionId": "GGNa8ao8iVCVshlX"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-06-18T17:56:23.139Z",
+            "transactionId": "GPS4dHdvyomnrFQW"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-06-28T10:41:10.552Z",
+            "transactionId": "-o2G-Xuax0_Y-60I"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-06-30T21:34:47.564Z",
+            "transactionId": "LpbblRG4DA-dDZOZ"
+          },
+          {
+            "depositAmount": 625,
+            "expectedWithdrawalAmount": 625,
+            "date": "2025-07-08T15:07:04.316Z",
+            "transactionId": "2QmM7wV8mAgIikZq"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-17T07:08:46.621Z",
+            "transactionId": "O8bbmwJQ8JBfqtKc"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-07-17T13:19:31.988Z",
+            "transactionId": "h3lSW3kbhH0f5Fll"
+          },
+          {
+            "depositAmount": 1250,
+            "expectedWithdrawalAmount": 1250,
+            "date": "2025-08-30T18:37:31.801Z",
+            "transactionId": "rkaMRvKBdy3dQ7bP"
+          }
+        ]
+      },
+      "currentBalance": 36.75,
+      "netImpact": -83963.25,
+      "analysis": "User lost 83963.25 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "6662f9e31b27cd21c665de6b",
+      "name": "romain kamgo",
+      "email": "evraadromain@gmail.com",
+      "phoneNumber": "237690730904",
+      "accountDiscrepancy": 265254,
+      "suspiciousDeposits": {
+        "count": 53,
+        "totalAmount": 263004
+      },
+      "withdrawals": {
+        "total": 125,
+        "completed": 120,
+        "totalAmount": 360965.89
+      },
+      "matching": {
+        "matched": 53,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 38.10999999999967,
+      "netImpact": -97961.89000000001,
+      "analysis": "User lost 97961.89 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65e03ce45cc908480843c721",
+      "name": "evraad fotue",
+      "email": "evraadevraad@gmail.com",
+      "phoneNumber": "237654921492",
+      "accountDiscrepancy": 497542.05,
+      "suspiciousDeposits": {
+        "count": 132,
+        "totalAmount": 495292.05
+      },
+      "withdrawals": {
+        "total": 266,
+        "completed": 253,
+        "totalAmount": 670512.5700000001
+      },
+      "matching": {
+        "matched": 132,
+        "unmatched": 0,
+        "unmatchedSample": []
+      },
+      "currentBalance": 29.479999999999563,
+      "netImpact": -175220.52000000008,
+      "analysis": "User lost 175220.52 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65db794e40828cfceaa53ef0",
+      "name": "jores falcao business",
+      "email": "cabreljores3@gmail.com",
+      "phoneNumber": "237620732056",
+      "accountDiscrepancy": 275253.85,
+      "suspiciousDeposits": {
+        "count": 52,
+        "totalAmount": 87410.7
+      },
+      "withdrawals": {
+        "total": 120,
+        "completed": 120,
+        "totalAmount": 289753.84999999986
+      },
+      "matching": {
+        "matched": 51,
+        "unmatched": 1,
+        "unmatchedSample": [
+          {
+            "depositAmount": 2500,
+            "expectedWithdrawalAmount": 2500,
+            "date": "2025-08-29T05:34:31.983Z",
+            "transactionId": "xqAHsXb64T2aUucZ"
+          }
+        ]
+      },
+      "currentBalance": 0,
+      "netImpact": -202343.14999999985,
+      "analysis": "User lost 202343.15 XAF (more withdrawals than deposits)"
+    },
+    {
+      "userId": "65d06c20644793ef52ca6e11",
+      "name": "Bemjamin Aime",
+      "email": "georgesyvan12@gmail.com",
+      "phoneNumber": "237691996470",
+      "accountDiscrepancy": 478592,
+      "suspiciousDeposits": {
+        "count": 3,
+        "totalAmount": 220000
+      },
+      "withdrawals": {
+        "total": 20,
+        "completed": 20,
+        "totalAmount": 478582
+      },
+      "matching": {
+        "matched": 0,
+        "unmatched": 3,
+        "unmatchedSample": [
+          {
+            "depositAmount": 80000,
+            "expectedWithdrawalAmount": 80000,
+            "date": "2025-02-01T21:22:04.000Z",
+            "transactionId": "792623c7-8579-4cea-9708-d371e07c59a6"
+          },
+          {
+            "depositAmount": 40000,
+            "expectedWithdrawalAmount": 40000,
+            "date": "2025-02-01T21:22:04.000Z",
+            "transactionId": "2a4c25d3-9a94-4bef-9d7d-309fd39b0ba3"
+          },
+          {
+            "depositAmount": 100000,
+            "expectedWithdrawalAmount": 100000,
+            "date": "2025-02-01T21:22:04.000Z",
+            "transactionId": "7ead6808-5a56-467d-ac7d-a83f9b832439"
+          }
+        ]
+      },
+      "currentBalance": 10,
+      "netImpact": -258582,
+      "analysis": "User lost 258582.00 XAF (more withdrawals than deposits)"
+    }
+  ]
+}

@@ -98,6 +98,78 @@ service-name/
 - **Frontend**: React, TypeScript, Vite, TailwindCSS, Recharts
 - **Infrastructure**: Docker, Nginx, Redis, MongoDB
 
+## Admin Frontend Development Rules
+
+### UI/UX Standards
+
+**CRITICAL: Never use browser alerts, prompts, or confirms in the admin frontend.**
+
+The admin frontend must maintain professional UI/UX standards. Follow these rules:
+
+1. **No JavaScript Alerts**: Never use `alert()`, `window.alert()`, `confirm()`, `window.confirm()`, or `prompt()` for user feedback.
+
+2. **Use Toast Notifications**: For non-blocking feedback (success, error, warning, info):
+   ```typescript
+   import { useToast } from '../hooks/useToast';
+   import ToastContainer from '../components/common/ToastContainer';
+
+   const { toasts, removeToast, showSuccess, showError, showWarning, showInfo } = useToast();
+
+   // Success feedback
+   showSuccess('Operation completed successfully!');
+
+   // Error feedback
+   showError('Operation failed. Please try again.');
+
+   // Add ToastContainer to JSX
+   <ToastContainer toasts={toasts} onRemove={removeToast} />
+   ```
+
+3. **Use Confirmation Modals**: For user confirmations before dangerous actions:
+   ```typescript
+   import ConfirmationModal from '../components/common/ConfirmationModal';
+
+   const [showConfirmModal, setShowConfirmModal] = useState(false);
+   const [confirmAction, setConfirmAction] = useState<{
+       title: string;
+       message: string;
+       onConfirm: () => void;
+   } | null>(null);
+
+   // Trigger confirmation
+   setConfirmAction({
+       title: 'Confirm Action',
+       message: 'Are you sure you want to proceed?',
+       onConfirm: async () => {
+           // Execute action
+           setShowConfirmModal(false);
+       }
+   });
+   setShowConfirmModal(true);
+
+   // Add ConfirmationModal to JSX
+   {confirmAction && (
+       <ConfirmationModal
+           isOpen={showConfirmModal}
+           title={confirmAction.title}
+           message={confirmAction.message}
+           confirmText="Confirm"
+           cancelText="Cancel"
+           onConfirm={confirmAction.onConfirm}
+           onCancel={() => setShowConfirmModal(false)}
+       />
+   )}
+   ```
+
+4. **Available Toast Systems**:
+   - Custom toast system: `useToast()` hook with ToastContainer component
+   - React Hot Toast: `toast.success()`, `toast.error()` (used in some pages)
+
+5. **When to Use Each**:
+   - **Toast Notifications**: Success messages, error messages, warnings, non-critical info
+   - **Confirmation Modals**: Delete operations, irreversible actions, role changes, bulk operations
+   - **Form Validation**: Display errors inline or in modals, never with alerts
+
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
 

@@ -92,6 +92,10 @@ export interface AdminUserListFilters {
     status?: 'active' | 'inactive' | 'blocked' | 'deleted'; // Adjust based on backend filter logic
     role?: string; // e.g., 'user', 'admin'
     search?: string;
+    // User-facing filters (like the app would have)
+    country?: string;
+    profession?: string;
+    interests?: string[];
 }
 
 // Interface for balance adjustment
@@ -178,13 +182,22 @@ export const listUsers = async (
     pagination: PaginationOptions = { page: 1, limit: 10 }
 ): Promise<AdminUserListResponse> => {
     try {
-        const params = {
-            ...filters,
+        // Build params, converting interests array to comma-separated string
+        const params: Record<string, string | number | undefined> = {
             page: pagination.page,
             limit: pagination.limit,
+            status: filters.status,
+            role: filters.role,
+            search: filters.search,
+            country: filters.country,
+            profession: filters.profession,
+            // Convert interests array to comma-separated string for URL params
+            interests: filters.interests && filters.interests.length > 0
+                ? filters.interests.join(',')
+                : undefined,
         };
         // Remove undefined filters
-        Object.keys(params).forEach(key => params[key as keyof typeof params] === undefined && delete params[key as keyof typeof params]);
+        Object.keys(params).forEach(key => params[key] === undefined && delete params[key]);
 
         const response = await apiClient.get('/users/admin/users', { params });
         console.log("Raw listUsers response data:", response.data); // Log the raw structure
@@ -441,6 +454,32 @@ export const getPartnerSummary = async (): Promise<PartnerSummaryData> => {
         return response.data.data;
     } else {
         throw new Error('Failed to fetch partner summary');
+    }
+};
+
+// --- Role Management Functions ---
+
+/**
+ * Update a user's role (USER, ADMIN, WITHDRAWAL_ADMIN, TESTER)
+ */
+export const updateUserRole = async (userId: string, role: string): Promise<AdminUserData> => {
+    try {
+        const response = await apiClient.patch(`/users/admin/users/${userId}/role`, { role });
+
+        if (response.data && response.data.success === true && response.data.data) {
+            console.log(`Successfully updated role to '${role}' for user ${userId}`);
+            return response.data.data;
+        } else {
+            throw new Error(response.data?.message || 'Failed to update user role: Invalid response structure');
+        }
+    } catch (error) {
+        console.error(`Failed to update role for user ${userId}:`, error);
+        if (axios.isAxiosError(error) && error.response) {
+            throw new Error(error.response.data?.message || 'Failed to update user role');
+        } else if (error instanceof Error) {
+            throw error;
+        }
+        throw new Error('Failed to update user role due to an unknown error.');
     }
 };
 

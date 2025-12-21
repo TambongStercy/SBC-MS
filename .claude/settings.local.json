@@ -7,7 +7,9 @@
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
       "Bash(git rm:*)",
-      "Bash(pm2 list:*)"
+      "Bash(pm2 list:*)",
+      "Bash(npx tsc:*)",
+      "Bash(docker ps:*)"
     ],
     "deny": [],
     "ask": []

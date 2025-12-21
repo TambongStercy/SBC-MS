@@ -152,6 +152,7 @@ interface IPublicUserProfileResponse {
     language?: string[];
     interests?: string[];
     profession?: string;
+    subscriptionTypes?: string[];
     createdAt?: Date;
     // Add other fields considered safe for public view
 }
@@ -1772,6 +1773,36 @@ export class UserService {
     }
 
     /**
+     * Check if two users have a direct (level 1) referral relationship.
+     * @param user1Id - First user ID
+     * @param user2Id - Second user ID
+     * @returns True if either user is a direct referral of the other
+     */
+    async checkDirectReferralRelationship(user1Id: string | Types.ObjectId, user2Id: string | Types.ObjectId): Promise<boolean> {
+        try {
+            const user1ObjectId = new Types.ObjectId(user1Id.toString());
+            const user2ObjectId = new Types.ObjectId(user2Id.toString());
+
+            // Check if user1 is directly referred by user2 (level 1)
+            const user1Referral = await referralRepository.findDirectReferrerPopulated(user1ObjectId);
+            if (user1Referral?._id.toString() === user2ObjectId.toString()) {
+                return true;
+            }
+
+            // Check if user2 is directly referred by user1 (level 1)
+            const user2Referral = await referralRepository.findDirectReferrerPopulated(user2ObjectId);
+            if (user2Referral?._id.toString() === user1ObjectId.toString()) {
+                return true;
+            }
+
+            return false;
+        } catch (error) {
+            log.error(`Error checking direct referral relationship between ${user1Id} and ${user2Id}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Retrieves active subscription type(s) for a user.
      * Needed by controller to check permissions (e.g., CIBLE for filtering).
      * @param userId User ID
@@ -2112,14 +2143,19 @@ export class UserService {
         if (filters.interests && filters.interests.length > 0) {
             query.interests = { $in: filters.interests.map(i => new RegExp(i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i')) };
         }
-        // MODIFIED: Apply search filter to name, email, or phoneNumber fields using $or
-        if (filters.name) { // Assuming 'name' filter is now used for generic search
-            const searchRegex = new RegExp(filters.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
+
+        // Unified search filter (searches across name, email, and phoneNumber)
+        // 'search' param takes priority, falls back to 'name' for backward compatibility
+        const searchTerm = filters.search || filters.name;
+        log.debug(`[ContactSearch] filters.search=${filters.search}, filters.name=${filters.name}, searchTerm=${searchTerm}`);
+        if (searchTerm) {
+            const searchRegex = new RegExp(searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
             query.$or = [
                 { name: searchRegex },
                 { email: searchRegex },
-                { phoneNumber: searchRegex } // Added phoneNumber to the search
+                { phoneNumber: searchRegex }
             ];
+            log.debug(`[ContactSearch] Applied $or search for: ${searchTerm}`);
         }
         if (filters.minAge || filters.maxAge) {
             query.birthDate = {};
@@ -2444,7 +2480,7 @@ export class UserService {
     /**
      * [Admin] List users with filtering and pagination.
      */
-    async adminListUsers(filters: { status?: string; role?: string; search?: string }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold', activeSubscriptionTypes?: SubscriptionType[] })[], paginationInfo: any }> {
+    async adminListUsers(filters: { status?: string; role?: string; search?: string; country?: string; profession?: string; interests?: string[] }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold', activeSubscriptionTypes?: SubscriptionType[] })[], paginationInfo: any }> {
         log.info('Admin request to list users with filters:', { filters, pagination });
         const { page = 1, limit = 10 } = pagination;
         const skip = (page - 1) * limit;
@@ -2472,6 +2508,23 @@ export class UserService {
                 { email: searchRegex }
                 // Remove: { phoneNumber: searchRegex } - Cannot apply Regex to Number field
             ];
+        }
+
+        // Country filter (case-insensitive exact match)
+        if (filters.country) {
+            query.country = { $regex: `^${filters.country.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+        }
+
+        // Profession filter (case-insensitive partial match)
+        if (filters.profession) {
+            query.profession = { $regex: filters.profession.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+        }
+
+        // Interests filter (match any of the provided interests)
+        if (filters.interests && filters.interests.length > 0) {
+            query.interests = {
+                $in: filters.interests.map(i => new RegExp(i.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i'))
+            };
         }
 
         // Always exclude deleted unless explicitly requested
@@ -3336,6 +3389,10 @@ export class UserService {
             return null; // Return null if user not found, deleted, or blocked
         }
 
+        // Get user's active subscriptions (always include this info)
+        const subscriptionsResponse = await subscriptionService.getActiveSubscriptions(user._id.toString(), 1, 100);
+        const subscriptionTypes = subscriptionsResponse.subscriptions.map(sub => sub.type);
+
         // Check sharing preference
         if (!user.shareContactInfo) {
             log.warn(`User ${userId} has disabled contact info sharing. Returning minimal public profile.`);
@@ -3349,16 +3406,19 @@ export class UserService {
                 country: user.country,
                 city: user.city,
                 region: user.region,
+                subscriptionTypes: subscriptionTypes,
             };
         }
 
         log.info(`User ${userId} allows sharing. Returning extended public profile.`);
+
         // User exists, is valid, and allows sharing - map to public response
         const publicProfile: IPublicUserProfileResponse = {
             _id: user._id,
             name: user.name,
             email: user.email,
             avatar: user.avatar,
+            phoneNumber: user.phoneNumber,
             country: user.country,
             region: user.region,
             city: user.city,
@@ -3367,6 +3427,7 @@ export class UserService {
             language: user.language,
             interests: user.interests,
             profession: user.profession,
+            subscriptionTypes: subscriptionTypes,
             createdAt: user.createdAt,
         };
 

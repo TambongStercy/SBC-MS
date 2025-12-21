@@ -601,12 +601,14 @@ export class SubscriptionService {
         };
 
         // Determine if this is a crypto payment - check multiple indicators
-        const isCryptoPayment = paymentMethod === 'crypto' || 
-            sourcePaymentSessionId?.includes('crypto') || 
+        // NOTE: Removed the session ID length check (=== 12) as it was falsely detecting
+        // regular CinetPay payment intents as crypto payments
+        const isCryptoPayment = paymentMethod === 'nowpayments' ||
+            paymentMethod === 'crypto' ||
+            sourcePaymentSessionId?.includes('crypto') ||
             sourcePaymentSessionId?.includes('nowpayments') ||
             sourcePaymentSessionId?.toLowerCase().includes('np_') ||
-            // Also check if the original payment was made with NOWPayments gateway
-            (sourcePaymentSessionId && sourcePaymentSessionId.length === 12);
+            webhookMetadata?.provider === 'nowpayments';
         
         this.log.info(`Crypto payment detected: ${isCryptoPayment} (method: ${paymentMethod}, sessionId: ${sourcePaymentSessionId}, currency: ${webhookMetadata?.currency})`);
 
@@ -687,13 +689,29 @@ export class SubscriptionService {
                 planDesc = planName || 'Unknown Subscription'; // Fallback
             }
 
+            // Fetch user names for better descriptions
+            const buyerUser = await this.userRepository.findById(buyerUserId);
+            const buyerName = buyerUser ? (buyerUser.name || buyerUser.email) : buyerUserId;
+
+            // Fetch referrer names for Level 2 and 3 descriptions
+            let level1ReferrerName = '';
+            let level2ReferrerName = '';
+            if (referrers.level1) {
+                const l1User = await this.userRepository.findById(referrers.level1);
+                level1ReferrerName = l1User ? (l1User.name || l1User.email || '') : '';
+            }
+            if (referrers.level2) {
+                const l2User = await this.userRepository.findById(referrers.level2);
+                level2ReferrerName = l2User ? (l2User.name || l2User.email || '') : '';
+            }
+
             // Calculate individual referral commissions
             let l1Amount = 0, l2Amount = 0, l3Amount = 0;
 
-            // Level 1
+            // Level 1 - Direct referral
             if (referrers.level1) {
                 l1Amount = cryptoCommissionAmounts ? cryptoCommissionAmounts.level1 : commissionBaseAmount * commissionRates.level1;
-                const description = `Level 1 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level1 : '50%'}) commission from ${planDesc} purchase by user ${buyerUserId}`;
+                const description = `Level 1 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level1 : '50%'}) commission from ${planDesc} purchase by ${buyerName}`;
                 this.log.info(`Recording L1 commission deposit of ${l1Amount} ${currency} for referrer ${referrers.level1}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level1,
@@ -709,10 +727,11 @@ export class SubscriptionService {
                     }
                 }));
             }
-            // Level 2
+            // Level 2 - Referral of referral (via L1 referrer)
             if (referrers.level2) {
                 l2Amount = cryptoCommissionAmounts ? cryptoCommissionAmounts.level2 : commissionBaseAmount * commissionRates.level2;
-                const description = `Level 2 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level2 : '25%'}) commission from ${planDesc} purchase by user ${buyerUserId}`;
+                const viaText = level1ReferrerName ? ` (via ${level1ReferrerName})` : '';
+                const description = `Level 2 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level2 : '25%'}) commission from ${planDesc} purchase by ${buyerName}${viaText}`;
                 this.log.info(`Recording L2 commission deposit of ${l2Amount} ${currency} for referrer ${referrers.level2}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level2,
@@ -728,10 +747,11 @@ export class SubscriptionService {
                     }
                 }));
             }
-            // Level 3
+            // Level 3 - Referral of referral of referral (via L2 referrer)
             if (referrers.level3) {
                 l3Amount = cryptoCommissionAmounts ? cryptoCommissionAmounts.level3 : commissionBaseAmount * commissionRates.level3;
-                const description = `Level 3 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level3 : '12.5%'}) commission from ${planDesc} purchase by user ${buyerUserId}`;
+                const viaText = level2ReferrerName ? ` (via ${level2ReferrerName})` : '';
+                const description = `Level 3 (${cryptoCommissionAmounts ? '$' + cryptoCommissionAmounts.level3 : '12.5%'}) commission from ${planDesc} purchase by ${buyerName}${viaText}`;
                 this.log.info(`Recording L3 commission deposit of ${l3Amount} ${currency} for referrer ${referrers.level3}`);
                 payoutPromises.push(paymentService.recordInternalDeposit({
                     userId: referrers.level3,

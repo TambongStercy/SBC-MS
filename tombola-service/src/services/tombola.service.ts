@@ -220,9 +220,8 @@ class TombolaService {
             throw new AppError('Winners have already been drawn for this tombola month.', 400);
         }
 
-        // 2. Fetch All Tickets for the Month using the repository's find method
-        // Ensure the repository find method used here populates the month/year
-        const tickets = await tombolaTicketRepository.find({ tombolaMonthId: new Types.ObjectId(tombolaMonthId) }, Infinity); // Fetch all tickets for the month
+        // 2. Fetch All Tickets for the Month (without population for draw efficiency)
+        const tickets = await tombolaTicketRepository.findByMonth(tombolaMonthId); // Returns ITombolaTicket[] without population
 
         if (!tickets || tickets.length === 0) {
             log.warn(`Draw failed: No tickets found for TombolaMonth ${tombolaMonthId}. Closing without winners.`);
@@ -237,33 +236,84 @@ class TombolaService {
         }
         log.info(`Found ${tickets.length} tickets for TombolaMonth ${tombolaMonthId}.`);
 
-        // 3. Select Winners Randomly from Tickets, Ensuring Unique Users
+        // 3. Apply Anti-Consecutive-Win Rule: Exclude previous month's winners
+        const previousMonthWinners = tombolaMonth.previousMonthWinners || [];
+        const excludedUserIds = new Set(previousMonthWinners.map(id => id.toString()));
+
+        if (excludedUserIds.size > 0) {
+            log.info(`Excluding ${excludedUserIds.size} previous month winners from draw (anti-consecutive-win rule)`);
+        }
+
+        const eligibleTickets = tickets.filter(ticket =>
+            !excludedUserIds.has(ticket.userId.toString())
+        );
+
+        if (eligibleTickets.length === 0) {
+            log.warn(`Draw failed: No eligible tickets after applying exclusion rules for TombolaMonth ${tombolaMonthId}.`);
+            const updatedMonth = await tombolaMonthRepository.findByIdAndUpdate(tombolaMonthId, {
+                status: TombolaStatus.CLOSED,
+                drawDate: new Date(),
+                endDate: tombolaMonth.endDate || new Date(),
+            });
+            if (!updatedMonth) throw new AppError('Failed to close tombola month after filtering tickets', 500);
+            return updatedMonth;
+        }
+
+        log.info(`${eligibleTickets.length} eligible tickets after exclusions (filtered from ${tickets.length} total)`);
+
+        // 4. Build Weighted Ticket Pool
+        const weightedPool: Array<{ ticket: ITombolaTicket; weight: number }> = eligibleTickets.map(ticket => ({
+            ticket,
+            weight: ticket.weight || 1.0 // Default to 1.0 for backward compatibility
+        }));
+
+        // 5. Select Winners Using Weighted Probability, Ensuring Unique Users
         const winners: { userId: Types.ObjectId, prize: string, rank: number, winningTicketNumber: number }[] = [];
-        const numberOfPrizes = Math.min(tickets.length, 3); // Max 3 prizes, limited by ticket count
+        const numberOfPrizes = Math.min(eligibleTickets.length, 3); // Max 3 prizes
         const selectedUserIds = new Set<string>();
 
-        // Shuffle the tickets array directly
-        const shuffledTickets = tickets.sort(() => 0.5 - Math.random());
+        for (let rank = 1; rank <= numberOfPrizes; rank++) {
+            // Filter out already-won users
+            const currentEligiblePool = weightedPool.filter(
+                ({ ticket }) => !selectedUserIds.has(ticket.userId.toString())
+            );
 
-        let ticketIndex = 0;
-        while (winners.length < numberOfPrizes && ticketIndex < shuffledTickets.length) {
-            const potentialTicket = shuffledTickets[ticketIndex];
-            const userIdString = potentialTicket.userId.toString();
-
-            // Check if this user has already won
-            if (!selectedUserIds.has(userIdString)) {
-                // This user is a new winner
-                selectedUserIds.add(userIdString);
-                const rank = winners.length + 1;
-                winners.push({
-                    userId: potentialTicket.userId,
-                    prize: PRIZES[rank as keyof typeof PRIZES],
-                    rank: rank,
-                    winningTicketNumber: potentialTicket.ticketNumber // Store the winning ticket number
-                });
+            if (currentEligiblePool.length === 0) {
+                log.warn(`Not enough unique users for rank ${rank}`);
+                break;
             }
-            // Move to the next ticket regardless of whether the current one was chosen
-            ticketIndex++;
+
+            // Calculate total weight
+            const totalWeight = currentEligiblePool.reduce((sum, { weight }) => sum + weight, 0);
+
+            // Weighted random selection
+            let random = Math.random() * totalWeight;
+            let selectedTicket: ITombolaTicket | null = null;
+
+            for (const { ticket, weight } of currentEligiblePool) {
+                random -= weight;
+                if (random <= 0) {
+                    selectedTicket = ticket;
+                    break;
+                }
+            }
+
+            // Fallback to last ticket if rounding issues
+            if (!selectedTicket) {
+                selectedTicket = currentEligiblePool[currentEligiblePool.length - 1].ticket;
+            }
+
+            // Record winner
+            const userIdString = selectedTicket.userId.toString();
+            selectedUserIds.add(userIdString);
+            winners.push({
+                userId: selectedTicket.userId,
+                prize: PRIZES[rank as keyof typeof PRIZES],
+                rank: rank,
+                winningTicketNumber: selectedTicket.ticketNumber
+            });
+
+            log.info(`Rank ${rank} winner: User ${userIdString}, Ticket ${selectedTicket.ticketNumber}, Weight ${selectedTicket.weight || 1.0}`);
         }
 
         log.info('Selected winners:', winners.map(w => ({

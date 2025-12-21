@@ -51,6 +51,7 @@ interface IConfig {
         notificationService: string;
         productService: string;
         apiGateway: string;
+        settingsService: string;
     };
     logging: {
         level: string;
@@ -58,6 +59,15 @@ interface IConfig {
     };
     tombolaTicketPrice: number;
     selfBaseUrl: string;
+    // Impact Challenge specific config
+    impactChallenge: {
+        maxTicketsPerUserPerMonth: number;
+        votePrice: number;
+        maxEntrepreneursPerChallenge: number;
+        videoMaxDurationSeconds: number;
+        lotteryPoolAccountId: string;
+        sbcCommissionAccountId: string;
+    };
 }
 
 // Configuration object
@@ -96,7 +106,8 @@ const config: IConfig = {
         paymentService: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3003/api',
         notificationService: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3002/api',
         productService: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3004/api',
-        apiGateway: process.env.API_GATEWAY_URL || 'http://localhost:3000/api'
+        apiGateway: process.env.API_GATEWAY_URL || 'http://localhost:3000/api',
+        settingsService: process.env.SETTINGS_SERVICE_URL || 'http://localhost:3007/api',
     },
 
     logging: {
@@ -106,6 +117,16 @@ const config: IConfig = {
 
     tombolaTicketPrice: parseInt(process.env.TOMBOLA_TICKET_PRICE || '200', 10),
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3006',
+
+    // Impact Challenge specific config
+    impactChallenge: {
+        maxTicketsPerUserPerMonth: parseInt(process.env.MAX_TICKETS_PER_USER_PER_MONTH || '25', 10),
+        votePrice: parseInt(process.env.CHALLENGE_VOTE_PRICE || '200', 10),
+        maxEntrepreneursPerChallenge: parseInt(process.env.MAX_ENTREPRENEURS_PER_CHALLENGE || '3', 10),
+        videoMaxDurationSeconds: parseInt(process.env.VIDEO_MAX_DURATION_SECONDS || '90', 10),
+        lotteryPoolAccountId: process.env.LOTTERY_POOL_ACCOUNT_ID || '',
+        sbcCommissionAccountId: process.env.SBC_COMMISSION_ACCOUNT_ID || '',
+    },
 };
 
 // Validation function

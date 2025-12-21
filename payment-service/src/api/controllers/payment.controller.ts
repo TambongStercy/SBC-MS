@@ -1,7 +1,7 @@
 import paymentService from '../../services/payment.service';
 import { Request, Response, NextFunction } from 'express';
 import { IPaymentIntent, PaymentStatus } from '../../database/interfaces/IPaymentIntent';
-import { Currency } from '../../database/models/transaction.model';
+import { Currency, TransactionType } from '../../database/models/transaction.model';
 import { CRYPTO_SUBSCRIPTION_PRICING } from '../../config/crypto-pricing';
 import logger from '../../utils/logger';
 import config from '../../config';
@@ -1655,6 +1655,78 @@ export class PaymentController {
 
         } catch (error: any) {
             log.error('Erreur lors de la récupération de l\'intention de paiement:', error);
+            next(error);
+        }
+    };
+
+    /**
+     * Record an activation balance transaction
+     * Used for: transfer-in (main → activation), transfer-out (to another user), sponsor activation
+     * @route POST /api/internal/activation-transaction
+     * @access Internal Service Request
+     */
+    public recordActivationTransaction = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { userId, type, amount, description, metadata, recipientId } = req.body;
+
+        log.info(`[PaymentController] Recording activation transaction for user ${userId}: ${type}, amount: ${amount}`);
+
+        try {
+            // Validate required fields
+            if (!userId || !type || amount === undefined || !description) {
+                const missingFields = [];
+                if (!userId) missingFields.push('userId');
+                if (!type) missingFields.push('type');
+                if (amount === undefined) missingFields.push('amount');
+                if (!description) missingFields.push('description');
+
+                log.error('[PaymentController] Missing required fields for activation transaction:', missingFields);
+                return res.status(400).json({
+                    success: false,
+                    message: `Missing required fields: ${missingFields.join(', ')}`
+                });
+            }
+
+            // Validate transaction type
+            const validTypes = ['activation_transfer_in', 'activation_transfer_out', 'sponsor_activation'];
+            if (!validTypes.includes(type)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid transaction type. Valid types: ${validTypes.join(', ')}`
+                });
+            }
+
+            // Validate amount is a number
+            if (typeof amount !== 'number' || isNaN(amount)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Amount must be a valid number'
+                });
+            }
+
+            const transaction = await paymentService.recordActivationTransaction(
+                userId,
+                type as TransactionType,
+                amount,
+                description,
+                metadata || {},
+                recipientId,
+                req.ip
+            );
+
+            log.info(`[PaymentController] Activation transaction recorded successfully: ${transaction.transactionId}`);
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    transactionId: transaction.transactionId,
+                    type: transaction.type,
+                    amount: transaction.amount,
+                    status: transaction.status
+                },
+                message: 'Activation transaction recorded successfully'
+            });
+        } catch (error: any) {
+            log.error(`[PaymentController] Error recording activation transaction for user ${userId}:`, error);
             next(error);
         }
     };

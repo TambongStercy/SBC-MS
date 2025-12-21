@@ -13,6 +13,7 @@ export interface ContactSearchFilters {
     city?: string; // Added city filter
     sex?: UserSex;
     name?: string; // Added name filter
+    search?: string; // Unified search across name, email, and phoneNumber
     minAge?: number;
     maxAge?: number;
     language?: string; // Added language filter (assuming single string for now)

@@ -1,0 +1,2113 @@
+{
+  "generatedAt": "2025-12-09T10:57:49.237Z",
+  "summary": {
+    "usersAnalyzed": 8639,
+    "usersWithExcess": 1019,
+    "usersOk": 7620,
+    "currentTotalBalance": 5426469.427191416,
+    "expectedTotalBalance": 4984429.617191408,
+    "totalExcess": 1189570.4899999995
+  },
+  "usersWithExcess": [
+    {
+      "userId": "65d204c9980d0e50b1efbb93",
+      "name": "le futuriste",
+      "phone": "237693655135",
+      "currentBalance": 348751,
+      "expectedBalance": 308001,
+      "excess": 40750,
+      "expectedEarnings": 732250,
+      "totalWithdrawn": 424249,
+      "referrals": {
+        "L1": 636,
+        "L2": 137,
+        "L3": 111
+      },
+      "totalReferrals": {
+        "L1": 8759,
+        "L2": 951,
+        "L3": 558
+      },
+      "lastUpdated": "2025-12-05T20:00:30.876Z"
+    },
+    {
+      "userId": "664e137a91d317d3fcfd60c9",
+      "name": "price epse lawrence ngalah barbara love",
+      "phone": "237677551640",
+      "currentBalance": 28000,
+      "expectedBalance": 0,
+      "excess": 28000,
+      "expectedEarnings": 28000,
+      "totalWithdrawn": 191900,
+      "referrals": {
+        "L1": 20,
+        "L2": 14,
+        "L3": 4
+      },
+      "totalReferrals": {
+        "L1": 25,
+        "L2": 19,
+        "L3": 9
+      },
+      "lastUpdated": "2025-08-14T23:30:36.585Z"
+    },
+    {
+      "userId": "6845d3e0f1c851659f473d60",
+      "name": "Mathieu André",
+      "phone": "237683603849",
+      "currentBalance": 292375,
+      "expectedBalance": 266500,
+      "excess": 25875,
+      "expectedEarnings": 266500,
+      "totalWithdrawn": 0,
+      "referrals": {
+        "L1": 216,
+        "L2": 75,
+        "L3": 52
+      },
+      "totalReferrals": {
+        "L1": 1173,
+        "L2": 435,
+        "L3": 462
+      },
+      "lastUpdated": "2025-12-08T09:00:16.365Z"
+    },
+    {
+      "userId": "664a2b6f91d317d3fcec4c35",
+      "name": "coach marcel  menkam",
+      "phone": "237678876296",
+      "currentBalance": 18789.259999999984,
+      "expectedBalance": 0,
+      "excess": 18789.259999999984,
+      "expectedEarnings": 197000,
+      "totalWithdrawn": 635970.7400000001,
+      "referrals": {
+        "L1": 110,
+        "L2": 118,
+        "L3": 112
+      },
+      "totalReferrals": {
+        "L1": 147,
+        "L2": 199,
+        "L3": 318
+      },
+      "lastUpdated": "2025-10-24T10:03:25.833Z"
+    },
+    {
+      "userId": "65dda6d94d0a1daf9e67e57c",
+      "name": "Ance Merlin",
+      "phone": "237693143837",
+      "currentBalance": 14563,
+      "expectedBalance": 0,
+      "excess": 14563,
+      "expectedEarnings": 39000,
+      "totalWithdrawn": 85951,
+      "referrals": {
+        "L1": 31,
+        "L2": 14,
+        "L3": 4
+      },
+      "totalReferrals": {
+        "L1": 71,
+        "L2": 57,
+        "L3": 20
+      },
+      "lastUpdated": "2025-11-21T09:22:30.963Z"
+    },
+    {
+      "userId": "665a3786dad2237ef7cc4e63",
+      "name": "nr beauty",
+      "phone": "237682763106",
+      "currentBalance": 14785.75,
+      "expectedBalance": 1035.75,
+      "excess": 13750,
+      "expectedEarnings": 141000,
+      "totalWithdrawn": 139964.25,
+      "referrals": {
+        "L1": 133,
+        "L2": 15,
+        "L3": 2
+      },
+      "totalReferrals": {
+        "L1": 1071,
+        "L2": 106,
+        "L3": 9
+      },
+      "lastUpdated": "2025-12-06T17:08:50.071Z"
+    },
+    {
+      "userId": "65d0a9e95c96a8ab00a6fccb",
+      "name": "Stanislas  K",
+      "phone": "237621721403",
+      "currentBalance": 12421,
+      "expectedBalance": 0,
+      "excess": 12421,
+      "expectedEarnings": 46750,
+      "totalWithdrawn": 63397,
+      "referrals": {
+        "L1": 40,
+        "L2": 13,
+        "L3": 1
+      },
+      "totalReferrals": {
+        "L1": 139,
+        "L2": 59,
+        "L3": 9
+      },
+      "lastUpdated": "2025-12-02T19:38:15.865Z"
+    },
+    {
+      "userId": "6611671862372d1b5373daad",
+      "name": "kamdoum guy",
+      "phone": "237679721113",
+      "currentBalance": 14000,
+      "expectedBalance": 1880,
+      "excess": 12120,
+      "expectedEarnings": 14000,
+      "totalWithdrawn": 12120,
+      "referrals": {
+        "L1": 14,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 14,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6647af397801ff82b9c09d91",
+      "name": "meva'a robert",
+      "phone": "237694742683",
+      "currentBalance": 11150,
+      "expectedBalance": 0,
+      "excess": 11150,
+      "expectedEarnings": 29500,
+      "totalWithdrawn": 291890,
+      "referrals": {
+        "L1": 1,
+        "L2": 43,
+        "L3": 28
+      },
+      "totalReferrals": {
+        "L1": 3,
+        "L2": 59,
+        "L3": 43
+      },
+      "lastUpdated": "2025-10-10T19:09:29.294Z"
+    },
+    {
+      "userId": "662b62560a53c35ee08ca2c8",
+      "name": "Prince TIOMELA⚡",
+      "phone": "237653227376",
+      "currentBalance": 10580,
+      "expectedBalance": 0,
+      "excess": 10580,
+      "expectedEarnings": 14750,
+      "totalWithdrawn": 84739,
+      "referrals": {
+        "L1": 7,
+        "L2": 12,
+        "L3": 7
+      },
+      "totalReferrals": {
+        "L1": 11,
+        "L2": 33,
+        "L3": 18
+      },
+      "lastUpdated": "2025-10-28T14:33:11.997Z"
+    },
+    {
+      "userId": "679ca08ca14bb54c5e1ff54b",
+      "name": "joseph dema",
+      "phone": "237675440233",
+      "currentBalance": 10520,
+      "expectedBalance": 0,
+      "excess": 10520,
+      "expectedEarnings": 131500,
+      "totalWithdrawn": 136035,
+      "referrals": {
+        "L1": 84,
+        "L2": 73,
+        "L3": 44
+      },
+      "totalReferrals": {
+        "L1": 421,
+        "L2": 361,
+        "L3": 140
+      },
+      "lastUpdated": "2025-12-07T17:44:36.471Z"
+    },
+    {
+      "userId": "65d4e9018ce5ffe48a44b663",
+      "name": "Am Universe",
+      "phone": "237690843668",
+      "currentBalance": 10275,
+      "expectedBalance": 0,
+      "excess": 10275,
+      "expectedEarnings": 26750,
+      "totalWithdrawn": 59438.5,
+      "referrals": {
+        "L1": 14,
+        "L2": 25,
+        "L3": 1
+      },
+      "totalReferrals": {
+        "L1": 48,
+        "L2": 62,
+        "L3": 9
+      },
+      "lastUpdated": "2025-12-02T14:32:10.279Z"
+    },
+    {
+      "userId": "65d09a3b5c96a8ab00a6e5bc",
+      "name": "fofou divane",
+      "phone": "237676421267",
+      "currentBalance": 9215.55,
+      "expectedBalance": 0,
+      "excess": 9215.55,
+      "expectedEarnings": 78750,
+      "totalWithdrawn": 99730.79999999997,
+      "referrals": {
+        "L1": 26,
+        "L2": 78,
+        "L3": 55
+      },
+      "totalReferrals": {
+        "L1": 127,
+        "L2": 818,
+        "L3": 250
+      },
+      "lastUpdated": "2025-12-06T15:19:36.173Z"
+    },
+    {
+      "userId": "65d1101557cc932a40021d11",
+      "name": "songbou hidervice",
+      "phone": "237651077887",
+      "currentBalance": 8070.5,
+      "expectedBalance": 0,
+      "excess": 8070.5,
+      "expectedEarnings": 18500,
+      "totalWithdrawn": 28027.5,
+      "referrals": {
+        "L1": 1,
+        "L2": 22,
+        "L3": 26
+      },
+      "totalReferrals": {
+        "L1": 9,
+        "L2": 61,
+        "L3": 107
+      },
+      "lastUpdated": "2025-10-31T21:24:40.702Z"
+    },
+    {
+      "userId": "66731fd94fad2a2bf91f8241",
+      "name": "eric fogang",
+      "phone": "237690779942",
+      "currentBalance": 7400,
+      "expectedBalance": 0,
+      "excess": 7400,
+      "expectedEarnings": 17500,
+      "totalWithdrawn": 46460,
+      "referrals": {
+        "L1": 11,
+        "L2": 12,
+        "L3": 2
+      },
+      "totalReferrals": {
+        "L1": 36,
+        "L2": 23,
+        "L3": 8
+      },
+      "lastUpdated": "2025-10-29T13:14:07.378Z"
+    },
+    {
+      "userId": "66859b333bf5cda4b6584a5b",
+      "name": "betsa ngono marie josée",
+      "phone": "237657014932",
+      "currentBalance": 6602,
+      "expectedBalance": 0,
+      "excess": 6602,
+      "expectedEarnings": 16500,
+      "totalWithdrawn": 104080.5,
+      "referrals": {
+        "L1": 13,
+        "L2": 5,
+        "L3": 4
+      },
+      "totalReferrals": {
+        "L1": 18,
+        "L2": 8,
+        "L3": 18
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "66886cdc840a5553b8a1b8cc",
+      "name": "global builders",
+      "phone": "237697265745",
+      "currentBalance": 6205.1,
+      "expectedBalance": 0,
+      "excess": 6205.1,
+      "expectedEarnings": 74000,
+      "totalWithdrawn": 537143.25,
+      "referrals": {
+        "L1": 55,
+        "L2": 27,
+        "L3": 22
+      },
+      "totalReferrals": {
+        "L1": 71,
+        "L2": 79,
+        "L3": 82
+      },
+      "lastUpdated": "2025-09-13T12:30:03.106Z"
+    },
+    {
+      "userId": "664f7a1991d317d3fc03024e",
+      "name": "stephanie etoyoh",
+      "phone": "237676542660",
+      "currentBalance": 6000,
+      "expectedBalance": 0,
+      "excess": 6000,
+      "expectedEarnings": 6000,
+      "totalWithdrawn": 10100,
+      "referrals": {
+        "L1": 6,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 7,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6692fdbf217db3159c73dca3",
+      "name": "tchanko tchamandeu anastasie blandine",
+      "phone": "237696471837",
+      "currentBalance": 6000,
+      "expectedBalance": 0,
+      "excess": 6000,
+      "expectedEarnings": 6000,
+      "totalWithdrawn": 24240,
+      "referrals": {
+        "L1": 5,
+        "L2": 2,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 8,
+        "L2": 3,
+        "L3": 1
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "67ab4ac1a6bc5de2503d3c43",
+      "name": "théodore hounsinou",
+      "phone": "22958541528",
+      "currentBalance": 7924,
+      "expectedBalance": 1924,
+      "excess": 6000,
+      "expectedEarnings": 50000,
+      "totalWithdrawn": 48076,
+      "referrals": {
+        "L1": 8,
+        "L2": 68,
+        "L3": 32
+      },
+      "totalReferrals": {
+        "L1": 17,
+        "L2": 300,
+        "L3": 132
+      },
+      "lastUpdated": "2025-11-19T09:45:59.615Z"
+    },
+    {
+      "userId": "67c9625f2ad4502fabc393ed",
+      "name": "kas dubuzz",
+      "phone": "22990500388",
+      "currentBalance": 6000,
+      "expectedBalance": 0,
+      "excess": 6000,
+      "expectedEarnings": 0,
+      "totalWithdrawn": 5959,
+      "referrals": {
+        "L1": 0,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 0,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-10-01T21:18:25.282Z"
+    },
+    {
+      "userId": "6699362bdb8c900ca2fe7f3e",
+      "name": "kagonbé guinbé innocent",
+      "phone": "23566584726",
+      "currentBalance": 5743,
+      "expectedBalance": 0,
+      "excess": 5743,
+      "expectedEarnings": 11500,
+      "totalWithdrawn": 115039,
+      "referrals": {
+        "L1": 8,
+        "L2": 5,
+        "L3": 4
+      },
+      "totalReferrals": {
+        "L1": 11,
+        "L2": 8,
+        "L3": 11
+      },
+      "lastUpdated": "2025-09-11T17:08:53.843Z"
+    },
+    {
+      "userId": "65d0c33c5c96a8ab00a71c39",
+      "name": "Donald",
+      "phone": "237675304088",
+      "currentBalance": 5710,
+      "expectedBalance": 0,
+      "excess": 5710,
+      "expectedEarnings": 9500,
+      "totalWithdrawn": 12827,
+      "referrals": {
+        "L1": 3,
+        "L2": 2,
+        "L3": 22
+      },
+      "totalReferrals": {
+        "L1": 7,
+        "L2": 15,
+        "L3": 62
+      },
+      "lastUpdated": "2025-07-07T11:03:31.882Z"
+    },
+    {
+      "userId": "67b40c686babeb38764f538d",
+      "name": "tagbor",
+      "phone": "22966364398",
+      "currentBalance": 5682,
+      "expectedBalance": 0,
+      "excess": 5682,
+      "expectedEarnings": 982750,
+      "totalWithdrawn": 984568,
+      "referrals": {
+        "L1": 391,
+        "L2": 743,
+        "L3": 881
+      },
+      "totalReferrals": {
+        "L1": 924,
+        "L2": 2775,
+        "L3": 3683
+      },
+      "lastUpdated": "2025-10-15T19:33:04.409Z"
+    },
+    {
+      "userId": "66450d8d327f913f513c8262",
+      "name": "ardine konda",
+      "phone": "237697700739",
+      "currentBalance": 5592,
+      "expectedBalance": 0,
+      "excess": 5592,
+      "expectedEarnings": 88500,
+      "totalWithdrawn": 134783,
+      "referrals": {
+        "L1": 13,
+        "L2": 80,
+        "L3": 142
+      },
+      "totalReferrals": {
+        "L1": 23,
+        "L2": 151,
+        "L3": 363
+      },
+      "lastUpdated": "2025-12-01T12:19:11.493Z"
+    },
+    {
+      "userId": "67af56936e8882d7c2842ee2",
+      "name": "Mr DOPÉ",
+      "phone": "2290197794503",
+      "currentBalance": 5000,
+      "expectedBalance": 0,
+      "excess": 5000,
+      "expectedEarnings": 280750,
+      "totalWithdrawn": 830591,
+      "referrals": {
+        "L1": 7,
+        "L2": 217,
+        "L3": 661
+      },
+      "totalReferrals": {
+        "L1": 34,
+        "L2": 564,
+        "L3": 1875
+      },
+      "lastUpdated": "2025-12-03T09:36:04.547Z"
+    },
+    {
+      "userId": "662059112a6cb747a572862f",
+      "name": "joël dema",
+      "phone": "237693042909",
+      "currentBalance": 4912.5,
+      "expectedBalance": 0,
+      "excess": 4912.5,
+      "expectedEarnings": 85500,
+      "totalWithdrawn": 97567.5,
+      "referrals": {
+        "L1": 20,
+        "L2": 94,
+        "L3": 74
+      },
+      "totalReferrals": {
+        "L1": 74,
+        "L2": 477,
+        "L3": 368
+      },
+      "lastUpdated": "2025-12-08T09:21:55.772Z"
+    },
+    {
+      "userId": "65da4fbfa1212e04d4bd7dfa",
+      "name": "Ton Tacticien",
+      "phone": "237692735693",
+      "currentBalance": 4912,
+      "expectedBalance": 0,
+      "excess": 4912,
+      "expectedEarnings": 47500,
+      "totalWithdrawn": 77467,
+      "referrals": {
+        "L1": 27,
+        "L2": 26,
+        "L3": 30
+      },
+      "totalReferrals": {
+        "L1": 47,
+        "L2": 56,
+        "L3": 64
+      },
+      "lastUpdated": "2025-11-10T12:51:16.420Z"
+    },
+    {
+      "userId": "6645c6dd327f913f51414322",
+      "name": "romaric",
+      "phone": "237697659368",
+      "currentBalance": 4500,
+      "expectedBalance": 0,
+      "excess": 4500,
+      "expectedEarnings": 137250,
+      "totalWithdrawn": 880518,
+      "referrals": {
+        "L1": 64,
+        "L2": 114,
+        "L3": 65
+      },
+      "totalReferrals": {
+        "L1": 111,
+        "L2": 316,
+        "L3": 197
+      },
+      "lastUpdated": "2025-11-05T12:35:00.458Z"
+    },
+    {
+      "userId": "663a412c746c84c20da9b27a",
+      "name": "lora rich",
+      "phone": "237652259406",
+      "currentBalance": 4265,
+      "expectedBalance": 0,
+      "excess": 4265,
+      "expectedEarnings": 25500,
+      "totalWithdrawn": 87314.5,
+      "referrals": {
+        "L1": 17,
+        "L2": 11,
+        "L3": 12
+      },
+      "totalReferrals": {
+        "L1": 22,
+        "L2": 15,
+        "L3": 22
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6788db29f4d9821c724e4a5e",
+      "name": "akpo rosine",
+      "phone": "22994604081",
+      "currentBalance": 4111.7,
+      "expectedBalance": 0,
+      "excess": 4111.7,
+      "expectedEarnings": 113000,
+      "totalWithdrawn": 121281.3,
+      "referrals": {
+        "L1": 26,
+        "L2": 91,
+        "L3": 166
+      },
+      "totalReferrals": {
+        "L1": 43,
+        "L2": 222,
+        "L3": 428
+      },
+      "lastUpdated": "2025-11-02T04:04:03.591Z"
+    },
+    {
+      "userId": "660ef17562372d1b535cdbf0",
+      "name": "mr serge",
+      "phone": "237698129265",
+      "currentBalance": 4071,
+      "expectedBalance": 0,
+      "excess": 4071,
+      "expectedEarnings": 4500,
+      "totalWithdrawn": 13029,
+      "referrals": {
+        "L1": 3,
+        "L2": 3,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 12,
+        "L2": 15,
+        "L3": 8
+      },
+      "lastUpdated": "2025-11-02T13:04:04.110Z"
+    },
+    {
+      "userId": "6611614b62372d1b5373a1ff",
+      "name": "wakam jean michel",
+      "phone": "237693812344",
+      "currentBalance": 6435,
+      "expectedBalance": 2395,
+      "excess": 4040,
+      "expectedEarnings": 13000,
+      "totalWithdrawn": 10605,
+      "referrals": {
+        "L1": 13,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 14,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-29T06:46:11.165Z"
+    },
+    {
+      "userId": "66719f96266b15d3b65de361",
+      "name": "mohamed diallo",
+      "phone": "221781261276",
+      "currentBalance": 4500,
+      "expectedBalance": 460,
+      "excess": 4040,
+      "expectedEarnings": 4500,
+      "totalWithdrawn": 4040,
+      "referrals": {
+        "L1": 4,
+        "L2": 1,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 13,
+        "L2": 2,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "65e8b0e11e09ac01f4cc93ca",
+      "name": "chef brainze",
+      "phone": "237680541809",
+      "currentBalance": 4024.5,
+      "expectedBalance": 0,
+      "excess": 4024.5,
+      "expectedEarnings": 21750,
+      "totalWithdrawn": 34087.5,
+      "referrals": {
+        "L1": 14,
+        "L2": 12,
+        "L3": 7
+      },
+      "totalReferrals": {
+        "L1": 16,
+        "L2": 18,
+        "L3": 15
+      },
+      "lastUpdated": "2025-06-02T18:50:12.311Z"
+    },
+    {
+      "userId": "65f88f95910715aa4fef2785",
+      "name": "AROL zydane",
+      "phone": "237682295374",
+      "currentBalance": 4016.75,
+      "expectedBalance": 0,
+      "excess": 4016.75,
+      "expectedEarnings": 27000,
+      "totalWithdrawn": 42765.75,
+      "referrals": {
+        "L1": 1,
+        "L2": 31,
+        "L3": 42
+      },
+      "totalReferrals": {
+        "L1": 3,
+        "L2": 88,
+        "L3": 280
+      },
+      "lastUpdated": "2025-12-07T09:44:06.870Z"
+    },
+    {
+      "userId": "67bb20a425b2e2ba5a628e7d",
+      "name": "kevin chris atchof",
+      "phone": "237671091332",
+      "currentBalance": 4011,
+      "expectedBalance": 0,
+      "excess": 4011,
+      "expectedEarnings": 21500,
+      "totalWithdrawn": 24989,
+      "referrals": {
+        "L1": 21,
+        "L2": 1,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 83,
+        "L2": 5,
+        "L3": 0
+      },
+      "lastUpdated": "2025-08-24T17:44:03.616Z"
+    },
+    {
+      "userId": "66caf2994f56550ca900b40c",
+      "name": "tatiana ndono",
+      "phone": "237697506630",
+      "currentBalance": 4000,
+      "expectedBalance": 0,
+      "excess": 4000,
+      "expectedEarnings": 3000,
+      "totalWithdrawn": 3030,
+      "referrals": {
+        "L1": 3,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 3,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "67a132202647d182930cc3df",
+      "name": "andjoss tous gagnants",
+      "phone": "22996877701",
+      "currentBalance": 3919,
+      "expectedBalance": 0,
+      "excess": 3919,
+      "expectedEarnings": 52750,
+      "totalWithdrawn": 53581,
+      "referrals": {
+        "L1": 21,
+        "L2": 28,
+        "L3": 71
+      },
+      "totalReferrals": {
+        "L1": 38,
+        "L2": 59,
+        "L3": 313
+      },
+      "lastUpdated": "2025-11-15T20:08:50.802Z"
+    },
+    {
+      "userId": "6606a9ffc3fc57b813ee0dfe",
+      "name": "cellocoin",
+      "phone": "237621047745",
+      "currentBalance": 3872,
+      "expectedBalance": 0,
+      "excess": 3872,
+      "expectedEarnings": 11000,
+      "totalWithdrawn": 12423,
+      "referrals": {
+        "L1": 8,
+        "L2": 5,
+        "L3": 2
+      },
+      "totalReferrals": {
+        "L1": 13,
+        "L2": 13,
+        "L3": 2
+      },
+      "lastUpdated": "2025-11-25T13:57:17.220Z"
+    },
+    {
+      "userId": "6679366a7731445b46b39536",
+      "name": "duchesse",
+      "phone": "237678929105",
+      "currentBalance": 3842.5,
+      "expectedBalance": 0,
+      "excess": 3842.5,
+      "expectedEarnings": 57500,
+      "totalWithdrawn": 331999.5,
+      "referrals": {
+        "L1": 43,
+        "L2": 28,
+        "L3": 2
+      },
+      "totalReferrals": {
+        "L1": 59,
+        "L2": 43,
+        "L3": 9
+      },
+      "lastUpdated": "2025-11-24T16:49:49.213Z"
+    },
+    {
+      "userId": "65dfa0e85cc9084808417e8d",
+      "name": "flash",
+      "phone": "237678358268",
+      "currentBalance": 3757,
+      "expectedBalance": 0,
+      "excess": 3757,
+      "expectedEarnings": 23250,
+      "totalWithdrawn": 180133.5,
+      "referrals": {
+        "L1": 16,
+        "L2": 13,
+        "L3": 3
+      },
+      "totalReferrals": {
+        "L1": 45,
+        "L2": 26,
+        "L3": 14
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6788cd31cac53e1b5455a245",
+      "name": "sodjinou gilles",
+      "phone": "2290190191913",
+      "currentBalance": 9778,
+      "expectedBalance": 6278,
+      "excess": 3500,
+      "expectedEarnings": 38750,
+      "totalWithdrawn": 32472,
+      "referrals": {
+        "L1": 3,
+        "L2": 26,
+        "L3": 91
+      },
+      "totalReferrals": {
+        "L1": 7,
+        "L2": 43,
+        "L3": 222
+      },
+      "lastUpdated": "2025-10-31T17:53:48.856Z"
+    },
+    {
+      "userId": "67910e962b064a48b0464535",
+      "name": "azonhoumon raphaël",
+      "phone": "22967452148",
+      "currentBalance": 11377,
+      "expectedBalance": 7877,
+      "excess": 3500,
+      "expectedEarnings": 65750,
+      "totalWithdrawn": 57873,
+      "referrals": {
+        "L1": 24,
+        "L2": 47,
+        "L3": 73
+      },
+      "totalReferrals": {
+        "L1": 60,
+        "L2": 122,
+        "L3": 401
+      },
+      "lastUpdated": "2025-11-07T20:22:14.753Z"
+    },
+    {
+      "userId": "663bbb66746c84c20db7d543",
+      "name": "florines vanie",
+      "phone": "237691307138",
+      "currentBalance": 3470,
+      "expectedBalance": 0,
+      "excess": 3470,
+      "expectedEarnings": 5500,
+      "totalWithdrawn": 17675,
+      "referrals": {
+        "L1": 3,
+        "L2": 5,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 3,
+        "L2": 5,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6794c44acbd55adcd5435653",
+      "name": "zime bagou camille",
+      "phone": "22966721045",
+      "currentBalance": 10180,
+      "expectedBalance": 6711,
+      "excess": 3469,
+      "expectedEarnings": 28250,
+      "totalWithdrawn": 21539,
+      "referrals": {
+        "L1": 26,
+        "L2": 4,
+        "L3": 1
+      },
+      "totalReferrals": {
+        "L1": 482,
+        "L2": 42,
+        "L3": 1
+      },
+      "lastUpdated": "2025-11-03T16:44:44.805Z"
+    },
+    {
+      "userId": "666250fa1b27cd21c6631d0e",
+      "name": "fopa marvel",
+      "phone": "237691637202",
+      "currentBalance": 3425,
+      "expectedBalance": 0,
+      "excess": 3425,
+      "expectedEarnings": 88500,
+      "totalWithdrawn": 152555,
+      "referrals": {
+        "L1": 68,
+        "L2": 37,
+        "L3": 8
+      },
+      "totalReferrals": {
+        "L1": 161,
+        "L2": 114,
+        "L3": 37
+      },
+      "lastUpdated": "2025-11-12T22:44:50.764Z"
+    },
+    {
+      "userId": "667e7e1cdaf7ee59cca9ecd9",
+      "name": "zoumi nafira",
+      "phone": "237674201498",
+      "currentBalance": 3354.5,
+      "expectedBalance": 0,
+      "excess": 3354.5,
+      "expectedEarnings": 11250,
+      "totalWithdrawn": 49338.5,
+      "referrals": {
+        "L1": 2,
+        "L2": 16,
+        "L3": 5
+      },
+      "totalReferrals": {
+        "L1": 2,
+        "L2": 67,
+        "L3": 5
+      },
+      "lastUpdated": "2025-07-07T11:58:31.264Z"
+    },
+    {
+      "userId": "66601463c945eeaca74af497",
+      "name": "cyril malahkou",
+      "phone": "237670619942",
+      "currentBalance": 3268,
+      "expectedBalance": 0,
+      "excess": 3268,
+      "expectedEarnings": 6500,
+      "totalWithdrawn": 7474,
+      "referrals": {
+        "L1": 4,
+        "L2": 4,
+        "L3": 2
+      },
+      "totalReferrals": {
+        "L1": 7,
+        "L2": 59,
+        "L3": 17
+      },
+      "lastUpdated": "2025-06-19T19:46:07.830Z"
+    },
+    {
+      "userId": "66103b7562372d1b53632fe2",
+      "name": "free surf community 🇨🇲",
+      "phone": "237676402022",
+      "currentBalance": 3143.3500000000004,
+      "expectedBalance": 0,
+      "excess": 3143.3500000000004,
+      "expectedEarnings": 22000,
+      "totalWithdrawn": 22992.65,
+      "referrals": {
+        "L1": 5,
+        "L2": 23,
+        "L3": 22
+      },
+      "totalReferrals": {
+        "L1": 82,
+        "L2": 122,
+        "L3": 144
+      },
+      "lastUpdated": "2025-10-28T14:50:15.487Z"
+    },
+    {
+      "userId": "6851808b211e5f1a7b0cc8d7",
+      "name": "Lomadon agbessi",
+      "phone": "22879428641",
+      "currentBalance": 4501.989999999998,
+      "expectedBalance": 1376.9899999999907,
+      "excess": 3125.0000000000073,
+      "expectedEarnings": 186000,
+      "totalWithdrawn": 184623.01,
+      "referrals": {
+        "L1": 31,
+        "L2": 273,
+        "L3": 74
+      },
+      "totalReferrals": {
+        "L1": 73,
+        "L2": 1558,
+        "L3": 617
+      },
+      "lastUpdated": "2025-12-03T00:37:17.357Z"
+    },
+    {
+      "userId": "67adf1759757adf55eacbc12",
+      "name": "mira",
+      "phone": "22958015603",
+      "currentBalance": 3117,
+      "expectedBalance": 0,
+      "excess": 3117,
+      "expectedEarnings": 562000,
+      "totalWithdrawn": 563883,
+      "referrals": {
+        "L1": 71,
+        "L2": 433,
+        "L3": 1098
+      },
+      "totalReferrals": {
+        "L1": 156,
+        "L2": 1228,
+        "L3": 3358
+      },
+      "lastUpdated": "2025-12-01T23:30:16.242Z"
+    },
+    {
+      "userId": "667bb424ec7bb602e1b60893",
+      "name": "billions lady",
+      "phone": "237698868887",
+      "currentBalance": 3081,
+      "expectedBalance": 0,
+      "excess": 3081,
+      "expectedEarnings": 5000,
+      "totalWithdrawn": 27068,
+      "referrals": {
+        "L1": 5,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 9,
+        "L2": 4,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "66210bee2a6cb747a574fdbb",
+      "name": "madjuifouo brigitte",
+      "phone": "237672142866",
+      "currentBalance": 3000,
+      "expectedBalance": 0,
+      "excess": 3000,
+      "expectedEarnings": 3000,
+      "totalWithdrawn": 3030,
+      "referrals": {
+        "L1": 3,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 4,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6662e5f21b27cd21c66546ed",
+      "name": "tedongmo daniel lerenard",
+      "phone": "237677209118",
+      "currentBalance": 5840,
+      "expectedBalance": 2840,
+      "excess": 3000,
+      "expectedEarnings": 19000,
+      "totalWithdrawn": 16160,
+      "referrals": {
+        "L1": 16,
+        "L2": 5,
+        "L3": 2
+      },
+      "totalReferrals": {
+        "L1": 29,
+        "L2": 15,
+        "L3": 6
+      },
+      "lastUpdated": "2025-06-18T09:26:00.665Z"
+    },
+    {
+      "userId": "667e6e9fdaf7ee59cca93e05",
+      "name": "kamgue simo",
+      "phone": "237695316353",
+      "currentBalance": 3000,
+      "expectedBalance": 0,
+      "excess": 3000,
+      "expectedEarnings": 3000,
+      "totalWithdrawn": 11110,
+      "referrals": {
+        "L1": 3,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 5,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "66942a3cde37fb81f14d056c",
+      "name": "keutchapa  marie-ange",
+      "phone": "237699667960",
+      "currentBalance": 3000,
+      "expectedBalance": 0,
+      "excess": 3000,
+      "expectedEarnings": 3000,
+      "totalWithdrawn": 29542.5,
+      "referrals": {
+        "L1": 3,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 6,
+        "L2": 1,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "67bde178f08b10f4d6cdbd28",
+      "name": "sore fatima",
+      "phone": "22660157772",
+      "currentBalance": 3000,
+      "expectedBalance": 0,
+      "excess": 3000,
+      "expectedEarnings": 0,
+      "totalWithdrawn": 0,
+      "referrals": {
+        "L1": 0,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 0,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "687293b142ed41c66962f9c5",
+      "name": "Sawadogo Sommette Simon",
+      "phone": "22673877113",
+      "currentBalance": 6000,
+      "expectedBalance": 3000,
+      "excess": 3000,
+      "expectedEarnings": 3000,
+      "totalWithdrawn": 0,
+      "referrals": {
+        "L1": 3,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 7,
+        "L2": 1,
+        "L3": 0
+      },
+      "lastUpdated": "2025-10-23T15:05:17.096Z"
+    },
+    {
+      "userId": "68b30b36cb279eee6b0ba5bc",
+      "name": "Ben David",
+      "phone": "22602014230",
+      "currentBalance": 5000,
+      "expectedBalance": 2000,
+      "excess": 3000,
+      "expectedEarnings": 2000,
+      "totalWithdrawn": 0,
+      "referrals": {
+        "L1": 2,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 4,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-12-06T13:58:42.873Z"
+    },
+    {
+      "userId": "6776e5f2f9d7991a215d749f",
+      "name": "kemguim pierre petit",
+      "phone": "237658608576",
+      "currentBalance": 2969.5,
+      "expectedBalance": 0,
+      "excess": 2969.5,
+      "expectedEarnings": 19500,
+      "totalWithdrawn": 23540.5,
+      "referrals": {
+        "L1": 13,
+        "L2": 11,
+        "L3": 4
+      },
+      "totalReferrals": {
+        "L1": 23,
+        "L2": 36,
+        "L3": 8
+      },
+      "lastUpdated": "2025-11-24T19:02:28.650Z"
+    },
+    {
+      "userId": "663e4e7c1c91e9973f2400f1",
+      "name": "chanel tebou",
+      "phone": "237696913426",
+      "currentBalance": 2874.5,
+      "expectedBalance": 0,
+      "excess": 2874.5,
+      "expectedEarnings": 10500,
+      "totalWithdrawn": 75043,
+      "referrals": {
+        "L1": 2,
+        "L2": 7,
+        "L3": 20
+      },
+      "totalReferrals": {
+        "L1": 2,
+        "L2": 8,
+        "L3": 30
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "65d2f0bf54d78f82dac61906",
+      "name": "apporteur de solution",
+      "phone": "237698823668",
+      "currentBalance": 2862.5,
+      "expectedBalance": 0,
+      "excess": 2862.5,
+      "expectedEarnings": 15750,
+      "totalWithdrawn": 23987.5,
+      "referrals": {
+        "L1": 9,
+        "L2": 12,
+        "L3": 3
+      },
+      "totalReferrals": {
+        "L1": 17,
+        "L2": 61,
+        "L3": 7
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "67af5a2e6e8882d7c284366d",
+      "name": "éric le chinois",
+      "phone": "22951472033",
+      "currentBalance": 2783,
+      "expectedBalance": 0,
+      "excess": 2783,
+      "expectedEarnings": 727000,
+      "totalWithdrawn": 733967,
+      "referrals": {
+        "L1": 180,
+        "L2": 625,
+        "L3": 938
+      },
+      "totalReferrals": {
+        "L1": 464,
+        "L2": 1743,
+        "L3": 3489
+      },
+      "lastUpdated": "2025-09-06T22:54:01.360Z"
+    },
+    {
+      "userId": "67b5d0325c161c9166fe5ab3",
+      "name": "el chocozi",
+      "phone": "22997827265",
+      "currentBalance": 2760,
+      "expectedBalance": 0,
+      "excess": 2760,
+      "expectedEarnings": 715750,
+      "totalWithdrawn": 717740,
+      "referrals": {
+        "L1": 250,
+        "L2": 628,
+        "L3": 607
+      },
+      "totalReferrals": {
+        "L1": 1039,
+        "L2": 2607,
+        "L3": 2989
+      },
+      "lastUpdated": "2025-11-25T18:16:06.078Z"
+    },
+    {
+      "userId": "6684527e82d0e291f38e5a9d",
+      "name": "junior e-commerce",
+      "phone": "237698687358",
+      "currentBalance": 2750,
+      "expectedBalance": 0,
+      "excess": 2750,
+      "expectedEarnings": 2750,
+      "totalWithdrawn": 8585,
+      "referrals": {
+        "L1": 2,
+        "L2": 1,
+        "L3": 1
+      },
+      "totalReferrals": {
+        "L1": 6,
+        "L2": 2,
+        "L3": 3
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "661e1f641134c41da246b069",
+      "name": "nelly wado",
+      "phone": "237696459793",
+      "currentBalance": 2662,
+      "expectedBalance": 0,
+      "excess": 2662,
+      "expectedEarnings": 6500,
+      "totalWithdrawn": 7272,
+      "referrals": {
+        "L1": 5,
+        "L2": 3,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 7,
+        "L2": 6,
+        "L3": 1
+      },
+      "lastUpdated": "2025-11-05T11:18:54.521Z"
+    },
+    {
+      "userId": "65d7a1a76b49e00013ab93fe",
+      "name": "welky nguemffo",
+      "phone": "237679099230",
+      "currentBalance": 4338.199999999997,
+      "expectedBalance": 1688.199999999997,
+      "excess": 2650,
+      "expectedEarnings": 79750,
+      "totalWithdrawn": 78061.8,
+      "referrals": {
+        "L1": 33,
+        "L2": 71,
+        "L3": 45
+      },
+      "totalReferrals": {
+        "L1": 42,
+        "L2": 227,
+        "L3": 149
+      },
+      "lastUpdated": "2025-10-24T07:42:33.688Z"
+    },
+    {
+      "userId": "668dbb6a4b2728608dc4d86c",
+      "name": "sy armand",
+      "phone": "22658000325",
+      "currentBalance": 3000,
+      "expectedBalance": 374,
+      "excess": 2626,
+      "expectedEarnings": 3000,
+      "totalWithdrawn": 2626,
+      "referrals": {
+        "L1": 3,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 5,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "65eb0840845eb94af1de5a59",
+      "name": "ceprodise-formations",
+      "phone": "237621604473",
+      "currentBalance": 2620,
+      "expectedBalance": 0,
+      "excess": 2620,
+      "expectedEarnings": 14250,
+      "totalWithdrawn": 15150,
+      "referrals": {
+        "L1": 8,
+        "L2": 9,
+        "L3": 7
+      },
+      "totalReferrals": {
+        "L1": 16,
+        "L2": 13,
+        "L3": 8
+      },
+      "lastUpdated": "2025-06-05T11:24:02.254Z"
+    },
+    {
+      "userId": "65eb76f8845eb94af1e1a230",
+      "name": "Yannick calvin1",
+      "phone": "237697912012",
+      "currentBalance": 2553.5,
+      "expectedBalance": 0,
+      "excess": 2553.5,
+      "expectedEarnings": 39750,
+      "totalWithdrawn": 47565.5,
+      "referrals": {
+        "L1": 22,
+        "L2": 26,
+        "L3": 19
+      },
+      "totalReferrals": {
+        "L1": 60,
+        "L2": 107,
+        "L3": 65
+      },
+      "lastUpdated": "2025-11-09T11:57:33.456Z"
+    },
+    {
+      "userId": "661af2fac83476f3fff4264f",
+      "name": "avela honoré emmanuel",
+      "phone": "237697082823",
+      "currentBalance": 2546,
+      "expectedBalance": 0,
+      "excess": 2546,
+      "expectedEarnings": 8000,
+      "totalWithdrawn": 27573,
+      "referrals": {
+        "L1": 7,
+        "L2": 2,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 8,
+        "L2": 2,
+        "L3": 1
+      },
+      "lastUpdated": "2025-07-25T08:59:57.926Z"
+    },
+    {
+      "userId": "65d08a635c96a8ab00a6d793",
+      "name": "danielle ngansop",
+      "phone": "237658631399",
+      "currentBalance": 7660,
+      "expectedBalance": 5160,
+      "excess": 2500,
+      "expectedEarnings": 39500,
+      "totalWithdrawn": 34340,
+      "referrals": {
+        "L1": 12,
+        "L2": 34,
+        "L3": 42
+      },
+      "totalReferrals": {
+        "L1": 23,
+        "L2": 71,
+        "L3": 95
+      },
+      "lastUpdated": "2025-11-11T22:54:29.545Z"
+    },
+    {
+      "userId": "65edd3c0ed10424948240882",
+      "name": "wilfried YOPA",
+      "phone": "237693451539",
+      "currentBalance": 2500,
+      "expectedBalance": 0,
+      "excess": 2500,
+      "expectedEarnings": 2500,
+      "totalWithdrawn": 3737,
+      "referrals": {
+        "L1": 2,
+        "L2": 1,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 3,
+        "L2": 1,
+        "L3": 0
+      },
+      "lastUpdated": "2025-12-05T03:57:49.574Z"
+    },
+    {
+      "userId": "660c5635da59bf5c59985ff7",
+      "name": "b.a. rachida",
+      "phone": "237698771758",
+      "currentBalance": 2500,
+      "expectedBalance": 0,
+      "excess": 2500,
+      "expectedEarnings": 2500,
+      "totalWithdrawn": 6666,
+      "referrals": {
+        "L1": 2,
+        "L2": 1,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 2,
+        "L2": 1,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "661f14f72a6cb747a56a6634",
+      "name": "marie laure",
+      "phone": "237675186741",
+      "currentBalance": 6240,
+      "expectedBalance": 3740,
+      "excess": 2500,
+      "expectedEarnings": 40000,
+      "totalWithdrawn": 36260,
+      "referrals": {
+        "L1": 6,
+        "L2": 21,
+        "L3": 94
+      },
+      "totalReferrals": {
+        "L1": 15,
+        "L2": 81,
+        "L3": 477
+      },
+      "lastUpdated": "2025-12-07T04:15:24.268Z"
+    },
+    {
+      "userId": "6647164e327f913f51472ae6",
+      "name": "eddy",
+      "phone": "237655295665",
+      "currentBalance": 2500,
+      "expectedBalance": 0,
+      "excess": 2500,
+      "expectedEarnings": 2500,
+      "totalWithdrawn": 20048.5,
+      "referrals": {
+        "L1": 1,
+        "L2": 2,
+        "L3": 2
+      },
+      "totalReferrals": {
+        "L1": 1,
+        "L2": 2,
+        "L3": 3
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "66716f64b3394bd407dc3392",
+      "name": "kamsu kom epse foguem krystel vanessa",
+      "phone": "237697738478",
+      "currentBalance": 2500,
+      "expectedBalance": 0,
+      "excess": 2500,
+      "expectedEarnings": 2500,
+      "totalWithdrawn": 6060,
+      "referrals": {
+        "L1": 2,
+        "L2": 1,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 2,
+        "L2": 1,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6678933d7731445b46af5111",
+      "name": "yanick fonkoua",
+      "phone": "237691382943",
+      "currentBalance": 2485,
+      "expectedBalance": 0,
+      "excess": 2485,
+      "expectedEarnings": 4000,
+      "totalWithdrawn": 7070,
+      "referrals": {
+        "L1": 4,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 5,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-09-09T20:33:45.783Z"
+    },
+    {
+      "userId": "67a67ea1de204fa88a69b0fc",
+      "name": "cédric mbombe",
+      "phone": "24177896280",
+      "currentBalance": 2440,
+      "expectedBalance": 0,
+      "excess": 2440,
+      "expectedEarnings": 4000,
+      "totalWithdrawn": 6060,
+      "referrals": {
+        "L1": 4,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 9,
+        "L2": 1,
+        "L3": 0
+      },
+      "lastUpdated": "2025-08-30T08:21:28.819Z"
+    },
+    {
+      "userId": "677fb6c5a63cb65a8fae2ccf",
+      "name": "djamosking",
+      "phone": "22997415882",
+      "currentBalance": 2423.720000000001,
+      "expectedBalance": 0,
+      "excess": 2423.720000000001,
+      "expectedEarnings": 129000,
+      "totalWithdrawn": 141202.77999999997,
+      "referrals": {
+        "L1": 18,
+        "L2": 106,
+        "L3": 232
+      },
+      "totalReferrals": {
+        "L1": 33,
+        "L2": 315,
+        "L3": 752
+      },
+      "lastUpdated": "2025-12-05T14:50:55.463Z"
+    },
+    {
+      "userId": "65ea2939845eb94af1db0899",
+      "name": "Adolphe Baudot Signing",
+      "phone": "237675708242",
+      "currentBalance": 2376.5,
+      "expectedBalance": 0,
+      "excess": 2376.5,
+      "expectedEarnings": 78750,
+      "totalWithdrawn": 82062.5,
+      "referrals": {
+        "L1": 21,
+        "L2": 63,
+        "L3": 105
+      },
+      "totalReferrals": {
+        "L1": 27,
+        "L2": 150,
+        "L3": 287
+      },
+      "lastUpdated": "2025-09-03T10:51:00.075Z"
+    },
+    {
+      "userId": "678e5418a281412decaf16e5",
+      "name": "bome wilfried",
+      "phone": "22995829911",
+      "currentBalance": 8837.5,
+      "expectedBalance": 6462.5,
+      "excess": 2375,
+      "expectedEarnings": 15000,
+      "totalWithdrawn": 8537.5,
+      "referrals": {
+        "L1": 1,
+        "L2": 26,
+        "L3": 4
+      },
+      "totalReferrals": {
+        "L1": 2,
+        "L2": 482,
+        "L3": 42
+      },
+      "lastUpdated": "2025-10-25T12:52:12.259Z"
+    },
+    {
+      "userId": "65e031895cc9084808436471",
+      "name": "johnny kmer",
+      "phone": "237696868679",
+      "currentBalance": 3027.5,
+      "expectedBalance": 702,
+      "excess": 2325.5,
+      "expectedEarnings": 25750,
+      "totalWithdrawn": 25048,
+      "referrals": {
+        "L1": 15,
+        "L2": 17,
+        "L3": 9
+      },
+      "totalReferrals": {
+        "L1": 50,
+        "L2": 130,
+        "L3": 79
+      },
+      "lastUpdated": "2025-12-07T20:59:13.674Z"
+    },
+    {
+      "userId": "65d276929f8323d857a5e059",
+      "name": "kiyotaka",
+      "phone": "237689740521",
+      "currentBalance": 2273,
+      "expectedBalance": 0,
+      "excess": 2273,
+      "expectedEarnings": 29250,
+      "totalWithdrawn": 31158.5,
+      "referrals": {
+        "L1": 19,
+        "L2": 14,
+        "L3": 13
+      },
+      "totalReferrals": {
+        "L1": 71,
+        "L2": 40,
+        "L3": 29
+      },
+      "lastUpdated": "2025-08-03T05:53:30.745Z"
+    },
+    {
+      "userId": "67295da0e168e0c955230c36",
+      "name": "daril❤️",
+      "phone": "237693993373",
+      "currentBalance": 2770.5,
+      "expectedBalance": 505.5,
+      "excess": 2265,
+      "expectedEarnings": 5000,
+      "totalWithdrawn": 4494.5,
+      "referrals": {
+        "L1": 4,
+        "L2": 2,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 8,
+        "L2": 16,
+        "L3": 0
+      },
+      "lastUpdated": "2025-07-25T13:12:27.615Z"
+    },
+    {
+      "userId": "67b5cc565c161c9166fe499f",
+      "name": "pichichi",
+      "phone": "22951538712",
+      "currentBalance": 2260,
+      "expectedBalance": 0,
+      "excess": 2260,
+      "expectedEarnings": 351250,
+      "totalWithdrawn": 353990,
+      "referrals": {
+        "L1": 109,
+        "L2": 370,
+        "L3": 229
+      },
+      "totalReferrals": {
+        "L1": 242,
+        "L2": 1348,
+        "L3": 1037
+      },
+      "lastUpdated": "2025-08-02T12:28:12.790Z"
+    },
+    {
+      "userId": "67a1a93bace90dc688f404c7",
+      "name": "mballa leonard",
+      "phone": "237653695979",
+      "currentBalance": 2250,
+      "expectedBalance": 0,
+      "excess": 2250,
+      "expectedEarnings": 0,
+      "totalWithdrawn": 0,
+      "referrals": {
+        "L1": 0,
+        "L2": 0,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 1,
+        "L2": 0,
+        "L3": 0
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "6605ed46c3fc57b813ec15e7",
+      "name": "facstore la boutique des etudiants",
+      "phone": "237656346720",
+      "currentBalance": 2235,
+      "expectedBalance": 0,
+      "excess": 2235,
+      "expectedEarnings": 36500,
+      "totalWithdrawn": 52015,
+      "referrals": {
+        "L1": 21,
+        "L2": 26,
+        "L3": 10
+      },
+      "totalReferrals": {
+        "L1": 82,
+        "L2": 95,
+        "L3": 56
+      },
+      "lastUpdated": "2025-10-14T19:53:43.538Z"
+    },
+    {
+      "userId": "67818140aaf904bdaff456f8",
+      "name": "koanda cheick mohamed hamine",
+      "phone": "22674289494",
+      "currentBalance": 2235,
+      "expectedBalance": 0,
+      "excess": 2235,
+      "expectedEarnings": 26500,
+      "totalWithdrawn": 26765,
+      "referrals": {
+        "L1": 12,
+        "L2": 23,
+        "L3": 12
+      },
+      "totalReferrals": {
+        "L1": 19,
+        "L2": 51,
+        "L3": 46
+      },
+      "lastUpdated": "2025-09-11T17:08:23.057Z"
+    },
+    {
+      "userId": "65d39c02d44e704d4728010a",
+      "name": "le g",
+      "phone": "237644680941",
+      "currentBalance": 2224.5,
+      "expectedBalance": 0,
+      "excess": 2224.5,
+      "expectedEarnings": 22750,
+      "totalWithdrawn": 132108,
+      "referrals": {
+        "L1": 6,
+        "L2": 29,
+        "L3": 9
+      },
+      "totalReferrals": {
+        "L1": 10,
+        "L2": 79,
+        "L3": 65
+      },
+      "lastUpdated": "2025-11-10T23:13:45.945Z"
+    },
+    {
+      "userId": "666d55713088787e751d302d",
+      "name": "sene steeve",
+      "phone": "237696324423",
+      "currentBalance": 2222,
+      "expectedBalance": 0,
+      "excess": 2222,
+      "expectedEarnings": 25250,
+      "totalWithdrawn": 164680.5,
+      "referrals": {
+        "L1": 10,
+        "L2": 22,
+        "L3": 17
+      },
+      "totalReferrals": {
+        "L1": 20,
+        "L2": 63,
+        "L3": 50
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "65e2528418ad508a3732296a",
+      "name": "Mr Al (All Limitless)",
+      "phone": "237676424157",
+      "currentBalance": 2190,
+      "expectedBalance": 0,
+      "excess": 2190,
+      "expectedEarnings": 8250,
+      "totalWithdrawn": 116150,
+      "referrals": {
+        "L1": 6,
+        "L2": 2,
+        "L3": 5
+      },
+      "totalReferrals": {
+        "L1": 6,
+        "L2": 4,
+        "L3": 11
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "67bccf389b8c2428728af1e4",
+      "name": "flapacha",
+      "phone": "22966460735",
+      "currentBalance": 2187,
+      "expectedBalance": 0,
+      "excess": 2187,
+      "expectedEarnings": 149250,
+      "totalWithdrawn": 152813,
+      "referrals": {
+        "L1": 87,
+        "L2": 108,
+        "L3": 33
+      },
+      "totalReferrals": {
+        "L1": 268,
+        "L2": 339,
+        "L3": 184
+      },
+      "lastUpdated": "2025-05-26T12:02:10.412Z"
+    },
+    {
+      "userId": "667bc1e1ec7bb602e1b672fa",
+      "name": "ouedraogo endré",
+      "phone": "22674744622",
+      "currentBalance": 2152.7999999999993,
+      "expectedBalance": 0,
+      "excess": 2152.7999999999993,
+      "expectedEarnings": 37500,
+      "totalWithdrawn": 39056.7,
+      "referrals": {
+        "L1": 16,
+        "L2": 30,
+        "L3": 26
+      },
+      "totalReferrals": {
+        "L1": 21,
+        "L2": 42,
+        "L3": 76
+      },
+      "lastUpdated": "2025-09-05T21:46:53.321Z"
+    },
+    {
+      "userId": "679808f8f648650b788498be",
+      "name": "mousse rafiou",
+      "phone": "22941284949",
+      "currentBalance": 2150,
+      "expectedBalance": 0,
+      "excess": 2150,
+      "expectedEarnings": 20000,
+      "totalWithdrawn": 20100,
+      "referrals": {
+        "L1": 10,
+        "L2": 17,
+        "L3": 6
+      },
+      "totalReferrals": {
+        "L1": 13,
+        "L2": 31,
+        "L3": 6
+      },
+      "lastUpdated": "2025-07-11T09:00:10.140Z"
+    },
+    {
+      "userId": "6642203363d9f5c1b44e0f5a",
+      "name": "kenne andre marcel",
+      "phone": "237674686559",
+      "currentBalance": 2127.5,
+      "expectedBalance": 0,
+      "excess": 2127.5,
+      "expectedEarnings": 39250,
+      "totalWithdrawn": 210938.5,
+      "referrals": {
+        "L1": 5,
+        "L2": 39,
+        "L3": 59
+      },
+      "totalReferrals": {
+        "L1": 11,
+        "L2": 51,
+        "L3": 113
+      },
+      "lastUpdated": "2025-08-11T20:15:45.168Z"
+    },
+    {
+      "userId": "6671df8b6716e2dc92e5c794",
+      "name": "tsayon rosvel",
+      "phone": "237672595473",
+      "currentBalance": 2105,
+      "expectedBalance": 0,
+      "excess": 2105,
+      "expectedEarnings": 13500,
+      "totalWithdrawn": 14145,
+      "referrals": {
+        "L1": 11,
+        "L2": 5,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 30,
+        "L2": 16,
+        "L3": 1
+      },
+      "lastUpdated": "2025-11-06T01:04:59.063Z"
+    },
+    {
+      "userId": "6841d3e825d2e1f7693efd14",
+      "name": "Freddy Nlend",
+      "phone": "237690348820",
+      "currentBalance": 2065,
+      "expectedBalance": 0,
+      "excess": 2065,
+      "expectedEarnings": 10000,
+      "totalWithdrawn": 11685,
+      "referrals": {
+        "L1": 8,
+        "L2": 4,
+        "L3": 0
+      },
+      "totalReferrals": {
+        "L1": 33,
+        "L2": 22,
+        "L3": 0
+      },
+      "lastUpdated": "2025-12-07T18:28:49.372Z"
+    },
+    {
+      "userId": "65dde1564d0a1daf9e68b01f",
+      "name": "taylor kevin ❣️ 🔥",
+      "phone": "237696790942",
+      "currentBalance": 2048.1000000000004,
+      "expectedBalance": 0,
+      "excess": 2048.1000000000004,
+      "expectedEarnings": 27000,
+      "totalWithdrawn": 36400.4,
+      "referrals": {
+        "L1": 17,
+        "L2": 18,
+        "L3": 4
+      },
+      "totalReferrals": {
+        "L1": 73,
+        "L2": 42,
+        "L3": 46
+      },
+      "lastUpdated": "2025-10-03T11:37:06.573Z"
+    }
+  ]
+}

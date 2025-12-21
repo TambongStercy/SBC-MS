@@ -35,6 +35,9 @@ router.post('/users/:userId/adjust-balance', adminController.adjustBalance as an
 // Route to set/update subscription type
 router.patch('/users/:userId/subscription', adminController.adminSetUserSubscription as any); // PATCH /api/admin/users/:userId/subscription
 
+// Route to set/update user role (e.g., assign tester role)
+router.patch('/users/:userId/role', adminController.setUserRole as any); // PATCH /api/admin/users/:userId/role
+
 // --- Subscription Management (Related to Users) ---
 router.get('/users/:userId/subscriptions', adminController.getUserSubscriptions as any); // GET /api/admin/users/:userId/subscriptions
 

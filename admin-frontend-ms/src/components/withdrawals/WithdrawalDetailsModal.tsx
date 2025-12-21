@@ -15,6 +15,8 @@ interface WithdrawalDetailsModalProps {
     onClose: () => void;
     onApproved?: () => void;
     onRejected?: () => void;
+    showSuccess?: (message: string) => void;
+    showError?: (message: string) => void;
 }
 
 const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
@@ -22,7 +24,9 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
     isOpen,
     onClose,
     onApproved,
-    onRejected
+    onRejected,
+    showSuccess,
+    showError
 }) => {
     const [isApproving, setIsApproving] = useState(false);
     const [isRejecting, setIsRejecting] = useState(false);
@@ -44,11 +48,17 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                 adminNotes: adminNotes || undefined
             });
 
-            alert('Withdrawal approved successfully!');
+            if (showSuccess) {
+                showSuccess('Withdrawal approved successfully!');
+            }
             if (onApproved) onApproved();
             onClose();
         } catch (err: any) {
-            setError(err.message || 'Failed to approve withdrawal');
+            const errorMsg = err.message || 'Failed to approve withdrawal';
+            setError(errorMsg);
+            if (showError) {
+                showError(errorMsg);
+            }
         } finally {
             setIsApproving(false);
         }
@@ -56,7 +66,11 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
 
     const handleReject = async () => {
         if (!withdrawal || !rejectionReason.trim()) {
-            setError('Rejection reason is required');
+            const errorMsg = 'Rejection reason is required';
+            setError(errorMsg);
+            if (showError) {
+                showError(errorMsg);
+            }
             return;
         }
 
@@ -69,11 +83,17 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                 adminNotes: adminNotes || undefined
             });
 
-            alert('Withdrawal rejected successfully!');
+            if (showSuccess) {
+                showSuccess('Withdrawal rejected successfully!');
+            }
             if (onRejected) onRejected();
             onClose();
         } catch (err: any) {
-            setError(err.message || 'Failed to reject withdrawal');
+            const errorMsg = err.message || 'Failed to reject withdrawal';
+            setError(errorMsg);
+            if (showError) {
+                showError(errorMsg);
+            }
         } finally {
             setIsRejecting(false);
         }

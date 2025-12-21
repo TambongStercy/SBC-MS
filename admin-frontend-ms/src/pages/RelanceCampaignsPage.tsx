@@ -11,6 +11,7 @@ import {
     Campaign,
     CampaignTarget
 } from '../services/adminRelanceApi';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const RelanceCampaignsPage: React.FC = () => {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -22,6 +23,15 @@ const RelanceCampaignsPage: React.FC = () => {
     const [showTargetsModal, setShowTargetsModal] = useState(false);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+
+    // Confirmation modal
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmAction, setConfirmAction] = useState<{
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    } | null>(null);
+    const [cancellationReason, setCancellationReason] = useState<string>('');
 
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -107,16 +117,23 @@ const RelanceCampaignsPage: React.FC = () => {
     };
 
     const handleCancelCampaign = async (campaign: Campaign) => {
-        const reason = prompt('Enter cancellation reason (optional):');
-        if (confirm(`Are you sure you want to cancel campaign "${campaign.name}"? All active targets will exit the loop.`)) {
-            try {
-                await cancelCampaign(campaign._id, campaign.userId, reason || undefined);
-                toast.success('Campaign cancelled successfully');
-                loadCampaigns(true);
-            } catch (error: any) {
-                toast.error('Failed to cancel campaign: ' + (error.response?.data?.message || error.message));
+        setCancellationReason('');
+        setConfirmAction({
+            title: '⚠️ Cancel Campaign',
+            message: `Are you sure you want to cancel campaign "${campaign.name}"? All active targets will exit the loop. You can optionally provide a cancellation reason below.`,
+            onConfirm: async () => {
+                try {
+                    await cancelCampaign(campaign._id, campaign.userId, cancellationReason || undefined);
+                    toast.success('Campaign cancelled successfully');
+                    loadCampaigns(true);
+                    setShowConfirmModal(false);
+                    setCancellationReason('');
+                } catch (error: any) {
+                    toast.error('Failed to cancel campaign: ' + (error.response?.data?.message || error.message));
+                }
             }
-        }
+        });
+        setShowConfirmModal(true);
     };
 
     const formatDate = (dateString?: string) => {
@@ -583,6 +600,36 @@ const RelanceCampaignsPage: React.FC = () => {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* Confirmation Modal */}
+            {confirmAction && (
+                <ConfirmationModal
+                    isOpen={showConfirmModal}
+                    title={confirmAction.title}
+                    message={confirmAction.message}
+                    confirmText="Confirm"
+                    cancelText="Cancel"
+                    onConfirm={confirmAction.onConfirm}
+                    onCancel={() => {
+                        setShowConfirmModal(false);
+                        setCancellationReason('');
+                    }}
+                >
+                    {/* Optional cancellation reason input */}
+                    <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Cancellation Reason (Optional)
+                        </label>
+                        <textarea
+                            value={cancellationReason}
+                            onChange={(e) => setCancellationReason(e.target.value)}
+                            placeholder="Enter reason for cancellation..."
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            rows={3}
+                        />
+                    </div>
+                </ConfirmationModal>
             )}
         </div>
     );

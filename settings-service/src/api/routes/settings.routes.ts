@@ -12,6 +12,10 @@ import {
     getThumbnailFromDrive,
     uploadGenericFile,
     internalUploadFile,
+    internalUploadFilePrivate,
+    internalGetSignedUrl,
+    internalGetSignedUrls,
+    internalDeleteFilePrivate,
     getFormations,
     addFormation,
     updateFormation,
@@ -52,13 +56,25 @@ router.get('/', getSettings);
 // Uses the standard user/admin authentication
 router.post('/files/upload', upload.single('file'), uploadGenericFile);
 
-// --- Internal Service Routes --- 
+// --- Internal Service Routes ---
 // Prefix with /internal and use service-specific authentication
 internalRouter.use(authenticateServiceRequest); // Apply service-to-service auth middleware
 
-// POST /settings/internal/upload - Upload a file from another service
+// POST /settings/internal/upload - Upload a file from another service (public bucket)
 // Uses Multer to handle the file and expect folderName in body
 internalRouter.post('/upload', upload.single('file'), internalUploadFile);
+
+// POST /settings/internal/upload-private - Upload file to PRIVATE bucket (for status/stories)
+internalRouter.post('/upload-private', upload.single('file'), internalUploadFilePrivate);
+
+// POST /settings/internal/signed-url - Generate signed URL for private file
+internalRouter.post('/signed-url', internalGetSignedUrl);
+
+// POST /settings/internal/signed-urls - Generate multiple signed URLs (batch)
+internalRouter.post('/signed-urls', internalGetSignedUrls);
+
+// DELETE /settings/internal/file-private - Delete file from private bucket
+internalRouter.delete('/file-private', internalDeleteFilePrivate);
 
 // Mount the internal router
 router.use('/internal', internalRouter);

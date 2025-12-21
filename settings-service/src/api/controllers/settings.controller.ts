@@ -1,9 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import settingsService from '../../services/settings.service'; // Import the instance directly
 import GoogleDriveService from '../../services/googleDrive.service'; // Import Drive service
+import cloudStorageService from '../../services/cloudStorage.service'; // Import Cloud Storage service
 import logger from '../../utils/logger';
 import { NotFoundError, AppError, BadRequestError } from '../../utils/errors'; // Assuming custom error classes
 import axios from 'axios'; // Import axios
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
 
 const log = logger.getLogger('SettingsController');
 
@@ -339,6 +342,153 @@ export const removeFormation = async (req: Request, res: Response, next: NextFun
             return next(error);
         }
         next(new AppError('Failed to remove formation', 500));
+    }
+};
+
+// ========== PRIVATE BUCKET OPERATIONS (for chat-service status/stories) ==========
+
+/**
+ * Upload file to PRIVATE bucket
+ * POST /internal/upload-private
+ * Body (multipart): file, folder (optional)
+ */
+export const internalUploadFilePrivate = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling POST /internal/upload-private request (private bucket)');
+    const folder = (req.body.folder as string) || 'statuses';
+
+    if (!req.file) {
+        log.warn('No file provided in private upload request.');
+        return next(new BadRequestError('No file uploaded.'));
+    }
+
+    try {
+        // Generate unique filename
+        const ext = path.extname(req.file.originalname);
+        const fileName = `${uuidv4()}${ext}`;
+
+        log.info(`Uploading file to private bucket: ${fileName}, folder: ${folder}`);
+
+        const result = await cloudStorageService.uploadFilePrivate(
+            req.file.buffer,
+            req.file.mimetype,
+            fileName,
+            folder
+        );
+
+        log.info('File uploaded to private bucket successfully.');
+
+        res.status(200).json({
+            success: true,
+            data: {
+                fileId: result.fileId,
+                gcsPath: result.publicUrl, // This is actually gs:// path, not public URL
+                fileName: result.fileName,
+                mimeType: req.file.mimetype,
+                size: req.file.size
+            },
+            message: 'File uploaded to private bucket successfully.'
+        });
+    } catch (error) {
+        log.error('Error uploading file to private bucket:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to upload file to private bucket', 500));
+    }
+};
+
+/**
+ * Generate signed URL for private file
+ * POST /internal/signed-url
+ * Body: { filePath, expiresIn (optional) }
+ */
+export const internalGetSignedUrl = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling POST /internal/signed-url request');
+    const { filePath, expiresIn } = req.body;
+
+    if (!filePath) {
+        log.warn('No filePath provided in signed URL request.');
+        return next(new BadRequestError('filePath is required.'));
+    }
+
+    try {
+        const signedUrl = await cloudStorageService.getSignedUrl(filePath, {
+            expiresIn: expiresIn || 3600 // Default 1 hour
+        });
+
+        log.info(`Generated signed URL for ${filePath}`);
+
+        res.status(200).json({
+            success: true,
+            data: { signedUrl },
+            message: 'Signed URL generated successfully.'
+        });
+    } catch (error) {
+        log.error('Error generating signed URL:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to generate signed URL', 500));
+    }
+};
+
+/**
+ * Generate signed URLs for multiple files (batch)
+ * POST /internal/signed-urls
+ * Body: { filePaths: string[], expiresIn (optional) }
+ */
+export const internalGetSignedUrls = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling POST /internal/signed-urls request (batch)');
+    const { filePaths, expiresIn } = req.body;
+
+    if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
+        log.warn('Invalid filePaths in batch signed URL request.');
+        return next(new BadRequestError('filePaths array is required.'));
+    }
+
+    try {
+        const urlMap = await cloudStorageService.getSignedUrls(filePaths, {
+            expiresIn: expiresIn || 3600
+        });
+
+        // Convert Map to plain object for JSON response
+        const urlsObject: Record<string, string> = {};
+        urlMap.forEach((url, filePath) => {
+            urlsObject[filePath] = url;
+        });
+
+        log.info(`Generated ${filePaths.length} signed URLs`);
+
+        res.status(200).json({
+            success: true,
+            data: { urls: urlsObject },
+            message: 'Signed URLs generated successfully.'
+        });
+    } catch (error) {
+        log.error('Error generating batch signed URLs:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to generate signed URLs', 500));
+    }
+};
+
+/**
+ * Delete file from private bucket
+ * DELETE /internal/file-private
+ * Body: { filePath }
+ */
+export const internalDeleteFilePrivate = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling DELETE /internal/file-private request');
+    const { filePath } = req.body;
+
+    if (!filePath) {
+        log.warn('No filePath provided in delete request.');
+        return next(new BadRequestError('filePath is required.'));
+    }
+
+    try {
+        await cloudStorageService.deleteFilePrivate(filePath);
+        log.info(`File deleted from private bucket: ${filePath}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'File deleted successfully.'
+        });
+    } catch (error) {
+        log.error('Error deleting file from private bucket:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to delete file', 500));
     }
 };
 

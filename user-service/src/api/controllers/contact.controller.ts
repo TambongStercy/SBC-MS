@@ -99,6 +99,11 @@ export class ContactController {
             filters.name = query.name;
         }
 
+        // Parse unified search filter (searches name, email, phoneNumber)
+        if (query.search) {
+            filters.search = query.search;
+        }
+
         // Parse interests filter
         if (query.interests) {
             if (Array.isArray(query.interests)) {

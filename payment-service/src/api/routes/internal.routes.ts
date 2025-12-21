@@ -28,6 +28,15 @@ router.post('/withdrawal', (req, res, next) => paymentController.recordInternalW
  */
 router.post('/conversion', (req, res, next) => paymentController.createConversionTransaction(req, res, next));
 
+/**
+ * @route   POST /api/internal/activation-transaction
+ * @desc    Record an activation balance transaction (transfer-in, transfer-out, sponsor activation)
+ * @access  Private (Service-to-Service)
+ * @body    { userId: string, type: 'activation_transfer_in' | 'activation_transfer_out' | 'sponsor_activation',
+ *            amount: number, description: string, metadata?: object }
+ */
+router.post('/activation-transaction', (req, res, next) => paymentController.recordActivationTransaction(req, res, next));
+
 
 // --- Admin Stats Sub-Router ---
 // Note: Keeping general admin stats here for now, but user-specific could be separate

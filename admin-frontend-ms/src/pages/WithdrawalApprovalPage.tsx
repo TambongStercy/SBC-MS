@@ -14,8 +14,13 @@ import WithdrawalDetailsModal from '../components/withdrawals/WithdrawalDetailsM
 import Pagination from '../components/common/Pagination';
 import Loader from '../components/common/loader';
 import Header from '../components/common/Header';
+import ConfirmationModal from '../components/common/ConfirmationModal';
+import ToastContainer from '../components/common/ToastContainer';
+import { useToast } from '../hooks/useToast';
 
 const WithdrawalApprovalPage: React.FC = () => {
+    const { toasts, removeToast, showSuccess, showError, showInfo } = useToast();
+
     // State
     const [withdrawals, setWithdrawals] = useState<WithdrawalTransaction[]>([]);
     const [stats, setStats] = useState<WithdrawalStats | null>(null);
@@ -39,6 +44,14 @@ const WithdrawalApprovalPage: React.FC = () => {
 
     // Auto-refresh
     const [autoRefresh, setAutoRefresh] = useState(true);
+
+    // Confirmation modal
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmAction, setConfirmAction] = useState<{
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    } | null>(null);
 
     // Fetch data
     const fetchData = async () => {
@@ -115,32 +128,38 @@ const WithdrawalApprovalPage: React.FC = () => {
         });
     };
 
-    const handleBulkApprove = async () => {
+    const handleBulkApprove = () => {
         if (selectedIds.length === 0) return;
 
-        if (!confirm(`Are you sure you want to approve ${selectedIds.length} withdrawals?`)) {
-            return;
-        }
+        setConfirmAction({
+            title: 'Bulk Approve Withdrawals',
+            message: `Are you sure you want to approve ${selectedIds.length} withdrawals?`,
+            onConfirm: async () => {
+                setBulkApproving(true);
+                setShowConfirmModal(false);
 
-        setBulkApproving(true);
-        try {
-            const result = await bulkApproveWithdrawals({
-                transactionIds: selectedIds,
-                adminNotes: 'Bulk approved'
-            });
+                try {
+                    const result = await bulkApproveWithdrawals({
+                        transactionIds: selectedIds,
+                        adminNotes: 'Bulk approved'
+                    });
 
-            alert(`Success! Approved: ${result.data.approved}, Failed: ${result.data.failed}`);
-            if (result.data.errors.length > 0) {
-                console.error('Bulk approval errors:', result.data.errors);
+                    showSuccess(`Success! Approved: ${result.data.approved}, Failed: ${result.data.failed}`);
+                    if (result.data.errors.length > 0) {
+                        console.error('Bulk approval errors:', result.data.errors);
+                        showInfo(`Some withdrawals failed. Check console for details.`);
+                    }
+
+                    fetchData();
+                    setSelectedIds([]);
+                } catch (err: any) {
+                    showError('Failed to bulk approve: ' + err.message);
+                } finally {
+                    setBulkApproving(false);
+                }
             }
-
-            fetchData();
-            setSelectedIds([]);
-        } catch (err: any) {
-            alert('Failed to bulk approve: ' + err.message);
-        } finally {
-            setBulkApproving(false);
-        }
+        });
+        setShowConfirmModal(true);
     };
 
     if (loading) {
@@ -394,7 +413,25 @@ const WithdrawalApprovalPage: React.FC = () => {
                 onClose={handleCloseModal}
                 onApproved={handleActionComplete}
                 onRejected={handleActionComplete}
+                showSuccess={showSuccess}
+                showError={showError}
             />
+
+            {/* Confirmation Modal */}
+            {confirmAction && (
+                <ConfirmationModal
+                    isOpen={showConfirmModal}
+                    title={confirmAction.title}
+                    message={confirmAction.message}
+                    confirmText="Confirm"
+                    cancelText="Cancel"
+                    onConfirm={confirmAction.onConfirm}
+                    onCancel={() => setShowConfirmModal(false)}
+                />
+            )}
+
+            {/* Toast Container */}
+            <ToastContainer toasts={toasts} onRemove={removeToast} />
         </div>
     );
 };

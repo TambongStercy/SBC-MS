@@ -1336,12 +1336,35 @@ class PaymentService {
             page?: number;
             sortBy?: string;
             sortOrder?: 'asc' | 'desc';
+            excludeTypes?: TransactionType[];
         } = {}
     ) {
         try {
             return await transactionRepository.findByUserId(userId, options);
         } catch (error) {
             log.error(`Error getting transaction history: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get activation balance transaction history for a user
+     * Only returns activation-related transactions (transfer in/out, sponsor activation)
+     */
+    async getActivationTransactionHistory(
+        userId: string | Types.ObjectId,
+        options: {
+            limit?: number;
+            page?: number;
+            sortBy?: string;
+            sortOrder?: 'asc' | 'desc';
+            includeOnlyTypes?: TransactionType[];
+        } = {}
+    ) {
+        try {
+            return await transactionRepository.findByUserIdWithTypes(userId, options);
+        } catch (error) {
+            log.error(`Error getting activation transaction history: ${error}`);
             throw error;
         }
     }
@@ -2577,6 +2600,54 @@ class PaymentService {
         } catch (error: any) {
             log.error('Error creating conversion transaction:', error);
             throw new Error('Failed to create conversion transaction');
+        }
+    }
+
+    /**
+     * Record an activation balance transaction
+     * Used for tracking activation balance transfers and sponsor activations in transaction history
+     * @param userId - User ID performing the action
+     * @param type - Transaction type (activation_transfer_in, activation_transfer_out, sponsor_activation)
+     * @param amount - Amount (positive for credits, negative for debits)
+     * @param description - Transaction description
+     * @param metadata - Additional metadata
+     * @param recipientId - Recipient user ID (for transfers to other users)
+     * @param ipAddress - Client IP address
+     */
+    public async recordActivationTransaction(
+        userId: string,
+        type: TransactionType,
+        amount: number,
+        description: string,
+        metadata: Record<string, any> = {},
+        recipientId?: string,
+        ipAddress?: string
+    ): Promise<ITransaction> {
+        try {
+            log.info(`[PaymentService] Recording activation transaction: ${type} for user ${userId}, amount: ${amount}`);
+
+            const activationTransaction = await transactionRepository.create({
+                userId,
+                type,
+                amount,
+                currency: Currency.XAF, // Activation balance is always in XAF
+                fee: 0,
+                status: TransactionStatus.COMPLETED, // Activation transactions are immediate
+                description,
+                metadata: {
+                    ...metadata,
+                    activationType: type,
+                    recipientId: recipientId || null,
+                    timestamp: new Date().toISOString()
+                },
+                ipAddress
+            });
+
+            log.info(`[PaymentService] Created activation transaction ${activationTransaction.transactionId} for user ${userId}`);
+            return activationTransaction;
+        } catch (error: any) {
+            log.error('[PaymentService] Error creating activation transaction:', error);
+            throw new Error('Failed to create activation transaction');
         }
     }
 

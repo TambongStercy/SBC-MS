@@ -8,10 +8,16 @@ export interface ITombolaTicket extends Document {
     ticketId: string;               // Unique identifier for this specific ticket (could be nanoid or uuid)
     purchaseTimestamp: Date;      // When the ticket was purchased
     paymentIntentId?: string;      // Optional: link to payment intent for tracking
-    // Add any other relevant ticket details if needed
+    ticketNumber: number;           // Sequential number within the TombolaMonth
+
+    // NEW FIELDS for weighted lottery (Impact Challenge)
+    weight: number;                 // Probability weight: 1.0, 0.6, or 0.3
+    userTicketIndex: number;        // This user's Nth ticket in this month (1-25)
+    sourceType: 'direct_purchase' | 'challenge_vote'; // Source of ticket
+    challengeVoteId?: Types.ObjectId; // Link to ChallengeVote if from Impact Challenge
+
     createdAt: Date;
     updatedAt: Date;
-    ticketNumber: number;           // Sequential number within the TombolaMonth
 }
 
 // Schema for TombolaTicket
@@ -47,6 +53,27 @@ const TombolaTicketSchema = new Schema<ITombolaTicket>(
             type: Number,
             required: true,
             // We will index this together with tombolaMonthId
+        },
+        // NEW FIELDS for weighted lottery
+        weight: {
+            type: Number,
+            required: true,
+            default: 1.0, // Default weight for backward compatibility
+        },
+        userTicketIndex: {
+            type: Number,
+            required: true,
+            default: 1,
+        },
+        sourceType: {
+            type: String,
+            enum: ['direct_purchase', 'challenge_vote'],
+            required: true,
+            default: 'direct_purchase', // Default for existing tickets
+        },
+        challengeVoteId: {
+            type: Schema.Types.ObjectId,
+            index: true,
         },
     },
     {

@@ -91,15 +91,29 @@ class AdminController {
     async listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request to list users');
         try {
-            const { page = 1, limit = 20, status, role, search } = req.query;
+            const { page = 1, limit = 20, status, role, search, country, profession, interests } = req.query;
             const pagination: PaginationOptions = {
                 page: parseInt(page as string, 10) || 1,
                 limit: parseInt(limit as string, 10) || 10,
             };
+
+            // Parse interests from comma-separated string or array
+            let interestsArray: string[] | undefined;
+            if (interests) {
+                if (Array.isArray(interests)) {
+                    interestsArray = interests as string[];
+                } else if (typeof interests === 'string') {
+                    interestsArray = interests.split(',').map(i => i.trim()).filter(i => i.length > 0);
+                }
+            }
+
             const filters = {
                 status: status as string | undefined,
                 role: role as string | undefined,
-                search: search as string | undefined
+                search: search as string | undefined,
+                country: country as string | undefined,
+                profession: profession as string | undefined,
+                interests: interestsArray
             };
             log.debug('Filtering users with:', { filters, pagination });
 
@@ -503,6 +517,57 @@ class AdminController {
         } catch (error) {
             log.error('Error getting partner summary stats (controller):', error);
             next(error); // Pass to error handling middleware
+        }
+    }
+
+    /**
+     * [Admin] Set/Update a user's role.
+     * @route PATCH /api/admin/users/:userId/role
+     */
+    async setUserRole(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        const { userId } = req.params;
+        const { role } = req.body;
+
+        log.info(`Admin request to set role for user ${userId} to: ${role}`);
+
+        if (!isValidObjectId(userId)) {
+            res.status(400).json({ success: false, message: 'Invalid User ID format' });
+            return;
+        }
+
+        if (!role || !Object.values(UserRole).includes(role as UserRole)) {
+            res.status(400).json({
+                success: false,
+                message: `Invalid role. Valid roles are: ${Object.values(UserRole).join(', ')}`
+            });
+            return;
+        }
+
+        try {
+            const updatedUser = await userService.adminUpdateUser(userId, { role: role as UserRole });
+
+            if (!updatedUser) {
+                res.status(404).json({ success: false, message: 'User not found' });
+                return;
+            }
+
+            log.info(`Successfully set role for user ${userId} to: ${role}`);
+            res.status(200).json({
+                success: true,
+                message: `User role updated to ${role}`,
+                data: {
+                    userId: updatedUser._id,
+                    name: updatedUser.name,
+                    email: updatedUser.email,
+                    role: updatedUser.role
+                }
+            });
+        } catch (error: any) {
+            log.error(`Error setting role for user ${userId}:`, error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to update user role'
+            });
         }
     }
 }

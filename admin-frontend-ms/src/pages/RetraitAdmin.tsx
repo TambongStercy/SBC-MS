@@ -5,8 +5,12 @@ import { BadgeSwissFranc, Check, HandCoins } from 'lucide-react';
 import StatCard from '../components/common/statCard';
 import { adminWithdrawal, fetchAdminBalance } from '../api'; // Import the API function
 import Loader from '../components/common/loader';
+import ToastContainer from '../components/common/ToastContainer';
+import { useToast } from '../hooks/useToast';
 
 function RetraitAdmin() {
+  const { toasts, removeToast, showSuccess, showError } = useToast();
+
   // State to manage form inputs
   const [operator, setOperator] = useState('Orange');
   const [phone, setPhone] = useState('');
@@ -61,10 +65,17 @@ function RetraitAdmin() {
         password,
       };
       const response = await adminWithdrawal(data); // Call the API function
-      alert(`Withdrawal successful: ${response.message}`);
-    } catch (error) {
+      showSuccess(`Withdrawal successful: ${response.message}`);
+      // Clear form
+      setPhone('');
+      setAmount('');
+      setPassword('');
+      // Refresh balance
+      const updatedData = await fetchAdminBalance();
+      setAdminData(updatedData);
+    } catch (error: any) {
       console.error('Failed to withdraw:', error);
-      alert('Withdrawal failed. Please try again.');
+      showError(error?.message || 'Withdrawal failed. Please try again.');
     }
   };
 
@@ -142,6 +153,9 @@ function RetraitAdmin() {
           </div>
         </motion.div>
       </main>
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

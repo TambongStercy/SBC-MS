@@ -22,14 +22,20 @@ import RelanceMessagesPage from './pages/RelanceMessagesPage';
 import RelanceCampaignsPage from './pages/RelanceCampaignsPage';
 import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
 import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
-import SubAdminManagementPage from './pages/SubAdminManagementPage';
+import UserRolesManagement from './pages/UserRolesManagement';
+import ChatPage from './pages/ChatPage';
+import StatusPage from './pages/StatusPage';
+import ImpactChallengePage from './pages/ImpactChallengePage';
+import ChallengeDetailsPage from './pages/ChallengeDetailsPage';
 import { Toaster } from 'react-hot-toast';
+import { SocketProvider } from './contexts/SocketContext';
 
 function App() {
   const location = useLocation();
   const isLoginRoute = location.pathname === "/login";
 
   return (
+    <SocketProvider>
     <div className="flex h-screen bg-gray-900 text-gray-100">
       <Toaster
         position="top-left"
@@ -80,13 +86,18 @@ function App() {
             <Route path="/relance/campaigns" element={<RelanceCampaignsPage />} />
             <Route path="/withdrawals/approvals" element={<WithdrawalApprovalPage />} />
             <Route path="/withdrawals/history" element={<WithdrawalHistoryPage />} />
-            <Route path="/sub-admins" element={<SubAdminManagementPage />} />
+            <Route path="/user-roles" element={<UserRolesManagement />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/statuses" element={<StatusPage />} />
+            <Route path="/impact-challenges" element={<ImpactChallengePage />} />
+            <Route path="/impact-challenges/:challengeId" element={<ChallengeDetailsPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />
         </Routes>
       </main>
     </div>
+    </SocketProvider>
   );
 }
 

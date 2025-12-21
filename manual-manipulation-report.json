@@ -1,0 +1,499 @@
+{
+  "generatedAt": "2025-12-05T10:14:23.912Z",
+  "summary": {
+    "totalUsersAnalyzed": 372,
+    "flaggedUsers": 20,
+    "criteria": {
+      "maxReferrals": 20,
+      "minWithdrawals": 50000
+    },
+    "totalWithdrawals": 2695358.7100000004,
+    "totalCurrentBalance": 25499.55,
+    "totalDiscrepancy": 2653108.2600000002,
+    "usersWithZeroReferrals": 2,
+    "usersWithZeroSubscribedReferrals": 4,
+    "highSuspicionUsers": 4
+  },
+  "flaggedUsers": [
+    {
+      "userId": "65d06c20644793ef52ca6e11",
+      "name": "Bemjamin Aime",
+      "email": "georgesyvan12@gmail.com",
+      "phoneNumber": "237691996470",
+      "role": "user",
+      "createdAt": "2024-02-17T08:19:44.000Z",
+      "currentBalance": 10,
+      "totalReferrals": 1,
+      "referralsByLevel": {
+        "lvl1": 1,
+        "lvl2": 0,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 0,
+      "expectedEarnings": 0,
+      "actualEarnings": 478592,
+      "discrepancy": 478592,
+      "withdrawals": {
+        "count": 20,
+        "totalAmount": 478582
+      },
+      "suspicionScore": 85
+    },
+    {
+      "userId": "668c04b4840a5553b8baf637",
+      "name": "ngah belinda",
+      "email": "belindangah@gmail.com",
+      "phoneNumber": "237674369679",
+      "role": "user",
+      "createdAt": "2024-07-08T15:24:36.000Z",
+      "currentBalance": 460,
+      "totalReferrals": 8,
+      "referralsByLevel": {
+        "lvl1": 3,
+        "lvl2": 3,
+        "lvl3": 2
+      },
+      "subscribedReferrals": 7,
+      "expectedEarnings": 4500,
+      "actualEarnings": 399107,
+      "discrepancy": 394607,
+      "withdrawals": {
+        "count": 116,
+        "totalAmount": 398647
+      },
+      "suspicionScore": 55
+    },
+    {
+      "userId": "65d8934ca95f5692725ef543",
+      "name": "Batouri Julien",
+      "email": "",
+      "phoneNumber": "",
+      "role": "user",
+      "createdAt": "2024-02-23T12:45:00.000Z",
+      "currentBalance": -10227.1,
+      "totalReferrals": 1,
+      "referralsByLevel": {
+        "lvl1": 1,
+        "lvl2": 0,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 0,
+      "expectedEarnings": 0,
+      "actualEarnings": 286305.4,
+      "discrepancy": 286305.4,
+      "withdrawals": {
+        "count": 25,
+        "totalAmount": 296532.5
+      },
+      "suspicionScore": 85
+    },
+    {
+      "userId": "6685a3993bf5cda4b65915e2",
+      "name": "sebgo abdoul",
+      "email": "abdoulazizesebgo@gmail.com",
+      "phoneNumber": "22675833237",
+      "role": "user",
+      "createdAt": "2024-07-03T19:16:41.000Z",
+      "currentBalance": 1748,
+      "totalReferrals": 11,
+      "referralsByLevel": {
+        "lvl1": 7,
+        "lvl2": 2,
+        "lvl3": 2
+      },
+      "subscribedReferrals": 8,
+      "expectedEarnings": 7000,
+      "actualEarnings": 258591,
+      "discrepancy": 251591,
+      "withdrawals": {
+        "count": 52,
+        "totalAmount": 256843
+      },
+      "suspicionScore": 45
+    },
+    {
+      "userId": "6688d849840a5553b8a34e5b",
+      "name": "𝐕𝐀𝐒𝐈𝐗𝐁𝐄𝐀𝐔𝐓𝐘 𝐄𝐌𝐏𝐈𝐑𝐄",
+      "email": "audreyselmara@gmail.com",
+      "phoneNumber": "237620351375",
+      "role": "user",
+      "createdAt": "2024-07-06T05:38:17.000Z",
+      "currentBalance": 389,
+      "totalReferrals": 8,
+      "referralsByLevel": {
+        "lvl1": 3,
+        "lvl2": 5,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 2,
+      "expectedEarnings": 1500,
+      "actualEarnings": 136284.5,
+      "discrepancy": 134784.5,
+      "withdrawals": {
+        "count": 56,
+        "totalAmount": 135895.5
+      },
+      "suspicionScore": 57
+    },
+    {
+      "userId": "65d09ec65c96a8ab00a6eb3d",
+      "name": "Tchaleu Diane",
+      "email": "Dianetchaleu2@gmail.com",
+      "phoneNumber": "237659325347",
+      "role": "user",
+      "createdAt": "2024-02-17T11:55:50.000Z",
+      "currentBalance": 3102.5,
+      "totalReferrals": 0,
+      "referralsByLevel": {
+        "lvl1": 0,
+        "lvl2": 0,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 0,
+      "expectedEarnings": 0,
+      "actualEarnings": 114802,
+      "discrepancy": 114802,
+      "withdrawals": {
+        "count": 6,
+        "totalAmount": 111699.5
+      },
+      "suspicionScore": 87
+    },
+    {
+      "userId": "669772d5b8a59e6c9725b76b",
+      "name": "jessie momo",
+      "email": "momojessie34@gmail.com",
+      "phoneNumber": "237650076676",
+      "role": "user",
+      "createdAt": "2024-07-17T07:29:25.000Z",
+      "currentBalance": 3000,
+      "totalReferrals": 6,
+      "referralsByLevel": {
+        "lvl1": 6,
+        "lvl2": 0,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 3,
+      "expectedEarnings": 3000,
+      "actualEarnings": 98950,
+      "discrepancy": 95950,
+      "withdrawals": {
+        "count": 54,
+        "totalAmount": 95950
+      },
+      "suspicionScore": 50
+    },
+    {
+      "userId": "666ef2b14b08104253b26b6c",
+      "name": "theophile steven",
+      "email": "mbosteven37@gmail.com",
+      "phoneNumber": "237656307860",
+      "role": "user",
+      "createdAt": "2024-06-16T14:12:01.000Z",
+      "currentBalance": 126.5,
+      "totalReferrals": 19,
+      "referralsByLevel": {
+        "lvl1": 14,
+        "lvl2": 5,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 3,
+      "expectedEarnings": 2500,
+      "actualEarnings": 95228.1,
+      "discrepancy": 92728.1,
+      "withdrawals": {
+        "count": 45,
+        "totalAmount": 95101.6
+      },
+      "suspicionScore": 40
+    },
+    {
+      "userId": "663a308b746c84c20da89c6f",
+      "name": "agble yaovi jérôme",
+      "email": "yaovijeromea@gmail.com",
+      "phoneNumber": "22898628917",
+      "role": "user",
+      "createdAt": "2024-05-07T13:45:47.000Z",
+      "currentBalance": 1485,
+      "totalReferrals": 6,
+      "referralsByLevel": {
+        "lvl1": 4,
+        "lvl2": 2,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 3,
+      "expectedEarnings": 3000,
+      "actualEarnings": 88850,
+      "discrepancy": 85850,
+      "withdrawals": {
+        "count": 35,
+        "totalAmount": 87365
+      },
+      "suspicionScore": 50
+    },
+    {
+      "userId": "65d6bc4676d8df79515899c7",
+      "name": "lanvin deffeu",
+      "email": "lanvindeffeu@gmail.com",
+      "phoneNumber": "237678378219",
+      "role": "user",
+      "createdAt": "2024-02-22T03:15:18.000Z",
+      "currentBalance": 86.3,
+      "totalReferrals": 16,
+      "referralsByLevel": {
+        "lvl1": 8,
+        "lvl2": 8,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 6,
+      "expectedEarnings": 4500,
+      "actualEarnings": 85895.9,
+      "discrepancy": 81395.9,
+      "withdrawals": {
+        "count": 83,
+        "totalAmount": 85809.6
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "6631e98c655c2c2d23703453",
+      "name": "ndoumbe maeva",
+      "email": "maevandoumbe237@gmail.com",
+      "phoneNumber": "237657371584",
+      "role": "user",
+      "createdAt": "2024-05-01T07:04:44.000Z",
+      "currentBalance": 738,
+      "totalReferrals": 16,
+      "referralsByLevel": {
+        "lvl1": 6,
+        "lvl2": 7,
+        "lvl3": 3
+      },
+      "subscribedReferrals": 9,
+      "expectedEarnings": 7000,
+      "actualEarnings": 78912,
+      "discrepancy": 71912,
+      "withdrawals": {
+        "count": 45,
+        "totalAmount": 78174
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "65e4b87918ad508a37398ce2",
+      "name": "ATS Produits & Services",
+      "email": "atindosteve1@gmail.com",
+      "phoneNumber": "237693011187",
+      "role": "user",
+      "createdAt": "2024-03-03T17:50:49.000Z",
+      "currentBalance": 45.85,
+      "totalReferrals": 18,
+      "referralsByLevel": {
+        "lvl1": 8,
+        "lvl2": 10,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 4,
+      "expectedEarnings": 4000,
+      "actualEarnings": 77342.16,
+      "discrepancy": 73342.16,
+      "withdrawals": {
+        "count": 74,
+        "totalAmount": 77296.31
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "65d4ddea8ce5ffe48a44a8dd",
+      "name": "mouhamed fadil",
+      "email": "ngabakoe@gmail.com",
+      "phoneNumber": "237697414652",
+      "role": "user",
+      "createdAt": "2024-02-20T17:14:18.000Z",
+      "currentBalance": 17000,
+      "totalReferrals": 0,
+      "referralsByLevel": {
+        "lvl1": 0,
+        "lvl2": 0,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 0,
+      "expectedEarnings": 0,
+      "actualEarnings": 88750,
+      "discrepancy": 88750,
+      "withdrawals": {
+        "count": 8,
+        "totalAmount": 71750
+      },
+      "suspicionScore": 80
+    },
+    {
+      "userId": "65d2b0344a7e2b9efbf6205d",
+      "name": "sterling black",
+      "email": "tambongsterling@gmail.com",
+      "phoneNumber": "237675080477",
+      "role": "admin",
+      "createdAt": "2024-02-19T01:34:44.000Z",
+      "currentBalance": 4800,
+      "totalReferrals": 11,
+      "referralsByLevel": {
+        "lvl1": 11,
+        "lvl2": 0,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 6,
+      "expectedEarnings": 6000,
+      "actualEarnings": 74386.7,
+      "discrepancy": 68386.7,
+      "withdrawals": {
+        "count": 55,
+        "totalAmount": 69586.7
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "6643caa863d9f5c1b455e7f5",
+      "name": "robert sandje loko",
+      "email": "rsandje@gmail.com",
+      "phoneNumber": "237676894131",
+      "role": "user",
+      "createdAt": "2024-05-14T20:33:44.000Z",
+      "currentBalance": 212.5,
+      "totalReferrals": 18,
+      "referralsByLevel": {
+        "lvl1": 3,
+        "lvl2": 15,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 5,
+      "expectedEarnings": 4000,
+      "actualEarnings": 66620,
+      "discrepancy": 62620,
+      "withdrawals": {
+        "count": 21,
+        "totalAmount": 66407.5
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "6645a4c7327f913f513e7e79",
+      "name": "soete jean claude",
+      "email": "soeteclaude@gmail.com",
+      "phoneNumber": "237671277569",
+      "role": "user",
+      "createdAt": "2024-05-16T06:16:39.000Z",
+      "currentBalance": 2000,
+      "totalReferrals": 5,
+      "referralsByLevel": {
+        "lvl1": 5,
+        "lvl2": 0,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 2,
+      "expectedEarnings": 2000,
+      "actualEarnings": 65630,
+      "discrepancy": 63630,
+      "withdrawals": {
+        "count": 40,
+        "totalAmount": 63630
+      },
+      "suspicionScore": 60
+    },
+    {
+      "userId": "660bbfbdda59bf5c5992cb87",
+      "name": "djemeya yoanest dipoko",
+      "email": "yoanestdipokodjemeya@gmail.com",
+      "phoneNumber": "237656291577",
+      "role": "user",
+      "createdAt": "2024-04-02T08:20:13.000Z",
+      "currentBalance": 265.5,
+      "totalReferrals": 17,
+      "referralsByLevel": {
+        "lvl1": 6,
+        "lvl2": 8,
+        "lvl3": 3
+      },
+      "subscribedReferrals": 5,
+      "expectedEarnings": 3750,
+      "actualEarnings": 60057.5,
+      "discrepancy": 56307.5,
+      "withdrawals": {
+        "count": 87,
+        "totalAmount": 59792
+      },
+      "suspicionScore": 30
+    },
+    {
+      "userId": "667b2addec7bb602e1b268fd",
+      "name": "bernard mengue",
+      "email": "bernardkross193@gmail.com",
+      "phoneNumber": "237692448324",
+      "role": "user",
+      "createdAt": "2024-06-25T20:38:53.000Z",
+      "currentBalance": 119,
+      "totalReferrals": 9,
+      "referralsByLevel": {
+        "lvl1": 5,
+        "lvl2": 1,
+        "lvl3": 3
+      },
+      "subscribedReferrals": 6,
+      "expectedEarnings": 3250,
+      "actualEarnings": 59608,
+      "discrepancy": 56358,
+      "withdrawals": {
+        "count": 25,
+        "totalAmount": 59489
+      },
+      "suspicionScore": 40
+    },
+    {
+      "userId": "65d11f60bba28a9b65a945c2",
+      "name": "jerry tawamba",
+      "email": "tbjk500@gmail.com",
+      "phoneNumber": "237679011117",
+      "role": "user",
+      "createdAt": "2024-02-17T21:04:32.000Z",
+      "currentBalance": 75,
+      "totalReferrals": 14,
+      "referralsByLevel": {
+        "lvl1": 9,
+        "lvl2": 5,
+        "lvl3": 0
+      },
+      "subscribedReferrals": 8,
+      "expectedEarnings": 8000,
+      "actualEarnings": 54110,
+      "discrepancy": 46110,
+      "withdrawals": {
+        "count": 16,
+        "totalAmount": 54035
+      },
+      "suspicionScore": 25
+    },
+    {
+      "userId": "66519619b65190134e376380",
+      "name": "aurélie laure",
+      "email": "chatchengaurelie@gmail.com",
+      "phoneNumber": "237659142723",
+      "role": "user",
+      "createdAt": "2024-05-25T07:41:13.000Z",
+      "currentBalance": 63.5,
+      "totalReferrals": 16,
+      "referralsByLevel": {
+        "lvl1": 7,
+        "lvl2": 8,
+        "lvl3": 1
+      },
+      "subscribedReferrals": 6,
+      "expectedEarnings": 3750,
+      "actualEarnings": 52836,
+      "discrepancy": 49086,
+      "withdrawals": {
+        "count": 57,
+        "totalAmount": 52772.5
+      },
+      "suspicionScore": 25
+    }
+  ]
+}

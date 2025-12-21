@@ -56,6 +56,9 @@ serviceRouter.get('/:userId/active-subscriptions', (req, res) => userController.
 // NEW: Internal route to get referral stats (for payment service)
 serviceRouter.get('/:userId/referral-stats', (req, res) => userController.getReferralStats(req, res));
 
+// NEW: Internal route to check direct referral relationship (for chat service)
+serviceRouter.post('/check-direct-referral', (req, res) => userController.checkDirectReferralRelationship(req, res));
+
 // NEW: Internal routes for finding users by different identifiers
 serviceRouter.post('/find-by-email', (req, res) => userController.findUserByEmail(req, res));
 serviceRouter.post('/find-by-phone', (req, res) => userController.findUserByPhoneNumber(req, res));
