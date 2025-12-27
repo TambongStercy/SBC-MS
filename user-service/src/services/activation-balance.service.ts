@@ -260,6 +260,7 @@ export class ActivationBalanceService {
 
     /**
      * Get list of referrals (direct and indirect) that can be activated/upgraded by the sponsor
+     * Optimized to use single aggregation pipeline instead of N+1 queries
      */
     async getReferralsForActivation(
         sponsorId: string,
@@ -269,64 +270,33 @@ export class ActivationBalanceService {
     ): Promise<{ referrals: ActivatableReferral[]; total: number; page: number; pages: number }> {
         log.info(`Getting referrals for activation for sponsor ${sponsorId}, filter: ${filter || 'all'}`);
 
-        const sponsorObjectId = new Types.ObjectId(sponsorId);
-
-        // Get all referrals (levels 1, 2, 3) with populated user data
-        const referralResult = await this.referralRepository.findAllReferralsByReferrer(
-            sponsorObjectId,
-            1, // Get first page with high limit to process in memory
-            1000, // High limit to get all referrals
-            true // Populate referred user
+        // Use optimized aggregation pipeline that does everything in one query
+        const result = await this.referralRepository.findReferralsForActivation(
+            sponsorId,
+            page,
+            limit,
+            filter
         );
 
-        // Get subscription status for each referred user
-        const activatableReferrals: ActivatableReferral[] = [];
-
-        for (const referral of referralResult.referrals) {
-            const referredUser = referral.referredUser as IUser;
-            if (!referredUser || !referredUser._id) continue;
-
-            // Check subscription status
-            const [activeClassique, activeCible] = await Promise.all([
-                this.subscriptionRepository.findActiveSubscriptionByType(referredUser._id, SubscriptionType.CLASSIQUE),
-                this.subscriptionRepository.findActiveSubscriptionByType(referredUser._id, SubscriptionType.CIBLE)
-            ]);
-
-            const hasActiveSubscription = !!(activeClassique || activeCible);
-            const currentSubscriptionType = activeCible ? SubscriptionType.CIBLE :
-                                           (activeClassique ? SubscriptionType.CLASSIQUE : undefined);
-            const canUpgrade = !!(activeClassique && !activeCible);
-
-            const activatable: ActivatableReferral = {
-                _id: referredUser._id.toString(),
-                name: referredUser.name,
-                email: referredUser.email,
-                phoneNumber: referredUser.phoneNumber,
-                avatar: referredUser.avatar,
-                referralLevel: referral.referralLevel,
-                hasActiveSubscription,
-                currentSubscriptionType,
-                canUpgrade,
-                createdAt: referral.createdAt
-            };
-
-            // Apply filter
-            if (filter === 'activatable' && hasActiveSubscription) continue;
-            if (filter === 'upgradable' && !canUpgrade) continue;
-
-            activatableReferrals.push(activatable);
-        }
-
-        // Apply pagination
-        const start = (page - 1) * limit;
-        const paginatedReferrals = activatableReferrals.slice(start, start + limit);
-        const total = activatableReferrals.length;
+        // Map to ActivatableReferral format
+        const referrals: ActivatableReferral[] = result.referrals.map(r => ({
+            _id: r._id,
+            name: r.name,
+            email: r.email,
+            phoneNumber: r.phoneNumber,
+            avatar: r.avatar,
+            referralLevel: r.referralLevel,
+            hasActiveSubscription: r.hasActiveSubscription,
+            currentSubscriptionType: r.currentSubscriptionType as SubscriptionType | undefined,
+            canUpgrade: r.canUpgrade,
+            createdAt: r.createdAt
+        }));
 
         return {
-            referrals: paginatedReferrals,
-            total,
-            page,
-            pages: Math.ceil(total / limit)
+            referrals,
+            total: result.total,
+            page: result.page,
+            pages: result.pages
         };
     }
 

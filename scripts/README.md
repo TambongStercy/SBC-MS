@@ -71,8 +71,8 @@ PAYMENT_DB_URI=mongodb://localhost:27017/sbc_payment_dev
 Or use production databases:
 
 ```env
-USER_DB_URI=mongodb://user:pass@host:27017/sbc_user_prod
-PAYMENT_DB_URI=mongodb://user:pass@host:27017/sbc_payment_prod
+USER_DB_URI=mongodb://user:pass@host:27017/sbc_user
+PAYMENT_DB_URI=mongodb://user:pass@host:27017/sbc_payment
 ```
 
 #### Run the Script

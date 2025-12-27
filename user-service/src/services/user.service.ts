@@ -346,13 +346,28 @@ export class UserService {
      */
     private async createReferralHierarchy(directReferrer: IUser, referredUser: IUser): Promise<void> {
         try {
-            const referralsToCreate: { referrer: Types.ObjectId; referredUser: Types.ObjectId; referralLevel: number }[] = [];
+            const referralsToCreate: {
+                referrer: Types.ObjectId;
+                referredUser: Types.ObjectId;
+                referralLevel: number;
+                referredUserName?: string;
+                referredUserEmail?: string;
+                referredUserPhone?: string;
+            }[] = [];
+
+            // Denormalized fields from the referred user for fast search
+            const denormalizedFields = {
+                referredUserName: referredUser.name || '',
+                referredUserEmail: referredUser.email || '',
+                referredUserPhone: referredUser.phoneNumber?.toString() || '',
+            };
 
             // Level 1: Direct referrer
             referralsToCreate.push({
                 referrer: directReferrer._id,
                 referredUser: referredUser._id,
                 referralLevel: 1,
+                ...denormalizedFields,
             });
 
             // Level 2: Referrer of the direct referrer
@@ -364,6 +379,7 @@ export class UserService {
                     referrer: level2ReferrerId,
                     referredUser: referredUser._id,
                     referralLevel: 2,
+                    ...denormalizedFields,
                 });
 
                 // Level 3: Referrer of the level 2 referrer
@@ -376,6 +392,7 @@ export class UserService {
                         referrer: level3ReferrerId,
                         referredUser: referredUser._id,
                         referralLevel: 3,
+                        ...denormalizedFields,
                     });
                 }
             }
@@ -781,6 +798,23 @@ export class UserService {
         }
 
         const updatedUser = await userRepository.updateById(userId, allowedFields);
+
+        // Sync denormalized fields on referrals if name, email, or phone changed
+        if (updatedUser && (allowedFields.name || allowedFields.phoneNumber)) {
+            try {
+                const syncResult = await referralRepository.updateDenormalizedUserFields(userId, {
+                    name: allowedFields.name,
+                    phoneNumber: allowedFields.phoneNumber,
+                });
+                if (syncResult.modifiedCount > 0) {
+                    log.info(`Synced denormalized fields on ${syncResult.modifiedCount} referrals for user ${userId}`);
+                }
+            } catch (syncError) {
+                // Don't fail the profile update if sync fails - just log it
+                log.error(`Failed to sync denormalized referral fields for user ${userId}:`, syncError);
+            }
+        }
+
         return updatedUser ? this.mapUserToResponse(updatedUser) : null;
     }
 
@@ -1196,16 +1230,38 @@ export class UserService {
                 // Use new search methods if nameFilter is provided
                 log.info(`Searching referred users for ${referrerId} with name filter: ${nameFilter}, type: ${type}`);
                 let searchResult;
-                if (type === 'indirect') {
-                    // For indirect type, search both level 2 and 3
-                    searchResult = await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
-                    // Filter to only include level 2 and 3
-                    searchResult.referrals = searchResult.referrals.filter(ref => ref.referralLevel === 2 || ref.referralLevel === 3);
-                    // Note: totalCount will need to be recalculated properly in repository
+
+                // Use FAST denormalized search when no subType filtering is needed
+                // This searches by name, email, and phone using indexed denormalized fields
+                if (!subType) {
+                    // Determine level filter based on type
+                    let levelFilter: number | number[] | undefined;
+                    if (type === 'direct') {
+                        levelFilter = 1;
+                    } else if (type === 'indirect') {
+                        // For indirect, search only levels 2 and 3
+                        levelFilter = [2, 3];
+                    } else if (level && [1, 2, 3].includes(level)) {
+                        levelFilter = level;
+                    }
+
+                    searchResult = await referralRepository.searchReferralsFast(
+                        referrerObjectId,
+                        nameFilter,
+                        page,
+                        limit,
+                        levelFilter
+                    );
                 } else {
-                    searchResult = level && [1, 2, 3].includes(level)
-                        ? await referralRepository.searchReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, nameFilter, page, limit, subType)
-                        : await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
+                    // Fall back to aggregation-based search when subType filtering is needed
+                    if (type === 'indirect') {
+                        searchResult = await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
+                        searchResult.referrals = searchResult.referrals.filter(ref => ref.referralLevel === 2 || ref.referralLevel === 3);
+                    } else {
+                        searchResult = level && [1, 2, 3].includes(level)
+                            ? await referralRepository.searchReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, nameFilter, page, limit, subType)
+                            : await referralRepository.searchAllReferralsByReferrerWithSubType(referrerObjectId, nameFilter, page, limit, subType);
+                    }
                 }
                 referredUsersData = searchResult.referrals;
                 totalCount = searchResult.totalCount;

@@ -103,20 +103,34 @@ export class ReferralRepository {
 
     /**
      * Creates a single new referral record.
-     * @param data - Data for the new referral (referrer, referredUser, referralLevel).
+     * @param data - Data for the new referral (referrer, referredUser, referralLevel, and optional denormalized fields).
      * @returns The newly created referral document.
      */
-    async create(data: { referrer: Types.ObjectId; referredUser: Types.ObjectId; referralLevel: number }): Promise<IReferral> {
+    async create(data: {
+        referrer: Types.ObjectId;
+        referredUser: Types.ObjectId;
+        referralLevel: number;
+        referredUserName?: string;
+        referredUserEmail?: string;
+        referredUserPhone?: string;
+    }): Promise<IReferral> {
         const referral = new ReferralModel(data);
         return referral.save();
     }
 
     /**
      * Creates multiple referral records.
-     * @param data - An array of referral data objects.
+     * @param data - An array of referral data objects with optional denormalized fields.
      * @returns An array of the newly created referral documents.
      */
-    async createMany(data: { referrer: Types.ObjectId; referredUser: Types.ObjectId; referralLevel: number }[]): Promise<IReferral[]> {
+    async createMany(data: {
+        referrer: Types.ObjectId;
+        referredUser: Types.ObjectId;
+        referralLevel: number;
+        referredUserName?: string;
+        referredUserEmail?: string;
+        referredUserPhone?: string;
+    }[]): Promise<IReferral[]> {
         return ReferralModel.insertMany(data);
     }
 
@@ -531,73 +545,85 @@ export class ReferralRepository {
         const skip = (page - 1) * limit;
         const referrerObjectId = new mongoose.Types.ObjectId(referrerId.toString());
 
-        const aggregationPipeline: mongoose.PipelineStage[] = [
-            {
-                $match: {
-                    referrer: referrerObjectId,
-                    referralLevel: { $in: [2, 3] },
-                    archived: { $ne: true }
-                }
-            },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'referredUser',
-                    foreignField: '_id',
-                    as: 'referredUserData'
-                }
-            },
-            {
-                $unwind: {
-                    path: '$referredUserData',
-                    preserveNullAndEmptyArrays: false
-                }
-            },
-            {
-                $match: {
-                    'referredUserData.deleted': { $ne: true },
-                    'referredUserData.blocked': { $ne: true }
-                }
-            },
-            {
-                $addFields: {
-                    'nameLower': { $toLower: '$referredUserData.name' }
-                }
-            },
-            {
-                $sort: {
-                    'referralLevel': 1,
-                    'nameLower': 1
-                }
-            },
-            { $skip: skip },
-            { $limit: limit },
-            {
-                $project: {
-                    _id: '$referredUserData._id',
-                    name: '$referredUserData.name',
-                    email: '$referredUserData.email',
-                    phoneNumber: '$referredUserData.phoneNumber',
-                    region: '$referredUserData.region',
-                    avatar: '$referredUserData.avatar',
-                    referralLevel: '$referralLevel',
-                    createdAt: '$createdAt'
-                }
-            }
-        ];
+        // OPTIMIZED: Use simple indexed queries instead of expensive aggregation with $lookup
 
-        const referredUsers = await ReferralModel.aggregate<PopulatedReferredUserInfo>(aggregationPipeline);
+        // Phase 1: Get total count (uses compound index, very fast)
+        const totalCount = await ReferralModel.countDocuments({
+            referrer: referrerObjectId,
+            referralLevel: { $in: [2, 3] },
+            archived: { $ne: true }
+        });
 
-        // Get total count considering the referred user status filters
-        const countPipeline: mongoose.PipelineStage[] = [
-            { $match: { referrer: referrerObjectId, referralLevel: { $in: [2, 3] }, archived: { $ne: true } } },
-            { $lookup: { from: 'users', localField: 'referredUser', foreignField: '_id', as: 'user' } },
-            { $unwind: '$user' },
-            { $match: { 'user.deleted': { $ne: true }, 'user.blocked': { $ne: true } } },
-            { $count: 'totalCount' }
-        ];
-        const countResult = await ReferralModel.aggregate<{ totalCount: number }>(countPipeline);
-        const totalCount = countResult[0]?.totalCount ?? 0;
+        if (totalCount === 0) {
+            return {
+                referredUsers: [],
+                level2Users: [],
+                level3Users: [],
+                totalCount: 0,
+                totalPages: 0,
+                page
+            };
+        }
+
+        // Phase 2: Get paginated referrals (uses index, very fast)
+        const referrals = await ReferralModel.find({
+            referrer: referrerObjectId,
+            referralLevel: { $in: [2, 3] },
+            archived: { $ne: true }
+        })
+            .select('referredUser referralLevel createdAt')
+            .sort({ referralLevel: 1, createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        if (referrals.length === 0) {
+            return {
+                referredUsers: [],
+                level2Users: [],
+                level3Users: [],
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit),
+                page
+            };
+        }
+
+        // Phase 3: Batch fetch user data for ONLY these referrals
+        const referredUserIds = referrals.map(r => r.referredUser);
+        const users = await UserModel.find({
+            _id: { $in: referredUserIds },
+            deleted: { $ne: true },
+            blocked: { $ne: true }
+        })
+            .select('_id name email phoneNumber region avatar')
+            .lean();
+
+        // Create user map for fast lookup
+        const userMap = new Map<string, any>();
+        for (const user of users) {
+            userMap.set(user._id.toString(), user);
+        }
+
+        // Phase 4: Combine data
+        const referredUsers: PopulatedReferredUserInfo[] = [];
+        for (const referral of referrals) {
+            const userId = referral.referredUser.toString();
+            const user = userMap.get(userId);
+
+            // Skip if user not found (deleted/blocked)
+            if (!user) continue;
+
+            referredUsers.push({
+                _id: user._id,
+                name: user.name || '',
+                email: user.email || '',
+                phoneNumber: user.phoneNumber,
+                region: user.region,
+                avatar: user.avatar,
+                referralLevel: referral.referralLevel,
+                createdAt: referral.createdAt
+            });
+        }
 
         // Group by level in code for the response structure matching old model
         const level2Users = referredUsers.filter(u => u.referralLevel === 2);
@@ -624,6 +650,40 @@ export class ReferralRepository {
         return ReferralModel.updateMany(
             { $or: [{ referrer: userId }, { referredUser: userId }], archived: { $ne: true } }, // Only archive if not already archived
             { $set: { archived: true, archivedAt: now } }
+        ).exec();
+    }
+
+    /**
+     * Updates denormalized user fields on all referrals where the user is the referred user.
+     * Call this when a user updates their name, email, or phone number.
+     * @param userId - The ID of the user whose info changed.
+     * @param updates - The updated user fields.
+     * @returns MongoDB update result.
+     */
+    async updateDenormalizedUserFields(
+        userId: string | Types.ObjectId,
+        updates: { name?: string; email?: string; phoneNumber?: string | number }
+    ): Promise<UpdateWriteOpResult> {
+        const setFields: Record<string, string> = {};
+
+        if (updates.name !== undefined) {
+            setFields.referredUserName = updates.name;
+        }
+        if (updates.email !== undefined) {
+            setFields.referredUserEmail = updates.email;
+        }
+        if (updates.phoneNumber !== undefined) {
+            setFields.referredUserPhone = updates.phoneNumber.toString();
+        }
+
+        if (Object.keys(setFields).length === 0) {
+            // Nothing to update
+            return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedCount: 0, upsertedId: null };
+        }
+
+        return ReferralModel.updateMany(
+            { referredUser: userId },
+            { $set: setFields }
         ).exec();
     }
 
@@ -1409,6 +1469,438 @@ export class ReferralRepository {
         const totalCount = result[0]?.totalCount[0]?.count || 0;
 
         return { referrals, totalCount };
+    }
+
+    /**
+     * OPTIMIZED: Search referrals using denormalized fields (no $lookup needed)
+     * Searches by name, email, or phone number using compound indexes
+     * Falls back to aggregation if denormalized fields are not populated
+     */
+    async searchReferralsFast(
+        referrerId: string | Types.ObjectId,
+        searchTerm: string,
+        page: number = 1,
+        limit: number = 20,
+        level?: number | number[] // Optional: filter by specific level (1, 2, 3), array of levels, or undefined for all
+    ): Promise<{
+        referrals: PopulatedReferredUserInfo[];
+        totalCount: number;
+    }> {
+        const referrerObjectId = new Types.ObjectId(referrerId.toString());
+        const searchRegex = new RegExp(searchTerm, 'i');
+        const skip = (page - 1) * limit;
+
+        // Build match query using denormalized fields
+        const matchQuery: any = {
+            referrer: referrerObjectId,
+            archived: { $ne: true },
+            $or: [
+                { referredUserName: searchRegex },
+                { referredUserEmail: searchRegex },
+                { referredUserPhone: searchRegex }
+            ]
+        };
+
+        // Support single level or array of levels
+        if (level !== undefined) {
+            if (Array.isArray(level)) {
+                matchQuery.referralLevel = { $in: level };
+            } else {
+                matchQuery.referralLevel = level;
+            }
+        }
+
+        // Get total count (fast with index on referrer + denormalized fields)
+        const totalCount = await ReferralModel.countDocuments(matchQuery);
+
+        if (totalCount === 0) {
+            return { referrals: [], totalCount: 0 };
+        }
+
+        // Get paginated referrals
+        const referralDocs = await ReferralModel.find(matchQuery)
+            .select('referredUser referralLevel createdAt referredUserName referredUserEmail referredUserPhone')
+            .sort({ referralLevel: 1, referredUserName: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        if (referralDocs.length === 0) {
+            return { referrals: [], totalCount };
+        }
+
+        // Batch fetch full user data for the results
+        const referredUserIds = referralDocs.map(r => r.referredUser);
+        const users = await UserModel.find({
+            _id: { $in: referredUserIds },
+            deleted: { $ne: true },
+            blocked: { $ne: true }
+        })
+            .select('_id name email phoneNumber region avatar avatarId country gender profession')
+            .lean();
+
+        // Create user map for fast lookup
+        const userMap = new Map<string, any>();
+        for (const user of users) {
+            userMap.set(user._id.toString(), user);
+        }
+
+        // Combine data
+        const referrals: PopulatedReferredUserInfo[] = [];
+        for (const ref of referralDocs) {
+            const userId = ref.referredUser.toString();
+            const user = userMap.get(userId);
+
+            if (!user) continue; // Skip if user not found (deleted/blocked)
+
+            referrals.push({
+                _id: user._id,
+                name: user.name || '',
+                email: user.email || '',
+                phoneNumber: user.phoneNumber,
+                region: user.region,
+                avatar: user.avatar,
+                referralLevel: ref.referralLevel,
+                createdAt: ref.createdAt
+            });
+        }
+
+        return { referrals, totalCount };
+    }
+
+    /**
+     * Get referrals for activation with subscription status included
+     * OPTIMIZED: Two-phase approach for users with many referrals
+     * Phase 1: Paginate referrals first (fast with index)
+     * Phase 2: Batch query subscriptions only for the page results
+     */
+    async findReferralsForActivation(
+        referrerId: string | Types.ObjectId,
+        page: number = 1,
+        limit: number = 20,
+        filter?: 'all' | 'activatable' | 'upgradable'
+    ): Promise<{
+        referrals: Array<{
+            _id: string;
+            name: string;
+            email: string;
+            phoneNumber?: string;
+            avatar?: string;
+            referralLevel: number;
+            hasActiveSubscription: boolean;
+            currentSubscriptionType?: string;
+            canUpgrade: boolean;
+            createdAt: Date;
+        }>;
+        total: number;
+        page: number;
+        pages: number;
+    }> {
+        const referrerObjectId = new Types.ObjectId(referrerId.toString());
+        const now = new Date();
+
+        // For 'all' filter, use fast two-phase approach
+        // For 'activatable' or 'upgradable', we need to check subscriptions first
+        if (!filter || filter === 'all') {
+            return this.findReferralsForActivationFast(referrerObjectId, page, limit, now);
+        }
+
+        // For filtered queries, use aggregation (slower but necessary)
+        return this.findReferralsForActivationFiltered(referrerObjectId, page, limit, filter, now);
+    }
+
+    /**
+     * Ultra-fast approach for 'all' filter - NO aggregation
+     * Phase 1: Count referrals (uses index, instant)
+     * Phase 2: Get paginated referral IDs only (uses index, instant)
+     * Phase 3: Batch fetch user data for just those IDs
+     * Phase 4: Batch fetch subscriptions for just those users
+     */
+    private async findReferralsForActivationFast(
+        referrerObjectId: Types.ObjectId,
+        page: number,
+        limit: number,
+        now: Date
+    ): Promise<{
+        referrals: Array<{
+            _id: string;
+            name: string;
+            email: string;
+            phoneNumber?: string;
+            avatar?: string;
+            referralLevel: number;
+            hasActiveSubscription: boolean;
+            currentSubscriptionType?: string;
+            canUpgrade: boolean;
+            createdAt: Date;
+        }>;
+        total: number;
+        page: number;
+        pages: number;
+    }> {
+        // Phase 1: Get total count (uses referrer index, very fast)
+        const total = await ReferralModel.countDocuments({
+            referrer: referrerObjectId,
+            archived: { $ne: true }
+        });
+
+        if (total === 0) {
+            return { referrals: [], total: 0, page, pages: 0 };
+        }
+
+        // Phase 2: Get paginated referrals (uses index, very fast - only fetching IDs and referredUser)
+        const referrals = await ReferralModel.find({
+            referrer: referrerObjectId,
+            archived: { $ne: true }
+        })
+            .select('referredUser referralLevel createdAt')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean();
+
+        if (referrals.length === 0) {
+            return { referrals: [], total, page, pages: Math.ceil(total / limit) };
+        }
+
+        // Phase 3: Batch fetch user data for ONLY these referrals
+        const referredUserIds = referrals.map(r => r.referredUser);
+        const users = await UserModel.find({
+            _id: { $in: referredUserIds },
+            deleted: { $ne: true },
+            blocked: { $ne: true }
+        })
+            .select('_id name email phoneNumber avatar')
+            .lean();
+
+        // Create user map for fast lookup
+        const userMap = new Map<string, any>();
+        for (const user of users) {
+            userMap.set(user._id.toString(), user);
+        }
+
+        // Phase 4: Batch fetch subscriptions for ONLY these users
+        const subscriptions = await SubscriptionModel.find({
+            user: { $in: referredUserIds },
+            status: SubscriptionStatus.ACTIVE,
+            endDate: { $gt: now },
+            subscriptionType: { $in: ['CLASSIQUE', 'CIBLE'] }
+        })
+            .select('user subscriptionType')
+            .lean();
+
+        // Build subscription map
+        const subscriptionMap = new Map<string, Set<string>>();
+        for (const sub of subscriptions) {
+            const key = sub.user.toString();
+            if (!subscriptionMap.has(key)) {
+                subscriptionMap.set(key, new Set());
+            }
+            subscriptionMap.get(key)!.add(sub.subscriptionType);
+        }
+
+        // Combine all data
+        const formattedReferrals: Array<{
+            _id: string;
+            name: string;
+            email: string;
+            phoneNumber?: string;
+            avatar?: string;
+            referralLevel: number;
+            hasActiveSubscription: boolean;
+            currentSubscriptionType?: string;
+            canUpgrade: boolean;
+            createdAt: Date;
+        }> = [];
+
+        for (const referral of referrals) {
+            const userId = referral.referredUser.toString();
+            const user = userMap.get(userId);
+
+            // Skip if user not found (deleted/blocked)
+            if (!user) continue;
+
+            const userSubs = subscriptionMap.get(userId) || new Set();
+            const hasClassique = userSubs.has('CLASSIQUE');
+            const hasCible = userSubs.has('CIBLE');
+            const hasActiveSubscription = hasClassique || hasCible;
+            const currentSubscriptionType = hasCible ? 'CIBLE' : (hasClassique ? 'CLASSIQUE' : undefined);
+            const canUpgrade = hasClassique && !hasCible;
+
+            formattedReferrals.push({
+                _id: userId,
+                name: user.name || '',
+                email: user.email || '',
+                phoneNumber: user.phoneNumber,
+                avatar: user.avatar,
+                referralLevel: referral.referralLevel,
+                hasActiveSubscription,
+                currentSubscriptionType,
+                canUpgrade,
+                createdAt: referral.createdAt
+            });
+        }
+
+        return {
+            referrals: formattedReferrals,
+            total,
+            page,
+            pages: Math.ceil(total / limit)
+        };
+    }
+
+    /**
+     * Filtered approach for 'activatable' or 'upgradable' filters
+     * Uses aggregation with subscription lookups (slower but necessary for filtering)
+     */
+    private async findReferralsForActivationFiltered(
+        referrerObjectId: Types.ObjectId,
+        page: number,
+        limit: number,
+        filter: 'activatable' | 'upgradable',
+        now: Date
+    ): Promise<{
+        referrals: Array<{
+            _id: string;
+            name: string;
+            email: string;
+            phoneNumber?: string;
+            avatar?: string;
+            referralLevel: number;
+            hasActiveSubscription: boolean;
+            currentSubscriptionType?: string;
+            canUpgrade: boolean;
+            createdAt: Date;
+        }>;
+        total: number;
+        page: number;
+        pages: number;
+    }> {
+        const pipeline: any[] = [
+            {
+                $match: {
+                    referrer: referrerObjectId,
+                    archived: { $ne: true }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'referredUser',
+                    foreignField: '_id',
+                    as: 'userData'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$userData',
+                    preserveNullAndEmptyArrays: false
+                }
+            },
+            {
+                $match: {
+                    'userData.deleted': { $ne: true },
+                    'userData.blocked': { $ne: true }
+                }
+            },
+            // Lookup active subscriptions (both types in one query)
+            {
+                $lookup: {
+                    from: 'subscriptions',
+                    let: { userId: '$userData._id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$user', '$$userId'] },
+                                subscriptionType: { $in: ['CLASSIQUE', 'CIBLE'] },
+                                status: SubscriptionStatus.ACTIVE,
+                                endDate: { $gt: now }
+                            }
+                        },
+                        { $project: { subscriptionType: 1 } }
+                    ],
+                    as: 'subscriptions'
+                }
+            },
+            {
+                $addFields: {
+                    hasClassique: {
+                        $gt: [
+                            { $size: { $filter: { input: '$subscriptions', cond: { $eq: ['$$this.subscriptionType', 'CLASSIQUE'] } } } },
+                            0
+                        ]
+                    },
+                    hasCible: {
+                        $gt: [
+                            { $size: { $filter: { input: '$subscriptions', cond: { $eq: ['$$this.subscriptionType', 'CIBLE'] } } } },
+                            0
+                        ]
+                    }
+                }
+            },
+            {
+                $addFields: {
+                    hasActiveSubscription: { $or: ['$hasClassique', '$hasCible'] },
+                    currentSubscriptionType: {
+                        $cond: {
+                            if: '$hasCible',
+                            then: 'CIBLE',
+                            else: { $cond: { if: '$hasClassique', then: 'CLASSIQUE', else: null } }
+                        }
+                    },
+                    canUpgrade: { $and: ['$hasClassique', { $not: '$hasCible' }] }
+                }
+            }
+        ];
+
+        // Apply filter
+        if (filter === 'activatable') {
+            pipeline.push({ $match: { hasActiveSubscription: false } });
+        } else if (filter === 'upgradable') {
+            pipeline.push({ $match: { canUpgrade: true } });
+        }
+
+        // Paginate
+        pipeline.push({
+            $facet: {
+                paginatedResults: [
+                    { $sort: { createdAt: -1 as const } },
+                    { $skip: (page - 1) * limit },
+                    { $limit: limit },
+                    {
+                        $project: {
+                            _id: '$userData._id',
+                            name: '$userData.name',
+                            email: '$userData.email',
+                            phoneNumber: '$userData.phoneNumber',
+                            avatar: '$userData.avatar',
+                            referralLevel: 1,
+                            hasActiveSubscription: 1,
+                            currentSubscriptionType: 1,
+                            canUpgrade: 1,
+                            createdAt: 1
+                        }
+                    }
+                ],
+                totalCount: [{ $count: 'count' }]
+            }
+        });
+
+        const result = await ReferralModel.aggregate(pipeline);
+        const referrals = result[0]?.paginatedResults || [];
+        const total = result[0]?.totalCount[0]?.count || 0;
+
+        const formattedReferrals = referrals.map((r: any) => ({
+            ...r,
+            _id: r._id.toString()
+        }));
+
+        return {
+            referrals: formattedReferrals,
+            total,
+            page,
+            pages: Math.ceil(total / limit)
+        };
     }
 }
 

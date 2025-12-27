@@ -8,6 +8,10 @@ export interface IReferral extends Document {
     archived: boolean;
     archivedAt?: Date;
     createdAt: Date;
+    // Denormalized fields for fast search (copied from referred user)
+    referredUserName?: string;
+    referredUserEmail?: string;
+    referredUserPhone?: string;
 }
 
 const ReferralSchema = new Schema<IReferral>(
@@ -39,6 +43,19 @@ const ReferralSchema = new Schema<IReferral>(
         archivedAt: {
             type: Date,
         },
+        // Denormalized fields for fast search
+        referredUserName: {
+            type: String,
+            index: true,
+        },
+        referredUserEmail: {
+            type: String,
+            index: true,
+        },
+        referredUserPhone: {
+            type: String,
+            index: true,
+        },
     },
     {
         timestamps: true, // Adds createdAt and updatedAt automatically
@@ -47,6 +64,11 @@ const ReferralSchema = new Schema<IReferral>(
 
 // Compound index for querying referrals by referrer and level, including archived status
 ReferralSchema.index({ referrer: 1, referralLevel: 1, archived: 1 });
+
+// Compound indexes for fast search by referrer + searchable fields
+ReferralSchema.index({ referrer: 1, referredUserName: 1 });
+ReferralSchema.index({ referrer: 1, referredUserEmail: 1 });
+ReferralSchema.index({ referrer: 1, referredUserPhone: 1 });
 
 
 const ReferralModel = model<IReferral>('Referral', ReferralSchema);
