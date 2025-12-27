@@ -8,6 +8,12 @@ import logger from '../utils/logger';
 
 const log = logger.getLogger('ConversationService');
 
+export interface MessagingStatus {
+    canSend: boolean;
+    reason?: 'accepted' | 'pending_limit_not_reached' | 'pending_limit_reached' | 'blocked' | 'reported';
+    messagesRemaining?: number; // Only for pending conversations
+}
+
 export interface ConversationWithDetails {
     _id: string;
     type: ConversationType;
@@ -25,6 +31,9 @@ export interface ConversationWithDetails {
     lastMessageAt?: Date;
     unreadCount: number;
     statusId?: string;
+    acceptanceStatus?: ConversationAcceptanceStatus;
+    messagingStatus?: MessagingStatus;
+    isInitiator?: boolean; // Whether the current user started this conversation
 }
 
 class ConversationService {
@@ -116,33 +125,42 @@ class ConversationService {
         // Get online statuses
         const onlineStatuses = await presenceService.getOnlineStatuses(Array.from(participantIds));
 
-        // Build response
-        const conversationsWithDetails: ConversationWithDetails[] = conversations.map(conv => {
-            const participants = conv.participants.map(participantId => {
-                const id = participantId.toString();
-                const user = userDetails.get(id);
-                return {
-                    _id: id,
-                    name: user?.name || 'Unknown User',
-                    avatar: user?.avatar,
-                    isOnline: onlineStatuses.get(id) || false
-                };
-            });
+        // Build response with messaging status
+        const conversationsWithDetails: ConversationWithDetails[] = await Promise.all(
+            conversations.map(async conv => {
+                const participants = conv.participants.map(participantId => {
+                    const id = participantId.toString();
+                    const user = userDetails.get(id);
+                    return {
+                        _id: id,
+                        name: user?.name || 'Unknown User',
+                        avatar: user?.avatar,
+                        isOnline: onlineStatuses.get(id) || false
+                    };
+                });
 
-            return {
-                _id: conv._id.toString(),
-                type: conv.type,
-                participants,
-                lastMessage: conv.lastMessagePreview ? {
-                    content: conv.lastMessagePreview,
-                    senderId: conv.lastMessageSenderId?.toString() || '',
-                    createdAt: conv.lastMessageAt || conv.updatedAt
-                } : undefined,
-                lastMessageAt: conv.lastMessageAt,
-                unreadCount: conv.unreadCounts.get(userId) || 0,
-                statusId: conv.statusId?.toString()
-            };
-        });
+                // Calculate messaging status
+                const messagingStatus = await this.getMessagingStatus(conv, userId);
+                const isInitiator = conv.initiatorId?.toString() === userId;
+
+                return {
+                    _id: conv._id.toString(),
+                    type: conv.type,
+                    participants,
+                    lastMessage: conv.lastMessagePreview ? {
+                        content: conv.lastMessagePreview,
+                        senderId: conv.lastMessageSenderId?.toString() || '',
+                        createdAt: conv.lastMessageAt || conv.updatedAt
+                    } : undefined,
+                    lastMessageAt: conv.lastMessageAt,
+                    unreadCount: conv.unreadCounts.get(userId) || 0,
+                    statusId: conv.statusId?.toString(),
+                    acceptanceStatus: conv.acceptanceStatus,
+                    messagingStatus,
+                    isInitiator
+                };
+            })
+        );
 
         return {
             conversations: conversationsWithDetails,
@@ -179,33 +197,42 @@ class ConversationService {
         // Get online statuses
         const onlineStatuses = await presenceService.getOnlineStatuses(Array.from(participantIds));
 
-        // Build response
-        const conversationsWithDetails: ConversationWithDetails[] = conversations.map(conv => {
-            const participants = conv.participants.map(participantId => {
-                const id = participantId.toString();
-                const user = userDetails.get(id);
-                return {
-                    _id: id,
-                    name: user?.name || 'Unknown User',
-                    avatar: user?.avatar,
-                    isOnline: onlineStatuses.get(id) || false
-                };
-            });
+        // Build response with messaging status
+        const conversationsWithDetails: ConversationWithDetails[] = await Promise.all(
+            conversations.map(async conv => {
+                const participants = conv.participants.map(participantId => {
+                    const id = participantId.toString();
+                    const user = userDetails.get(id);
+                    return {
+                        _id: id,
+                        name: user?.name || 'Unknown User',
+                        avatar: user?.avatar,
+                        isOnline: onlineStatuses.get(id) || false
+                    };
+                });
 
-            return {
-                _id: conv._id.toString(),
-                type: conv.type,
-                participants,
-                lastMessage: conv.lastMessagePreview ? {
-                    content: conv.lastMessagePreview,
-                    senderId: conv.lastMessageSenderId?.toString() || '',
-                    createdAt: conv.lastMessageAt || conv.updatedAt
-                } : undefined,
-                lastMessageAt: conv.lastMessageAt,
-                unreadCount: conv.unreadCounts.get(userId) || 0,
-                statusId: conv.statusId?.toString()
-            };
-        });
+                // Calculate messaging status
+                const messagingStatus = await this.getMessagingStatus(conv, userId);
+                const isInitiator = conv.initiatorId?.toString() === userId;
+
+                return {
+                    _id: conv._id.toString(),
+                    type: conv.type,
+                    participants,
+                    lastMessage: conv.lastMessagePreview ? {
+                        content: conv.lastMessagePreview,
+                        senderId: conv.lastMessageSenderId?.toString() || '',
+                        createdAt: conv.lastMessageAt || conv.updatedAt
+                    } : undefined,
+                    lastMessageAt: conv.lastMessageAt,
+                    unreadCount: conv.unreadCounts.get(userId) || 0,
+                    statusId: conv.statusId?.toString(),
+                    acceptanceStatus: conv.acceptanceStatus,
+                    messagingStatus,
+                    isInitiator
+                };
+            })
+        );
 
         return {
             conversations: conversationsWithDetails,
@@ -251,6 +278,10 @@ class ConversationService {
             };
         });
 
+        // Calculate messaging status
+        const messagingStatus = await this.getMessagingStatus(conversation, userId);
+        const isInitiator = conversation.initiatorId?.toString() === userId;
+
         return {
             _id: conversation._id.toString(),
             type: conversation.type,
@@ -262,7 +293,10 @@ class ConversationService {
             } : undefined,
             lastMessageAt: conversation.lastMessageAt,
             unreadCount: conversation.unreadCounts.get(userId) || 0,
-            statusId: conversation.statusId?.toString()
+            statusId: conversation.statusId?.toString(),
+            acceptanceStatus: conversation.acceptanceStatus,
+            messagingStatus,
+            isInitiator
         };
     }
 
@@ -430,6 +464,82 @@ class ConversationService {
 
         await conversationRepository.reportConversation(conversationId, userId);
         log.info(`User ${userId} reported conversation ${conversationId}`);
+    }
+
+    /**
+     * Get the messaging status for a conversation
+     * This determines if a user can send messages and why
+     */
+    private async getMessagingStatus(conversation: IConversation, userId: string): Promise<MessagingStatus> {
+        const conversationId = conversation._id.toString();
+
+        // If conversation is accepted, user can always send
+        if (conversation.acceptanceStatus === ConversationAcceptanceStatus.ACCEPTED) {
+            return { canSend: true, reason: 'accepted' };
+        }
+
+        // If conversation is blocked or reported, user cannot send
+        if (conversation.acceptanceStatus === ConversationAcceptanceStatus.BLOCKED) {
+            return { canSend: false, reason: 'blocked' };
+        }
+
+        if (conversation.acceptanceStatus === ConversationAcceptanceStatus.REPORTED) {
+            return { canSend: false, reason: 'reported' };
+        }
+
+        // For pending conversations, check if user is the initiator and their message count
+        const isInitiator = conversation.initiatorId?.toString() === userId;
+
+        // If user is NOT the initiator (they are the recipient), they can always send
+        // because sending a message would accept the conversation
+        if (!isInitiator) {
+            return { canSend: true, reason: 'accepted' };
+        }
+
+        // For initiators in pending conversations, check message limit
+        try {
+            // Check if user is admin (admins are exempt)
+            const isAdmin = await userServiceClient.isAdmin(userId);
+            if (isAdmin) {
+                return { canSend: true, reason: 'accepted' };
+            }
+
+            // Check for direct referral relationship
+            const participants = conversation.participants.map(p => p.toString());
+            const otherParticipants = participants.filter(p => p !== userId);
+
+            for (const otherUserId of otherParticipants) {
+                const hasDirectReferral = await userServiceClient.checkDirectReferralRelationship(
+                    userId,
+                    otherUserId
+                );
+                if (hasDirectReferral) {
+                    return { canSend: true, reason: 'accepted' };
+                }
+            }
+
+            // Check message count
+            const messageCount = await conversationRepository.getMessageCount(conversationId, userId);
+            const messagesRemaining = Math.max(0, 3 - messageCount);
+
+            if (messageCount >= 3) {
+                return {
+                    canSend: false,
+                    reason: 'pending_limit_reached',
+                    messagesRemaining: 0
+                };
+            }
+
+            return {
+                canSend: true,
+                reason: 'pending_limit_not_reached',
+                messagesRemaining
+            };
+        } catch (error: any) {
+            log.error(`Error calculating messaging status for conversation ${conversationId}:`, error);
+            // In case of error, default to allowing messages
+            return { canSend: true, reason: 'pending_limit_not_reached', messagesRemaining: 3 };
+        }
     }
 }
 

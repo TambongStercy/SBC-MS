@@ -15,11 +15,13 @@ export interface UploadResult {
 
 class SettingsServiceClient {
     private apiClient: AxiosInstance;
+    private static readonly DEFAULT_TIMEOUT = 30000; // 30s for regular requests
+    private static readonly UPLOAD_TIMEOUT = 120000; // 2 minutes for file uploads
 
     constructor() {
         this.apiClient = axios.create({
             baseURL: config.services.settingsServiceUrl,
-            timeout: 30000, // 30s for file uploads
+            timeout: SettingsServiceClient.DEFAULT_TIMEOUT,
             headers: {
                 'X-Service-Name': 'chat-service',
                 'Authorization': `Bearer ${config.services.serviceSecret}`
@@ -29,7 +31,8 @@ class SettingsServiceClient {
     }
 
     /**
-     * Upload file to PRIVATE bucket (for status/stories)
+     * Upload file to PRIVATE bucket (for status/stories and chat documents)
+     * Uses extended timeout for large file uploads
      */
     async uploadFilePrivate(fileBuffer: Buffer, mimeType: string, originalName: string, folder: string = 'statuses'): Promise<UploadResult> {
         try {
@@ -40,13 +43,17 @@ class SettingsServiceClient {
             });
             formData.append('folder', folder);
 
+            log.debug(`Starting upload of ${originalName} (${(fileBuffer.length / 1024).toFixed(2)} KB) to ${folder}`);
+
             const response = await this.apiClient.post('/settings/internal/upload-private', formData, {
                 headers: {
                     ...formData.getHeaders()
-                }
+                },
+                timeout: SettingsServiceClient.UPLOAD_TIMEOUT // Extended timeout for uploads
             });
 
             if (response.data.success && response.data.data) {
+                log.debug(`Upload completed successfully for ${originalName}`);
                 return response.data.data;
             }
 

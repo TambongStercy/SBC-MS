@@ -63,10 +63,30 @@ class MessageController {
                 return;
             }
 
+            // Handle message limit error (3 messages max for pending conversations)
+            if (error.message.includes('maximum of 3 messages')) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Vous avez atteint le maximum de 3 messages. Le destinataire doit accepter cette conversation avant que vous puissiez envoyer plus de messages.',
+                    code: 'MESSAGE_LIMIT_REACHED'
+                });
+                return;
+            }
+
+            // Handle reported/blocked conversation error
+            if (error.message.includes('reported or blocked conversation')) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Vous ne pouvez pas envoyer de messages dans une conversation signalée ou bloquée.',
+                    code: 'CONVERSATION_BLOCKED'
+                });
+                return;
+            }
+
             log.error('Error sending message:', error);
             res.status(500).json({
                 success: false,
-                message: 'Failed to send message'
+                message: 'Échec de l\'envoi du message'
             });
         }
     }
