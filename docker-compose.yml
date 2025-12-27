@@ -1,5 +1,3 @@
-# Specifies the version of the Docker Compose file format - THIS LINE WILL BE REMOVED
-
 # Define global environment variables using an extension field
 x-env-vars: &common-env-vars
   NODE_ENV: development
@@ -30,72 +28,54 @@ x-env-vars: &common-env-vars
   ADMIN_FRONTEND_MS_HOST: admin-frontend-ms
   ADMIN_FRONTEND_MS_PORT: 80
   ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
-  GLOBAL_MONGO_BASE_URI: "mongodb://host.docker.internal:27017" # REMOVED
-  # Define common restart policy and healthcheck for Node.js services
+  API_GATEWAY_URL: http://localhost:3000
+  JWT_SECRET: sbc$$jwt$$secret
+  GLOBAL_MONGO_BASE_URI: "mongodb://host.docker.internal:27017"
+
+# Define common restart policy and healthcheck for Node.js services
 x-node-service-defaults: &node-service-defaults
   restart: unless-stopped
-  # HEALTHCHECK REMOVED FROM HERE - WILL BE ADDED PER SERVICE
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
 
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: sbc_nginx_reverse_proxy
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
-      - ./frontend:/usr/share/nginx/flutter_app:ro
+  gateway-service:
+    <<: *node-service-defaults
+    build:
+      context: ./gateway-service
+      target: production
+    container_name: gateway_service
+    command: npm run start
+    env_file:
+      - ./gateway-service/.env
     environment:
-      USER_SERVICE_HOST: user-service
-      USER_SERVICE_PORT: 3001
-      NOTIFICATION_SERVICE_HOST: notification-service
-      NOTIFICATION_SERVICE_PORT: 3002
-      PAYMENT_SERVICE_HOST: payment-service
-      PAYMENT_SERVICE_PORT: 3003
-      PRODUCT_SERVICE_HOST: product-service
-      PRODUCT_SERVICE_PORT: 3004
-      ADVERTISING_SERVICE_HOST: advertising-service
-      ADVERTISING_SERVICE_PORT: 3005
-      TOMBOLA_SERVICE_HOST: tombola-service
-      TOMBOLA_SERVICE_PORT: 3006
-      SETTINGS_SERVICE_HOST: settings-service
-      SETTINGS_SERVICE_PORT: 3007
-      ADMIN_FRONTEND_MS_HOST: admin-frontend-ms
-      ADMIN_FRONTEND_MS_PORT: 80
-    command: >
-      /bin/sh -c "envsubst < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
+      <<: *common-env-vars
+      PORT: 3000
+    ports:
+      - "3000:3000"
     depends_on:
-      user-service:
-        condition: service_healthy
-      payment-service:
-        condition: service_healthy
-      product-service:
-        condition: service_healthy
-      tombola-service:
-        condition: service_healthy
-      settings-service:
-        condition: service_healthy
-      notification-service:
-        condition: service_healthy
-      advertising-service:
-        condition: service_healthy
-      admin-frontend-ms:
-        condition: service_started
-    restart: unless-stopped
+      - user-service
+      - payment-service
+      - product-service
+      - tombola-service
+      - settings-service
+      - notification-service
+      - chat-service
 
   user-service:
     <<: *node-service-defaults
     build:
       context: ./user-service
-      target: development
-    container_name: user_service # User changed this
-    command: npm run dev
+      target: production
+    container_name: user_service
+    command: npm run start
+    env_file:
+      - ./user-service/.env
     environment:
       <<: *common-env-vars
       PORT: 3001
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_user_dev # Explicit URI
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_user_dev
     healthcheck:
-      # ADDED SPECIFIC HEALTHCHECK
       test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
       interval: 30s
       timeout: 10s
@@ -112,15 +92,16 @@ services:
     <<: *node-service-defaults
     build:
       context: ./payment-service
-      target: development
+      target: production
     container_name: payment_service
-    command: npm run dev
+    command: npm run start
+    env_file:
+      - ./payment-service/.env
     environment:
       <<: *common-env-vars
       PORT: 3003
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_payment_dev # Explicit URI
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_payment_dev
     healthcheck:
-      # ADDED SPECIFIC HEALTHCHECK
       test: [ "CMD", "curl", "-f", "http://localhost:3003/api/health" ]
       interval: 30s
       timeout: 10s
@@ -137,15 +118,16 @@ services:
     <<: *node-service-defaults
     build:
       context: ./product-service
-      target: development
+      target: production
     container_name: product_service
-    command: npm run dev
+    command: npm run start
+    env_file:
+      - ./product-service/.env
     environment:
       <<: *common-env-vars
       PORT: 3004
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_product_dev # Explicit URI
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_product_dev
     healthcheck:
-      # ADDED SPECIFIC HEALTHCHECK
       test: [ "CMD", "curl", "-f", "http://localhost:3004/api/health" ]
       interval: 30s
       timeout: 10s
@@ -162,23 +144,23 @@ services:
     <<: *node-service-defaults
     build:
       context: ./tombola-service
-      target: development
+      target: production
     container_name: tombola_service
-    command: npm run dev
+    command: npm run start
+    env_file:
+      - ./tombola-service/.env
     environment:
       <<: *common-env-vars
       PORT: 3006
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_tombola_dev # Explicit URI
-      # Impact Challenge Configuration
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_tombola_dev
       MAX_TICKETS_PER_USER_PER_MONTH: 25
       CHALLENGE_VOTE_PRICE: 200
       MAX_ENTREPRENEURS_PER_CHALLENGE: 3
       VIDEO_MAX_DURATION_SECONDS: 90
-      LOTTERY_POOL_ACCOUNT_ID: "" # Configure with actual account ID in production
-      SBC_COMMISSION_ACCOUNT_ID: "" # Configure with actual account ID in production
+      LOTTERY_POOL_ACCOUNT_ID: ""
+      SBC_COMMISSION_ACCOUNT_ID: ""
       SELF_BASE_URL: http://tombola-service:3006
     healthcheck:
-      # ADDED SPECIFIC HEALTHCHECK
       test: [ "CMD", "curl", "-f", "http://localhost:3006/api/health" ]
       interval: 30s
       timeout: 10s
@@ -195,15 +177,16 @@ services:
     <<: *node-service-defaults
     build:
       context: ./settings-service
-      target: development
+      target: production
     container_name: settings_service
-    command: npm run dev
+    command: npm run start
+    env_file:
+      - ./settings-service/.env
     environment:
       <<: *common-env-vars
       PORT: 3007
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_settings_dev # Explicit URI
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_settings_dev
     healthcheck:
-      # ADDED SPECIFIC HEALTHCHECK
       test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
       interval: 30s
       timeout: 10s
@@ -215,24 +198,25 @@ services:
     working_dir: /usr/src/app
     ports:
       - "3007:3007"
-    # REMOVED depends_on: - mongo (if it was here)
 
   notification-service:
     <<: *node-service-defaults
     build:
       context: ./notification-service
-      target: development
+      target: production
     container_name: notification_service
-    command: npm run dev
+    command: npm run start
+    env_file:
+      - ./notification-service/.env
     environment:
       <<: *common-env-vars
       PORT: 3002
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_notification_dev # Explicit URI
+      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_notification_dev
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 0
+      WHATSAPP_ENABLE_CLOUD_API: "true"
     healthcheck:
-      # ADDED SPECIFIC HEALTHCHECK
       test: [ "CMD", "curl", "-f", "http://localhost:3002/api/health" ]
       interval: 30s
       timeout: 10s
@@ -247,42 +231,20 @@ services:
     depends_on:
       - redis
 
-  advertising-service:
-    <<: *node-service-defaults
-    build:
-      context: ./advertising-service
-      target: development
-    container_name: advertising_service
-    command: npm run dev
-    environment:
-      <<: *common-env-vars
-      PORT: 3005
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_advertising_dev # Explicit URI
-    healthcheck:
-      # ADDED SPECIFIC HEALTHCHECK
-      test: [ "CMD", "curl", "-f", "http://localhost:3005/api/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./advertising-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
-    ports:
-      - "3005:3005"
-
   chat-service:
     <<: *node-service-defaults
     build:
       context: ./chat-service
-      target: development
+      target: production
     container_name: chat_service
-    command: npm run dev
+    command: npm run start
+    env_file:
+      - ./chat-service/.env
     environment:
       <<: *common-env-vars
       PORT: 3008
       MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_chat_dev
+      SELF_BASE_URL: http://chat-service:3008
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 1
@@ -306,12 +268,12 @@ services:
     build:
       context: ./admin-frontend-ms
     container_name: admin_frontend
+    env_file:
+      - ./admin-frontend-ms/.env
     environment:
       <<: *common-env-vars
     volumes:
-      - ./admin-frontend-ms:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
+      - ./admin-frontend-ms:/usr/src/app:ro
     ports:
       - "3030:80"
 
@@ -329,17 +291,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-# mongo: (Commented out as we use host MongoDB)
-#   image: mongo:latest
-#   container_name: mongo-db
-#   restart: unless-stopped
-#   ports:
-#     - "27017:27017"
-#   volumes:
-#     - mongo-data:/data/db
-#   networks:
-#     - app-network
 
 networks:
   app-network:

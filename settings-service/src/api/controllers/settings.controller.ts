@@ -493,3 +493,123 @@ export const internalDeleteFilePrivate = async (req: Request, res: Response, nex
 };
 
 
+// ============================================
+// Gateway Balance Controllers
+// ============================================
+
+import { gatewayBalanceService } from '../../services/gateway-balance.service';
+
+interface AuthenticatedRequest extends Request {
+    user?: { userId: string; role?: string };
+}
+
+/**
+ * Get current gateway balances
+ * GET /settings/gateway-balances
+ */
+export const getGatewayBalances = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling GET /settings/gateway-balances request');
+    try {
+        const balances = await gatewayBalanceService.getGatewayBalances();
+        res.status(200).json({
+            success: true,
+            data: balances
+        });
+    } catch (error) {
+        log.error('Error fetching gateway balances:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to fetch gateway balances', 500));
+    }
+};
+
+/**
+ * Update gateway balances (admin only)
+ * PUT /settings/gateway-balances
+ * Body: { nowpaymentsBalanceUSD, feexpayBalanceXAF, cinetpayBalanceXAF, notes? }
+ */
+export const updateGatewayBalances = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    log.info('Handling PUT /settings/gateway-balances request');
+
+    const adminUserId = req.user?.userId;
+    if (!adminUserId) {
+        return next(new BadRequestError('Admin user ID is required'));
+    }
+
+    const { nowpaymentsBalanceUSD, feexpayBalanceXAF, cinetpayBalanceXAF, notes } = req.body;
+
+    // Validate required fields
+    if (nowpaymentsBalanceUSD === undefined || feexpayBalanceXAF === undefined || cinetpayBalanceXAF === undefined) {
+        return next(new BadRequestError('All gateway balance fields are required: nowpaymentsBalanceUSD, feexpayBalanceXAF, cinetpayBalanceXAF'));
+    }
+
+    // Validate numeric values
+    if (typeof nowpaymentsBalanceUSD !== 'number' || typeof feexpayBalanceXAF !== 'number' || typeof cinetpayBalanceXAF !== 'number') {
+        return next(new BadRequestError('All balance fields must be numbers'));
+    }
+
+    try {
+        const updatedBalances = await gatewayBalanceService.updateGatewayBalances(
+            { nowpaymentsBalanceUSD, feexpayBalanceXAF, cinetpayBalanceXAF, notes },
+            adminUserId
+        );
+
+        res.status(200).json({
+            success: true,
+            data: updatedBalances,
+            message: 'Gateway balances updated successfully'
+        });
+    } catch (error) {
+        log.error('Error updating gateway balances:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to update gateway balances', 500));
+    }
+};
+
+/**
+ * Get gateway balance history for auditing
+ * GET /settings/gateway-balances/history
+ */
+export const getGatewayBalanceHistory = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling GET /settings/gateway-balances/history request');
+    const limit = parseInt(req.query.limit as string) || 50;
+
+    try {
+        const history = await gatewayBalanceService.getBalanceHistory(limit);
+        res.status(200).json({
+            success: true,
+            data: history
+        });
+    } catch (error) {
+        log.error('Error fetching gateway balance history:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to fetch balance history', 500));
+    }
+};
+
+/**
+ * Calculate app revenue based on external balances and user liabilities
+ * POST /settings/gateway-balances/calculate-revenue
+ * Body: { totalUserBalanceXAF, totalUserBalanceUSD }
+ */
+export const calculateAppRevenue = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling POST /settings/gateway-balances/calculate-revenue request');
+
+    const { totalUserBalanceXAF, totalUserBalanceUSD } = req.body;
+
+    if (totalUserBalanceXAF === undefined || totalUserBalanceUSD === undefined) {
+        return next(new BadRequestError('totalUserBalanceXAF and totalUserBalanceUSD are required'));
+    }
+
+    try {
+        const revenueData = await gatewayBalanceService.calculateAppRevenue(
+            totalUserBalanceXAF,
+            totalUserBalanceUSD
+        );
+
+        res.status(200).json({
+            success: true,
+            data: revenueData
+        });
+    } catch (error) {
+        log.error('Error calculating app revenue:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to calculate app revenue', 500));
+    }
+};
+

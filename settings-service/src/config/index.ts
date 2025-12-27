@@ -2,6 +2,12 @@ import dotenv from 'dotenv';
 
 dotenv.config(); // Load .env file
 
+// Helper to ensure URL has /api suffix for service-to-service communication
+const ensureApiSuffix = (url: string | undefined, defaultUrl: string): string => {
+    const baseUrl = url || defaultUrl;
+    return baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+};
+
 const config = {
     nodeEnv: process.env.NODE_ENV || 'development',
     port: process.env.PORT || '3007',
@@ -26,12 +32,12 @@ const config = {
 
     services: {
         serviceSecret: process.env.SERVICE_SECRET || 'sbc_all_services',
-        userService: process.env.USER_SERVICE_URL || 'http://localhost:3001/api',
-        productService: process.env.PRODUCT_SERVICE_URL || 'http://localhost:3004/api',
-        paymentService: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3003/api',
-        notificationService: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3002/api',
-        settingsServiceUrl: process.env.SETTINGS_SERVICE_URL || 'http://localhost:3007/api',
-        apiGateway: process.env.API_GATEWAY_URL || 'http://localhost:3000/api'
+        userService: ensureApiSuffix(process.env.USER_SERVICE_URL, 'http://localhost:3001'),
+        productService: ensureApiSuffix(process.env.PRODUCT_SERVICE_URL, 'http://localhost:3004'),
+        paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
+        notificationService: ensureApiSuffix(process.env.NOTIFICATION_SERVICE_URL, 'http://localhost:3002'),
+        settingsServiceUrl: ensureApiSuffix(process.env.SETTINGS_SERVICE_URL, 'http://localhost:3007'),
+        apiGateway: ensureApiSuffix(process.env.API_GATEWAY_URL, 'http://localhost:3000')
     },
 
     log: {

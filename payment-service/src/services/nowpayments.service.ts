@@ -940,6 +940,80 @@ class NOWPaymentsService {
     }
 
     /**
+     * Get total balance converted to USD
+     * Fetches all crypto balances and converts them to USD equivalent
+     */
+    async getTotalUsdBalance(): Promise<{
+        balances: Array<{ currency: string; amount: number; pendingAmount: number; usdValue: number }>;
+        totalUsd: number;
+        totalPendingUsd: number;
+    }> {
+        try {
+            const rawBalances = await this.getBalance();
+
+            const balanceDetails: Array<{ currency: string; amount: number; pendingAmount: number; usdValue: number }> = [];
+            let totalUsd = 0;
+            let totalPendingUsd = 0;
+
+            // USD-pegged stablecoins (1:1 with USD)
+            const usdStablecoins = ['usd', 'usdt', 'usdc', 'usdtsol', 'usdtbsc', 'usdttrc20', 'usdterc20', 'busd', 'dai'];
+
+            for (const [currency, balance] of Object.entries(rawBalances)) {
+                const currencyLower = currency.toLowerCase();
+                let usdValue = 0;
+                let pendingUsdValue = 0;
+
+                if (usdStablecoins.includes(currencyLower)) {
+                    // Stablecoins are 1:1 with USD
+                    usdValue = balance.amount;
+                    pendingUsdValue = balance.pendingAmount;
+                } else if (balance.amount > 0) {
+                    // Convert non-stablecoins to USD using estimate API
+                    try {
+                        const estimate = await this.getEstimatePrice(balance.amount, currency.toUpperCase(), 'USD');
+                        usdValue = estimate.estimatedAmount;
+
+                        if (balance.pendingAmount > 0) {
+                            const pendingEstimate = await this.getEstimatePrice(balance.pendingAmount, currency.toUpperCase(), 'USD');
+                            pendingUsdValue = pendingEstimate.estimatedAmount;
+                        }
+                    } catch (estimateError: any) {
+                        log.warn(`Could not estimate USD value for ${currency}: ${estimateError.message}`);
+                        // Skip this currency if estimation fails
+                        continue;
+                    }
+                }
+
+                balanceDetails.push({
+                    currency: currency.toUpperCase(),
+                    amount: balance.amount,
+                    pendingAmount: balance.pendingAmount,
+                    usdValue
+                });
+
+                totalUsd += usdValue;
+                totalPendingUsd += pendingUsdValue;
+            }
+
+            log.info(`NOWPayments total USD balance calculated`, {
+                totalUsd,
+                totalPendingUsd,
+                currencyCount: balanceDetails.length
+            });
+
+            return {
+                balances: balanceDetails,
+                totalUsd,
+                totalPendingUsd
+            };
+
+        } catch (error: any) {
+            log.error('Error calculating total USD balance:', { error: error.message });
+            throw new Error(`Failed to calculate total USD balance: ${error.message}`);
+        }
+    }
+
+    /**
      * Check if there's sufficient balance for a crypto withdrawal
      */
     async checkSufficientBalance(currency: string, amount: number): Promise<{ sufficient: boolean; available: number; pending: number }> {

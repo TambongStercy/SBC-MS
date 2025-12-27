@@ -9,7 +9,18 @@
       "Bash(git rm:*)",
       "Bash(pm2 list:*)",
       "Bash(npx tsc:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker start:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker exec:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(curl:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose ps:*)"
     ],
     "deny": [],
     "ask": []

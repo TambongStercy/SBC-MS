@@ -7,6 +7,12 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 // Also load local environment file for development
 dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
 
+// Helper to ensure URL has /api suffix for service-to-service communication
+const ensureApiSuffix = (url: string | undefined, defaultUrl: string): string => {
+    const baseUrl = url || defaultUrl;
+    return baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+};
+
 // Define Config Interface (based on user-service and payment needs)
 interface IConfig {
     nodeEnv: string;
@@ -124,11 +130,11 @@ const config: IConfig = {
         withdrawalsEnabled: process.env.NOWPAYMENTS_WITHDRAWALS_ENABLED === 'true'
     },
     services: { // Populate from .env or provide defaults
-        userServiceUrl: process.env.USER_SERVICE_URL,
-        notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL,
-        productServiceUrl: process.env.PRODUCT_SERVICE_URL,
-        advertisingServiceUrl: process.env.ADVERTISING_SERVICE_URL, // Added
-        tombolaServiceUrl: process.env.TOMBOLA_SERVICE_URL,       // Added
+        userServiceUrl: process.env.USER_SERVICE_URL ? ensureApiSuffix(process.env.USER_SERVICE_URL, '') : undefined,
+        notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL ? ensureApiSuffix(process.env.NOTIFICATION_SERVICE_URL, '') : undefined,
+        productServiceUrl: process.env.PRODUCT_SERVICE_URL ? ensureApiSuffix(process.env.PRODUCT_SERVICE_URL, '') : undefined,
+        advertisingServiceUrl: process.env.ADVERTISING_SERVICE_URL ? ensureApiSuffix(process.env.ADVERTISING_SERVICE_URL, '') : undefined,
+        tombolaServiceUrl: process.env.TOMBOLA_SERVICE_URL ? ensureApiSuffix(process.env.TOMBOLA_SERVICE_URL, '') : undefined,
         serviceSecret: process.env.SERVICE_SECRET || 'sbc_all_services',
     },
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',

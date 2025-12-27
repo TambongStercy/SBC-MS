@@ -3,6 +3,12 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+// Helper to ensure URL has /api suffix for service-to-service communication
+const ensureApiSuffix = (url: string | undefined, defaultUrl: string): string => {
+    const baseUrl = url || defaultUrl;
+    return baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+};
+
 interface IConfig {
     nodeEnv: string;
     port: number;
@@ -87,9 +93,9 @@ const config: IConfig = {
     },
     services: {
         serviceSecret: process.env.SERVICE_SECRET || '__REPLACE_WITH_STRONG_RANDOM_SECRET__',
-        userServiceUrl: process.env.USER_SERVICE_URL || 'http://localhost:3001/api',
-        settingsServiceUrl: process.env.SETTINGS_SERVICE_URL || 'http://localhost:3007/api',
-        advertisingServiceUrl: process.env.ADVERTISING_SERVICE_URL || 'http://localhost:3005/api'
+        userServiceUrl: ensureApiSuffix(process.env.USER_SERVICE_URL, 'http://localhost:3001'),
+        settingsServiceUrl: ensureApiSuffix(process.env.SETTINGS_SERVICE_URL, 'http://localhost:3007'),
+        advertisingServiceUrl: ensureApiSuffix(process.env.ADVERTISING_SERVICE_URL, 'http://localhost:3005')
     },
     cors: {
         origin: corsOrigins,

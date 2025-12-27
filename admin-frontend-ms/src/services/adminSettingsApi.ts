@@ -267,4 +267,115 @@ export const removeFormation = async (formationId: string): Promise<void> => {
         console.error(`API Error removing formation ${formationId}:`, error);
         throw error;
     }
+};
+
+// --- Gateway Balance API ---
+
+export interface IGatewayBalances {
+    nowpaymentsBalanceUSD: number;
+    feexpayBalanceXAF: number;
+    cinetpayBalanceXAF: number;
+    totalExternalBalanceXAF: number;
+    lastUpdatedBy?: string;
+    lastUpdatedAt?: string;
+    notes?: string;
+}
+
+export interface IGatewayBalanceInput {
+    nowpaymentsBalanceUSD: number;
+    feexpayBalanceXAF: number;
+    cinetpayBalanceXAF: number;
+    notes?: string;
+}
+
+export interface IAppRevenueData {
+    externalBalances: IGatewayBalances;
+    userLiabilities: {
+        totalUserBalanceXAF: number;
+        totalUserBalanceUSD: number;
+        totalLiabilitiesXAF: number;
+    };
+    appRevenue: {
+        revenueXAF: number;
+        revenueUSD: number;
+    };
+}
+
+// Get current gateway balances
+export const getGatewayBalances = async (): Promise<IGatewayBalances> => {
+    try {
+        const response = await apiClient.get<ApiResponse<IGatewayBalances>>(`${SETTINGS_API_URL}/gateway-balances`);
+        return response.data.data;
+    } catch (error) {
+        console.error('API Error getting gateway balances:', error);
+        throw error;
+    }
+};
+
+// Update gateway balances
+export const updateGatewayBalances = async (balances: IGatewayBalanceInput): Promise<IGatewayBalances> => {
+    try {
+        const response = await apiClient.put<ApiResponse<IGatewayBalances>>(`${SETTINGS_API_URL}/gateway-balances`, balances);
+        return response.data.data;
+    } catch (error) {
+        console.error('API Error updating gateway balances:', error);
+        throw error;
+    }
+};
+
+// Calculate app revenue
+export const calculateAppRevenue = async (totalUserBalanceXAF: number, totalUserBalanceUSD: number): Promise<IAppRevenueData> => {
+    try {
+        const response = await apiClient.post<ApiResponse<IAppRevenueData>>(`${SETTINGS_API_URL}/gateway-balances/calculate-revenue`, {
+            totalUserBalanceXAF,
+            totalUserBalanceUSD
+        });
+        return response.data.data;
+    } catch (error) {
+        console.error('API Error calculating app revenue:', error);
+        throw error;
+    }
+};
+
+// --- Live Gateway Balances API ---
+
+export interface INowpaymentsBalance {
+    currency: string;
+    amount: number;
+    pendingAmount: number;
+    usdValue: number;
+}
+
+export interface ILiveGatewayBalances {
+    nowpayments: {
+        available: boolean;
+        totalUsd: number;
+        totalPendingUsd: number;
+        balances: INowpaymentsBalance[];
+        error?: string;
+    };
+    cinetpay: {
+        available: boolean;
+        total: number;
+        available_balance: number;
+        inUse: number;
+        currency: string;
+        error?: string;
+    };
+    feexpay: {
+        available: boolean;
+        message: string;
+    };
+    timestamp: string;
+}
+
+// Get live gateway balances from payment providers (real-time API calls)
+export const getLiveGatewayBalances = async (): Promise<ILiveGatewayBalances> => {
+    try {
+        const response = await apiClient.get<ApiResponse<ILiveGatewayBalances>>('/payments/admin/gateway-balances/live');
+        return response.data.data;
+    } catch (error) {
+        console.error('API Error fetching live gateway balances:', error);
+        throw error;
+    }
 }; 

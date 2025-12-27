@@ -5,6 +5,12 @@ import logger from '../utils/logger';
 // Load environment variables from .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+// Helper to ensure URL has /api suffix for service-to-service communication
+const ensureApiSuffix = (url: string | undefined, defaultUrl: string): string => {
+    const baseUrl = url || defaultUrl;
+    return baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+};
+
 // Define config interface for type safety
 interface IConfig {
     nodeEnv: string;
@@ -137,10 +143,10 @@ const config: IConfig = {
     },
 
     services: {
-        userService: process.env.USER_SERVICE_URL || 'http://localhost:3001/api',
-        paymentService: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3003/api',
-        notificationService: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3002/api',
-        apiGateway: process.env.API_GATEWAY_URL || 'http://localhost:3000/api',
+        userService: ensureApiSuffix(process.env.USER_SERVICE_URL, 'http://localhost:3001'),
+        paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
+        notificationService: ensureApiSuffix(process.env.NOTIFICATION_SERVICE_URL, 'http://localhost:3002'),
+        apiGateway: ensureApiSuffix(process.env.API_GATEWAY_URL, 'http://localhost:3000'),
         serviceSecret: process.env.SERVICE_SECRET || 'sbc_all_services'
     },
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
 import { validatePaymentIntent, validatePaymentDetails } from '../middleware/validation';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
+import adminController from '../controllers/admin.controller';
 
 const router = Router();
 const adminRouter = Router();
@@ -24,6 +25,9 @@ adminRouter.use('/stats', statsRouter); // Mount stats routes under /admin/stats
 // --- End Admin Stats ---
 
 adminRouter.post('/reprocess-feexpay-payments/user/:userId', paymentController.adminReprocessFeexpayUserPayments);
+
+// Live gateway balances from payment providers
+adminRouter.get('/gateway-balances/live', adminController.getGatewayBalances);
 
 // Manual payment intent creation for recovery
 adminRouter.post('/create-manual-intent', paymentController.createManualPaymentIntent);

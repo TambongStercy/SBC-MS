@@ -1,8 +1,8 @@
 import { EventEmitter } from 'events';
 import config from '../config';
 import logger from '../utils/logger';
-import baileyWhatsAppService from './whatsapp.service';
 import cloudWhatsAppService from './whatsapp-cloud.service';
+import baileyWhatsAppService from './whatsapp.service';
 
 const log = logger.getLogger('WhatsAppServiceFactory');
 

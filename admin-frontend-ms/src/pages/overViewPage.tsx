@@ -15,6 +15,9 @@ import {
   Target,
   MessageSquare,
   TrendingUp,
+  DollarSign,
+  Wallet,
+  Users,
 } from "lucide-react";
 import UsersOverViewCahrt from "../components/charts/usersOverViewCahrt";
 import ComparisonChart from "../components/charts/ComparisonChart";
@@ -26,6 +29,7 @@ import { fetchDashboard, fetchRecentTransactions } from "../api"; // Import the 
 import { AccountTransaction } from "../services/adminAccountTransactionApi"; // Import the shared AccountTransaction type
 import { getRelanceStats, getRecentWithdrawals, RelanceStats, RecentWithdrawal } from "../services/adminDashboardApi";
 import RecentWithdrawalsList from "../components/common/RecentWithdrawalsList";
+import GatewayBalancesCard from "../components/common/GatewayBalancesCard";
 
 import Loader from "../components/common/loader";
 import { getCountryName } from "../utils/countryUtils"; // Import the new helper
@@ -61,9 +65,13 @@ interface AdminDashboardData {
   monthlyCibleSubs: MonthlyCountData[];
   totalTransactions: number;
   totalWithdrawals: number;
-  totalDeposits: number; // NEW: Total deposit transactions
+  totalDeposits: number; // Total deposit transactions
   totalRevenue: number;
-  totalCountryBalances: number; // NEW: Sum of all user balances across countries
+  // User Balances - Separated by currency
+  totalUserBalanceXAF: number; // Sum of all users' XAF balances
+  totalUserBalanceUSD: number; // Sum of all users' USD balances
+  totalUserActivationBalance: number; // Sum of all users' activation balances
+  totalCountryBalances: number; // Sum of all user XAF balances across countries
   monthlyRevenue: MonthlyRevenueData[];
   balancesByCountry: { [countryCode: string]: number };
   activityOverview: ActivityOverviewData[];
@@ -203,7 +211,7 @@ const OverViewPage = () => {
           />
           <StatCard
             name="Solde Admin (USD)"
-            icon={BadgeSwissFranc}
+            icon={DollarSign}
             value={dashboardData?.adminUSDBalance != null ? `$${dashboardData.adminUSDBalance.toFixed(2)}` : "$0.00"}
             color="#10b981"
           />
@@ -225,6 +233,28 @@ const OverViewPage = () => {
             value={dashboardData?.cibleSubCount || "N/A"}
             color="#8b5cf6"
           />
+
+          {/* USER BALANCES SECTION */}
+          <StatCard
+            name="Soldes Users (XAF)"
+            icon={Wallet}
+            value={dashboardData?.totalUserBalanceXAF != null ? `${Math.round(dashboardData.totalUserBalanceXAF).toLocaleString('en-US')} F` : "N/A"}
+            color="#3b82f6"
+          />
+          <StatCard
+            name="Soldes Users (USD)"
+            icon={DollarSign}
+            value={dashboardData?.totalUserBalanceUSD != null ? `$${dashboardData.totalUserBalanceUSD.toFixed(2)}` : "$0.00"}
+            color="#059669"
+          />
+          <StatCard
+            name="Soldes Activation"
+            icon={Users}
+            value={dashboardData?.totalUserActivationBalance != null ? `${Math.round(dashboardData.totalUserActivationBalance).toLocaleString('en-US')} F` : "N/A"}
+            color="#7c3aed"
+          />
+
+          {/* TRANSACTION STATS */}
           <StatCard
             name="Revenu Total"
             icon={BadgeSwissFranc}
@@ -248,12 +278,6 @@ const OverViewPage = () => {
             icon={BadgeSwissFranc}
             value={dashboardData?.totalDeposits != null ? `${Math.round(dashboardData.totalDeposits).toLocaleString('en-US')} F` : "N/A"}
             color="#16a34a"
-          />
-          <StatCard
-            name="Soldes Totaux"
-            icon={BadgeSwissFranc}
-            value={dashboardData?.totalCountryBalances != null ? `${Math.round(dashboardData.totalCountryBalances).toLocaleString('en-US')} F` : "N/A"}
-            color="#3b82f6"
           />
 
           {/* RELANCE STATS */}
@@ -314,6 +338,14 @@ const OverViewPage = () => {
             </div>
           )}
         </motion.div>
+
+        {/* GATEWAY BALANCES SECTION */}
+        <div className="mb-8">
+          <GatewayBalancesCard
+            totalUserBalanceXAF={dashboardData?.totalUserBalanceXAF || 0}
+            totalUserBalanceUSD={dashboardData?.totalUserBalanceUSD || 0}
+          />
+        </div>
 
         {/* CHARTS & LISTS */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">

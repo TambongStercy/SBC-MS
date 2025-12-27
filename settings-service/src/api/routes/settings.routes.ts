@@ -20,7 +20,12 @@ import {
     addFormation,
     updateFormation,
     removeFormation,
-    getAdminBalance
+    getAdminBalance,
+    // Gateway balance controllers
+    getGatewayBalances,
+    updateGatewayBalances,
+    getGatewayBalanceHistory,
+    calculateAppRevenue
 } from '../controllers/settings.controller';
 import { upload } from '../middleware/multer.config'; // Import the configured Multer instance
 import authenticate from '../middleware/auth.middleware'; // Standard auth for settings management
@@ -111,7 +116,11 @@ router.delete('/formations/:formationId', removeFormation);
 // This route should be behind authentication for admin users.
 router.get('/stats/admin-balance', getAdminBalance);
 
-// Other routes (e.g., PUT /settings for updating other fields) can be added here
-// router.put('/', updateSettings); // Example
+// --- Gateway Balance Routes ---
+// For admin to enter external payment gateway balances and calculate revenue
+router.get('/gateway-balances', getGatewayBalances);
+router.put('/gateway-balances', updateGatewayBalances);
+router.get('/gateway-balances/history', getGatewayBalanceHistory);
+router.post('/gateway-balances/calculate-revenue', calculateAppRevenue);
 
 export default router; 

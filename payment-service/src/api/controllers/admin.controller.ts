@@ -4,6 +4,8 @@ import { transactionStatusChecker } from '../../jobs/transaction-status-checker.
 import transactionRepository from '../../database/repositories/transaction.repository';
 import paymentService from '../../services/payment.service';
 import { withdrawalMonitor } from '../../utils/withdrawal-monitor';
+import nowpaymentsService from '../../services/nowpayments.service';
+import { cinetpayPayoutService } from '../../services/cinetpay-payout.service';
 
 const log = logger.getLogger('AdminController');
 
@@ -235,6 +237,111 @@ export class AdminController {
             res.status(500).json({
                 success: false,
                 message: 'Failed to get transaction details',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    /**
+     * Get live gateway balances from payment providers
+     * Fetches real-time balances from NOWPayments, CinetPay, and FeexPay (if available)
+     */
+    public async getGatewayBalances(req: Request, res: Response): Promise<void> {
+        try {
+            log.info('Fetching live gateway balances...');
+
+            const results: {
+                nowpayments: {
+                    available: boolean;
+                    totalUsd: number;
+                    totalPendingUsd: number;
+                    balances: Array<{ currency: string; amount: number; pendingAmount: number; usdValue: number }>;
+                    error?: string;
+                };
+                cinetpay: {
+                    available: boolean;
+                    total: number;
+                    available_balance: number;
+                    inUse: number;
+                    currency: string;
+                    error?: string;
+                };
+                feexpay: {
+                    available: boolean;
+                    message: string;
+                };
+                timestamp: string;
+            } = {
+                nowpayments: {
+                    available: false,
+                    totalUsd: 0,
+                    totalPendingUsd: 0,
+                    balances: []
+                },
+                cinetpay: {
+                    available: false,
+                    total: 0,
+                    available_balance: 0,
+                    inUse: 0,
+                    currency: 'XAF'
+                },
+                feexpay: {
+                    available: false,
+                    message: 'FeexPay does not provide a balance API endpoint'
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            // Fetch NOWPayments balance (with USD conversion)
+            try {
+                const nowpaymentsBalance = await nowpaymentsService.getTotalUsdBalance();
+                results.nowpayments = {
+                    available: true,
+                    totalUsd: nowpaymentsBalance.totalUsd,
+                    totalPendingUsd: nowpaymentsBalance.totalPendingUsd,
+                    balances: nowpaymentsBalance.balances
+                };
+                log.info('NOWPayments balance fetched successfully', {
+                    totalUsd: nowpaymentsBalance.totalUsd
+                });
+            } catch (nowError: any) {
+                log.error('Failed to fetch NOWPayments balance:', nowError.message);
+                results.nowpayments.error = nowError.message;
+            }
+
+            // Fetch CinetPay balance
+            try {
+                const cinetpayBalance = await cinetpayPayoutService.getBalance();
+                results.cinetpay = {
+                    available: true,
+                    total: cinetpayBalance.total,
+                    available_balance: cinetpayBalance.available,
+                    inUse: cinetpayBalance.inUse,
+                    currency: 'XAF'
+                };
+                log.info('CinetPay balance fetched successfully', {
+                    total: cinetpayBalance.total,
+                    available: cinetpayBalance.available
+                });
+            } catch (cinetError: any) {
+                log.error('Failed to fetch CinetPay balance:', cinetError.message);
+                results.cinetpay.error = cinetError.message;
+            }
+
+            // FeexPay does not have a balance API endpoint
+            // The balance can only be checked via their web dashboard
+
+            res.status(200).json({
+                success: true,
+                data: results,
+                message: 'Gateway balances fetched successfully'
+            });
+
+        } catch (error) {
+            log.error(`Error fetching gateway balances: ${error}`);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch gateway balances',
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
         }

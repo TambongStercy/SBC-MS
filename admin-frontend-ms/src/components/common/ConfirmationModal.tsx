@@ -9,6 +9,7 @@ interface ConfirmationModalProps {
     isLoading?: boolean;
     onConfirm: () => void;
     onCancel: () => void;
+    children?: React.ReactNode;
 }
 
 const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
@@ -20,6 +21,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     isLoading = false,
     onConfirm,
     onCancel,
+    children,
 }) => {
     if (!isOpen) {
         return null;
@@ -30,6 +32,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm">
                 <h2 className="text-xl font-semibold text-white mb-4">{title}</h2>
                 <p className="text-gray-300 mb-6">{message}</p>
+                {children}
                 <div className="flex justify-end gap-3">
                     <button
                         onClick={onCancel}

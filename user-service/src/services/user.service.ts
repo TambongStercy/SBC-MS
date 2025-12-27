@@ -111,10 +111,6 @@ interface AdminDashboardData {
     count: number; // Total Users
     classiqueSubCount: number; // Total Active Classique Subscribers
     cibleSubCount: number; // Total Active Cible Subscribers
-    // Removed raw date arrays:
-    // allUsersDates: Date[];
-    // classiqueSubStartDates: Date[];
-    // cibleSubStartDates: Date[];
     // Added aggregated monthly data:
     monthlyAllUsers: MonthlyCount[];
     monthlyClassiqueSubs: MonthlyCount[];
@@ -122,11 +118,17 @@ interface AdminDashboardData {
 
     totalTransactions: number;
     totalWithdrawals: number;
-    totalDeposits: number; // NEW: Total deposit transactions
+    totalDeposits: number; // Total deposit transactions
     totalRevenue: number;
-    totalCountryBalances: number; // NEW: Sum of all user balances across countries
+
+    // User Balances - Separated by currency
+    totalUserBalanceXAF: number; // Sum of all users' XAF balances (balance field)
+    totalUserBalanceUSD: number; // Sum of all users' USD balances (usdBalance field)
+    totalUserActivationBalance: number; // Sum of all users' activation balances
+    totalCountryBalances: number; // Sum of all user XAF balances across countries (same as totalUserBalanceXAF)
+
     monthlyRevenue: any[]; // Define specific type if known from paymentService
-    balancesByCountry: { [countryCode: string]: number }; // Renamed from 'balances'
+    balancesByCountry: { [countryCode: string]: number }; // XAF balances by country
     activityOverview: any[]; // Define specific type if known from paymentService
 }
 
@@ -3149,9 +3151,9 @@ export class UserService {
                 monthlyRevenue,
                 activityOverviewData,
             ] = await Promise.all([
-                // Fetch basic user data for counts and balances
+                // Fetch basic user data for counts and balances (including USD and activation balances)
                 UserModel.find({ deleted: { $ne: true } })
-                    .select('createdAt balance country phoneNumber _id')
+                    .select('createdAt balance usdBalance activationBalance country phoneNumber _id')
                     .lean()
                     .exec(),
                 SubscriptionModel.countDocuments({
@@ -3266,19 +3268,26 @@ export class UserService {
             // --- Process Fetched Data ---
             const totalUsersCount = allUsers.length;
 
-            // `allUsersDates`, `classiqueSubStartDates`, `cibleSubStartDates` are no longer needed here,
-            // as the aggregated data is used directly.
-
-            // Calculate Balances by Country with improved normalization
+            // Calculate Balances by Country and totals for XAF, USD, and Activation balances
             const balancesByCountry: { [countryCode: string]: number } = {};
-            let totalCountryBalances = 0;
+            let totalUserBalanceXAF = 0;
+            let totalUserBalanceUSD = 0;
+            let totalUserActivationBalance = 0;
 
-            allUsers.forEach((user: Pick<FlattenMaps<IUser>, '_id' | 'balance' | 'country' | 'phoneNumber'>) => {
+            allUsers.forEach((user: Pick<FlattenMaps<IUser>, '_id' | 'balance' | 'usdBalance' | 'activationBalance' | 'country' | 'phoneNumber'>) => {
                 // Use the new country normalization utility
                 const countryCode = determineUserCountryCode(user.country, user.phoneNumber);
-                const userBalance = user.balance || 0;
-                balancesByCountry[countryCode] = (balancesByCountry[countryCode] || 0) + userBalance;
-                totalCountryBalances += userBalance;
+                const userBalanceXAF = user.balance || 0;
+                const userBalanceUSD = user.usdBalance || 0;
+                const userActivationBalance = user.activationBalance || 0;
+
+                // XAF balances by country
+                balancesByCountry[countryCode] = (balancesByCountry[countryCode] || 0) + userBalanceXAF;
+
+                // Total balances across all users
+                totalUserBalanceXAF += userBalanceXAF;
+                totalUserBalanceUSD += userBalanceUSD;
+                totalUserActivationBalance += userActivationBalance;
             });
 
             const dashboardData: AdminDashboardData = {
@@ -3293,7 +3302,11 @@ export class UserService {
                 totalWithdrawals,
                 totalDeposits,
                 totalRevenue,
-                totalCountryBalances,
+                // User balances separated by currency
+                totalUserBalanceXAF,
+                totalUserBalanceUSD,
+                totalUserActivationBalance,
+                totalCountryBalances: totalUserBalanceXAF, // Same as totalUserBalanceXAF for backwards compatibility
                 monthlyRevenue: monthlyRevenue,
                 balancesByCountry: balancesByCountry,
                 activityOverview: activityOverviewData
