@@ -579,7 +579,7 @@ export class SubscriptionService {
                 email: user.email,
                 name: user.name || user.email,
                 subscriptionType: emailSubscriptionType,
-                language: (user.preferredLanguage as 'fr' | 'en') || 'fr'
+                language: (user.language?.[0] as 'fr' | 'en') || 'fr'
             }).catch(emailError => {
                 this.log.error(`Error sending activation email to user ${userId}:`, emailError);
                 // Non-critical error, just log it

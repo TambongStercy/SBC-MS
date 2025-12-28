@@ -481,7 +481,7 @@ export class ActivationBalanceService {
                 name: beneficiary.name || beneficiary.email,
                 subscriptionType: emailSubscriptionType as 'CLASSIQUE' | 'CIBLE' | 'UPGRADE',
                 sponsorName: sponsor.name || sponsor.email,
-                language: ((beneficiary as any).preferredLanguage as 'fr' | 'en') || 'fr'
+                language: ((beneficiary as any).language?.[0] as 'fr' | 'en') || 'fr'
             });
             log.info(`Activation email sent to beneficiary ${beneficiary.email}`);
         } catch (error: any) {
