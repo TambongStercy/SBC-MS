@@ -488,17 +488,17 @@ export class ActivationBalanceService {
         const sponsorObjectId = new Types.ObjectId(sponsorId);
         const potentialReferralObjectId = new Types.ObjectId(potentialReferralId);
 
-        // Check levels 1, 2, and 3
-        const referralResult = await this.referralRepository.findAllReferralsByReferrer(
+        log.info(`[verifyIsReferral] Checking if ${potentialReferralId} is in referral network of ${sponsorId}`);
+
+        // Use efficient direct query instead of fetching all referrals
+        const isReferral = await this.referralRepository.isReferralOf(
             sponsorObjectId,
-            1,
-            1000, // High limit to check all
-            false
+            potentialReferralObjectId
         );
 
-        return referralResult.referrals.some(
-            ref => ref.referredUser.toString() === potentialReferralObjectId.toString()
-        );
+        log.info(`[verifyIsReferral] Is ${potentialReferralId} a referral of ${sponsorId}? ${isReferral}`);
+
+        return isReferral;
     }
 
     /**

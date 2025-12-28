@@ -284,6 +284,22 @@ export class ReferralRepository {
     }
 
     /**
+     * Check if a specific referral relationship exists between referrer and referred user
+     * Simply finds the document that shows the relationship exists
+     */
+    async isReferralOf(
+        referrerId: string | Types.ObjectId,
+        referredUserId: string | Types.ObjectId
+    ): Promise<boolean> {
+        const referral = await ReferralModel.findOne({
+            referrer: referrerId,
+            referredUser: referredUserId,
+            archived: { $ne: true }
+        }).select('_id').lean();
+        return !!referral;
+    }
+
+    /**
      * Finds all users referred by a specific referrer across all levels (1, 2, 3).
      * @param referrerId - The ID of the referrer.
      * @param page - Page number for pagination (default: 1)
