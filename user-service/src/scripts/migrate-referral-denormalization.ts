@@ -14,7 +14,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/sbc_user_dev';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/sbc_users';
 const BATCH_SIZE = 1000;
 const DRY_RUN = !process.argv.includes('--apply');
 
