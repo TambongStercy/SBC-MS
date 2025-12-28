@@ -659,6 +659,60 @@ export class NotificationController {
         }
     }
 
+    /**
+     * Handle request to send an account activation email
+     * @route POST /internal/email/account-activation
+     */
+    async handleAccountActivationEmail(req: Request, res: Response, next: Function): Promise<void> {
+        const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
+        log.info(`Received account activation email request from ${callingService}:`, req.body);
+        try {
+            const { email, name, subscriptionType, sponsorName, language } = req.body;
+
+            // Basic validation
+            if (!email || !name || !subscriptionType) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields for account activation email: email, name, subscriptionType'
+                });
+                return;
+            }
+
+            // Validate subscriptionType
+            if (!['CLASSIQUE', 'CIBLE', 'UPGRADE'].includes(subscriptionType)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Invalid subscriptionType. Must be CLASSIQUE, CIBLE, or UPGRADE'
+                });
+                return;
+            }
+
+            const success = await emailService.sendAccountActivationEmail({
+                email,
+                name,
+                subscriptionType,
+                sponsorName,
+                language: language || 'fr'
+            });
+
+            if (success) {
+                res.status(200).json({
+                    success: true,
+                    message: 'Account activation email sent successfully'
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to send account activation email'
+                });
+            }
+
+        } catch (error: any) {
+            log.error(`Error handling account activation email request from ${callingService}:`, error);
+            next(error);
+        }
+    }
+
     // --- END NEW EMAIL HANDLERS ---
 
     /**

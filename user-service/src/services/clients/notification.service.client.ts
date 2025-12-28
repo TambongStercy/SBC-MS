@@ -276,6 +276,51 @@ class NotificationService {
             return false;
         }
     }
+
+    /**
+     * Send account activation email to user
+     * Called when a user's subscription is activated (either self-paid or sponsored)
+     */
+    async sendAccountActivationEmail({
+        email,
+        name,
+        subscriptionType,
+        sponsorName,
+        language = 'fr',
+    }: {
+        email: string;
+        name: string;
+        subscriptionType: 'CLASSIQUE' | 'CIBLE' | 'UPGRADE';
+        sponsorName?: string;
+        language?: 'fr' | 'en';
+    }): Promise<boolean> {
+        try {
+            log.info(`Sending account activation email to ${email} for ${subscriptionType}`);
+
+            const response = await this.apiClient.post('/notifications/internal/email/account-activation', {
+                email,
+                name,
+                subscriptionType,
+                sponsorName,
+                language
+            });
+
+            if (response.status === 200 && response.data.success) {
+                log.info(`Account activation email sent successfully to ${email}`);
+                return true;
+            } else {
+                log.warn(`Failed to send account activation email to ${email}: ${response.data.message}`);
+                return false;
+            }
+        } catch (error: any) {
+            log.error(`Error sending account activation email to ${email}: ${error.message}`, {
+                email,
+                subscriptionType,
+                error: error.response?.data || error.message,
+            });
+            return false;
+        }
+    }
 }
 
 // Export singleton instance

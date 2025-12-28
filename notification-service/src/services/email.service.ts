@@ -908,6 +908,254 @@ class EmailService {
             return false;
         }
     }
+
+    /**
+     * Send Account Activation Email - Sent when user's subscription is activated
+     */
+    async sendAccountActivationEmail(data: {
+        email: string;
+        name: string;
+        subscriptionType: 'CLASSIQUE' | 'CIBLE' | 'UPGRADE';
+        sponsorName?: string; // If sponsored by someone
+        language?: 'fr' | 'en'; // Language preference
+    }): Promise<boolean> {
+        const { email, name, subscriptionType, sponsorName, language = 'fr' } = data;
+
+        const isFrench = language === 'fr';
+
+        // Determine subscription display name
+        const subscriptionInfo = {
+            CLASSIQUE: {
+                displayName: isFrench ? 'Pack Classique' : 'Classic Pack',
+                color: '#115CF6',
+                icon: '🎯',
+            },
+            CIBLE: {
+                displayName: isFrench ? 'Pack Ciblé' : 'Targeted Pack',
+                color: '#22c55e',
+                icon: '🚀',
+            },
+            UPGRADE: {
+                displayName: isFrench ? 'Pack Ciblé' : 'Targeted Pack',
+                color: '#22c55e',
+                icon: '⬆️',
+            }
+        };
+
+        const info = subscriptionInfo[subscriptionType];
+        const isUpgrade = subscriptionType === 'UPGRADE';
+
+        // French content
+        const frenchContent = `
+            <div style="text-align: center;">
+                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, ${info.color} 0%, ${info.color}dd 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px ${info.color}40;">
+                    <span style="color: white; font-size: 36px;">🎉</span>
+                </div>
+            </div>
+
+            <h2 style="color: ${info.color}; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 700;">
+                Bienvenue ${name} !
+            </h2>
+
+            <p style="font-size: 18px; color: #555; margin-bottom: 25px; text-align: center;">
+                ${sponsorName
+                    ? `<strong>${sponsorName}</strong> a ${isUpgrade ? 'mis à niveau' : 'activé'} votre compte avec le <strong>${info.displayName}</strong>.`
+                    : `Votre ${isUpgrade ? 'mise à niveau vers le' : 'activation du'} <strong>${info.displayName}</strong> a été effectuée avec succès.`
+                }
+            </p>
+
+            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 16px; padding: 25px; margin: 25px 0; text-align: center;">
+                <p style="font-size: 18px; color: #1e40af; margin: 0; font-weight: 600;">
+                    🌟 Bienvenue à la Sniper Business Center, cette communauté qui t'apprend à gagner de l'argent sur internet !
+                </p>
+            </div>
+
+            ${sponsorName ? `
+            <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; padding: 20px; margin: 25px 0; text-align: center;">
+                <p style="color: #92400e; font-size: 16px; margin: 0;">
+                    <strong>🙏 Remerciez ${sponsorName}</strong> pour ce cadeau !
+                </p>
+            </div>
+            ` : ''}
+
+            <!-- WhatsApp Channel -->
+            <div style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📱 Rejoins la chaîne WhatsApp de la SBC
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Pour être informé de toutes les mises à jour et nouveautés en temps réel
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://whatsapp.com/channel/0029Vav3mvCElah05C8QuT03"
+                       style="display: inline-block; background: white; color: #25D366; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        📲 Suivre la chaîne SNIPER BUSINESS CENTER sur WhatsApp
+                    </a>
+                </div>
+            </div>
+
+            <!-- Telegram - Platform Guide -->
+            <div style="background: linear-gradient(135deg, #0088cc 0%, #0077b5 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📚 Canal de prise en main de l'application
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Apprends comment utiliser la plateforme SBC
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://t.me/sniperbusinesscenterafrica"
+                       style="display: inline-block; background: white; color: #0088cc; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        🎓 J'apprends à utiliser la plateforme SBC
+                    </a>
+                </div>
+            </div>
+
+            <!-- Telegram - Digital Products Training -->
+            <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    💰 Formation Revente des Produits Digitaux
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Apprends comment générer entre 5 000 et 10 000 FCFA/jour !
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://t.me/+XswAxOO1fT1iZTU0"
+                       style="display: inline-block; background: white; color: #d97706; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        🚀 Rejoindre la formation en revente des produits digitaux
+                    </a>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/" class="button">
+                    Accéder à mon compte
+                </a>
+            </div>
+
+            <p style="font-size: 16px; color: ${info.color}; text-align: center; font-weight: 500;">
+                Bienvenue dans la famille SBC ! Commencez à développer votre réseau dès maintenant. 🌟
+            </p>
+        `;
+
+        // English content
+        const englishContent = `
+            <div style="text-align: center;">
+                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, ${info.color} 0%, ${info.color}dd 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px ${info.color}40;">
+                    <span style="color: white; font-size: 36px;">🎉</span>
+                </div>
+            </div>
+
+            <h2 style="color: ${info.color}; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 700;">
+                Welcome ${name}!
+            </h2>
+
+            <p style="font-size: 18px; color: #555; margin-bottom: 25px; text-align: center;">
+                ${sponsorName
+                    ? `<strong>${sponsorName}</strong> has ${isUpgrade ? 'upgraded' : 'activated'} your account with the <strong>${info.displayName}</strong>.`
+                    : `Your ${isUpgrade ? 'upgrade to' : 'activation of'} the <strong>${info.displayName}</strong> has been completed successfully.`
+                }
+            </p>
+
+            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 16px; padding: 25px; margin: 25px 0; text-align: center;">
+                <p style="font-size: 18px; color: #1e40af; margin: 0; font-weight: 600;">
+                    🌟 Welcome to Sniper Business Center, the community that teaches you how to make money online!
+                </p>
+            </div>
+
+            ${sponsorName ? `
+            <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; padding: 20px; margin: 25px 0; text-align: center;">
+                <p style="color: #92400e; font-size: 16px; margin: 0;">
+                    <strong>🙏 Thank ${sponsorName}</strong> for this gift!
+                </p>
+            </div>
+            ` : ''}
+
+            <!-- WhatsApp Channel -->
+            <div style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📱 Join the SBC WhatsApp Channel
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Stay informed about all updates and news in real time
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://whatsapp.com/channel/0029Vav3mvCElah05C8QuT03"
+                       style="display: inline-block; background: white; color: #25D366; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        📲 Follow SNIPER BUSINESS CENTER on WhatsApp
+                    </a>
+                </div>
+            </div>
+
+            <!-- Telegram - Platform Guide -->
+            <div style="background: linear-gradient(135deg, #0088cc 0%, #0077b5 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📚 Platform Guide Channel
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Learn how to use the SBC platform
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://t.me/sniperbusinesscenterafrica"
+                       style="display: inline-block; background: white; color: #0088cc; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        🎓 Learn to use the SBC platform
+                    </a>
+                </div>
+            </div>
+
+            <!-- Telegram - Digital Products Training -->
+            <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    💰 Digital Products Resale Training
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Learn how to generate between $8 and $16 per day!
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://t.me/+XswAxOO1fT1iZTU0"
+                       style="display: inline-block; background: white; color: #d97706; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        🚀 Join the digital products resale training
+                    </a>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/" class="button">
+                    Access my account
+                </a>
+            </div>
+
+            <p style="font-size: 16px; color: ${info.color}; text-align: center; font-weight: 500;">
+                Welcome to the SBC family! Start building your network now. 🌟
+            </p>
+        `;
+
+        const content = isFrench ? frenchContent : englishContent;
+
+        const emailHtml = this.createBaseTemplate(
+            isFrench
+                ? (isUpgrade ? 'Compte Mis à Niveau - Sniper Business Center' : 'Compte Activé - Sniper Business Center')
+                : (isUpgrade ? 'Account Upgraded - Sniper Business Center' : 'Account Activated - Sniper Business Center'),
+            content,
+            isFrench ? 'Votre succès est notre priorité !' : 'Your success is our priority!'
+        );
+
+        try {
+            const result = await this.sendEmail({
+                to: email,
+                subject: isFrench
+                    ? `${info.icon} Bienvenue ${name} ! ${isUpgrade ? 'Compte mis à niveau' : 'Compte activé'} - ${info.displayName}`
+                    : `${info.icon} Welcome ${name}! ${isUpgrade ? 'Account upgraded' : 'Account activated'} - ${info.displayName}`,
+                html: emailHtml,
+                from: config.email.from
+            });
+
+            log.info(`Account activation email sent successfully to ${email}`);
+            return result;
+        } catch (error: any) {
+            log.error(`Failed to send account activation email to ${email}:`, error);
+            return false;
+        }
+    }
 }
 
 // Export service instance

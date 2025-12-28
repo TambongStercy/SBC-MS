@@ -571,6 +571,22 @@ export class SubscriptionService {
             });
         // --- End Relance Exit ---
 
+        // --- 5. Send activation email to the user ---
+        const user = await this.userRepository.findById(userId);
+        if (user && user.email) {
+            const emailSubscriptionType = isUpgrade ? 'UPGRADE' : (targetSubscriptionType as 'CLASSIQUE' | 'CIBLE');
+            notificationService.sendAccountActivationEmail({
+                email: user.email,
+                name: user.name || user.email,
+                subscriptionType: emailSubscriptionType,
+                language: (user.preferredLanguage as 'fr' | 'en') || 'fr'
+            }).catch(emailError => {
+                this.log.error(`Error sending activation email to user ${userId}:`, emailError);
+                // Non-critical error, just log it
+            });
+        }
+        // --- End Activation Email ---
+
         return activatedSubscription;
     }
 

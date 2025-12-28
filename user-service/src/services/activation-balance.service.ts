@@ -471,6 +471,24 @@ export class ActivationBalanceService {
             // Non-critical, continue
         }
 
+        // 11. Send activation email to the beneficiary
+        try {
+            const { notificationService } = await import('./clients/notification.service.client');
+            const emailSubscriptionType = subscriptionType === 'UPGRADE' ? 'UPGRADE' :
+                                         (subscriptionType === 'CIBLE' ? 'CIBLE' : 'CLASSIQUE');
+            await notificationService.sendAccountActivationEmail({
+                email: beneficiary.email,
+                name: beneficiary.name || beneficiary.email,
+                subscriptionType: emailSubscriptionType as 'CLASSIQUE' | 'CIBLE' | 'UPGRADE',
+                sponsorName: sponsor.name || sponsor.email,
+                language: ((beneficiary as any).preferredLanguage as 'fr' | 'en') || 'fr'
+            });
+            log.info(`Activation email sent to beneficiary ${beneficiary.email}`);
+        } catch (error: any) {
+            log.error(`Failed to send activation email to beneficiary: ${error.message}`);
+            // Non-critical, continue
+        }
+
         log.info(`Successfully sponsored ${subscriptionType} activation for ${beneficiary.name}. New activation balance: ${updatedSponsor.activationBalance}`);
 
         return {
