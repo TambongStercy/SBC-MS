@@ -107,7 +107,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     'CD': ['VODACOM_MPESA_COD', 'AIRTEL_COD', 'ORANGE_COD'],
     'KE': ['MPESA_KEN'],
     'NG': ['MTN_MOMO_NGA', 'AIRTEL_NGA'],
-    'SN': ['FREE_SEN', 'ORANGE_SEN'],
+    'SN': ['FREE_SEN', 'ORANGE_SEN', 'WAVE_SEN'],
     'CG': ['AIRTEL_COG', 'MTN_MOMO_COG'],
     'GA': ['AIRTEL_GAB'],
     'CI': ['MTN_MOMO_CIV', 'ORANGE_CIV', 'WAVE_CIV']

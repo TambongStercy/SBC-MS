@@ -34,6 +34,7 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     // Senegal (SN)
     'FREE_SEN': 'SN',
     'ORANGE_SEN': 'SN',
+    'WAVE_SEN': 'SN',
     // Republic of the Congo (CG)
     'AIRTEL_COG': 'CG',
     'MTN_MOMO_COG': 'CG',
@@ -132,7 +133,7 @@ export const correspondents = {
         'currencies': ['NGN']
     },
     'SN': {
-        'operators': ['FREE_SEN', 'ORANGE_SEN'], // Senegal
+        'operators': ['FREE_SEN', 'ORANGE_SEN', 'WAVE_SEN'], // Senegal
         'currencies': ['XOF']
     },
     'CG': {
@@ -178,6 +179,7 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     'AIRTEL_NGA': 'NGN',
     'FREE_SEN': 'XOF',
     'ORANGE_SEN': 'XOF',
+    'WAVE_SEN': 'XOF',
     'AIRTEL_COG': 'XAF',
     'MTN_MOMO_COG': 'XAF',
     'AIRTEL_GAB': 'XAF',
@@ -218,6 +220,7 @@ export const momoOperatorToCinetpayPaymentMethod: { [key: string]: string } = {
     // Senegal (SN)
     'FREE_SEN': 'FREESN',
     'ORANGE_SEN': 'OMSN',
+    'WAVE_SEN': 'WAVESN',
     // Côte d'Ivoire (CI)
     'MTN_MOMO_CIV': 'MOMO',   // CinetPay uses 'MOMO' for MTN in CI
     'ORANGE_CIV': 'OM',       // CinetPay uses 'OM' for Orange in CI
