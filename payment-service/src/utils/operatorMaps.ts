@@ -42,6 +42,7 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     // Côte d'Ivoire (CI)
     'MTN_MOMO_CIV': 'CI',
     'ORANGE_CIV': 'CI',
+    'WAVE_CIV': 'CI',
 };
 
 export const countryCodeToDialingPrefix: { [countryCode: string]: string } = {
@@ -143,7 +144,7 @@ export const correspondents = {
         'currencies': ['XAF']
     },
     'CI': {
-        'operators': ['MTN_MOMO_CIV', 'ORANGE_CIV'], // Côte d'Ivoire
+        'operators': ['MTN_MOMO_CIV', 'ORANGE_CIV', 'WAVE_CIV'], // Côte d'Ivoire
         'currencies': ['XOF']
     },
 };
@@ -182,6 +183,7 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     'AIRTEL_GAB': 'XAF',
     'MTN_MOMO_CIV': 'XOF',
     'ORANGE_CIV': 'XOF',
+    'WAVE_CIV': 'XOF',
 };
 
 // Mapping from our internal momoOperator slugs to CinetPay's specific payment_method slugs
@@ -217,10 +219,9 @@ export const momoOperatorToCinetpayPaymentMethod: { [key: string]: string } = {
     'FREE_SEN': 'FREESN',
     'ORANGE_SEN': 'OMSN',
     // Côte d'Ivoire (CI)
-    'MTN_MOMO_CIV': 'MOMO', // CinetPay uses 'MOMO' for MTN in CI
-    'ORANGE_CIV': 'OM',     // CinetPay uses 'OM' for Orange in CI
-    // Note: Wave CI and other specific operators from CinetPay docs are not in your `correspondents` list,
-    // so not mapping them here unless they appear in your user profiles.
+    'MTN_MOMO_CIV': 'MOMO',   // CinetPay uses 'MOMO' for MTN in CI
+    'ORANGE_CIV': 'OM',       // CinetPay uses 'OM' for Orange in CI
+    'WAVE_CIV': 'WAVECI',     // CinetPay uses 'WAVECI' for Wave in CI
 
     // Operators for which CinetPay payout methods are not explicitly listed in provided docs
     // or are not yet supported for payout via CinetPay API:
