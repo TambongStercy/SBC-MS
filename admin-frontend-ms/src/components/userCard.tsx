@@ -110,7 +110,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     'SN': ['FREE_SEN', 'ORANGE_SEN'],
     'CG': ['AIRTEL_COG', 'MTN_MOMO_COG'],
     'GA': ['AIRTEL_GAB'],
-    'CI': ['MTN_MOMO_CIV', 'ORANGE_CIV']
+    'CI': ['MTN_MOMO_CIV', 'ORANGE_CIV', 'WAVE_CIV']
   };
 
   // Add a function to check if a string is a valid CountryCode

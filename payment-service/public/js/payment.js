@@ -61,17 +61,6 @@ document.addEventListener('DOMContentLoaded', function () {
             'TG': ['togocom_tg', 'moov_tg'], // Togo operators for FeexPay payments
             // Add operators for GN, GA, CD, KE if needed
         };
-
-        // CinetPay operators - for user display on payment page (optional selection)
-        // These are displayed to users, but CinetPay auto-detects based on channels: "ALL"
-        const cinetpayOperators = {
-            'CI': ['mtn_ci', 'orange_ci', 'wave_ci'], // Côte d'Ivoire - MTN, Orange Money, Wave
-            'CM': ['mtn_cm', 'orange_cm'], // Cameroun - MTN, Orange Money
-            'SN': ['orange_sn', 'free_sn', 'wave_sn'], // Sénégal - Orange, Free, Wave
-            'BF': ['orange_bf', 'moov_bf'], // Burkina Faso - Orange, Moov
-            'ML': ['orange_ml', 'moov_ml'], // Mali - Orange, Moov
-            'NE': ['orange_ne', 'moov_ne'], // Niger - Orange, Moov
-        };
         // NOTE: Payments for Togo are handled by FeexPay, withdrawals by CinetPay in the backend.
 
         const getCurrencyForCountry = (countryCode) => {
@@ -197,8 +186,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!countrySelect || !operatorSelect || !phoneInputGroup || !phoneInput || !operatorSelectGroup || !otpInputGroup || !otpInput) return; // Guard if elements are missing
 
             const selectedCountry = countrySelect.value;
-            const feexpayOps = feexpayOperators[selectedCountry] || [];
-            const cinetpayOps = cinetpayOperators[selectedCountry] || [];
+            const countryOperators = feexpayOperators[selectedCountry] || [];
             const selectedOperator = operatorSelect.value; // Get value after potential prefill
 
             operatorSelect.innerHTML = '<option value="" disabled selected>-- Sélectionner l\'opérateur de paiement --</option>';
@@ -208,12 +196,11 @@ document.addEventListener('DOMContentLoaded', function () {
             otpInput.required = false;
 
             if (feexpayCountries.includes(selectedCountry)) {
-                // FeexPay countries - phone required, operator selection if available
                 phoneInputGroup.classList.remove('hidden');
                 phoneInput.required = true;
 
-                if (feexpayOps.length > 0) {
-                    feexpayOps.forEach(op => {
+                if (countryOperators.length > 0) {
+                    countryOperators.forEach(op => {
                         const option = document.createElement('option');
                         option.value = op;
                         option.textContent = op.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -222,7 +209,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     operatorSelectGroup.classList.remove('hidden');
                     operatorSelect.required = true;
 
-                    if (typeof window.prefillOperator !== 'undefined' && window.prefillOperator && feexpayOps.includes(window.prefillOperator)) {
+                    if (typeof window.prefillOperator !== 'undefined' && window.prefillOperator && countryOperators.includes(window.prefillOperator)) {
                         operatorSelect.value = window.prefillOperator;
                     }
                 }
@@ -233,35 +220,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     otpInput.value = '';
                 }
             }
-            else if (cinetpayCountries.includes(selectedCountry)) {
-                // CinetPay countries - phone NOT required, but show operator selection for user convenience
-                phoneInputGroup.classList.add('hidden');
-                phoneInput.required = false;
-                phoneInput.value = '';
-
-                // Show operator selection for CinetPay countries (optional - helps user know available options)
-                if (cinetpayOps.length > 0) {
-                    cinetpayOps.forEach(op => {
-                        const option = document.createElement('option');
-                        option.value = op;
-                        // Format display name nicely (e.g., 'wave_ci' -> 'Wave Ci')
-                        option.textContent = op.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                        operatorSelect.appendChild(option);
-                    });
-                    operatorSelectGroup.classList.remove('hidden');
-                    operatorSelect.required = false; // Not required for CinetPay - they handle selection on their page
-                }
-
-                // Hide OTP field for CinetPay countries
-                otpInputGroup.classList.add('hidden');
-                otpInput.required = false;
-                otpInput.value = '';
-            }
             else {
-                // Unknown country - hide all optional fields
+                // CinetPay countries don't require phone number or operator selection
                 phoneInputGroup.classList.add('hidden');
                 phoneInput.required = false;
                 phoneInput.value = '';
+                // Hide OTP field for CinetPay countries
                 otpInputGroup.classList.add('hidden');
                 otpInput.required = false;
                 otpInput.value = '';
@@ -405,11 +369,8 @@ document.addEventListener('DOMContentLoaded', function () {
             else {
                 // Handle mobile money payment (existing logic)
                 const selectedCountry = countrySelect.value;
-                const isFeexpayCountry = feexpayCountries.includes(selectedCountry);
-                const isCinetpayCountry = cinetpayCountries.includes(selectedCountry);
-                const requiresPhone = isFeexpayCountry; // Only FeexPay countries require phone
-                const operatorVisible = !operatorSelectGroup.classList.contains('hidden');
-                const requiresOperator = isFeexpayCountry && operatorVisible; // Only required for FeexPay
+                const requiresPhone = feexpayCountries.includes(selectedCountry);
+                const requiresOperator = !operatorSelectGroup.classList.contains('hidden');
                 const determinedCurrency = getCurrencyForCountry(selectedCountry);
                 const selectedOperatorValue = operatorSelect.value; // Get current operator value
 
@@ -440,8 +401,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 formData = {
                     paymentCurrency: determinedCurrency,
                     countryCode: selectedCountry,
-                    // For FeexPay: operator is required; For CinetPay: operator is optional (passed if selected)
-                    operator: operatorVisible && selectedOperatorValue ? selectedOperatorValue : undefined,
+                    operator: requiresOperator ? selectedOperatorValue : undefined,
                     phoneNumber: requiresPhone ? phoneInput.value : undefined,
                 };
             }
