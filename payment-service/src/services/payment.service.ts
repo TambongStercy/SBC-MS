@@ -1091,7 +1091,7 @@ class PaymentService {
                     countryCode: withdrawalAccountInfo.countryCode,
                     recipientName: userName || 'SBC User',
                     recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
-                    // paymentMethod: cinetpayPaymentMethod, // Removed as per auto-detection strategy
+                    paymentMethod: cinetpayPaymentMethod, // Required for Wave (WAVECI/WAVESN), optional for others
                     description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                     client_transaction_id: updatedTransaction.transactionId,
                     notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`

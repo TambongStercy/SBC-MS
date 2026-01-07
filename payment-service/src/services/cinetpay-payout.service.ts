@@ -519,12 +519,21 @@ export class CinetPayPayoutService {
                 client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
             };
 
-            // payment_method is optional for CinetPay - ALWAYS use auto-detection
-            // CinetPay automatically detects the operator from the phone number prefix
-            // This avoids 417 errors (Expectation Failed) and 811 errors (INVALID_PAYMENT_METHOD)
-            // Affected countries: CI (Côte d'Ivoire), SN (Senegal), BF (Burkina Faso), and others
-            log.info(`Using CinetPay auto-detection for operator from phone number ${finalFormattedPhone} in country ${request.countryCode}. Not setting explicit payment_method parameter.`);
-            // Do NOT set transferRequest.payment_method - let CinetPay detect from phone number
+            // payment_method handling:
+            // - For WAVE operators (WAVECI, WAVESN), we MUST set payment_method explicitly
+            //   because Wave is a fintech wallet, not a mobile operator, and CinetPay cannot
+            //   auto-detect it from the phone number (same number can be MTN, Orange, or Wave)
+            // - For traditional mobile money operators (MTN, Orange, Moov, etc.), we let
+            //   CinetPay auto-detect from the phone number to avoid 417/811 errors
+            const isWaveOperator = request.paymentMethod &&
+                (request.paymentMethod === 'WAVECI' || request.paymentMethod === 'WAVESN');
+
+            if (isWaveOperator) {
+                transferRequest.payment_method = request.paymentMethod;
+                log.info(`Wave operator detected. Setting explicit payment_method: ${request.paymentMethod} for phone ${finalFormattedPhone} in country ${request.countryCode}`);
+            } else {
+                log.info(`Using CinetPay auto-detection for operator from phone number ${finalFormattedPhone} in country ${request.countryCode}. Not setting explicit payment_method parameter.`);
+            }
 
             const token = await this.authenticate();
 
