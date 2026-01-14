@@ -1,3 +1,6 @@
+# Development Docker Compose with MongoDB container included
+# Usage: docker-compose -f docker-compose.dev.yml up
+
 # Define global environment variables using an extension field
 x-env-vars: &common-env-vars
   NODE_ENV: development
@@ -30,16 +33,34 @@ x-env-vars: &common-env-vars
   ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
   API_GATEWAY_URL: http://localhost:3000
   JWT_SECRET: sbc$$jwt$$secret
-  # Use host MongoDB (running on your PC)
-  GLOBAL_MONGO_BASE_URI: "mongodb://host.docker.internal:27017"
+  # Use MongoDB container
+  GLOBAL_MONGO_BASE_URI: "mongodb://mongo:27017"
 
 # Define common restart policy and healthcheck for Node.js services
 x-node-service-defaults: &node-service-defaults
   restart: unless-stopped
   extra_hosts:
     - "host.docker.internal:host-gateway"
+  depends_on:
+    - mongo
 
 services:
+  mongo:
+    image: mongo:7
+    container_name: sbc_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+
   gateway-service:
     <<: *node-service-defaults
     build:
@@ -75,7 +96,7 @@ services:
     environment:
       <<: *common-env-vars
       PORT: 3001
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_user_dev
+      MONGODB_URI_DEV: mongodb://mongo:27017/sbc_user_dev
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
       interval: 30s
@@ -101,7 +122,7 @@ services:
     environment:
       <<: *common-env-vars
       PORT: 3003
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_payment_dev
+      MONGODB_URI_DEV: mongodb://mongo:27017/sbc_payment_dev
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3003/api/health" ]
       interval: 30s
@@ -127,7 +148,7 @@ services:
     environment:
       <<: *common-env-vars
       PORT: 3004
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_product_dev
+      MONGODB_URI_DEV: mongodb://mongo:27017/sbc_product_dev
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3004/api/health" ]
       interval: 30s
@@ -153,7 +174,7 @@ services:
     environment:
       <<: *common-env-vars
       PORT: 3006
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_tombola_dev
+      MONGODB_URI_DEV: mongodb://mongo:27017/sbc_tombola_dev
       MAX_TICKETS_PER_USER_PER_MONTH: 25
       CHALLENGE_VOTE_PRICE: 200
       MAX_ENTREPRENEURS_PER_CHALLENGE: 3
@@ -186,7 +207,7 @@ services:
     environment:
       <<: *common-env-vars
       PORT: 3007
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_settings_dev
+      MONGODB_URI_DEV: mongodb://mongo:27017/sbc_settings_dev
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
       interval: 30s
@@ -212,8 +233,8 @@ services:
     environment:
       <<: *common-env-vars
       PORT: 3002
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_notification_dev
-      REDIS_HOST: host.docker.internal
+      MONGODB_URI_DEV: mongodb://mongo:27017/sbc_notification_dev
+      REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 0
       WHATSAPP_ENABLE_CLOUD_API: "true"
@@ -229,6 +250,8 @@ services:
     working_dir: /usr/src/app
     ports:
       - "3002:3002"
+    depends_on:
+      - redis
 
   chat-service:
     <<: *node-service-defaults
@@ -242,9 +265,9 @@ services:
     environment:
       <<: *common-env-vars
       PORT: 3008
-      MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_chat_dev
+      MONGODB_URI_DEV: mongodb://mongo:27017/sbc_chat_dev
       SELF_BASE_URL: http://chat-service:3008
-      REDIS_HOST: host.docker.internal
+      REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 1
     healthcheck:
@@ -259,28 +282,29 @@ services:
     working_dir: /usr/src/app
     ports:
       - "3008:3008"
+    depends_on:
+      - redis
 
   admin-frontend-ms:
     restart: unless-stopped
     build:
       context: ./admin-frontend-ms
-      target: production
     container_name: admin_frontend
     env_file:
       - ./admin-frontend-ms/.env
     environment:
       <<: *common-env-vars
+    volumes:
+      - ./admin-frontend-ms:/usr/src/app:ro
     ports:
       - "3030:80"
 
-  # Redis container - services use host.docker.internal so they connect to host Redis if available
-  # If host Redis is not running, uncomment ports to expose container Redis to host
   redis:
     image: redis:7-alpine
     container_name: sbc_redis
-    restart: "no"
-    # ports:
-    #   - "6379:6379"
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
@@ -290,10 +314,35 @@ services:
       timeout: 10s
       retries: 3
 
+  mongo-backup:
+    build:
+      context: ./mongo-backup
+    container_name: mongo_backup
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-sbc-mongo-backups}
+      GOOGLE_APPLICATION_CREDENTIALS: /gcp/service-account.json
+      TZ: Africa/Lagos
+    volumes:
+      - ./gcp-credentials/service-account.json:/gcp/service-account.json:ro
+      - mongo-backups:/backups
+    depends_on:
+      - mongo
+    healthcheck:
+      test: ["CMD", "pgrep", "cron"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
 networks:
   app-network:
     driver: bridge
 
 volumes:
+  mongo-data:
+    driver: local
   redis-data:
+    driver: local
+  mongo-backups:
     driver: local

@@ -1,0 +1,5 @@
+# Place your Google Cloud service account JSON key file here
+# Name it: service-account.json
+#
+# DO NOT commit the actual service-account.json file to git!
+# It should be added to .gitignore

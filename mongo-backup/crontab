@@ -1,0 +1,5 @@
+# MongoDB Backup Cron Schedule
+# Run backup every day at 1:00 AM
+0 1 * * * /backup.sh >> /var/log/backup.log 2>&1
+
+# Empty line required at end of crontab
