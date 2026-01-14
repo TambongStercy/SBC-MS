@@ -30,6 +30,7 @@ x-env-vars: &common-env-vars
   ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
   API_GATEWAY_URL: http://localhost:3000
   JWT_SECRET: sbc$$jwt$$secret
+  # Use host MongoDB (running on your PC)
   GLOBAL_MONGO_BASE_URI: "mongodb://host.docker.internal:27017"
 
 # Define common restart policy and healthcheck for Node.js services
@@ -267,13 +268,12 @@ services:
     restart: unless-stopped
     build:
       context: ./admin-frontend-ms
+      target: production
     container_name: admin_frontend
     env_file:
       - ./admin-frontend-ms/.env
     environment:
       <<: *common-env-vars
-    volumes:
-      - ./admin-frontend-ms:/usr/src/app:ro
     ports:
       - "3030:80"
 
