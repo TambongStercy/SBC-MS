@@ -180,8 +180,12 @@ const validateConfig = (cfg: IConfig): void => {
     });
 
     if (missingEnvs.length > 0) {
-        const logFunc = logger?.logger?.error || console.error; // Use the base logger instance for the error message
-        logFunc(`FATAL ERROR: Missing required environment variables: ${missingEnvs.join(', ')}`);
+        const errorMsg = `FATAL ERROR: Missing required environment variables: ${missingEnvs.join(', ')}`;
+        if (logger?.logger?.error) {
+            logger.logger.error(errorMsg);
+        } else {
+            console.error(errorMsg);
+        }
         process.exit(1);
     }
 };
