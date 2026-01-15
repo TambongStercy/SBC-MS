@@ -17,8 +17,8 @@ RUN npm run build
 FROM node:18-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
-COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/package*.json ./
+RUN npm ci --only=production
 COPY --from=builder /usr/src/app/dist ./dist
 EXPOSE 3004
 CMD ["node", "dist/server.js"] 

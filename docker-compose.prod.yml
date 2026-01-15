@@ -204,7 +204,7 @@ services:
       <<: *common-env-vars-prod
       PORT: 3002
       MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_notification"
-      REDIS_HOST: redis
+      REDIS_HOST: host.docker.internal
       REDIS_PORT: 6379
       REDIS_DB: 0
       WHATSAPP_ENABLE_CLOUD_API: "true"
@@ -217,8 +217,6 @@ services:
     volumes: []
     ports:
       - "3002:3002"
-    depends_on:
-      - redis
 
   chat-service:
     <<: *node-service-defaults
@@ -234,7 +232,7 @@ services:
       PORT: 3008
       MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_chat"
       SELF_BASE_URL: http://chat-service:3008
-      REDIS_HOST: redis
+      REDIS_HOST: host.docker.internal
       REDIS_PORT: 6379
       REDIS_DB: 1
     healthcheck:
@@ -246,8 +244,6 @@ services:
     volumes: []
     ports:
       - "3008:3008"
-    depends_on:
-      - redis
 
   admin-frontend-ms:
     restart: unless-stopped
@@ -263,12 +259,14 @@ services:
     ports:
       - "3030:80"
 
+  # Redis container - services use host.docker.internal so they connect to host Redis
+  # This container is optional - if port 6379 is in use by host Redis, it will stop gracefully
   redis:
     image: redis:7-alpine
     container_name: sbc_redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
+    restart: "no"
+    # ports:
+    #   - "6379:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes

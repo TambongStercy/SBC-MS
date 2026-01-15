@@ -39,9 +39,10 @@ WORKDIR /usr/src/app
 # Install curl for healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Copy artifacts from builder stage
-COPY --from=builder /usr/src/app/node_modules ./node_modules
+# Copy package files and install production dependencies only
 COPY --from=builder /usr/src/app/package*.json ./
+RUN npm ci --only=production
+# Copy compiled code
 COPY --from=builder /usr/src/app/dist ./dist
 # Expose the port the app runs on
 EXPOSE 3000

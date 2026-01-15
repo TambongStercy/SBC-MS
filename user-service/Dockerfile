@@ -35,9 +35,10 @@ RUN npm run build
 FROM node:18-slim AS production
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
-# Copy artifacts from builder stage
-COPY --from=builder /usr/src/app/node_modules ./node_modules
+# Copy package files and install production dependencies only
 COPY --from=builder /usr/src/app/package*.json ./
+RUN npm ci --only=production
+# Copy compiled code
 COPY --from=builder /usr/src/app/dist ./dist
 # Expose the port the app runs on (matching docker-compose and service config)
 EXPOSE 3001
