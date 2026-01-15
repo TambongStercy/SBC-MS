@@ -10,8 +10,7 @@ EXPOSE 3003
 CMD ["npm", "run", "dev"]
 
 FROM base AS builder
-ENV NODE_ENV=production
-RUN npm ci --only=production
+RUN npm ci
 COPY . .
 RUN npm run build
 

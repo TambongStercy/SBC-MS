@@ -25,10 +25,9 @@ CMD ["npm", "run", "dev"]
 
 # Builder stage (for production)
 FROM base AS builder
-ENV NODE_ENV=production
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++
-# Install only production dependencies and build the app
-RUN npm ci --only=production
+# Install all dependencies for build
+RUN npm ci
 COPY . .
 RUN npm run build
 
