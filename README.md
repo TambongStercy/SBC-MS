@@ -126,29 +126,49 @@ Follow these steps for **each** backend microservice (`gateway-service`, `user-s
 
 ## Quick Commands (Root Directory)
 
-From the project root directory, you can use these npm scripts to manage all services at once:
+From the project root directory, you can use these npm scripts to manage all services.
+
+**Available services:** `gateway`, `user`, `notification`, `payment`, `product`, `tombola`, `settings`, `chat`
 
 ### PM2 Production Commands
 
-| Command | Description |
-|---------|-------------|
-| `npm start` | Start all services with PM2 |
-| `npm stop` | Stop all services |
-| `npm restart` | Restart all services |
-| `npm run logs` | View PM2 logs |
-| `npm run status` | View PM2 status |
+| All Services | Individual Service | Description |
+|--------------|-------------------|-------------|
+| `npm start` | `npm run start:<service>` | Start service(s) with PM2 |
+| `npm stop` | `npm run stop:<service>` | Stop service(s) |
+| `npm restart` | `npm run restart:<service>` | Restart service(s) |
+| `npm run delete` | `npm run delete:<service>` | Delete service(s) from PM2 |
+| `npm run logs` | `npm run logs:<service>` | View PM2 logs |
+| `npm run status` | - | View PM2 status |
+
+**Examples:**
+```bash
+npm start                    # Start all services
+npm run start:user           # Start only user-service
+npm run restart:payment      # Restart payment-service
+npm run logs:tombola         # View tombola-service logs
+npm run delete:chat          # Delete chat-service from PM2
+```
 
 ### Build Commands
 
-| Command | Description |
-|---------|-------------|
-| `npm run build` | Build all services |
-| `npm run install:all` | Install dependencies for all services |
-| `npm run setup` | Install and build all services |
+| All Services | Individual Service | Description |
+|--------------|-------------------|-------------|
+| `npm run build` | `npm run build:<service>` | Build service(s) |
+| `npm run install:all` | `npm run install:<service>` | Install dependencies |
+| `npm run setup` | `npm run setup:<service>` | Install and build |
+
+**Examples:**
+```bash
+npm run build                # Build all services
+npm run build:user           # Build only user-service
+npm run install:payment      # Install payment-service dependencies
+npm run setup:tombola        # Install and build tombola-service
+```
 
 ### Build Script (build-all.sh)
 
-The `build-all.sh` script supports flags and individual services:
+The `build-all.sh` script supports flags and multiple services:
 
 ```bash
 # Build all services
@@ -177,14 +197,18 @@ The `build-all.sh` script supports flags and individual services:
 
 ### Development Commands
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start all services + frontend in dev mode |
-| `npm run dev:backend` | Start only backend services in dev mode |
-| `npm run dev:user` | Start user-service in dev mode |
-| `npm run dev:payment` | Start payment-service in dev mode |
-| `npm run dev:gateway` | Start gateway-service in dev mode |
-| ... | (similar for other services) |
+| All Services | Individual Service | Description |
+|--------------|-------------------|-------------|
+| `npm run dev` | `npm run dev:<service>` | Start in dev mode |
+| `npm run dev:backend` | - | Start only backend services |
+
+**Examples:**
+```bash
+npm run dev                  # Start all services + frontend in dev mode
+npm run dev:backend          # Start only backend services in dev mode
+npm run dev:user             # Start user-service in dev mode
+npm run dev:frontend         # Start admin-frontend in dev mode
+```
 
 ## Building for Production
 
