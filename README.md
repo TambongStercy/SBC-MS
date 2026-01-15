@@ -124,6 +124,68 @@ Follow these steps for **each** backend microservice (`gateway-service`, `user-s
 *   The **Admin Frontend** will likely be available at `http://localhost:5173` (or another port specified by Vite/React).
 *   All **API requests** should go through the **API Gateway** (e.g., `http://localhost:3000/api/users/login`).
 
+## Quick Commands (Root Directory)
+
+From the project root directory, you can use these npm scripts to manage all services at once:
+
+### PM2 Production Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm start` | Start all services with PM2 |
+| `npm stop` | Stop all services |
+| `npm restart` | Restart all services |
+| `npm run logs` | View PM2 logs |
+| `npm run status` | View PM2 status |
+
+### Build Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run build` | Build all services |
+| `npm run install:all` | Install dependencies for all services |
+| `npm run setup` | Install and build all services |
+
+### Build Script (build-all.sh)
+
+The `build-all.sh` script supports flags and individual services:
+
+```bash
+# Build all services
+./build-all.sh
+
+# Install dependencies for all services
+./build-all.sh --install
+./build-all.sh -i
+
+# Install and build all services
+./build-all.sh --install --build
+./build-all.sh -i -b
+
+# Build specific services only
+./build-all.sh user-service payment-service
+
+# Install specific services only
+./build-all.sh -i user-service
+
+# Install and build specific services
+./build-all.sh -i -b user-service chat-service
+
+# Show help
+./build-all.sh --help
+```
+
+### Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start all services + frontend in dev mode |
+| `npm run dev:backend` | Start only backend services in dev mode |
+| `npm run dev:user` | Start user-service in dev mode |
+| `npm run dev:payment` | Start payment-service in dev mode |
+| `npm run dev:gateway` | Start gateway-service in dev mode |
+| ... | (similar for other services) |
+
 ## Building for Production
 
 For each backend service and the frontend:
