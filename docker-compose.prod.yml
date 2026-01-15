@@ -34,7 +34,7 @@ x-env-vars-prod: &common-env-vars-prod
   ADMIN_FRONTEND_MS_PORT: 80
   ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
   API_GATEWAY_URL: http://localhost:3000
-  JWT_SECRET: ${JWT_SECRET:-sbc$$jwt$$secret}
+  JWT_SECRET: "${JWT_SECRET:-sbc$$jwt$$secret}"
   # Production MongoDB - uses host MongoDB or MongoDB Atlas
   GLOBAL_MONGO_BASE_URI_PROD: ${GLOBAL_MONGO_BASE_URI_PROD}
 
@@ -276,40 +276,8 @@ services:
       timeout: 10s
       retries: 3
 
-  nginx:
-    image: nginx:alpine
-    container_name: sbc_nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
-      - ./frontend:/usr/share/nginx/flutter_app:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    environment:
-      NODE_ENV: production
-      USER_SERVICE_HOST: user-service
-      USER_SERVICE_PORT: 3001
-      NOTIFICATION_SERVICE_HOST: notification-service
-      NOTIFICATION_SERVICE_PORT: 3002
-      PAYMENT_SERVICE_HOST: payment-service
-      PAYMENT_SERVICE_PORT: 3003
-      PRODUCT_SERVICE_HOST: product-service
-      PRODUCT_SERVICE_PORT: 3004
-      ADVERTISING_SERVICE_HOST: advertising-service
-      ADVERTISING_SERVICE_PORT: 3005
-      TOMBOLA_SERVICE_HOST: tombola-service
-      TOMBOLA_SERVICE_PORT: 3006
-      SETTINGS_SERVICE_HOST: settings-service
-      SETTINGS_SERVICE_PORT: 3007
-      CHAT_SERVICE_HOST: chat-service
-      CHAT_SERVICE_PORT: 3008
-      ADMIN_FRONTEND_MS_HOST: admin-frontend-ms
-      ADMIN_FRONTEND_MS_PORT: 80
-    depends_on:
-      - gateway-service
-      - admin-frontend-ms
+  # nginx container removed - using host nginx with existing domain config
+  # Host nginx proxies to gateway-service on port 3000
 
 networks:
   app-network:
