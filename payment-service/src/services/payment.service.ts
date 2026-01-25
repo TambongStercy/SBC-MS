@@ -5250,21 +5250,31 @@ class PaymentService {
         log.info(`Processing CinetPay Payout Webhook for internal transaction: ${internalTransactionId}.`);
         log.debug('Raw Webhook Payload:', fullProviderPayload);
 
-        const transaction = await transactionRepository.findByTransactionId(internalTransactionId);
+        // ATOMIC CLAIM: Prevent race conditions where multiple webhook calls process the same transaction
+        // This atomically checks status AND marks the transaction as being processed
+        const transaction = await transactionRepository.claimTransactionForProcessing(
+            internalTransactionId,
+            [TransactionStatus.COMPLETED] // Don't process if already completed
+        );
 
         if (!transaction) {
+            // Check if transaction exists but was already completed
+            const existingTransaction = await transactionRepository.findByTransactionId(internalTransactionId);
+            if (existingTransaction) {
+                if (existingTransaction.status === TransactionStatus.COMPLETED) {
+                    log.warn(`Payout webhook: Transaction ${internalTransactionId} already completed (atomic check). Skipping duplicate processing.`);
+                    return;
+                }
+                // Transaction exists but couldn't be claimed for another reason
+                log.warn(`Payout webhook: Transaction ${internalTransactionId} exists but could not be claimed. Status: ${existingTransaction.status}`);
+                return;
+            }
             log.error(`Payout webhook: Transaction ${internalTransactionId} not found in DB. Cannot process.`);
             throw new AppError('Internal transaction not found for webhook processing.', 404);
         }
 
         if (transaction.type !== TransactionType.WITHDRAWAL) {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
-        }
-
-        // Prevent processing if already completed (but allow updating failed transactions to completed)
-        if (transaction.status === TransactionStatus.COMPLETED) {
-            log.warn(`Payout webhook: Transaction ${internalTransactionId} already completed. Skipping update.`);
-            return;
         }
 
         // Allow processing of failed transactions if the provider status is now successful
@@ -5734,21 +5744,31 @@ class PaymentService {
 
         log.info(`Webhook details from service: internalTxId=${internalTransactionId}, feexpayRef=${feexpayReference}, status="${providerStatus}"`);
 
-        const transaction = await transactionRepository.findByTransactionId(internalTransactionId);
+        // ATOMIC CLAIM: Prevent race conditions where multiple webhook calls process the same transaction
+        // This atomically checks status AND marks the transaction as being processed
+        const transaction = await transactionRepository.claimTransactionForProcessing(
+            internalTransactionId,
+            [TransactionStatus.COMPLETED] // Don't process if already completed
+        );
 
         if (!transaction) {
-            log.error(`Payout webhook: Transaction ${internalTransactionId} not found in DB. Cannot process.`);
+            // Check if transaction exists but was already completed
+            const existingTransaction = await transactionRepository.findByTransactionId(internalTransactionId);
+            if (existingTransaction) {
+                if (existingTransaction.status === TransactionStatus.COMPLETED) {
+                    log.warn(`FeexPay Payout webhook: Transaction ${internalTransactionId} already completed (atomic check). Skipping duplicate processing.`);
+                    return;
+                }
+                // Transaction exists but couldn't be claimed for another reason
+                log.warn(`FeexPay Payout webhook: Transaction ${internalTransactionId} exists but could not be claimed. Status: ${existingTransaction.status}`);
+                return;
+            }
+            log.error(`FeexPay Payout webhook: Transaction ${internalTransactionId} not found in DB. Cannot process.`);
             throw new AppError('Internal transaction not found for webhook processing.', 404);
         }
 
         if (transaction.type !== TransactionType.WITHDRAWAL) {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
-        }
-
-        // Prevent processing if already completed (but allow updating failed transactions to completed)
-        if (transaction.status === TransactionStatus.COMPLETED) {
-            log.warn(`Payout webhook: Transaction ${internalTransactionId} already completed. Skipping update.`);
-            return;
         }
 
         // Allow processing of failed transactions if the provider status is now successful

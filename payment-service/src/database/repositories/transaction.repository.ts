@@ -154,6 +154,48 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
     }
 
     /**
+     * Atomically claim a transaction for webhook processing.
+     * This prevents race conditions where multiple webhook calls process the same transaction.
+     *
+     * @param transactionId - The internal transaction ID
+     * @param excludeStatuses - Statuses that should NOT be claimed (e.g., already COMPLETED)
+     * @returns The transaction if successfully claimed, null if already in an excluded status
+     */
+    async claimTransactionForProcessing(
+        transactionId: string,
+        excludeStatuses: TransactionStatus[] = [TransactionStatus.COMPLETED]
+    ): Promise<ITransaction | null> {
+        try {
+            // Atomically find and update the transaction only if it's not already in an excluded status
+            // This uses findOneAndUpdate with a condition, which is atomic in MongoDB
+            const transaction = await this.model.findOneAndUpdate(
+                {
+                    transactionId,
+                    status: { $nin: excludeStatuses }  // Only claim if NOT in excluded statuses
+                },
+                {
+                    $set: {
+                        'metadata.webhookProcessingStartedAt': new Date(),
+                        'metadata.webhookProcessingId': new Types.ObjectId().toString() // Unique ID for this processing attempt
+                    }
+                },
+                { new: true }
+            ).lean<ITransaction>().exec();
+
+            if (transaction) {
+                log.info(`Transaction ${transactionId} claimed for webhook processing`);
+            } else {
+                log.warn(`Transaction ${transactionId} could not be claimed - either not found or already in excluded status`);
+            }
+
+            return transaction;
+        } catch (error) {
+            log.error(`Error claiming transaction ${transactionId} for processing: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
      * Find transactions for a specific user
      */
     async findByUserId(
