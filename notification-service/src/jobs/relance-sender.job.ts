@@ -10,11 +10,11 @@ import { userServiceClient } from '../services/clients/user.service.client';
  * Wave Configuration
  * Email-based delivery with pacing to avoid spam filters
  *
- * Strategy (60 messages/day for email):
- * - Wave 1: 15 messages, 1min between, 15min pause after
- * - Wave 2: 15 messages, 1min between, 15min pause after
- * - Wave 3: 15 messages, 1min between, 15min pause after
- * - Wave 4: 15 messages, 1min between (final wave)
+ * Strategy (500 messages/day for email via SendGrid):
+ * - 10 waves of 50 messages each
+ * - 5 seconds between messages (with jitter)
+ * - 2 minute pause between waves
+ * - Total capacity: ~500 emails/day
  */
 interface WaveConfig {
     messages: number;           // Number of messages in this wave
@@ -23,20 +23,26 @@ interface WaveConfig {
 }
 
 const WAVE_CONFIGS: WaveConfig[] = [
-    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 15 * 60 * 1000 },    // Wave 1: 15 msgs, 1min between, 15min pause
-    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 15 * 60 * 1000 },    // Wave 2: 15 msgs, 1min between, 15min pause
-    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 15 * 60 * 1000 },    // Wave 3: 15 msgs, 1min between, 15min pause
-    { messages: 15, delayBetween: 60 * 1000, pauseAfter: 0 }                   // Wave 4: 15 msgs, 1min between (final wave)
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 1: 50 msgs, 5s between, 2min pause
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 2
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 3
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 4
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 5
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 6
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 7
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 8
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 9
+    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 0 }                   // Wave 10 (final)
 ];
 
 /**
  * Add random jitter to delay for more natural timing
- * Jitter: ±10 seconds (shorter for email)
+ * Jitter: ±3 seconds
  */
 function addJitter(baseDelay: number): number {
-    const jitterRange = 10 * 1000; // ±10 seconds
-    const jitter = (Math.random() - 0.5) * 2 * jitterRange; // Random between -10s and +10s
-    return Math.max(1000, baseDelay + jitter); // Minimum 1 second
+    const jitterRange = 3 * 1000; // ±3 seconds
+    const jitter = (Math.random() - 0.5) * 2 * jitterRange; // Random between -3s and +3s
+    return Math.max(2000, baseDelay + jitter); // Minimum 2 seconds
 }
 
 /**
@@ -48,18 +54,18 @@ function addJitter(baseDelay: number): number {
  *    - Send messages to those targets whose nextMessageDue has passed
  *    - Continue with same wave until all reach day 7
  * 3. If no active wave (or current wave completed):
- *    - Pick up to 60 NEW targets (no waveId, status ACTIVE, nextMessageDue passed)
+ *    - Pick up to 500 NEW targets (no waveId, status ACTIVE, nextMessageDue passed)
  *    - Assign them a new waveId
  *    - Send their messages
  *
  * This ensures:
- * - Max 60 people per wave
+ * - Max 500 people per wave
  * - No duplicates (same person won't be in 2 waves)
- * - Controlled sending (~60 people/week = ~240/month)
+ * - Controlled sending with 5s delay between emails
  * - Each wave completes 7-day cycle before new wave starts
  */
 
-const WAVE_SIZE_LIMIT = 60; // Max 60 targets per wave
+const WAVE_SIZE_LIMIT = 500; // Max 500 targets per wave (email)
 
 async function runMessageSendingJob() {
     console.log('[Relance Sender] Starting wave-based message sending job...');

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { campaignService } from '../../services/campaign.service';
 import CampaignModel, { CampaignStatus, CampaignType, TargetFilter } from '../../database/models/relance-campaign.model';
 import RelanceTargetModel, { TargetStatus } from '../../database/models/relance-target.model';
@@ -628,7 +629,7 @@ class RelanceCampaignController {
                 config.allowSimultaneousCampaigns = allowSimultaneousCampaigns;
             }
 
-            if (typeof maxMessagesPerDay === 'number' && maxMessagesPerDay >= 1 && maxMessagesPerDay <= 100) {
+            if (typeof maxMessagesPerDay === 'number' && maxMessagesPerDay >= 1 && maxMessagesPerDay <= 1000) {
                 config.maxMessagesPerDay = maxMessagesPerDay;
             }
 
@@ -672,19 +673,25 @@ class RelanceCampaignController {
                 return;
             }
 
+            // Convert to ObjectId for matching against stored ObjectId fields
+            const userObjectId = new mongoose.Types.ObjectId(userId);
+
             // Get config to check pause status
             const config = await RelanceConfigModel.findOne({ userId });
 
             // Count targets without campaignId (default enrollment)
+            // Use $in [null] to match both null values and missing fields
+            const defaultFilter = { $in: [null, undefined] };
+
             const activeTargets = await RelanceTargetModel.countDocuments({
-                referrerUserId: userId,
-                campaignId: { $exists: false },
+                referrerUserId: userObjectId,
+                campaignId: defaultFilter,
                 status: TargetStatus.ACTIVE
             });
 
             const completedTargets = await RelanceTargetModel.countDocuments({
-                referrerUserId: userId,
-                campaignId: { $exists: false },
+                referrerUserId: userObjectId,
+                campaignId: defaultFilter,
                 status: TargetStatus.COMPLETED
             });
 
@@ -692,8 +699,8 @@ class RelanceCampaignController {
 
             // Get all default targets for detailed stats
             const targets = await RelanceTargetModel.find({
-                referrerUserId: userId,
-                campaignId: { $exists: false }
+                referrerUserId: userObjectId,
+                campaignId: defaultFilter
             });
 
             // Calculate overall message stats
@@ -777,10 +784,11 @@ class RelanceCampaignController {
             const pageNum = parseInt(page as string);
             const limitNum = parseInt(limit as string);
             const skip = (pageNum - 1) * limitNum;
+            const userObjectId = new mongoose.Types.ObjectId(userId);
 
             const filter: any = {
-                referrerUserId: userId,
-                campaignId: { $exists: false }
+                referrerUserId: userObjectId,
+                campaignId: { $in: [null, undefined] }
             };
 
             if (status) {
@@ -791,15 +799,42 @@ class RelanceCampaignController {
                 .sort({ enteredLoopAt: -1 })
                 .skip(skip)
                 .limit(limitNum)
-                .populate('referralUserId', 'name email phoneNumber');
+                .lean();
 
             const total = await RelanceTargetModel.countDocuments(filter);
             const totalPages = Math.ceil(total / limitNum);
 
+            // Fetch user details from user-service for all referral users in this page
+            const referralUserIds = [...new Set(targets.map(t => t.referralUserId.toString()))];
+            let userDetailsMap: Record<string, any> = {};
+
+            if (referralUserIds.length > 0) {
+                try {
+                    const userDetails = await userServiceClient.getBatchUserDetails(referralUserIds);
+                    userDetails.forEach((u: any) => {
+                        userDetailsMap[u._id.toString()] = {
+                            _id: u._id,
+                            name: u.name,
+                            email: u.email,
+                            phoneNumber: u.phoneNumber,
+                            avatar: u.avatar
+                        };
+                    });
+                } catch (err: any) {
+                    log.warn(`Failed to fetch user details for targets: ${err.message}`);
+                }
+            }
+
+            // Attach referralUser to each target
+            const targetsWithUsers = targets.map(t => ({
+                ...t,
+                referralUser: userDetailsMap[t.referralUserId.toString()] || null
+            }));
+
             res.status(200).json({
                 success: true,
                 data: {
-                    targets,
+                    targets: targetsWithUsers,
                     total,
                     page: pageNum,
                     totalPages

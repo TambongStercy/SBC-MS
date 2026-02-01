@@ -632,9 +632,13 @@ class EmailService {
 
         const content = `
             <div style="text-align: center;">
-                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center;">
-                    <span style="color: white; font-size: 32px;">🔐</span>
-                </div>
+                <table role="presentation" style="width: 80px; height: 80px; background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); border-radius: 50%; margin: 0 auto 25px; border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <span style="color: white; font-size: 32px; line-height: 1;">🔐</span>
+                        </td>
+                    </tr>
+                </table>
             </div>
             
             <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
@@ -710,9 +714,13 @@ class EmailService {
     async sendWelcomeEmail(email: string, name: string, referralCode?: string): Promise<boolean> {
         const content = `
             <div style="text-align: center;">
-                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center;">
-                    <span style="color: white; font-size: 32px;">🎉</span>
-                </div>
+                <table role="presentation" style="width: 80px; height: 80px; background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%); border-radius: 50%; margin: 0 auto 25px; border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <span style="color: white; font-size: 32px; line-height: 1;">🎉</span>
+                        </td>
+                    </tr>
+                </table>
             </div>
             
             <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 32px; font-weight: 700;">
@@ -793,9 +801,13 @@ class EmailService {
     async sendContactExportEmail(email: string, name: string, vcfContent: string, fileName: string = 'contacts.vcf'): Promise<boolean> {
         const content = `
             <div style="text-align: center;">
-                <div style="width: 90px; height: 90px; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); border-radius: 20px; margin: 0 auto 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(17, 92, 246, 0.25);">
-                    <span style="color: white; font-size: 36px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">📥</span>
-                </div>
+                <table role="presentation" style="width: 90px; height: 90px; background: linear-gradient(135deg, #115CF6 0%, #2C7BE5 100%); border-radius: 20px; margin: 0 auto 30px; box-shadow: 0 10px 30px rgba(17, 92, 246, 0.25); border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <span style="color: white; font-size: 36px; line-height: 1; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">📥</span>
+                        </td>
+                    </tr>
+                </table>
             </div>
             
             <h1 style="color: #115CF6; text-align: center; margin-bottom: 25px; font-size: 32px; font-weight: 700; text-shadow: 0 2px 4px rgba(17, 92, 246, 0.1);">
@@ -833,20 +845,28 @@ class EmailService {
             </div>
             
             <div style="background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border: 2px solid #fb923c; border-radius: 16px; padding: 20px; margin: 30px 0;">
-                <div style="display: flex; align-items: flex-start; gap: 15px;">
-                    <div style="width: 40px; height: 40px; background: #fb923c; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 10px rgba(251, 146, 60, 0.2);">
-                        <span style="color: white; font-size: 20px; font-weight: bold;">💡</span>
-                    </div>
-                    <div style="flex: 1;">
+                <table role="presentation" style="width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="width: 55px; vertical-align: top; padding-right: 15px;">
+                            <table role="presentation" style="width: 40px; height: 40px; background: #fb923c; border-radius: 50%; box-shadow: 0 4px 10px rgba(251, 146, 60, 0.2); border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td style="text-align: center; vertical-align: middle;">
+                                        <span style="color: white; font-size: 20px; font-weight: bold; line-height: 1;">💡</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                        <td style="vertical-align: top;">
                         <h4 style="color: #ea580c; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">
                             Conseil Pro
                         </h4>
                         <p style="margin: 0; color: #c2410c; font-size: 15px; line-height: 1.5;">
-                            Vous pouvez importer ce fichier VCF directement dans votre carnet d'adresses, 
+                            Vous pouvez importer ce fichier VCF directement dans votre carnet d'adresses,
                             <strong>Outlook</strong>, <strong>Gmail</strong> ou votre <strong>téléphone mobile</strong> pour synchroniser tous vos contacts.
                         </p>
-                    </div>
-                </div>
+                        </td>
+                    </tr>
+                </table>
             </div>
             
             <div style="background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%); border-radius: 16px; padding: 25px; margin: 30px 0; text-align: center; border: 1px solid #dbeafe;">
@@ -948,9 +968,13 @@ class EmailService {
         // French content
         const frenchContent = `
             <div style="text-align: center;">
-                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, ${info.color} 0%, ${info.color}dd 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px ${info.color}40;">
-                    <span style="color: white; font-size: 36px;">🎉</span>
-                </div>
+                <table role="presentation" style="width: 80px; height: 80px; background: linear-gradient(135deg, ${info.color} 0%, ${info.color}dd 100%); border-radius: 50%; margin: 0 auto 25px; box-shadow: 0 10px 30px ${info.color}40; border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <span style="color: white; font-size: 36px; line-height: 1;">🎉</span>
+                        </td>
+                    </tr>
+                </table>
             </div>
 
             <h2 style="color: ${info.color}; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 700;">
@@ -1040,9 +1064,13 @@ class EmailService {
         // English content
         const englishContent = `
             <div style="text-align: center;">
-                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, ${info.color} 0%, ${info.color}dd 100%); border-radius: 50%; margin: 0 auto 25px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px ${info.color}40;">
-                    <span style="color: white; font-size: 36px;">🎉</span>
-                </div>
+                <table role="presentation" style="width: 80px; height: 80px; background: linear-gradient(135deg, ${info.color} 0%, ${info.color}dd 100%); border-radius: 50%; margin: 0 auto 25px; box-shadow: 0 10px 30px ${info.color}40; border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <span style="color: white; font-size: 36px; line-height: 1;">🎉</span>
+                        </td>
+                    </tr>
+                </table>
             </div>
 
             <h2 style="color: ${info.color}; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 700;">

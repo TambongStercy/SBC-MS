@@ -36,7 +36,7 @@ class RelanceController {
                     enrollmentPaused: config?.enrollmentPaused || false,
                     sendingPaused: config?.sendingPaused || false,
                     messagesSentToday: config?.messagesSentToday || 0,
-                    maxMessagesPerDay: config?.maxMessagesPerDay || 60
+                    maxMessagesPerDay: config?.maxMessagesPerDay || 500
                 }
             });
         } catch (error: any) {

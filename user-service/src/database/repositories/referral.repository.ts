@@ -1,7 +1,7 @@
 import ReferralModel, { IReferral } from '../models/referral.model';
 import UserModel, { IUser } from '../models/user.model';
 import mongoose, { Types, Document, UpdateWriteOpResult, PipelineStage } from 'mongoose';
-import SubscriptionModel, { SubscriptionStatus } from '../models/subscription.model';
+import SubscriptionModel, { SubscriptionStatus, SubscriptionCategory } from '../models/subscription.model';
 
 // Define document type
 type ReferralDocument = Document<unknown, {}, IReferral> & IReferral & { _id: Types.ObjectId };
@@ -1061,17 +1061,30 @@ export class ReferralRepository {
 
         // Add subscription lookup and filtering if subType is specified
         if (subType) {
+            // Build subscription match criteria
+            const subscriptionMatchCriteria: any = {
+                $expr: { $eq: ['$user', '$$userId'] },
+                status: SubscriptionStatus.ACTIVE,
+                endDate: { $gt: new Date() }
+            };
+
+            // When checking for 'none' (unpaid users), only consider registration subscriptions
+            // This ensures users with only a RELANCE (feature) subscription are still treated as "unpaid"
+            // Old subscriptions without 'category' field are treated as registration (backward compat)
+            if (subType === 'none') {
+                subscriptionMatchCriteria.$or = [
+                    { category: SubscriptionCategory.REGISTRATION },
+                    { category: { $exists: false } } // Old subs without category = registration
+                ];
+            }
+
             pipeline.push({
                 $lookup: {
                     from: 'subscriptions',
                     let: { userId: '$referredUserData._id' },
                     pipeline: [
                         {
-                            $match: {
-                                $expr: { $eq: ['$user', '$$userId'] },
-                                status: SubscriptionStatus.ACTIVE,
-                                endDate: { $gt: new Date() }
-                            }
+                            $match: subscriptionMatchCriteria
                         }
                     ],
                     as: 'activeSubscriptions'
@@ -1180,17 +1193,30 @@ export class ReferralRepository {
 
         // Add subscription lookup and filtering if subType is specified
         if (subType) {
+            // Build subscription match criteria
+            const subscriptionMatchCriteria: any = {
+                $expr: { $eq: ['$user', '$$userId'] },
+                status: SubscriptionStatus.ACTIVE,
+                endDate: { $gt: new Date() }
+            };
+
+            // When checking for 'none' (unpaid users), only consider registration subscriptions
+            // This ensures users with only a RELANCE (feature) subscription are still treated as "unpaid"
+            // Old subscriptions without 'category' field are treated as registration (backward compat)
+            if (subType === 'none') {
+                subscriptionMatchCriteria.$or = [
+                    { category: SubscriptionCategory.REGISTRATION },
+                    { category: { $exists: false } } // Old subs without category = registration
+                ];
+            }
+
             pipeline.push({
                 $lookup: {
                     from: 'subscriptions',
                     let: { userId: '$referredUserData._id' },
                     pipeline: [
                         {
-                            $match: {
-                                $expr: { $eq: ['$user', '$$userId'] },
-                                status: SubscriptionStatus.ACTIVE,
-                                endDate: { $gt: new Date() }
-                            }
+                            $match: subscriptionMatchCriteria
                         }
                     ],
                     as: 'activeSubscriptions'
@@ -1300,6 +1326,22 @@ export class ReferralRepository {
 
         // Add subscription filtering if subType is specified
         if (subType) {
+            // Build subscription match criteria
+            const subscriptionMatchCriteria: any = {
+                $expr: { $eq: ['$user', '$$userId'] },
+                status: SubscriptionStatus.ACTIVE,
+                endDate: { $gt: new Date() }
+            };
+
+            // When checking for 'none' (unpaid users), only consider registration subscriptions
+            // Old subscriptions without 'category' field are treated as registration (backward compat)
+            if (subType === 'none') {
+                subscriptionMatchCriteria.$or = [
+                    { category: SubscriptionCategory.REGISTRATION },
+                    { category: { $exists: false } }
+                ];
+            }
+
             pipeline.push(
                 {
                     $lookup: {
@@ -1307,11 +1349,7 @@ export class ReferralRepository {
                         let: { userId: '$userData._id' },
                         pipeline: [
                             {
-                                $match: {
-                                    $expr: { $eq: ['$user', '$$userId'] },
-                                    status: SubscriptionStatus.ACTIVE,
-                                    endDate: { $gt: new Date() }
-                                }
+                                $match: subscriptionMatchCriteria
                             }
                         ],
                         as: 'activeSubscriptions'
@@ -1414,6 +1452,22 @@ export class ReferralRepository {
 
         // Add subscription filtering if subType is specified
         if (subType) {
+            // Build subscription match criteria
+            const subscriptionMatchCriteria: any = {
+                $expr: { $eq: ['$user', '$$userId'] },
+                status: SubscriptionStatus.ACTIVE,
+                endDate: { $gt: new Date() }
+            };
+
+            // When checking for 'none' (unpaid users), only consider registration subscriptions
+            // Old subscriptions without 'category' field are treated as registration (backward compat)
+            if (subType === 'none') {
+                subscriptionMatchCriteria.$or = [
+                    { category: SubscriptionCategory.REGISTRATION },
+                    { category: { $exists: false } }
+                ];
+            }
+
             pipeline.push(
                 {
                     $lookup: {
@@ -1421,11 +1475,7 @@ export class ReferralRepository {
                         let: { userId: '$userData._id' },
                         pipeline: [
                             {
-                                $match: {
-                                    $expr: { $eq: ['$user', '$$userId'] },
-                                    status: SubscriptionStatus.ACTIVE,
-                                    endDate: { $gt: new Date() }
-                                }
+                                $match: subscriptionMatchCriteria
                             }
                         ],
                         as: 'activeSubscriptions'

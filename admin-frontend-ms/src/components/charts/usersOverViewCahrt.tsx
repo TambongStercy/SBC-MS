@@ -9,6 +9,7 @@ interface MonthlyUserSubData {
   Users: number;
   Classique: number;
   Cible: number;
+  Relance: number;
 }
 
 interface UsersOverViewChartProps {
@@ -20,7 +21,8 @@ const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
   const [visibleLines, setVisibleLines] = useState({
     Users: true,
     Classique: true,
-    Cible: true
+    Cible: true,
+    Relance: true
   });
 
   // Toggle function for line visibility
@@ -50,6 +52,12 @@ const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
       name: 'Abo. Cible',
       stroke: '#ffc658',
       color: '#ffc658'
+    },
+    {
+      key: 'Relance' as const,
+      name: 'Abo. Relance',
+      stroke: '#ef4444',
+      color: '#ef4444'
     }
   ];
 
@@ -142,6 +150,18 @@ const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
                   strokeWidth={3}
                   dot={{ r: 4, fill: '#ffc658' }}
                   activeDot={{ r: 6, fill: '#ffc658' }}
+                />
+              )}
+
+              {visibleLines.Relance && (
+                <Line
+                  type='monotone'
+                  dataKey='Relance'
+                  name='Abo. Relance'
+                  stroke='#ef4444'
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#ef4444' }}
+                  activeDot={{ r: 6, fill: '#ef4444' }}
                 />
               )}
             </LineChart>

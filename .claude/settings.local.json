@@ -25,7 +25,20 @@
       "Bash(mongosh:*)",
       "Bash(dir:*)",
       "Bash(ssh root@217.65.144.32 \"pm2 logs payment-service --lines 500 --nostream 2>/dev/null | grep -i ''jdxTVMEVH0yKrLHy\\\\|679d1761a14bb54c5e33532a\\\\|3756.63\\\\|balance.*debit''\")",
-      "Bash(ssh sterling@207.180.242.122:*)"
+      "Bash(ssh sterling@207.180.242.122:*)",
+      "Bash(ssh:*)",
+      "Bash(docker-compose pull:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(more:*)",
+      "Bash(findstr:*)",
+      "Bash(docker rm:*)",
+      "Bash(python:*)",
+      "Bash(node:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker compose:*)"
     ],
     "deny": [],
     "ask": []

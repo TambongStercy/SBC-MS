@@ -959,23 +959,195 @@ DRIVE_PRIVATE_KEY=************
 
 ---
 
+## 10. Cookies & Tracking
+
+### 10.1 Cookie Usage
+
+| Cookie/Storage | Type | Purpose | Duration | Consent Required |
+|----------------|------|---------|----------|------------------|
+| JWT Token | localStorage | User authentication session | 24 hours | Functional (no consent) |
+| Language preference | localStorage | UI localization | Persistent | Functional (no consent) |
+
+**Note:** The platform uses localStorage for authentication tokens, not HTTP cookies. This minimizes cookie-related privacy concerns.
+
+### 10.2 Third-Party Tracking & Analytics
+
+| Tool | Status | Purpose | Data Collected |
+|------|--------|---------|----------------|
+| Google Analytics | **Not used** | - | - |
+| Facebook Pixel | **Not used** | - | - |
+| Mixpanel | **Not used** | - | - |
+| Hotjar | **Not used** | - | - |
+
+The platform does **not** use any third-party analytics or tracking tools. User behavior is not tracked for marketing purposes.
+
+### 10.3 Consent Mechanism
+
+- **Cookie Banner:** Not required (no tracking cookies used)
+- **Privacy Consent:** Obtained during registration (Terms acceptance)
+- **Marketing Consent:** Opt-in via notification preferences
+
+---
+
+## 11. Server Infrastructure Security
+
+### 11.1 Server Details
+
+| Component | Details |
+|-----------|---------|
+| **Provider** | Contabo VPS |
+| **IP Address** | 207.180.242.122 |
+| **OS** | Ubuntu 24.04.3 LTS |
+| **Kernel** | 6.8.0-90-generic |
+| **Resources** | 12GB RAM, 193GB SSD |
+
+### 11.2 Network Security
+
+| Measure | Implementation | Status |
+|---------|----------------|--------|
+| **Firewall (UFW)** | Default deny incoming, allow outgoing | ✅ Active |
+| **Allowed Ports** | 22 (SSH), 80 (HTTP), 443 (HTTPS) only | ✅ Configured |
+| **Cloudflare CDN** | DDoS protection, WAF, SSL termination | ✅ Active |
+| **Real IP Restoration** | CF-Connecting-IP header configured in Nginx | ✅ Configured |
+
+### 11.3 Intrusion Prevention
+
+| Measure | Implementation | Statistics |
+|---------|----------------|------------|
+| **Fail2Ban** | Active for SSH, MongoDB, PostgreSQL | ✅ Running |
+| **SSH Jail** | 2,491 total IPs banned, 2 currently banned | ✅ Active |
+| **Brute Force Protection** | Automatic IP blocking after failed attempts | ✅ Active |
+
+### 11.4 SSL/TLS Configuration
+
+| Setting | Value |
+|---------|-------|
+| **Certificate Authority** | Let's Encrypt |
+| **Protocols** | TLSv1.2, TLSv1.3 only |
+| **Cipher Suites** | ECDHE-ECDSA-AES128-GCM-SHA256, ECDHE-RSA-AES128-GCM-SHA256, etc. |
+| **Session Tickets** | Disabled (security) |
+| **HSTS** | Enabled via Helmet.js |
+| **HTTP to HTTPS** | Automatic redirect (301) |
+
+### 11.5 Service Isolation
+
+| Service | Binding | Exposure |
+|---------|---------|----------|
+| MongoDB (27017) | 127.0.0.1 only | ✅ Not exposed |
+| Redis (6379) | 127.0.0.1 only | ✅ Not exposed |
+| PostgreSQL (5432) | 127.0.0.1 only | ✅ Not exposed |
+| Node.js Services | 0.0.0.0 (via Nginx) | ✅ Behind reverse proxy |
+
+### 11.6 Automatic Security Updates
+
+```
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+```
+Automatic security updates are **enabled** for the Ubuntu system.
+
+---
+
+## 12. Access Management
+
+### 12.1 Server Access
+
+| User | Role | Access Method | Privileges |
+|------|------|---------------|------------|
+| `sterling` | System Administrator | SSH (key + password) | sudo access |
+| `root` | Root (disabled for direct login) | - | prohibit-password |
+
+### 12.2 SSH Security Configuration
+
+| Setting | Value | Security Impact |
+|---------|-------|-----------------|
+| PermitRootLogin | prohibit-password | ✅ Root cannot login with password |
+| PubkeyAuthentication | yes | ✅ SSH keys supported |
+| PasswordAuthentication | yes | ⚠️ Consider disabling |
+| Fail2Ban | Active | ✅ Brute force protection |
+
+### 12.3 Database Access
+
+| Database | Authentication | Access |
+|----------|----------------|--------|
+| MongoDB | Username/Password | Authenticated users only |
+| Redis | Password protected | Local access only |
+| PostgreSQL | Username/Password | Local access only |
+
+### 12.4 Access Revocation Procedure
+
+1. **Employee Departure:**
+   - Remove SSH authorized_keys entry
+   - Change shared service passwords
+   - Revoke any API tokens issued
+   - Review and rotate secrets if needed
+
+2. **Suspected Compromise:**
+   - Immediately disable user account
+   - Rotate all secrets (JWT_SECRET, SERVICE_SECRET)
+   - Force logout all users (JWT invalidation)
+   - Review access logs
+
+---
+
+## 13. Active User Statistics
+
+### 13.1 User Base (Approximate)
+
+| Metric | Value | As of |
+|--------|-------|-------|
+| **Total Registered Users** | ~5,000+ | January 2026 |
+| **Monthly Active Users** | ~1,500 | January 2026 |
+| **Daily Active Users** | ~300-500 | January 2026 |
+| **Countries** | 10+ | Primary: CM, CI, SN |
+
+*Note: These are approximate figures for audit purposes.*
+
+---
+
 ## Appendix B: Compliance Checklist
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
 | Data encryption at rest | ✅ | MongoDB encryption |
-| Data encryption in transit | ✅ | HTTPS/TLS |
+| Data encryption in transit | ✅ | HTTPS/TLS 1.2/1.3 |
 | Password hashing | ✅ | bcrypt, 10 rounds |
-| Access logging | ✅ | Morgan + custom logging |
+| Access logging | ✅ | Morgan + Nginx logs |
 | Rate limiting | ✅ | Multiple tiers |
 | Input validation | ✅ | Custom middleware |
 | RBAC | ✅ | 4 roles defined |
 | Security headers | ✅ | Helmet.js |
+| Firewall | ✅ | UFW active, minimal ports |
+| Intrusion prevention | ✅ | Fail2Ban (SSH, MongoDB, PostgreSQL) |
+| CDN/DDoS protection | ✅ | Cloudflare |
+| Automatic updates | ✅ | Ubuntu unattended-upgrades |
+| Service isolation | ✅ | DBs on localhost only |
+| SSL/TLS | ✅ | Let's Encrypt, TLSv1.2+ only |
 | Third-party DPAs | ⚠️ | In progress |
 | Privacy policy | ⚠️ | To be published |
-| Cookie consent | ⚠️ | Minimal cookie use |
-| Data breach procedure | ⚠️ | Documented above |
+| Cookie consent | ✅ | Not required (no tracking cookies) |
+| Data breach procedure | ✅ | Documented in Section 8 |
 | Regular security audits | ⚠️ | Recommended annually |
+
+---
+
+## Appendix C: Contact Information
+
+| Purpose | Contact |
+|---------|---------|
+| Data Protection Inquiries | privacy@sniperbuisnesscenter.com |
+| Security Incidents | security@sniperbuisnesscenter.com |
+| General Support | support@sniperbuisnesscenter.com |
+| Technical Contact | Sterling Tambong (System Administrator) |
+
+---
+
+## Appendix D: Document History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | January 2026 | SBC Team | Initial document |
+| 1.1 | January 25, 2026 | SBC Team | Added server security details, cookies section, access management |
 
 ---
 

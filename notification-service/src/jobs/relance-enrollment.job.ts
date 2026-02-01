@@ -267,7 +267,10 @@ async function runEnrollmentCheck() {
         const activeConfigs = await RelanceConfigModel.find({
             enabled: true,
             enrollmentPaused: false,
-            whatsappStatus: 'connected'
+            $or: [
+                { channel: 'email' },
+                { whatsappStatus: 'connected' }
+            ]
         });
 
         console.log(`[Relance Enrollment] Found ${activeConfigs.length} active configs to process`);

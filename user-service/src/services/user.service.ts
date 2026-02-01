@@ -111,10 +111,12 @@ interface AdminDashboardData {
     count: number; // Total Users
     classiqueSubCount: number; // Total Active Classique Subscribers
     cibleSubCount: number; // Total Active Cible Subscribers
+    relanceSubCount: number; // Total Active Relance Subscribers
     // Added aggregated monthly data:
     monthlyAllUsers: MonthlyCount[];
     monthlyClassiqueSubs: MonthlyCount[];
     monthlyCibleSubs: MonthlyCount[];
+    monthlyRelanceSubs: MonthlyCount[];
 
     totalTransactions: number;
     totalWithdrawals: number;
@@ -3190,6 +3192,7 @@ export class UserService {
                 allUsers, // Still fetch for total count and balance by country
                 classiqueSubCount, // Count active Classique subs
                 cibleSubCount, // Count active Cible subs
+                relanceSubCount, // Count active Relance subs
 
                 // NEW: Aggregation for monthly user registrations
                 monthlyAllUsersAgg,
@@ -3197,6 +3200,8 @@ export class UserService {
                 monthlyClassiqueSubsAgg,
                 // NEW: Aggregation for monthly Cible subscriptions
                 monthlyCibleSubsAgg,
+                // Aggregation for monthly Relance subscriptions
+                monthlyRelanceSubsAgg,
 
                 // External Data (unchanged, but now settingsService is used for adminBalance)
                 adminBalance, // This will now come from settingsService
@@ -3219,6 +3224,10 @@ export class UserService {
                 SubscriptionModel.countDocuments({
                     status: SubscriptionStatus.ACTIVE,
                     subscriptionType: SubscriptionType.CIBLE
+                }).exec(),
+                SubscriptionModel.countDocuments({
+                    status: SubscriptionStatus.ACTIVE,
+                    subscriptionType: SubscriptionType.RELANCE
                 }).exec(),
 
                 // Aggregation for all monthly user registrations
@@ -3305,6 +3314,34 @@ export class UserService {
                     { $sort: { month: 1 } }
                 ]).exec(),
 
+                // Aggregation for monthly Relance subscriptions
+                SubscriptionModel.aggregate([
+                    { $match: { subscriptionType: SubscriptionType.RELANCE } },
+                    {
+                        $group: {
+                            _id: {
+                                year: { $year: '$startDate' },
+                                month: { $month: '$startDate' }
+                            },
+                            count: { $sum: 1 }
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            month: {
+                                $concat: [
+                                    { $toString: '$_id.year' },
+                                    '-',
+                                    { $cond: { if: { $lt: ['$_id.month', 10] }, then: { $concat: ['0', { $toString: '$_id.month' }] }, else: { $toString: '$_id.month' } } }
+                                ]
+                            },
+                            count: 1
+                        }
+                    },
+                    { $sort: { month: 1 } }
+                ]).exec(),
+
                 // External Service Calls
                 settingsService.getAdminBalance(), // NEW: Fetch admin balance from settings-service
                 paymentService.getTotalTransactions(),
@@ -3351,9 +3388,11 @@ export class UserService {
                 count: totalUsersCount,
                 classiqueSubCount: classiqueSubCount,
                 cibleSubCount: cibleSubCount,
+                relanceSubCount: relanceSubCount,
                 monthlyAllUsers: monthlyAllUsersAgg,
                 monthlyClassiqueSubs: monthlyClassiqueSubsAgg,
                 monthlyCibleSubs: monthlyCibleSubsAgg,
+                monthlyRelanceSubs: monthlyRelanceSubsAgg,
                 totalTransactions,
                 totalWithdrawals,
                 totalDeposits,

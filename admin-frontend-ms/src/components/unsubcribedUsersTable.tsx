@@ -19,6 +19,7 @@ interface MonthlyUserSubData {
   Users: number;
   Classique: number;
   Cible: number;
+  Relance: number;
 }
 
 interface UnsubcribedUsersTableProps {

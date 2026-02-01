@@ -92,7 +92,7 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
         // Safety limits
         maxMessagesPerDay: {
             type: Number,
-            default: 60  // Email allows slightly higher limit than WhatsApp
+            default: 500  // Email via SendGrid - reasonable daily limit
         },
         maxTargetsPerCampaign: {
             type: Number,

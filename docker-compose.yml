@@ -82,10 +82,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./user-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
     ports:
       - "3001:3001"
 
@@ -108,10 +104,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./payment-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
     ports:
       - "3003:3003"
 
@@ -134,10 +126,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./product-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
     ports:
       - "3004:3004"
 
@@ -167,10 +155,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./tombola-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
     ports:
       - "3006:3006"
 
@@ -193,10 +177,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./settings-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
     ports:
       - "3007:3007"
 
@@ -213,7 +193,7 @@ services:
       <<: *common-env-vars
       PORT: 3002
       MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_notification_dev
-      REDIS_HOST: host.docker.internal
+      REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 0
       WHATSAPP_ENABLE_CLOUD_API: "true"
@@ -223,12 +203,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./notification-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
     ports:
       - "3002:3002"
+    depends_on:
+      - redis
 
   chat-service:
     <<: *node-service-defaults
@@ -244,7 +222,7 @@ services:
       PORT: 3008
       MONGODB_URI_DEV: mongodb://host.docker.internal:27017/sbc_chat_dev
       SELF_BASE_URL: http://chat-service:3008
-      REDIS_HOST: host.docker.internal
+      REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 1
     healthcheck:
@@ -253,12 +231,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./chat-service:/usr/src/app
-      - /usr/src/app/node_modules
-    working_dir: /usr/src/app
     ports:
       - "3008:3008"
+    depends_on:
+      - redis
 
   admin-frontend-ms:
     restart: unless-stopped
@@ -273,14 +249,13 @@ services:
     ports:
       - "3030:80"
 
-  # Redis container - services use host.docker.internal so they connect to host Redis if available
-  # If host Redis is not running, uncomment ports to expose container Redis to host
+  # Redis container for notification and chat services
   redis:
     image: redis:7-alpine
     container_name: sbc_redis
-    restart: "no"
-    # ports:
-    #   - "6379:6379"
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes

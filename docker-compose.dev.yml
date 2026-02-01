@@ -65,9 +65,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./gateway-service
-      target: production
+      target: development
     container_name: gateway_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./gateway-service/.env
     environment:
@@ -88,9 +88,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./user-service
-      target: production
+      target: development
     container_name: user_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./user-service/.env
     environment:
@@ -114,9 +114,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./payment-service
-      target: production
+      target: development
     container_name: payment_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./payment-service/.env
     environment:
@@ -140,9 +140,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./product-service
-      target: production
+      target: development
     container_name: product_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./product-service/.env
     environment:
@@ -166,9 +166,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./tombola-service
-      target: production
+      target: development
     container_name: tombola_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./tombola-service/.env
     environment:
@@ -199,9 +199,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./settings-service
-      target: production
+      target: development
     container_name: settings_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./settings-service/.env
     environment:
@@ -225,9 +225,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./notification-service
-      target: production
+      target: development
     container_name: notification_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./notification-service/.env
     environment:
@@ -257,9 +257,9 @@ services:
     <<: *node-service-defaults
     build:
       context: ./chat-service
-      target: production
+      target: development
     container_name: chat_service
-    command: npm run start
+    command: npm run dev
     env_file:
       - ./chat-service/.env
     environment:

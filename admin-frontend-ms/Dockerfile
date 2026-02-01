@@ -20,6 +20,9 @@ FROM nginx:alpine AS production
 # Copy the built static files from the builder stage to Nginx's web root
 COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
 
+# Copy custom nginx config for SPA routing support
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 # Expose port 80 (Nginx's default port)
 EXPOSE 80
 

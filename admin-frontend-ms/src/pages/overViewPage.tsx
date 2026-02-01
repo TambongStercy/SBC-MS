@@ -60,9 +60,11 @@ interface AdminDashboardData {
   count: number;
   classiqueSubCount: number; // Updated: Separate Classique subscription count
   cibleSubCount: number; // Updated: Separate Cible subscription count
+  relanceSubCount: number; // Active Relance subscription count
   monthlyAllUsers: MonthlyCountData[];
   monthlyClassiqueSubs: MonthlyCountData[];
   monthlyCibleSubs: MonthlyCountData[];
+  monthlyRelanceSubs: MonthlyCountData[];
   totalTransactions: number;
   totalWithdrawals: number;
   totalDeposits: number; // Total deposit transactions
@@ -149,6 +151,7 @@ const OverViewPage = () => {
           .map((allUserMonth: MonthlyCountData) => {
             const classiqueMonth = actualDashboardData.monthlyClassiqueSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
             const cibleMonth = actualDashboardData.monthlyCibleSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
+            const relanceMonth = actualDashboardData.monthlyRelanceSubs?.find((s: MonthlyCountData) => s.month === allUserMonth.month);
 
             // Convert month format from "2024-02" to "Feb 24"
             const [year, month] = allUserMonth.month.split('-');
@@ -160,6 +163,7 @@ const OverViewPage = () => {
               Users: allUserMonth.count, // Chart expects "Users" (capital U)
               Classique: classiqueMonth?.count || 0, // Chart expects "Classique" (capital C)
               Cible: cibleMonth?.count || 0, // Chart expects "Cible" (capital C)
+              Relance: relanceMonth?.count || 0, // Chart expects "Relance" (capital R)
             };
           });
         setMonthlyData(formattedUsersData);
@@ -232,6 +236,12 @@ const OverViewPage = () => {
             icon={UserRoundCheck}
             value={dashboardData?.cibleSubCount || "N/A"}
             color="#8b5cf6"
+          />
+          <StatCard
+            name="Abonnés Relance"
+            icon={UserRoundCheck}
+            value={dashboardData?.relanceSubCount || "N/A"}
+            color="#ef4444"
           />
 
           {/* USER BALANCES SECTION */}
@@ -378,11 +388,12 @@ const OverViewPage = () => {
                   <ComparisonChart
                     title="Utilisateurs vs Abonnés"
                     data={[
-                      { name: "Autres Utilisateurs", value: dashboardData.count - (dashboardData.classiqueSubCount + dashboardData.cibleSubCount) },
+                      { name: "Autres Utilisateurs", value: dashboardData.count - (dashboardData.classiqueSubCount + dashboardData.cibleSubCount + (dashboardData.relanceSubCount || 0)) },
                       { name: "Abonnés Classique", value: dashboardData.classiqueSubCount },
                       { name: "Abonnés Cible", value: dashboardData.cibleSubCount },
+                      { name: "Abonnés Relance", value: dashboardData.relanceSubCount || 0 },
                     ]}
-                    colors={['#6b7280', '#f59e0b', '#8b5cf6']} // gray, amber, purple
+                    colors={['#6b7280', '#f59e0b', '#8b5cf6', '#ef4444']} // gray, amber, purple, red
                   />
                 </div>
 

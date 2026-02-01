@@ -134,6 +134,40 @@ class UserServiceClient {
     }
 
     /**
+     * Get batch user details for multiple user IDs
+     * @param userIds Array of user IDs
+     * @returns Array of user detail objects
+     */
+    async getBatchUserDetails(userIds: string[]): Promise<any[]> {
+        if (!this.userServiceUrl) {
+            log.error('User Service URL not configured. Cannot get batch user details.');
+            return [];
+        }
+
+        const url = `${this.userServiceUrl}/users/internal/batch-details`;
+
+        try {
+            const response = await axios.post<{ success: boolean; data: any[] }>(url, {
+                userIds
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${this.serviceSecret}`,
+                    'X-Service-Name': 'notification-service'
+                },
+                timeout: 10000
+            });
+
+            if (response.data?.success && Array.isArray(response.data?.data)) {
+                return response.data.data;
+            }
+            return [];
+        } catch (error: any) {
+            log.error(`Error fetching batch user details:`, error.response?.data || error.message);
+            return [];
+        }
+    }
+
+    /**
      * Get unpaid referrals for a user (for relance feature)
      * @param userId The ID of the user
      * @returns Array of unpaid referral objects
