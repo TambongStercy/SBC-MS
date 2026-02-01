@@ -7,43 +7,16 @@ import { emailRelanceService } from '../services/email.relance.service';
 import { userServiceClient } from '../services/clients/user.service.client';
 
 /**
- * Wave Configuration
- * Email-based delivery with pacing to avoid spam filters
+ * Email Sending Configuration
  *
- * Strategy (500 messages/day for email via SendGrid):
- * - 10 waves of 50 messages each
- * - 5 seconds between messages (with jitter)
- * - 2 minute pause between waves
- * - Total capacity: ~500 emails/day
+ * SendGrid handles high throughput natively, so we only need a small delay
+ * between emails to be respectful and avoid transient rate limits.
+ *
+ * - 500ms between emails (minimal pacing)
+ * - No wave pauses needed for email
+ * - Max 500 targets per run
  */
-interface WaveConfig {
-    messages: number;           // Number of messages in this wave
-    delayBetween: number;       // Milliseconds between messages in this wave
-    pauseAfter: number;         // Milliseconds to pause after completing this wave
-}
-
-const WAVE_CONFIGS: WaveConfig[] = [
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 1: 50 msgs, 5s between, 2min pause
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 2
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 3
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 4
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 5
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 6
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 7
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 8
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 2 * 60 * 1000 },     // Wave 9
-    { messages: 50, delayBetween: 5 * 1000, pauseAfter: 0 }                   // Wave 10 (final)
-];
-
-/**
- * Add random jitter to delay for more natural timing
- * Jitter: ±3 seconds
- */
-function addJitter(baseDelay: number): number {
-    const jitterRange = 3 * 1000; // ±3 seconds
-    const jitter = (Math.random() - 0.5) * 2 * jitterRange; // Random between -3s and +3s
-    return Math.max(2000, baseDelay + jitter); // Minimum 2 seconds
-}
+const EMAIL_DELAY_MS = 500; // 500ms between emails
 
 /**
  * Wave-Based Message Sender
@@ -130,10 +103,6 @@ async function runMessageSendingJob() {
         let totalFailed = 0;
         let totalExited = 0;
 
-        // Process targets in waves
-        let currentWaveIndex = 0;
-        let messagesInCurrentWave = 0;
-
         for (let i = 0; i < targetsToProcess.length; i++) {
             const target = targetsToProcess[i];
             try {
@@ -151,8 +120,14 @@ async function runMessageSendingJob() {
                 }
 
                 // Check if sending is paused
-                if (config.sendingPaused || !config.enabled) {
+                // 'enabled' only controls default relance; filtered campaigns send independently
+                const isDefaultTarget = !campaign;
+                if (config.sendingPaused) {
                     console.log(`${campaignLabel} Sending paused for referrer ${referrerId}, skipping target ${target._id}`);
+                    continue;
+                }
+                if (isDefaultTarget && !config.enabled) {
+                    console.log(`${campaignLabel} Default relance disabled for referrer ${referrerId}, skipping target ${target._id}`);
                     continue;
                 }
 
@@ -263,14 +238,16 @@ async function runMessageSendingJob() {
                     continue;
                 }
 
-                // Send email
+                // Send email with buttons and custom subject if available
                 const sendResult = await emailRelanceService.sendRelanceEmail(
                     recipientEmail,
                     referralInfo.name || 'Member',
                     referrerInfo.name || 'Your Referrer',
                     messageText,
                     target.currentDay,
-                    messageTemplate.mediaUrls
+                    messageTemplate.mediaUrls,
+                    messageTemplate.buttons,
+                    messageTemplate.subject
                 );
 
                 if (sendResult.success) {
@@ -343,32 +320,9 @@ async function runMessageSendingJob() {
                     totalFailed++;
                 }
 
-                // Wave-based delay system with random jitter
-                messagesInCurrentWave++;
-
-                // Check if we need to move to the next wave
-                const currentWave = WAVE_CONFIGS[currentWaveIndex] || WAVE_CONFIGS[WAVE_CONFIGS.length - 1];
-
-                if (messagesInCurrentWave >= currentWave.messages) {
-                    // Wave completed - apply pause if specified
-                    if (currentWave.pauseAfter > 0) {
-                        const pauseWithJitter = addJitter(currentWave.pauseAfter);
-                        console.log(`[Relance Sender] Wave ${currentWaveIndex + 1} completed (${messagesInCurrentWave} messages). Pausing for ${Math.round(pauseWithJitter / 1000 / 60)} minutes...`);
-                        await new Promise(resolve => setTimeout(resolve, pauseWithJitter));
-                    }
-
-                    // Move to next wave
-                    currentWaveIndex++;
-                    messagesInCurrentWave = 0;
-
-                    if (currentWaveIndex < WAVE_CONFIGS.length) {
-                        console.log(`[Relance Sender] Starting Wave ${currentWaveIndex + 1}...`);
-                    }
-                } else {
-                    // Still in current wave - apply message delay
-                    const delayWithJitter = addJitter(currentWave.delayBetween);
-                    console.log(`[Relance Sender] Wave ${currentWaveIndex + 1}, message ${messagesInCurrentWave}/${currentWave.messages}. Waiting ${Math.round(delayWithJitter / 1000)} seconds before next message...`);
-                    await new Promise(resolve => setTimeout(resolve, delayWithJitter));
+                // Small delay between emails to avoid transient rate limits
+                if (i < targetsToProcess.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, EMAIL_DELAY_MS));
                 }
 
             } catch (targetError) {
@@ -381,10 +335,9 @@ async function runMessageSendingJob() {
         await checkAndCompleteCampaigns();
 
         const duration = Date.now() - startTime;
-        const durationMinutes = Math.round(duration / 1000 / 60);
-        console.log(`[Relance Sender] Message sending job completed in ${durationMinutes} minutes`);
+        const durationSeconds = Math.round(duration / 1000);
+        console.log(`[Relance Sender] Message sending job completed in ${durationSeconds}s`);
         console.log(`[Relance Sender] Summary: ${totalSent} sent, ${totalFailed} failed, ${totalExited} exited`);
-        console.log(`[Relance Sender] Waves processed: ${currentWaveIndex + 1}/${WAVE_CONFIGS.length}`);
 
     } catch (error) {
         console.error('[Relance Sender] Fatal error in sender job:', error);
@@ -440,23 +393,13 @@ async function checkAndCompleteCampaigns() {
 }
 
 export function startRelanceSenderJob() {
-    console.log('[Relance Sender] Scheduling email sender job - runs immediately on startup, then every 6 hours');
-    console.log('[Relance Sender] Wave-based email sending configured (60 messages/day max):');
-    WAVE_CONFIGS.forEach((wave, index) => {
-        const delayMin = Math.round(wave.delayBetween / 1000 / 60);
-        const pauseMin = Math.round(wave.pauseAfter / 1000 / 60);
-        if (pauseMin > 0) {
-            console.log(`  Wave ${index + 1}: ${wave.messages} messages, ${delayMin}min between, ${pauseMin}min pause after`);
-        } else {
-            console.log(`  Wave ${index + 1}: ${wave.messages} messages, ${delayMin}min between (final wave)`);
-        }
-    });
+    console.log('[Relance Sender] Scheduling email sender job - runs immediately on startup, then every 15 minutes');
 
-    // Run immediately on startup for testing
+    // Run immediately on startup
     runMessageSendingJob();
 
-    // Run every 6 hours (at 00:00, 06:00, 12:00, 18:00)
-    cron.schedule('0 */6 * * *', runMessageSendingJob);
+    // Run every 15 minutes
+    cron.schedule('*/15 * * * *', runMessageSendingJob);
 
     console.log('[Relance Sender] Job scheduled successfully');
 

@@ -100,8 +100,8 @@ async function enrollFilteredTargets(userId: string, campaign: any, config: any)
     try {
         console.log(`[Relance Enrollment] [Filtered] Processing campaign ${campaign._id}: ${campaign.name}`);
 
-        // Get all unpaid referrals for this user
-        let unpaidReferrals = await userServiceClient.getUnpaidReferrals(userId);
+        // Get ALL referrals for this user (paid + unpaid) - subscriptionStatus filter handles the distinction
+        let referrals = await userServiceClient.getReferralsForCampaign(userId);
 
         // Apply target filters
         const filter = campaign.targetFilter;
@@ -111,40 +111,58 @@ async function enrollFilteredTargets(userId: string, campaign: any, config: any)
             return 0;
         }
 
-        // Filter by registration date
+        // Filter by registration date (ensure proper Date comparison - JSON sends strings)
         if (filter.registrationDateFrom || filter.registrationDateTo) {
-            unpaidReferrals = unpaidReferrals.filter((ref: any) => {
+            const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom) : null;
+            const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo) : null;
+            referrals = referrals.filter((ref: any) => {
                 const regDate = new Date(ref.createdAt);
-                if (filter.registrationDateFrom && regDate < filter.registrationDateFrom) return false;
-                if (filter.registrationDateTo && regDate > filter.registrationDateTo) return false;
+                if (dateFrom && regDate < dateFrom) return false;
+                if (dateTo && regDate > dateTo) return false;
                 return true;
             });
         }
 
         // Filter by country
         if (filter.countries && filter.countries.length > 0) {
-            unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+            referrals = referrals.filter((ref: any) =>
                 filter.countries.includes(ref.country)
             );
         }
 
+        // Filter by subscription status (paid/unpaid)
+        if (filter.subscriptionStatus && filter.subscriptionStatus !== 'all') {
+            referrals = referrals.filter((ref: any) => {
+                const hasSubscription = ref.activeSubscriptionTypes &&
+                    ref.activeSubscriptionTypes.length > 0 &&
+                    (ref.activeSubscriptionTypes.includes('CLASSIQUE') ||
+                     ref.activeSubscriptionTypes.includes('CIBLE'));
+
+                if (filter.subscriptionStatus === 'subscribed') {
+                    return hasSubscription;
+                } else { // 'non-subscribed'
+                    return !hasSubscription;
+                }
+            });
+        }
+
         // Filter by gender
         if (filter.gender && filter.gender !== 'all') {
-            unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+            referrals = referrals.filter((ref: any) =>
                 ref.gender === filter.gender
             );
         }
 
         // Filter by profession
         if (filter.professions && filter.professions.length > 0) {
-            unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+            referrals = referrals.filter((ref: any) =>
                 filter.professions.includes(ref.profession)
             );
         }
 
         // Filter by age
         if (filter.minAge || filter.maxAge) {
-            unpaidReferrals = unpaidReferrals.filter((ref: any) => {
+            referrals = referrals.filter((ref: any) => {
                 if (!ref.age) return false;
                 if (filter.minAge && ref.age < filter.minAge) return false;
                 if (filter.maxAge && ref.age > filter.maxAge) return false;
@@ -158,12 +176,12 @@ async function enrollFilteredTargets(userId: string, campaign: any, config: any)
                 status: { $in: [TargetStatus.ACTIVE, TargetStatus.PAUSED] }
             });
 
-            unpaidReferrals = unpaidReferrals.filter((ref: any) =>
+            referrals = referrals.filter((ref: any) =>
                 !existingTargetIds.some((id: any) => id.toString() === ref._id.toString())
             );
         }
 
-        console.log(`[Relance Enrollment] [Filtered] Campaign ${campaign._id}: ${unpaidReferrals.length} referrals match filters`);
+        console.log(`[Relance Enrollment] [Filtered] Campaign ${campaign._id}: ${referrals.length} referrals match filters`);
 
         // Check campaign limits
         const campaignMaxMessages = campaign.maxMessagesPerDay || config.maxMessagesPerDay;
@@ -184,7 +202,7 @@ async function enrollFilteredTargets(userId: string, campaign: any, config: any)
         }
 
         // Enroll filtered referrals
-        for (const referral of unpaidReferrals) {
+        for (const referral of referrals) {
             try {
                 const referralId = referral._id;
 
@@ -263,24 +281,24 @@ async function runEnrollmentCheck() {
             await campaignService.startCampaign(nextCampaign._id.toString(), nextCampaign.userId.toString());
         }
 
-        // STEP 2: Find all users with active relance configs
-        const activeConfigs = await RelanceConfigModel.find({
-            enabled: true,
-            enrollmentPaused: false,
+        // STEP 2: Find all users with relance configs that have a valid channel
+        // Note: We fetch configs regardless of 'enabled' status because 'enabled' only controls
+        // the default relance. Filtered campaigns should work independently.
+        const eligibleConfigs = await RelanceConfigModel.find({
             $or: [
                 { channel: 'email' },
                 { whatsappStatus: 'connected' }
             ]
         });
 
-        console.log(`[Relance Enrollment] Found ${activeConfigs.length} active configs to process`);
+        console.log(`[Relance Enrollment] Found ${eligibleConfigs.length} eligible configs to process`);
 
         let totalDefaultEnrolled = 0;
         let totalFilteredEnrolled = 0;
         let totalSkipped = 0;
         let totalErrors = 0;
 
-        for (const config of activeConfigs) {
+        for (const config of eligibleConfigs) {
             try {
                 const userId = config.userId.toString();
 
@@ -292,22 +310,25 @@ async function runEnrollmentCheck() {
                     continue;
                 }
 
-                // STEP 3: Process DEFAULT campaign (if not paused)
-                if (!config.defaultCampaignPaused) {
+                // STEP 3: Process DEFAULT campaign (only if enabled and not paused)
+                if (config.enabled && !config.enrollmentPaused && !config.defaultCampaignPaused) {
                     const defaultEnrolled = await enrollDefaultTargets(userId, config);
                     totalDefaultEnrolled += defaultEnrolled;
                 } else {
-                    console.log(`[Relance Enrollment] [Default] Paused for user ${userId}`);
+                    const reason = !config.enabled ? 'relance disabled' : config.enrollmentPaused ? 'enrollment paused' : 'default campaign paused';
+                    console.log(`[Relance Enrollment] [Default] Skipped for user ${userId} (${reason})`);
                 }
 
-                // STEP 4: Process FILTERED campaigns
+                // STEP 4: Process FILTERED campaigns (independent of enabled/enrollmentPaused)
                 const activeCampaigns = await CampaignModel.find({
                     userId: config.userId,
                     type: CampaignType.FILTERED,
                     status: CampaignStatus.ACTIVE
                 });
 
-                console.log(`[Relance Enrollment] [Filtered] User ${userId} has ${activeCampaigns.length} active filtered campaigns`);
+                if (activeCampaigns.length > 0) {
+                    console.log(`[Relance Enrollment] [Filtered] User ${userId} has ${activeCampaigns.length} active filtered campaigns`);
+                }
 
                 for (const campaign of activeCampaigns) {
                     const filteredEnrolled = await enrollFilteredTargets(userId, campaign, config);
@@ -330,13 +351,13 @@ async function runEnrollmentCheck() {
 }
 
 export async function startRelanceEnrollmentJob() {
-    console.log('[Relance Enrollment] Scheduling enrollment job - runs immediately on startup, then hourly');
+    console.log('[Relance Enrollment] Scheduling enrollment job - runs immediately on startup, then every 15 minutes');
 
     // Run immediately on startup
     await runEnrollmentCheck();
 
-    // Run every hour at minute 0
-    cron.schedule('0 * * * *', runEnrollmentCheck);
+    // Run every 15 minutes
+    cron.schedule('*/15 * * * *', runEnrollmentCheck);
 
     console.log('[Relance Enrollment] Job scheduled successfully');
 }

@@ -1,9 +1,16 @@
 import apiClient from '../api/apiClient';
 
 // Types
+export interface RelanceButton {
+    label: string;
+    url: string;
+    color?: string;
+}
+
 export interface RelanceMessage {
     _id?: string;
     dayNumber: number;
+    subject?: string;
     messageTemplate: {
         fr: string;
         en: string;
@@ -13,6 +20,7 @@ export interface RelanceMessage {
         type: 'image' | 'video' | 'pdf';
         filename?: string;
     }[];
+    buttons: RelanceButton[];
     variables: string[];
     active: boolean;
     createdAt?: string;
@@ -202,7 +210,6 @@ export interface Campaign {
         professions?: string[];
         minAge?: number;
         maxAge?: number;
-        hasUnpaidReferrals?: boolean;
         excludeCurrentTargets?: boolean;
     };
     estimatedTargetCount?: number;
@@ -212,6 +219,7 @@ export interface Campaign {
     priority?: number;
     customMessages?: Array<{
         dayNumber: number;
+        subject?: string;
         messageTemplate: {
             fr: string;
             en: string;
@@ -221,6 +229,7 @@ export interface Campaign {
             type: 'image' | 'video' | 'pdf';
             filename?: string;
         }[];
+        buttons?: RelanceButton[];
     }>;
     targetsEnrolled: number;
     messagesSent: number;
@@ -352,4 +361,77 @@ export const getCampaignStats = async (): Promise<{
 }> => {
     const response = await apiClient.get('/relance/admin/campaigns/stats');
     return response.data.data;
+};
+
+/**
+ * Get stats for a specific campaign
+ */
+export const getCampaignStatsById = async (campaignId: string): Promise<{
+    campaign: {
+        _id: string;
+        name: string;
+        status: string;
+        type: string;
+        actualStartDate?: string;
+        actualEndDate?: string;
+    };
+    totalEnrolled: number;
+    activeTargets: number;
+    completedRelance: number;
+    totalMessagesSent: number;
+    totalMessagesDelivered: number;
+    totalMessagesFailed: number;
+    deliveryPercentage: number;
+    dayProgression: { day: number; count: number }[];
+    exitReasons: Record<string, number>;
+}> => {
+    const response = await apiClient.get(`/relance/admin/campaigns/${campaignId}/stats`);
+    return response.data.data;
+};
+
+/**
+ * Get recent messages for a specific campaign
+ */
+export const getCampaignRecentMessages = async (campaignId: string, limit: number = 10): Promise<{
+    campaignName: string | null;
+    messages: RecentMessage[];
+    total: number;
+}> => {
+    const response = await apiClient.get(`/relance/admin/campaigns/${campaignId}/messages/recent`, {
+        params: { limit }
+    });
+    return response.data.data;
+};
+
+export interface RecentMessage {
+    day: number;
+    sentAt: string;
+    status: 'delivered' | 'failed';
+    errorMessage?: string;
+    referralUser: {
+        _id: string;
+        name: string;
+        email: string;
+        phoneNumber?: string;
+        avatar?: string;
+    } | null;
+    campaignId?: string | null;
+    campaignName?: string | null;
+    renderedHtml?: string | null;
+}
+
+/**
+ * Preview a relance email template
+ */
+export const previewMessage = async (data: {
+    dayNumber: number;
+    subject?: string;
+    messageTemplate?: { fr: string; en: string };
+    mediaUrls?: { url: string; type: 'image' | 'video' | 'pdf' }[];
+    buttons?: RelanceButton[];
+    recipientName?: string;
+    referrerName?: string;
+}): Promise<string> => {
+    const response = await apiClient.post('/relance/admin/messages/preview', data);
+    return response.data.data.html;
 };

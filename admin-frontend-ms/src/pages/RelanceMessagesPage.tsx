@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { MessageSquare, Save, Eye, EyeOff, Image, Video, FileText, X, Plus, Loader2, Upload } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { MessageSquare, Save, Eye, EyeOff, Image, Video, FileText, X, Plus, Loader2, Upload, Link, Palette, Monitor } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getAllMessages, upsertMessage, deactivateMessage, RelanceMessage, uploadMediaFile } from '../services/adminRelanceApi';
+import { getAllMessages, upsertMessage, deactivateMessage, RelanceMessage, RelanceButton, uploadMediaFile, previewMessage } from '../services/adminRelanceApi';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const RelanceMessagesPage: React.FC = () => {
@@ -19,13 +19,17 @@ const RelanceMessagesPage: React.FC = () => {
     } | null>(null);
 
     // Form state
+    const [subject, setSubject] = useState('');
     const [messageFr, setMessageFr] = useState('');
     const [messageEn, setMessageEn] = useState('');
     const [mediaUrls, setMediaUrls] = useState<{ url: string; type: 'image' | 'video' | 'pdf'; filename?: string }[]>([]);
     const [active, setActive] = useState(true);
-    const [newMediaUrl, setNewMediaUrl] = useState('');
-    const [newMediaType, setNewMediaType] = useState<'image' | 'video' | 'pdf'>('image');
-    const [newMediaFilename, setNewMediaFilename] = useState('');
+    const [buttons, setButtons] = useState<RelanceButton[]>([]);
+
+    // Preview state
+    const [previewHtml, setPreviewHtml] = useState<string>('');
+    const [showPreview, setShowPreview] = useState(false);
+    const [loadingPreview, setLoadingPreview] = useState(false);
 
     useEffect(() => {
         loadMessages();
@@ -39,13 +43,19 @@ const RelanceMessagesPage: React.FC = () => {
             setMessageEn(dayMessage.messageTemplate.en);
             setMediaUrls(dayMessage.mediaUrls);
             setActive(dayMessage.active);
+            setSubject(dayMessage.subject || '');
+            setButtons(dayMessage.buttons || []);
         } else {
             // Reset form for new message
             setMessageFr('');
             setMessageEn('');
             setMediaUrls([]);
             setActive(true);
+            setSubject('');
+            setButtons([]);
         }
+        setPreviewHtml('');
+        setShowPreview(false);
     }, [selectedDay, messages]);
 
     const loadMessages = async () => {
@@ -67,15 +77,25 @@ const RelanceMessagesPage: React.FC = () => {
             return;
         }
 
+        // Validate buttons
+        for (const btn of buttons) {
+            if (!btn.label.trim() || !btn.url.trim()) {
+                toast.error('All buttons must have a label and URL');
+                return;
+            }
+        }
+
         try {
             setSaving(true);
             const messageData: Omit<RelanceMessage, '_id' | 'createdAt' | 'updatedAt'> = {
                 dayNumber: selectedDay,
+                subject: subject.trim() || undefined,
                 messageTemplate: {
                     fr: messageFr,
                     en: messageEn
                 },
                 mediaUrls: mediaUrls,
+                buttons: buttons,
                 variables: ['{{name}}', '{{referrerName}}', '{{day}}'],
                 active: active
             };
@@ -93,7 +113,7 @@ const RelanceMessagesPage: React.FC = () => {
 
     const handleDeactivate = async () => {
         setConfirmAction({
-            title: '⚠️ Deactivate Message',
+            title: 'Deactivate Message',
             message: `Are you sure you want to deactivate Day ${selectedDay} message?`,
             onConfirm: async () => {
                 try {
@@ -117,7 +137,6 @@ const RelanceMessagesPage: React.FC = () => {
         const file = event.target.files?.[0];
         if (!file) return;
 
-        // Validate file size (50MB max)
         if (file.size > 50 * 1024 * 1024) {
             toast.error('File size must be less than 50MB');
             return;
@@ -126,15 +145,13 @@ const RelanceMessagesPage: React.FC = () => {
         try {
             setSaving(true);
             const uploadedMedia = await uploadMediaFile(file);
-
             setMediaUrls([...mediaUrls, {
                 url: uploadedMedia.url,
                 type: uploadedMedia.type,
                 filename: uploadedMedia.filename
             }]);
-
             toast.success(`${file.name} uploaded successfully`);
-            event.target.value = ''; // Reset file input
+            event.target.value = '';
         } catch (error: any) {
             console.error('Error uploading file:', error);
             toast.error('Failed to upload file: ' + (error.response?.data?.message || error.message));
@@ -146,6 +163,49 @@ const RelanceMessagesPage: React.FC = () => {
     const handleRemoveMedia = (index: number) => {
         setMediaUrls(mediaUrls.filter((_, i) => i !== index));
     };
+
+    // Button management
+    const handleAddButton = () => {
+        setButtons([...buttons, { label: '', url: '', color: '#F59E0B' }]);
+    };
+
+    const handleRemoveButton = (index: number) => {
+        setButtons(buttons.filter((_, i) => i !== index));
+    };
+
+    const handleButtonChange = (index: number, field: keyof RelanceButton, value: string) => {
+        const updated = [...buttons];
+        updated[index] = { ...updated[index], [field]: value };
+        setButtons(updated);
+    };
+
+    // Preview
+    const handlePreview = useCallback(async () => {
+        if (!messageFr.trim()) {
+            toast.error('Enter a French message to preview');
+            return;
+        }
+
+        try {
+            setLoadingPreview(true);
+            const html = await previewMessage({
+                dayNumber: selectedDay,
+                subject: subject.trim() || undefined,
+                messageTemplate: { fr: messageFr, en: messageEn },
+                mediaUrls: mediaUrls.map(m => ({ url: m.url, type: m.type })),
+                buttons: buttons.filter(b => b.label.trim() && b.url.trim()),
+                recipientName: 'John Doe',
+                referrerName: 'Jane Smith'
+            });
+            setPreviewHtml(html);
+            setShowPreview(true);
+        } catch (error: any) {
+            console.error('Error generating preview:', error);
+            toast.error('Failed to generate preview: ' + (error.response?.data?.message || error.message));
+        } finally {
+            setLoadingPreview(false);
+        }
+    }, [selectedDay, messageFr, messageEn, mediaUrls, buttons]);
 
     const getMediaIcon = (type: string) => {
         switch (type) {
@@ -171,7 +231,7 @@ const RelanceMessagesPage: React.FC = () => {
                     <MessageSquare size={32} className="text-blue-500" />
                     Relance Message Templates
                 </h1>
-                <p className="text-gray-400 mt-2">Configure WhatsApp messages for each day of the 7-day follow-up loop</p>
+                <p className="text-gray-400 mt-2">Configure email messages for each day of the 7-day follow-up loop</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -216,7 +276,15 @@ const RelanceMessagesPage: React.FC = () => {
                 <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 lg:col-span-2">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-100">Day {selectedDay} Message</h2>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={handlePreview}
+                                disabled={loadingPreview}
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white rounded-lg flex items-center gap-2 text-sm transition-colors"
+                            >
+                                {loadingPreview ? <Loader2 size={14} className="animate-spin" /> : <Monitor size={14} />}
+                                Preview Email
+                            </button>
                             <label className="flex items-center gap-2 text-sm text-gray-300">
                                 <input
                                     type="checkbox"
@@ -227,6 +295,20 @@ const RelanceMessagesPage: React.FC = () => {
                                 Active
                             </label>
                         </div>
+                    </div>
+
+                    {/* Subject Line */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Email Subject (Optional - overrides default)
+                        </label>
+                        <input
+                            type="text"
+                            value={subject}
+                            onChange={(e) => setSubject(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Custom subject line... Leave empty for auto-generated"
+                        />
                     </div>
 
                     {/* French Message */}
@@ -255,6 +337,93 @@ const RelanceMessagesPage: React.FC = () => {
                             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter English message... Use {{name}}, {{referrerName}}, {{day}} as variables"
                         />
+                    </div>
+
+                    {/* CTA Buttons Editor */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                            CTA Buttons
+                        </label>
+                        {buttons.length > 0 && (
+                            <div className="space-y-3 mb-3">
+                                {buttons.map((btn, index) => (
+                                    <div key={index} className="p-3 bg-gray-700 rounded-lg border border-gray-600">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-xs text-gray-400 font-medium">Button {index + 1}</span>
+                                            <button
+                                                onClick={() => handleRemoveButton(index)}
+                                                className="ml-auto text-red-400 hover:text-red-300"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Label</label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="text"
+                                                        value={btn.label}
+                                                        onChange={(e) => handleButtonChange(index, 'label', e.target.value)}
+                                                        placeholder="e.g. Pay Now"
+                                                        className="w-full px-3 py-1.5 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">URL</label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="url"
+                                                        value={btn.url}
+                                                        onChange={(e) => handleButtonChange(index, 'url', e.target.value)}
+                                                        placeholder="https://..."
+                                                        className="w-full px-3 py-1.5 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Color</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="color"
+                                                        value={btn.color || '#F59E0B'}
+                                                        onChange={(e) => handleButtonChange(index, 'color', e.target.value)}
+                                                        className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={btn.color || '#F59E0B'}
+                                                        onChange={(e) => handleButtonChange(index, 'color', e.target.value)}
+                                                        className="flex-1 px-3 py-1.5 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Button preview */}
+                                        {btn.label && (
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <span className="text-xs text-gray-500">Preview:</span>
+                                                <span
+                                                    className="inline-block px-4 py-1 rounded-full text-white text-xs font-semibold"
+                                                    style={{ backgroundColor: btn.color || '#F59E0B' }}
+                                                >
+                                                    {btn.label}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <button
+                            onClick={handleAddButton}
+                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2 text-sm transition-colors"
+                        >
+                            <Plus size={16} />
+                            Add Button
+                        </button>
+                        <p className="text-xs text-gray-400 mt-2">Add call-to-action buttons to the email (e.g. "Pay Now", "Visit Dashboard")</p>
                     </div>
 
                     {/* Media URLs */}
@@ -334,6 +503,37 @@ const RelanceMessagesPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Email Preview Modal */}
+            {showPreview && previewHtml && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60" onClick={() => setShowPreview(false)}>
+                    <div className="bg-gray-800 rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col m-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                            <h2 className="text-lg font-semibold text-gray-100 flex items-center gap-2">
+                                <Monitor size={20} className="text-purple-400" />
+                                Email Preview - Day {selectedDay}
+                            </h2>
+                            <button
+                                onClick={() => setShowPreview(false)}
+                                className="text-gray-400 hover:text-gray-100"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-hidden p-4">
+                            <div className="bg-white rounded-lg overflow-hidden h-full">
+                                <iframe
+                                    srcDoc={previewHtml}
+                                    className="w-full border-0"
+                                    style={{ height: 'calc(90vh - 120px)' }}
+                                    title="Email Preview"
+                                    sandbox="allow-same-origin"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Confirmation Modal */}
             {confirmAction && (

@@ -1295,7 +1295,7 @@ export class UserService {
                             referralLevel: ref.referralLevel,
                             avatar: ref?.avatar ?? '',
                             avatarId: ref?.avatarId ?? '',
-                            createdAt: ref.createdAt,
+                            createdAt: ref.userCreatedAt || ref.createdAt,
                             // Additional fields for relance filtering
                             country: ref?.country,
                             gender: ref?.gender,
@@ -1314,7 +1314,7 @@ export class UserService {
                             referralLevel: ref.referralLevel,
                             avatar: user?.avatar ?? '',
                             avatarId: user?.avatarId ?? '',
-                            createdAt: ref.createdAt,
+                            createdAt: user?.createdAt || ref.createdAt,
                             // Additional fields for relance filtering
                             country: user?.country,
                             gender: user?.gender,

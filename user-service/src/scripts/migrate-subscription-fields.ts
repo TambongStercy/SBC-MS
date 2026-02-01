@@ -2,6 +2,10 @@
  * Migration script to add new fields to existing subscriptions
  * Adds: category, duration, autoRenew fields
  *
+ * Rules:
+ * - CLASSIQUE / CIBLE → category: 'registration', duration: 'lifetime', autoRenew: false
+ * - RELANCE → category: 'feature', duration: 'monthly', autoRenew: true
+ *
  * Run with: npx ts-node src/scripts/migrate-subscription-fields.ts
  */
 
@@ -23,24 +27,26 @@ async function migrateExistingSubscriptions() {
         await mongoose.connect(mongoUri);
         log.info('Connected to MongoDB successfully');
 
-        // Find all subscriptions that don't have the category field
-        const subscriptionsToMigrate = await SubscriptionModel.find({
+        // Count subscriptions missing category
+        const totalToMigrate = await SubscriptionModel.countDocuments({
             category: { $exists: false }
         });
 
-        log.info(`Found ${subscriptionsToMigrate.length} subscriptions to migrate`);
+        log.info(`Found ${totalToMigrate} subscriptions missing category field`);
 
-        if (subscriptionsToMigrate.length === 0) {
+        if (totalToMigrate === 0) {
             log.info('No subscriptions need migration. All subscriptions are up to date.');
             await mongoose.connection.close();
             return;
         }
 
-        // Use bulk update for better performance
-        log.info('Performing bulk update...');
-
-        const bulkUpdateResult = await SubscriptionModel.updateMany(
-            { category: { $exists: false } },
+        // 1. Migrate CLASSIQUE and CIBLE → registration / lifetime
+        log.info('Migrating CLASSIQUE and CIBLE subscriptions...');
+        const registrationResult = await SubscriptionModel.updateMany(
+            {
+                category: { $exists: false },
+                subscriptionType: { $in: ['CLASSIQUE', 'CIBLE'] }
+            },
             {
                 $set: {
                     category: SubscriptionCategory.REGISTRATION,
@@ -49,17 +55,52 @@ async function migrateExistingSubscriptions() {
                 }
             }
         );
+        log.info(`  Migrated ${registrationResult.modifiedCount} CLASSIQUE/CIBLE subscriptions → registration/lifetime`);
 
-        const migrated = bulkUpdateResult.modifiedCount;
-        const errors = subscriptionsToMigrate.length - migrated;
+        // 2. Migrate RELANCE → feature / monthly
+        log.info('Migrating RELANCE subscriptions...');
+        const featureResult = await SubscriptionModel.updateMany(
+            {
+                category: { $exists: false },
+                subscriptionType: 'RELANCE'
+            },
+            {
+                $set: {
+                    category: SubscriptionCategory.FEATURE,
+                    duration: SubscriptionDuration.MONTHLY,
+                    autoRenew: true
+                }
+            }
+        );
+        log.info(`  Migrated ${featureResult.modifiedCount} RELANCE subscriptions → feature/monthly`);
 
-        log.info(`Migration completed successfully!`);
-        log.info(`- Total subscriptions: ${subscriptionsToMigrate.length}`);
-        log.info(`- Successfully migrated: ${migrated}`);
-        log.info(`- Errors: ${errors}`);
+        // 3. Handle any remaining (unknown subscriptionType) - default to registration
+        const remainingResult = await SubscriptionModel.updateMany(
+            {
+                category: { $exists: false }
+            },
+            {
+                $set: {
+                    category: SubscriptionCategory.REGISTRATION,
+                    duration: SubscriptionDuration.LIFETIME,
+                    autoRenew: false
+                }
+            }
+        );
+        if (remainingResult.modifiedCount > 0) {
+            log.warn(`  Migrated ${remainingResult.modifiedCount} subscriptions with unknown type → registration/lifetime (fallback)`);
+        }
 
-        // Verify migration
-        log.info('Verifying migration...');
+        const totalMigrated = registrationResult.modifiedCount + featureResult.modifiedCount + remainingResult.modifiedCount;
+
+        log.info(`Migration completed!`);
+        log.info(`- Total found: ${totalToMigrate}`);
+        log.info(`- CLASSIQUE/CIBLE → registration: ${registrationResult.modifiedCount}`);
+        log.info(`- RELANCE → feature: ${featureResult.modifiedCount}`);
+        log.info(`- Fallback: ${remainingResult.modifiedCount}`);
+        log.info(`- Total migrated: ${totalMigrated}`);
+
+        // Verify
         const remaining = await SubscriptionModel.countDocuments({
             category: { $exists: false }
         });
@@ -67,10 +108,9 @@ async function migrateExistingSubscriptions() {
         if (remaining > 0) {
             log.warn(`Warning: ${remaining} subscriptions still missing category field`);
         } else {
-            log.info('Verification successful: All subscriptions have been migrated');
+            log.info('Verification: All subscriptions have been migrated');
         }
 
-        // Close connection
         await mongoose.connection.close();
         log.info('Database connection closed');
 

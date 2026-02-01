@@ -4,7 +4,9 @@ import { campaignService } from '../../services/campaign.service';
 import CampaignModel, { CampaignStatus, CampaignType, TargetFilter } from '../../database/models/relance-campaign.model';
 import RelanceTargetModel, { TargetStatus } from '../../database/models/relance-target.model';
 import RelanceConfigModel from '../../database/models/relance-config.model';
+import RelanceMessageModel from '../../database/models/relance-message.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
+import { emailRelanceService } from '../../services/email.relance.service';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('RelanceCampaignController');
@@ -43,18 +45,23 @@ class RelanceCampaignController {
 
             // Get ALL referrals for this user (not just unpaid) for campaign filtering
             let allReferrals = await userServiceClient.getReferralsForCampaign(userId);
+            log.info(`Preview: fetched ${allReferrals.length} total referrals for user ${userId}`);
 
             // Apply filters (same logic as enrollment job)
             const filter: TargetFilter = targetFilter;
+            log.info(`Preview filters: ${JSON.stringify(filter)}`);
 
             // Filter by registration date
             if (filter.registrationDateFrom || filter.registrationDateTo) {
+                const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom) : null;
+                const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo) : null;
                 allReferrals = allReferrals.filter((ref: any) => {
                     const regDate = new Date(ref.createdAt);
-                    if (filter.registrationDateFrom && regDate < filter.registrationDateFrom) return false;
-                    if (filter.registrationDateTo && regDate > filter.registrationDateTo) return false;
+                    if (dateFrom && regDate < dateFrom) return false;
+                    if (dateTo && regDate > dateTo) return false;
                     return true;
                 });
+                log.info(`Preview: after registration date filter: ${allReferrals.length} referrals`);
             }
 
             // Filter by country
@@ -62,6 +69,7 @@ class RelanceCampaignController {
                 allReferrals = allReferrals.filter((ref: any) =>
                     filter.countries!.includes(ref.country)
                 );
+                log.info(`Preview: after country filter: ${allReferrals.length} referrals`);
             }
 
             // Filter by subscription status (CLASSIQUE/CIBLE inscription payment)
@@ -78,6 +86,7 @@ class RelanceCampaignController {
                         return !hasSubscription;
                     }
                 });
+                log.info(`Preview: after subscriptionStatus (${filter.subscriptionStatus}) filter: ${allReferrals.length} referrals`);
             }
 
             // Filter by gender
@@ -85,6 +94,7 @@ class RelanceCampaignController {
                 allReferrals = allReferrals.filter((ref: any) =>
                     ref.gender === filter.gender
                 );
+                log.info(`Preview: after gender filter: ${allReferrals.length} referrals`);
             }
 
             // Filter by profession
@@ -92,6 +102,7 @@ class RelanceCampaignController {
                 allReferrals = allReferrals.filter((ref: any) =>
                     filter.professions!.includes(ref.profession)
                 );
+                log.info(`Preview: after profession filter: ${allReferrals.length} referrals`);
             }
 
             // Filter by age
@@ -102,6 +113,7 @@ class RelanceCampaignController {
                     if (filter.maxAge && ref.age > filter.maxAge) return false;
                     return true;
                 });
+                log.info(`Preview: after age filter: ${allReferrals.length} referrals`);
             }
 
             // Exclude referrals already in active campaigns
@@ -109,10 +121,12 @@ class RelanceCampaignController {
                 const existingTargetIds = await RelanceTargetModel.distinct('referralUserId', {
                     status: { $in: ['active', 'paused'] }
                 });
+                log.info(`Preview: found ${existingTargetIds.length} existing active targets to exclude`);
 
                 allReferrals = allReferrals.filter((ref: any) =>
                     !existingTargetIds.some((id: any) => id.toString() === ref._id.toString())
                 );
+                log.info(`Preview: after excludeCurrentTargets filter: ${allReferrals.length} referrals`);
             }
 
             const totalCount = allReferrals.length;
@@ -887,6 +901,460 @@ class RelanceCampaignController {
             res.status(500).json({
                 success: false,
                 message: 'Failed to get campaign statistics',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get recent messages sent for user's relance/campaigns
+     * GET /api/relance/messages/recent?limit=10
+     */
+    async getRecentMessages(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = (req as any).user?.userId;
+            const { limit = '10' } = req.query;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'User ID is required'
+                });
+                return;
+            }
+
+            const limitNum = Math.min(parseInt(limit as string) || 10, 50);
+            const userObjectId = new mongoose.Types.ObjectId(userId);
+
+            // Find all targets for this user that have messages delivered
+            const targets = await RelanceTargetModel.find({
+                referrerUserId: userObjectId,
+                'messagesDelivered.0': { $exists: true } // Has at least one message
+            })
+                .select('referralUserId campaignId messagesDelivered')
+                .lean();
+
+            // Flatten all messages with target context
+            const allMessages: Array<{
+                day: number;
+                sentAt: Date;
+                status: string;
+                errorMessage?: string;
+                referralUserId: string;
+                campaignId: string | null;
+            }> = [];
+
+            for (const target of targets) {
+                for (const msg of target.messagesDelivered) {
+                    allMessages.push({
+                        day: msg.day,
+                        sentAt: msg.sentAt,
+                        status: msg.status,
+                        errorMessage: msg.errorMessage,
+                        referralUserId: target.referralUserId.toString(),
+                        campaignId: target.campaignId?.toString() || null
+                    });
+                }
+            }
+
+            // Sort by sentAt descending and take the limit
+            allMessages.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+            const recentMessages = allMessages.slice(0, limitNum);
+
+            // Fetch user details for all unique referral users
+            const referralUserIds = [...new Set(recentMessages.map(m => m.referralUserId))];
+            let userDetailsMap: Record<string, any> = {};
+
+            if (referralUserIds.length > 0) {
+                try {
+                    const userDetails = await userServiceClient.getBatchUserDetails(referralUserIds);
+                    userDetails.forEach((u: any) => {
+                        userDetailsMap[u._id.toString()] = {
+                            _id: u._id,
+                            name: u.name,
+                            email: u.email,
+                            phoneNumber: u.phoneNumber,
+                            avatar: u.avatar
+                        };
+                    });
+                } catch (err: any) {
+                    log.warn(`Failed to fetch user details for recent messages: ${err.message}`);
+                }
+            }
+
+            // Fetch campaign names for any campaign-linked messages
+            const campaignIds = [...new Set(recentMessages.filter(m => m.campaignId).map(m => m.campaignId!))];
+            let campaignNameMap: Record<string, string> = {};
+
+            if (campaignIds.length > 0) {
+                try {
+                    const campaigns = await CampaignModel.find({
+                        _id: { $in: campaignIds.map(id => new mongoose.Types.ObjectId(id)) }
+                    }).select('name').lean();
+                    campaigns.forEach(c => {
+                        campaignNameMap[c._id.toString()] = c.name;
+                    });
+                } catch (err: any) {
+                    log.warn(`Failed to fetch campaign names: ${err.message}`);
+                }
+            }
+
+            // Fetch message templates for all unique days to reconstruct emails
+            const uniqueDays = [...new Set(recentMessages.map(m => m.day))];
+            const messageTemplates = await RelanceMessageModel.find({
+                dayNumber: { $in: uniqueDays }
+            }).lean();
+            const templateMap: Record<number, any> = {};
+            messageTemplates.forEach(t => {
+                templateMap[t.dayNumber] = t;
+            });
+
+            // Also fetch campaign custom messages for campaign-linked messages
+            const campaignCustomMsgMap: Record<string, Record<number, any>> = {};
+            if (campaignIds.length > 0) {
+                const campaignsWithMsgs = await CampaignModel.find({
+                    _id: { $in: campaignIds.map(id => new mongoose.Types.ObjectId(id)) }
+                }).select('customMessages').lean();
+                campaignsWithMsgs.forEach(c => {
+                    if (c.customMessages && c.customMessages.length > 0) {
+                        campaignCustomMsgMap[c._id.toString()] = {};
+                        c.customMessages.forEach((cm: any) => {
+                            campaignCustomMsgMap[c._id.toString()][cm.dayNumber] = cm;
+                        });
+                    }
+                });
+            }
+
+            // Build final response with rendered HTML
+            const messages = recentMessages.map(m => {
+                const referralUser = userDetailsMap[m.referralUserId] || null;
+                const recipientName = referralUser?.name || 'Utilisateur';
+
+                // Determine which template to use: campaign custom > default template
+                let messageTemplate = templateMap[m.day];
+                if (m.campaignId && campaignCustomMsgMap[m.campaignId]?.[m.day]) {
+                    messageTemplate = campaignCustomMsgMap[m.campaignId][m.day];
+                }
+
+                // Reconstruct rendered HTML if template exists
+                let renderedHtml: string | null = null;
+                if (messageTemplate?.messageTemplate?.fr) {
+                    try {
+                        let msgText = messageTemplate.messageTemplate.fr
+                            .replace(/\{\{name\}\}/g, recipientName)
+                            .replace(/\{\{referrerName\}\}/g, 'Parrain SBC')
+                            .replace(/\{\{day\}\}/g, m.day.toString());
+
+                        renderedHtml = emailRelanceService.createRelanceTemplate(
+                            msgText,
+                            m.day,
+                            recipientName,
+                            'Parrain SBC',
+                            messageTemplate.mediaUrls,
+                            messageTemplate.buttons,
+                            messageTemplate.subject
+                        );
+                    } catch (err) {
+                        // Skip if template rendering fails
+                    }
+                }
+
+                return {
+                    day: m.day,
+                    sentAt: m.sentAt,
+                    status: m.status,
+                    errorMessage: m.errorMessage || undefined,
+                    referralUser,
+                    campaignId: m.campaignId,
+                    campaignName: m.campaignId ? (campaignNameMap[m.campaignId] || null) : null,
+                    renderedHtml
+                };
+            });
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    messages,
+                    total: allMessages.length
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error getting recent messages:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get recent messages',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get stats for a specific campaign
+     * GET /api/relance/campaigns/:id/stats
+     */
+    async getCampaignStatsById(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = (req as any).user?.userId;
+            const campaignId = req.params.id;
+
+            if (!userId) {
+                res.status(400).json({ success: false, message: 'User ID is required' });
+                return;
+            }
+
+            if (!campaignId) {
+                res.status(400).json({ success: false, message: 'Campaign ID is required' });
+                return;
+            }
+
+            // Get campaign and verify ownership
+            const campaign = await CampaignModel.findById(campaignId);
+            if (!campaign) {
+                res.status(404).json({ success: false, message: 'Campaign not found' });
+                return;
+            }
+
+            const campaignObjectId = new mongoose.Types.ObjectId(campaignId);
+
+            const activeTargets = await RelanceTargetModel.countDocuments({
+                campaignId: campaignObjectId,
+                status: TargetStatus.ACTIVE
+            });
+
+            const completedTargets = await RelanceTargetModel.countDocuments({
+                campaignId: campaignObjectId,
+                status: TargetStatus.COMPLETED
+            });
+
+            // Get all targets for detailed stats
+            const targets = await RelanceTargetModel.find({
+                campaignId: campaignObjectId
+            });
+
+            let totalMessagesSent = 0;
+            let totalMessagesDelivered = 0;
+            let totalMessagesFailed = 0;
+
+            targets.forEach(target => {
+                totalMessagesSent += target.messagesDelivered.length;
+                totalMessagesDelivered += target.messagesDelivered.filter(
+                    m => m.status === 'delivered'
+                ).length;
+                totalMessagesFailed += target.messagesDelivered.filter(
+                    m => m.status === 'failed'
+                ).length;
+            });
+
+            const deliveryPercentage = totalMessagesSent > 0
+                ? (totalMessagesDelivered / totalMessagesSent) * 100
+                : 0;
+
+            // Day-by-day progression
+            const dayProgression = [];
+            for (let day = 1; day <= 7; day++) {
+                const targetsOnDay = targets.filter(
+                    target => target.currentDay === day && target.status === TargetStatus.ACTIVE
+                );
+                dayProgression.push({ day, count: targetsOnDay.length });
+            }
+
+            const totalEnrolled = targets.length;
+            const completedRelance = targets.filter(
+                target => target.status === TargetStatus.COMPLETED
+            ).length;
+
+            // Exit reason breakdown
+            const exitReasons: Record<string, number> = {};
+            targets.forEach(target => {
+                if (target.exitReason) {
+                    exitReasons[target.exitReason] = (exitReasons[target.exitReason] || 0) + 1;
+                }
+            });
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    campaign: {
+                        _id: campaign._id,
+                        name: campaign.name,
+                        status: campaign.status,
+                        type: campaign.type,
+                        actualStartDate: campaign.actualStartDate,
+                        actualEndDate: campaign.actualEndDate
+                    },
+                    totalEnrolled,
+                    activeTargets,
+                    completedRelance,
+                    totalMessagesSent,
+                    totalMessagesDelivered,
+                    totalMessagesFailed,
+                    deliveryPercentage: parseFloat(deliveryPercentage.toFixed(2)),
+                    dayProgression,
+                    exitReasons
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error getting campaign stats:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get campaign statistics',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get recent messages for a specific campaign
+     * GET /api/relance/campaigns/:id/messages/recent?limit=10
+     */
+    async getCampaignRecentMessages(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = (req as any).user?.userId;
+            const campaignId = req.params.id;
+            const { limit = '10' } = req.query;
+
+            if (!userId) {
+                res.status(400).json({ success: false, message: 'User ID is required' });
+                return;
+            }
+
+            if (!campaignId) {
+                res.status(400).json({ success: false, message: 'Campaign ID is required' });
+                return;
+            }
+
+            const limitNum = Math.min(parseInt(limit as string) || 10, 50);
+            const campaignObjectId = new mongoose.Types.ObjectId(campaignId);
+
+            // Get campaign name
+            const campaign = await CampaignModel.findById(campaignId).select('name').lean();
+
+            const targets = await RelanceTargetModel.find({
+                campaignId: campaignObjectId,
+                'messagesDelivered.0': { $exists: true }
+            })
+                .select('referralUserId messagesDelivered')
+                .lean();
+
+            // Flatten messages
+            const allMessages: Array<{
+                day: number;
+                sentAt: Date;
+                status: string;
+                errorMessage?: string;
+                referralUserId: string;
+            }> = [];
+
+            for (const target of targets) {
+                for (const msg of target.messagesDelivered) {
+                    allMessages.push({
+                        day: msg.day,
+                        sentAt: msg.sentAt,
+                        status: msg.status,
+                        errorMessage: msg.errorMessage,
+                        referralUserId: target.referralUserId.toString()
+                    });
+                }
+            }
+
+            allMessages.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+            const recentMessages = allMessages.slice(0, limitNum);
+
+            // Fetch user details
+            const referralUserIds = [...new Set(recentMessages.map(m => m.referralUserId))];
+            let userDetailsMap: Record<string, any> = {};
+
+            if (referralUserIds.length > 0) {
+                try {
+                    const userDetails = await userServiceClient.getBatchUserDetails(referralUserIds);
+                    userDetails.forEach((u: any) => {
+                        userDetailsMap[u._id.toString()] = {
+                            _id: u._id,
+                            name: u.name,
+                            email: u.email,
+                            phoneNumber: u.phoneNumber,
+                            avatar: u.avatar
+                        };
+                    });
+                } catch (err: any) {
+                    log.warn(`Failed to fetch user details: ${err.message}`);
+                }
+            }
+
+            // Fetch message templates and campaign custom messages for rendering
+            const uniqueDays = [...new Set(recentMessages.map(m => m.day))];
+            const defaultTemplates = await RelanceMessageModel.find({
+                dayNumber: { $in: uniqueDays }
+            }).lean();
+            const defaultTemplateMap: Record<number, any> = {};
+            defaultTemplates.forEach(t => {
+                defaultTemplateMap[t.dayNumber] = t;
+            });
+
+            // Get campaign custom messages
+            const fullCampaign = await CampaignModel.findById(campaignId).select('customMessages').lean();
+            const customMsgMap: Record<number, any> = {};
+            if (fullCampaign?.customMessages) {
+                fullCampaign.customMessages.forEach((cm: any) => {
+                    customMsgMap[cm.dayNumber] = cm;
+                });
+            }
+
+            const messages = recentMessages.map(m => {
+                const referralUser = userDetailsMap[m.referralUserId] || null;
+                const recipientName = referralUser?.name || 'Utilisateur';
+
+                // Use campaign custom message if available, else default template
+                const messageTemplate = customMsgMap[m.day] || defaultTemplateMap[m.day];
+
+                let renderedHtml: string | null = null;
+                if (messageTemplate?.messageTemplate?.fr) {
+                    try {
+                        let msgText = messageTemplate.messageTemplate.fr
+                            .replace(/\{\{name\}\}/g, recipientName)
+                            .replace(/\{\{referrerName\}\}/g, 'Parrain SBC')
+                            .replace(/\{\{day\}\}/g, m.day.toString());
+
+                        renderedHtml = emailRelanceService.createRelanceTemplate(
+                            msgText,
+                            m.day,
+                            recipientName,
+                            'Parrain SBC',
+                            messageTemplate.mediaUrls,
+                            messageTemplate.buttons,
+                            messageTemplate.subject
+                        );
+                    } catch (err) {
+                        // Skip if template rendering fails
+                    }
+                }
+
+                return {
+                    day: m.day,
+                    sentAt: m.sentAt,
+                    status: m.status,
+                    errorMessage: m.errorMessage || undefined,
+                    referralUser,
+                    renderedHtml
+                };
+            });
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    campaignName: campaign?.name || null,
+                    messages,
+                    total: allMessages.length
+                }
+            });
+
+        } catch (error: any) {
+            log.error('Error getting campaign recent messages:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get campaign recent messages',
                 error: error.message
             });
         }

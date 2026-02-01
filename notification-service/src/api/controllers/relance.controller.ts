@@ -3,6 +3,7 @@ import logger from '../../utils/logger';
 import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
+import { emailRelanceService } from '../../services/email.relance.service';
 
 const log = logger.getLogger('RelanceController');
 
@@ -508,6 +509,69 @@ class RelanceController {
             res.status(500).json({
                 success: false,
                 message: 'Failed to exit user from loop'
+            });
+        }
+    }
+
+    /**
+     * POST /api/relance/admin/messages/preview
+     * Generate a preview of the relance email template
+     */
+    async previewMessage(req: Request, res: Response): Promise<void> {
+        try {
+            const {
+                dayNumber = 1,
+                subject,
+                messageTemplate,
+                mediaUrls,
+                buttons,
+                recipientName = 'Jean Dupont',
+                referrerName = 'Marie Martin'
+            } = req.body;
+
+            // Use provided message or a default sample
+            let messageText = 'Bonjour {{name}}, vous avez été référé par {{referrerName}}. Rejoignez SBC aujourd\'hui!';
+
+            if (messageTemplate) {
+                messageText = messageTemplate.fr || messageTemplate.en || messageText;
+            }
+
+            // Replace variables for preview
+            messageText = messageText
+                .replace(/\{\{name\}\}/g, recipientName)
+                .replace(/\{\{referrerName\}\}/g, referrerName)
+                .replace(/\{\{day\}\}/g, dayNumber.toString());
+
+            // Replace variables in subject too
+            let previewSubject = subject;
+            if (previewSubject) {
+                previewSubject = previewSubject
+                    .replace(/\{\{name\}\}/g, recipientName)
+                    .replace(/\{\{referrerName\}\}/g, referrerName)
+                    .replace(/\{\{day\}\}/g, dayNumber.toString());
+            }
+
+            const html = emailRelanceService.createRelanceTemplate(
+                messageText,
+                dayNumber,
+                recipientName,
+                referrerName,
+                mediaUrls,
+                buttons,
+                previewSubject
+            );
+
+            res.status(200).json({
+                success: true,
+                data: { html }
+            });
+
+        } catch (error: any) {
+            log.error('Error generating message preview:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to generate message preview',
+                error: error.message
             });
         }
     }

@@ -53,7 +53,7 @@ const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
         id: SubscriptionType.RELANCE,
         name: 'Abonnement Relance',
         type: SubscriptionType.RELANCE,
-        price: 1000,
+        price: 2000,
         currency: 'XAF',
         description: 'Suivi automatique de vos prospects via WhatsApp pendant 7 jours.',
         category: SubscriptionCategory.FEATURE,
@@ -89,7 +89,7 @@ const AVAILABLE_PLANS_CRYPTO_USD: SubscriptionPlan[] = [
         id: SubscriptionType.RELANCE,
         name: 'Abonnement Relance (Crypto)',
         type: SubscriptionType.RELANCE,
-        price: 2.2, // ~1000 XAF / 500 = $2 USD
+        price: 4.4, // ~2000 XAF / 500 = $4 USD
         currency: 'USD',
         description: 'Suivi automatique de vos prospects via WhatsApp pendant 7 jours.',
         category: SubscriptionCategory.FEATURE,

@@ -28,7 +28,6 @@ export interface TargetFilter {
     subscriptionStatus?: 'subscribed' | 'non-subscribed' | 'all'; // Has paid inscription (CLASSIQUE/CIBLE) or not
 
     // Additional filters (optional)
-    hasUnpaidReferrals?: boolean;            // Only users with unpaid referrals
     excludeCurrentTargets?: boolean;         // Exclude users already in a campaign
     gender?: 'male' | 'female' | 'other' | 'all';
     professions?: string[];
@@ -60,11 +59,13 @@ export interface ICampaign extends Document {
     // Message customization (optional - otherwise uses default messages)
     customMessages?: {
         dayNumber: number;
+        subject?: string;
         messageTemplate: {
             fr: string;
             en: string;
         };
         mediaUrls?: Array<{ url: string; type: 'image' | 'video' | 'pdf' }>;
+        buttons?: Array<{ label: string; url: string; color?: string }>;
     }[];
 
     // Progress tracking
@@ -137,7 +138,6 @@ const CampaignSchema = new Schema<ICampaign>(
             },
 
             // Additional filters
-            hasUnpaidReferrals: Boolean,
             excludeCurrentTargets: Boolean,
             gender: {
                 type: String,
@@ -175,6 +175,7 @@ const CampaignSchema = new Schema<ICampaign>(
                 min: 1,
                 max: 7
             },
+            subject: { type: String },
             messageTemplate: {
                 fr: { type: String, required: true },
                 en: { type: String, required: true }
@@ -185,6 +186,11 @@ const CampaignSchema = new Schema<ICampaign>(
                     type: String,
                     enum: ['image', 'video', 'pdf']
                 }
+            }],
+            buttons: [{
+                label: { type: String, required: true },
+                url: { type: String, required: true },
+                color: { type: String }
             }]
         }],
 

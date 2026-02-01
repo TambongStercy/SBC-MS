@@ -29,6 +29,15 @@ export interface IMediaAttachment {
 }
 
 /**
+ * CTA Button interface
+ */
+export interface IButton {
+    label: string;                  // Button text
+    url: string;                    // Button link URL
+    color?: string;                 // Optional hex color (default: orange #F59E0B)
+}
+
+/**
  * Multi-language message template
  */
 export interface IMessageTemplate {
@@ -43,8 +52,10 @@ export interface IMessageTemplate {
 export interface IRelanceMessage extends Document {
     _id: Types.ObjectId;
     dayNumber: number;              // 1-7 (which day of the campaign)
+    subject?: string;               // Optional custom subject line (overrides auto-generated)
     messageTemplate: IMessageTemplate;  // Message with variables like {{name}}
     mediaUrls: IMediaAttachment[];  // Array of media files (images/PDFs/videos)
+    buttons: IButton[];             // CTA buttons with label, url, and optional color
     variables: string[];            // List of available variables (e.g., ['{{name}}', '{{referrerName}}'])
     active: boolean;                // Can disable specific day messages
     createdAt: Date;
@@ -64,6 +75,9 @@ const RelanceMessageSchema = new Schema<IRelanceMessage>(
             max: 7,
             index: true
         },
+        subject: {
+            type: String            // Optional custom subject line
+        },
         messageTemplate: {
             fr: {
                 type: String,
@@ -82,6 +96,14 @@ const RelanceMessageSchema = new Schema<IRelanceMessage>(
                 type: { type: String, enum: Object.values(MediaType), required: true },
                 language: { type: String, enum: Object.values(Language), required: true },
                 filename: { type: String }
+            }],
+            default: []
+        },
+        buttons: {
+            type: [{
+                label: { type: String, required: true },
+                url: { type: String, required: true },
+                color: { type: String }  // Optional hex color
             }],
             default: []
         },

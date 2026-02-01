@@ -21,6 +21,12 @@ router.post('/', (req, res) => relanceCampaignController.createCampaign(req, res
 // Get all campaigns for user
 router.get('/', (req, res) => relanceCampaignController.getCampaigns(req, res));
 
+// Get campaign stats (must be before /:id catch-all)
+router.get('/:id/stats', (req, res) => relanceCampaignController.getCampaignStatsById(req, res));
+
+// Get campaign recent messages (must be before /:id catch-all)
+router.get('/:id/messages/recent', (req, res) => relanceCampaignController.getCampaignRecentMessages(req, res));
+
 // Get campaign details
 router.get('/:id', (req, res) => relanceCampaignController.getCampaignById(req, res));
 

@@ -38,6 +38,15 @@ router.get('/targets', authenticate, (req, res) =>
 );
 
 /**
+ * @route   GET /api/relance/messages/recent
+ * @desc    Get last N messages sent across all relances/campaigns
+ * @access  Private
+ */
+router.get('/messages/recent', authenticate, (req, res) =>
+    relanceCampaignController.getRecentMessages(req, res)
+);
+
+/**
  * @route   PATCH /api/relance/config
  * @desc    Update relance configuration (campaign settings, limits)
  * @access  Private
@@ -67,6 +76,15 @@ router.get('/admin/messages', authenticate, (req, res) =>
  */
 router.get('/admin/messages/:day', authenticate, (req, res) =>
     relanceController.getMessage(req, res)
+);
+
+/**
+ * @route   POST /api/relance/admin/messages/preview
+ * @desc    Generate a real-time preview of the relance email template
+ * @access  Admin
+ */
+router.post('/admin/messages/preview', authenticate, (req, res) =>
+    relanceController.previewMessage(req, res)
 );
 
 /**
@@ -139,6 +157,24 @@ router.get('/admin/campaigns', authenticate, (req, res) =>
  */
 router.get('/admin/campaigns/stats', authenticate, (req, res) =>
     relanceCampaignController.getCampaignStats(req, res)
+);
+
+/**
+ * @route   GET /api/relance/admin/campaigns/:id/stats
+ * @desc    Get campaign stats by ID (admin)
+ * @access  Admin
+ */
+router.get('/admin/campaigns/:id/stats', authenticate, (req, res) =>
+    relanceCampaignController.getCampaignStatsById(req, res)
+);
+
+/**
+ * @route   GET /api/relance/admin/campaigns/:id/messages/recent
+ * @desc    Get recent messages for a campaign (admin)
+ * @access  Admin
+ */
+router.get('/admin/campaigns/:id/messages/recent', authenticate, (req, res) =>
+    relanceCampaignController.getCampaignRecentMessages(req, res)
 );
 
 /**
