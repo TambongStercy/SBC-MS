@@ -185,7 +185,7 @@ class RelanceController {
      */
     async upsertMessage(req: AuthenticatedRequest, res: Response): Promise<void> {
         try {
-            const { dayNumber, messageTemplate, mediaUrls, active } = req.body;
+            const { dayNumber, messageTemplate, mediaUrls, active, subject, buttons } = req.body;
 
             if (!dayNumber || dayNumber < 1 || dayNumber > 7) {
                 res.status(400).json({
@@ -203,13 +203,18 @@ class RelanceController {
                 return;
             }
 
+            const updateData: any = {
+                messageTemplate,
+                mediaUrls: mediaUrls || [],
+                active: active !== undefined ? active : true
+            };
+
+            if (subject !== undefined) updateData.subject = subject;
+            if (buttons !== undefined) updateData.buttons = buttons;
+
             const message = await RelanceMessageModel.findOneAndUpdate(
                 { dayNumber },
-                {
-                    messageTemplate,
-                    mediaUrls: mediaUrls || [],
-                    active: active !== undefined ? active : true
-                },
+                updateData,
                 { new: true, upsert: true }
             );
 
