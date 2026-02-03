@@ -2518,10 +2518,12 @@ export class UserController {
     /**
      * Get unpaid referrals for a user (for relance feature)
      * @route GET /api/users/internal/:userId/unpaid-referrals
+     * @query since - ISO date string to filter referrals created after this date (default: 30 days ago)
      */
     async getUnpaidReferrals(req: Request, res: Response): Promise<void> {
         try {
             const { userId } = req.params;
+            const { since } = req.query;
 
             if (!userId) {
                 res.status(400).json({
@@ -2531,14 +2533,27 @@ export class UserController {
                 return;
             }
 
-            // Get all referrals for this user (unpaid = subType 'none')
+            // Default to 30 days ago if no 'since' provided (optimization for users with many referrals)
+            let sinceDate: Date;
+            if (since && typeof since === 'string') {
+                sinceDate = new Date(since);
+            } else {
+                sinceDate = new Date();
+                sinceDate.setDate(sinceDate.getDate() - 30);
+            }
+
+            this.log.info(`Getting unpaid referrals for user ${userId} since ${sinceDate.toISOString()}`);
+
+            // Get referrals created after sinceDate (unpaid = subType 'none')
             const result = await this.userService.getReferredUsersInfoPaginated(
                 userId,
                 undefined, // level (all levels)
                 undefined, // nameFilter
                 1,         // page
-                10000,     // limit (get all)
-                'none'     // subType - users with no subscriptions
+                10000,     // limit
+                'none',    // subType - users with no subscriptions
+                undefined, // type
+                sinceDate  // since - only referrals created after this date
             );
 
             const unpaidReferrals = result.referredUsers.map(user => ({
@@ -2553,6 +2568,8 @@ export class UserController {
                 activeSubscriptionTypes: user.activeSubscriptionTypes || [],
                 createdAt: user.createdAt
             }));
+
+            this.log.info(`Found ${unpaidReferrals.length} unpaid referrals for user ${userId} since ${sinceDate.toISOString()}`);
 
             res.status(200).json({
                 success: true,

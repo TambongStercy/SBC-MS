@@ -1157,17 +1157,26 @@ export class ReferralRepository {
         referrerId: string | Types.ObjectId,
         page: number = 1,
         limit: number = 10,
-        subType?: string
+        subType?: string,
+        since?: Date // Only return referrals created after this date
     ): Promise<ReferralPaginationResponse> {
         const skip = (page - 1) * limit;
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
 
+        // Build initial match criteria
+        const matchCriteria: any = {
+            referrer: referrerObjectId,
+            archived: { $ne: true }
+        };
+
+        // Add date filter if 'since' is provided (significant performance optimization)
+        if (since) {
+            matchCriteria.createdAt = { $gte: since };
+        }
+
         const pipeline: any[] = [
             {
-                $match: {
-                    referrer: referrerObjectId,
-                    archived: { $ne: true }
-                }
+                $match: matchCriteria
             },
             {
                 $lookup: {
