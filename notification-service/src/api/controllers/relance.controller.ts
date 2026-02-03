@@ -3,6 +3,7 @@ import logger from '../../utils/logger';
 import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
+import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
 
 const log = logger.getLogger('RelanceController');
@@ -589,6 +590,16 @@ class RelanceController {
                 target.exitReason = ExitReason.PAID;
                 target.exitedLoopAt = new Date();
                 await target.save();
+
+                // Update campaign conversion counter
+                if (target.campaignId) {
+                    await CampaignModel.findByIdAndUpdate(target.campaignId, {
+                        $inc: { targetsConverted: 1 }
+                    });
+                    log.info(`User ${userId} converted in campaign ${target.campaignId}`);
+                } else {
+                    log.info(`User ${userId} converted in default relance`);
+                }
 
                 log.info(`User ${userId} exited relance loop (paid subscription)`);
             }

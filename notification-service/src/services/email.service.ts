@@ -192,7 +192,7 @@ class EmailService {
 
         try {
             // Configure email options with enhanced headers for better deliverability
-            const mailOptions = {
+            const mailOptions: any = {
                 from: options.from || config.email.from,
                 to: options.to,
                 subject: options.subject,
@@ -204,6 +204,16 @@ class EmailService {
                     'X-Mailer': 'SBC-Notification-System',
                     'List-Unsubscribe': '<mailto:unsubscribe@sniperbuisnesscenter.com>',
                     'X-Entity-Ref-ID': `sbc-${Date.now()}`, // Unique reference for tracking
+                },
+                // Enable SendGrid tracking (open and click tracking)
+                trackingSettings: {
+                    clickTracking: {
+                        enable: true,
+                        enableText: false
+                    },
+                    openTracking: {
+                        enable: true
+                    }
                 }
             };
 
@@ -236,6 +246,100 @@ class EmailService {
             }
 
             throw error;
+        }
+    }
+
+    /**
+     * Send email with message ID tracking (for relance emails)
+     * Returns the SendGrid message ID for tracking open/click events
+     */
+    async sendEmailWithTracking(options: EmailOptions): Promise<{ success: boolean; messageId?: string }> {
+        try {
+            // Reuse the same logic but capture and return the message ID
+            const emailValidation = spamChecker.validateEmailAddress(options.to);
+            if (!emailValidation.isValid) {
+                log.warn('Email not sent - invalid email address', {
+                    email: options.to,
+                    warnings: emailValidation.warnings
+                });
+                return { success: false };
+            }
+
+            if (emailValidation.warnings.length > 0) {
+                log.warn('Email address warnings detected', {
+                    email: options.to,
+                    warnings: emailValidation.warnings
+                });
+            }
+
+            const spamCheck = spamChecker.checkContent(
+                options.subject,
+                options.html,
+                options.text
+            );
+
+            if (spamCheck.isSpam) {
+                log.warn('Email blocked - spam content detected', {
+                    email: options.to,
+                    subject: options.subject,
+                    spamScore: spamCheck.score,
+                    reasons: spamCheck.reasons
+                });
+                return { success: false };
+            }
+
+            if (this.bounceHandler.isBlacklisted(options.to)) {
+                log.warn('Email not sent - recipient is blacklisted', {
+                    email: options.to
+                });
+                return { success: false };
+            }
+
+            if (!this.isInitialized) {
+                if (config.nodeEnv === 'development') {
+                    log.info('[DEV MODE] Email would be sent with tracking');
+                    return { success: true, messageId: `dev-${Date.now()}` };
+                } else {
+                    throw new Error('Email service not initialized');
+                }
+            }
+
+            const mailOptions: any = {
+                from: options.from || config.email.from,
+                to: options.to,
+                subject: options.subject,
+                text: options.text,
+                html: options.html,
+                attachments: options.attachments,
+                headers: {
+                    'X-Mailer': 'SBC-Notification-System',
+                    'List-Unsubscribe': '<mailto:unsubscribe@sniperbuisnesscenter.com>',
+                    'X-Entity-Ref-ID': `sbc-${Date.now()}`,
+                },
+                trackingSettings: {
+                    clickTracking: {
+                        enable: true,
+                        enableText: false
+                    },
+                    openTracking: {
+                        enable: true
+                    }
+                }
+            };
+
+            const info = await this.transporter.sendMail(mailOptions);
+
+            log.info(`Email sent with tracking to ${options.to}`, {
+                messageId: info.messageId
+            });
+
+            return { success: true, messageId: info.messageId };
+
+        } catch (error: any) {
+            log.error(`Failed to send tracked email to ${options.to}`, {
+                error: error.message
+            });
+            return { success: false };
         }
     }
 

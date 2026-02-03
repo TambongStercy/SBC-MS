@@ -1,7 +1,7 @@
 import ReferralModel, { IReferral } from '../models/referral.model';
 import UserModel, { IUser } from '../models/user.model';
 import mongoose, { Types, Document, UpdateWriteOpResult, PipelineStage } from 'mongoose';
-import SubscriptionModel, { SubscriptionStatus, SubscriptionCategory } from '../models/subscription.model';
+import SubscriptionModel, { SubscriptionStatus, SubscriptionCategory, SubscriptionType } from '../models/subscription.model';
 
 // Define document type
 type ReferralDocument = Document<unknown, {}, IReferral> & IReferral & { _id: Types.ObjectId };
@@ -1062,9 +1062,12 @@ export class ReferralRepository {
         // Add subscription lookup and filtering if subType is specified
         if (subType) {
             // Build subscription match criteria
+            // IMPORTANT: Only consider CLASSIQUE/CIBLE subscriptions (not RELANCE)
+            // This aligns with campaign filtering and referral stats logic
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
                 endDate: { $gt: new Date() }
             };
 
@@ -1158,26 +1161,35 @@ export class ReferralRepository {
         page: number = 1,
         limit: number = 10,
         subType?: string,
-        since?: Date, // Only return referrals created after this date
-        until?: Date  // Only return referrals created before this date
+        since?: Date, // Only return users registered after this date (user.createdAt)
+        until?: Date  // Only return users registered before this date (user.createdAt)
     ): Promise<ReferralPaginationResponse> {
         const skip = (page - 1) * limit;
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
 
-        // Build initial match criteria
+        // Build initial match criteria for referrals
+        // IMPORTANT: Only get level 1 (direct) referrals for campaigns/relance
         const matchCriteria: any = {
             referrer: referrerObjectId,
+            referralLevel: 1,
             archived: { $ne: true }
         };
 
-        // Add date filters if provided (significant performance optimization)
+        // Build user match criteria (including date filter on USER's createdAt, not referral's)
+        const userMatchCriteria: any = {
+            'referredUserData.deleted': { $ne: true },
+            'referredUserData.blocked': { $ne: true }
+        };
+
+        // Add date filters on USER's createdAt (registration date)
+        // This filters by when the user registered, not when the referral was created
         if (since || until) {
-            matchCriteria.createdAt = {};
+            userMatchCriteria['referredUserData.createdAt'] = {};
             if (since) {
-                matchCriteria.createdAt.$gte = since;
+                userMatchCriteria['referredUserData.createdAt'].$gte = since;
             }
             if (until) {
-                matchCriteria.createdAt.$lte = until;
+                userMatchCriteria['referredUserData.createdAt'].$lte = until;
             }
         }
 
@@ -1200,19 +1212,19 @@ export class ReferralRepository {
                 }
             },
             {
-                $match: {
-                    'referredUserData.deleted': { $ne: true },
-                    'referredUserData.blocked': { $ne: true }
-                }
+                $match: userMatchCriteria
             }
         ];
 
         // Add subscription lookup and filtering if subType is specified
         if (subType) {
             // Build subscription match criteria
+            // IMPORTANT: Only consider CLASSIQUE/CIBLE subscriptions (not RELANCE)
+            // This aligns with campaign filtering and referral stats logic
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
                 endDate: { $gt: new Date() }
             };
 
@@ -1343,9 +1355,12 @@ export class ReferralRepository {
         // Add subscription filtering if subType is specified
         if (subType) {
             // Build subscription match criteria
+            // IMPORTANT: Only consider CLASSIQUE/CIBLE subscriptions (not RELANCE)
+            // This aligns with campaign filtering and referral stats logic
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
                 endDate: { $gt: new Date() }
             };
 
@@ -1469,9 +1484,12 @@ export class ReferralRepository {
         // Add subscription filtering if subType is specified
         if (subType) {
             // Build subscription match criteria
+            // IMPORTANT: Only consider CLASSIQUE/CIBLE subscriptions (not RELANCE)
+            // This aligns with campaign filtering and referral stats logic
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
                 endDate: { $gt: new Date() }
             };
 

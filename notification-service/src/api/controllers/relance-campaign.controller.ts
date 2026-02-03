@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { campaignService } from '../../services/campaign.service';
 import CampaignModel, { CampaignStatus, CampaignType, TargetFilter } from '../../database/models/relance-campaign.model';
-import RelanceTargetModel, { TargetStatus } from '../../database/models/relance-target.model';
+import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
 import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
@@ -732,19 +732,45 @@ class RelanceCampaignController {
                 campaignId: defaultFilter
             });
 
-            // Calculate overall message stats
+            // Calculate overall message stats including open and click rates
             let totalMessagesSent = 0;
             let totalMessagesDelivered = 0;
+            let totalMessagesOpened = 0;
+            let totalMessagesClicked = 0;
+            let totalOpens = 0;
+            let totalClicks = 0;
 
             targets.forEach(target => {
-                totalMessagesSent += target.messagesDelivered.length;
-                totalMessagesDelivered += target.messagesDelivered.filter(
-                    m => m.status === 'delivered'
-                ).length;
+                target.messagesDelivered.forEach(m => {
+                    totalMessagesSent++;
+                    if (m.status === 'delivered') {
+                        totalMessagesDelivered++;
+                    }
+                    if (m.opened) {
+                        totalMessagesOpened++;
+                        totalOpens += m.openCount || 0;
+                    }
+                    if (m.clicked) {
+                        totalMessagesClicked++;
+                        totalClicks += m.clickCount || 0;
+                    }
+                });
             });
 
             const deliveryPercentage = totalMessagesSent > 0
                 ? (totalMessagesDelivered / totalMessagesSent) * 100
+                : 0;
+
+            const openRate = totalMessagesDelivered > 0
+                ? (totalMessagesOpened / totalMessagesDelivered) * 100
+                : 0;
+
+            const clickRate = totalMessagesDelivered > 0
+                ? (totalMessagesClicked / totalMessagesDelivered) * 100
+                : 0;
+
+            const clickThroughRate = totalMessagesOpened > 0
+                ? (totalMessagesClicked / totalMessagesOpened) * 100
                 : 0;
 
             // Calculate day-by-day progression (Day 1 through Day 7)
@@ -757,9 +783,21 @@ class RelanceCampaignController {
                 });
             }
 
-            // Count completed relance (those who finished 7 days or exited)
+            // Count completed relance (those who finished 7 days without paying)
             const completedRelance = targets.filter(
-                target => target.status === TargetStatus.COMPLETED
+                target => target.status === TargetStatus.COMPLETED && target.exitReason === ExitReason.COMPLETED_7_DAYS
+            ).length;
+
+            // Count conversions (those who paid during relance)
+            const targetsConverted = targets.filter(
+                target => target.status === TargetStatus.COMPLETED && target.exitReason === ExitReason.PAID
+            ).length;
+
+            // Count other exits (manual, referrer inactive)
+            const targetsExited = targets.filter(
+                target => target.status === TargetStatus.COMPLETED &&
+                    target.exitReason !== ExitReason.PAID &&
+                    target.exitReason !== ExitReason.COMPLETED_7_DAYS
             ).length;
 
             // Count enrolled (total ever enrolled in default relance)
@@ -772,9 +810,19 @@ class RelanceCampaignController {
                     totalEnrolled,
                     activeTargets,
                     completedRelance,
+                    targetsConverted,
+                    targetsExited,
                     totalMessagesSent,
                     totalMessagesDelivered,
                     deliveryPercentage: parseFloat(deliveryPercentage.toFixed(2)),
+                    // Email engagement metrics
+                    totalMessagesOpened,
+                    totalMessagesClicked,
+                    totalOpens,
+                    totalClicks,
+                    openRate: parseFloat(openRate.toFixed(2)),
+                    clickRate: parseFloat(clickRate.toFixed(2)),
+                    clickThroughRate: parseFloat(clickThroughRate.toFixed(2)),
                     dayProgression,
                     // Legacy fields for backward compatibility
                     completedTargets,
@@ -941,9 +989,12 @@ class RelanceCampaignController {
             const limitNum = Math.min(parseInt(limit as string) || 10, 50);
             const userObjectId = new mongoose.Types.ObjectId(userId);
 
-            // Find all targets for this user that have messages delivered
+            // Find all targets for this user in DEFAULT RELANCE ONLY (campaignId is null)
+            // Use $in [null] to match both null values and missing fields
+            const defaultFilter = { $in: [null, undefined] };
             const targets = await RelanceTargetModel.find({
                 referrerUserId: userObjectId,
+                campaignId: defaultFilter,  // ONLY default relance, not filtered campaigns
                 'messagesDelivered.0': { $exists: true } // Has at least one message
             })
                 .select('referralUserId campaignId messagesDelivered')
@@ -1150,19 +1201,45 @@ class RelanceCampaignController {
             let totalMessagesSent = 0;
             let totalMessagesDelivered = 0;
             let totalMessagesFailed = 0;
+            let totalMessagesOpened = 0;
+            let totalMessagesClicked = 0;
+            let totalOpens = 0;
+            let totalClicks = 0;
 
             targets.forEach(target => {
-                totalMessagesSent += target.messagesDelivered.length;
-                totalMessagesDelivered += target.messagesDelivered.filter(
-                    m => m.status === 'delivered'
-                ).length;
-                totalMessagesFailed += target.messagesDelivered.filter(
-                    m => m.status === 'failed'
-                ).length;
+                target.messagesDelivered.forEach(m => {
+                    totalMessagesSent++;
+                    if (m.status === 'delivered') {
+                        totalMessagesDelivered++;
+                    }
+                    if (m.status === 'failed') {
+                        totalMessagesFailed++;
+                    }
+                    if (m.opened) {
+                        totalMessagesOpened++;
+                        totalOpens += m.openCount || 0;
+                    }
+                    if (m.clicked) {
+                        totalMessagesClicked++;
+                        totalClicks += m.clickCount || 0;
+                    }
+                });
             });
 
             const deliveryPercentage = totalMessagesSent > 0
                 ? (totalMessagesDelivered / totalMessagesSent) * 100
+                : 0;
+
+            const openRate = totalMessagesDelivered > 0
+                ? (totalMessagesOpened / totalMessagesDelivered) * 100
+                : 0;
+
+            const clickRate = totalMessagesDelivered > 0
+                ? (totalMessagesClicked / totalMessagesDelivered) * 100
+                : 0;
+
+            const clickThroughRate = totalMessagesOpened > 0
+                ? (totalMessagesClicked / totalMessagesOpened) * 100
                 : 0;
 
             // Day-by-day progression
@@ -1175,8 +1252,22 @@ class RelanceCampaignController {
             }
 
             const totalEnrolled = targets.length;
+
+            // Count completed relance (those who finished 7 days without paying)
             const completedRelance = targets.filter(
-                target => target.status === TargetStatus.COMPLETED
+                target => target.status === TargetStatus.COMPLETED && target.exitReason === ExitReason.COMPLETED_7_DAYS
+            ).length;
+
+            // Count conversions (those who paid during relance)
+            const targetsConverted = targets.filter(
+                target => target.status === TargetStatus.COMPLETED && target.exitReason === ExitReason.PAID
+            ).length;
+
+            // Count other exits (manual, referrer inactive)
+            const targetsExited = targets.filter(
+                target => target.status === TargetStatus.COMPLETED &&
+                    target.exitReason !== ExitReason.PAID &&
+                    target.exitReason !== ExitReason.COMPLETED_7_DAYS
             ).length;
 
             // Exit reason breakdown
@@ -1201,10 +1292,20 @@ class RelanceCampaignController {
                     totalEnrolled,
                     activeTargets,
                     completedRelance,
+                    targetsConverted,
+                    targetsExited,
                     totalMessagesSent,
                     totalMessagesDelivered,
                     totalMessagesFailed,
                     deliveryPercentage: parseFloat(deliveryPercentage.toFixed(2)),
+                    // Email engagement metrics
+                    totalMessagesOpened,
+                    totalMessagesClicked,
+                    totalOpens,
+                    totalClicks,
+                    openRate: parseFloat(openRate.toFixed(2)),
+                    clickRate: parseFloat(clickRate.toFixed(2)),
+                    clickThroughRate: parseFloat(clickThroughRate.toFixed(2)),
                     dayProgression,
                     exitReasons
                 }

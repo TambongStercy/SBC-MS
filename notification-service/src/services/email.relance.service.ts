@@ -225,7 +225,7 @@ class EmailRelanceService {
         mediaUrls?: RelanceMedia[],
         buttons?: RelanceButton[],
         customSubject?: string
-    ): Promise<{ success: boolean; error?: string }> {
+    ): Promise<{ success: boolean; error?: string; messageId?: string }> {
         try {
             if (!recipientEmail) {
                 log.error('[EmailRelance] No recipient email provided');
@@ -246,16 +246,18 @@ class EmailRelanceService {
                 subject
             );
 
-            const result = await emailService.sendEmail({
+            const result = await emailService.sendEmailWithTracking({
                 to: recipientEmail,
                 subject: subject,
                 html: htmlContent,
                 from: config.email.from
             });
 
-            if (result) {
-                log.info(`[EmailRelance] Successfully sent day ${dayNumber} email to ${recipientEmail}`);
-                return { success: true };
+            if (result.success) {
+                log.info(`[EmailRelance] Successfully sent day ${dayNumber} email to ${recipientEmail}`, {
+                    messageId: result.messageId
+                });
+                return { success: true, messageId: result.messageId };
             } else {
                 log.error(`[EmailRelance] Failed to send email to ${recipientEmail}`);
                 return { success: false, error: 'Email sending failed' };

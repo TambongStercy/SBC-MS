@@ -152,10 +152,17 @@ async function processUserTargets(
             if (sendResult.success) {
                 console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] Email sent to ${recipientEmail} (Day ${target.currentDay})`);
 
+                // Extract SendGrid message ID (format: <id@host> -> just the ID part)
+                let sendGridMessageId: string | undefined;
+                if (sendResult.messageId) {
+                    sendGridMessageId = sendResult.messageId.replace(/<|>/g, '').split('@')[0];
+                }
+
                 target.messagesDelivered.push({
                     day: target.currentDay,
                     sentAt: new Date(),
-                    status: 'delivered' as any
+                    status: 'delivered' as any,
+                    sendGridMessageId
                 });
                 target.lastMessageSentAt = new Date();
 

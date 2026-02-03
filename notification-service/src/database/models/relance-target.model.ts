@@ -35,6 +35,16 @@ export interface IMessageDelivery {
     sentAt: Date;                   // When the message was sent
     status: DeliveryStatus;         // delivered or failed
     errorMessage?: string;          // Error details if failed
+    sendGridMessageId?: string;     // SendGrid message ID for tracking
+    opened?: boolean;               // Whether email was opened
+    openedAt?: Date;                // When email was first opened
+    openCount?: number;             // Number of times opened
+    clicked?: boolean;              // Whether any link was clicked
+    clickedAt?: Date;               // When first click occurred
+    clickCount?: number;            // Number of clicks
+    bounced?: boolean;              // Whether email bounced
+    bouncedAt?: Date;               // When bounce occurred
+    bounceReason?: string;          // Bounce reason from SendGrid
 }
 
 /**
@@ -106,7 +116,17 @@ const RelanceTargetSchema = new Schema<IRelanceTarget>(
                 day: { type: Number, required: true },
                 sentAt: { type: Date, required: true },
                 status: { type: String, enum: Object.values(DeliveryStatus), required: true },
-                errorMessage: { type: String }
+                errorMessage: { type: String },
+                sendGridMessageId: { type: String },
+                opened: { type: Boolean, default: false },
+                openedAt: { type: Date },
+                openCount: { type: Number, default: 0 },
+                clicked: { type: Boolean, default: false },
+                clickedAt: { type: Date },
+                clickCount: { type: Number, default: 0 },
+                bounced: { type: Boolean, default: false },
+                bouncedAt: { type: Date },
+                bounceReason: { type: String }
             }],
             default: []
         },

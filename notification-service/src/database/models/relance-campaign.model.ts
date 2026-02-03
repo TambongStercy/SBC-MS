@@ -73,8 +73,9 @@ export interface ICampaign extends Document {
     messagesSent: number;               // Total messages sent
     messagesDelivered: number;          // Successfully delivered
     messagesFailed: number;             // Failed to send
-    targetsCompleted: number;           // Completed 7-day cycle
-    targetsExited: number;              // Exited early (paid, unsubscribed, etc.)
+    targetsCompleted: number;           // Completed 7-day cycle without paying
+    targetsConverted: number;           // Converted (paid) during the campaign
+    targetsExited: number;              // Exited early (manual, referrer inactive, etc.)
 
     // Rate limiting (for filtered campaigns)
     maxMessagesPerDay?: number;         // Limit messages/day for this campaign
@@ -212,6 +213,10 @@ const CampaignSchema = new Schema<ICampaign>(
             default: 0
         },
         targetsCompleted: {
+            type: Number,
+            default: 0
+        },
+        targetsConverted: {
             type: Number,
             default: 0
         },

@@ -2617,9 +2617,10 @@ export class UserController {
             this.log.info(`Getting referrals for campaign for user ${userId}, dateFrom: ${sinceDate?.toISOString()}, dateTo: ${untilDate?.toISOString()}`);
 
             // Get referrals with optional date filtering at the database level
+            // IMPORTANT: Only get level 1 (direct) referrals for campaigns/relance
             const result = await this.userService.getReferredUsersInfoPaginated(
                 userId,
-                undefined, // level (all levels)
+                1,         // level - LEVEL 1 ONLY (direct referrals for campaigns/relance)
                 undefined, // nameFilter
                 1,         // page
                 50000,     // limit - increased to handle large accounts

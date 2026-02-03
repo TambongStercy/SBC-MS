@@ -616,6 +616,7 @@ export class SubscriptionRepository {
 
     /**
      * Finds all active subscriptions for a list of user IDs.
+     * Only returns CLASSIQUE and CIBLE subscriptions (excludes RELANCE).
      * @param userIds - An array of user ObjectIds.
      * @returns An array of active subscription documents.
      */
@@ -627,6 +628,7 @@ export class SubscriptionRepository {
         const query: mongoose.FilterQuery<ISubscription> = {
             user: { $in: userIds },
             status: SubscriptionStatus.ACTIVE,
+            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
             endDate: { $gt: now },
         };
         // Select only necessary fields: user and subscriptionType
