@@ -94,7 +94,7 @@ async function enrollDefaultTargets(userId: string, config: any): Promise<number
  * Enroll referrals into FILTERED campaign
  * (Manual filter-based enrollment)
  */
-async function enrollFilteredTargets(userId: string, campaign: any, config: any): Promise<number> {
+export async function enrollFilteredTargets(userId: string, campaign: any, config: any): Promise<number> {
     let enrolled = 0;
 
     try {

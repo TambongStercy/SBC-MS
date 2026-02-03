@@ -182,23 +182,26 @@ class UserServiceClient {
         log.debug(`Fetching unpaid referrals for user ${userId} at ${url}`);
 
         try {
+            const startTime = Date.now();
             const response = await axios.get<{ success: boolean; data: any[] }>(url, {
                 headers: {
                     'Authorization': `Bearer ${this.serviceSecret}`,
                     'X-Service-Name': 'notification-service'
                 },
-                timeout: 10000
+                timeout: 120000 // 2 minutes - users with many referrals need longer
             });
+            const duration = Date.now() - startTime;
 
             if (response.data?.success && Array.isArray(response.data.data)) {
-                log.info(`Successfully fetched ${response.data.data.length} unpaid referrals for user ${userId}`);
+                log.info(`Successfully fetched ${response.data.data.length} unpaid referrals for user ${userId} in ${duration}ms`);
                 return response.data.data;
             } else {
                 log.warn(`User Service call for unpaid referrals returned no data for user ${userId}`);
                 return [];
             }
         } catch (error: any) {
-            log.error(`Error fetching unpaid referrals for user ${userId}:`, error.response?.data || error.message);
+            const errorMsg = error.code === 'ECONNABORTED' ? 'Request timeout' : (error.response?.data || error.message);
+            log.error(`Error fetching unpaid referrals for user ${userId}: ${errorMsg}`);
             return [];
         }
     }
@@ -218,23 +221,26 @@ class UserServiceClient {
         log.debug(`Fetching all referrals for campaign for user ${userId} at ${url}`);
 
         try {
+            const startTime = Date.now();
             const response = await axios.get<{ success: boolean; data: any[] }>(url, {
                 headers: {
                     'Authorization': `Bearer ${this.serviceSecret}`,
                     'X-Service-Name': 'notification-service'
                 },
-                timeout: 10000
+                timeout: 120000 // 2 minutes - users with many referrals need longer
             });
+            const duration = Date.now() - startTime;
 
             if (response.data?.success && Array.isArray(response.data.data)) {
-                log.info(`Successfully fetched ${response.data.data.length} referrals for campaign for user ${userId}`);
+                log.info(`Successfully fetched ${response.data.data.length} referrals for campaign for user ${userId} in ${duration}ms`);
                 return response.data.data;
             } else {
                 log.warn(`User Service call for referrals for campaign returned no data for user ${userId}`);
                 return [];
             }
         } catch (error: any) {
-            log.error(`Error fetching referrals for campaign for user ${userId}:`, error.response?.data || error.message);
+            const errorMsg = error.code === 'ECONNABORTED' ? 'Request timeout' : (error.response?.data || error.message);
+            log.error(`Error fetching referrals for campaign for user ${userId}: ${errorMsg}`);
             return [];
         }
     }

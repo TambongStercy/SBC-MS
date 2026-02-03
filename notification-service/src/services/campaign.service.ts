@@ -3,6 +3,7 @@ import CampaignModel, { ICampaign, CampaignType, CampaignStatus, TargetFilter } 
 import RelanceTargetModel, { TargetStatus } from '../database/models/relance-target.model';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import { userServiceClient } from './clients/user.service.client';
+import { enrollFilteredTargets } from '../jobs/relance-enrollment.job';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('CampaignService');
@@ -233,6 +234,12 @@ class CampaignService {
             await campaign.save();
 
             log.info(`Started campaign ${campaignId} for user ${userId}`);
+
+            // Enroll targets immediately instead of waiting for the cron job
+            if (config) {
+                const enrolled = await enrollFilteredTargets(userId, campaign, config);
+                log.info(`Immediately enrolled ${enrolled} targets for campaign ${campaignId}`);
+            }
 
             return { success: true };
 
