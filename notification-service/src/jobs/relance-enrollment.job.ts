@@ -100,9 +100,6 @@ export async function enrollFilteredTargets(userId: string, campaign: any, confi
     try {
         console.log(`[Relance Enrollment] [Filtered] Processing campaign ${campaign._id}: ${campaign.name}`);
 
-        // Get ALL referrals for this user (paid + unpaid) - subscriptionStatus filter handles the distinction
-        let referrals = await userServiceClient.getReferralsForCampaign(userId);
-
         // Apply target filters
         const filter = campaign.targetFilter;
 
@@ -111,17 +108,13 @@ export async function enrollFilteredTargets(userId: string, campaign: any, confi
             return 0;
         }
 
-        // Filter by registration date (ensure proper Date comparison - JSON sends strings)
-        if (filter.registrationDateFrom || filter.registrationDateTo) {
-            const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom) : null;
-            const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo) : null;
-            referrals = referrals.filter((ref: any) => {
-                const regDate = new Date(ref.createdAt);
-                if (dateFrom && regDate < dateFrom) return false;
-                if (dateTo && regDate > dateTo) return false;
-                return true;
-            });
-        }
+        // Get referrals with date filters passed to DB level for performance
+        // This prevents fetching 20k+ referrals when only a small date range is needed
+        const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom).toISOString() : undefined;
+        const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo).toISOString() : undefined;
+        let referrals = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
+
+        // Note: Date filter already applied at DB level, no need to filter again in memory
 
         // Filter by country
         if (filter.countries && filter.countries.length > 0) {

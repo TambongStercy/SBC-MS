@@ -983,9 +983,9 @@ export class SubscriptionService {
             return activeRelanceSub;
         }
 
-        // Calculate next renewal date (60 days from now / 2 months)
+        // Calculate next renewal date (1 month from now)
         const nextRenewalDate = new Date(now);
-        nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 2);
+        nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 1);
 
         // End date is 1 day after renewal for grace period
         const endDate = new Date(nextRenewalDate);

@@ -43,26 +43,31 @@ class RelanceCampaignController {
                 return;
             }
 
-            // Get ALL referrals for this user (not just unpaid) for campaign filtering
-            let allReferrals = await userServiceClient.getReferralsForCampaign(userId);
-            log.info(`Preview: fetched ${allReferrals.length} total referrals for user ${userId}`);
-
             // Apply filters (same logic as enrollment job)
             const filter: TargetFilter = targetFilter;
             log.info(`Preview filters: ${JSON.stringify(filter)}`);
 
-            // Filter by registration date
-            if (filter.registrationDateFrom || filter.registrationDateTo) {
-                const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom) : null;
-                const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo) : null;
-                allReferrals = allReferrals.filter((ref: any) => {
-                    const regDate = new Date(ref.createdAt);
-                    if (dateFrom && regDate < dateFrom) return false;
-                    if (dateTo && regDate > dateTo) return false;
-                    return true;
-                });
-                log.info(`Preview: after registration date filter: ${allReferrals.length} referrals`);
+            // Get referrals for this user - pass date filters to DB level for performance
+            // This prevents fetching 20k+ referrals when only a small date range is needed
+            // Default to last 1 year if no date filter specified (performance optimization for users with many referrals)
+            let dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom).toISOString() : undefined;
+            const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo).toISOString() : undefined;
+            let usedDefaultDateRange = false;
+
+            // If no dateFrom specified, default to 1 year ago for performance
+            // Users with 20k+ referrals would timeout without this limit
+            if (!dateFrom) {
+                const oneYearAgo = new Date();
+                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                dateFrom = oneYearAgo.toISOString();
+                usedDefaultDateRange = true;
+                log.info(`Preview: No dateFrom specified, defaulting to 1 year ago: ${dateFrom}`);
             }
+
+            let allReferrals = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
+            log.info(`Preview: fetched ${allReferrals.length} referrals for user ${userId} (dateFrom: ${dateFrom}, dateTo: ${dateTo})`);
+
+            // Note: date filter already applied at DB level, no need to filter again in memory
 
             // Filter by country
             if (filter.countries && filter.countries.length > 0) {
@@ -144,14 +149,23 @@ class RelanceCampaignController {
                 createdAt: ref.createdAt
             }));
 
+            // Build response message
+            let message = totalCount === 0 ? 'No users match the selected filters' :
+                         totalCount === 1 ? '1 user matches the selected filters' :
+                         `${totalCount} users match the selected filters`;
+
+            // Add note if default date range was used
+            if (usedDefaultDateRange) {
+                message += ' (showing referrals from last 12 months - set a date range to see older referrals)';
+            }
+
             res.status(200).json({
                 success: true,
                 data: {
                     totalCount,
                     sampleUsers,
-                    message: totalCount === 0 ? 'No users match the selected filters' :
-                             totalCount === 1 ? '1 user matches the selected filters' :
-                             `${totalCount} users match the selected filters`
+                    message,
+                    usedDefaultDateRange // Let frontend know if default was applied
                 }
             });
 
@@ -643,11 +657,12 @@ class RelanceCampaignController {
                 config.allowSimultaneousCampaigns = allowSimultaneousCampaigns;
             }
 
-            if (typeof maxMessagesPerDay === 'number' && maxMessagesPerDay >= 1 && maxMessagesPerDay <= 1000) {
+            if (typeof maxMessagesPerDay === 'number' && maxMessagesPerDay >= 1 && maxMessagesPerDay <= 5000) {
                 config.maxMessagesPerDay = maxMessagesPerDay;
             }
 
-            if (typeof maxTargetsPerCampaign === 'number' && maxTargetsPerCampaign >= 10 && maxTargetsPerCampaign <= 1000) {
+            // Allow up to 50,000 targets per campaign for users with large referral networks
+            if (typeof maxTargetsPerCampaign === 'number' && maxTargetsPerCampaign >= 10 && maxTargetsPerCampaign <= 50000) {
                 config.maxTargetsPerCampaign = maxTargetsPerCampaign;
             }
 

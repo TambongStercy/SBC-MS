@@ -1216,7 +1216,8 @@ export class UserService {
         limit: number = 10,
         subType?: string, // NEW PARAMETER
         type?: string, // NEW PARAMETER for handling indirect
-        since?: Date // Only return referrals created after this date
+        since?: Date, // Only return referrals created after this date
+        until?: Date // Only return referrals created before this date
     ): Promise<{ // Return type updated
         referredUsers: IReferredUserInfo[];
         totalCount: number;
@@ -1270,7 +1271,7 @@ export class UserService {
                 totalCount = searchResult.totalCount;
             } else {
                 // Use methods that include subType filtering
-                log.info(`Fetching referred users for ${referrerId} (no name filter, subType: ${subType}, type: ${type}, since: ${since?.toISOString()})`);
+                log.info(`Fetching referred users for ${referrerId} (no name filter, subType: ${subType}, type: ${type}, since: ${since?.toISOString()}, until: ${until?.toISOString()})`);
                 let referralResponse;
                 if (type === 'indirect') {
                     // For indirect type, get both level 2 and 3 referrals
@@ -1279,7 +1280,7 @@ export class UserService {
                 } else {
                     referralResponse = level && [1, 2, 3].includes(level)
                         ? await referralRepository.findReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, page, limit, subType)
-                        : await referralRepository.findAllReferralsByReferrerWithSubType(referrerObjectId, page, limit, subType, since);
+                        : await referralRepository.findAllReferralsByReferrerWithSubType(referrerObjectId, page, limit, subType, since, until);
                 }
                 // Map the populated data to the expected structure
                 const referralsArray = type === 'indirect' ?

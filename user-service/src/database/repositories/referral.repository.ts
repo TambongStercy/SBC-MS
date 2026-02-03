@@ -1158,7 +1158,8 @@ export class ReferralRepository {
         page: number = 1,
         limit: number = 10,
         subType?: string,
-        since?: Date // Only return referrals created after this date
+        since?: Date, // Only return referrals created after this date
+        until?: Date  // Only return referrals created before this date
     ): Promise<ReferralPaginationResponse> {
         const skip = (page - 1) * limit;
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
@@ -1169,9 +1170,15 @@ export class ReferralRepository {
             archived: { $ne: true }
         };
 
-        // Add date filter if 'since' is provided (significant performance optimization)
-        if (since) {
-            matchCriteria.createdAt = { $gte: since };
+        // Add date filters if provided (significant performance optimization)
+        if (since || until) {
+            matchCriteria.createdAt = {};
+            if (since) {
+                matchCriteria.createdAt.$gte = since;
+            }
+            if (until) {
+                matchCriteria.createdAt.$lte = until;
+            }
         }
 
         const pipeline: any[] = [

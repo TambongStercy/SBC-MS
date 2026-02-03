@@ -2587,10 +2587,13 @@ export class UserController {
     /**
      * Get all referrals for campaign filtering (includes subscribed and non-subscribed)
      * @route GET /api/users/internal/:userId/referrals-for-campaign
+     * @query dateFrom - ISO date string to filter referrals created after this date
+     * @query dateTo - ISO date string to filter referrals created before this date
      */
     async getReferralsForCampaign(req: Request, res: Response): Promise<void> {
         try {
             const { userId } = req.params;
+            const { dateFrom, dateTo } = req.query;
 
             if (!userId) {
                 res.status(400).json({
@@ -2600,14 +2603,30 @@ export class UserController {
                 return;
             }
 
-            // Get ALL referrals for this user (no subscription filter)
+            // Parse date filters if provided
+            let sinceDate: Date | undefined;
+            let untilDate: Date | undefined;
+
+            if (dateFrom && typeof dateFrom === 'string') {
+                sinceDate = new Date(dateFrom);
+            }
+            if (dateTo && typeof dateTo === 'string') {
+                untilDate = new Date(dateTo);
+            }
+
+            this.log.info(`Getting referrals for campaign for user ${userId}, dateFrom: ${sinceDate?.toISOString()}, dateTo: ${untilDate?.toISOString()}`);
+
+            // Get referrals with optional date filtering at the database level
             const result = await this.userService.getReferredUsersInfoPaginated(
                 userId,
                 undefined, // level (all levels)
                 undefined, // nameFilter
                 1,         // page
-                10000,     // limit (get all)
-                undefined  // subType - NO FILTER, get everyone
+                50000,     // limit - increased to handle large accounts
+                undefined, // subType - NO FILTER, get everyone
+                undefined, // type
+                sinceDate, // since - filter by registration date
+                untilDate  // until - filter by registration date (new parameter)
             );
 
             const allReferrals = result.referredUsers.map(user => ({
@@ -2622,6 +2641,8 @@ export class UserController {
                 activeSubscriptionTypes: user.activeSubscriptionTypes || [],
                 createdAt: user.createdAt
             }));
+
+            this.log.info(`Found ${allReferrals.length} referrals for campaign for user ${userId}`);
 
             res.status(200).json({
                 success: true,

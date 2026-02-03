@@ -209,15 +209,22 @@ class UserServiceClient {
     /**
      * Get all referrals for a user for campaign filtering (includes subscribed and non-subscribed)
      * @param userId The ID of the user
+     * @param dateFrom Optional: only return referrals created after this date (ISO string)
+     * @param dateTo Optional: only return referrals created before this date (ISO string)
      * @returns Array of all referral objects with full data for filtering
      */
-    async getReferralsForCampaign(userId: string): Promise<any[]> {
+    async getReferralsForCampaign(userId: string, dateFrom?: string, dateTo?: string): Promise<any[]> {
         if (!this.userServiceUrl) {
             log.error('User Service URL not configured. Cannot get referrals for campaign.');
             return [];
         }
 
-        const url = `${this.userServiceUrl}/users/internal/${userId}/referrals-for-campaign`;
+        // Build URL with optional date filters as query params
+        const params = new URLSearchParams();
+        if (dateFrom) params.append('dateFrom', dateFrom);
+        if (dateTo) params.append('dateTo', dateTo);
+        const queryString = params.toString();
+        const url = `${this.userServiceUrl}/users/internal/${userId}/referrals-for-campaign${queryString ? `?${queryString}` : ''}`;
         log.debug(`Fetching all referrals for campaign for user ${userId} at ${url}`);
 
         try {

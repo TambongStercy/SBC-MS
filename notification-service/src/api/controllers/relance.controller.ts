@@ -88,6 +88,94 @@ class RelanceController {
     }
 
     /**
+     * GET /api/relance/message-templates
+     * Get user's saved message templates for pre-filling campaign forms
+     */
+    async getSavedMessageTemplates(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Unauthorized' });
+                return;
+            }
+
+            const config = await RelanceConfigModel.findOne({ userId });
+
+            res.status(200).json({
+                success: true,
+                data: config?.savedMessageTemplates || []
+            });
+        } catch (error: any) {
+            log.error('Error in getSavedMessageTemplates:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get saved message templates'
+            });
+        }
+    }
+
+    /**
+     * PUT /api/relance/message-templates
+     * Save user's message templates for future campaigns
+     */
+    async saveMessageTemplates(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Unauthorized' });
+                return;
+            }
+
+            const { messageTemplates } = req.body;
+
+            if (!Array.isArray(messageTemplates)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'messageTemplates must be an array'
+                });
+                return;
+            }
+
+            // Validate each template
+            for (const template of messageTemplates) {
+                if (!template.dayNumber || template.dayNumber < 1 || template.dayNumber > 7) {
+                    res.status(400).json({
+                        success: false,
+                        message: 'Each template must have a valid dayNumber (1-7)'
+                    });
+                    return;
+                }
+                if (!template.messageTemplate?.fr) {
+                    res.status(400).json({
+                        success: false,
+                        message: `Template for day ${template.dayNumber} must have messageTemplate.fr`
+                    });
+                    return;
+                }
+            }
+
+            const config = await RelanceConfigModel.findOneAndUpdate(
+                { userId },
+                { $set: { savedMessageTemplates: messageTemplates } },
+                { new: true, upsert: true }
+            );
+
+            log.info(`User ${userId} saved ${messageTemplates.length} message templates`);
+
+            res.status(200).json({
+                success: true,
+                data: config.savedMessageTemplates
+            });
+        } catch (error: any) {
+            log.error('Error in saveMessageTemplates:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to save message templates'
+            });
+        }
+    }
+
+    /**
      * GET /api/relance/targets
      * Get user's active relance targets
      */

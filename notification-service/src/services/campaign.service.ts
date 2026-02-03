@@ -35,22 +35,30 @@ class CampaignService {
                 return { success: false, error: 'User does not have active RELANCE subscription' };
             }
 
-            // Get user config for limits
-            const config = await RelanceConfigModel.findOne({ userId });
+            // Get or create user config for limits
+            let config = await RelanceConfigModel.findOne({ userId });
             if (!config) {
-                return { success: false, error: 'Relance configuration not found' };
+                // Auto-create config with defaults for users with RELANCE subscription
+                config = await RelanceConfigModel.create({
+                    userId,
+                    enabled: true,
+                    enrollmentPaused: false,
+                    sendingPaused: false,
+                    defaultCampaignPaused: false,
+                    allowSimultaneousCampaigns: false,
+                    messagesSentToday: 0,
+                    lastResetDate: new Date(),
+                    maxMessagesPerDay: 500,
+                    maxTargetsPerCampaign: 500
+                });
+                log.info(`Auto-created RelanceConfig for user ${userId}`);
             }
 
             // Estimate target count based on filter
             const estimatedTargets = await this.estimateTargetCount(userId, targetFilter);
 
-            // Check if exceeds max targets limit
-            if (estimatedTargets > config.maxTargetsPerCampaign) {
-                return {
-                    success: false,
-                    error: `Filter matches ${estimatedTargets} targets, exceeds limit of ${config.maxTargetsPerCampaign}`
-                };
-            }
+            // No artificial limit on targets per campaign for email
+            // SendGrid handles high throughput natively
 
             // Validate scheduling against subscription end date
             if (options?.scheduledStartDate) {
@@ -97,6 +105,15 @@ class CampaignService {
 
             log.info(`Created campaign ${campaign._id} for user ${userId}: ${name} (${estimatedTargets} targets)`);
 
+            // Auto-save custom messages as user's template for future campaigns
+            if (options?.customMessages && options.customMessages.length > 0) {
+                await RelanceConfigModel.findOneAndUpdate(
+                    { userId },
+                    { $set: { savedMessageTemplates: options.customMessages } }
+                );
+                log.info(`Auto-saved ${options.customMessages.length} message templates for user ${userId}`);
+            }
+
             return { success: true, campaign };
 
         } catch (error: any) {
@@ -110,21 +127,13 @@ class CampaignService {
      */
     private async estimateTargetCount(userId: string, filter: TargetFilter): Promise<number> {
         try {
-            // Get ALL referrals for this user (not just unpaid) for campaign filtering
-            const allReferrals = await userServiceClient.getReferralsForCampaign(userId);
+            // Get referrals for this user - pass date filters to DB level for performance
+            const dateFrom = filter.registrationDateFrom?.toISOString() || undefined;
+            const dateTo = filter.registrationDateTo?.toISOString() || undefined;
+            const allReferrals = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
 
-            // Apply filters
+            // Apply filters (date filter already applied at DB level)
             let filtered = allReferrals;
-
-            // Filter by registration date
-            if (filter.registrationDateFrom || filter.registrationDateTo) {
-                filtered = filtered.filter(ref => {
-                    const regDate = new Date(ref.createdAt);
-                    if (filter.registrationDateFrom && regDate < filter.registrationDateFrom) return false;
-                    if (filter.registrationDateTo && regDate > filter.registrationDateTo) return false;
-                    return true;
-                });
-            }
 
             // Filter by country
             if (filter.countries && filter.countries.length > 0) {

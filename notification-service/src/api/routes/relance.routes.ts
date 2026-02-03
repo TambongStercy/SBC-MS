@@ -29,6 +29,24 @@ router.put('/settings', authenticate, (req, res) =>
 );
 
 /**
+ * @route   GET /api/relance/message-templates
+ * @desc    Get user's saved message templates for pre-filling campaign forms
+ * @access  Private
+ */
+router.get('/message-templates', authenticate, (req, res) =>
+    relanceController.getSavedMessageTemplates(req, res)
+);
+
+/**
+ * @route   PUT /api/relance/message-templates
+ * @desc    Save user's message templates for future campaigns
+ * @access  Private
+ */
+router.put('/message-templates', authenticate, (req, res) =>
+    relanceController.saveMessageTemplates(req, res)
+);
+
+/**
  * @route   GET /api/relance/targets
  * @desc    Get user's active relance targets (referrals in loop)
  * @access  Private

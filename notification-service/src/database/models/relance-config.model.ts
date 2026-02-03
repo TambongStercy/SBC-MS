@@ -12,6 +12,20 @@ export enum RelanceChannel {
  * RelanceConfig Interface
  * Stores relance configuration for each user (email-based)
  */
+/**
+ * Custom message template structure (same as campaign customMessages)
+ */
+export interface IMessageTemplate {
+    dayNumber: number;
+    subject?: string;
+    messageTemplate: {
+        fr: string;
+        en: string;
+    };
+    mediaUrls?: Array<{ url: string; type: 'image' | 'video' | 'pdf' }>;
+    buttons?: Array<{ label: string; url: string; color?: string }>;
+}
+
 export interface IRelanceConfig extends Document {
     _id: Types.ObjectId;
     userId: Types.ObjectId;                  // SBC member who owns this config
@@ -33,6 +47,9 @@ export interface IRelanceConfig extends Document {
     // Safety limits
     maxMessagesPerDay: number;                // User-configurable daily limit (default 60 for email)
     maxTargetsPerCampaign: number;            // Max targets per filtered campaign (default 500)
+
+    // User's saved message templates (for pre-filling campaign forms)
+    savedMessageTemplates?: IMessageTemplate[];
 
     createdAt: Date;
     updatedAt: Date;
@@ -97,7 +114,26 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
         maxTargetsPerCampaign: {
             type: Number,
             default: 500  // Max targets per filtered campaign
-        }
+        },
+
+        // User's saved message templates (pre-fills campaign forms)
+        savedMessageTemplates: [{
+            dayNumber: { type: Number, required: true, min: 1, max: 7 },
+            subject: { type: String },
+            messageTemplate: {
+                fr: { type: String, required: true },
+                en: { type: String }
+            },
+            mediaUrls: [{
+                url: { type: String },
+                type: { type: String, enum: ['image', 'video', 'pdf'] }
+            }],
+            buttons: [{
+                label: { type: String },
+                url: { type: String },
+                color: { type: String }
+            }]
+        }]
     },
     {
         timestamps: true
