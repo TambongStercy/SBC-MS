@@ -184,7 +184,7 @@ export class CinetPayPayoutService {
     constructor() {
         this.apiClient = axios.create({
             baseURL: this.baseUrl,
-            timeout: 30000,
+            timeout: 600000, // 10 minutes timeout (matching FeexPay)
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },

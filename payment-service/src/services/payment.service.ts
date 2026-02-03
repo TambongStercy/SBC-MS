@@ -6242,7 +6242,31 @@ class PaymentService {
 
         } catch (error: any) {
             log.error(`Error processing mobile money payout for ${transaction.transactionId}:`, error);
-            // Update transaction to failed
+
+            // Check if this is a timeout error - keep in PROCESSING for webhook confirmation
+            const isTimeoutError = error.message?.includes('timeout') ||
+                                   error.code === 'ECONNABORTED' ||
+                                   error.code === 'ETIMEDOUT';
+
+            if (isTimeoutError) {
+                // Timeout doesn't mean the payout failed - it may still be processing on the provider side
+                // Keep transaction in PROCESSING status and wait for webhook confirmation
+                log.warn(`Timeout occurred for ${transaction.transactionId}, keeping in PROCESSING status for webhook confirmation`);
+                await transactionRepository.update(transaction._id, {
+                    status: TransactionStatus.PROCESSING,
+                    metadata: {
+                        ...(transaction.metadata || {}),
+                        timeoutOccurred: true,
+                        timeoutAt: new Date().toISOString(),
+                        awaitingWebhook: true,
+                        timeoutMessage: error.message
+                    }
+                });
+                // Don't throw - let the webhook handle the final status
+                return;
+            }
+
+            // For non-timeout errors, mark as failed
             await transactionRepository.update(transaction._id, {
                 status: TransactionStatus.FAILED,
                 metadata: {
