@@ -21,6 +21,7 @@ import { userServiceClient } from '../services/clients/user.service.client';
  * For 3 users with 500 targets each: ~17 minutes (parallel)
  */
 const EMAIL_DELAY_MS = 2000; // 2 seconds between emails per user
+const MAX_RETRIES_PER_DAY = 3; // Max send attempts per day before skipping to next day
 
 /**
  * Process a single user's targets
@@ -81,6 +82,36 @@ async function processUserTargets(
                 nextDue.setHours(nextDue.getHours() + 24);
                 target.nextMessageDue = nextDue;
                 target.currentDay += 1;
+                await target.save();
+                continue;
+            }
+
+            // Check if max retries exceeded for this day
+            const failedAttemptsForDay = target.messagesDelivered.filter((msg: any) => {
+                return msg.day === target.currentDay && msg.status === 'failed';
+            }).length;
+
+            if (failedAttemptsForDay >= MAX_RETRIES_PER_DAY) {
+                console.log(`${campaignLabel} Max retries (${MAX_RETRIES_PER_DAY}) reached for day ${target.currentDay} of target ${target._id}, skipping to next day`);
+
+                if (target.currentDay >= 7) {
+                    target.status = TargetStatus.COMPLETED;
+                    target.exitReason = ExitReason.COMPLETED_7_DAYS;
+                    target.exitedLoopAt = new Date();
+                    console.log(`${campaignLabel} Target ${target._id} completed 7-day loop (last day failed)`);
+
+                    if (campaign) {
+                        campaign.targetsCompleted += 1;
+                        await campaign.save();
+                    }
+                    exited++;
+                } else {
+                    target.currentDay += 1;
+                    const nextDue = new Date();
+                    nextDue.setHours(nextDue.getHours() + 24);
+                    target.nextMessageDue = nextDue;
+                }
+
                 await target.save();
                 continue;
             }
@@ -209,6 +240,39 @@ async function processUserTargets(
                     status: 'failed' as any,
                     errorMessage: sendResult.error
                 });
+
+                // Count how many times we've failed for this day (including this attempt)
+                const totalFailsForDay = target.messagesDelivered.filter((msg: any) => {
+                    return msg.day === target.currentDay && msg.status === 'failed';
+                }).length;
+
+                if (totalFailsForDay >= MAX_RETRIES_PER_DAY) {
+                    // Max retries reached, skip to next day
+                    console.log(`${campaignLabel} Max retries (${MAX_RETRIES_PER_DAY}) reached for day ${target.currentDay}, moving to next day`);
+                    if (target.currentDay >= 7) {
+                        target.status = TargetStatus.COMPLETED;
+                        target.exitReason = ExitReason.COMPLETED_7_DAYS;
+                        target.exitedLoopAt = new Date();
+
+                        if (campaign) {
+                            campaign.targetsCompleted += 1;
+                            await campaign.save();
+                        }
+                        exited++;
+                    } else {
+                        target.currentDay += 1;
+                        const nextDue = new Date();
+                        nextDue.setHours(nextDue.getHours() + 24);
+                        target.nextMessageDue = nextDue;
+                    }
+                } else {
+                    // Retry in 1 hour instead of 15 minutes
+                    const retryDue = new Date();
+                    retryDue.setHours(retryDue.getHours() + 1);
+                    target.nextMessageDue = retryDue;
+                    console.log(`${campaignLabel} Will retry day ${target.currentDay} in 1 hour (attempt ${totalFailsForDay}/${MAX_RETRIES_PER_DAY})`);
+                }
+
                 await target.save();
 
                 if (campaign) {

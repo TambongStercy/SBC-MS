@@ -2547,7 +2547,7 @@ export class UserController {
             // Get referrals created after sinceDate (unpaid = subType 'none')
             const result = await this.userService.getReferredUsersInfoPaginated(
                 userId,
-                undefined, // level (all levels)
+                1,         // level - LEVEL 1 ONLY (direct referrals for relance)
                 undefined, // nameFilter
                 1,         // page
                 10000,     // limit
