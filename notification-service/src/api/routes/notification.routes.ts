@@ -22,6 +22,7 @@ router.post('/internal/email/commission-earned', authenticateServiceRequest, (re
 router.post('/internal/email/transaction-successful', authenticateServiceRequest, (req, res, next) => notificationController.handleTransactionSuccessEmail(req, res, next));
 router.post('/internal/email/transaction-failed', authenticateServiceRequest, (req, res, next) => notificationController.handleTransactionFailureEmail(req, res, next));
 router.post('/internal/email/account-activation', authenticateServiceRequest, (req, res, next) => notificationController.handleAccountActivationEmail(req, res, next));
+router.post('/internal/email/welcome', authenticateServiceRequest, (req, res, next) => notificationController.handleWelcomeEmail(req, res, next));
 // Contact export email route
 router.post('/contact-export-email', authenticateServiceRequest, (req, res, next) => notificationController.handleContactExportEmail(req, res, next));
 // --- END NEW EMAIL ROUTES ---

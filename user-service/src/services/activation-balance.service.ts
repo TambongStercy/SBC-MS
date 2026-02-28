@@ -464,7 +464,8 @@ export class ActivationBalanceService {
                 beneficiaryId,
                 actualSubscriptionType,
                 subscriptionType === 'UPGRADE',
-                mockPaymentSessionId
+                mockPaymentSessionId,
+                beneficiary.name || beneficiary.email
             );
         } catch (error: any) {
             log.error(`Failed to distribute commissions for sponsored activation: ${error.message}`);
@@ -527,7 +528,8 @@ export class ActivationBalanceService {
         beneficiaryId: string,
         subscriptionType: SubscriptionType,
         isUpgrade: boolean,
-        sourcePaymentSessionId: string
+        sourcePaymentSessionId: string,
+        beneficiaryName?: string
     ): Promise<void> {
         log.info(`Distributing commissions for sponsored activation of ${subscriptionType} for beneficiary ${beneficiaryId}`);
 
@@ -555,6 +557,12 @@ export class ActivationBalanceService {
             return;
         }
 
+        // Fetch beneficiary name if not provided
+        if (!beneficiaryName) {
+            const beneficiaryUser = await this.userRepository.findById(new Types.ObjectId(beneficiaryId));
+            beneficiaryName = beneficiaryUser ? (beneficiaryUser.name || beneficiaryUser.email) : beneficiaryId;
+        }
+
         const currency = 'XAF';
         const planDesc = isUpgrade ? 'Mise à niveau vers CIBLE (Sponsorisé)' :
                         `Abonnement ${subscriptionType} (Sponsorisé)`;
@@ -569,7 +577,7 @@ export class ActivationBalanceService {
                 userId: referrers.level1,
                 amount: l1Amount,
                 currency,
-                description: `Commission niveau 1 (50%) de ${planDesc}`,
+                description: `Commission niveau 1 (50%) de ${planDesc} par ${beneficiaryName}`,
                 metadata: {
                     commissionLevel: 1,
                     sourceUserId: beneficiaryId,
@@ -588,7 +596,7 @@ export class ActivationBalanceService {
                 userId: referrers.level2,
                 amount: l2Amount,
                 currency,
-                description: `Commission niveau 2 (25%) de ${planDesc}`,
+                description: `Commission niveau 2 (25%) de ${planDesc} par ${beneficiaryName}`,
                 metadata: {
                     commissionLevel: 2,
                     sourceUserId: beneficiaryId,
@@ -607,7 +615,7 @@ export class ActivationBalanceService {
                 userId: referrers.level3,
                 amount: l3Amount,
                 currency,
-                description: `Commission niveau 3 (12.5%) de ${planDesc}`,
+                description: `Commission niveau 3 (12.5%) de ${planDesc} par ${beneficiaryName}`,
                 metadata: {
                     commissionLevel: 3,
                     sourceUserId: beneficiaryId,

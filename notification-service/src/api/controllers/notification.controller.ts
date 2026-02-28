@@ -660,6 +660,50 @@ export class NotificationController {
     }
 
     /**
+     * Handle request to send a welcome email to a new user
+     * @route POST /internal/email/welcome
+     */
+    async handleWelcomeEmail(req: Request, res: Response, next: Function): Promise<void> {
+        const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
+        log.info(`Received welcome email request from ${callingService}:`, req.body);
+        try {
+            const { email, name, referralCode, referrerName, language } = req.body;
+
+            if (!email || !name) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields for welcome email: email, name'
+                });
+                return;
+            }
+
+            const success = await emailService.sendWelcomeEmail({
+                email,
+                name,
+                referralCode,
+                referrerName,
+                language: language || 'fr'
+            });
+
+            if (success) {
+                res.status(200).json({
+                    success: true,
+                    message: 'Welcome email sent successfully'
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to send welcome email'
+                });
+            }
+
+        } catch (error: any) {
+            log.error(`Error handling welcome email request from ${callingService}:`, error);
+            next(error);
+        }
+    }
+
+    /**
      * Handle request to send an account activation email
      * @route POST /internal/email/account-activation
      */

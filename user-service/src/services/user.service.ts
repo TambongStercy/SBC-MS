@@ -331,7 +331,22 @@ export class UserService {
             // For now, throw an error to indicate registration couldn't fully complete.
             throw new Error('Registration succeeded but failed to send verification code.');
         }
-        // --- End OTP Generation --- 
+        // --- End OTP Generation ---
+
+        // --- Send Welcome Email (non-blocking) ---
+        try {
+            notificationService.sendWelcomeEmail({
+                email: newUser.email,
+                name: newUser.name,
+                referralCode: newUser.referralCode,
+                referrerName: referrer ? (referrer.name || referrer.email) : undefined,
+                language: (newUser.language?.[0] as 'fr' | 'en') || 'fr'
+            }).catch(err => log.error(`Failed to send welcome email to ${newUser.email}:`, err));
+        } catch (welcomeError) {
+            log.error(`Failed to send welcome email to ${newUser.email}:`, welcomeError);
+            // Non-critical, continue
+        }
+        // --- End Welcome Email ---
 
         // Don't generate JWT here anymore.
         // Return success message and userId to indicate OTP step is next.
@@ -4196,7 +4211,8 @@ export class UserService {
             const partnerPayoutPromises: Promise<any>[] = [];
 
             // Description for deposit
-            const descriptionBase = `Retroactive commission from ${subscription.subscriptionType} subscription purchase by user ${payingUser.email}`;
+            const buyerName = payingUser.name || payingUser.email;
+            const descriptionBase = `Retroactive commission from ${subscription.subscriptionType} subscription purchase by ${buyerName}`;
 
             let l1Amount = 0, l2Amount = 0, l3Amount = 0;
 

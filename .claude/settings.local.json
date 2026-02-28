@@ -39,7 +39,8 @@
       "Bash(node:*)",
       "Bash(docker inspect:*)",
       "Bash(docker compose:*)",
-      "Bash(echo \"To check PM2 logs on your production server, run these commands:\n\n# View full logs for notification service\npm2 logs notification-service --lines 200\n\n# Or view just the output logs \\(not errors\\)\npm2 logs notification-service --out --lines 200\n\n# Search for relance enrollment in logs\npm2 logs notification-service --lines 500 | grep -i ''relance enrollment''\n\n# View logs from a specific time \\(if using pm2-logrotate\\)\ncat ~/.pm2/logs/notification-service-out.log | grep -i ''relance''\n\n# Or tail the log file directly\ntail -500 ~/.pm2/logs/notification-service-out.log | grep -i ''enrollment''\n\")"
+      "Bash(echo \"To check PM2 logs on your production server, run these commands:\n\n# View full logs for notification service\npm2 logs notification-service --lines 200\n\n# Or view just the output logs \\(not errors\\)\npm2 logs notification-service --out --lines 200\n\n# Search for relance enrollment in logs\npm2 logs notification-service --lines 500 | grep -i ''relance enrollment''\n\n# View logs from a specific time \\(if using pm2-logrotate\\)\ncat ~/.pm2/logs/notification-service-out.log | grep -i ''relance''\n\n# Or tail the log file directly\ntail -500 ~/.pm2/logs/notification-service-out.log | grep -i ''enrollment''\n\")",
+      "Bash(/dev/null:*)"
     ],
     "deny": [],
     "ask": []

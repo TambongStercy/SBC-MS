@@ -53,12 +53,6 @@ async function enrollDefaultTargets(userId: string, config: any): Promise<number
                     continue;
                 }
 
-                // Check daily message limit
-                if (config.messagesSentToday >= config.maxMessagesPerDay) {
-                    console.log(`[Relance Enrollment] [Default] User ${userId} reached daily message limit (${config.maxMessagesPerDay}), skipping`);
-                    break;
-                }
-
                 // Enroll referral into default campaign (no campaignId)
                 const now = new Date();
                 const nextMessageDue = new Date(now); // Testing: send immediately
@@ -176,24 +170,6 @@ export async function enrollFilteredTargets(userId: string, campaign: any, confi
 
         console.log(`[Relance Enrollment] [Filtered] Campaign ${campaign._id}: ${referrals.length} referrals match filters`);
 
-        // Check campaign limits
-        const campaignMaxMessages = campaign.maxMessagesPerDay || config.maxMessagesPerDay;
-        const currentCampaignMessages = campaign.messagesSentToday || 0;
-
-        if (currentCampaignMessages >= campaignMaxMessages) {
-            console.log(`[Relance Enrollment] [Filtered] Campaign ${campaign._id} reached daily limit (${campaignMaxMessages}), skipping`);
-            return 0;
-        }
-
-        // Check max targets per campaign
-        if (campaign.targetsEnrolled >= config.maxTargetsPerCampaign) {
-            console.log(`[Relance Enrollment] [Filtered] Campaign ${campaign._id} reached max targets (${config.maxTargetsPerCampaign}), completing`);
-            campaign.status = CampaignStatus.COMPLETED;
-            campaign.actualEndDate = new Date();
-            await campaign.save();
-            return 0;
-        }
-
         // Enroll filtered referrals
         for (const referral of referrals) {
             try {
@@ -208,17 +184,6 @@ export async function enrollFilteredTargets(userId: string, campaign: any, confi
 
                 if (existingTarget) {
                     continue;
-                }
-
-                // Check daily limits
-                if (config.messagesSentToday >= config.maxMessagesPerDay) {
-                    console.log(`[Relance Enrollment] [Filtered] User ${userId} reached daily limit, stopping enrollment`);
-                    break;
-                }
-
-                if (campaign.targetsEnrolled >= config.maxTargetsPerCampaign) {
-                    console.log(`[Relance Enrollment] [Filtered] Campaign ${campaign._id} reached max targets`);
-                    break;
                 }
 
                 // Enroll into filtered campaign

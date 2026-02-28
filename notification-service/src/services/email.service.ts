@@ -815,8 +815,18 @@ class EmailService {
     /**
      * Send Welcome Email for New Users
      */
-    async sendWelcomeEmail(email: string, name: string, referralCode?: string): Promise<boolean> {
-        const content = `
+    async sendWelcomeEmail(data: {
+        email: string;
+        name: string;
+        referralCode?: string;
+        referrerName?: string;
+        language?: 'fr' | 'en';
+    }): Promise<boolean> {
+        const { email, name, referralCode, referrerName, language = 'fr' } = data;
+        const isFrench = language === 'fr';
+        const frontendUrl = config.app.frontendUrl || 'https://sniperbuisnesscenter.com';
+
+        const frenchContent = `
             <div style="text-align: center;">
                 <table role="presentation" style="width: 80px; height: 80px; background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%); border-radius: 50%; margin: 0 auto 25px; border-collapse: collapse;" cellpadding="0" cellspacing="0">
                     <tr>
@@ -826,20 +836,21 @@ class EmailService {
                     </tr>
                 </table>
             </div>
-            
+
             <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 32px; font-weight: 700;">
                 Bienvenue dans la famille SBC !
             </h2>
-            
+
             <p style="font-size: 18px; margin-bottom: 15px;">
                 Bonjour <strong style="color: #004d7a;">${name}</strong>,
             </p>
-            
+
             <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
-                Félicitations ! Votre compte <strong>Sniper Business Center</strong> a été créé avec succès. 
+                Félicitations ! Votre compte <strong>Sniper Business Center</strong> a été créé avec succès.
+                ${referrerName ? `Vous avez été invité(e) par <strong style="color: #004d7a;">${referrerName}</strong>.` : ''}
                 Vous faites maintenant partie d'une communauté dynamique d'entrepreneurs et d'affiliés.
             </p>
-            
+
             ${referralCode ? `
             <div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); border-left: 5px solid #4caf50; padding: 20px; margin: 25px 0; border-radius: 8px;">
                 <h3 style="color: #2e7d32; margin-bottom: 15px; font-size: 20px; text-align: center;">
@@ -853,40 +864,170 @@ class EmailService {
                 </p>
             </div>
             ` : ''}
-            
+
             <div style="background: #f8f9fa; border-radius: 12px; padding: 25px; margin: 30px 0;">
                 <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 22px; text-align: center;">
-                    🚀 Prochaines Étapes
+                    🚀 Comment bien démarrer
                 </h3>
                 <div style="text-align: left;">
-                    <p style="margin: 10px 0; font-size: 16px;">✅ <strong>Complétez votre profil</strong> pour une meilleure expérience</p>
-                    <p style="margin: 10px 0; font-size: 16px;">🛍️ <strong>Explorez nos produits</strong> et services exclusifs</p>
-                    <p style="margin: 10px 0; font-size: 16px;">👥 <strong>Invitez vos amis</strong> et gagnez des commissions</p>
-                    <p style="margin: 10px 0; font-size: 16px;">💰 <strong>Commencez à gagner</strong> dès aujourd'hui</p>
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>1.</strong> 💳 <strong>Activez votre compte</strong> en souscrivant à un abonnement (Classique ou Ciblé)</p>
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>2.</strong> 📱 <strong>Rejoignez nos canaux</strong> WhatsApp et Telegram pour les formations</p>
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>3.</strong> 👥 <strong>Parrainez vos proches</strong> avec votre code et gagnez des commissions</p>
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>4.</strong> 💰 <strong>Développez votre réseau</strong> et augmentez vos revenus</p>
                 </div>
             </div>
-            
+
+            <!-- WhatsApp Channel -->
+            <div style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📱 Rejoins la chaîne WhatsApp de la SBC
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Pour être informé de toutes les mises à jour et nouveautés en temps réel
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://whatsapp.com/channel/0029Vav3mvCElah05C8QuT03"
+                       style="display: inline-block; background: white; color: #25D366; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        📲 Suivre la chaîne SBC sur WhatsApp
+                    </a>
+                </div>
+            </div>
+
+            <!-- Telegram - Platform Guide -->
+            <div style="background: linear-gradient(135deg, #0088cc 0%, #0077b5 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📚 Canal de prise en main de l'application
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Apprends comment utiliser la plateforme SBC
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://t.me/sniperbusinesscenterafrica"
+                       style="display: inline-block; background: white; color: #0088cc; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        🎓 J'apprends à utiliser la plateforme SBC
+                    </a>
+                </div>
+            </div>
+
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/" class="button">
+                <a href="${frontendUrl}/" class="button">
                     Accéder à mon tableau de bord
                 </a>
-        </div>
-            
+            </div>
+
             <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
                 Prêt à commencer votre aventure entrepreneuriale ? 🌟
             </p>
         `;
 
+        const englishContent = `
+            <div style="text-align: center;">
+                <table role="presentation" style="width: 80px; height: 80px; background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%); border-radius: 50%; margin: 0 auto 25px; border-collapse: collapse;" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <span style="color: white; font-size: 32px; line-height: 1;">🎉</span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 32px; font-weight: 700;">
+                Welcome to the SBC family!
+            </h2>
+
+            <p style="font-size: 18px; margin-bottom: 15px;">
+                Hello <strong style="color: #004d7a;">${name}</strong>,
+            </p>
+
+            <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+                Congratulations! Your <strong>Sniper Business Center</strong> account has been created successfully.
+                ${referrerName ? `You were invited by <strong style="color: #004d7a;">${referrerName}</strong>.` : ''}
+                You are now part of a dynamic community of entrepreneurs and affiliates.
+            </p>
+
+            ${referralCode ? `
+            <div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); border-left: 5px solid #4caf50; padding: 20px; margin: 25px 0; border-radius: 8px;">
+                <h3 style="color: #2e7d32; margin-bottom: 15px; font-size: 20px; text-align: center;">
+                    🎁 Your Referral Code
+                </h3>
+                <div style="font-size: 24px; font-weight: 700; color: #2e7d32; text-align: center; font-family: 'Courier New', monospace; background: white; padding: 15px; border-radius: 8px; border: 2px dashed #4caf50;">
+                    ${referralCode}
+                </div>
+                <p style="text-align: center; color: #666; font-size: 14px; margin: 10px 0 0 0;">
+                    Share this code to earn commissions!
+                </p>
+            </div>
+            ` : ''}
+
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 25px; margin: 30px 0;">
+                <h3 style="color: #004d7a; margin-bottom: 20px; font-size: 22px; text-align: center;">
+                    🚀 How to Get Started
+                </h3>
+                <div style="text-align: left;">
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>1.</strong> 💳 <strong>Activate your account</strong> by subscribing (Classic or Targeted)</p>
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>2.</strong> 📱 <strong>Join our channels</strong> on WhatsApp and Telegram for training</p>
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>3.</strong> 👥 <strong>Refer your friends</strong> with your code and earn commissions</p>
+                    <p style="margin: 12px 0; font-size: 16px;"><strong>4.</strong> 💰 <strong>Build your network</strong> and increase your income</p>
+                </div>
+            </div>
+
+            <!-- WhatsApp Channel -->
+            <div style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📱 Join the SBC WhatsApp Channel
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Stay informed about all updates and news in real time
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://whatsapp.com/channel/0029Vav3mvCElah05C8QuT03"
+                       style="display: inline-block; background: white; color: #25D366; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        📲 Follow SBC on WhatsApp
+                    </a>
+                </div>
+            </div>
+
+            <!-- Telegram - Platform Guide -->
+            <div style="background: linear-gradient(135deg, #0088cc 0%, #0077b5 100%); border-radius: 16px; padding: 25px; margin: 25px 0;">
+                <h3 style="color: white; margin-bottom: 15px; font-size: 18px; text-align: center;">
+                    📚 Platform Guide Channel
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); font-size: 14px; text-align: center; margin-bottom: 20px;">
+                    Learn how to use the SBC platform
+                </p>
+                <div style="text-align: center;">
+                    <a href="https://t.me/sniperbusinesscenterafrica"
+                       style="display: inline-block; background: white; color: #0088cc; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        🎓 Learn to use the SBC platform
+                    </a>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${frontendUrl}/" class="button">
+                    Access my dashboard
+                </a>
+            </div>
+
+            <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
+                Ready to start your entrepreneurial adventure? 🌟
+            </p>
+        `;
+
+        const content = isFrench ? frenchContent : englishContent;
+
         const emailHtml = this.createBaseTemplate(
-            'Bienvenue chez Sniper Business Center',
+            isFrench ? 'Bienvenue chez Sniper Business Center' : 'Welcome to Sniper Business Center',
             content,
-            'Ensemble, construisons votre succès entrepreneurial !'
+            isFrench ? 'Ensemble, construisons votre succès entrepreneurial !' : 'Together, let\'s build your entrepreneurial success!'
         );
 
         try {
             const result = await this.sendEmail({
                 to: email,
-                subject: `🎉 Bienvenue chez SBC, ${name} !`,
+                subject: isFrench
+                    ? `🎉 Bienvenue chez SBC, ${name} !`
+                    : `🎉 Welcome to SBC, ${name}!`,
                 html: emailHtml,
                 from: config.email.from
             });

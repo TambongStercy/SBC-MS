@@ -54,23 +54,6 @@ async function processUserTargets(
                 continue;
             }
 
-            // Check daily message limits
-            if (config.messagesSentToday >= config.maxMessagesPerDay) {
-                console.log(`${campaignLabel} User ${referrerId} reached daily limit (${config.maxMessagesPerDay}), skipping remaining`);
-                break; // Stop processing this user's targets
-            }
-
-            // Check campaign-specific daily limit
-            if (campaign) {
-                const campaignMaxMessages = campaign.maxMessagesPerDay || config.maxMessagesPerDay;
-                const campaignMessagesSent = campaign.messagesSentToday || 0;
-
-                if (campaignMessagesSent >= campaignMaxMessages) {
-                    console.log(`${campaignLabel} Campaign reached daily limit (${campaignMaxMessages}), skipping`);
-                    continue;
-                }
-            }
-
             // CRITICAL: Check if message already sent for this day (prevent duplicates)
             const alreadySentToday = target.messagesDelivered.some((msg: any) => {
                 return msg.day === target.currentDay && msg.status === 'delivered';
@@ -197,15 +180,10 @@ async function processUserTargets(
                 });
                 target.lastMessageSentAt = new Date();
 
-                // Update config message count
-                config.messagesSentToday += 1;
-                await config.save();
-
                 // Update campaign stats
                 if (campaign) {
                     campaign.messagesSent += 1;
                     campaign.messagesDelivered += 1;
-                    campaign.messagesSentToday = (campaign.messagesSentToday || 0) + 1;
                     await campaign.save();
                 }
 
@@ -456,32 +434,4 @@ export function startRelanceSenderJob() {
 
     console.log('[Relance Sender] Job scheduled successfully');
 
-    // Daily reset of message counters (runs at midnight)
-    cron.schedule('0 0 * * *', async () => {
-        console.log('[Relance Sender] Resetting daily message counters...');
-        try {
-            const configResult = await RelanceConfigModel.updateMany(
-                {},
-                {
-                    $set: {
-                        messagesSentToday: 0,
-                        lastResetDate: new Date()
-                    }
-                }
-            );
-
-            const campaignResult = await CampaignModel.updateMany(
-                { status: CampaignStatus.ACTIVE },
-                {
-                    $set: {
-                        messagesSentToday: 0
-                    }
-                }
-            );
-
-            console.log(`[Relance Sender] Reset ${configResult.modifiedCount} config counters and ${campaignResult.modifiedCount} campaign counters`);
-        } catch (error) {
-            console.error('[Relance Sender] Error resetting message counters:', error);
-        }
-    });
 }

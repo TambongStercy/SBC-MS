@@ -251,6 +251,46 @@ class NotificationService {
     }
 
     /**
+     * Send welcome email to a newly registered user
+     */
+    async sendWelcomeEmail({
+        email,
+        name,
+        referralCode,
+        referrerName,
+        language = 'fr',
+    }: {
+        email: string;
+        name: string;
+        referralCode?: string;
+        referrerName?: string;
+        language?: 'fr' | 'en';
+    }): Promise<boolean> {
+        try {
+            log.info(`Sending welcome email to ${email}`);
+
+            const response = await this.apiClient.post('/notifications/internal/email/welcome', {
+                email,
+                name,
+                referralCode,
+                referrerName,
+                language
+            });
+
+            if (response.status === 200 && response.data.success) {
+                log.info(`Welcome email sent successfully to ${email}`);
+                return true;
+            } else {
+                log.warn(`Failed to send welcome email to ${email}: ${response.data.message}`);
+                return false;
+            }
+        } catch (error: any) {
+            log.error(`Error sending welcome email to ${email}: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
      * Exit user from relance loop (called when user pays subscription)
      */
     async exitUserFromRelanceLoop(userId: string): Promise<boolean> {
