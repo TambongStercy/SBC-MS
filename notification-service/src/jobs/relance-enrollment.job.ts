@@ -225,9 +225,20 @@ export async function enrollFilteredTargets(userId: string, campaign: any, confi
 }
 
 /**
+ * Job lock to prevent overlapping enrollment runs
+ */
+let isEnrollmentRunning = false;
+
+/**
  * Main enrollment check function
  */
 async function runEnrollmentCheck() {
+    if (isEnrollmentRunning) {
+        console.log('[Relance Enrollment] Previous enrollment still running, skipping this cycle.');
+        return;
+    }
+
+    isEnrollmentRunning = true;
     console.log('[Relance Enrollment] Starting enrollment check...');
     const startTime = Date.now();
 
@@ -305,6 +316,8 @@ async function runEnrollmentCheck() {
 
     } catch (error) {
         console.error('[Relance Enrollment] Fatal error in enrollment job:', error);
+    } finally {
+        isEnrollmentRunning = false;
     }
 }
 

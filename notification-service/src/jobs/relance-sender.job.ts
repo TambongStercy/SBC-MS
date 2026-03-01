@@ -43,15 +43,15 @@ async function processUserTargets(
             const campaign = target.campaignId as any;
             const campaignLabel = campaign ? `[Campaign:${campaign._id}]` : '[Default]';
 
-            // Check if sending is paused
-            const isDefaultTarget = !campaign;
+            // Check if sending is paused - break to stop ALL targets for this user
             if (config.sendingPaused) {
-                console.log(`${campaignLabel} Sending paused for referrer ${referrerId}, skipping target ${target._id}`);
-                continue;
+                console.log(`${campaignLabel} Sending paused for referrer ${referrerId}, stopping all targets`);
+                break;
             }
+            const isDefaultTarget = !campaign;
             if (isDefaultTarget && !config.enabled) {
-                console.log(`${campaignLabel} Default relance disabled for referrer ${referrerId}, skipping target ${target._id}`);
-                continue;
+                console.log(`${campaignLabel} Default relance disabled for referrer ${referrerId}, skipping default target ${target._id}`);
+                continue; // continue here since campaign targets may still need processing
             }
 
             // CRITICAL: Check if message already sent for this day (prevent duplicates)
@@ -275,10 +275,24 @@ async function processUserTargets(
 }
 
 /**
+ * Job lock to prevent overlapping runs.
+ * Without this, the 15-minute cron can start a new run while a previous one
+ * is still processing thousands of targets (2s delay each = hours),
+ * causing massive duplicate sends.
+ */
+let isJobRunning = false;
+
+/**
  * Main Message Sending Job
  * Groups targets by user and processes each user in parallel
  */
 async function runMessageSendingJob() {
+    if (isJobRunning) {
+        console.log('[Relance Sender] Previous job still running, skipping this cycle.');
+        return;
+    }
+
+    isJobRunning = true;
     console.log('[Relance Sender] Starting per-user parallel message sending job...');
     const startTime = Date.now();
 
@@ -376,6 +390,8 @@ async function runMessageSendingJob() {
 
     } catch (error) {
         console.error('[Relance Sender] Fatal error in sender job:', error);
+    } finally {
+        isJobRunning = false;
     }
 }
 
