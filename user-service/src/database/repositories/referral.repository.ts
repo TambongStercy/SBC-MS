@@ -1023,19 +1023,31 @@ export class ReferralRepository {
         level: number,
         page: number = 1,
         limit: number = 10,
-        subType?: string
+        subType?: string,
+        since?: Date,
+        until?: Date
     ): Promise<ReferralPaginationResponse> {
         const skip = (page - 1) * limit;
         const referrerObjectId = new Types.ObjectId(referrerId.toString());
 
+        // Build match criteria
+        const matchCriteria: any = {
+            referrer: referrerObjectId,
+            referralLevel: level,
+            archived: { $ne: true }
+        };
+
+        // Add date filters if provided
+        if (since || until) {
+            matchCriteria.createdAt = {};
+            if (since) matchCriteria.createdAt.$gte = since;
+            if (until) matchCriteria.createdAt.$lte = until;
+        }
+
         // Build pipeline dynamically to avoid TypeScript issues
         const pipeline: any[] = [
             {
-                $match: {
-                    referrer: referrerObjectId,
-                    referralLevel: level,
-                    archived: { $ne: true }
-                }
+                $match: matchCriteria
             },
             {
                 $lookup: {

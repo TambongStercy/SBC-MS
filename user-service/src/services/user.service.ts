@@ -1294,7 +1294,7 @@ export class UserService {
                     referralResponse = await referralRepository.findIndirectReferredUsersPopulated(referrerObjectId, page, limit);
                 } else {
                     referralResponse = level && [1, 2, 3].includes(level)
-                        ? await referralRepository.findReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, page, limit, subType)
+                        ? await referralRepository.findReferralsByReferrerAndLevelWithSubType(referrerObjectId, level, page, limit, subType, since, until)
                         : await referralRepository.findAllReferralsByReferrerWithSubType(referrerObjectId, page, limit, subType, since, until);
                 }
                 // Map the populated data to the expected structure
