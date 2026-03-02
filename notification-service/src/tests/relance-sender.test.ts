@@ -306,3 +306,21 @@ describe('Relance Enrollment Job', () => {
         });
     });
 });
+
+describe('Enrollment lookback window', () => {
+    it('should use a short lookback window (not 30 days) to prevent bulk enrollment', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const source = fs.readFileSync(
+            path.join(__dirname, '../services/clients/user.service.client.ts'),
+            'utf8'
+        );
+
+        // Should pass a since parameter to limit how far back we look for unpaid referrals
+        expect(source).toContain('sinceHoursAgo');
+        expect(source).toContain('?since=');
+
+        // Should NOT default to 30 days
+        expect(source).not.toContain('setDate(sinceDate.getDate() - 30)');
+    });
+});

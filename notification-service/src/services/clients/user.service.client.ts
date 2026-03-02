@@ -172,14 +172,19 @@ class UserServiceClient {
      * @param userId The ID of the user
      * @returns Array of unpaid referral objects
      */
-    async getUnpaidReferrals(userId: string): Promise<any[]> {
+    async getUnpaidReferrals(userId: string, sinceHoursAgo: number = 2): Promise<any[]> {
         if (!this.userServiceUrl) {
             log.error('User Service URL not configured. Cannot get unpaid referrals.');
             return [];
         }
 
-        const url = `${this.userServiceUrl}/users/internal/${userId}/unpaid-referrals`;
-        log.debug(`Fetching unpaid referrals for user ${userId} at ${url}`);
+        // Only fetch recent referrals (default: last 2 hours)
+        // The enrollment cron runs every 15 min, so 2 hours gives plenty of buffer
+        // to catch new signups after their 15-minute grace period.
+        // This prevents bulk-enrolling thousands of old unpaid referrals.
+        const since = new Date(Date.now() - sinceHoursAgo * 60 * 60 * 1000).toISOString();
+        const url = `${this.userServiceUrl}/users/internal/${userId}/unpaid-referrals?since=${since}`;
+        log.debug(`Fetching unpaid referrals for user ${userId} since ${since} at ${url}`);
 
         try {
             const startTime = Date.now();
