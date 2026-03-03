@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { BounceHandlerService } from '../../services/bounceHandler.service';
+import RelanceTargetModel from '../../database/models/relance-target.model';
 import logger from '../../utils/logger';
 import config from '../../config';
 import crypto from 'crypto';
@@ -72,6 +73,7 @@ export class WebhookController {
             case 'bounce':
             case 'dropped':
                 await this.bounceHandler.processBounceWebhook([event]);
+                await this.updateRelanceTracking(event);
                 break;
 
             case 'spam_report':
@@ -90,18 +92,85 @@ export class WebhookController {
 
             case 'delivered':
                 log.info('Email delivered successfully', { email, timestamp });
+                await this.updateRelanceTracking(event);
                 break;
 
             case 'open':
                 log.info('Email opened', { email, timestamp });
+                await this.updateRelanceTracking(event);
                 break;
 
             case 'click':
                 log.info('Email link clicked', { email, timestamp });
+                await this.updateRelanceTracking(event);
                 break;
 
             default:
                 log.info('Unhandled webhook event type', { eventType, email });
+        }
+    }
+
+    /**
+     * Update relance target tracking data (open, click, bounce, delivered)
+     */
+    private async updateRelanceTracking(event: any): Promise<void> {
+        try {
+            const { event: eventType, sg_message_id, timestamp } = event;
+            const messageId = sg_message_id?.split('.')[0];
+
+            if (!messageId) return;
+
+            const target = await RelanceTargetModel.findOne({
+                'messagesDelivered.sendGridMessageId': messageId
+            });
+
+            if (!target) return;
+
+            const messageIndex = target.messagesDelivered.findIndex(
+                (m: any) => m.sendGridMessageId === messageId
+            );
+
+            if (messageIndex === -1) return;
+
+            const message = target.messagesDelivered[messageIndex];
+            const eventDate = new Date(timestamp * 1000);
+
+            switch (eventType) {
+                case 'delivered':
+                    message.status = 'delivered';
+                    break;
+                case 'open':
+                    if (!message.opened) {
+                        message.opened = true;
+                        message.openedAt = eventDate;
+                        message.openCount = 1;
+                    } else {
+                        message.openCount = (message.openCount || 0) + 1;
+                    }
+                    break;
+                case 'click':
+                    if (!message.clicked) {
+                        message.clicked = true;
+                        message.clickedAt = eventDate;
+                        message.clickCount = 1;
+                    } else {
+                        message.clickCount = (message.clickCount || 0) + 1;
+                    }
+                    break;
+                case 'bounce':
+                    message.bounced = true;
+                    message.bouncedAt = eventDate;
+                    message.bounceReason = event.reason || 'Unknown';
+                    break;
+            }
+
+            target.messagesDelivered[messageIndex] = message;
+            target.markModified('messagesDelivered');
+            await target.save();
+
+            log.info(`Relance tracking updated: ${eventType} for message ${messageId}`);
+        } catch (error) {
+            log.error('Error updating relance tracking:', error);
         }
     }
 
