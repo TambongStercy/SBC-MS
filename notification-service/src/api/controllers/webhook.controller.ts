@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { BounceHandlerService } from '../../services/bounceHandler.service';
-import RelanceTargetModel from '../../database/models/relance-target.model';
+import RelanceTargetModel, { DeliveryStatus } from '../../database/models/relance-target.model';
 import logger from '../../utils/logger';
 import config from '../../config';
 import crypto from 'crypto';
@@ -137,7 +137,7 @@ export class WebhookController {
 
             switch (eventType) {
                 case 'delivered':
-                    message.status = 'delivered';
+                    message.status = DeliveryStatus.DELIVERED;
                     break;
                 case 'open':
                     if (!message.opened) {
