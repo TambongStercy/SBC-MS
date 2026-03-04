@@ -69,6 +69,9 @@ export class WebhookController {
             reason
         });
 
+        // Log event keys for debugging tracking
+        log.info(`[Webhook Debug] Event keys: ${Object.keys(event).join(', ')}, smtp-id: ${event['smtp-id']}, sg_message_id: ${event['sg_message_id']}`);
+
         switch (eventType) {
             case 'bounce':
             case 'dropped':
