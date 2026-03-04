@@ -50,19 +50,8 @@ class RelanceCampaignController {
             // Get referrals for this user - pass date filters to DB level for performance
             // This prevents fetching 20k+ referrals when only a small date range is needed
             // Default to last 1 year if no date filter specified (performance optimization for users with many referrals)
-            let dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom).toISOString() : undefined;
+            const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom).toISOString() : undefined;
             const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo).toISOString() : undefined;
-            let usedDefaultDateRange = false;
-
-            // If no dateFrom specified, default to 1 year ago for performance
-            // Users with 20k+ referrals would timeout without this limit
-            if (!dateFrom) {
-                const oneYearAgo = new Date();
-                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                dateFrom = oneYearAgo.toISOString();
-                usedDefaultDateRange = true;
-                log.info(`Preview: No dateFrom specified, defaulting to 1 year ago: ${dateFrom}`);
-            }
 
             let allReferrals = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
             log.info(`Preview: fetched ${allReferrals.length} referrals for user ${userId} (dateFrom: ${dateFrom}, dateTo: ${dateTo})`);
@@ -150,22 +139,16 @@ class RelanceCampaignController {
             }));
 
             // Build response message
-            let message = totalCount === 0 ? 'No users match the selected filters' :
+            const message = totalCount === 0 ? 'No users match the selected filters' :
                          totalCount === 1 ? '1 user matches the selected filters' :
                          `${totalCount} users match the selected filters`;
-
-            // Add note if default date range was used
-            if (usedDefaultDateRange) {
-                message += ' (showing referrals from last 12 months - set a date range to see older referrals)';
-            }
 
             res.status(200).json({
                 success: true,
                 data: {
                     totalCount,
                     sampleUsers,
-                    message,
-                    usedDefaultDateRange // Let frontend know if default was applied
+                    message
                 }
             });
 
