@@ -118,13 +118,21 @@ export class WebhookController {
             const { event: eventType, sg_message_id, timestamp } = event;
             const messageId = sg_message_id?.split('.')[0];
 
-            if (!messageId) return;
+            log.info(`[Relance Tracking] Processing ${eventType}, sg_message_id: ${sg_message_id}, extracted: ${messageId}`);
+
+            if (!messageId) {
+                log.warn(`[Relance Tracking] No message ID in event: ${JSON.stringify(event)}`);
+                return;
+            }
 
             const target = await RelanceTargetModel.findOne({
                 'messagesDelivered.sendGridMessageId': messageId
             });
 
-            if (!target) return;
+            if (!target) {
+                log.info(`[Relance Tracking] No target found for messageId: ${messageId}`);
+                return;
+            }
 
             const messageIndex = target.messagesDelivered.findIndex(
                 (m: any) => m.sendGridMessageId === messageId
