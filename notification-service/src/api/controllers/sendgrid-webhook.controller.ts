@@ -39,11 +39,12 @@ class SendGridWebhookController {
      * Process individual SendGrid event
      */
     private async processEvent(event: any): Promise<void> {
-        const { event: eventType, sg_message_id, timestamp } = event;
-        const messageId = sg_message_id?.split('.')[0]; // Remove the filter ID suffix
+        const { event: eventType, timestamp } = event;
+        // Use smtp-id (original nodemailer message ID), not sg_message_id (SendGrid's internal ID)
+        const smtpId = event['smtp-id'];
+        const messageId = smtpId?.replace(/<|>/g, '').split('@')[0];
 
         if (!messageId) {
-            log.warn('SendGrid event missing message ID:', event);
             return;
         }
 

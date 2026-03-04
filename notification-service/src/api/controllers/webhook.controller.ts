@@ -115,13 +115,13 @@ export class WebhookController {
      */
     private async updateRelanceTracking(event: any): Promise<void> {
         try {
-            const { event: eventType, sg_message_id, timestamp } = event;
-            const messageId = sg_message_id?.split('.')[0];
-
-            log.info(`[Relance Tracking] Processing ${eventType}, sg_message_id: ${sg_message_id}, extracted: ${messageId}`);
+            const { event: eventType, timestamp } = event;
+            // SendGrid's sg_message_id is their internal ID, NOT the SMTP message ID we store.
+            // The smtp-id field contains the original nodemailer message ID (e.g. <uuid@host>).
+            const smtpId = event['smtp-id'];
+            const messageId = smtpId?.replace(/<|>/g, '').split('@')[0];
 
             if (!messageId) {
-                log.warn(`[Relance Tracking] No message ID in event: ${JSON.stringify(event)}`);
                 return;
             }
 
@@ -130,7 +130,6 @@ export class WebhookController {
             });
 
             if (!target) {
-                log.info(`[Relance Tracking] No target found for messageId: ${messageId}`);
                 return;
             }
 
