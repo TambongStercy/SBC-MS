@@ -60,6 +60,7 @@ interface IConfig {
         service: string;
         user: string;
         password: string;
+        port: number;
         from: string;
         // Add bounce handling configuration
         bounceHandling: {
