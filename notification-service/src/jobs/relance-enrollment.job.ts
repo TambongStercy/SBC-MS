@@ -43,10 +43,12 @@ async function enrollDefaultTargets(userId: string, config: any): Promise<number
                     continue;
                 }
 
-                // Check if referral is already in the loop
+                // Check if referral is already in the loop OR has completed it
+                // Including COMPLETED prevents re-enrolling referrals that finished the 7-day cycle
                 const existingTarget = await RelanceTargetModel.findOne({
                     referralUserId: referralId,
-                    status: { $in: [TargetStatus.ACTIVE, TargetStatus.PAUSED] }
+                    campaignId: null, // Default campaign only
+                    status: { $in: [TargetStatus.ACTIVE, TargetStatus.PAUSED, TargetStatus.COMPLETED] }
                 });
 
                 if (existingTarget) {
@@ -243,12 +245,10 @@ async function runEnrollmentCheck() {
     const startTime = Date.now();
 
     try {
-        // STEP 1: Check for campaigns that should auto-start
-        const nextCampaign = await campaignService.getNextCampaignToStart();
-        if (nextCampaign) {
-            console.log(`[Relance Enrollment] Auto-starting campaign ${nextCampaign._id}: ${nextCampaign.name}`);
-            await campaignService.startCampaign(nextCampaign._id.toString(), nextCampaign.userId.toString());
-        }
+        // NOTE: Campaigns no longer auto-start. Users must manually start campaigns.
+        // Auto-starting caused campaigns to unexpectedly restart after completion.
+        // The getNextCampaignToStart() and runAfterCampaignId queuing is kept in the
+        // service for potential future opt-in use, but disabled from the cron job.
 
         // STEP 2: Find all users with relance configs that have a valid channel
         // Note: We fetch configs regardless of 'enabled' status because 'enabled' only controls

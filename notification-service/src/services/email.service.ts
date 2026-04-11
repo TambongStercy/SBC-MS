@@ -80,16 +80,20 @@ class EmailService {
                         }
                     } as nodemailer.TransportOptions; // Cast to assure TypeScript
                 } else {
-                    // For other services, or generic SMTP
+                    // Generic SMTP (iRedMail, Gmail, etc.)
+                    const smtpPort = config.email.port || 465;
                     transportConfig = {
-                        host: config.email.service, // Assuming service name can be host if not 'sendgrid'
-                        port: 465,
-                        secure: true, // true for 465, false for other ports
+                        host: config.email.service,
+                        port: smtpPort,
+                        secure: smtpPort === 465, // true for 465 (SSL), false for 587 (STARTTLS)
                         auth: {
                             user: config.email.user,
                             pass: config.email.password,
-                        }
-                    } as nodemailer.TransportOptions; // Cast to assure TypeScript
+                        },
+                        tls: {
+                            rejectUnauthorized: false, // Allow self-signed certs (common with iRedMail)
+                        },
+                    } as nodemailer.TransportOptions;
                 }
 
                 this.transporter = nodemailer.createTransport(transportConfig);

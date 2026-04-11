@@ -228,14 +228,8 @@ class CampaignService {
                 return { success: false, error: `Cannot start campaign with status: ${campaign.status}` };
             }
 
-            // Check if default campaign should be paused
+            // Default relance runs independently — starting a filtered campaign does not affect it.
             const config = await RelanceConfigModel.findOne({ userId });
-            if (config && !config.allowSimultaneousCampaigns) {
-                // Pause default campaign
-                config.defaultCampaignPaused = true;
-                await config.save();
-                log.info(`Paused default campaign for user ${userId} due to filtered campaign start`);
-            }
 
             // Activate campaign
             campaign.status = CampaignStatus.ACTIVE;
@@ -342,22 +336,7 @@ class CampaignService {
                 }
             );
 
-            // Check if this was the last active filtered campaign
-            const activeFilteredCampaigns = await CampaignModel.countDocuments({
-                userId,
-                type: CampaignType.FILTERED,
-                status: CampaignStatus.ACTIVE
-            });
-
-            // Resume default campaign if no more filtered campaigns
-            if (activeFilteredCampaigns === 0) {
-                const config = await RelanceConfigModel.findOne({ userId });
-                if (config && config.defaultCampaignPaused) {
-                    config.defaultCampaignPaused = false;
-                    await config.save();
-                    log.info(`Resumed default campaign for user ${userId} after filtered campaign cancellation`);
-                }
-            }
+            // Default relance is independent — cancelling a filtered campaign does not affect it.
 
             log.info(`Cancelled campaign ${campaignId} for user ${userId}: ${reason || 'No reason provided'}`);
 

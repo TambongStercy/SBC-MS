@@ -159,7 +159,8 @@ const config: IConfig = {
         service: process.env.EMAIL_SERVICE || '',
         user: process.env.EMAIL_USER || '',
         password: process.env.EMAIL_PASSWORD || '',
-        from: process.env.EMAIL_FROM || 'Sniper Business Center <noreply@sniperbuisnesscenter.com>', // Use main verified domain
+        port: parseInt(process.env.EMAIL_PORT || '465', 10),
+        from: process.env.EMAIL_FROM || 'Sniper Business Center <noreply@sniperbuisnesscenter.com>',
         // Add bounce handling configuration
         bounceHandling: {
             enabled: process.env.EMAIL_BOUNCE_HANDLING_ENABLED === 'true',

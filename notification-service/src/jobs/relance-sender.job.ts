@@ -417,20 +417,9 @@ async function checkAndCompleteCampaigns() {
                 campaign.actualEndDate = new Date();
                 await campaign.save();
 
-                // Check if this was the last active filtered campaign for this user
-                const userActiveCampaigns = await CampaignModel.countDocuments({
-                    userId: campaign.userId,
-                    status: CampaignStatus.ACTIVE
-                });
-
-                if (userActiveCampaigns === 0) {
-                    const config = await RelanceConfigModel.findOne({ userId: campaign.userId });
-                    if (config && config.defaultCampaignPaused) {
-                        config.defaultCampaignPaused = false;
-                        await config.save();
-                        console.log(`[Relance Sender] Resumed default campaign for user ${campaign.userId.toString()}`);
-                    }
-                }
+                // Default relance is independent — it runs continuously as long as the user has it enabled.
+                // Only filtered/custom campaigns have a finite lifecycle and stop here.
+                console.log(`[Relance Sender] Filtered campaign ${campaign._id} completed for user ${campaign.userId.toString()}.`);
             }
         }
 
