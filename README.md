@@ -329,14 +329,68 @@ This outlines a basic deployment strategy suitable for a single Virtual Private 
 8.  Restart the service: `pm2 restart service-name-prod`
 9.  Repeat for other updated services/frontend.
 
+## Git Workflow & Branching Strategy
+
+This project uses **GitFlow** with automated CI/CD via GitHub Actions.
+
+### Branches
+
+| Branch | Purpose | Auto-deploys to |
+|--------|---------|-----------------|
+| `master` | Production code | `sniperbuisnesscenter.com` (requires approval) |
+| `develop` | Preprod/staging | `preprod.sniperbuisnesscenter.com` |
+| `feature/*` | New features | — |
+| `hotfix/*` | Urgent prod fixes | — |
+| `release/*` | Release preparation | — |
+
+### Workflow
+
+1. **New feature**: Branch from `develop` → work → PR to `develop` → auto-deploys to preprod
+2. **Ship to prod**: PR from `develop` → `master` → approve → auto-deploys to prod
+3. **Hotfix**: Branch from `master` → fix → PR to `master` + PR to `develop`
+
+### CI/CD Pipelines
+
+| Workflow | Trigger | Action |
+|----------|---------|--------|
+| `ci.yml` | PR to `develop` or `master` | Build, lint, test all services |
+| `deploy-preprod.yml` | Push to `develop` | SSH deploy to preprod |
+| `deploy-prod.yml` | Push to `master` | SSH deploy to prod (approval required) |
+| `deploy-preprod-manual.yml` | Manual trigger | Deploy any branch to preprod |
+
+### Environments
+
+| Environment | Backend Ports | Domain | Admin |
+|-------------|--------------|--------|-------|
+| Production | 3000-3008 | `sniperbuisnesscenter.com` | `admin.sniperbuisnesscenter.com` |
+| Preprod | 6000-6008 | `preprod.sniperbuisnesscenter.com` | `preprod-admin.sniperbuisnesscenter.com` |
+
+### Server Paths
+
+| Environment | Backend | Web UI |
+|-------------|---------|--------|
+| Production | `/var/www/SBC-MS` | `/var/www/SBC-WEB-UI` |
+| Preprod | `/var/www/SBC-MS-preprod` | `/var/www/SBC-WEB-UI-preprod` |
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `SSH_HOST` | Server IP address |
+| `SSH_USER` | SSH username |
+| `SSH_PRIVATE_KEY` | SSH private key |
+| `SSH_PORT` | SSH port |
+
 ## Contributing
 
-(Optional: Add guidelines if others will contribute)
-*   Fork the repository.
-*   Create a new branch for your feature or bug fix.
-*   Make your changes.
-*   Ensure tests pass (if applicable).
-*   Submit a pull request.
+1. Branch from `develop`: `git checkout develop && git pull && git checkout -b feature/my-feature`
+2. Make your changes and commit
+3. Push: `git push -u origin feature/my-feature`
+4. Create a Pull Request to `develop` on GitHub
+5. After review and merge, changes auto-deploy to preprod for testing
+6. When ready for production, create a PR from `develop` to `master`
+
+**Important:** Never push directly to `master` or `develop`. Always use feature branches and Pull Requests.
 
 ---
 
