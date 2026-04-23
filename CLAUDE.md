@@ -249,7 +249,20 @@ This project uses **GitFlow**. All Claude Code sessions MUST follow these rules:
    git push -u origin feature/description-of-work
    ```
    Then inform the user to create a PR to `develop` on GitHub.
-4. **NEVER merge branches locally.** All merges happen via Pull Requests on GitHub.
+4. **NEVER merge branches locally.** All merges happen via Pull Requests on GitHub using `gh` CLI:
+   ```bash
+   # Create a PR to develop
+   gh pr create --base develop --title "feat: description" --body "Summary of changes"
+   
+   # Merge a PR (after CI passes)
+   gh pr merge <PR-number> --merge --delete-branch
+   
+   # List open PRs
+   gh pr list
+   
+   # View PR status/checks
+   gh pr checks <PR-number>
+   ```
 5. **Hotfixes** (urgent prod bugs) branch from `master`:
    ```bash
    git checkout master
