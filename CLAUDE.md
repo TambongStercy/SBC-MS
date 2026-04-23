@@ -222,3 +222,48 @@ npm run validate:whatsapp         # Validate WhatsApp setup
 ```
 
 When working with this codebase, always check the specific service's package.json for available scripts and refer to the comprehensive README.md for deployment instructions.
+
+## Git Workflow (CRITICAL — Must Follow)
+
+This project uses **GitFlow**. All Claude Code sessions MUST follow these rules:
+
+### Branches
+- `master` — production. **NEVER push directly to master.**
+- `develop` — preprod/staging. **NEVER push directly to develop.**
+- `feature/*` — for new work (branch from `develop`)
+- `hotfix/*` — for urgent prod fixes (branch from `master`)
+- `release/*` — for release prep (branch from `develop`)
+
+### Rules
+1. **NEVER commit or push directly to `master` or `develop`.** Always use a feature branch and Pull Request.
+2. **Before starting any work**, check which branch you're on with `git branch`. If on `master` or `develop`, create a feature branch first:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git checkout -b feature/description-of-work
+   ```
+3. **When work is done**, commit and push the feature branch:
+   ```bash
+   git add <specific-files>
+   git commit -m "descriptive message"
+   git push -u origin feature/description-of-work
+   ```
+   Then inform the user to create a PR to `develop` on GitHub.
+4. **NEVER merge branches locally.** All merges happen via Pull Requests on GitHub.
+5. **Hotfixes** (urgent prod bugs) branch from `master`:
+   ```bash
+   git checkout master
+   git pull origin master
+   git checkout -b hotfix/description-of-fix
+   ```
+
+### CI/CD Pipeline
+- PRs to `develop` or `master` trigger CI checks (build, lint, test)
+- Merging to `develop` → auto-deploys to **preprod** (`preprod.sniperbuisnesscenter.com`)
+- Merging to `master` → deploys to **production** (requires approval)
+
+### Environments
+- **Production**: services on ports 3000-3008, domain `sniperbuisnesscenter.com`
+- **Preprod**: services on ports 6000-6008, domain `preprod.sniperbuisnesscenter.com`
+- **Admin prod**: `admin.sniperbuisnesscenter.com`
+- **Admin preprod**: `preprod-admin.sniperbuisnesscenter.com`
