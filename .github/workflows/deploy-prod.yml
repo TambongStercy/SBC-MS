@@ -1,0 +1,81 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend to Production
+    runs-on: ubuntu-latest
+    environment: production  # Requires manual approval via GitHub environment protection
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            echo "=== Production Backend Deployment Started ==="
+            bash /var/www/SBC-MS/scripts/deploy-prod.sh
+            echo "=== Production Backend Deployment Completed ==="
+
+  deploy-web:
+    name: Deploy Web UI to Production
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    environment: production
+
+    steps:
+      - name: Deploy Web UI via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          command_timeout: 10m
+          script: |
+            echo "=== Production Web UI Deployment Started ==="
+            bash /var/www/SBC-WEB-UI/scripts/deploy-web-prod.sh 2>/dev/null || echo "Web UI deploy script not found in web repo - skipping"
+            echo "=== Production Web UI Deployment Completed ==="
+
+  health-check:
+    name: Production Health Check
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+
+    steps:
+      - name: Check service health
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "=== Production Health Check ==="
+            FAILED=0
+            for PORT in 3001 3002 3003 3004 3006 3007 3008; do
+              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+                echo "Port $PORT: OK"
+              else
+                echo "Port $PORT: FAILED"
+                FAILED=1
+              fi
+            done
+            if [ $FAILED -eq 1 ]; then
+              echo "WARNING: Some services failed health check!"
+              exit 1
+            fi
+            echo "All services healthy."

@@ -1,0 +1,49 @@
+name: Deploy to Preprod
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: deploy-preprod
+  cancel-in-progress: true
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend to Preprod
+    runs-on: ubuntu-latest
+    environment: preprod
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            echo "=== Preprod Backend Deployment Started ==="
+            bash /var/www/SBC-MS-preprod/scripts/deploy-preprod.sh
+            echo "=== Preprod Backend Deployment Completed ==="
+
+  deploy-admin:
+    name: Deploy Admin to Preprod
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    environment: preprod
+
+    steps:
+      - name: Verify admin is accessible
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "Admin frontend built as part of backend deploy."
+            echo "Checking admin build output exists..."
+            ls -la /var/www/SBC-MS-preprod/admin-frontend-ms/dist/index.html && echo "OK" || echo "WARN: Admin build not found"

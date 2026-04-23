@@ -1,0 +1,115 @@
+name: CI - Build, Lint & Test
+
+on:
+  pull_request:
+    branches: [develop, master]
+
+jobs:
+  build:
+    name: Build Services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - gateway-service
+          - user-service
+          - notification-service
+          - payment-service
+          - product-service
+          - tombola-service
+          - settings-service
+          - chat-service
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.service }}
+        run: npm ci
+
+      - name: Build TypeScript
+        working-directory: ${{ matrix.service }}
+        run: npm run build
+
+  build-admin:
+    name: Build Admin Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: admin-frontend-ms/package-lock.json
+
+      - name: Install dependencies
+        working-directory: admin-frontend-ms
+        run: npm ci
+
+      - name: Build
+        working-directory: admin-frontend-ms
+        run: npm run build
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: notification-service
+          - service: tombola-service
+          - service: admin-frontend-ms
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.service }}
+        run: npm ci
+
+      - name: Lint
+        working-directory: ${{ matrix.service }}
+        run: npm run lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: notification-service
+          - service: gateway-service
+          - service: product-service
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.service }}
+        run: npm ci
+
+      - name: Run tests
+        working-directory: ${{ matrix.service }}
+        run: npm test

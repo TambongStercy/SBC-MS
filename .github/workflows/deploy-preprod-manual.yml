@@ -1,0 +1,97 @@
+name: Deploy Branch to Preprod (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy to preprod'
+        required: true
+        default: 'develop'
+      deploy_web:
+        description: 'Also deploy web UI?'
+        required: false
+        type: boolean
+        default: false
+      web_branch:
+        description: 'Web UI branch (if deploying web)'
+        required: false
+        default: 'develop'
+
+concurrency:
+  group: deploy-preprod
+  cancel-in-progress: true
+
+jobs:
+  deploy-backend:
+    name: Deploy ${{ inputs.branch }} to Preprod
+    runs-on: ubuntu-latest
+    environment: preprod
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            echo "=== Manual Preprod Deployment: branch ${{ inputs.branch }} ==="
+            cd /var/www/SBC-MS-preprod
+
+            # Fetch and checkout the specified branch
+            git fetch origin ${{ inputs.branch }}
+            git checkout ${{ inputs.branch }} 2>/dev/null || git checkout -b ${{ inputs.branch }} origin/${{ inputs.branch }}
+            git reset --hard origin/${{ inputs.branch }}
+
+            # Build
+            bash ./build-all.sh --install --build
+
+            # Build admin frontend
+            cd admin-frontend-ms && npm install && npm run build && cd ..
+
+            # Restart PM2
+            pm2 restart ecosystem.preprod.config.js --update-env 2>/dev/null || pm2 start ecosystem.preprod.config.js
+            pm2 save
+
+            # Health check
+            sleep 5
+            FAILED=0
+            for PORT in 6001 6002 6003 6004 6006 6007 6008; do
+              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+                echo "Port $PORT: OK"
+              else
+                echo "Port $PORT: FAILED"
+                FAILED=1
+              fi
+            done
+            [ $FAILED -eq 0 ] && echo "All preprod services healthy." || echo "WARNING: Some services failed."
+            echo "=== Manual Preprod Deployment Completed ==="
+
+  deploy-web:
+    name: Deploy Web UI to Preprod
+    runs-on: ubuntu-latest
+    if: ${{ inputs.deploy_web }}
+    environment: preprod
+
+    steps:
+      - name: Deploy Web UI via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          command_timeout: 10m
+          script: |
+            echo "=== Preprod Web UI Deployment: branch ${{ inputs.web_branch }} ==="
+            cd /var/www/SBC-WEB-UI-preprod
+            git fetch origin ${{ inputs.web_branch }}
+            git checkout ${{ inputs.web_branch }} 2>/dev/null || git checkout -b ${{ inputs.web_branch }} origin/${{ inputs.web_branch }}
+            git reset --hard origin/${{ inputs.web_branch }}
+            npm install
+            npm run build
+            echo "=== Preprod Web UI Deployment Completed ==="
