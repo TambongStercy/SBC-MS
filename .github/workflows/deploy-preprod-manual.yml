@@ -16,6 +16,7 @@ on:
         description: 'Web UI branch (if deploying web)'
         required: false
         default: 'develop'
+        type: string
 
 concurrency:
   group: deploy-preprod

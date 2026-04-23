@@ -18,8 +18,8 @@ cd "$WEB_DIR" || { echo "$LOG_PREFIX ERROR: Directory $WEB_DIR not found"; exit 
 
 # Pull latest master branch
 echo "$LOG_PREFIX Pulling latest master branch..."
-git fetch origin master
-git reset --hard origin/master
+git fetch origin main
+git reset --hard origin/main
 
 # Install dependencies
 echo "$LOG_PREFIX Installing dependencies..."
