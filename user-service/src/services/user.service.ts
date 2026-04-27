@@ -207,7 +207,7 @@ export class UserService {
         // and doesn't contain the incoming referrer-related codes
         const userToCreate: Partial<IUser> = { ...userDataWithoutReferrerInfo }; // Explicitly type as Partial<IUser>
 
-        if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.sex || !userToCreate.birthDate || !userToCreate.country || !userToCreate.region || !userToCreate.phoneNumber) {
+        if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.country || !userToCreate.phoneNumber) {
             throw new Error('Missing required registration fields');
         }
 
