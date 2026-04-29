@@ -965,14 +965,21 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             sortOrder = 'desc',
         } = options;
 
+        // Accounts excluded from analytics display
+        const excludedUserIds = [
+            new Types.ObjectId('6679599c7731445b46b4aa67'), // mariline kopguep
+            new Types.ObjectId('6672f5864fad2a2bf91cdc21'), // jacques kenfack
+        ];
+
         const matchStage: any = {
             status: 'completed',
             deleted: { $ne: true },
             type: { $in: ['withdrawal', 'deposit'] },
+            userId: { $nin: excludedUserIds },
         };
 
         if (userIds && userIds.length > 0) {
-            matchStage.userId = { $in: userIds };
+            matchStage.userId = { $in: userIds.filter(id => !excludedUserIds.some(ex => ex.equals(id))) };
         }
 
         const pipeline: any[] = [
