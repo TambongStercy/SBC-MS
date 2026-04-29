@@ -4493,6 +4493,21 @@ export class UserService {
             return null;
         }
     }
+    /**
+     * Get user IDs filtered by country code.
+     */
+    async getUserIdsByCountry(country: string): Promise<string[]> {
+        try {
+            const users = await UserModel.find(
+                { country, deleted: { $ne: true } },
+                { _id: 1 }
+            ).lean();
+            return users.map((u: { _id: any }) => u._id.toString());
+        } catch (error: any) {
+            log.error(`Error getting user IDs by country: ${error.message}`);
+            throw new Error('Failed to get user IDs by country');
+        }
+    }
 }
 
 // Export an instance
