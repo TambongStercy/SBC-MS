@@ -69,6 +69,9 @@ serviceRouter.get('/:userId/unpaid-referrals', (req, res) => userController.getU
 serviceRouter.get('/:userId/referrals-for-campaign', (req, res) => userController.getReferralsForCampaign(req, res));
 serviceRouter.get('/:userId/has-relance-subscription', (req, res) => userController.hasRelanceSubscription(req, res));
 
+// Internal route to get user IDs filtered by country
+serviceRouter.get('/ids-by-country', (req, res) => userController.getUserIdsByCountry(req, res));
+
 // Mount the service router under a dedicated path *before* user auth middleware
 router.use('/internal', serviceRouter);
 
