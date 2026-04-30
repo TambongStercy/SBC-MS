@@ -943,6 +943,15 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             throw error;
         }
     }
+    async findByExternalId(externalTransactionId: string): Promise<ITransaction | null> {
+        try {
+            return await TransactionModel.findOne({ externalTransactionId, deleted: { $ne: true } }).exec();
+        } catch (error) {
+            log.error(`Error finding transaction by external ID ${externalTransactionId}: ${error}`);
+            return null;
+        }
+    }
+
     /**
      * Aggregate total withdrawn and earned per user.
      * Optionally filter by a set of userIds.

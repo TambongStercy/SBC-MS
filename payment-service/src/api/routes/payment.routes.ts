@@ -72,6 +72,12 @@ router.post('/webhooks/nowpayments', paymentController.handleNowPaymentsWebhook)
 // Route for NOWPayments payout webhook endpoint
 router.post('/webhooks/nowpayments/payout', paymentController.handleNowPaymentsPayoutWebhook);
 
+// Route for MoneyFusion payment webhook
+router.post('/webhooks/moneyfusion', paymentController.handleMoneyFusionPayinWebhook);
+
+// Route for MoneyFusion payout webhook
+router.post('/webhooks/moneyfusion/payout', paymentController.handleMoneyFusionPayoutWebhook);
+
 // --- Crypto Payment Routes ---
 
 // Get available cryptocurrencies

@@ -337,24 +337,25 @@ export class PaymentController {
         try {
             const payload = req.body;
 
-            log.info(`Received CinetPay webhook with transaction ID: ${payload?.cpm_trans_id}`);
-            // console.log('CinetPay webhook payload:', payload);
+            // New API payload: { notify_token, merchant_transaction_id, transaction_id, user: {...} }
+            log.info(`Received CinetPay webhook: merchant_tx=${payload?.merchant_transaction_id}, tx=${payload?.transaction_id}`);
 
-            if (!payload.cpm_trans_id) {
-                log.warn('CinetPay webhook missing transaction ID');
-                return res.status(400).json({
-                    success: false,
-                    message: 'Missing transaction ID'
+            if (!payload.merchant_transaction_id && !payload.transaction_id) {
+                log.warn('CinetPay webhook missing transaction IDs');
+                return res.status(200).json({
+                    success: true,
+                    message: 'Ignored: missing transaction IDs'
                 });
             }
 
             await paymentService.handleCinetPayWebhook(payload);
-            log.info(`Successfully processed CinetPay webhook for transaction ID: ${payload.cpm_trans_id}`);
+            log.info(`Successfully processed CinetPay webhook for merchant_tx: ${payload.merchant_transaction_id}`);
 
             res.status(200).json({ success: true });
         } catch (error: any) {
             log.error('Error processing CinetPay webhook:', error);
-            res.status(500).json({ success: false, message: error.message || 'Webhook processing failed' });
+            // Return 200 to prevent CinetPay from retrying endlessly
+            res.status(200).json({ success: false, message: error.message || 'Webhook processing failed' });
         }
     };
 
@@ -442,6 +443,30 @@ export class PaymentController {
                 success: false,
                 message: error.message || 'NOWPayments payout webhook processing failed'
             });
+        }
+    };
+
+    public handleMoneyFusionPayinWebhook = async (req: Request, res: Response) => {
+        try {
+            const payload = req.body;
+            log.info(`Received MoneyFusion payin webhook: event=${payload?.event}, tokenPay=${payload?.tokenPay}`);
+            await paymentService.handleMoneyFusionPayinWebhook(payload);
+            res.status(200).json({ success: true });
+        } catch (error: any) {
+            log.error('Error processing MoneyFusion payin webhook:', error);
+            res.status(500).json({ success: false, message: error.message });
+        }
+    };
+
+    public handleMoneyFusionPayoutWebhook = async (req: Request, res: Response) => {
+        try {
+            const payload = req.body;
+            log.info(`Received MoneyFusion payout webhook: event=${payload?.event}, tokenPay=${payload?.tokenPay}`);
+            await paymentService.handleMoneyFusionPayoutWebhook(payload);
+            res.status(200).json({ success: true });
+        } catch (error: any) {
+            log.error('Error processing MoneyFusion payout webhook:', error);
+            res.status(500).json({ success: false, message: error.message });
         }
     };
 
