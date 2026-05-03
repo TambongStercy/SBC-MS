@@ -270,8 +270,16 @@ This project uses **GitFlow**. All Claude Code sessions MUST follow these rules:
    git checkout -b hotfix/description-of-fix
    ```
 
+### When to Use Feature Branches vs Direct Commits
+- **Feature branches + PRs**: Required for code changes that affect app behavior (features, bug fixes, refactors)
+- **Batch non-code changes**: Documentation, README updates, config tweaks, and other changes that don't affect the running app should NOT get their own feature branch. Instead:
+  - Commit them locally on `develop`
+  - Push them together with the next real code change, OR
+  - Push them when several non-code changes have accumulated
+- This avoids wasting time and tokens on CI/PR cycles for trivial changes.
+
 ### CI/CD Pipeline
-- PRs to `develop` or `master` trigger CI checks (build, lint, test)
+- PRs to `develop` or `master` trigger CI checks (build)
 - Merging to `develop` → auto-deploys to **preprod** (`preprod.sniperbuisnesscenter.com`)
 - Merging to `master` → deploys to **production** (requires approval)
 
