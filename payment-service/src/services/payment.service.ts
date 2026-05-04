@@ -513,7 +513,7 @@ class PaymentService {
             // Determine which payout service to use based on country code using the same logic as payments
             let payoutService;
             let payoutNotificationUrl: string;
-            let providerName: 'CinetPay' | 'FeexPay';
+            let providerName: 'CinetPay' | 'FeexPay' | 'MoneyFusion';
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
 
@@ -527,11 +527,14 @@ class PaymentService {
                 payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`;
                 log.info(`Using CinetPay for payout to ${countryCode} based on gateway selection.`);
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
-                // For countries that use FeexPay
                 payoutService = feexPayPayoutService;
                 providerName = 'FeexPay';
-                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`; // Assuming a FeexPay webhook endpoint
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`;
                 log.info(`Using FeexPay for payout to ${countryCode} based on gateway selection.`);
+            } else if (selectedGateway === PaymentGateway.MONEYFUSION) {
+                providerName = 'MoneyFusion';
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`;
+                log.info(`Using MoneyFusion for payout to ${countryCode} based on gateway selection.`);
             } else {
                 log.error(`Unsupported gateway selected for withdrawal: ${selectedGateway} for country ${countryCode}`);
                 throw new AppError(`Unsupported country for withdrawals: ${countryCode}`, 400);
@@ -1082,7 +1085,7 @@ class PaymentService {
                 ? withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '');
 
-            let payoutPromise: Promise<CinetPayPayoutResult | FeexPayPayoutResult>;
+            let payoutPromise: Promise<CinetPayPayoutResult | FeexPayPayoutResult | any>;
 
             if (selectedPayoutService === 'CinetPay') {
                 const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalAccountInfo.momoOperator];
@@ -1093,7 +1096,7 @@ class PaymentService {
                     countryCode: withdrawalAccountInfo.countryCode,
                     recipientName: userName || 'SBC User',
                     recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
-                    paymentMethod: cinetpayPaymentMethod, // Required for Wave (WAVECI/WAVESN), optional for others
+                    paymentMethod: cinetpayPaymentMethod,
                     description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                     client_transaction_id: updatedTransaction.transactionId,
                     notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`
@@ -1102,14 +1105,30 @@ class PaymentService {
                 payoutPromise = feexPayPayoutService.initiatePayout({
                     userId: updatedTransaction.userId.toString(),
                     amount: netAmountForPayout,
-                    phoneNumber: nationalPhoneNumber, // FeexPay may require national or full, depends on endpoint
+                    phoneNumber: nationalPhoneNumber,
                     countryCode: withdrawalAccountInfo.countryCode,
-                    momoOperator: withdrawalAccountInfo.momoOperator, // FeexPay uses this to pick endpoint
+                    momoOperator: withdrawalAccountInfo.momoOperator,
                     recipientName: userName || 'SBC User',
                     recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
                     description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                     client_transaction_id: updatedTransaction.transactionId,
-                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay` // Assuming FeexPay webhook
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`
+                });
+            } else if (selectedPayoutService === 'MoneyFusion') {
+                const withdrawMode = moneyFusionService.getWithdrawMode(
+                    withdrawalAccountInfo.countryCode,
+                    withdrawalAccountInfo.momoOperator
+                );
+                if (!withdrawMode) {
+                    throw new AppError(`Withdrawal not supported for operator: ${withdrawalAccountInfo.momoOperator}`, 400);
+                }
+                const fullPhone = dialingPrefix + nationalPhoneNumber;
+                payoutPromise = moneyFusionService.initiatePayout({
+                    countryCode: withdrawalAccountInfo.countryCode,
+                    phone: fullPhone,
+                    amount: netAmountForPayout,
+                    withdrawMode,
+                    webhookUrl: `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`
                 });
             } else {
                 log.error(`Unknown payout service selected for transaction ${updatedTransaction.transactionId}: ${selectedPayoutService}`);
@@ -1123,15 +1142,19 @@ class PaymentService {
                 let payoutMessage: string | undefined;
 
                 if (selectedPayoutService === 'CinetPay') {
-                    const cinetpayRes = payoutRes as CinetPayPayoutResult; // Cast to CinetPay's result type
+                    const cinetpayRes = payoutRes as CinetPayPayoutResult;
                     providerTxId = cinetpayRes.cinetpayTransactionId;
                     finalProviderName = 'CinetPay';
                     payoutMessage = cinetpayRes.message;
                 } else if (selectedPayoutService === 'FeexPay') {
-                    const feexpayRes = payoutRes as FeexPayPayoutResult; // Cast to FeexPay's result type
+                    const feexpayRes = payoutRes as FeexPayPayoutResult;
                     providerTxId = feexpayRes.feexpayReference;
                     finalProviderName = 'FeexPay';
                     payoutMessage = feexpayRes.message;
+                } else if (selectedPayoutService === 'MoneyFusion') {
+                    providerTxId = payoutRes.tokenPay;
+                    finalProviderName = 'MoneyFusion';
+                    payoutMessage = payoutRes.message;
                 }
 
                 if (payoutRes.success) {
@@ -3066,8 +3089,9 @@ class PaymentService {
             return PaymentGateway.FEEXPAY;
         }
 
-        // Cameroon: Use MoneyFusion (CinetPay dropped CM support)
-        if (countryCode === 'CM') {
+        // MoneyFusion countries (CM, CD, GA, NE, ML)
+        const moneyFusionCountries = ['CM', 'CD', 'GA', 'NE', 'ML'];
+        if (moneyFusionCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using MONEYFUSION.`);
             return PaymentGateway.MONEYFUSION;
         }
@@ -3075,8 +3099,6 @@ class PaymentService {
         // Countries that use CinetPay for both payments and withdrawals
         const cinetpaySupportedCountries = [
             'BF', // Burkina Faso
-            'ML', // Mali
-            'NE', // Niger
             'CI', // Côte d'Ivoire
             'SN', // Sénégal
         ];
@@ -3086,7 +3108,7 @@ class PaymentService {
             return PaymentGateway.CINETPAY;
         } else {
             // List of countries that use FeexPay for both payments and withdrawals
-            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ'];
+            const feexpaySupportedCountries = ['CG', 'GN', 'KE', 'BJ'];
             if (feexpaySupportedCountries.includes(countryCode)) {
                 log.info(`Country ${countryCode} selected, using FEEXPAY.`);
                 return PaymentGateway.FEEXPAY;

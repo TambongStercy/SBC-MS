@@ -10,22 +10,23 @@ import {
   // UserRound,
 } from "lucide-react";
 import Loader from "../components/common/loader";
-import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats, SubscriptionType } from '../services/adminUserApi';
-import { PaginationOptions } from '../services/adminUserApi'; // Import PaginationOptions if needed elsewhere or keep local
-import toast from 'react-hot-toast'; // Import react-hot-toast
-import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
+import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats, SubscriptionType, blockUser, unblockUser } from '../services/adminUserApi';
+import { PaginationOptions } from '../services/adminUserApi';
+import toast from 'react-hot-toast';
+import { getAvatarUrl } from '../api/apiClient';
 
-// Define props for UserTablePlaceholder to include handlers
 interface UserTablePlaceholderProps {
   users: AdminUserData[];
   onViewUser: (userId: string) => void;
-  // Add props for block/unblock/delete later
+  onToggleBlock: (user: AdminUserData) => void;
+  blockingId: string | null;
 }
 
-// Update UserTablePlaceholder to accept and use props
 const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
   users,
   onViewUser,
+  onToggleBlock,
+  blockingId,
 }) => (
   <div className="overflow-x-auto shadow-md rounded-lg">
     <table className="min-w-full divide-y divide-gray-700">
@@ -87,12 +88,27 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
               </span>
             </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center">
-              <button
-                onClick={() => onViewUser(user._id)}
-                className="text-indigo-400 hover:text-indigo-300"
-              >
-                View
-              </button>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={() => onViewUser(user._id)}
+                  className="text-indigo-400 hover:text-indigo-300"
+                >
+                  View
+                </button>
+                {!user.deleted && (
+                  <button
+                    onClick={() => onToggleBlock(user)}
+                    disabled={blockingId === user._id}
+                    className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors disabled:opacity-50 ${
+                      user.blocked
+                        ? 'bg-green-700 text-green-100 hover:bg-green-600'
+                        : 'bg-red-700 text-red-100 hover:bg-red-600'
+                    }`}
+                  >
+                    {blockingId === user._id ? '...' : user.blocked ? 'Unblock' : 'Block'}
+                  </button>
+                )}
+              </div>
             </td>
           </tr>
         ))}
@@ -259,10 +275,29 @@ function Users() {
     setFilters(newFilters);
   };
 
-  // --- Action Handlers --- 
+  const [blockingId, setBlockingId] = useState<string | null>(null);
+
+  // --- Action Handlers ---
   const handleViewUser = (userId: string) => {
-    console.log("Viewing user:", userId);
     navigate(`/userpage/${userId}`);
+  };
+
+  const handleToggleBlock = async (user: AdminUserData) => {
+    setBlockingId(user._id);
+    try {
+      if (user.blocked) {
+        await unblockUser(user._id);
+        toast.success(`${user.name} unblocked`);
+      } else {
+        await blockUser(user._id);
+        toast.success(`${user.name} blocked`);
+      }
+      setUsers(prev => prev.map(u => u._id === user._id ? { ...u, blocked: !u.blocked } : u));
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Action failed');
+    } finally {
+      setBlockingId(null);
+    }
   };
 
   if ((isLoading || isLoadingStats) && users.length === 0 && !summaryStats) {
@@ -316,6 +351,8 @@ function Users() {
           <UserTablePlaceholder
             users={users}
             onViewUser={handleViewUser}
+            onToggleBlock={handleToggleBlock}
+            blockingId={blockingId}
           />
         )}
 
