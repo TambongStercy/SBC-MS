@@ -3558,7 +3558,7 @@ class PaymentService {
             log.info(`CinetPay payment request: merchant_tx=${merchantTxId}, amount=${totalAmountWithFees}, currency=${currency}`);
 
             const response = await axios.post(
-                `${config.cinetpay.baseUrl}/v1/payment`,
+                `${config.cinetpay.baseUrl}/payment`,
                 requestBody,
                 {
                     headers: {
