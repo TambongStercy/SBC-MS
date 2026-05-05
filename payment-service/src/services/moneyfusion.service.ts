@@ -78,15 +78,17 @@ export class MoneyFusionService {
             throw new Error('MoneyFusion API URL not configured');
         }
 
-        const payload = {
+        const payload: Record<string, any> = {
             totalPrice: request.amount,
             article: [{ payment: request.amount }],
             personal_Info: [request.personalInfo || {}],
-            numeroSend: request.phoneNumber,
             nomclient: request.customerName,
             return_url: request.returnUrl,
             webhook_url: request.webhookUrl,
         };
+        if (request.phoneNumber) {
+            payload.numeroSend = request.phoneNumber;
+        }
 
         log.info(`Initiating MoneyFusion payment: ${request.amount} for ${request.customerName}`);
 
