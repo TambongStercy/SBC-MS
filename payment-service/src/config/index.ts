@@ -147,7 +147,7 @@ const config: IConfig = {
     paymentServiceBaseUrl: process.env.PAYMENT_SERVICE_BASE_URL || 'http://localhost:3003',
     logLevel: process.env.LOG_LEVEL || 'info',
     cinetpay: {
-        baseUrl: process.env.CINETPAY_BASE_URL || 'https://api.cinetpay.net',
+        baseUrl: process.env.CINETPAY_BASE_URL || 'https://api.cinetpay.co',
         withdrawalsEnabled: process.env.CINETPAY_WITHDRAWALS_ENABLED === 'true',
         // Per-country credentials loaded from env vars: CINETPAY_{CC}_API_KEY, CINETPAY_{CC}_API_PASSWORD
         countries: (() => {
