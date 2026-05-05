@@ -3351,12 +3351,16 @@ class PaymentService {
         try {
             log.info(`Initiating MoneyFusion payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
 
+            if (!paymentIntent.phoneNumber) {
+                throw new Error('Un numéro de téléphone mobile money est requis pour ce pays. Veuillez relancer le paiement en saisissant votre numéro.');
+            }
+
             const webhookUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion`;
             const returnUrl = `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`;
 
             const result = await moneyFusionService.initiatePayment({
                 amount,
-                phoneNumber: paymentIntent.phoneNumber || '',
+                phoneNumber: paymentIntent.phoneNumber,
                 customerName: paymentIntent.userId?.toString() || 'Customer',
                 returnUrl,
                 webhookUrl,
