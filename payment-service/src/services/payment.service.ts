@@ -3082,37 +3082,24 @@ class PaymentService {
             throw new Error('Country code is required for fiat currency payments.');
         }
 
-        // Togo: Use FeexPay for BOTH payments and withdrawals
-        // CinetPay hasn't supported Togo payouts for 2+ months (as of Dec 2025)
-        if (countryCode === 'TG') {
-            log.info(`🔄 Country ${countryCode} selected, using FEEXPAY. [isWithdrawal=${isWithdrawal}]`);
+        // CinetPay: Côte d'Ivoire only (payin + payout)
+        if (countryCode === 'CI') {
+            log.info(`Country ${countryCode} selected, using CINETPAY.`);
+            return PaymentGateway.CINETPAY;
+        }
+
+        // FeexPay: Bénin, Togo, Congo Brazzaville (payin + payout)
+        const feexpaySupportedCountries = ['BJ', 'TG', 'CG'];
+        if (feexpaySupportedCountries.includes(countryCode)) {
+            log.info(`Country ${countryCode} selected, using FEEXPAY.`);
             return PaymentGateway.FEEXPAY;
         }
 
-        // MoneyFusion countries (CM, CD, GA, NE, ML)
-        const moneyFusionCountries = ['CM', 'CD', 'GA', 'NE', 'ML'];
+        // MoneyFusion: BF, SN, CM, ML, CD, GA, NE, GN
+        const moneyFusionCountries = ['BF', 'SN', 'CM', 'ML', 'CD', 'GA', 'NE', 'GN'];
         if (moneyFusionCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using MONEYFUSION.`);
             return PaymentGateway.MONEYFUSION;
-        }
-
-        // Countries that use CinetPay for both payments and withdrawals
-        const cinetpaySupportedCountries = [
-            'BF', // Burkina Faso
-            'CI', // Côte d'Ivoire
-            'SN', // Sénégal
-        ];
-
-        if (cinetpaySupportedCountries.includes(countryCode)) {
-            log.info(`Country ${countryCode} selected, using CINETPAY.`);
-            return PaymentGateway.CINETPAY;
-        } else {
-            // List of countries that use FeexPay for both payments and withdrawals
-            const feexpaySupportedCountries = ['CG', 'GN', 'KE', 'BJ'];
-            if (feexpaySupportedCountries.includes(countryCode)) {
-                log.info(`Country ${countryCode} selected, using FEEXPAY.`);
-                return PaymentGateway.FEEXPAY;
-            }
         }
 
         log.error(`Unsupported country code for gateway selection: ${countryCode}`);
@@ -3558,7 +3545,7 @@ class PaymentService {
             log.info(`CinetPay payment request: merchant_tx=${merchantTxId}, amount=${totalAmountWithFees}, currency=${currency}`);
 
             const response = await axios.post(
-                `${config.cinetpay.baseUrl}/payment`,
+                `${config.cinetpay.baseUrl}/v1/payment`,
                 requestBody,
                 {
                     headers: {

@@ -35,27 +35,27 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Countries that require a phone input on THIS page (FeexPay request-to-pay flow).
-        // CinetPay countries (BF, CI, SN) redirect to CinetPay's hosted page — no phone here.
-        // MoneyFusion countries (CM, CD, GA, NE, ML) take the payment phone on MoneyFusion's
-        // hosted checkout; we send the user's account phone server-side as the contact.
-        const feexpayCountries = ['CG', 'GN', 'BJ', 'TG', 'KE'];
+        // CinetPay (CI only) redirects to CinetPay's hosted page — no phone here.
+        // MoneyFusion (BF, SN, CM, ML, CD, GA, NE, GN) takes the payment phone on
+        // MoneyFusion's hosted checkout; we send the user's account phone server-side
+        // as the contact.
+        const feexpayCountries = ['BJ', 'TG', 'CG'];
 
-        // Only include FeexPay operators for countries that still use FeexPay
+        // FeexPay operators per country
         const feexpayOperators = {
             'CG': ['mtn_cg'], // Congo Brazzaville
-            'GN': [], // Guinea (operators TBD)
-            'KE': [], // Kenya (operators TBD)
-            'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin mobile money operators
-            'TG': ['togocom_tg', 'moov_tg'], // Togo operators for FeexPay payments
+            'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin
+            'TG': ['togocom_tg', 'moov_tg'], // Togo
         };
-        // NOTE: GA and CD moved to MoneyFusion. Togo payments via FeexPay, withdrawals via CinetPay.
 
         const getCurrencyForCountry = (countryCode) => {
             const countryCurrencyMap = {
-                // CinetPay countries
-                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'BF': 'XOF', 'CM': 'XAF',
-                // FeexPay countries
-                'TG': 'XOF', 'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
+                // XOF zone
+                'BJ': 'XOF', 'BF': 'XOF', 'CI': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'SN': 'XOF', 'TG': 'XOF',
+                // XAF zone
+                'CM': 'XAF', 'CG': 'XAF', 'GA': 'XAF',
+                // Other
+                'CD': 'CDF', 'GN': 'GNF',
             };
             return countryCurrencyMap[countryCode] || 'XAF';
         };
