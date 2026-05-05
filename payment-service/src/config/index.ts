@@ -186,7 +186,7 @@ const validateConfig = (): void => {
         'JWT_SECRET',
         'FEEXPAY_API_KEY',
         'FEEXPAY_SHOP_ID',
-        'CINETPAY_CM_API_KEY', // At least Cameroon credentials required
+        'MONEYFUSION_API_URL', // CM, CD, GA, NE, ML route through MoneyFusion
         'NOWPAYMENTS_API_KEY', // Added for crypto payments
         'PAYMENT_SERVICE_BASE_URL',
         'FRONTEND_URL', // Likely needed for redirects
