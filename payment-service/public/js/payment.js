@@ -34,21 +34,11 @@ document.addEventListener('DOMContentLoaded', function () {
             // No return here if some elements are missing but form is there, page might be partially usable or in a specific state.
         }
 
-        // Define countries for each gateway based on the new rule
-        // Countries that use CinetPay (no phone required — redirects to CinetPay hosted page)
-        const cinetpayCountries = [
-            'BF', // Burkina Faso
-            // 'BJ', // Bénin - Now using FeexPay for both payments and withdrawals
-            'CI', // Côte d\'Ivoire
-            'SN', // Sénégal
-            // 'TG'  // Togo - Now using FeexPay for payments, CinetPay for withdrawals
-        ];
-
-        // Countries that use MoneyFusion (phone required — mobile money number needed)
-        const moneyFusionCountries = ['CM', 'CD', 'GA', 'NE', 'ML'];
-
-        // Countries that use FeexPay
-        const feexpayCountries = ['CG', 'GN', 'BJ', 'TG', 'KE']; // GA and CD moved to MoneyFusion
+        // Countries that require a phone input on THIS page (FeexPay request-to-pay flow).
+        // CinetPay countries (BF, CI, SN) redirect to CinetPay's hosted page — no phone here.
+        // MoneyFusion countries (CM, CD, GA, NE, ML) take the payment phone on MoneyFusion's
+        // hosted checkout; we send the user's account phone server-side as the contact.
+        const feexpayCountries = ['CG', 'GN', 'BJ', 'TG', 'KE'];
 
         // Only include FeexPay operators for countries that still use FeexPay
         const feexpayOperators = {
@@ -192,15 +182,7 @@ document.addEventListener('DOMContentLoaded', function () {
             otpInputGroup.classList.add('hidden'); // Hide OTP by default
             otpInput.required = false;
 
-            if (moneyFusionCountries.includes(selectedCountry)) {
-                // MoneyFusion: phone required, no operator selection
-                phoneInputGroup.classList.remove('hidden');
-                phoneInput.required = true;
-                otpInputGroup.classList.add('hidden');
-                otpInput.required = false;
-                otpInput.value = '';
-            }
-            else if (feexpayCountries.includes(selectedCountry)) {
+            if (feexpayCountries.includes(selectedCountry)) {
                 phoneInputGroup.classList.remove('hidden');
                 phoneInput.required = true;
 
@@ -372,7 +354,7 @@ document.addEventListener('DOMContentLoaded', function () {
             else {
                 // Handle mobile money payment (existing logic)
                 const selectedCountry = countrySelect.value;
-                const requiresPhone = feexpayCountries.includes(selectedCountry) || moneyFusionCountries.includes(selectedCountry);
+                const requiresPhone = feexpayCountries.includes(selectedCountry);
                 const requiresOperator = !operatorSelectGroup.classList.contains('hidden');
                 const determinedCurrency = getCurrencyForCountry(selectedCountry);
                 const selectedOperatorValue = operatorSelect.value; // Get current operator value
