@@ -35,33 +35,30 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Define countries for each gateway based on the new rule
-        // Countries that use CinetPay
+        // Countries that use CinetPay (no phone required — redirects to CinetPay hosted page)
         const cinetpayCountries = [
             'BF', // Burkina Faso
-            'ML', // Mali
-            'NE', // Niger
             // 'BJ', // Bénin - Now using FeexPay for both payments and withdrawals
             'CI', // Côte d\'Ivoire
-            'CM', // Cameroun
             'SN', // Sénégal
             // 'TG'  // Togo - Now using FeexPay for payments, CinetPay for withdrawals
         ];
 
+        // Countries that use MoneyFusion (phone required — mobile money number needed)
+        const moneyFusionCountries = ['CM', 'CD', 'GA', 'NE', 'ML'];
+
         // Countries that use FeexPay
-        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ', 'TG']; // Added Benin and Togo to FeexPay
+        const feexpayCountries = ['CG', 'GN', 'BJ', 'TG', 'KE']; // GA and CD moved to MoneyFusion
 
         // Only include FeexPay operators for countries that still use FeexPay
         const feexpayOperators = {
             'CG': ['mtn_cg'], // Congo Brazzaville
             'GN': [], // Guinea (operators TBD)
-            'GA': [], // Gabon (operators TBD)
-            'CD': [], // Democratic Republic of Congo (operators TBD)
             'KE': [], // Kenya (operators TBD)
             'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin mobile money operators
             'TG': ['togocom_tg', 'moov_tg'], // Togo operators for FeexPay payments
-            // Add operators for GN, GA, CD, KE if needed
         };
-        // NOTE: Payments for Togo are handled by FeexPay, withdrawals by CinetPay in the backend.
+        // NOTE: GA and CD moved to MoneyFusion. Togo payments via FeexPay, withdrawals via CinetPay.
 
         const getCurrencyForCountry = (countryCode) => {
             const countryCurrencyMap = {
@@ -195,7 +192,15 @@ document.addEventListener('DOMContentLoaded', function () {
             otpInputGroup.classList.add('hidden'); // Hide OTP by default
             otpInput.required = false;
 
-            if (feexpayCountries.includes(selectedCountry)) {
+            if (moneyFusionCountries.includes(selectedCountry)) {
+                // MoneyFusion: phone required, no operator selection
+                phoneInputGroup.classList.remove('hidden');
+                phoneInput.required = true;
+                otpInputGroup.classList.add('hidden');
+                otpInput.required = false;
+                otpInput.value = '';
+            }
+            else if (feexpayCountries.includes(selectedCountry)) {
                 phoneInputGroup.classList.remove('hidden');
                 phoneInput.required = true;
 
@@ -214,7 +219,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
                 else {
-                    // Hide OTP field if no operator selection or not applicable
                     otpInputGroup.classList.add('hidden');
                     otpInput.required = false;
                     otpInput.value = '';
@@ -225,7 +229,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 phoneInputGroup.classList.add('hidden');
                 phoneInput.required = false;
                 phoneInput.value = '';
-                // Hide OTP field for CinetPay countries
                 otpInputGroup.classList.add('hidden');
                 otpInput.required = false;
                 otpInput.value = '';
@@ -369,7 +372,7 @@ document.addEventListener('DOMContentLoaded', function () {
             else {
                 // Handle mobile money payment (existing logic)
                 const selectedCountry = countrySelect.value;
-                const requiresPhone = feexpayCountries.includes(selectedCountry);
+                const requiresPhone = feexpayCountries.includes(selectedCountry) || moneyFusionCountries.includes(selectedCountry);
                 const requiresOperator = !operatorSelectGroup.classList.contains('hidden');
                 const determinedCurrency = getCurrencyForCountry(selectedCountry);
                 const selectedOperatorValue = operatorSelect.value; // Get current operator value

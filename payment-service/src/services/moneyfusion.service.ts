@@ -83,12 +83,10 @@ export class MoneyFusionService {
             article: [{ payment: request.amount }],
             personal_Info: [request.personalInfo || {}],
             nomclient: request.customerName,
+            numeroSend: request.phoneNumber,
             return_url: request.returnUrl,
             webhook_url: request.webhookUrl,
         };
-        if (request.phoneNumber) {
-            payload.numeroSend = request.phoneNumber;
-        }
 
         log.info(`Initiating MoneyFusion payment: ${request.amount} for ${request.customerName}`);
 
