@@ -3095,8 +3095,8 @@ class PaymentService {
             return PaymentGateway.FEEXPAY;
         }
 
-        // MoneyFusion: BF, SN, CM, ML, CD, GA, NE, GN
-        const moneyFusionCountries = ['BF', 'SN', 'CM', 'ML', 'CD', 'GA', 'NE', 'GN'];
+        // MoneyFusion: BF, SN, CM, ML, CD, GA, NE, GN, TD
+        const moneyFusionCountries = ['BF', 'SN', 'CM', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD'];
         if (moneyFusionCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using MONEYFUSION.`);
             return PaymentGateway.MONEYFUSION;

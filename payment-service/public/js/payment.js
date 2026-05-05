@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 // XOF zone
                 'BJ': 'XOF', 'BF': 'XOF', 'CI': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'SN': 'XOF', 'TG': 'XOF',
                 // XAF zone
-                'CM': 'XAF', 'CG': 'XAF', 'GA': 'XAF',
+                'CM': 'XAF', 'CG': 'XAF', 'GA': 'XAF', 'TD': 'XAF',
                 // Other
                 'CD': 'CDF', 'GN': 'GNF',
             };
