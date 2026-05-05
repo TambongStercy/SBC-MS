@@ -104,7 +104,7 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
 
     // Validate country code format/value for fiat payments
     // Removed "CRYPTO" from valid countries as it's not a real country
-    const validCountries = ['BJ', 'BF', 'CI', 'SN', 'CG', 'TG', 'CM', 'GA', 'CD', 'KE', 'GN', 'ML', 'NE'];
+    const validCountries = ['BJ', 'BF', 'CI', 'SN', 'CG', 'TG', 'CM', 'GA', 'CD', 'KE', 'GN', 'ML', 'NE', 'TD'];
     if (typeof countryCode !== 'string' || !validCountries.includes(countryCode)) {
         return res.status(400).json({
             success: false,
@@ -253,7 +253,7 @@ export const validateAdminUserWithdrawal = (req: Request, res: Response, next: N
         }
 
         // Validate country code
-        const validCountries = ['CI', 'SN', 'CM', 'TG', 'BJ', 'ML', 'BF', 'GN', 'CD'];
+        const validCountries = ['CI', 'SN', 'CM', 'TG', 'BJ', 'ML', 'BF', 'GN', 'CD', 'TD'];
         if (!validCountries.includes(countryCode)) {
             return res.status(400).json({
                 success: false,
@@ -317,7 +317,7 @@ export const validateAdminDirectPayout = (req: Request, res: Response, next: Nex
     }
 
     // Validate country code
-    const validCountries = ['CI', 'SN', 'CM', 'TG', 'BJ', 'ML', 'BF', 'GN', 'CD'];
+    const validCountries = ['CI', 'SN', 'CM', 'TG', 'BJ', 'ML', 'BF', 'GN', 'CD', 'TD'];
     if (!validCountries.includes(countryCode)) {
         return res.status(400).json({
             success: false,
