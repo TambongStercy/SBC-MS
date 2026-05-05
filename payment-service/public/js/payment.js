@@ -34,41 +34,28 @@ document.addEventListener('DOMContentLoaded', function () {
             // No return here if some elements are missing but form is there, page might be partially usable or in a specific state.
         }
 
-        // Define countries for each gateway based on the new rule
-        // Countries that use CinetPay
-        const cinetpayCountries = [
-            'BF', // Burkina Faso
-            'ML', // Mali
-            'NE', // Niger
-            // 'BJ', // Bénin - Now using FeexPay for both payments and withdrawals
-            'CI', // Côte d\'Ivoire
-            'CM', // Cameroun
-            'SN', // Sénégal
-            // 'TG'  // Togo - Now using FeexPay for payments, CinetPay for withdrawals
-        ];
+        // Countries that require a phone input on THIS page (FeexPay request-to-pay flow).
+        // CinetPay (CI only) redirects to CinetPay's hosted page — no phone here.
+        // MoneyFusion (BF, SN, CM, ML, CD, GA, NE, GN) takes the payment phone on
+        // MoneyFusion's hosted checkout; we send the user's account phone server-side
+        // as the contact.
+        const feexpayCountries = ['BJ', 'TG', 'CG'];
 
-        // Countries that use FeexPay
-        const feexpayCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ', 'TG']; // Added Benin and Togo to FeexPay
-
-        // Only include FeexPay operators for countries that still use FeexPay
+        // FeexPay operators per country
         const feexpayOperators = {
             'CG': ['mtn_cg'], // Congo Brazzaville
-            'GN': [], // Guinea (operators TBD)
-            'GA': [], // Gabon (operators TBD)
-            'CD': [], // Democratic Republic of Congo (operators TBD)
-            'KE': [], // Kenya (operators TBD)
-            'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin mobile money operators
-            'TG': ['togocom_tg', 'moov_tg'], // Togo operators for FeexPay payments
-            // Add operators for GN, GA, CD, KE if needed
+            'BJ': ['mtn', 'moov', 'celtiis_bj'], // Benin
+            'TG': ['togocom_tg', 'moov_tg'], // Togo
         };
-        // NOTE: Payments for Togo are handled by FeexPay, withdrawals by CinetPay in the backend.
 
         const getCurrencyForCountry = (countryCode) => {
             const countryCurrencyMap = {
-                // CinetPay countries
-                'BJ': 'XOF', 'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'BF': 'XOF', 'CM': 'XAF',
-                // FeexPay countries
-                'TG': 'XOF', 'CG': 'XAF', 'GA': 'XAF', 'CD': 'CDF', 'KE': 'KES', 'GN': 'GNF',
+                // XOF zone
+                'BJ': 'XOF', 'BF': 'XOF', 'CI': 'XOF', 'ML': 'XOF', 'NE': 'XOF', 'SN': 'XOF', 'TG': 'XOF',
+                // XAF zone
+                'CM': 'XAF', 'CG': 'XAF', 'GA': 'XAF', 'TD': 'XAF',
+                // Other
+                'CD': 'CDF', 'GN': 'GNF',
             };
             return countryCurrencyMap[countryCode] || 'XAF';
         };
@@ -214,7 +201,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
                 else {
-                    // Hide OTP field if no operator selection or not applicable
                     otpInputGroup.classList.add('hidden');
                     otpInput.required = false;
                     otpInput.value = '';
@@ -225,7 +211,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 phoneInputGroup.classList.add('hidden');
                 phoneInput.required = false;
                 phoneInput.value = '';
-                // Hide OTP field for CinetPay countries
                 otpInputGroup.classList.add('hidden');
                 otpInput.required = false;
                 otpInput.value = '';

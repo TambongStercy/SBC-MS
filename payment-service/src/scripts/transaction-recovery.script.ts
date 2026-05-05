@@ -797,76 +797,76 @@ class TransactionRecoveryService {
     private async fetchCinetPayPaymentStatus(transactionId: string): Promise<any> {
         try {
             log.info(`Fetching CinetPay payment status for transaction: ${transactionId}`);
-            
-            // Use CinetPay checkout verification API (same pattern as payment creation)
-            // Documentation: https://docs.cinetpay.com/api-v2/
-            const response = await axios.post(
-                `${config.cinetpay.baseUrl}/payment/check`,
+
+            // New API: authenticate with first available country, then check payment status
+            const firstCountry = Object.keys(config.cinetpay.countries)[0];
+            if (!firstCountry) {
+                log.warn('No CinetPay country credentials configured for recovery script');
+                return null;
+            }
+
+            const creds = config.cinetpay.countries[firstCountry];
+            const authResponse = await axios.post(
+                `${config.cinetpay.baseUrl}/v1/oauth/login`,
+                { api_key: creds.apiKey, api_password: creds.apiPassword },
+                { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+            );
+
+            if (authResponse.data.code !== 200) {
+                log.warn(`CinetPay auth failed for recovery: ${authResponse.data.status}`);
+                return null;
+            }
+
+            const response = await axios.get(
+                `${config.cinetpay.baseUrl}/v1/payment/${transactionId}`,
                 {
-                    apikey: config.cinetpay.apiKey,
-                    site_id: config.cinetpay.siteId,
-                    transaction_id: transactionId
-                },
-                {
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': `Bearer ${authResponse.data.access_token}` },
                     timeout: 30000
                 }
             );
 
             const cinetpayResponse = response.data;
-            console.log(cinetpayResponse)
             log.info(`CinetPay payment status response for ${transactionId}:`, cinetpayResponse);
 
-            if (cinetpayResponse.code !== '00') {
-                log.warn(`CinetPay payment status check failed for ${transactionId}:`, cinetpayResponse.message);
+            if (cinetpayResponse.code === 404) {
+                log.warn(`CinetPay payment not found for ${transactionId}`);
                 return null;
             }
 
-            const paymentData = cinetpayResponse.data;
-            
             return {
                 transactionId: transactionId,
-                status: this.mapCinetPayPaymentStatus(paymentData.status),
-                amount: parseFloat(paymentData.amount || '0'),
-                currency: paymentData.currency || 'XAF',
-                userEmail: paymentData.cpm_email || null, // CinetPay might not return email in check
-                userPhoneNumber: paymentData.cpm_phone_num || null, // CinetPay might not return phone in check
-                paymentMethod: paymentData.payment_method,
-                operatorTxId: paymentData.operator_id,
-                paymentDate: paymentData.payment_date,
-                rawResponse: paymentData
+                status: this.mapCinetPayPaymentStatus(cinetpayResponse.code, cinetpayResponse.status),
+                amount: parseFloat(cinetpayResponse.amount || '0'),
+                currency: cinetpayResponse.currency || 'XAF',
+                userEmail: cinetpayResponse.user?.email || null,
+                userPhoneNumber: cinetpayResponse.user?.phone_number || null,
+                paymentMethod: null,
+                operatorTxId: cinetpayResponse.transaction_id,
+                paymentDate: null,
+                rawResponse: cinetpayResponse
             };
 
         } catch (error: any) {
             log.error(`Error fetching CinetPay payment status for ${transactionId}:`, error.response?.data || error.message);
-            
-            // Re-throw timeout errors to preserve them for proper classification
-            const isTimeout = error.message?.includes('timeout') || error.message?.includes('exceeded') || 
+
+            const isTimeout = error.message?.includes('timeout') || error.message?.includes('exceeded') ||
                              error.message?.includes('ENOTFOUND') || error.message?.includes('EAI_AGAIN');
             if (isTimeout) {
                 throw error;
             }
-            
+
             return null;
         }
     }
 
     /**
-     * Map CinetPay payment status to standardized status
+     * Map CinetPay status code/string to standardized status
      */
-    private mapCinetPayPaymentStatus(status: string): string {
-        switch (status?.toUpperCase()) {
-            case 'ACCEPTED':
-                return 'completed';
-            case 'REFUSED':
-            case 'FAILED':
-                return 'failed';
-            case 'PENDING':
-            default:
-                return 'pending';
-        }
+    private mapCinetPayPaymentStatus(code: number, status: string): string {
+        if (code === 100 || status === 'SUCCESS') return 'completed';
+        if (code === 2010 || status === 'FAILED') return 'failed';
+        if (code === 2003 || status === 'EXPIRED') return 'failed';
+        return 'pending';
     }
 
     /**

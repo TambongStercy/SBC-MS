@@ -188,51 +188,41 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     'WAVE_CIV': 'XOF',
 };
 
-// Mapping from our internal momoOperator slugs to CinetPay's specific payment_method slugs
-// Refer to CinetPay's "Liste des indicatifs par pays" for exact `Payment_method` values.
+// Mapping from our internal momoOperator slugs to CinetPay's new API payment_method codes.
+// New API format: OPERATOR_COUNTRYCODE (e.g., OM_CI, MTN_CM, WAVE_SN)
 export const momoOperatorToCinetpayPaymentMethod: { [key: string]: string } = {
     // Benin (BJ)
-    'MTN_MOMO_BEN': 'MTNBJ',
-    'MOOV_BEN': 'MOOVBJ',
+    'MTN_MOMO_BEN': 'MTN_BJ',
+    'MOOV_BEN': 'MOOV_BJ',
     // Cameroon (CM)
-    'MTN_MOMO_CMR': 'MTNCM',
-    'ORANGE_CMR': 'OMCM',
-    'ORANGE_MOMO_CMR': 'OMCM',
+    'MTN_MOMO_CMR': 'MTN_CM',
+    'ORANGE_CMR': 'OM_CM',
+    'ORANGE_MOMO_CMR': 'OM_CM',
     // Burkina Faso (BF)
-    'MOOV_BFA': 'MOOVBF',
-    'ORANGE_BFA': 'OMBF',
-    // Togo (TG) - Added for CinetPay support
-    'TOGOCOM_TGO': 'TOGOCOM',
-    'MOOV_TGO': 'MOOVTG',
-    // Togo (TG) - Alternative naming for FeexPay (maps to same CinetPay methods)
-    'TOGOCOM_TG': 'TOGOCOM',
-    'MOOV_TG': 'MOOVTG',
-    // Mali (ML) - Added for CinetPay support
-    'ORANGE_MLI': 'OMML',
-    'MOOV_MLI': 'MOOVML',
-    // Niger (NE) - Added for CinetPay support
-    'ORANGE_NER': 'OMNE',
-    'MOOV_NER': 'MOOVNE',
-    // DRC (CD) - assuming CDF currency for these as per docs
-    'VODACOM_MPESA_COD': 'MPESACD',
-    'AIRTEL_COD': 'AIRTELCD',
-    'ORANGE_COD': 'OMCD',
+    'MOOV_BFA': 'MOOV_BF',
+    'ORANGE_BFA': 'OM_BF',
+    // Togo (TG)
+    'TOGOCOM_TGO': 'TMONEY_TG',
+    'MOOV_TGO': 'MOOV_TG',
+    'TOGOCOM_TG': 'TMONEY_TG',
+    'MOOV_TG': 'MOOV_TG',
+    // Mali (ML)
+    'ORANGE_MLI': 'OM_ML',
+    'MOOV_MLI': 'MOOV_ML',
+    // Niger (NE)
+    'ORANGE_NER': 'AIRTEL_NE', // Niger uses Airtel, not Orange in new API
+    'MOOV_NER': 'MOOV_NE',
+    // DRC (CD)
+    'VODACOM_MPESA_COD': 'MPESA_CD',
+    'AIRTEL_COD': 'AIRTEL_CD',
+    'ORANGE_COD': 'OM_CD',
     // Senegal (SN)
-    'FREE_SEN': 'FREESN',
-    'ORANGE_SEN': 'OMSN',
-    'WAVE_SEN': 'WAVESN',
+    'FREE_SEN': 'FREE_SN',
+    'ORANGE_SEN': 'OM_SN',
+    'WAVE_SEN': 'WAVE_SN',
     // Côte d'Ivoire (CI)
-    'MTN_MOMO_CIV': 'MOMO',   // CinetPay uses 'MOMO' for MTN in CI
-    'ORANGE_CIV': 'OM',       // CinetPay uses 'OM' for Orange in CI
-    'WAVE_CIV': 'WAVECI',     // CinetPay uses 'WAVECI' for Wave in CI
-
-    // Operators for which CinetPay payout methods are not explicitly listed in provided docs
-    // or are not yet supported for payout via CinetPay API:
-    // 'MPESA_KEN': undefined, // Kenya (KE)
-    // 'MTN_MOMO_NGA': undefined, // Nigeria (NG)
-    // 'AIRTEL_NGA': undefined, // Nigeria (NG)
-    // 'AIRTEL_COG': undefined, // Congo Brazzaville (CG)
-    // 'MTN_MOMO_COG': undefined, // Congo Brazzaville (CG)
-    // 'AIRTEL_GAB': undefined, // Gabon (GA)
+    'MTN_MOMO_CIV': 'MTN_CI',
+    'ORANGE_CIV': 'OM_CI',
+    'WAVE_CIV': 'WAVE_CI',
 };
 

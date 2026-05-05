@@ -249,7 +249,20 @@ This project uses **GitFlow**. All Claude Code sessions MUST follow these rules:
    git push -u origin feature/description-of-work
    ```
    Then inform the user to create a PR to `develop` on GitHub.
-4. **NEVER merge branches locally.** All merges happen via Pull Requests on GitHub.
+4. **NEVER merge branches locally.** All merges happen via Pull Requests on GitHub using `gh` CLI:
+   ```bash
+   # Create a PR to develop
+   gh pr create --base develop --title "feat: description" --body "Summary of changes"
+   
+   # Merge a PR (after CI passes)
+   gh pr merge <PR-number> --merge --delete-branch
+   
+   # List open PRs
+   gh pr list
+   
+   # View PR status/checks
+   gh pr checks <PR-number>
+   ```
 5. **Hotfixes** (urgent prod bugs) branch from `master`:
    ```bash
    git checkout master
@@ -257,8 +270,16 @@ This project uses **GitFlow**. All Claude Code sessions MUST follow these rules:
    git checkout -b hotfix/description-of-fix
    ```
 
+### When to Use Feature Branches vs Direct Commits
+- **Feature branches + PRs**: Required for code changes that affect app behavior (features, bug fixes, refactors)
+- **Batch non-code changes**: Documentation, README updates, config tweaks, and other changes that don't affect the running app should NOT get their own feature branch. Instead:
+  - Commit them locally on `develop`
+  - Push them together with the next real code change, OR
+  - Push them when several non-code changes have accumulated
+- This avoids wasting time and tokens on CI/PR cycles for trivial changes.
+
 ### CI/CD Pipeline
-- PRs to `develop` or `master` trigger CI checks (build, lint, test)
+- PRs to `develop` or `master` trigger CI checks (build)
 - Merging to `develop` → auto-deploys to **preprod** (`preprod.sniperbuisnesscenter.com`)
 - Merging to `master` → deploys to **production** (requires approval)
 

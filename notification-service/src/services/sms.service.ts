@@ -138,27 +138,29 @@ class SmsService {
             log.error(`Invalid phone number format for Queen SMS: ${to}. Must start with + and country code.`);
             return false;
         }
-        const requestBody = {
-            apiKey: this.queenSmsApiKey,
-            senderId: this.queenSmsSenderId,
-            recipient: to,
-            message: message,
-        };
+        // Strip leading '+' — Queen SMS accepts numbers with or without 237 prefix
+        const mobile = to.startsWith('+') ? to.slice(1) : to;
+        const params = new URLSearchParams({
+            api_key: this.queenSmsApiKey,
+            senderid: this.queenSmsSenderId,
+            sms: message,
+            mobiles: mobile,
+        });
         log.info(`Sending SMS via Queen SMS to: ${to}`);
         try {
-            const response = await axios.post<any>(this.queenSmsApiUrl, requestBody, {
-                headers: { 'Content-Type': 'application/json' },
+            const response = await axios.post<any>(this.queenSmsApiUrl, params.toString(), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 timeout: 10000,
             });
             log.debug('Queen SMS raw response:', response.data);
 
-            const isSuccess = response.status >= 200 && response.status < 300;
+            const isSuccess = response.data?.responsecode === 1;
 
             if (isSuccess) {
                 log.info(`Successfully sent SMS via Queen SMS to: ${to}`);
                 return true;
             } else {
-                log.error(`Failed to send SMS via Queen SMS to: ${to}. Status: ${response.status}, Response: ${JSON.stringify(response.data)}`);
+                log.error(`Failed to send SMS via Queen SMS to: ${to}. Response: ${JSON.stringify(response.data)}`);
                 return false;
             }
         } catch (error: any) {

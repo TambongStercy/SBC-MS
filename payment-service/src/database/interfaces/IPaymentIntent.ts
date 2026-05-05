@@ -23,6 +23,7 @@ export enum PaymentGateway {
     LYGOS = 'lygos',
     STRIPE = 'stripe', // Example if you add Stripe later
     NOWPAYMENTS = 'nowpayments', // Added NOWPayments for crypto
+    MONEYFUSION = 'moneyfusion', // MoneyFusion for Cameroon + multi-country
     TESTING = 'testing' // Added for testing purposes
 }
 

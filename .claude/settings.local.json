@@ -43,7 +43,13 @@
       "Bash(/dev/null:*)",
       "WebFetch(domain:docs.cinetpay.com)",
       "Bash(npx jest src/tests/relance-sender.test.ts --no-cache)",
-      "Bash(npx jest src/tests/relance-sender.test.ts --no-cache --forceExit)"
+      "Bash(npx jest src/tests/relance-sender.test.ts --no-cache --forceExit)",
+      "Bash(SCRIPT)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NWQyYjAzNDRhN2UyYjllZmJmNjIwNWQiLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NzM5MzQyNDQsImV4cCI6MTc3MzkzNzg0NH0.lMNTDS2rJBIcj8fCdNRZ5DeW43jw3qWiT6adVJa2GsM\")",
+      "Bash(__NEW_LINE_f1d5be1a8a2137e4__ curl -s -X POST http://localhost:3003/api/payouts/initiate -H \"Content-Type: application/json\" -H \"Authorization: Bearer $TOKEN\" -d '{:*)",
+      "Bash(__NEW_LINE_9d8766f9a67ab44a__ curl -s -X POST http://localhost:3003/api/payouts/initiate -H \"Content-Type: application/json\" -H \"Authorization: Bearer $TOKEN\" -d '{:*)",
+      "Bash(python3 -c ':*)",
+      "Bash('/c/Users/Sterling Black/AppData/Local/Programs/Python/Python313/python' -c ':*)"
     ],
     "deny": [],
     "ask": []
