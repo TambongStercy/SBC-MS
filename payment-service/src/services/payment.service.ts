@@ -3351,8 +3351,23 @@ class PaymentService {
         try {
             log.info(`Initiating MoneyFusion payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
 
-            if (!paymentIntent.phoneNumber) {
-                throw new Error('Un numéro de téléphone mobile money est requis pour ce pays. Veuillez relancer le paiement en saisissant votre numéro.');
+            // MoneyFusion's `numeroSend` is the contact phone, not the payment phone
+            // (the payment phone is entered on MoneyFusion's hosted checkout). Use the
+            // user's account phone — fall back to whatever the intent has for guests.
+            let contactPhone = paymentIntent.phoneNumber;
+            let customerName = 'Customer';
+            if (paymentIntent.userId) {
+                const userDetails = await userServiceClient.getUserDetails(paymentIntent.userId.toString());
+                if (userDetails?.phoneNumber) {
+                    contactPhone = userDetails.phoneNumber.toString();
+                }
+                if (userDetails?.name) {
+                    customerName = userDetails.name;
+                }
+            }
+
+            if (!contactPhone) {
+                throw new Error('Aucun numéro de téléphone n\'est associé à ce compte. Veuillez ajouter un numéro à votre profil avant de payer.');
             }
 
             const webhookUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion`;
@@ -3360,8 +3375,8 @@ class PaymentService {
 
             const result = await moneyFusionService.initiatePayment({
                 amount,
-                phoneNumber: paymentIntent.phoneNumber,
-                customerName: paymentIntent.userId?.toString() || 'Customer',
+                phoneNumber: contactPhone,
+                customerName,
                 returnUrl,
                 webhookUrl,
                 personalInfo: { sessionId: paymentIntent.sessionId, userId: paymentIntent.userId?.toString() },
