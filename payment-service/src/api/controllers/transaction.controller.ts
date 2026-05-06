@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import paymentService from '../../services/payment.service';
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { TransactionType, Currency, TransactionStatus } from '../../database/models/transaction.model';
+import { transactionRepository } from '../../database/repositories/transaction.repository';
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { PaginationOptions } from '../../types/pagination';
@@ -636,6 +637,129 @@ export class TransactionController {
                 return res.status(error.statusCode).json({ success: false, message: error.message });
             }
             return res.status(500).json({ success: false, message: 'Failed to retrieve account transactions' });
+        }
+    }
+
+    /**
+     * [Admin] Get user financial analytics - aggregated earnings/withdrawals per user.
+     * Supports filtering by country (via user-service lookup) and minimum amount.
+     * @route GET /api/transactions/admin/user-analytics
+     */
+    async adminGetUserAnalytics(req: Request, res: Response): Promise<Response> {
+        log.info('Admin request: User financial analytics');
+        try {
+            const {
+                country,
+                minAmount = '50000',
+                page = '1',
+                limit = '50',
+                sortBy = 'total',
+                sortOrder = 'desc',
+            } = req.query;
+
+            const pageNum = parseInt(page as string, 10) || 1;
+            const limitNum = parseInt(limit as string, 10) || 50;
+            const minAmountNum = parseFloat(minAmount as string) || 0;
+            const sort = sortBy as 'totalWithdrawn' | 'totalEarned' | 'total';
+
+            // If country filter, get userIds from user-service first
+            let userIds: Types.ObjectId[] | undefined;
+            if (country && typeof country === 'string') {
+                try {
+                    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+                    const serviceSecret = process.env.SERVICE_SECRET || '';
+                    const axios = require('axios');
+                    const response = await axios.get(`${userServiceUrl}/users/internal/ids-by-country`, {
+                        params: { country },
+                        headers: {
+                            'Authorization': `Bearer ${serviceSecret}`,
+                            'x-service-name': 'payment-service',
+                        },
+                        timeout: 30000,
+                    });
+                    if (response.data?.success && Array.isArray(response.data.data)) {
+                        userIds = response.data.data.map((id: string) => new Types.ObjectId(id));
+                        log.info(`Found ${userIds!.length} users for country ${country}`);
+                    }
+                } catch (err: any) {
+                    log.error(`Failed to fetch user IDs by country: ${err.message}`);
+                    return res.status(502).json({ success: false, message: 'Failed to fetch user data for country filter' });
+                }
+            }
+
+            // Aggregate transactions
+            const result = await transactionRepository.aggregateUserFinancials({
+                userIds,
+                minAmount: minAmountNum,
+                page: pageNum,
+                limit: limitNum,
+                sortBy: sort,
+                sortOrder: sortOrder as 'asc' | 'desc',
+            });
+
+            // Enrich with user details via batch endpoint
+            const aggregatedUserIds = result.data.map((r: any) => r._id.toString());
+            let userMap: Record<string, any> = {};
+
+            if (aggregatedUserIds.length > 0) {
+                try {
+                    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+                    const serviceSecret = process.env.SERVICE_SECRET || '';
+                    const axios = require('axios');
+                    const response = await axios.post(`${userServiceUrl}/users/internal/batch-details`, {
+                        userIds: aggregatedUserIds,
+                    }, {
+                        headers: {
+                            'Authorization': `Bearer ${serviceSecret}`,
+                            'x-service-name': 'payment-service',
+                        },
+                        timeout: 30000,
+                    });
+                    if (response.data?.success && Array.isArray(response.data.data)) {
+                        response.data.data.forEach((u: any) => {
+                            userMap[u._id.toString()] = u;
+                        });
+                    }
+                } catch (err: any) {
+                    log.warn(`Failed to enrich user details: ${err.message}`);
+                    // Continue without enrichment
+                }
+            }
+
+            // Combine data
+            const enriched = result.data.map((r: any) => {
+                const user = userMap[r._id.toString()] || {};
+                return {
+                    userId: r._id,
+                    name: user.name || 'Unknown',
+                    email: user.email || '',
+                    phoneNumber: user.phoneNumber || '',
+                    country: user.country || '',
+                    balance: user.balance ?? 0,
+                    totalWithdrawn: r.totalWithdrawn,
+                    totalEarned: r.totalEarned,
+                    withdrawalCount: r.withdrawalCount,
+                    earningCount: r.earningCount,
+                    total: r.total,
+                };
+            });
+
+            return res.status(200).json({
+                success: true,
+                data: enriched,
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    total: result.total,
+                    totalPages: Math.ceil(result.total / limitNum),
+                },
+            });
+        } catch (error) {
+            log.error('Error in adminGetUserAnalytics:', error);
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ success: false, message: error.message });
+            }
+            return res.status(500).json({ success: false, message: 'Failed to retrieve user analytics' });
         }
     }
 

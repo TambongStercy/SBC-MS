@@ -13,6 +13,9 @@ adminRouter.use(requireAdmin);
 // GET /api/transactions/admin - List all account transactions (NEW)
 adminRouter.get('/', transactionController.adminListAccountTransactions);
 
+// GET /api/transactions/admin/user-analytics - Aggregated user financial analytics
+adminRouter.get('/user-analytics', transactionController.adminGetUserAnalytics);
+
 // Mount admin router
 router.use('/admin', adminRouter);
 

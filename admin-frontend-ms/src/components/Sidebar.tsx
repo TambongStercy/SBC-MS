@@ -25,7 +25,8 @@ import {
   History,
   MessagesSquare,
   Rss,
-  Trophy
+  Trophy,
+  TrendingUp
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -131,6 +132,12 @@ const SIDEBAR_GROUPS = [
         icon: History,
         color: "#06b6d4",
         path: "/withdrawals/history",
+      },
+      {
+        name: "User Analytics",
+        icon: TrendingUp,
+        color: "#8b5cf6",
+        path: "/user-analytics",
       },
     ]
   },

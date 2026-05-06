@@ -52,7 +52,7 @@ interface IOtp extends Document {
 export interface IUser extends Document {
     _id: Types.ObjectId;
     name: string;
-    region: string;
+    region?: string;
     country?: string;
     city?: string;
     phoneNumber: string;
@@ -115,7 +115,7 @@ const otpSchema = new Schema<IOtp>({
 const UserSchema = new Schema<IUser>(
     {
         name: { type: String, required: true, trim: true },
-        region: { type: String, required: true, trim: true },
+        region: { type: String, trim: true },
         country: {
             type: String,
             trim: true,

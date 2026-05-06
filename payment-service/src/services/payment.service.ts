@@ -8,6 +8,10 @@ import { productServiceClient } from './clients/product.service.client';
 import notificationService, { DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import axios from 'axios';
+import https from 'https';
+
+// Force IPv4 for CinetPay — their IP whitelist only supports IPv4 addresses
+const ipv4Agent = new https.Agent({ family: 4 });
 import { IPaymentIntent, PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
 import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
@@ -18,6 +22,7 @@ import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
+import { moneyFusionService } from './moneyfusion.service';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -158,9 +163,6 @@ const transactionServiceClient = {
 // End Placeholder
 
 class PaymentService {
-    private cinetpayTransferToken: string | null = null;
-    private cinetpayTokenExpiresAt: Date | null = null;
-
     constructor() {
         // Constructor is now empty or can be used for dependency injection
     }
@@ -511,7 +513,7 @@ class PaymentService {
             // Determine which payout service to use based on country code using the same logic as payments
             let payoutService;
             let payoutNotificationUrl: string;
-            let providerName: 'CinetPay' | 'FeexPay';
+            let providerName: 'CinetPay' | 'FeexPay' | 'MoneyFusion';
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
 
@@ -525,11 +527,14 @@ class PaymentService {
                 payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`;
                 log.info(`Using CinetPay for payout to ${countryCode} based on gateway selection.`);
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
-                // For countries that use FeexPay
                 payoutService = feexPayPayoutService;
                 providerName = 'FeexPay';
-                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`; // Assuming a FeexPay webhook endpoint
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`;
                 log.info(`Using FeexPay for payout to ${countryCode} based on gateway selection.`);
+            } else if (selectedGateway === PaymentGateway.MONEYFUSION) {
+                providerName = 'MoneyFusion';
+                payoutNotificationUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`;
+                log.info(`Using MoneyFusion for payout to ${countryCode} based on gateway selection.`);
             } else {
                 log.error(`Unsupported gateway selected for withdrawal: ${selectedGateway} for country ${countryCode}`);
                 throw new AppError(`Unsupported country for withdrawals: ${countryCode}`, 400);
@@ -1080,7 +1085,7 @@ class PaymentService {
                 ? withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '').substring(dialingPrefix.length)
                 : withdrawalAccountInfo.fullMomoNumber.replace(/\D/g, '');
 
-            let payoutPromise: Promise<CinetPayPayoutResult | FeexPayPayoutResult>;
+            let payoutPromise: Promise<CinetPayPayoutResult | FeexPayPayoutResult | any>;
 
             if (selectedPayoutService === 'CinetPay') {
                 const cinetpayPaymentMethod = momoOperatorToCinetpayPaymentMethod[withdrawalAccountInfo.momoOperator];
@@ -1091,7 +1096,7 @@ class PaymentService {
                     countryCode: withdrawalAccountInfo.countryCode,
                     recipientName: userName || 'SBC User',
                     recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
-                    paymentMethod: cinetpayPaymentMethod, // Required for Wave (WAVECI/WAVESN), optional for others
+                    paymentMethod: cinetpayPaymentMethod,
                     description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                     client_transaction_id: updatedTransaction.transactionId,
                     notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`
@@ -1100,14 +1105,30 @@ class PaymentService {
                 payoutPromise = feexPayPayoutService.initiatePayout({
                     userId: updatedTransaction.userId.toString(),
                     amount: netAmountForPayout,
-                    phoneNumber: nationalPhoneNumber, // FeexPay may require national or full, depends on endpoint
+                    phoneNumber: nationalPhoneNumber,
                     countryCode: withdrawalAccountInfo.countryCode,
-                    momoOperator: withdrawalAccountInfo.momoOperator, // FeexPay uses this to pick endpoint
+                    momoOperator: withdrawalAccountInfo.momoOperator,
                     recipientName: userName || 'SBC User',
                     recipientEmail: userEmail || `${updatedTransaction.userId}@sbc.com`,
                     description: `User Withdrawal for Transaction ${updatedTransaction.transactionId}`,
                     client_transaction_id: updatedTransaction.transactionId,
-                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay` // Assuming FeexPay webhook
+                    notifyUrl: `${config.selfBaseUrl}/api/payouts/webhooks/feexpay`
+                });
+            } else if (selectedPayoutService === 'MoneyFusion') {
+                const withdrawMode = moneyFusionService.getWithdrawMode(
+                    withdrawalAccountInfo.countryCode,
+                    withdrawalAccountInfo.momoOperator
+                );
+                if (!withdrawMode) {
+                    throw new AppError(`Withdrawal not supported for operator: ${withdrawalAccountInfo.momoOperator}`, 400);
+                }
+                const fullPhone = dialingPrefix + nationalPhoneNumber;
+                payoutPromise = moneyFusionService.initiatePayout({
+                    countryCode: withdrawalAccountInfo.countryCode,
+                    phone: fullPhone,
+                    amount: netAmountForPayout,
+                    withdrawMode,
+                    webhookUrl: `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`
                 });
             } else {
                 log.error(`Unknown payout service selected for transaction ${updatedTransaction.transactionId}: ${selectedPayoutService}`);
@@ -1121,15 +1142,19 @@ class PaymentService {
                 let payoutMessage: string | undefined;
 
                 if (selectedPayoutService === 'CinetPay') {
-                    const cinetpayRes = payoutRes as CinetPayPayoutResult; // Cast to CinetPay's result type
+                    const cinetpayRes = payoutRes as CinetPayPayoutResult;
                     providerTxId = cinetpayRes.cinetpayTransactionId;
                     finalProviderName = 'CinetPay';
                     payoutMessage = cinetpayRes.message;
                 } else if (selectedPayoutService === 'FeexPay') {
-                    const feexpayRes = payoutRes as FeexPayPayoutResult; // Cast to FeexPay's result type
+                    const feexpayRes = payoutRes as FeexPayPayoutResult;
                     providerTxId = feexpayRes.feexpayReference;
                     finalProviderName = 'FeexPay';
                     payoutMessage = feexpayRes.message;
+                } else if (selectedPayoutService === 'MoneyFusion') {
+                    providerTxId = payoutRes.tokenPay;
+                    finalProviderName = 'MoneyFusion';
+                    payoutMessage = payoutRes.message;
                 }
 
                 if (payoutRes.success) {
@@ -1826,69 +1851,108 @@ class PaymentService {
      * Handle CinetPay webhook notification
      */
     public async handleCinetPayWebhook(payload: any): Promise<void> {
-        const { cpm_trans_id, cpm_site_id, cpm_error_message, cpm_payment_token, cpm_amount, cpm_currency } = payload;
+        // New CinetPay API webhook payload:
+        // { notify_token, merchant_transaction_id, transaction_id, user: { name, email, phone_number } }
+        const { notify_token, merchant_transaction_id, transaction_id } = payload;
 
-        if (!cpm_trans_id || !cpm_site_id || !cpm_error_message) {
-            log.warn('Received CinetPay webhook with missing required fields', payload);
+        if (!merchant_transaction_id && !transaction_id) {
+            log.warn('Received CinetPay webhook with missing transaction IDs', payload);
             throw new Error('Webhook payload missing required fields');
         }
-        if (cpm_site_id !== config.cinetpay.siteId) {
-            log.error(`CinetPay webhook site ID mismatch. Received: ${cpm_site_id}, Expected: ${config.cinetpay.siteId}`);
-            throw new Error('Invalid site ID in webhook');
+
+        const lookupId = merchant_transaction_id || transaction_id;
+        log.info(`CinetPay payment webhook received: merchant_tx=${merchant_transaction_id}, cinetpay_tx=${transaction_id}`);
+
+        // Find payment intent by merchant_transaction_id (which is our sessionId or TEST_sessionId)
+        let sessionId = merchant_transaction_id;
+        // Strip TEST- prefix if present (dev mode)
+        if (sessionId && sessionId.startsWith('TEST-')) {
+            sessionId = sessionId.substring(5);
         }
 
-        const paymentIntent = await paymentIntentRepository.findBySessionId(cpm_trans_id);
+        const paymentIntent = await paymentIntentRepository.findBySessionId(sessionId);
 
         if (!paymentIntent) {
-            log.error(`Payment intent not found for CinetPay webhook: ${cpm_trans_id}`);
+            log.error(`Payment intent not found for CinetPay webhook: ${lookupId}`);
             throw new Error('Payment intent not found for webhook');
         }
-        if (cpm_payment_token && paymentIntent.gatewayPaymentId && String(cpm_payment_token) !== String(paymentIntent.gatewayPaymentId)) {
-            log.error(`CinetPay payment token mismatch for ${cpm_trans_id}`);
-            throw new Error('Payment token mismatch');
-        }
-        if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
-            log.warn(`Webhook received for already processed payment intent: ${cpm_trans_id}, Status: ${paymentIntent.status}`);
-            if (paymentIntent.status === PaymentStatus.SUCCEEDED) {
-                return;
-            } else {
-                log.warn(`Continuing with processing of CinetPay webhook for ${cpm_trans_id} as it is in a final state (${paymentIntent.status}).`);
+
+        // Verify notify_token matches what we stored during init
+        if (notify_token && paymentIntent.metadata?.cinetpayNotifyToken) {
+            if (notify_token !== paymentIntent.metadata.cinetpayNotifyToken) {
+                log.error(`CinetPay notify_token mismatch for ${lookupId}`);
+                throw new Error('Notify token mismatch');
             }
         }
 
-        // Log amount comparison for fee analysis
-        if (cpm_amount && paymentIntent.paidAmount) {
-            const expectedAmount = paymentIntent.paidAmount;
-            const receivedAmount = parseFloat(cpm_amount);
-            const feeDifference = expectedAmount - receivedAmount;
-            const feePercentage = ((feeDifference / expectedAmount) * 100).toFixed(2);
-
-            log.info(`CinetPay Fee Analysis for ${cpm_trans_id}:`);
-            log.info(`Expected Amount: ${expectedAmount} ${cpm_currency || paymentIntent.paidCurrency}`);
-            log.info(`Received Amount: ${receivedAmount} ${cpm_currency || paymentIntent.paidCurrency}`);
-            log.info(`Fee Deducted: ${feeDifference} (${feePercentage}%)`);
+        if (paymentIntent.status === PaymentStatus.SUCCEEDED) {
+            log.warn(`Webhook received for already succeeded payment intent: ${lookupId}`);
+            return;
         }
 
+        // New API: webhook just notifies us, we must check the payment status API for the actual status
+        const paymentToken = paymentIntent.gatewayPaymentId || transaction_id;
+        if (!paymentToken) {
+            log.error(`No payment token available to check status for ${lookupId}`);
+            throw new Error('Cannot verify payment status: no payment token');
+        }
+
+        // Determine country to authenticate
+        const countryCode = paymentIntent.countryCode;
+        if (!countryCode) {
+            log.error(`Payment intent ${lookupId} has no country code`);
+            throw new Error('Payment intent missing country code');
+        }
+        const countryCreds = config.cinetpay.countries[countryCode];
+        if (!countryCreds) {
+            log.error(`No CinetPay credentials for country ${countryCode} to verify payment ${lookupId}`);
+            throw new Error(`No credentials for country ${countryCode}`);
+        }
+
+        // Get auth token for status check
+        const authResponse = await axios.post(
+            `${config.cinetpay.baseUrl}/v1/oauth/login`,
+            { api_key: countryCreds.apiKey, api_password: countryCreds.apiPassword },
+            { headers: { 'Content-Type': 'application/json' }, httpsAgent: ipv4Agent }
+        );
+
+        if (authResponse.data.code !== 200) {
+            throw new Error(`CinetPay auth failed during webhook verification: ${authResponse.data.status}`);
+        }
+
+        const accessToken = authResponse.data.access_token;
+
+        // Check payment status via API
+        const statusResponse = await axios.get(
+            `${config.cinetpay.baseUrl}/v1/payment/${paymentToken}`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` }, httpsAgent: ipv4Agent }
+        );
+
+        log.info(`CinetPay payment status for ${lookupId}: code=${statusResponse.data.code}, status=${statusResponse.data.status}`);
+
+        // Map status code to PaymentStatus
         let newStatus: PaymentStatus = paymentIntent.status;
-        if (cpm_error_message === 'SUCCES') {
+        const statusCode = statusResponse.data.code;
+        if (statusCode === 100 || statusResponse.data.status === 'SUCCESS') {
             newStatus = PaymentStatus.SUCCEEDED;
-        } else if (cpm_error_message === 'TRANSACTION_CANCEL') {
+        } else if (statusCode === 2010 || statusResponse.data.status === 'FAILED') {
             newStatus = PaymentStatus.FAILED;
-        } else {
+        } else if (statusCode === 2003 || statusResponse.data.status === 'EXPIRED') {
+            newStatus = PaymentStatus.FAILED;
+        } else if (statusCode === 2001 || statusCode === 2002) {
             newStatus = PaymentStatus.PROCESSING;
         }
 
         let updatedIntent: IPaymentIntent | null = paymentIntent;
         if (newStatus !== paymentIntent.status) {
-            updatedIntent = await paymentIntentRepository.addWebhookEvent(cpm_trans_id, newStatus, payload);
-            log.info(`PaymentIntent ${cpm_trans_id} status updated to ${newStatus} via CinetPay webhook.`);
+            updatedIntent = await paymentIntentRepository.addWebhookEvent(sessionId, newStatus, { ...payload, verifiedStatus: statusResponse.data });
+            log.info(`PaymentIntent ${sessionId} status updated to ${newStatus} via CinetPay webhook.`);
             if (!updatedIntent) {
-                log.error(`Failed to update PaymentIntent ${cpm_trans_id} after CinetPay webhook event. Cannot proceed.`);
+                log.error(`Failed to update PaymentIntent ${sessionId} after CinetPay webhook event.`);
                 return;
             }
         }
 
-        // Check if status is final and updatedIntent is not null
         if (updatedIntent && (updatedIntent.status === PaymentStatus.SUCCEEDED || updatedIntent.status === PaymentStatus.FAILED)) {
             await this.handlePaymentCompletion(updatedIntent);
         }
@@ -2952,6 +3016,8 @@ class PaymentService {
                 finalPaymentIntent = await this.initiateFeexpayPayment(updatedIntent, finalAmount, finalCurrency, details.operator, details.otp);
             } else if (updatedIntent.gateway === PaymentGateway.CINETPAY) {
                 finalPaymentIntent = await this.initiateCinetPayPayment(updatedIntent, finalAmount, finalCurrency);
+            } else if (updatedIntent.gateway === PaymentGateway.MONEYFUSION) {
+                finalPaymentIntent = await this.initiateMoneyFusionPayment(updatedIntent, finalAmount, finalCurrency);
             } else if (updatedIntent.gateway === PaymentGateway.NOWPAYMENTS) {
                 finalPaymentIntent = await this.initiateNowPaymentsPayment(updatedIntent, finalAmount, finalCurrency);
             } else {
@@ -3016,33 +3082,24 @@ class PaymentService {
             throw new Error('Country code is required for fiat currency payments.');
         }
 
-        // Togo: Use FeexPay for BOTH payments and withdrawals
-        // CinetPay hasn't supported Togo payouts for 2+ months (as of Dec 2025)
-        if (countryCode === 'TG') {
-            log.info(`🔄 Country ${countryCode} selected, using FEEXPAY. [isWithdrawal=${isWithdrawal}]`);
+        // CinetPay: Côte d'Ivoire only (payin + payout)
+        if (countryCode === 'CI') {
+            log.info(`Country ${countryCode} selected, using CINETPAY.`);
+            return PaymentGateway.CINETPAY;
+        }
+
+        // FeexPay: Bénin, Togo, Congo Brazzaville (payin + payout)
+        const feexpaySupportedCountries = ['BJ', 'TG', 'CG'];
+        if (feexpaySupportedCountries.includes(countryCode)) {
+            log.info(`Country ${countryCode} selected, using FEEXPAY.`);
             return PaymentGateway.FEEXPAY;
         }
 
-        // Countries that use CinetPay for both payments and withdrawals
-        const cinetpaySupportedCountries = [
-            'BF', // Burkina Faso
-            'ML', // Mali
-            'NE', // Niger
-            'CI', // Côte d'Ivoire
-            'CM', // Cameroun
-            'SN', // Sénégal
-        ];
-
-        if (cinetpaySupportedCountries.includes(countryCode)) {
-            log.info(`Country ${countryCode} selected, using CINETPAY.`);
-            return PaymentGateway.CINETPAY;
-        } else {
-            // List of countries that use FeexPay for both payments and withdrawals
-            const feexpaySupportedCountries = ['CG', 'GN', 'GA', 'CD', 'KE', 'BJ'];
-            if (feexpaySupportedCountries.includes(countryCode)) {
-                log.info(`Country ${countryCode} selected, using FEEXPAY.`);
-                return PaymentGateway.FEEXPAY;
-            }
+        // MoneyFusion: BF, SN, CM, ML, CD, GA, NE, GN, TD
+        const moneyFusionCountries = ['BF', 'SN', 'CM', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD'];
+        if (moneyFusionCountries.includes(countryCode)) {
+            log.info(`Country ${countryCode} selected, using MONEYFUSION.`);
+            return PaymentGateway.MONEYFUSION;
         }
 
         log.error(`Unsupported country code for gateway selection: ${countryCode}`);
@@ -3277,75 +3334,244 @@ class PaymentService {
         }
     }
 
+    private async initiateMoneyFusionPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
+        try {
+            log.info(`Initiating MoneyFusion payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
+
+            // MoneyFusion's `numeroSend` is the contact phone, not the payment phone
+            // (the payment phone is entered on MoneyFusion's hosted checkout). Use the
+            // user's account phone — fall back to whatever the intent has for guests.
+            let contactPhone = paymentIntent.phoneNumber;
+            let customerName = 'Customer';
+            if (paymentIntent.userId) {
+                const userDetails = await userServiceClient.getUserDetails(paymentIntent.userId.toString());
+                if (userDetails?.phoneNumber) {
+                    contactPhone = userDetails.phoneNumber.toString();
+                }
+                if (userDetails?.name) {
+                    customerName = userDetails.name;
+                }
+            }
+
+            if (!contactPhone) {
+                throw new Error('Aucun numéro de téléphone n\'est associé à ce compte. Veuillez ajouter un numéro à votre profil avant de payer.');
+            }
+
+            const webhookUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion`;
+            const returnUrl = `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`;
+
+            const result = await moneyFusionService.initiatePayment({
+                amount,
+                phoneNumber: contactPhone,
+                customerName,
+                returnUrl,
+                webhookUrl,
+                personalInfo: { sessionId: paymentIntent.sessionId, userId: paymentIntent.userId?.toString() },
+            });
+
+            if (!result.success || !result.token) {
+                throw new Error(result.message || 'MoneyFusion payment initiation failed');
+            }
+
+            const updateData: UpdatePaymentIntentInput = {
+                gatewayPaymentId: result.token,
+                gatewayCheckoutUrl: result.checkoutUrl,
+                status: PaymentStatus.PENDING_PROVIDER,
+                gatewayRawResponse: result as any,
+            };
+
+            const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, updateData);
+            if (!updated) throw new Error('Failed to update payment intent after MoneyFusion initiation');
+
+            return updated;
+        } catch (error: any) {
+            log.error(`MoneyFusion payment initiation failed for session ${paymentIntent.sessionId}: ${error.message}`);
+            await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+                status: PaymentStatus.FAILED,
+                gatewayRawResponse: { error: error.message } as any,
+            });
+            throw error;
+        }
+    }
+
+    public async handleMoneyFusionPayinWebhook(payload: any): Promise<void> {
+        const { event, tokenPay, Montant, personal_Info } = payload;
+        log.info(`MoneyFusion payin webhook received: event=${event}, tokenPay=${tokenPay}`);
+
+        const paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(tokenPay, PaymentGateway.MONEYFUSION);
+        if (!paymentIntent) {
+            log.warn(`MoneyFusion payin webhook: Payment intent not found for token ${tokenPay}`);
+            return;
+        }
+
+        const status = moneyFusionService.mapPayinWebhookStatus(event);
+        let newPaymentStatus: PaymentStatus;
+
+        if (status === 'completed') {
+            newPaymentStatus = PaymentStatus.SUCCEEDED;
+        } else if (status === 'failed') {
+            newPaymentStatus = PaymentStatus.FAILED;
+        } else {
+            newPaymentStatus = PaymentStatus.PROCESSING;
+        }
+
+        // Avoid processing duplicate events
+        if (paymentIntent.status === newPaymentStatus) {
+            log.info(`MoneyFusion payin webhook: Status already ${newPaymentStatus} for session ${paymentIntent.sessionId}, skipping`);
+            return;
+        }
+
+        if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
+            log.info(`MoneyFusion payin webhook: Payment already in final state ${paymentIntent.status}, skipping`);
+            return;
+        }
+
+        const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+            status: newPaymentStatus,
+            paidAmount: Montant,
+            webhookHistory: [...(paymentIntent.webhookHistory || []), { timestamp: new Date(), status: newPaymentStatus, providerData: payload }],
+        } as any);
+
+        if (updated && (updated.status === PaymentStatus.SUCCEEDED || updated.status === PaymentStatus.FAILED)) {
+            await this.handlePaymentCompletion(updated);
+        }
+    }
+
+    public async handleMoneyFusionPayoutWebhook(payload: any): Promise<void> {
+        const { event, tokenPay, montant, numeroRetrait, moyen } = payload;
+        log.info(`MoneyFusion payout webhook received: event=${event}, tokenPay=${tokenPay}`);
+
+        // Find the transaction by the MoneyFusion token stored in externalTransactionId
+        const transaction = await transactionRepository.findByExternalId(tokenPay);
+        if (!transaction) {
+            log.warn(`MoneyFusion payout webhook: Transaction not found for tokenPay ${tokenPay}`);
+            return;
+        }
+
+        const status = moneyFusionService.mapPayoutWebhookStatus(event);
+
+        if (status === 'completed') {
+            if (transaction.status !== TransactionStatus.COMPLETED) {
+                await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.COMPLETED);
+                log.info(`MoneyFusion payout completed: ${transaction.transactionId}`);
+            }
+        } else if (status === 'failed') {
+            if (transaction.status !== TransactionStatus.FAILED) {
+                await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.FAILED);
+                // Refund the user balance
+                try {
+                    await userServiceClient.updateUserBalance(transaction.userId.toString(), transaction.amount);
+                    log.info(`Refunded ${transaction.amount} to user ${transaction.userId} after MoneyFusion payout failure`);
+                } catch (refundError: any) {
+                    log.error(`Failed to refund user ${transaction.userId} after MoneyFusion payout failure: ${refundError.message}`);
+                }
+            }
+        }
+    }
+
     private async initiateCinetPayPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
         try {
             log.info(`Initiating CinetPay payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
 
-            // Log config
-            log.info(`CinetPay config: baseUrl=${config.cinetpay.baseUrl}, siteId=${config.cinetpay.siteId}, env=${config.nodeEnv}`);
+            const countryCode = paymentIntent.countryCode;
+            if (!countryCode) {
+                throw new Error('Payment intent missing country code for CinetPay payment');
+            }
+            const countryCreds = config.cinetpay.countries[countryCode];
+            if (!countryCreds) {
+                throw new Error(`No CinetPay credentials configured for country: ${countryCode}`);
+            }
 
-            // Transaction ID prefix
-            const transactionId = config.nodeEnv === 'production'
+            log.info(`CinetPay config: baseUrl=${config.cinetpay.baseUrl}, country=${countryCode}, env=${config.nodeEnv}`);
+
+            // Authenticate with CinetPay OAuth for this country
+            const authResponse = await axios.post(
+                `${config.cinetpay.baseUrl}/v1/oauth/login`,
+                {
+                    api_key: countryCreds.apiKey,
+                    api_password: countryCreds.apiPassword,
+                },
+                { headers: { 'Content-Type': 'application/json' }, httpsAgent: ipv4Agent }
+            );
+
+            if (authResponse.data.code !== 200) {
+                throw new Error(`CinetPay auth failed for ${countryCode}: ${authResponse.data.status}`);
+            }
+
+            const accessToken = authResponse.data.access_token;
+
+            // Transaction ID (max 30 chars, alphanumeric and hyphens only)
+            const rawId = config.nodeEnv === 'production'
                 ? paymentIntent.sessionId
-                : `TEST_${paymentIntent.sessionId}`;
+                : `TEST-${paymentIntent.sessionId}`;
+            const merchantTxId = rawId.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 30);
 
             // Calculate total amount including 3.5% processing fee
-            // User pays: originalAmount + 3.5% fee, Merchant receives: ~originalAmount after CinetPay deducts fees
-            const processingFeePercentage = 0.035; // 3.5%
+            const processingFeePercentage = 0.035;
             const totalAmountWithFees = Math.round(amount * (1 + processingFeePercentage));
 
             log.info(`CinetPay fee calculation: Original=${amount} ${currency}, With 3.5% fee=${totalAmountWithFees} ${currency}`);
 
-            const requestBody = {
-                apikey: config.cinetpay.apiKey,
-                site_id: config.cinetpay.siteId,
-                transaction_id: transactionId,
-                amount: totalAmountWithFees, // Send amount + 3.5% fee
+            // Build first/last name from metadata
+            const firstName = paymentIntent.metadata?.customerName || `User-${paymentIntent.userId}` || 'User';
+            const lastName = paymentIntent.metadata?.customerSurname || 'SBC';
+            const email = paymentIntent.metadata?.customerEmail || 'no-email@sbc.com';
+
+            // Truncate URLs to 120 chars (new API limit)
+            const notifyUrl = `${host}/api/payments/webhooks/cinetpay`.substring(0, 120);
+            const successUrl = `${host}/payment/success`.substring(0, 120);
+            const failedUrl = `${host}/payment/failed`.substring(0, 120);
+
+            const requestBody: Record<string, any> = {
                 currency: currency,
-                description: `${paymentIntent.subscriptionType} - ${paymentIntent.subscriptionPlan}`,
-                // Use actual user data if available, otherwise placeholders
-                customer_name: paymentIntent.metadata?.customerName || `User-${paymentIntent.userId}` || "User SBC", // More specific default name
-                customer_surname: paymentIntent.metadata?.customerSurname || "SBC",
-                customer_email: paymentIntent.metadata?.customerEmail || "no-email@sbc.com", // Default valid email
-                customer_phone_number: paymentIntent.phoneNumber || "", // Keep empty string for now unless error points here
-                customer_address: paymentIntent.metadata?.customerAddress || "N/A", // Use N/A as fallback
-                customer_city: paymentIntent.metadata?.customerCity || paymentIntent.countryCode || "Unknown", // Use countryCode, then Unknown
-                customer_country: paymentIntent.countryCode, // Already required
-                customer_state: paymentIntent.metadata?.customerState || paymentIntent.countryCode || "Unknown", // Use countryCode, then Unknown
-                customer_zip_code: paymentIntent.metadata?.customerZipCode || "00000", // Use 00000 as fallback
-                notify_url: `${host}/api/payments/webhooks/cinetpay`,
-                return_url: `${host}`,
-                channels: "ALL",
-                metadata: JSON.stringify({ sessionId: paymentIntent.sessionId }),
-                lang: 'en', // Or 'fr' based on preference
-                invoice_data: {
-                    "Subscription": `${paymentIntent.subscriptionType}`,
-                    "Plan": `${paymentIntent.subscriptionPlan}`,
-                    "Processing Fee": `${Math.round(amount * processingFeePercentage)} ${currency}`
-                }
+                merchant_transaction_id: merchantTxId,
+                amount: totalAmountWithFees,
+                lang: 'fr',
+                designation: `${paymentIntent.subscriptionType} - ${paymentIntent.subscriptionPlan}`,
+                client_email: email,
+                client_first_name: firstName.substring(0, 255),
+                client_last_name: lastName.substring(0, 255),
+                success_url: successUrl,
+                failed_url: failedUrl,
+                notify_url: notifyUrl,
+                direct_pay: false,
             };
 
-            // Log request
-            log.info(`CinetPay request: endpoint=${config.cinetpay.baseUrl}/payment, transaction_id=${transactionId}, amount=${totalAmountWithFees}, currency=${currency}`);
+            // Add phone number if available
+            if (paymentIntent.phoneNumber) {
+                requestBody.client_phone_number = paymentIntent.phoneNumber;
+            }
+
+            log.info(`CinetPay payment request: merchant_tx=${merchantTxId}, amount=${totalAmountWithFees}, currency=${currency}`);
 
             const response = await axios.post(
-                `${config.cinetpay.baseUrl}/payment`,
+                `${config.cinetpay.baseUrl}/v1/payment`,
                 requestBody,
                 {
                     headers: {
-                        'Content-Type': 'application/json'
-                    }
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`,
+                    },
+                    httpsAgent: ipv4Agent,
                 }
             );
 
-            log.info(`CinetPay response status: ${response.status}, response code: ${response.data?.code}`);
+            log.info(`CinetPay response status: ${response.status}, code: ${response.data?.code}`);
+            log.info(`CinetPay raw response: ${JSON.stringify(response.data)}`);
 
-            if (response.data && response.data.code === '201') {
+            // New API: code 200 = OK, returns payment_token and payment_url
+            if (response.data && response.data.code === 200) {
                 const updateData = {
-                    gatewayPaymentId: response.data.data.payment_token,
-                    gatewayCheckoutUrl: response.data.data.payment_url,
+                    gatewayPaymentId: response.data.payment_token,
+                    gatewayCheckoutUrl: response.data.payment_url,
                     status: PaymentStatus.PENDING_PROVIDER,
-                    gatewayRawResponse: response.data
+                    gatewayRawResponse: response.data,
+                    // Store notify_token for webhook verification
+                    metadata: {
+                        ...paymentIntent.metadata,
+                        cinetpayNotifyToken: response.data.notify_token,
+                        cinetpayTransactionId: response.data.transaction_id,
+                    }
                 };
                 const updatedIntent = await paymentIntentRepository.updateBySessionId(
                     paymentIntent.sessionId,
@@ -3354,11 +3580,11 @@ class PaymentService {
                 if (!updatedIntent) {
                     throw new Error('Failed to update payment intent after CinetPay initiation');
                 }
-                log.info(`CinetPay payment initiated successfully for sessionId: ${paymentIntent.sessionId}`);
+                log.info(`CinetPay payment initiated successfully for sessionId: ${paymentIntent.sessionId}, payment_url: ${response.data.payment_url}`);
                 return updatedIntent;
             } else {
                 log.error(`CinetPay payment initiation failed: ${JSON.stringify(response.data)}`);
-                throw new Error(`Failed to initiate CinetPay payment: ${response.data?.message || 'Unknown error'}`);
+                throw new Error(`Failed to initiate CinetPay payment: ${response.data?.status || 'Unknown error'}`);
             }
         } catch (error: any) {
             if (error.response) {
@@ -4209,232 +4435,8 @@ class PaymentService {
         }
     }
 
-    // --- NEW CINTPAY TRANSFER/PAYOUT METHODS ---
-
-    /**
-     * Fetches or refreshes the CinetPay transfer API authentication token.
-     * Token is valid for 5 minutes.
-     */
-    private async getCinetpayTransferAuthToken(): Promise<string> {
-        if (this.cinetpayTransferToken && this.cinetpayTokenExpiresAt && this.cinetpayTokenExpiresAt > new Date(Date.now() + 60 * 1000)) { // Check if token exists and valid for at least 1 more minute
-            log.info('Using cached CinetPay transfer token.');
-            return this.cinetpayTransferToken;
-        }
-
-        log.info('Requesting new CinetPay transfer token...');
-        try {
-            const params = new URLSearchParams();
-            params.append('apikey', config.cinetpay.apiKey); // Use main apikey for transfer token too as per CinetPay setup
-            params.append('password', config.cinetpay.apiPassword); // API Password set in CinetPay dashboard for transfers
-
-            const response = await axios.post(
-                `${config.cinetpay.transferBaseUrl}/auth/login`, // Corrected: Use transferBaseUrl
-                params,
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    }
-                    // lang: 'fr' // Optional: if you want responses in French, CinetPay API might support lang query param
-                }
-            );
-
-            if (response.data && response.data.code === 0 && response.data.data && response.data.data.token) {
-                this.cinetpayTransferToken = response.data.data.token;
-                this.cinetpayTokenExpiresAt = new Date(Date.now() + 4 * 60 * 1000); // Set expiry to 4 mins to be safe
-                log.info('Successfully obtained CinetPay transfer token.');
-                return this.cinetpayTransferToken!;
-            } else {
-                log.error('Failed to get CinetPay transfer token', response.data);
-                throw new AppError(`Failed to authenticate with CinetPay for transfers: ${response.data?.message || 'Unknown error'}`, response.data?.code || 500);
-            }
-        } catch (error: any) {
-            log.error('Error requesting CinetPay transfer token:', error.response?.data || error.message);
-            throw new AppError(`Error during CinetPay transfer authentication: ${error.response?.data?.message || error.message}`, error.response?.status || 500);
-        }
-    }
-
-    /**
-     * Adds a contact to CinetPay. This might be a prerequisite for transfers to new numbers.
-     * Refer to CinetPay documentation for specifics on whether this is always needed.
-     */
-    private async addCinetpayContact(
-        token: string,
-        contactDetails: {
-            prefix: string; // e.g., "225"
-            phone: string; // national number, e.g., "01020304"
-            name: string; // User's first name
-            surname: string; // User's last name
-            email: string;
-        }
-    ): Promise<boolean> {
-        log.info(`Attempting to add/verify CinetPay contact: ${contactDetails.prefix}${contactDetails.phone}`);
-        log.info('Contact details received:', contactDetails);
-        try {
-            const contactDataArray = [{
-                prefix: contactDetails.prefix,
-                phone: contactDetails.phone,
-                name: contactDetails.name,
-                surname: contactDetails.surname,
-                email: contactDetails.email,
-            }];
-
-            log.info('Contact data array for CinetPay:', contactDataArray);
-            const params = new URLSearchParams();
-            params.append('data', JSON.stringify(contactDataArray));
-
-            log.info('URLSearchParams before sending:', params.toString());
-
-            const response = await axios.post(
-                `${config.cinetpay.transferBaseUrl}/transfer/contact?token=${token}&lang=en`,
-                params, // URLSearchParams object as the request body
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    }
-                }
-            );
-
-            if (response.data && response.data.code === 0 && response.data.data && response.data.data.length > 0) {
-                log.info(`CinetPay contact processed for ${contactDetails.prefix}${contactDetails.phone}. Response:`, response.data.data[0]);
-                if (response.data.data[0].status === 'INVALID_PHONE_NUMBER') {
-                    log.warn(`Cinetpay says: Invalid phone number for contact ${contactDetails.prefix}${contactDetails.phone}`);
-                    return false;
-                }
-                return true;
-            } else {
-                log.warn(`Failed to add/verify CinetPay contact for ${contactDetails.prefix}${contactDetails.phone}. Response:`, response.data);
-                return false;
-            }
-        } catch (error: any) {
-            log.error(`Error adding CinetPay contact ${contactDetails.prefix}${contactDetails.phone}:`, error.response?.data || error.message);
-            return false;
-        }
-    }
-
-    /**
-     * Processes a single CinetPay money transfer (payout).
-     * Requires prior authentication (token) and potentially adding contact.
-     */
-    public async processCinetpayTransfer(
-        transferDetails: {
-            transactionId: string; // Our internal transaction ID for reference
-            prefix: string;      // Country dialing code, e.g., "237"
-            phone: string;       // National phone number, e.g., "676746210"
-            amount: number;      // Amount to transfer (must be integer, multiple of 5)
-            currency: string;    // e.g., "XAF"
-            firstName: string;
-            lastName: string;
-            email: string;
-            paymentMethod?: string; // Specific CinetPay payment method like "MTN_MOMO_CMR"
-            notifyUrl?: string;  // Webhook URL for CinetPay to send status updates
-        }
-    ): Promise<{ success: boolean; providerTransactionId?: string; lot?: string; message?: string; error?: any }> {
-        log.info(`Initiating CinetPay transfer for clientTxId: ${transferDetails.transactionId} to ${transferDetails.prefix}${transferDetails.phone}, Amount: ${transferDetails.amount} ${transferDetails.currency}`);
-
-        // 1. Validate Amount (integer, multiple of 5)
-        if (!Number.isInteger(transferDetails.amount) || transferDetails.amount % 5 !== 0) {
-            const message = `CinetPay transfer amount must be an integer and a multiple of 5. Received: ${transferDetails.amount}`;
-            log.error(message);
-            return { success: false, message, error: { code: 'INVALID_AMOUNT_FORMAT' } };
-        }
-
-        try {
-            const token = await this.getCinetpayTransferAuthToken();
-
-            // 2. Add/Verify contact (CinetPay API docs state this is a prerequisite)
-            const contactAddedOrVerified = await this.addCinetpayContact(token, {
-                prefix: transferDetails.prefix,
-                phone: transferDetails.phone,
-                name: transferDetails.firstName,
-                surname: transferDetails.lastName,
-                email: transferDetails.email
-            });
-
-            if (!contactAddedOrVerified) {
-                // Log this, but CinetPay might still process it if contact existed OR if the error was in our request format to add contact.
-                // However, if Cinetpay explicitly said invalid phone, we should stop.
-                log.warn(`CinetPay contact add/verify step indicates failure for ${transferDetails.prefix}${transferDetails.phone}. Transfer might fail.`);
-                // Depending on strictness, could return failure here:
-                // return { success: false, message: 'Failed to add or verify CinetPay contact before transfer.', error: { code: 'CONTACT_SETUP_FAILED'}}; 
-            }
-
-            // 3. Prepare Transfer Data for x-www-form-urlencoded
-            const transferRequestParams = new URLSearchParams();
-            transferRequestParams.append('token', token);
-            transferRequestParams.append('cpm_trans_id', transferDetails.transactionId.substring(0, 20)); // Max 20 chars
-            transferRequestParams.append('cpm_phone_prefixe', transferDetails.prefix);
-            transferRequestParams.append('cpm_cel_phone_num', transferDetails.phone);
-            transferRequestParams.append('cpm_amount', String(transferDetails.amount));
-            transferRequestParams.append('cpm_currency', transferDetails.currency.toUpperCase());
-            transferRequestParams.append('cpm_payment_config', transferDetails.paymentMethod ? transferDetails.paymentMethod.toUpperCase() : 'MOBILEMONEY');
-            transferRequestParams.append('cpm_designation', `Retrait SBC ${transferDetails.transactionId}`.substring(0, 100));
-            transferRequestParams.append('notify_url', transferDetails.notifyUrl || `${config.paymentServiceBaseUrl}/api/payments/webhooks/cinetpay/transfer-status`);
-            // As per CinetPay docs for /transfer/money/send/contact, 'data' is not used here.
-            // The parameters are sent directly in the x-www-form-urlencoded body.
-
-            log.info('Sending CinetPay transfer money request with params:', Object.fromEntries(transferRequestParams));
-
-            // 4. Make the Transfer API Call
-            const response = await axios.post(
-                `${config.cinetpay.transferBaseUrl}/transfer/money/send/contact`,
-                transferRequestParams,
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    }
-                }
-            );
-
-            log.info('CinetPay transfer money response:', response.data);
-
-            // 5. Handle Response
-            if (response.data && response.data.code === 0 && response.data.data) {
-                const responseData = response.data.data;
-                let details;
-                // The /transfer/money/send/contact endpoint returns an array of objects, even for a single contact transfer.
-                if (Array.isArray(responseData) && responseData.length > 0) {
-                    details = responseData[0];
-                } else {
-                    log.error(`CinetPay transfer response data.data format unexpected (expected array for /send/contact) for ${transferDetails.transactionId}`, response.data);
-                    return { success: false, message: 'CinetPay transfer response data format error.', error: response.data };
-                }
-
-                // treatment_status for single contact could be NEW, PROCESSING, etc.
-                if (details && (details.treatment_status === 'NEW' || details.treatment_status === 'PROCESSING')) {
-                    log.info(`CinetPay transfer successfully submitted for ${transferDetails.transactionId}. Lot: ${details.lot}, Provider Tx ID (client_transaction_id): ${details.client_transaction_id}, Status: ${details.treatment_status}`);
-                    return {
-                        success: true,
-                        providerTransactionId: details.client_transaction_id,
-                        lot: details.lot,
-                        message: `Transfer submitted. Status: ${details.treatment_status}`
-                    };
-                } else {
-                    log.warn(`CinetPay transfer for ${transferDetails.transactionId} submitted but status is not NEW/PROCESSING: ${details?.treatment_status || 'Unknown'}. Message: ${response.data.message}`, details);
-                    return {
-                        success: false,
-                        message: `CinetPay transfer status: ${details?.treatment_status || response.data.message}`,
-                        providerTransactionId: details?.client_transaction_id,
-                        lot: details?.lot,
-                        error: response.data
-                    };
-                }
-            } else if (response.data && response.data.code === 604) { // Insufficient Balance
-                log.error(`CinetPay transfer for ${transferDetails.transactionId} failed: Insufficient balance.`, response.data);
-                return { success: false, message: response.data.message || 'Insufficient balance for CinetPay transfer.', error: response.data };
-            } else {
-                log.error(`CinetPay transfer for ${transferDetails.transactionId} failed. Code: ${response.data?.code}, Message: ${response.data?.message}`, response.data);
-                return { success: false, message: response.data?.message || 'CinetPay transfer failed.', error: response.data };
-            }
-
-        } catch (error: any) {
-            log.error(`Critical error during CinetPay transfer for ${transferDetails.transactionId}:`, error.response?.data || error.message);
-            return {
-                success: false,
-                message: `CinetPay transfer system error: ${error.response?.data?.message || error.message}`,
-                error: error.response?.data || { code: 'SYSTEM_ERROR', message: error.message }
-            };
-        }
-    }
+    // Old CinetPay transfer methods (getCinetpayTransferAuthToken, addCinetpayContact, processCinetpayTransfer)
+    // have been removed — all transfer/payout logic is now in cinetpay-payout.service.ts using the new API.
 
     // Placeholder for FeexPay Payout (details depend on FeexPay's Payout API)
     public async processFeexpayPayout(
@@ -4526,7 +4528,8 @@ class PaymentService {
 
     /**
      * Processes incoming webhook notifications for CinetPay Transfer (Payout) status changes.
-     * This method will be called by the PaymentController when a webhook is received.
+     * New API payload: { notify_token, merchant_transaction_id, transaction_id, user: { name, email, phone_number } }
+     * We must call the transfer status API to get the actual final status.
      */
     public async processCinetpayTransferStatusWebhook(payload: any): Promise<void> {
         log.info('Processing CinetPay Transfer Status Webhook. Raw Payload:', payload);
@@ -4536,63 +4539,49 @@ class PaymentService {
             throw new AppError('Empty webhook payload received from CinetPay.', 400);
         }
 
-        // Essential fields from CinetPay Transfer Webhook documentation
-        const internalTransactionId = payload.cpm_trans_id;
-        const siteId = payload.cpm_site_id;
-        const cinetpayErrorMessage = payload.cpm_error_message; // e.g., "SUCCES", "ECHEC"
-        const cinetpayTransactionStatus = payload.cpm_trans_status; // e.g., "ACCEPTED", "REFUSED", "PENDING"
-        // Other potentially useful fields: cpm_amount, cpm_currency, payment_method, cel_phone_num
+        const merchantTxId = payload.merchant_transaction_id;
+        const cinetpayTxId = payload.transaction_id;
 
-        if (!internalTransactionId) {
-            log.error('CinetPay Transfer Webhook: Missing cpm_trans_id in payload.', payload);
-            throw new AppError('Missing transaction identifier (cpm_trans_id) in CinetPay transfer webhook.', 400);
+        if (!merchantTxId && !cinetpayTxId) {
+            log.error('CinetPay Transfer Webhook: Missing transaction IDs in payload.', payload);
+            throw new AppError('Missing transaction identifiers in CinetPay transfer webhook.', 400);
         }
 
-        if (!siteId) {
-            log.warn('CinetPay Transfer Webhook: Missing cpm_site_id in payload. Proceeding with caution.', payload);
-            // Depending on security policy, you might throw an error here.
-            // throw new AppError('Missing site identifier (cpm_site_id) in CinetPay transfer webhook.', 400);
-        } else if (siteId !== config.cinetpay.siteId) {
-            log.error(`CinetPay Transfer Webhook: Site ID mismatch. Expected ${config.cinetpay.siteId}, Received ${siteId}. Payload:`, payload);
-            throw new AppError(`Invalid Site ID in CinetPay transfer webhook. Expected ${config.cinetpay.siteId}.`, 400);
-        }
+        log.info(`Transfer webhook: merchant_tx=${merchantTxId}, cinetpay_tx=${cinetpayTxId}`);
 
-        log.info(`Webhook details: internalTxId=${internalTransactionId}, siteId=${siteId}, errorMessage="${cinetpayErrorMessage}", txStatus="${cinetpayTransactionStatus}"`);
+        // Check transfer status via API to get the actual final status
+        const verifiedStatus = await cinetpayPayoutService.checkPayoutStatus(cinetpayTxId || merchantTxId);
 
-        // Determine the final status of the transaction
         let finalStatus: TransactionStatus;
-        if (cinetpayTransactionStatus === 'ACCEPTED' || cinetpayErrorMessage === 'SUCCES') {
+        if (verifiedStatus && verifiedStatus.status === 'completed') {
             finalStatus = TransactionStatus.COMPLETED;
-            log.info(`Mapped CinetPay status (${cinetpayTransactionStatus}/${cinetpayErrorMessage}) to COMPLETED for tx: ${internalTransactionId}`);
-        } else {
+        } else if (verifiedStatus && verifiedStatus.status === 'failed') {
             finalStatus = TransactionStatus.FAILED;
-            log.info(`Mapped CinetPay status (${cinetpayTransactionStatus}/${cinetpayErrorMessage}) to FAILED for tx: ${internalTransactionId}`);
+        } else {
+            // Non-final status — acknowledge but don't process
+            log.info(`CinetPay transfer status is non-final (${verifiedStatus?.status || 'unknown'}) for ${merchantTxId}. Acknowledging.`);
+            return;
         }
+
+        log.info(`Verified CinetPay transfer status: ${finalStatus} for merchant_tx=${merchantTxId}`);
 
         try {
-            // Forward the processed information to TransactionService via a client
-            // This client and its method `processPayoutWebhookFeedback` would need to be properly implemented.
             await transactionServiceClient.processPayoutWebhookFeedback(
-                internalTransactionId,
+                merchantTxId,
                 finalStatus,
-                cinetpayErrorMessage || 'N/A', // Provider's textual status/message
-                cinetpayTransactionStatus || 'N/A', // Provider's raw status code/text
+                verifiedStatus.comment || verifiedStatus.status,
+                verifiedStatus.status,
                 'cinetpay',
-                payload // Pass the full payload for TransactionService to have all details
+                payload
             );
-            log.info(`Successfully processed and forwarded CinetPay transfer webhook for internalTxId: ${internalTransactionId}`);
+            log.info(`Successfully processed CinetPay transfer webhook for merchant_tx: ${merchantTxId}`);
         } catch (error: any) {
-            log.error(`Error forwarding CinetPay transfer webhook feedback for ${internalTransactionId} to TransactionService:`, error.message);
-            // Decide on error handling:
-            // - Re-throw to have the webhook potentially retried by CinetPay (if they retry on 5xx).
-            // - Or, log and absorb if retries are not desired or if the error is from TransactionService communication.
-            throw new AppError(`Failed to communicate payout status to internal services for ${internalTransactionId}. Error: ${error.message}`, 500);
+            log.error(`Error forwarding CinetPay transfer webhook for ${merchantTxId}:`, error.message);
+            throw new AppError(`Failed to process payout status for ${merchantTxId}: ${error.message}`, 500);
         }
-
-        // The controller that calls this method will send the HTTP 200 OK response to CinetPay.
     }
 
-    // --- END NEW CINTPAY TRANSFER/PAYOUT METHODS ---
+    // --- END CINETPAY TRANSFER/PAYOUT METHODS ---
 
     // --- NEW ADMIN TRANSFER/PAYOUT METHODS ---
 

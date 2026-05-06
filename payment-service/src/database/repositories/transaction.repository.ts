@@ -943,6 +943,96 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             throw error;
         }
     }
+    async findByExternalId(externalTransactionId: string): Promise<ITransaction | null> {
+        try {
+            return await TransactionModel.findOne({ externalTransactionId, deleted: { $ne: true } }).exec();
+        } catch (error) {
+            log.error(`Error finding transaction by external ID ${externalTransactionId}: ${error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Aggregate total withdrawn and earned per user.
+     * Optionally filter by a set of userIds.
+     * Returns users sorted by total (withdrawn + earned) descending.
+     */
+    async aggregateUserFinancials(options: {
+        userIds?: Types.ObjectId[];
+        minAmount?: number;
+        page?: number;
+        limit?: number;
+        sortBy?: 'totalWithdrawn' | 'totalEarned' | 'total';
+        sortOrder?: 'asc' | 'desc';
+    }): Promise<{ data: any[]; total: number }> {
+        const {
+            userIds,
+            minAmount = 0,
+            page = 1,
+            limit = 50,
+            sortBy = 'total',
+            sortOrder = 'desc',
+        } = options;
+
+        // Accounts excluded from analytics display
+        const excludedUserIds = [
+            new Types.ObjectId('6679599c7731445b46b4aa67'), // mariline kopguep
+            new Types.ObjectId('6672f5864fad2a2bf91cdc21'), // jacques kenfack
+        ];
+
+        const matchStage: any = {
+            status: 'completed',
+            deleted: { $ne: true },
+            type: { $in: ['withdrawal', 'deposit'] },
+            userId: { $nin: excludedUserIds },
+        };
+
+        if (userIds && userIds.length > 0) {
+            matchStage.userId = { $in: userIds.filter(id => !excludedUserIds.some(ex => ex.equals(id))) };
+        }
+
+        const pipeline: any[] = [
+            { $match: matchStage },
+            {
+                $group: {
+                    _id: '$userId',
+                    totalWithdrawn: {
+                        $sum: { $cond: [{ $eq: ['$type', 'withdrawal'] }, '$amount', 0] },
+                    },
+                    totalEarned: {
+                        $sum: { $cond: [{ $eq: ['$type', 'deposit'] }, '$amount', 0] },
+                    },
+                    withdrawalCount: {
+                        $sum: { $cond: [{ $eq: ['$type', 'withdrawal'] }, 1, 0] },
+                    },
+                    earningCount: {
+                        $sum: { $cond: [{ $eq: ['$type', 'deposit'] }, 1, 0] },
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    total: { $add: ['$totalWithdrawn', '$totalEarned'] },
+                },
+            },
+            { $match: { total: { $gte: minAmount } } },
+        ];
+
+        // Count total matching results
+        const countPipeline = [...pipeline, { $count: 'total' }];
+        const countResult = await TransactionModel.aggregate(countPipeline).exec();
+        const total = countResult.length > 0 ? countResult[0].total : 0;
+
+        // Sort and paginate
+        const sortField = sortBy === 'total' ? 'total' : sortBy;
+        pipeline.push({ $sort: { [sortField]: sortOrder === 'asc' ? 1 : -1 } });
+        pipeline.push({ $skip: (page - 1) * limit });
+        pipeline.push({ $limit: limit });
+
+        const data = await TransactionModel.aggregate(pipeline).exec();
+
+        return { data, total };
+    }
 }
 
 // Export singleton instance

@@ -1,100 +1,62 @@
 import axios, { AxiosInstance } from 'axios';
+import https from 'https';
 import logger from '../utils/logger';
 import config from '../config';
 
 const log = logger.getLogger('CinetPayPayoutService');
 
-// CinetPay API Types
+// New CinetPay API response types
 interface CinetPayAuthResponse {
     code: number;
-    message: string;
-    data: {
-        token: string;
+    status: string;
+    access_token: string;
+    token_type: string;
+    expires_in: number; // seconds (86400 = 24h)
+}
+
+interface CinetPayTransferResponse {
+    code: number;
+    status: string;
+    merchant_transaction_id: string;
+    transaction_id: string;
+    amount: number;
+    fee_amount: number;
+    user?: {
+        name: string;
+        email: string;
+        phone_number: string;
+    };
+}
+
+interface CinetPayTransferStatusResponse {
+    code: number;
+    status: string;
+    merchant_transaction_id: string;
+    transaction_id: string;
+    amount: string;
+    fee_amount: string;
+    user?: {
+        name: string;
+        email: string;
+        phone_number: string;
     };
 }
 
 interface CinetPayBalanceResponse {
     code: number;
-    message: string;
-    data: {
-        amount: number;
-        inUsing: number;
-        available: number;
-    };
+    status: string;
+    real_balance: number;
+    available_balance: number;
+    currency: string;
 }
 
-interface CinetPayContact {
-    prefix: string;
-    phone: string;
-    name: string;
-    surname: string;
-    email: string;
+// Per-country token cache
+interface TokenCache {
+    accessToken: string;
+    expiresAt: Date;
 }
 
-interface CinetPayContactResponse {
-    code: number;
-    message: string;
-    data: Array<{
-        prefix: string;
-        phone: string;
-        name: string;
-        surname: string;
-        email: string;
-        code: number;
-        status: string;
-        lot: string;
-    }>;
-}
-
-interface CinetPayTransferRequest {
-    prefix: string;
-    phone: string;
-    amount: number;
-    notify_url: string;
-    client_transaction_id: string;
-    payment_method?: string; // Optional wallet specification
-}
-
-interface CinetPayTransferResponse {
-    code: number;
-    message: string;
-    data: Array<{
-        prefix: string;
-        phone: string;
-        amount: number;
-        client_transaction_id: string;
-        notify_url: string;
-        payment_method?: string;
-        code: number;
-        status: string;
-        treatment_status: string;
-        transaction_id: string;
-        lot: string;
-    }>;
-}
-
-interface CinetPayTransferStatus {
-    transaction_id: string;
-    client_transaction_id: string;
-    lot: string;
-    amount: string;
-    receiver: string;
-    receiver_e164: string;
-    operator: string;
-    sending_status: 'CONFIRM' | 'PENDING';
-    transfer_valid: 'Y' | 'N';
-    treatment_status: 'NEW' | 'REC' | 'VAL' | 'REJ' | 'NOS';
-    comment: string;
-    validated_at?: string;
-}
-
-interface CinetPayStatusResponse {
-    code: number;
-    message: string;
-    data: CinetPayTransferStatus[];
-}
-
-// Our internal types
+// Our internal types (kept compatible with existing consumers)
 export interface PayoutRequest {
     userId: string;
     amount: number;
@@ -103,7 +65,7 @@ export interface PayoutRequest {
     recipientName: string;
     recipientEmail?: string;
     notifyUrl?: string;
-    paymentMethod?: string;
+    paymentMethod?: string; // Required in new API (e.g., OM_CM, MTN_CI)
     description?: string;
     client_transaction_id?: string;
 }
@@ -116,6 +78,7 @@ export interface PayoutResult {
     message: string;
     amount: number;
     recipient: string;
+    feeAmount?: number;
     estimatedCompletion?: Date;
 }
 
@@ -133,9 +96,7 @@ export interface PayoutStatus {
 
 export class CinetPayPayoutService {
     private apiClient: AxiosInstance;
-    private currentToken: string | null = null;
-    private tokenExpiry: Date | null = null;
-    private readonly baseUrl = 'https://client.cinetpay.com/v1';
+    private tokenCache: Map<string, TokenCache> = new Map(); // keyed by country code
 
     // Country code to prefix mapping
     private readonly countryPrefixes: Record<string, string> = {
@@ -148,53 +109,39 @@ export class CinetPayPayoutService {
         'BF': '226', // Burkina Faso
         'GN': '224', // Guinea
         'CD': '243', // Congo (RDC)
+        'NE': '227', // Niger
     };
 
-    // Supported payment methods by country (REFERENCE ONLY - NOT USED IN TRANSFERS)
-    // IMPORTANT: We do NOT set payment_method explicitly for ANY country
-    // CinetPay auto-detects operators from phone numbers to avoid API errors:
-    // - 417 errors (Expectation Failed) in BF, SN, CI
-    // - 811 errors (INVALID_PAYMENT_METHOD) in CI, CM
-    // This list is kept for reference only and for getSupportedCountries() method
-    private readonly paymentMethods: Record<string, string[]> = {
-        'CI': ['OM', 'FLOOZ', 'MOMO', 'WAVECI'], // Reference only - auto-detection used
-        'SN': ['OMSN', 'FREESN', 'WAVESN'],      // Reference only - auto-detection used
-        'CM': ['OMCM'],                          // Reference only - auto-detection used
-        'TG': ['TMONEYTG', 'FLOOZTG'],           // Reference only - auto-detection used
-        'BJ': ['MTNBJ', 'MOOVBJ'],               // Reference only - auto-detection used
-        'ML': ['OMML', 'MOOVML'],                // Reference only - auto-detection used
-        'BF': ['OMBF', 'MOOVBF'],                // Reference only - auto-detection used
-        'GN': ['OMGN', 'MTNGN'],                 // Reference only - auto-detection used
-        'CD': ['OMCD', 'MPESACD', 'AIRTELCD'],   // Reference only - auto-detection used
-    };
-
-    // Minimum amounts by country (in local currency)
+    // Minimum amounts by country (new API: min 500 for transfers)
     private readonly minAmounts: Record<string, number> = {
-        'CI': 200,  // XOF
-        'SN': 200,  // XOF
-        'CM': 500,  // XAF
-        'TG': 150,  // XOF
-        'BJ': 500,  // XOF
-        'ML': 500,  // XOF (estimated)
-        'BF': 500,  // XOF
-        'GN': 1000, // GNF
-        'CD': 1000, // CDF
+        'CI': 500,
+        'SN': 500,
+        'CM': 500,
+        'TG': 500,
+        'BJ': 500,
+        'ML': 500,
+        'BF': 500,
+        'GN': 500,
+        'CD': 500,
+        'NE': 500,
     };
 
     constructor() {
         this.apiClient = axios.create({
-            baseURL: this.baseUrl,
-            timeout: 600000, // 10 minutes timeout (matching FeexPay)
+            baseURL: config.cinetpay.baseUrl,
+            timeout: 600000, // 10 minutes
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
             },
+            // Force IPv4 — CinetPay IP whitelist only supports IPv4 addresses
+            httpsAgent: new https.Agent({ family: 4 }),
         });
 
-        // Add request interceptor for logging
         this.apiClient.interceptors.request.use(
-            (config) => {
-                log.debug(`CinetPay API Request: ${config.method?.toUpperCase()} ${config.url}`);
-                return config;
+            (reqConfig) => {
+                log.debug(`CinetPay API Request: ${reqConfig.method?.toUpperCase()} ${reqConfig.url}`);
+                return reqConfig;
             },
             (error) => {
                 log.error('CinetPay API Request Error:', error);
@@ -202,7 +149,6 @@ export class CinetPayPayoutService {
             }
         );
 
-        // Add response interceptor for logging
         this.apiClient.interceptors.response.use(
             (response) => {
                 log.debug(`CinetPay API Response: ${response.status} ${response.config.url}`);
@@ -216,65 +162,93 @@ export class CinetPayPayoutService {
     }
 
     /**
-     * Authenticate with CinetPay and get access token
+     * Get country credentials from config
      */
-    private async authenticate(): Promise<string> {
+    private getCountryCredentials(countryCode: string): { apiKey: string; apiPassword: string; currency: string } {
+        const creds = config.cinetpay.countries[countryCode];
+        if (!creds) {
+            throw new Error(`No CinetPay credentials configured for country: ${countryCode}. Add CINETPAY_${countryCode}_API_KEY and CINETPAY_${countryCode}_API_PASSWORD to .env`);
+        }
+        return creds;
+    }
+
+    /**
+     * Authenticate with CinetPay OAuth and get access token (per-country)
+     */
+    private async authenticate(countryCode: string): Promise<string> {
         try {
-            // Check if current token is still valid (with 1 minute buffer)
-            if (this.currentToken && this.tokenExpiry && this.tokenExpiry > new Date(Date.now() + 60000)) {
-                return this.currentToken;
+            // Check cached token (with 5 minute buffer)
+            const cached = this.tokenCache.get(countryCode);
+            if (cached && cached.expiresAt > new Date(Date.now() + 5 * 60 * 1000)) {
+                return cached.accessToken;
             }
 
-            log.info('Authenticating with CinetPay...');
+            const creds = this.getCountryCredentials(countryCode);
 
-            const params = new URLSearchParams();
-            params.append('apikey', config.cinetpay.apiKey);
-            params.append('password', config.cinetpay.transferPassword);
+            log.info(`Authenticating with CinetPay for country ${countryCode}...`);
 
             const response = await this.apiClient.post<CinetPayAuthResponse>(
-                '/auth/login?lang=fr',
-                params
+                '/v1/oauth/login',
+                {
+                    api_key: creds.apiKey,
+                    api_password: creds.apiPassword,
+                }
             );
 
-            if (response.data.code !== 0) {
-                throw new Error(`Authentication failed: ${response.data.message}`);
+            if (response.data.code !== 200) {
+                throw new Error(`Authentication failed: ${response.data.status}`);
             }
 
-            this.currentToken = response.data.data.token;
-            this.tokenExpiry = new Date(Date.now() + 4 * 60 * 1000); // 4 minutes (5min - 1min buffer)
+            const token = response.data.access_token;
+            const expiresIn = response.data.expires_in || 86400; // default 24h
 
-            log.info('Successfully authenticated with CinetPay');
-            return this.currentToken;
+            this.tokenCache.set(countryCode, {
+                accessToken: token,
+                expiresAt: new Date(Date.now() + expiresIn * 1000),
+            });
+
+            log.info(`Successfully authenticated with CinetPay for country ${countryCode} (expires in ${expiresIn}s)`);
+            return token;
 
         } catch (error: any) {
-            log.error('CinetPay authentication failed:', error);
-            throw new Error(`Failed to authenticate with CinetPay: ${error.message}`);
+            log.error(`CinetPay authentication failed for ${countryCode}:`, error.response?.data || error.message);
+            throw new Error(`Failed to authenticate with CinetPay for ${countryCode}: ${error.message}`);
         }
     }
 
     /**
-     * Get account balance for transfers
+     * Get account balance
      */
-    async getBalance(): Promise<{ total: number; available: number; inUse: number }> {
+    async getBalance(countryCode?: string): Promise<{ total: number; available: number; inUse: number }> {
         try {
-            const token = await this.authenticate();
-
-            const response = await this.apiClient.get<CinetPayBalanceResponse>(
-                `/transfer/check/balance?token=${token}&lang=fr`
-            );
-
-            if (response.data.code !== 0) {
-                throw new Error(`Failed to get balance: ${response.data.message}`);
+            // Use first available country if not specified
+            const cc = countryCode || Object.keys(config.cinetpay.countries)[0];
+            if (!cc) {
+                throw new Error('No CinetPay country credentials configured');
             }
 
-            const { amount, available, inUsing } = response.data.data;
+            const token = await this.authenticate(cc);
 
-            log.info(`CinetPay balance - Total: ${amount}, Available: ${available}, In Use: ${inUsing}`);
+            const response = await this.apiClient.get<CinetPayBalanceResponse>(
+                '/v1/balances',
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                }
+            );
+
+            if (response.data.code !== 200) {
+                throw new Error(`Failed to get balance: ${response.data.status}`);
+            }
+
+            const realBalance = response.data.real_balance || 0;
+            const available = response.data.available_balance || 0;
+
+            log.info(`CinetPay balance for ${cc}: real=${realBalance}, available=${available} ${response.data.currency}`);
 
             return {
-                total: amount,
-                available: available,
-                inUse: inUsing
+                total: realBalance,
+                available,
+                inUse: realBalance - available,
             };
 
         } catch (error: any) {
@@ -284,321 +258,141 @@ export class CinetPayPayoutService {
     }
 
     /**
-     * Add a contact to CinetPay (required before sending money)
-     */
-    private async addContact(contact: CinetPayContact): Promise<boolean> {
-        try {
-            const token = await this.authenticate();
-
-            log.info(`Preparing to add contact to CinetPay:`, contact);
-
-            // Special handling for Côte d'Ivoire to prevent 417 errors
-            if (contact.prefix === '225') { // Côte d'Ivoire
-                // Ensure phone number format is correct for Côte d'Ivoire
-                const phonePattern = /^0[1235789]\d{7}$/; // Must be 01, 02, 03, 05, 07, 08, 09 + 7 digits
-                if (!phonePattern.test(contact.phone)) {
-                    log.warn(`Côte d'Ivoire phone number ${contact.phone} may not be in correct format. Expected: 0XXXXXXXX`);
-                }
-            }
-
-            const params = new URLSearchParams();
-            params.append('data', JSON.stringify([contact]));
-
-            log.info(`URLSearchParams for addContact:`, params.toString());
-
-            const response = await this.apiClient.post<CinetPayContactResponse>(
-                `/transfer/contact?token=${token}&lang=fr`,
-                params, // Send URLSearchParams object directly
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Accept': 'application/json',
-                        'User-Agent': 'SBC-API/1.0'
-                    }
-                }
-            );
-
-            log.info(`CinetPay add contact raw response:`, response.data);
-
-            if (response.data.code !== 0) {
-                // Check if contact already exists
-                if (response.data.message && response.data.message.includes('ALREADY_MY_CONTACT')) {
-                    log.info(`Contact ${contact.phone} already exists (message: ALREADY_MY_CONTACT)`);
-                    return true;
-                }
-                // Check for specific error code 726
-                if (response.data.code === 726) {
-                    log.info(`Contact ${contact.phone} already exists (code 726)`);
-                    return true;
-                }
-                throw new Error(`Failed to add contact: ${response.data.message || 'Unknown error'}`);
-            }
-
-            // Check if data array exists and has elements
-            if (!response.data.data || !Array.isArray(response.data.data) || response.data.data.length === 0) {
-                throw new Error('Invalid response format: missing data array');
-            }
-
-            let contactResult;
-            if (Array.isArray(response.data.data[0])) {
-                // Handle case where data is double-nested (e.g., [[{...}]])
-                if (response.data.data[0].length === 0) {
-                    throw new Error('Invalid response format: empty nested data array.');
-                }
-                contactResult = response.data.data[0][0];
-            } else {
-                // Handle case where data is single-nested (e.g., [{...}])
-                contactResult = response.data.data[0];
-            }
-
-            log.info(`Processed contact result:`, contactResult);
-
-            if (contactResult.code !== 0) {
-                // Check if contact already exists (code 726) or other specific statuses
-                if (contactResult.code === 726 || contactResult.status === 'ERROR_PHONE_ALREADY_MY_CONTACT') {
-                    log.info(`Contact ${contact.phone} already exists in CinetPay contacts (result code/status)`);
-                    return true; // This is not an error, contact exists and can be used
-                }
-
-                const errorMessage = contactResult.status || contactResult.message || 'Unknown contact error from result';
-                throw new Error(`Failed to add contact: ${errorMessage}`);
-            }
-
-            log.info(`Successfully added/verified contact: ${contact.phone}`);
-            return true;
-
-        } catch (error: any) {
-            log.error('Failed to add contact:', error.message);
-
-            // Special handling for 417 errors (common with Côte d'Ivoire)
-            if (error.response && error.response.status === 417) {
-                log.error('HTTP 417 Expectation Failed - likely phone number format issue for Côte d\'Ivoire');
-                log.error('Contact data:', contact);
-                log.error('Recommendation: Check phone number format for country', contact.prefix);
-
-                // For Côte d'Ivoire, provide specific guidance
-                if (contact.prefix === '225') {
-                    throw new Error(`Failed to add contact: Invalid phone number format for Côte d'Ivoire. Phone numbers must start with 01, 02, 03, 05, 07, 08, or 09 and be 10 digits total. Current: ${contact.phone}`);
-                }
-            }
-
-            // Log the full error details for debugging
-            if (error.response) {
-                log.error('CinetPay API Error Response (addContact):', {
-                    status: error.response.status,
-                    data: error.response.data,
-                    headers: error.response.headers
-                });
-            }
-            throw new Error(`Failed to add contact: ${error.message}`);
-        }
-    }
-
-    /**
      * Validate payout request
      */
     private validatePayoutRequest(request: PayoutRequest): void {
         const { countryCode, amount, phoneNumber } = request;
 
-        // Check if country is supported
         if (!this.countryPrefixes[countryCode]) {
             throw new Error(`Country ${countryCode} is not supported for payouts`);
         }
 
-        // Check minimum amount
-        const minAmount = this.minAmounts[countryCode];
+        // Check credentials exist for this country
+        this.getCountryCredentials(countryCode);
+
+        const minAmount = this.minAmounts[countryCode] || 500;
         if (amount < minAmount) {
             throw new Error(`Minimum amount for ${countryCode} is ${minAmount}`);
         }
 
-        // Validate phone number format (basic validation)
         if (!phoneNumber || phoneNumber.length < 8) {
             throw new Error('Invalid phone number format');
         }
 
-        // Check if amount is multiple of 5 (CinetPay requirement)
         if (amount % 5 !== 0) {
             throw new Error('Amount must be a multiple of 5');
         }
     }
 
     /**
-     * Check if payment method is valid for the country
+     * Format phone number to E.164 format with + prefix
      */
-    private isValidPaymentMethod(paymentMethod: string, countryCode: string): boolean {
-        const validMethods = this.paymentMethods[countryCode] || [];
-        return validMethods.includes(paymentMethod);
-    }
-
-    /**
-     * Format phone number for CinetPay
-     */
-    private formatPhoneNumber(phoneNumber: string, countryCode: string): string {
-        let cleanPhone = phoneNumber.replace(/\D/g, ''); // Remove all non-digits
-
+    private formatPhoneNumberE164(phoneNumber: string, countryCode: string): string {
+        let cleanPhone = phoneNumber.replace(/\D/g, '');
         const prefix = this.countryPrefixes[countryCode];
-        if (prefix && cleanPhone.startsWith(prefix)) { // Ensure prefix exists before trying to remove
+
+        // Remove country prefix if already present
+        if (prefix && cleanPhone.startsWith(prefix)) {
             cleanPhone = cleanPhone.substring(prefix.length);
         }
 
-        cleanPhone = cleanPhone.replace(/^0+/, ''); // Remove leading zeros (e.g., 07895086 -> 7895086)
+        // Remove leading zeros
+        cleanPhone = cleanPhone.replace(/^0+/, '');
 
-        // Special handling for Côte d'Ivoire to prevent 417 errors
+        // Special handling for Côte d'Ivoire (10 digits required)
         if (countryCode === 'CI') {
-            // Côte d'Ivoire phone numbers should be 10 digits without country code
-            // Valid operator prefixes: 01, 02, 03, 05, 07, 08, 09
             if (cleanPhone.length === 8) {
-                // If 8 digits, add leading 0 (e.g., 12345678 -> 012345678)
                 cleanPhone = '0' + cleanPhone;
             }
             if (cleanPhone.length === 9 && !cleanPhone.startsWith('0')) {
-                // If 9 digits without leading 0, add it
                 cleanPhone = '0' + cleanPhone;
-            }
-            // Validate that it starts with valid operator prefixes
-            const validPrefixes = ['01', '02', '03', '05', '07', '08', '09'];
-            const phonePrefix = cleanPhone.substring(0, 2);
-            if (!validPrefixes.includes(phonePrefix)) {
-                log.warn(`Côte d'Ivoire phone number ${cleanPhone} has invalid operator prefix ${phonePrefix}. Valid prefixes: ${validPrefixes.join(', ')}`);
             }
         }
 
-        return cleanPhone;
+        // Return in E.164 format: +{prefix}{number}
+        return `+${prefix}${cleanPhone}`;
     }
 
     /**
-     * Initiate a payout transfer
+     * Initiate a payout transfer (new single-call API)
      */
     async initiatePayout(request: PayoutRequest): Promise<PayoutResult> {
         try {
-            log.info(`Initiating payout for user ${request.userId}: ${request.amount} to ${request.phoneNumber}`);
+            log.info(`Initiating payout for user ${request.userId}: ${request.amount} to ${request.phoneNumber} in ${request.countryCode}`);
 
-            // Validate request
             this.validatePayoutRequest(request);
 
-            const prefix = this.countryPrefixes[request.countryCode];
-            const formattedPhone = this.formatPhoneNumber(request.phoneNumber, request.countryCode);
+            const creds = this.getCountryCredentials(request.countryCode);
+            const token = await this.authenticate(request.countryCode);
+            const phoneE164 = this.formatPhoneNumberE164(request.phoneNumber, request.countryCode);
+            const rawMerchantTxId = request.client_transaction_id || `SBC-${request.userId}-${Date.now()}`;
 
-            log.info(`Country prefix for ${request.countryCode}: ${prefix}`);
-            log.info(`Formatted phone: ${formattedPhone}`);
+            // merchant_transaction_id: max 30 chars, alphanumeric and hyphens only
+            const truncatedMerchantTxId = rawMerchantTxId.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 30);
 
-            // Refine name and surname
-            const firstName = (request.recipientName.split(' ')[0] || 'User').trim();
-            const lastName = (request.recipientName.split(' ').slice(1).join(' ') || 'SBC').trim();
-
-            // Refine email
-            let contactEmail = request.recipientEmail;
-            if (!contactEmail) {
-                const simpleUserId = String(request.userId).substring(0, 10);
-                contactEmail = `user_${simpleUserId}@sbc.com`;
-            }
-            if (!contactEmail.includes('@') && contactEmail.length > 0) {
-                contactEmail = `${contactEmail}@sbc.com`;
+            if (!request.paymentMethod) {
+                throw new Error(`payment_method is required for CinetPay transfers. Country: ${request.countryCode}`);
             }
 
-            const finalFormattedPhone = formattedPhone.replace(/\D/g, '');
-
-            // Step 1: Add contact
-            const contact: CinetPayContact = {
-                prefix: prefix,
-                phone: finalFormattedPhone,
-                name: firstName || 'User',
-                surname: lastName || 'SBC',
-                email: contactEmail
-            };
-
-            log.info(`Adding contact to CinetPay: +${prefix}${finalFormattedPhone} (${contact.name} ${contact.surname})`);
-            await this.addContact(contact);
-
-            // Step 2: Initiate transfer
-            const transferRequest: CinetPayTransferRequest = {
-                prefix: prefix,
-                phone: finalFormattedPhone,
+            const transferBody = {
+                currency: creds.currency,
+                payment_method: request.paymentMethod,
+                merchant_transaction_id: truncatedMerchantTxId,
                 amount: request.amount,
+                phone_number: phoneE164,
+                reason: request.description || `SBC Withdrawal for user ${request.userId}`,
                 notify_url: request.notifyUrl || `${config.selfBaseUrl}/api/payouts/webhooks/cinetpay`,
-                client_transaction_id: request.client_transaction_id || `SBC_${request.userId}_${Date.now()}`
             };
 
-            // payment_method handling:
-            // - For WAVE operators (WAVECI, WAVESN), we MUST set payment_method explicitly
-            //   because Wave is a fintech wallet, not a mobile operator, and CinetPay cannot
-            //   auto-detect it from the phone number (same number can be MTN, Orange, or Wave)
-            // - For traditional mobile money operators (MTN, Orange, Moov, etc.), we let
-            //   CinetPay auto-detect from the phone number to avoid 417/811 errors
-            const isWaveOperator = request.paymentMethod &&
-                (request.paymentMethod === 'WAVECI' || request.paymentMethod === 'WAVESN');
-
-            if (isWaveOperator) {
-                transferRequest.payment_method = request.paymentMethod;
-                log.info(`Wave operator detected. Setting explicit payment_method: ${request.paymentMethod} for phone ${finalFormattedPhone} in country ${request.countryCode}`);
-            } else {
-                log.info(`Using CinetPay auto-detection for operator from phone number ${finalFormattedPhone} in country ${request.countryCode}. Not setting explicit payment_method parameter.`);
-            }
-
-            const token = await this.authenticate();
-
-            log.info(`Initiating transfer with CinetPay:`);
-            log.info(`Transfer request:`, transferRequest);
-            log.info(`Transfer URL: /transfer/money/send/contact?token=${token.substring(0, 20)}...&lang=fr`);
-            log.info(`Transfer payload: data=${JSON.stringify([transferRequest])}`);
-
-            const payload = `data=${JSON.stringify([transferRequest])}`;
-            const headers = {
-                'Expect': '',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': Buffer.byteLength(payload)
-            };
+            log.info(`CinetPay transfer request:`, transferBody);
 
             const response = await this.apiClient.post<CinetPayTransferResponse>(
-                `/transfer/money/send/contact?token=${token}&lang=fr`,
-                payload,
+                '/v1/transfer',
+                transferBody,
                 {
-                    headers
+                    headers: { Authorization: `Bearer ${token}` },
                 }
             );
 
-            log.info(`Transfer response status: ${response.status}`);
-            log.info(`Transfer response data:`, response.data);
+            log.info(`CinetPay transfer response: ${JSON.stringify(response.data)}`);
 
-            if (response.data.code !== 0) {
-                throw new Error(`Transfer initiation failed: ${response.data.message}`);
+            // New API: code 100 = SUCCESS, code 200 = OK/initiated, code 2001 = INITIATED, code 2002 = PENDING
+            const code = response.data.code;
+            if (code !== 100 && code !== 200 && code !== 2001 && code !== 2002) {
+                log.error(`CinetPay transfer REJECTED. Code: ${code}, Status: ${response.data.status}, Full: ${JSON.stringify(response.data)}`);
+                throw new Error(`Transfer failed: [${code}] ${response.data.status}`);
             }
 
-            // Handle nested array response format like in addContact
-            let transferResult;
-            if (Array.isArray(response.data.data[0])) {
-                transferResult = response.data.data[0][0];
-            } else {
-                transferResult = response.data.data[0];
-            }
+            const status = this.mapStatusCode(code, response.data.status);
 
-            log.debug(`Transfer result:`, transferResult);
-
-            if (transferResult.code !== 0) {
-                throw new Error(`Transfer failed: ${transferResult.status}`);
-            }
-
-            log.info(`Payout initiated successfully: ${transferResult.transaction_id}`);
+            log.info(`Payout initiated successfully: ${response.data.transaction_id} (merchant: ${truncatedMerchantTxId})`);
 
             return {
                 success: true,
-                transactionId: transferRequest.client_transaction_id,
-                cinetpayTransactionId: transferResult.transaction_id,
-                status: this.mapTreatmentStatus(transferResult.treatment_status),
+                transactionId: truncatedMerchantTxId,
+                cinetpayTransactionId: response.data.transaction_id,
+                status,
                 message: 'Payout initiated successfully. Awaiting confirmation.',
                 amount: request.amount,
-                recipient: `+${prefix}${formattedPhone}`,
-                estimatedCompletion: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes estimate
+                feeAmount: response.data.fee_amount,
+                recipient: phoneE164,
+                estimatedCompletion: new Date(Date.now() + 30 * 60 * 1000),
             };
 
         } catch (error: any) {
-            log.error('Payout initiation failed:', error);
+            log.error('Payout initiation failed. Full error:', JSON.stringify(error.response?.data || error.message));
+            log.error('Payout request was:', JSON.stringify({
+                phoneE164: request.phoneNumber,
+                countryCode: request.countryCode,
+                amount: request.amount,
+                paymentMethod: request.paymentMethod,
+            }));
             return {
                 success: false,
                 status: 'failed',
-                message: error.message,
+                message: error.response?.data?.status || error.message,
                 amount: request.amount,
-                recipient: request.phoneNumber
+                recipient: request.phoneNumber,
             };
         }
     }
@@ -606,38 +400,46 @@ export class CinetPayPayoutService {
     /**
      * Check the status of a payout
      */
-    async checkPayoutStatus(clientTransactionId: string): Promise<PayoutStatus | null> {
+    async checkPayoutStatus(transactionId: string, countryCode?: string): Promise<PayoutStatus | null> {
         try {
-            const token = await this.authenticate();
+            // We need a country code to authenticate. Try all configured countries if not specified.
+            const countries = countryCode ? [countryCode] : Object.keys(config.cinetpay.countries);
 
-            const response = await this.apiClient.get<CinetPayStatusResponse>(
-                `/transfer/check/money?token=${token}&lang=fr&client_transaction_id=${clientTransactionId}`
-            );
+            for (const cc of countries) {
+                try {
+                    const token = await this.authenticate(cc);
 
-            if (response.data.code !== 0) {
-                if (response.data.code === 723) { // NOT_FOUND
-                    return null;
+                    const response = await this.apiClient.get<CinetPayTransferStatusResponse>(
+                        `/v1/transfer/${transactionId}`,
+                        {
+                            headers: { Authorization: `Bearer ${token}` },
+                        }
+                    );
+
+                    if (response.data.code === 404) {
+                        continue; // Try next country
+                    }
+
+                    const status = this.mapStatusCode(response.data.code, response.data.status);
+
+                    return {
+                        transactionId: response.data.merchant_transaction_id,
+                        cinetpayTransactionId: response.data.transaction_id,
+                        status,
+                        amount: parseFloat(response.data.amount),
+                        recipient: response.data.user?.phone_number || '',
+                        sendingStatus: status === 'completed' ? 'confirmed' : 'pending',
+                        comment: response.data.status,
+                    };
+                } catch (innerError: any) {
+                    if (innerError.response?.status === 404) {
+                        continue;
+                    }
+                    throw innerError;
                 }
-                throw new Error(`Status check failed: ${response.data.message}`);
             }
 
-            const statusData = response.data.data[0];
-            if (!statusData) {
-                return null;
-            }
-            console.log(statusData)
-
-            return {
-                transactionId: statusData.client_transaction_id,
-                cinetpayTransactionId: statusData.transaction_id,
-                status: this.mapTreatmentStatus(statusData.treatment_status),
-                amount: parseFloat(statusData.amount),
-                recipient: statusData.receiver_e164,
-                operator: statusData.operator,
-                sendingStatus: statusData.sending_status === 'CONFIRM' ? 'confirmed' : 'pending',
-                comment: statusData.comment,
-                completedAt: statusData.validated_at ? new Date(statusData.validated_at) : undefined
-            };
+            return null;
 
         } catch (error: any) {
             log.error('Failed to check payout status:', error);
@@ -646,20 +448,25 @@ export class CinetPayPayoutService {
     }
 
     /**
-     * Map CinetPay treatment status to our internal status
+     * Map new CinetPay status codes to internal status
      */
-    private mapTreatmentStatus(treatmentStatus: string): 'pending' | 'processing' | 'completed' | 'failed' {
-        switch (treatmentStatus) {
-            case 'NEW':
-            case 'NOS':
-                return 'pending';
-            case 'REC':
-                return 'processing';
-            case 'VAL':
+    private mapStatusCode(code: number, status: string): 'pending' | 'processing' | 'completed' | 'failed' {
+        switch (code) {
+            case 100: // SUCCESS
                 return 'completed';
-            case 'REJ':
+            case 2010: // FAILED
+            case 2005: // INSUFFICIENT_BALANCE
                 return 'failed';
+            case 2001: // INITIATED
+            case 200:  // OK
+                return 'pending';
+            case 2002: // PENDING
+                return 'processing';
             default:
+                // Also check string status as fallback
+                if (status === 'SUCCESS') return 'completed';
+                if (status === 'FAILED') return 'failed';
+                if (status === 'PENDING') return 'processing';
                 return 'pending';
         }
     }
@@ -673,16 +480,17 @@ export class CinetPayPayoutService {
         prefix: string;
         currency: string;
         minAmount: number;
-        paymentMethods: string[];
+        configured: boolean;
     }> {
         const countries = [
-            { code: 'CI', name: 'Côte d\'Ivoire', currency: 'XOF' },
-            { code: 'SN', name: 'Sénégal', currency: 'XOF' },
             { code: 'CM', name: 'Cameroun', currency: 'XAF' },
+            { code: 'CI', name: "Côte d'Ivoire", currency: 'XOF' },
+            { code: 'SN', name: 'Sénégal', currency: 'XOF' },
+            { code: 'BF', name: 'Burkina Faso', currency: 'XOF' },
+            { code: 'ML', name: 'Mali', currency: 'XOF' },
+            { code: 'NE', name: 'Niger', currency: 'XOF' },
             { code: 'TG', name: 'Togo', currency: 'XOF' },
             { code: 'BJ', name: 'Benin', currency: 'XOF' },
-            { code: 'ML', name: 'Mali', currency: 'XOF' },
-            { code: 'BF', name: 'Burkina Faso', currency: 'XOF' },
             { code: 'GN', name: 'Guinea', currency: 'GNF' },
             { code: 'CD', name: 'Congo (RDC)', currency: 'CDF' },
         ];
@@ -690,29 +498,29 @@ export class CinetPayPayoutService {
         return countries.map(country => ({
             ...country,
             prefix: this.countryPrefixes[country.code],
-            minAmount: this.minAmounts[country.code],
-            paymentMethods: this.paymentMethods[country.code] || []
+            minAmount: this.minAmounts[country.code] || 500,
+            configured: !!config.cinetpay.countries[country.code],
         }));
     }
 
     /**
-     * Process webhook notification from CinetPay
+     * Process webhook notification from CinetPay (new format)
+     * New payload: { notify_token, merchant_transaction_id, transaction_id, user: { name, email, phone_number } }
      */
     processWebhookNotification(payload: any): {
         transactionId: string;
         cinetpayTransactionId: string;
+        notifyToken: string;
         status: 'pending' | 'processing' | 'completed' | 'failed';
-        amount: number;
         recipient: string;
-        comment?: string;
     } {
         return {
-            transactionId: payload.client_transaction_id,
+            transactionId: payload.merchant_transaction_id,
             cinetpayTransactionId: payload.transaction_id,
-            status: this.mapTreatmentStatus(payload.treatment_status),
-            amount: parseFloat(payload.amount),
-            recipient: payload.receiver,
-            comment: payload.comment
+            notifyToken: payload.notify_token,
+            // Webhook only tells us there's an update — we must check status via API
+            status: 'processing',
+            recipient: payload.user?.phone_number || '',
         };
     }
 }

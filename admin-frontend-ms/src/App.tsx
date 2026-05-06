@@ -22,6 +22,7 @@ import RelanceMessagesPage from './pages/RelanceMessagesPage';
 import RelanceCampaignsPage from './pages/RelanceCampaignsPage';
 import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
 import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
+import UserFinancialAnalyticsPage from './pages/UserFinancialAnalyticsPage';
 import UserRolesManagement from './pages/UserRolesManagement';
 import ChatPage from './pages/ChatPage';
 import StatusPage from './pages/StatusPage';
@@ -86,6 +87,7 @@ function App() {
             <Route path="/relance/campaigns" element={<RelanceCampaignsPage />} />
             <Route path="/withdrawals/approvals" element={<WithdrawalApprovalPage />} />
             <Route path="/withdrawals/history" element={<WithdrawalHistoryPage />} />
+            <Route path="/user-analytics" element={<UserFinancialAnalyticsPage />} />
             <Route path="/user-roles" element={<UserRolesManagement />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/statuses" element={<StatusPage />} />

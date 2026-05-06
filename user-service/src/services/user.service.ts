@@ -207,7 +207,7 @@ export class UserService {
         // and doesn't contain the incoming referrer-related codes
         const userToCreate: Partial<IUser> = { ...userDataWithoutReferrerInfo }; // Explicitly type as Partial<IUser>
 
-        if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.sex || !userToCreate.birthDate || !userToCreate.country || !userToCreate.region || !userToCreate.phoneNumber) {
+        if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.country || !userToCreate.phoneNumber) {
             throw new Error('Missing required registration fields');
         }
 
@@ -4491,6 +4491,21 @@ export class UserService {
         } catch (error: any) {
             log.error(`Error finding user by momo number ${momoNumber}:`, error);
             return null;
+        }
+    }
+    /**
+     * Get user IDs filtered by country code.
+     */
+    async getUserIdsByCountry(country: string): Promise<string[]> {
+        try {
+            const users = await UserModel.find(
+                { country, deleted: { $ne: true } },
+                { _id: 1 }
+            ).lean();
+            return users.map((u: { _id: any }) => u._id.toString());
+        } catch (error: any) {
+            log.error(`Error getting user IDs by country: ${error.message}`);
+            throw new Error('Failed to get user IDs by country');
         }
     }
 }

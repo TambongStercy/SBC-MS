@@ -1861,6 +1861,27 @@ export class UserController {
     }
 
     /**
+     * [Internal] Get user IDs filtered by country code.
+     * @route GET /api/users/internal/ids-by-country?country=CM
+     */
+    async getUserIdsByCountry(req: Request, res: Response): Promise<void> {
+        try {
+            const { country } = req.query;
+
+            if (!country || typeof country !== 'string') {
+                res.status(400).json({ success: false, message: 'Country code is required' });
+                return;
+            }
+
+            const users = await this.userService.getUserIdsByCountry(country);
+            res.status(200).json({ success: true, data: users });
+        } catch (error: any) {
+            this.log.error(`Error getting user IDs by country: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to retrieve user IDs.' });
+        }
+    }
+
+    /**
      * [Internal] Find user IDs matching a search term (name, email, phone).
      * @route GET /api/users/internal/search-ids?q=<searchTerm>
      */

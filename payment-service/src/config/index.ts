@@ -69,15 +69,21 @@ interface IConfig {
     paymentServiceBaseUrl: string;
     logLevel: string;
     cinetpay: {
-        baseUrl: string;
-        transferBaseUrl: string;
-        apiKey: string;
-        apiSecret: string;
-        apiPassword: string;
-        transferPassword: string; // Password for transfer API
-        siteId: string;
-        notificationKey: string;
-        alternateNotifyUrl?: string; // Optional HTTPS webhook URL for production
+        baseUrl: string; // New unified API: https://api.cinetpay.net
+        withdrawalsEnabled: boolean;
+        // Per-country credentials (new platform requires one account per country)
+        countries: {
+            [countryCode: string]: {
+                apiKey: string;
+                apiPassword: string;
+                currency: string;
+            };
+        };
+    };
+    moneyfusion: {
+        apiUrl: string;
+        payoutUrl: string;
+        privateKey: string;
         withdrawalsEnabled: boolean;
     };
     selfBaseUrl: string; // Base URL of this service for webhooks
@@ -141,16 +147,30 @@ const config: IConfig = {
     paymentServiceBaseUrl: process.env.PAYMENT_SERVICE_BASE_URL || 'http://localhost:3003',
     logLevel: process.env.LOG_LEVEL || 'info',
     cinetpay: {
-        baseUrl: process.env.CINETPAY_BASE_URL || 'https://api-checkout.cinetpay.com/v2',
-        transferBaseUrl: process.env.CINETPAY_TRANSFER_BASE_URL || 'https://client.cinetpay.com/v1',
-        apiKey: process.env.CINETPAY_API_KEY || '',
-        apiSecret: process.env.CINETPAY_SECRET_KEY || '',
-        apiPassword: process.env.CINETPAY_API_PASSWORD || '',
-        transferPassword: process.env.CINETPAY_TRANSFER_PASSWORD || '',
-        siteId: process.env.CINETPAY_SITE_ID || '',
-        notificationKey: process.env.CINETPAY_NOTIFICATION_KEY || '',
-        alternateNotifyUrl: process.env.CINETPAY_ALTERNATE_NOTIFY_URL || '',
-        withdrawalsEnabled: process.env.CINETPAY_WITHDRAWALS_ENABLED === 'true'
+        baseUrl: process.env.CINETPAY_BASE_URL || 'https://api.cinetpay.co',
+        withdrawalsEnabled: process.env.CINETPAY_WITHDRAWALS_ENABLED === 'true',
+        // Per-country credentials loaded from env vars: CINETPAY_{CC}_API_KEY, CINETPAY_{CC}_API_PASSWORD
+        countries: (() => {
+            const countryCurrencies: Record<string, string> = {
+                CM: 'XAF', CI: 'XOF', SN: 'XOF', BF: 'XOF', ML: 'XOF', NE: 'XOF',
+                GN: 'GNF', CD: 'CDF', BJ: 'XOF', TG: 'XOF'
+            };
+            const countries: Record<string, { apiKey: string; apiPassword: string; currency: string }> = {};
+            for (const [cc, currency] of Object.entries(countryCurrencies)) {
+                const apiKey = process.env[`CINETPAY_${cc}_API_KEY`];
+                const apiPassword = process.env[`CINETPAY_${cc}_API_PASSWORD`];
+                if (apiKey && apiPassword) {
+                    countries[cc] = { apiKey, apiPassword, currency };
+                }
+            }
+            return countries;
+        })(),
+    },
+    moneyfusion: {
+        apiUrl: process.env.MONEYFUSION_API_URL || '', // The API URL from the dashboard
+        payoutUrl: process.env.MONEYFUSION_PAYOUT_URL || 'https://pay.moneyfusion.net/api/v1/withdraw',
+        privateKey: process.env.MONEYFUSION_PRIVATE_KEY || '', // For payout auth header
+        withdrawalsEnabled: process.env.MONEYFUSION_WITHDRAWALS_ENABLED === 'true',
     },
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3003',
     withdrawalsEnabled: process.env.WITHDRAWALS_ENABLED === 'true', // Global withdrawal control - default false
@@ -166,8 +186,7 @@ const validateConfig = (): void => {
         'JWT_SECRET',
         'FEEXPAY_API_KEY',
         'FEEXPAY_SHOP_ID',
-        'CINETPAY_API_KEY',
-        'CINETPAY_SITE_ID',
+        'MONEYFUSION_API_URL', // CM, CD, GA, NE, ML route through MoneyFusion
         'NOWPAYMENTS_API_KEY', // Added for crypto payments
         'PAYMENT_SERVICE_BASE_URL',
         'FRONTEND_URL', // Likely needed for redirects

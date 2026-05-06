@@ -176,6 +176,8 @@ export class PayoutController {
 
     /**
      * Handle CinetPay webhook notifications for Payouts/Transfers.
+     * New API: webhook only notifies us of a status change — we must call the transfer status API to get the actual status.
+     * Payload: { notify_token, merchant_transaction_id, transaction_id, user: { name, email, phone_number } }
      * @route POST /api/payouts/webhooks/cinetpay
      */
     async handleCinetPayWebhook(req: Request, res: Response): Promise<void> {
@@ -183,40 +185,44 @@ export class PayoutController {
             log.info('Received CinetPay payout webhook notification');
             log.debug('Webhook payload:', req.body);
 
-            // Process the raw webhook payload to extract key information
             const notification = cinetpayPayoutService.processWebhookNotification(req.body);
 
-            log.info(`Payout status update received: CinetPay Client Tx ID: ${notification.transactionId} -> Status: ${notification.status}`);
-
-            // Map CinetPay's status to our internal TransactionStatus enum
-            let internalStatus: TransactionStatus;
-            switch (notification.status) {
-                case 'completed':
-                    internalStatus = TransactionStatus.COMPLETED;
-                    break;
-                case 'failed':
-                    internalStatus = TransactionStatus.FAILED;
-                    break;
-                case 'pending':
-                case 'processing': // CinetPay status can be processing too
-                default:
-                    // If it's anything other than complete or failed, we consider it still processing
-                    // For our webhook, we only process final statuses, so anything else would be a no-op or error.
-                    log.warn(`Received non-final or unrecognized CinetPay payout status for Tx ID ${notification.transactionId}: ${notification.status}.`);
-                    // We can choose to return 200 OK without further processing if we only care about final states.
-                    res.status(200).json({
-                        success: true,
-                        message: 'Webhook processed, status not final or unrecognized',
-                        status: notification.status
-                    });
-                    return;
+            if (!notification.transactionId && !notification.cinetpayTransactionId) {
+                log.warn('CinetPay payout webhook missing transaction IDs', req.body);
+                res.status(200).json({ success: true, message: 'Ignored: missing transaction IDs' });
+                return;
             }
 
-            // Call paymentService to process the confirmed payout status
+            log.info(`Payout webhook received: merchant_tx=${notification.transactionId}, cinetpay_tx=${notification.cinetpayTransactionId}`);
+
+            // New API: we must check the transfer status API for the actual final status
+            const txIdForStatusCheck = notification.cinetpayTransactionId || notification.transactionId;
+            const verifiedStatus = await cinetpayPayoutService.checkPayoutStatus(txIdForStatusCheck);
+
+            if (!verifiedStatus) {
+                log.warn(`Could not verify payout status for ${txIdForStatusCheck}. Will retry on next webhook.`);
+                res.status(200).json({ success: true, message: 'Status verification pending' });
+                return;
+            }
+
+            log.info(`Verified payout status: ${verifiedStatus.status} for merchant_tx=${notification.transactionId}`);
+
+            // Only process final statuses
+            if (verifiedStatus.status !== 'completed' && verifiedStatus.status !== 'failed') {
+                log.info(`Payout status is non-final (${verifiedStatus.status}) for ${notification.transactionId}. Acknowledging webhook.`);
+                res.status(200).json({
+                    success: true,
+                    message: 'Webhook acknowledged, status not final',
+                    status: verifiedStatus.status
+                });
+                return;
+            }
+
+            // Process the confirmed status
             await paymentService.processConfirmedPayoutWebhook(
-                notification.transactionId, // This is our internal transaction ID
-                notification.comment || notification.status, // Use comment or status as providerStatusMessage
-                req.body // Pass the full original payload for audit
+                notification.transactionId,
+                verifiedStatus.comment || verifiedStatus.status,
+                req.body
             );
 
             res.status(200).json({
@@ -226,9 +232,10 @@ export class PayoutController {
 
         } catch (error: any) {
             log.error('Error processing CinetPay payout webhook:', error);
-            res.status(500).json({
+            // Still return 200 to prevent CinetPay from retrying endlessly
+            res.status(200).json({
                 success: false,
-                message: 'Failed to process webhook',
+                message: 'Webhook processing error',
                 error: error.message
             });
         }

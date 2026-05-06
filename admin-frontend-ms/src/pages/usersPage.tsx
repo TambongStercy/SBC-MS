@@ -3,11 +3,12 @@ import { motion } from "framer-motion";
 import Header from "../components/common/Header";
 import UserCard from "../components/userCard";
 import UserProductsTable from "../components/usersProductsTable";
-import { getUserDetails, AdminUserData, adminUpdateUserSubscription, adminUpdateUserPartner, PartnerPack } from "../services/adminUserApi";  // Import the API function
+import { getUserDetails, AdminUserData, adminUpdateUserSubscription, adminUpdateUserPartner, PartnerPack, blockUser, unblockUser, deleteUser, restoreUser } from "../services/adminUserApi";  // Import the API function
 import { useEffect, useState } from 'react';
 import Loader from '../components/common/loader';
 import toast from 'react-hot-toast'; // Import toast for errors
 import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 // Define SubscriptionType locally if not imported
 enum SubscriptionType {
@@ -19,6 +20,8 @@ function UsersPage() {
   const { userId } = useParams<{ userId: string }>();  // Get the userId from the URL
   const [userData, setUserData] = useState<AdminUserData | null>(null);  // State to hold the user data
   const [loading, setLoading] = useState(true);  // State to manage loading
+  const [accountActionLoading, setAccountActionLoading] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
   // Fetch the user data when the component mounts
   useEffect(() => {
@@ -94,6 +97,43 @@ function UsersPage() {
     }
   };
 
+  const handleAccountAction = (action: 'block' | 'unblock' | 'delete' | 'restore') => {
+    const messages = {
+      block: { title: 'Block User', message: `Block ${userData?.name}? They will no longer be able to log in.` },
+      unblock: { title: 'Unblock User', message: `Unblock ${userData?.name}? They will regain access.` },
+      delete: { title: 'Delete User', message: `Soft-delete ${userData?.name}? This can be reversed.` },
+      restore: { title: 'Restore User', message: `Restore ${userData?.name}? Their account will be reactivated.` },
+    };
+    setConfirmModal({
+      ...messages[action],
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setAccountActionLoading(true);
+        const toastId = toast.loading('Processing...');
+        try {
+          if (action === 'block') await blockUser(userData!._id);
+          else if (action === 'unblock') await unblockUser(userData!._id);
+          else if (action === 'delete') await deleteUser(userData!._id);
+          else if (action === 'restore') await restoreUser(userData!._id);
+
+          setUserData(prev => {
+            if (!prev) return prev;
+            if (action === 'block') return { ...prev, blocked: true };
+            if (action === 'unblock') return { ...prev, blocked: false };
+            if (action === 'delete') return { ...prev, deleted: true };
+            if (action === 'restore') return { ...prev, deleted: false };
+            return prev;
+          });
+          toast.success('Done', { id: toastId });
+        } catch (err: any) {
+          toast.error(err.response?.data?.message || 'Action failed', { id: toastId });
+        } finally {
+          setAccountActionLoading(false);
+        }
+      },
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
@@ -150,6 +190,67 @@ function UsersPage() {
             onPartnerPackChange={handlePartnerPackChange}
           />
         </motion.div>
+
+        {/* Account Status */}
+        <motion.div
+          className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 m-3"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, ease: "easeInOut" }}
+        >
+          <h3 className="text-lg font-semibold text-gray-100 mb-4">Account Status</h3>
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="flex gap-2 items-center text-sm text-gray-400">
+              <span>Status:</span>
+              {userData.deleted ? (
+                <span className="px-2 py-0.5 bg-red-900 text-red-300 rounded text-xs font-semibold">Deleted</span>
+              ) : userData.blocked ? (
+                <span className="px-2 py-0.5 bg-orange-900 text-orange-300 rounded text-xs font-semibold">Blocked</span>
+              ) : (
+                <span className="px-2 py-0.5 bg-green-900 text-green-300 rounded text-xs font-semibold">Active</span>
+              )}
+            </div>
+            <div className="flex gap-2 ml-auto">
+              {userData.deleted ? (
+                <button
+                  onClick={() => handleAccountAction('restore')}
+                  disabled={accountActionLoading}
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                >
+                  Restore
+                </button>
+              ) : (
+                <>
+                  {userData.blocked ? (
+                    <button
+                      onClick={() => handleAccountAction('unblock')}
+                      disabled={accountActionLoading}
+                      className="px-4 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                    >
+                      Unblock
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleAccountAction('block')}
+                      disabled={accountActionLoading}
+                      className="px-4 py-1.5 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                    >
+                      Block
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleAccountAction('delete')}
+                    disabled={accountActionLoading}
+                    className="px-4 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </motion.div>
+
         <motion.div
           className=" backdrop-blur-md shadow-lg rounded-xl p-0  mb-8 m-3"
           initial={{ opacity: 0, y: 20 }}
@@ -168,6 +269,18 @@ function UsersPage() {
           />
         </motion.div>
       </div>
+
+      {confirmModal && (
+        <ConfirmationModal
+          isOpen={true}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText="Confirm"
+          cancelText="Cancel"
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
     </>
   );
 }
