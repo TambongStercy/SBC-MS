@@ -24,6 +24,22 @@ function formatCmNumber(phone: string): string {
     return `+${digits}`;
 }
 
+// SMS relance is reserved for non-subscribed users — once a referral has
+// CLASSIQUE or CIBLE, the SMS branch is skipped (emails still go through).
+const SUBSCRIPTION_TYPES_BLOCKING_SMS = ['CLASSIQUE', 'CIBLE'];
+
+async function isSmsBlockedBySubscription(referralId: string): Promise<boolean> {
+    try {
+        const types = await userServiceClient.getActiveSubscriptionTypes(referralId);
+        return types.some(t => SUBSCRIPTION_TYPES_BLOCKING_SMS.includes(t));
+    } catch {
+        // Fail-open is risky here (we'd send SMS to subscribed users), so on
+        // error we treat as blocked. Worst case: a transient user-service
+        // hiccup skips one SMS — they retry on the next cron tick.
+        return true;
+    }
+}
+
 // Low-balance thresholds — trigger one notification when crossing below
 const EMAIL_LOW_BALANCE_THRESHOLD = 50;
 const SMS_LOW_BALANCE_THRESHOLD = 20;
@@ -147,6 +163,9 @@ async function processUserTargets(
 
                 const phone: string | undefined = referralInfo.phoneNumber;
                 if (config.smsEnabled && config.smsBalance > 0 && phone && isCmNumber(phone)) {
+                    if (await isSmsBlockedBySubscription(referralId)) {
+                        console.log(`${campaignLabel} J0: skipping SMS for ${referralId} — has CLASSIQUE/CIBLE subscription`);
+                    } else {
                     const smsTemplate = await RelanceSmsTemplateModel.findOne({
                         type: 'auto',
                         dayNumber: 0,
@@ -182,6 +201,7 @@ async function processUserTargets(
                             sent++;
                             console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 SMS sent to ${phone}`);
                         }
+                    }
                     }
                 }
 
@@ -307,10 +327,11 @@ async function processUserTargets(
                     }
                 }
 
-                // SMS send (same target, same day) — CM numbers only
+                // SMS send (same target, same day) — CM numbers only,
+                // and only for non-subscribed referrals (no CLASSIQUE/CIBLE).
                 if (config.smsEnabled && config.smsBalance > 0) {
                     const phone: string | undefined = referralInfo.phoneNumber;
-                    if (phone && isCmNumber(phone)) {
+                    if (phone && isCmNumber(phone) && !(await isSmsBlockedBySubscription(referralId))) {
                         const smsTemplate = await RelanceSmsTemplateModel.findOne({
                             type: isDefaultTarget ? 'auto' : 'manual',
                             dayNumber: target.currentDay,

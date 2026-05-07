@@ -2712,6 +2712,35 @@ export class UserController {
             });
         }
     }
+
+    /**
+     * GET /users/internal/:userId/active-subscription-types
+     * Returns the list of active subscription type strings (e.g. CLASSIQUE, CIBLE, RELANCE).
+     * Used by notification-service to gate SMS relance to non-subscribed users only.
+     */
+    async getActiveSubscriptionTypes(req: Request, res: Response): Promise<void> {
+        try {
+            const { userId } = req.params;
+            if (!userId) {
+                res.status(400).json({ success: false, message: 'User ID is required' });
+                return;
+            }
+
+            const { subscriptionService } = await import('../../services/subscription.service');
+            const types = await subscriptionService.getActiveSubscriptionTypes(userId);
+
+            res.status(200).json({
+                success: true,
+                data: { activeSubscriptionTypes: types }
+            });
+        } catch (error: any) {
+            this.log.error(`Error getting active subscription types for user ${req.params.userId}:`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get active subscription types'
+            });
+        }
+    }
 }
 
 // Export singleton instance

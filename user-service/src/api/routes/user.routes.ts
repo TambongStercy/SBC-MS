@@ -68,6 +68,7 @@ serviceRouter.post('/find-by-momo', (req, res) => userController.findUserByMomoN
 serviceRouter.get('/:userId/unpaid-referrals', (req, res) => userController.getUnpaidReferrals(req, res));
 serviceRouter.get('/:userId/referrals-for-campaign', (req, res) => userController.getReferralsForCampaign(req, res));
 serviceRouter.get('/:userId/has-relance-subscription', (req, res) => userController.hasRelanceSubscription(req, res));
+serviceRouter.get('/:userId/active-subscription-types', (req, res) => userController.getActiveSubscriptionTypes(req, res));
 
 // Internal route to get user IDs filtered by country
 serviceRouter.get('/ids-by-country', (req, res) => userController.getUserIdsByCountry(req, res));
