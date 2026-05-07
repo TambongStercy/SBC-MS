@@ -3438,7 +3438,7 @@ class PaymentService {
     }
 
     public async handleMoneyFusionPayoutWebhook(payload: any): Promise<void> {
-        const { event, tokenPay, montant, numeroRetrait, moyen } = payload;
+        const { event, tokenPay } = payload;
         log.info(`MoneyFusion payout webhook received: event=${event}, tokenPay=${tokenPay}`);
 
         // Find the transaction by the MoneyFusion token stored in externalTransactionId
@@ -3450,21 +3450,26 @@ class PaymentService {
 
         const status = moneyFusionService.mapPayoutWebhookStatus(event);
 
+        // Debit-on-success pattern (matches FeexPay handler at processFeexpayWebhookUpdate).
+        // The wallet is NOT debited at admin-approval time; it is debited only when the
+        // provider confirms a successful payout. On failure, no refund is needed.
         if (status === 'completed') {
             if (transaction.status !== TransactionStatus.COMPLETED) {
-                await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.COMPLETED);
-                log.info(`MoneyFusion payout completed: ${transaction.transactionId}`);
+                await transactionRepository.update(transaction._id, {
+                    status: TransactionStatus.COMPLETED,
+                    'metadata.payoutCompletedAt': new Date().toISOString(),
+                });
+                const amountToDebit = -Math.abs(transaction.amount);
+                await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
+                log.info(`MoneyFusion payout completed: ${transaction.transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
             }
         } else if (status === 'failed') {
             if (transaction.status !== TransactionStatus.FAILED) {
-                await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.FAILED);
-                // Refund the user balance
-                try {
-                    await userServiceClient.updateUserBalance(transaction.userId.toString(), transaction.amount);
-                    log.info(`Refunded ${transaction.amount} to user ${transaction.userId} after MoneyFusion payout failure`);
-                } catch (refundError: any) {
-                    log.error(`Failed to refund user ${transaction.userId} after MoneyFusion payout failure: ${refundError.message}`);
-                }
+                await this.handleFailedWithdrawal(
+                    transaction.transactionId,
+                    `MoneyFusion reported failure: ${event}`,
+                    tokenPay
+                );
             }
         }
     }
