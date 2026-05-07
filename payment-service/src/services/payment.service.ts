@@ -2830,24 +2830,24 @@ class PaymentService {
                 baseUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.cible.inscription; // $11.6 USD for Ciblés  
             } else if (paymentIntent.subscriptionType === 'UPGRADE') {
                 baseUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription; // $7 USD for Upgrade
-            } else if (paymentIntent.amount === 2070) {
-                // Classique: 2070 XAF = 2000 base + 70 service fee → $4.8 base + service fee
+            } else if (paymentIntent.amount === 2150) {
+                // Classique: 2150 XAF = 2000 base + 150 fee margin → $4.8 base + fee margin
                 const baseUsd = CRYPTO_SUBSCRIPTION_PRICING.classique.inscription; // $4.8 USD base (equivalent to 2000 XAF)
-                const serviceFeeUsd = 70 / 615; // 70 XAF service fee converted to USD
+                const serviceFeeUsd = 150 / 615; // 150 XAF fee margin converted to USD
                 baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
-                log.info(`Converting Classique: 2070 XAF (2000 + 70 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
-            } else if (paymentIntent.amount === 5140) {
-                // Ciblés: 5140 XAF = 5000 base + 140 service fee → $11.6 base + service fee  
+                log.info(`Converting Classique: 2150 XAF (2000 + 150 fee margin) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} fee)`);
+            } else if (paymentIntent.amount === 5300) {
+                // Ciblés: 5300 XAF = 5000 base + 300 fee margin → $11.6 base + fee margin
                 const baseUsd = CRYPTO_SUBSCRIPTION_PRICING.cible.inscription; // $11.6 USD base (equivalent to 5000 XAF)
-                const serviceFeeUsd = 140 / 615; // 140 XAF service fee converted to USD
+                const serviceFeeUsd = 300 / 615; // 300 XAF fee margin converted to USD
                 baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
-                log.info(`Converting Ciblés: 5140 XAF (5000 + 140 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
-            } else if (paymentIntent.amount === 3070) {
-                // Upgrade: 3070 XAF = 3000 base + 70 service fee → base + service fee
+                log.info(`Converting Ciblés: 5300 XAF (5000 + 300 fee margin) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} fee)`);
+            } else if (paymentIntent.amount === 3150) {
+                // Upgrade: 3150 XAF = 3000 base + 150 fee margin → base + fee margin
                 const baseUsd = CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription; // $7 USD base (equivalent to 3000 XAF)
-                const serviceFeeUsd = 70 / 615; // 70 XAF service fee converted to USD
+                const serviceFeeUsd = 150 / 615; // 150 XAF fee margin converted to USD
                 baseUsdAmount = Math.round((baseUsd + serviceFeeUsd) * 100) / 100;
-                log.info(`Converting Upgrade: 3070 XAF (3000 + 70 service) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} service fee)`);
+                log.info(`Converting Upgrade: 3150 XAF (3000 + 150 fee margin) → $${baseUsdAmount} USD ($${baseUsd} + $${serviceFeeUsd.toFixed(2)} fee)`);
             } else {
                 // Fallback to exchange rate conversion for unknown amounts
                 log.warn(`Unknown XAF amount: ${paymentIntent.amount}. Using exchange rate conversion.`);
