@@ -671,7 +671,17 @@ class RelanceController {
                 { headers: { 'x-service-secret': config.services.serviceSecret }, timeout: 10000 }
             );
 
-            const { sessionId, checkoutUrl } = response.data?.data || response.data || {};
+            // payment-service `/payments/intents` returns only { sessionId, clientSecret }.
+            // The user still needs to land on the payment page to pick country/operator/phone.
+            // Build the checkout URL pointing at the public payment page route, using the
+            // per-environment frontend base (preprod vs prod).
+            const sessionId = response.data?.data?.sessionId;
+            if (!sessionId) {
+                log.error('Pack purchase: payment-service did not return a sessionId', response.data);
+                res.status(502).json({ success: false, message: 'Failed to initiate pack purchase: missing sessionId' });
+                return;
+            }
+            const checkoutUrl = `${config.app.frontendUrl}/api/payments/page/${sessionId}`;
             res.status(200).json({ success: true, data: { sessionId, checkoutUrl, pack } });
         } catch (error: any) {
             log.error('Error initiating pack purchase:', error.response?.data || error.message);
