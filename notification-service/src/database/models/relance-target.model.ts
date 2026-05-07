@@ -32,7 +32,7 @@ export enum DeliveryStatus {
  * Message delivery record
  */
 export interface IMessageDelivery {
-    day: number;                    // Which day (0-7, 0=J0 15-min SMS)
+    day: number;                    // Which day (1-7)
     channel: 'email' | 'sms';      // Which channel delivered this message
     sentAt: Date;                   // When the message was sent
     status: DeliveryStatus;         // delivered or failed
@@ -101,7 +101,7 @@ const RelanceTargetSchema = new Schema<IRelanceTarget>(
         currentDay: {
             type: Number,
             required: true,
-            min: 0,
+            min: 1,
             max: 7,
             default: 1
         },

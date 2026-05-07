@@ -26,7 +26,8 @@ import {
   MessagesSquare,
   Rss,
   Trophy,
-  TrendingUp
+  TrendingUp,
+  Link2
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -180,6 +181,18 @@ const SIDEBAR_GROUPS = [
         icon: Target,
         color: "#a855f7",
         path: "/relance/campaigns",
+      },
+      {
+        name: "SMS Templates",
+        icon: MessageSquare,
+        color: "#10b981",
+        path: "/relance/sms-templates",
+      },
+      {
+        name: "SMS Links",
+        icon: Link2,
+        color: "#22d3ee",
+        path: "/relance/sms-links",
       },
     ]
   },

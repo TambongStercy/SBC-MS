@@ -279,7 +279,7 @@ async function processUserTargets(
                     await campaign.save();
                 }
 
-                // Advance day: J0 → J1 after 24h; J1-J6 → next day; J7 → completed
+                // Advance day: J1-J6 → next day in 24h; J7 → completed
                 if (target.currentDay >= 7) {
                     target.status = TargetStatus.COMPLETED;
                     target.exitReason = ExitReason.COMPLETED_7_DAYS;

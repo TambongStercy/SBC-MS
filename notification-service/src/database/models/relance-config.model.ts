@@ -22,7 +22,7 @@ export interface IMessageTemplate {
 
 export interface ISmsLink {
     type: 'auto' | 'manual';
-    dayNumber: number;  // 0–7 for auto, 1–7 for manual
+    dayNumber: number;  // 1–7 (auto and manual)
     link: string;
 }
 
@@ -116,7 +116,7 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
         // Per-day SMS links
         smsLinks: [{
             type: { type: String, enum: ['auto', 'manual'], required: true },
-            dayNumber: { type: Number, required: true, min: 0, max: 7 },
+            dayNumber: { type: Number, required: true, min: 1, max: 7 },
             link: { type: String, required: true }
         }],
 
