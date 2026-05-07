@@ -1,7 +1,7 @@
 /**
  * Seed Relance SMS Templates
  *
- * Inserts Rufus's predefined auto (Day 1–7) and manual (Day 1–7) SMS templates.
+ * Inserts Rufus's predefined auto (J0 + Day 1–7) and manual (Day 1–7) SMS templates.
  * Safe to re-run — uses upsert so existing templates are updated, not duplicated.
  *
  * Usage: NODE_ENV=production node scripts/seed-sms-templates.js
@@ -22,8 +22,12 @@ const RelanceSmsTemplateSchema = new mongoose.Schema({
     active: { type: Boolean, default: true }
 }, { timestamps: true });
 
-// Auto relance templates (Day 1–7), {{link}} = referrer's custom link
+// Auto relance templates (J0 = 15 min SMS-only, then Day 1–7), {{link}} = referrer's custom link
 const AUTO_TEMPLATES = [
+    {
+        dayNumber: 0,
+        templateText: "Tu t'es inscrit… mais tu n'as rien activé.\nPendant que tu attends, d'autres commencent déjà.\n👉 Active ici : {{link}}"
+    },
     {
         dayNumber: 1,
         templateText: "SBC = formations + produits digitaux à revendre 💰\nTu peux apprendre et gagner en même temps.\n👉 Accès ici : {{link}}"

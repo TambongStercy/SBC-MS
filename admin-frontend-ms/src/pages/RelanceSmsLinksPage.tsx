@@ -3,11 +3,11 @@ import { Link2, Save, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getSmsLinks, updateSmsLinks, getSmsTemplates, SmsLink, SmsTemplate } from '../services/adminRelanceApi';
 
-const AUTO_DAYS = [1, 2, 3, 4, 5, 6, 7];
+const AUTO_DAYS = [0, 1, 2, 3, 4, 5, 6, 7];
 const MANUAL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 
 const dayLabel = (type: 'auto' | 'manual', day: number) =>
-    type === 'auto' ? `J${day}` : `Jour ${day}`;
+    type === 'auto' ? (day === 0 ? 'J0 (15 min)' : `J${day}`) : `Jour ${day}`;
 
 const RelanceSmsLinksPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'auto' | 'manual'>('auto');
@@ -127,7 +127,7 @@ const RelanceSmsLinksPage: React.FC = () => {
                                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                         }`}
                     >
-                        {tab === 'auto' ? '🤖 Automatique (J1–J7)' : '✍️ Manuel (Jour 1–7)'}
+                        {tab === 'auto' ? '🤖 Automatique (J0–J7)' : '✍️ Manuel (Jour 1–7)'}
                     </button>
                 ))}
             </div>
