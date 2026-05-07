@@ -309,6 +309,17 @@ router.put('/sms-links', authenticate, (req, res) =>
     relanceController.updateSmsLinks(req, res)
 );
 
+/**
+ * @route   GET /api/relance/sms-templates
+ * @desc    List all predefined SMS templates (read-only). Used by the
+ *          customer-facing "Mes liens SMS" page so users can see which
+ *          message goes with each day before pasting their link.
+ * @access  Private (any authenticated user)
+ */
+router.get('/sms-templates', authenticate, (req, res) =>
+    relanceController.listSmsTemplates(req, res)
+);
+
 // ===== ADMIN SMS TEMPLATE ROUTES =====
 
 /**
