@@ -183,8 +183,74 @@ Services communicate via HTTP REST APIs through the gateway. Service URLs are co
 The payment service integrates with multiple providers:
 - **CinetPay**: Mobile money and card payments for African markets
 - **FeexPay**: Local payment processing
+- **MoneyFusion**: Mobile money for CM, CD, GA, NE, ML, GN, BF, SN, TD
 - **NOWPayments**: Cryptocurrency payments
 - **QR Code**: Payment UI with real-time updates
+
+### ⚠️ Critical: payment-service handles real user money
+
+Any change in `payment-service/` (especially `payment.service.ts`,
+`moneyfusion.service.ts`, `cinetpay-payout.service.ts`, `feexpay-payout.service.ts`,
+`withdrawal*` routes/controllers, the webhook handlers, and the operator/currency
+maps in `utils/operatorMaps.ts`) can move real money or freeze user balances.
+Treat every PR that touches these as financial code, not normal app code.
+
+**Before merging any payment-service change, do the following — even if the
+diff looks small:**
+
+1. **Trace every code path the change affects**, not just the one in front of you.
+   Withdrawal flows have at least four siblings: user-initiated (\`processWithdrawal\`,
+   currently dead-code-commented), admin-approved (\`processMobileMoneyWithdrawalPayout\`),
+   admin-direct (\`adminInitiateUserWithdrawal\` / \`adminInitiateDirectPayout\`), and
+   recovery scripts. A new gateway must be wired into all of them — or each one needs
+   an explicit \`else\` that throws on unknown gateways so silent no-ops can't happen
+   (one of these silent no-ops froze a real user's withdrawal mid-flight).
+
+2. **Check the wallet debit/credit lifecycle for every change.** SBC uses
+   **debit-on-success** for mobile-money withdrawals: the wallet is debited only
+   after the provider confirms COMPLETED. So:
+   - On success → mark COMPLETED + debit wallet (\`updateUserBalance(userId, -amount)\`)
+   - On failure → mark FAILED, **do nothing to the wallet** (no refund — wallet was
+     never debited)
+   - The FeexPay webhook handler at \`payment.service.ts:5870\` is the canonical
+     reference. Match its pattern. A wrong refund here over-credits users on every
+     failure — happened in PR #18, caught before going to prod.
+
+3. **Verify the request shape against provider docs literally**, including
+   field name casing (snake_case vs camelCase), country code casing (lowercase),
+   phone format (with/without country prefix), and operator-slug values. The
+   operator maps (e.g. \`MoneyFusion.WITHDRAW_MODES\`) must exactly match the
+   provider's published table — even when the provider's table looks like a typo
+   (CG legitimately maps to \`orange-money-mali\` per MoneyFusion docs).
+   The map keys must match the **stored** operator names from
+   \`operatorMaps.ts\` (long-form like \`MTN_MOMO_CMR\`), not abbreviations
+   (\`MTN_CM\` was wrong and silently failed every CM withdrawal).
+
+4. **Walk admin approval, OTP, and global-disable gates.** Confirm the change
+   doesn't bypass them. \`config.withdrawalsEnabled\` and
+   \`{provider}.withdrawalsEnabled\` are the global kill switches; respect them
+   on every code path.
+
+5. **Run real preprod tests before promoting to master** for any non-trivial
+   payment change. \`MONEYFUSION_WITHDRAWALS_ENABLED=false\` (or equivalent
+   per-provider) is the safety net while testing — set it on prod if a fix is
+   in flight, then re-enable after deploy.
+
+6. **Manually inspect the diff for**: missing \`else\` in gateway-selection
+   blocks (silent no-op), \`updateUserBalance\` calls that don't match the
+   debit-on-success pattern, hardcoded operator slugs that aren't in the
+   provider's docs, and any path that starts a payout without setting
+   \`externalTransactionId\`/\`serviceProvider\` (untraceable transactions).
+
+7. **Stuck withdrawals get refunded via the existing webhook simulation**
+   pattern (plant a sentinel \`externalTransactionId\`, POST a cancelled event
+   to the provider's webhook URL on localhost) — not direct DB writes.
+   But verify which debit model applies first: with debit-on-success, no
+   refund is needed because the wallet was never debited.
+
+If any of these is unclear in a particular code area, stop and ask before
+merging. Real money has been moved or frozen by skipping these checks in the
+past; the cost of pausing is far lower than the cost of cleaning up.
 
 ## Database Conventions
 

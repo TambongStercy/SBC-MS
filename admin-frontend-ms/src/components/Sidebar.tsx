@@ -170,10 +170,16 @@ const SIDEBAR_GROUPS = [
         path: "/relance/dashboard",
       },
       {
-        name: "Messages",
+        name: "Email Templates",
         icon: MessageSquare,
         color: "#8b5cf6",
         path: "/relance/messages",
+      },
+      {
+        name: "SMS Templates",
+        icon: MessageSquare,
+        color: "#10b981",
+        path: "/relance/sms-templates",
       },
       {
         name: "Campaigns",

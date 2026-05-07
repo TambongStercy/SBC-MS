@@ -121,6 +121,79 @@ async function processUserTargets(
                 continue;
             }
 
+            // ───── J0 SMS-only fast path ─────
+            // Default (auto) targets start at currentDay = 0 = J0, the 15-min SMS-only
+            // teaser. There is no email at J0 (no RelanceMessage with dayNumber 0).
+            // Send the SMS if conditions are met, then unconditionally advance to
+            // Day 1 with the regular 24h cadence — J0 is best-effort, we don't retry.
+            // Manual campaigns never enroll at currentDay = 0; if one ever lands here,
+            // we just push it forward to Day 1 to keep the loop moving.
+            if (target.currentDay === 0) {
+                if (!isDefaultTarget) {
+                    target.currentDay = 1;
+                    const nextDue = new Date();
+                    nextDue.setHours(nextDue.getHours() + 24);
+                    target.nextMessageDue = nextDue;
+                    await target.save();
+                    continue;
+                }
+
+                const referralInfo = await userServiceClient.getUserDetails(referralId);
+                if (!referralInfo) {
+                    console.log(`${campaignLabel} J0: could not fetch referral info for ${referralId}, skipping`);
+                    failed++;
+                    continue;
+                }
+
+                const phone: string | undefined = referralInfo.phoneNumber;
+                if (config.smsEnabled && config.smsBalance > 0 && phone && isCmNumber(phone)) {
+                    const smsTemplate = await RelanceSmsTemplateModel.findOne({
+                        type: 'auto',
+                        dayNumber: 0,
+                        active: true
+                    });
+                    if (smsTemplate) {
+                        const userLink = (config.smsLinks || []).find((l: any) =>
+                            l.type === 'auto' && l.dayNumber === 0
+                        );
+                        const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
+                        const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
+                        if (smsSent) {
+                            config.smsBalance = Math.max(0, config.smsBalance - 1);
+                            target.messagesDelivered.push({
+                                day: 0,
+                                channel: 'sms',
+                                sentAt: new Date(),
+                                status: 'delivered' as any,
+                            });
+                            target.lastMessageSentAt = new Date();
+                            if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
+                                const referrerInfo = await userServiceClient.getUserDetails(referrerId);
+                                if (referrerInfo?.email) {
+                                    emailService.sendLowBalanceAlert(
+                                        referrerInfo.email,
+                                        referrerInfo.name || '',
+                                        'sms',
+                                        config.smsBalance
+                                    ).catch(() => { });
+                                }
+                            }
+                            await config.save();
+                            sent++;
+                            console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 SMS sent to ${phone}`);
+                        }
+                    }
+                }
+
+                // Always advance J0 → Day 1 (best-effort, no retry on J0)
+                target.currentDay = 1;
+                const nextDue = new Date();
+                nextDue.setHours(nextDue.getHours() + 24);
+                target.nextMessageDue = nextDue;
+                await target.save();
+                continue;
+            }
+
             // Get message template (campaign custom or default)
             let messageTemplate: any = null;
 
@@ -279,7 +352,8 @@ async function processUserTargets(
                     await campaign.save();
                 }
 
-                // Advance day: J0 → J1 after 24h; J1-J6 → next day; J7 → completed
+                // Advance day: J1–J6 → next day in 24h; J7 → completed.
+                // (J0 is handled in the SMS-only fast path above and never reaches here.)
                 if (target.currentDay >= 7) {
                     target.status = TargetStatus.COMPLETED;
                     target.exitReason = ExitReason.COMPLETED_7_DAYS;

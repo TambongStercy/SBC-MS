@@ -37,17 +37,19 @@ apiClient.interceptors.response.use(
         if (error.response) {
             console.error('API Error Response:', error.config?.url, error.response.status, error.response.data);
 
-            // Handle unauthorized access (e.g., redirect to login)
+            // Handle unauthorized access — clear creds, redirect cleanly to /login.
+            // We return a non-resolving promise so downstream `.catch()` handlers in
+            // pages don't fire and flash an "Error loading data" UI before the
+            // browser navigation completes.
             if (error.response.status === 401) {
                 console.error('Authentication error:', error.response.data);
-                // Clear stored credentials on auth errors
                 localStorage.removeItem('adminToken');
                 localStorage.removeItem('adminUser');
-                // Redirect to login page if not already there
                 if (window.location.pathname !== '/login') {
                     console.log('Redirecting to login page due to 401 error');
                     window.location.href = '/login';
                 }
+                return new Promise(() => { /* never resolves — caller stays in loading state until redirect */ });
             } else if (error.response.status >= 500) {
                 console.error('Server error:', error.response.data);
             }
