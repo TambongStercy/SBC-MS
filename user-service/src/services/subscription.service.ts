@@ -31,7 +31,7 @@ const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
         id: SubscriptionType.CLASSIQUE,
         name: 'Abonnement Classique',
         type: SubscriptionType.CLASSIQUE,
-        price: 2070,
+        price: 2150,
         currency: 'XAF',
         description: 'Permet le ciblage des contacts par pays.',
         targetingLevel: 'country',
@@ -42,7 +42,7 @@ const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
         id: SubscriptionType.CIBLE,
         name: 'Abonnement Ciblé',
         type: SubscriptionType.CIBLE,
-        price: 5140,
+        price: 5300,
         currency: 'XAF',
         description: 'Permet le ciblage avancé par pays, sexe, langue, âge, profession, centres d\'intérêt et ville.',
         targetingLevel: 'all',
@@ -405,7 +405,7 @@ export class SubscriptionService {
         try {
             const paymentIntentData = await paymentService.createIntent({
                 userId: userId,
-                amount: standardPlan.price, // Always use XAF amount (2070 or 5140)
+                amount: standardPlan.price, // Always use XAF amount (2150 or 5300)
                 currency: standardPlan.currency, // Always XAF
                 paymentType: 'SUBSCRIPTION',
                 metadata: metadata,
@@ -457,7 +457,7 @@ export class SubscriptionService {
         }
 
         // 3. Use standard XAF pricing for PaymentIntent creation - payment service will handle crypto conversion
-        const upgradePrice = 3070; // Standard XAF amount (includes 70 XAF service fee)
+        const upgradePrice = 3150; // Standard XAF amount (CIBLE 5300 − CLASSIQUE 2150)
         const currency = 'XAF';
         this.log.info(`Using standard upgrade pricing: ${upgradePrice} ${currency} (payment service will handle crypto conversion if needed)`);
 
