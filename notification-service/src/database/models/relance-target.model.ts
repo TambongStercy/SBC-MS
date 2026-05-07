@@ -16,7 +16,8 @@ export enum ExitReason {
     PAID = 'paid',                          // User paid a subscription
     COMPLETED_7_DAYS = 'completed_7days',   // Finished 7-day campaign
     MANUAL = 'manual',                      // Manually removed by admin
-    REFERRER_INACTIVE = 'referrer_inactive' // Referrer's subscription expired
+    REFERRER_INACTIVE = 'referrer_inactive', // Referrer's subscription expired
+    EMAIL_SUPPRESSED = 'email_suppressed'   // Hard bounce — address blacklisted
 }
 
 /**
@@ -31,11 +32,12 @@ export enum DeliveryStatus {
  * Message delivery record
  */
 export interface IMessageDelivery {
-    day: number;                    // Which day (1-7)
+    day: number;                    // Which day (0-7, 0=J0 15-min SMS)
+    channel: 'email' | 'sms';      // Which channel delivered this message
     sentAt: Date;                   // When the message was sent
     status: DeliveryStatus;         // delivered or failed
     errorMessage?: string;          // Error details if failed
-    sendGridMessageId?: string;     // SendGrid message ID for tracking
+    sendGridMessageId?: string;     // Email provider message ID for tracking
     opened?: boolean;               // Whether email was opened
     openedAt?: Date;                // When email was first opened
     openCount?: number;             // Number of times opened
@@ -44,7 +46,7 @@ export interface IMessageDelivery {
     clickCount?: number;            // Number of clicks
     bounced?: boolean;              // Whether email bounced
     bouncedAt?: Date;               // When bounce occurred
-    bounceReason?: string;          // Bounce reason from SendGrid
+    bounceReason?: string;          // Bounce reason from provider
 }
 
 /**
@@ -99,7 +101,7 @@ const RelanceTargetSchema = new Schema<IRelanceTarget>(
         currentDay: {
             type: Number,
             required: true,
-            min: 1,
+            min: 0,
             max: 7,
             default: 1
         },
@@ -114,6 +116,7 @@ const RelanceTargetSchema = new Schema<IRelanceTarget>(
         messagesDelivered: {
             type: [{
                 day: { type: Number, required: true },
+                channel: { type: String, enum: ['email', 'sms'], default: 'email' },
                 sentAt: { type: Date, required: true },
                 status: { type: String, enum: Object.values(DeliveryStatus), required: true },
                 errorMessage: { type: String },

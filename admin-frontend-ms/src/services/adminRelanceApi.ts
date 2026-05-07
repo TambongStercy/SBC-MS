@@ -435,3 +435,92 @@ export const previewMessage = async (data: {
     const response = await apiClient.post('/relance/admin/messages/preview', data);
     return response.data.data.html;
 };
+
+// ===== CREDIT / PACK APIs =====
+
+export interface RelancePack {
+    id: string;
+    credits: number;
+    priceXAF: number;
+    type: 'email' | 'sms';
+}
+
+export interface RelanceBalance {
+    emailBalance: number;
+    smsBalance: number;
+    smsEnabled: boolean;
+    maxMessagesPerDay: number;
+}
+
+export const getPacks = async (): Promise<{ emailPacks: RelancePack[]; smsPacks: RelancePack[] }> => {
+    const response = await apiClient.get('/relance/packs');
+    return response.data.data;
+};
+
+export const getBalance = async (): Promise<RelanceBalance> => {
+    const response = await apiClient.get('/relance/balance');
+    return response.data.data;
+};
+
+export const purchasePack = async (packId: string): Promise<{ sessionId: string; checkoutUrl: string; pack: RelancePack }> => {
+    const response = await apiClient.post('/relance/packs/purchase', { packId });
+    return response.data.data;
+};
+
+// ===== SMS LINK APIs =====
+
+export interface SmsLink {
+    type: 'auto' | 'manual';
+    dayNumber: number;
+    link: string;
+}
+
+export const getSmsLinks = async (): Promise<SmsLink[]> => {
+    const response = await apiClient.get('/relance/sms-links');
+    return response.data.data;
+};
+
+export const updateSmsLinks = async (links: SmsLink[]): Promise<SmsLink[]> => {
+    const response = await apiClient.put('/relance/sms-links', { links });
+    return response.data.data;
+};
+
+// ===== SMS TEMPLATE APIs (Admin) =====
+
+export interface SmsTemplate {
+    _id: string;
+    type: 'auto' | 'manual';
+    dayNumber: number;
+    templateText: string;
+    active: boolean;
+}
+
+export const getSmsTemplates = async (): Promise<SmsTemplate[]> => {
+    const response = await apiClient.get('/relance/admin/sms-templates');
+    return response.data.data;
+};
+
+export const updateSmsTemplate = async (
+    type: 'auto' | 'manual',
+    dayNumber: number,
+    data: { templateText?: string; active?: boolean }
+): Promise<SmsTemplate> => {
+    const response = await apiClient.put(`/relance/admin/sms-templates/${type}/${dayNumber}`, data);
+    return response.data.data;
+};
+
+export const previewSmsTemplate = async (
+    type: 'auto' | 'manual',
+    dayNumber: number,
+    link: string
+): Promise<{ rendered: string; characterCount: number }> => {
+    const response = await apiClient.post('/relance/admin/sms-templates/preview', { type, dayNumber, link });
+    return response.data.data;
+};
+
+export const adminUpdateUserConfig = async (
+    userId: string,
+    data: { smsEnabled?: boolean; maxMessagesPerDay?: number }
+): Promise<void> => {
+    await apiClient.put(`/relance/admin/configs/${userId}`, data);
+};

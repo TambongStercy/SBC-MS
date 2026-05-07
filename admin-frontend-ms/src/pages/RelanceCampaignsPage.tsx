@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Target, Users, TrendingUp, Play, Pause, XCircle, Eye, RefreshCw, Loader2, Filter, Calendar, BarChart3, MessageSquare, Mail, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Target, Users, TrendingUp, Play, Pause, XCircle, Eye, RefreshCw, Loader2, Filter, Calendar, BarChart3, MessageSquare, Mail, CheckCircle, AlertTriangle, Smartphone, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
     getAllCampaigns,
@@ -61,11 +61,12 @@ const RelanceCampaignsPage: React.FC = () => {
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [typeFilter, setTypeFilter] = useState<string>('all');
+    const [channelFilter, setChannelFilter] = useState<string>('all');
     const [userIdFilter, setUserIdFilter] = useState<string>('');
 
     useEffect(() => {
         loadCampaigns();
-    }, [statusFilter, typeFilter, page]);
+    }, [statusFilter, typeFilter, channelFilter, page]);
 
     const loadCampaigns = async (isRefresh = false) => {
         try {
@@ -82,6 +83,7 @@ const RelanceCampaignsPage: React.FC = () => {
 
             if (statusFilter !== 'all') filters.status = statusFilter;
             if (typeFilter !== 'all') filters.type = typeFilter;
+            if (channelFilter !== 'all') filters.channel = channelFilter;
             if (userIdFilter) filters.userId = userIdFilter;
 
             const data = await getAllCampaigns(filters);
@@ -233,6 +235,17 @@ const RelanceCampaignsPage: React.FC = () => {
         return type === 'default' ? 'bg-blue-500' : 'bg-purple-500';
     };
 
+    const getChannelBadge = (channel?: string) => {
+        const styles: Record<string, string> = { email: 'bg-blue-700 text-blue-200', sms: 'bg-green-700 text-green-200', both: 'bg-indigo-700 text-indigo-200' };
+        return styles[channel || 'email'] || styles.email;
+    };
+
+    const channelIcon = (channel?: string) => {
+        if (channel === 'sms') return <Smartphone size={12} />;
+        if (channel === 'both') return <Layers size={12} />;
+        return <Mail size={12} />;
+    };
+
     const calculateSuccessRate = (campaign: Campaign) => {
         if (campaign.messagesSent === 0) return 0;
         return ((campaign.messagesDelivered / campaign.messagesSent) * 100).toFixed(1);
@@ -273,7 +286,7 @@ const RelanceCampaignsPage: React.FC = () => {
                     <Filter size={20} className="text-gray-400" />
                     <h2 className="text-lg font-semibold text-gray-100">Filters</h2>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-sm text-gray-400 mb-2">Status</label>
                         <select
@@ -300,6 +313,19 @@ const RelanceCampaignsPage: React.FC = () => {
                             <option value="all">All</option>
                             <option value="default">Default</option>
                             <option value="filtered">Filtered</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm text-gray-400 mb-2">Canal</label>
+                        <select
+                            value={channelFilter}
+                            onChange={(e) => { setChannelFilter(e.target.value); setPage(1); }}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:border-blue-500"
+                        >
+                            <option value="all">Tous</option>
+                            <option value="email">Email</option>
+                            <option value="sms">SMS</option>
+                            <option value="both">Email + SMS</option>
                         </select>
                     </div>
                     <div>
@@ -338,7 +364,7 @@ const RelanceCampaignsPage: React.FC = () => {
                                 {/* Campaign Header */}
                                 <div className="flex items-start justify-between mb-4">
                                     <div className="flex-1">
-                                        <div className="flex items-center gap-3 mb-2">
+                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                                             <h3 className="text-xl font-semibold text-gray-100">{campaign.name}</h3>
                                             <span className={`text-xs px-2 py-1 rounded ${getStatusBadge(campaign.status)}`}>
                                                 {campaign.status}
@@ -346,6 +372,16 @@ const RelanceCampaignsPage: React.FC = () => {
                                             <span className={`text-xs px-2 py-1 rounded ${getTypeBadge(campaign.type)}`}>
                                                 {campaign.type}
                                             </span>
+                                            {(campaign as any).channel && (
+                                                <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${getChannelBadge((campaign as any).channel)}`}>
+                                                    {channelIcon((campaign as any).channel)} {(campaign as any).channel}
+                                                </span>
+                                            )}
+                                            {(campaign as any).contactBatch && (
+                                                <span className="text-xs px-2 py-1 rounded bg-gray-600 text-gray-300">
+                                                    Lot: {(campaign as any).contactBatch.offset}–{(campaign as any).contactBatch.offset + (campaign as any).contactBatch.limit - 1}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-sm text-gray-400">User ID: {campaign.userId}</p>
                                         <p className="text-sm text-gray-400">Created: {formatDate(campaign.createdAt)}</p>
@@ -564,6 +600,24 @@ const RelanceCampaignsPage: React.FC = () => {
                                     <p className="text-sm text-gray-400">Max Messages/Day</p>
                                     <p className="text-gray-100">{selectedCampaign.maxMessagesPerDay || 'Default'}</p>
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-sm text-gray-400">Canal d'envoi</p>
+                                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded mt-1 ${getChannelBadge((selectedCampaign as any).channel)}`}>
+                                        {channelIcon((selectedCampaign as any).channel)} {(selectedCampaign as any).channel || 'email'}
+                                    </span>
+                                </div>
+                                {(selectedCampaign as any).contactBatch && (
+                                    <div>
+                                        <p className="text-sm text-gray-400">Lot de contacts</p>
+                                        <p className="text-gray-100 text-sm mt-1">
+                                            Positions {(selectedCampaign as any).contactBatch.offset} → {(selectedCampaign as any).contactBatch.offset + (selectedCampaign as any).contactBatch.limit - 1}
+                                            <span className="text-gray-400 ml-1">({(selectedCampaign as any).contactBatch.limit} contacts)</span>
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             {selectedCampaign.scheduledStartDate && (

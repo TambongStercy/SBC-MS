@@ -260,6 +260,93 @@ router.get('/media/:filename', (req, res) => {
     res.sendFile(filepath);
 });
 
+// ===== PACK (CREDIT) ROUTES =====
+
+/**
+ * @route   GET /api/relance/packs
+ * @desc    List available email and SMS packs with prices
+ * @access  Private
+ */
+router.get('/packs', authenticate, (req, res) =>
+    relanceController.listPacks(req, res)
+);
+
+/**
+ * @route   POST /api/relance/packs/purchase
+ * @desc    Initiate a pack purchase (creates PaymentIntent, returns sessionId + checkoutUrl)
+ * @access  Private
+ */
+router.post('/packs/purchase', authenticate, (req, res) =>
+    relanceController.purchasePack(req, res)
+);
+
+/**
+ * @route   GET /api/relance/balance
+ * @desc    Get current email and SMS credit balances
+ * @access  Private
+ */
+router.get('/balance', authenticate, (req, res) =>
+    relanceController.getBalance(req, res)
+);
+
+// ===== SMS LINK ROUTES =====
+
+/**
+ * @route   GET /api/relance/sms-links
+ * @desc    Get user's per-day SMS links (auto + manual)
+ * @access  Private
+ */
+router.get('/sms-links', authenticate, (req, res) =>
+    relanceController.getSmsLinks(req, res)
+);
+
+/**
+ * @route   PUT /api/relance/sms-links
+ * @desc    Update one or multiple per-day SMS links
+ * @access  Private
+ */
+router.put('/sms-links', authenticate, (req, res) =>
+    relanceController.updateSmsLinks(req, res)
+);
+
+// ===== ADMIN SMS TEMPLATE ROUTES =====
+
+/**
+ * @route   GET /api/relance/admin/sms-templates
+ * @desc    List all predefined SMS templates
+ * @access  Admin
+ */
+router.get('/admin/sms-templates', authenticate, (req, res) =>
+    relanceController.listSmsTemplates(req, res)
+);
+
+/**
+ * @route   PUT /api/relance/admin/sms-templates/:type/:day
+ * @desc    Update a predefined SMS template
+ * @access  Admin
+ */
+router.put('/admin/sms-templates/:type/:day', authenticate, (req, res) =>
+    relanceController.updateSmsTemplate(req, res)
+);
+
+/**
+ * @route   POST /api/relance/admin/sms-templates/preview
+ * @desc    Preview a SMS template with a sample link
+ * @access  Admin
+ */
+router.post('/admin/sms-templates/preview', authenticate, (req, res) =>
+    relanceController.previewSmsTemplate(req, res)
+);
+
+/**
+ * @route   PUT /api/relance/admin/configs/:userId
+ * @desc    Admin: update a user's relance config (smsEnabled, maxMessagesPerDay, etc.)
+ * @access  Admin
+ */
+router.put('/admin/configs/:userId', authenticate, (req, res) =>
+    relanceController.adminUpdateConfig(req, res)
+);
+
 // ===== INTERNAL ROUTES (Service-to-service) =====
 
 /**
@@ -269,6 +356,15 @@ router.get('/media/:filename', (req, res) => {
  */
 router.post('/internal/exit-user', (req, res) =>
     relanceController.exitUserFromLoop(req, res)
+);
+
+/**
+ * @route   POST /api/relance/internal/credit-pack
+ * @desc    Credit user's email or SMS balance after successful pack payment
+ * @access  Internal (called by payment-service)
+ */
+router.post('/internal/credit-pack', (req, res) =>
+    relanceController.creditPack(req, res)
 );
 
 export default router;
