@@ -6227,6 +6227,39 @@ class PaymentService {
                 if (!feexpayResult.success) {
                     throw new Error(feexpayResult.message || 'FeexPay payout failed');
                 }
+            } else if (selectedGateway === PaymentGateway.MONEYFUSION) {
+                const withdrawMode = moneyFusionService.getWithdrawMode(countryCode, momoOperator);
+                if (!withdrawMode) {
+                    throw new Error(`MoneyFusion withdrawal not supported for ${countryCode}/${momoOperator}`);
+                }
+
+                const result = await moneyFusionService.initiatePayout({
+                    countryCode,
+                    phone: fullMomoNumber,
+                    amount: netAmount,
+                    withdrawMode,
+                    webhookUrl: `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`,
+                });
+
+                if (!result.success) {
+                    throw new Error(result.message || 'MoneyFusion payout failed');
+                }
+
+                if (result.tokenPay) {
+                    await transactionRepository.update(transaction._id, {
+                        externalTransactionId: result.tokenPay,
+                        serviceProvider: 'MoneyFusion',
+                        metadata: {
+                            ...(transaction.metadata || {}),
+                            moneyFusionTokenPay: result.tokenPay,
+                            payoutMessage: result.message,
+                        },
+                    });
+                    log.info(`Stored MoneyFusion tokenPay ${result.tokenPay} for transaction ${transaction.transactionId}`);
+                }
+            } else {
+                // Fail loudly on unknown gateways so we don't silently no-op (cause of bug fixed here)
+                throw new Error(`Unsupported payout gateway "${selectedGateway}" for country ${countryCode}`);
             }
 
         } catch (error: any) {
