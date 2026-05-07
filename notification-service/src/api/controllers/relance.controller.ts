@@ -1,10 +1,14 @@
 import { Request, Response } from 'express';
+import axios from 'axios';
 import logger from '../../utils/logger';
 import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
+import RelanceSmsTemplateModel from '../../database/models/relance-sms-template.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
 import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
+import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack } from '../../config/relance-packs';
+import config from '../../config';
 
 const log = logger.getLogger('RelanceController');
 
@@ -614,6 +618,204 @@ class RelanceController {
                 success: false,
                 message: 'Failed to exit user from loop'
             });
+        }
+    }
+
+    // ===== PACK / CREDIT METHODS =====
+
+    /** GET /api/relance/packs — list all packs */
+    async listPacks(req: Request, res: Response): Promise<void> {
+        res.status(200).json({ success: true, data: { emailPacks: EMAIL_PACKS, smsPacks: SMS_PACKS } });
+    }
+
+    /** GET /api/relance/balance — current balances */
+    async getBalance(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+            const cfg = await RelanceConfigModel.findOne({ userId }).select('emailBalance smsBalance smsEnabled maxMessagesPerDay');
+            res.status(200).json({ success: true, data: cfg ? { emailBalance: cfg.emailBalance, smsBalance: cfg.smsBalance, smsEnabled: cfg.smsEnabled, maxMessagesPerDay: cfg.maxMessagesPerDay } : { emailBalance: 0, smsBalance: 0, smsEnabled: false } });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: 'Failed to get balance' });
+        }
+    }
+
+    /** POST /api/relance/packs/purchase — initiate a pack payment */
+    async purchasePack(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
+            const { packId } = req.body;
+            const pack = findPack(packId);
+            if (!pack) { res.status(400).json({ success: false, message: 'Invalid packId' }); return; }
+
+            const paymentType = pack.type === 'email' ? 'RELANCE_EMAIL_PACK' : 'RELANCE_SMS_PACK';
+            const callbackUrl = `${config.services.notificationService}/relance/internal/credit-pack`;
+
+            const response = await axios.post(
+                `${config.services.paymentService}/payments/intents`,
+                {
+                    userId,
+                    amount: pack.priceXAF,
+                    currency: 'XAF',
+                    paymentType,
+                    metadata: {
+                        packId,
+                        packType: pack.type,
+                        credits: pack.credits,
+                        originatingService: 'notification-service',
+                        callbackPath: callbackUrl
+                    }
+                },
+                { headers: { 'x-service-secret': config.services.serviceSecret }, timeout: 10000 }
+            );
+
+            const { sessionId, checkoutUrl } = response.data?.data || response.data || {};
+            res.status(200).json({ success: true, data: { sessionId, checkoutUrl, pack } });
+        } catch (error: any) {
+            log.error('Error initiating pack purchase:', error.response?.data || error.message);
+            res.status(500).json({ success: false, message: 'Failed to initiate pack purchase' });
+        }
+    }
+
+    /** POST /api/relance/internal/credit-pack — called by payment-service on success */
+    async creditPack(req: Request, res: Response): Promise<void> {
+        try {
+            const { sessionId, status, metadata } = req.body;
+            if (status !== 'SUCCEEDED') {
+                res.status(200).json({ success: true, message: 'Non-success status, no credit applied' });
+                return;
+            }
+
+            const { userId, packType, credits, packId } = metadata || {};
+            if (!userId || !packType || !credits) {
+                res.status(400).json({ success: false, message: 'Missing metadata fields' });
+                return;
+            }
+
+            const balanceField = packType === 'email' ? 'emailBalance' : 'smsBalance';
+            await RelanceConfigModel.findOneAndUpdate(
+                { userId },
+                { $inc: { [balanceField]: credits } },
+                { upsert: true, new: true }
+            );
+
+            log.info(`Credited ${credits} ${packType} credits to user ${userId} (pack: ${packId}, session: ${sessionId})`);
+            res.status(200).json({ success: true, message: `${credits} ${packType} credits added` });
+        } catch (error: any) {
+            log.error('Error crediting pack:', error);
+            res.status(500).json({ success: false, message: 'Failed to credit pack' });
+        }
+    }
+
+    // ===== SMS LINK METHODS =====
+
+    /** GET /api/relance/sms-links */
+    async getSmsLinks(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+            const cfg = await RelanceConfigModel.findOne({ userId }).select('smsLinks');
+            res.status(200).json({ success: true, data: cfg?.smsLinks || [] });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: 'Failed to get SMS links' });
+        }
+    }
+
+    /** PUT /api/relance/sms-links */
+    async updateSmsLinks(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+
+            const { links } = req.body; // Array of { type, dayNumber, link }
+            if (!Array.isArray(links)) { res.status(400).json({ success: false, message: 'links must be an array' }); return; }
+
+            // Upsert each link into the smsLinks array
+            const cfg = await RelanceConfigModel.findOneAndUpdate(
+                { userId },
+                { $setOnInsert: { userId } },
+                { upsert: true, new: true }
+            );
+
+            for (const { type, dayNumber, link } of links) {
+                const idx = (cfg.smsLinks || []).findIndex((l: any) => l.type === type && l.dayNumber === dayNumber);
+                if (idx >= 0) {
+                    cfg.smsLinks[idx].link = link;
+                } else {
+                    cfg.smsLinks.push({ type, dayNumber, link });
+                }
+            }
+            cfg.markModified('smsLinks');
+            await cfg.save();
+
+            res.status(200).json({ success: true, data: cfg.smsLinks });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: 'Failed to update SMS links' });
+        }
+    }
+
+    // ===== ADMIN SMS TEMPLATE METHODS =====
+
+    /** GET /api/relance/admin/sms-templates */
+    async listSmsTemplates(req: Request, res: Response): Promise<void> {
+        try {
+            const templates = await RelanceSmsTemplateModel.find().sort({ type: 1, dayNumber: 1 });
+            res.status(200).json({ success: true, data: templates });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: 'Failed to fetch SMS templates' });
+        }
+    }
+
+    /** PUT /api/relance/admin/sms-templates/:type/:day */
+    async updateSmsTemplate(req: Request, res: Response): Promise<void> {
+        try {
+            const { type, day } = req.params;
+            const { templateText, active } = req.body;
+            if (!['auto', 'manual'].includes(type)) { res.status(400).json({ success: false, message: 'type must be auto or manual' }); return; }
+            const dayNumber = parseInt(day, 10);
+            const tpl = await RelanceSmsTemplateModel.findOneAndUpdate(
+                { type, dayNumber },
+                { $set: { ...(templateText !== undefined && { templateText }), ...(active !== undefined && { active }) } },
+                { new: true }
+            );
+            if (!tpl) { res.status(404).json({ success: false, message: 'Template not found' }); return; }
+            res.status(200).json({ success: true, data: tpl });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: 'Failed to update SMS template' });
+        }
+    }
+
+    /** POST /api/relance/admin/sms-templates/preview */
+    async previewSmsTemplate(req: Request, res: Response): Promise<void> {
+        try {
+            const { type = 'auto', dayNumber = 1, link = 'https://example.com' } = req.body;
+            const tpl = await RelanceSmsTemplateModel.findOne({ type, dayNumber });
+            if (!tpl) { res.status(404).json({ success: false, message: 'Template not found' }); return; }
+            const rendered = tpl.templateText.replace(/\{\{link\}\}/g, link);
+            res.status(200).json({ success: true, data: { rendered, characterCount: rendered.length } });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: 'Failed to preview SMS template' });
+        }
+    }
+
+    /** PUT /api/relance/admin/configs/:userId — admin can toggle smsEnabled, adjust maxMessagesPerDay */
+    async adminUpdateConfig(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminUser = req.user;
+            if (!adminUser || adminUser.role !== 'ADMIN') { res.status(403).json({ success: false, message: 'Forbidden' }); return; }
+            const { userId } = req.params;
+            const allowed = ['smsEnabled', 'maxMessagesPerDay', 'maxTargetsPerCampaign', 'enabled', 'sendingPaused', 'enrollmentPaused'];
+            const update: Record<string, any> = {};
+            for (const key of allowed) {
+                if (req.body[key] !== undefined) update[key] = req.body[key];
+            }
+            const cfg = await RelanceConfigModel.findOneAndUpdate({ userId }, { $set: update }, { new: true, upsert: false });
+            if (!cfg) { res.status(404).json({ success: false, message: 'Config not found' }); return; }
+            res.status(200).json({ success: true, data: cfg });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: 'Failed to update config' });
         }
     }
 

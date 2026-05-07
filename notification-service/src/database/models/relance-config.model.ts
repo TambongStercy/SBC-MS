@@ -1,17 +1,11 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-/**
- * Relance delivery channel - now email-only
- * Kept as enum for potential future expansion
- */
 export enum RelanceChannel {
-    EMAIL = 'email'
+    EMAIL = 'email',
+    SMS = 'sms',
+    BOTH = 'both'
 }
 
-/**
- * RelanceConfig Interface
- * Stores relance configuration for each user (email-based)
- */
 /**
  * Custom message template structure (same as campaign customMessages)
  */
@@ -26,29 +20,45 @@ export interface IMessageTemplate {
     buttons?: Array<{ label: string; url: string; color?: string }>;
 }
 
+export interface ISmsLink {
+    type: 'auto' | 'manual';
+    dayNumber: number;  // 0–7 for auto, 1–7 for manual
+    link: string;
+}
+
 export interface IRelanceConfig extends Document {
     _id: Types.ObjectId;
-    userId: Types.ObjectId;                  // SBC member who owns this config
-    enabled: boolean;                         // Master switch (pauses everything)
-    enrollmentPaused: boolean;                // Only pause new enrollments
-    sendingPaused: boolean;                   // Only pause message sending
+    userId: Types.ObjectId;
+
+    // Master switches
+    enabled: boolean;
+    enrollmentPaused: boolean;
+    sendingPaused: boolean;
 
     // Campaign control
-    defaultCampaignPaused: boolean;          // Pause default auto-enrollment campaign
-    allowSimultaneousCampaigns: boolean;      // Allow default + filtered to run together
+    defaultCampaignPaused: boolean;
+    allowSimultaneousCampaigns: boolean;
 
-    // Delivery channel (email)
-    channel: RelanceChannel;                  // Currently only EMAIL
+    // Channel
+    channel: RelanceChannel;
 
-    // Rate limiting
-    messagesSentToday: number;                // Rate limiting counter
-    lastResetDate: Date;                      // When counter was last reset
+    // Credit balances (deducted per successful send)
+    emailBalance: number;
+    smsBalance: number;
 
-    // Safety limits
-    maxMessagesPerDay: number;                // User-configurable daily limit (default 60 for email)
-    maxTargetsPerCampaign: number;            // Max targets per filtered campaign (default 500)
+    // SMS access (admin-controlled toggle)
+    smsEnabled: boolean;
 
-    // User's saved message templates (for pre-filling campaign forms)
+    // Per-day links for predefined SMS templates (user fills in their link)
+    smsLinks: ISmsLink[];
+
+    // Daily pacing (user-controlled, credits are the hard stop)
+    messagesSentToday: number;
+    lastResetDate: Date;
+    maxMessagesPerDay: number;      // default 500, user can adjust
+    maxTargetsPerCampaign: number;
+
+    // User's saved email message templates (for pre-filling campaign forms)
     savedMessageTemplates?: IMessageTemplate[];
 
     createdAt: Date;
@@ -89,32 +99,32 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
             default: false  // By default, filtered campaigns pause default
         },
 
-        // Delivery channel
+        // Channel
         channel: {
             type: String,
             enum: Object.values(RelanceChannel),
             default: RelanceChannel.EMAIL
         },
 
-        // Rate limiting
-        messagesSentToday: {
-            type: Number,
-            default: 0
-        },
-        lastResetDate: {
-            type: Date,
-            default: Date.now
-        },
+        // Credit balances
+        emailBalance: { type: Number, default: 0, min: 0 },
+        smsBalance: { type: Number, default: 0, min: 0 },
 
-        // Safety limits
-        maxMessagesPerDay: {
-            type: Number,
-            default: 500  // Email via SendGrid - reasonable daily limit
-        },
-        maxTargetsPerCampaign: {
-            type: Number,
-            default: 500  // Max targets per filtered campaign
-        },
+        // SMS access (admin-controlled)
+        smsEnabled: { type: Boolean, default: false },
+
+        // Per-day SMS links
+        smsLinks: [{
+            type: { type: String, enum: ['auto', 'manual'], required: true },
+            dayNumber: { type: Number, required: true, min: 0, max: 7 },
+            link: { type: String, required: true }
+        }],
+
+        // Daily pacing (user-controlled rate; credits are the hard stop)
+        messagesSentToday: { type: Number, default: 0 },
+        lastResetDate: { type: Date, default: Date.now },
+        maxMessagesPerDay: { type: Number, default: 500 },
+        maxTargetsPerCampaign: { type: Number, default: 500 },
 
         // User's saved message templates (pre-fills campaign forms)
         savedMessageTemplates: [{

@@ -3438,7 +3438,7 @@ class PaymentService {
     }
 
     public async handleMoneyFusionPayoutWebhook(payload: any): Promise<void> {
-        const { event, tokenPay, montant, numeroRetrait, moyen } = payload;
+        const { event, tokenPay } = payload;
         log.info(`MoneyFusion payout webhook received: event=${event}, tokenPay=${tokenPay}`);
 
         // Find the transaction by the MoneyFusion token stored in externalTransactionId
@@ -3450,21 +3450,26 @@ class PaymentService {
 
         const status = moneyFusionService.mapPayoutWebhookStatus(event);
 
+        // Debit-on-success pattern (matches FeexPay handler at processFeexpayWebhookUpdate).
+        // The wallet is NOT debited at admin-approval time; it is debited only when the
+        // provider confirms a successful payout. On failure, no refund is needed.
         if (status === 'completed') {
             if (transaction.status !== TransactionStatus.COMPLETED) {
-                await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.COMPLETED);
-                log.info(`MoneyFusion payout completed: ${transaction.transactionId}`);
+                await transactionRepository.update(transaction._id, {
+                    status: TransactionStatus.COMPLETED,
+                    'metadata.payoutCompletedAt': new Date().toISOString(),
+                });
+                const amountToDebit = -Math.abs(transaction.amount);
+                await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
+                log.info(`MoneyFusion payout completed: ${transaction.transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
             }
         } else if (status === 'failed') {
             if (transaction.status !== TransactionStatus.FAILED) {
-                await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.FAILED);
-                // Refund the user balance
-                try {
-                    await userServiceClient.updateUserBalance(transaction.userId.toString(), transaction.amount);
-                    log.info(`Refunded ${transaction.amount} to user ${transaction.userId} after MoneyFusion payout failure`);
-                } catch (refundError: any) {
-                    log.error(`Failed to refund user ${transaction.userId} after MoneyFusion payout failure: ${refundError.message}`);
-                }
+                await this.handleFailedWithdrawal(
+                    transaction.transactionId,
+                    `MoneyFusion reported failure: ${event}`,
+                    tokenPay
+                );
             }
         }
     }
@@ -6227,6 +6232,39 @@ class PaymentService {
                 if (!feexpayResult.success) {
                     throw new Error(feexpayResult.message || 'FeexPay payout failed');
                 }
+            } else if (selectedGateway === PaymentGateway.MONEYFUSION) {
+                const withdrawMode = moneyFusionService.getWithdrawMode(countryCode, momoOperator);
+                if (!withdrawMode) {
+                    throw new Error(`MoneyFusion withdrawal not supported for ${countryCode}/${momoOperator}`);
+                }
+
+                const result = await moneyFusionService.initiatePayout({
+                    countryCode,
+                    phone: fullMomoNumber,
+                    amount: netAmount,
+                    withdrawMode,
+                    webhookUrl: `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`,
+                });
+
+                if (!result.success) {
+                    throw new Error(result.message || 'MoneyFusion payout failed');
+                }
+
+                if (result.tokenPay) {
+                    await transactionRepository.update(transaction._id, {
+                        externalTransactionId: result.tokenPay,
+                        serviceProvider: 'MoneyFusion',
+                        metadata: {
+                            ...(transaction.metadata || {}),
+                            moneyFusionTokenPay: result.tokenPay,
+                            payoutMessage: result.message,
+                        },
+                    });
+                    log.info(`Stored MoneyFusion tokenPay ${result.tokenPay} for transaction ${transaction.transactionId}`);
+                }
+            } else {
+                // Fail loudly on unknown gateways so we don't silently no-op (cause of bug fixed here)
+                throw new Error(`Unsupported payout gateway "${selectedGateway}" for country ${countryCode}`);
             }
 
         } catch (error: any) {

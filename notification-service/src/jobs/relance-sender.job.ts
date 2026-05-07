@@ -1,10 +1,32 @@
 import cron from 'node-cron';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
+import RelanceBounceSuppressionModel from '../database/models/relance-bounce-suppression.model';
 import RelanceMessageModel from '../database/models/relance-message.model';
+import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import CampaignModel, { CampaignStatus } from '../database/models/relance-campaign.model';
 import { emailRelanceService } from '../services/email.relance.service';
+import { smsService } from '../services/sms.service';
+import { emailService } from '../services/email.service';
 import { userServiceClient } from '../services/clients/user.service.client';
+
+// CM country code — only CM numbers qualify for SMS relance
+const CM_PHONE_PREFIX = '237';
+
+function isCmNumber(phone?: string): boolean {
+    if (!phone) return false;
+    const digits = phone.replace(/\D/g, '');
+    return digits.startsWith(CM_PHONE_PREFIX);
+}
+
+function formatCmNumber(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    return `+${digits}`;
+}
+
+// Low-balance thresholds — trigger one notification when crossing below
+const EMAIL_LOW_BALANCE_THRESHOLD = 50;
+const SMS_LOW_BALANCE_THRESHOLD = 20;
 
 /**
  * Email Sending Configuration
@@ -151,6 +173,18 @@ async function processUserTargets(
                 continue;
             }
 
+            // Check bounce suppression list — skip permanently bounced addresses
+            const isSuppressed = await RelanceBounceSuppressionModel.exists({ email: recipientEmail.toLowerCase() });
+            if (isSuppressed) {
+                console.log(`${campaignLabel} Email ${recipientEmail} is suppressed (hard bounce), exiting target ${target._id}`);
+                target.status = TargetStatus.COMPLETED;
+                target.exitReason = ExitReason.EMAIL_SUPPRESSED;
+                target.exitedLoopAt = new Date();
+                await target.save();
+                exited++;
+                continue;
+            }
+
             // Send email
             const sendResult = await emailRelanceService.sendRelanceEmail(
                 recipientEmail,
@@ -166,7 +200,7 @@ async function processUserTargets(
             if (sendResult.success) {
                 console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] Email sent to ${recipientEmail} (Day ${target.currentDay})`);
 
-                // Extract SendGrid message ID (format: <id@host> -> just the ID part)
+                // Extract provider message ID
                 let sendGridMessageId: string | undefined;
                 if (sendResult.messageId) {
                     sendGridMessageId = sendResult.messageId.replace(/<|>/g, '').split('@')[0];
@@ -174,11 +208,69 @@ async function processUserTargets(
 
                 target.messagesDelivered.push({
                     day: target.currentDay,
+                    channel: 'email',
                     sentAt: new Date(),
                     status: 'delivered' as any,
                     sendGridMessageId
                 });
                 target.lastMessageSentAt = new Date();
+
+                // Deduct email credit
+                config.emailBalance = Math.max(0, config.emailBalance - 1);
+                config.messagesSentToday = (config.messagesSentToday || 0) + 1;
+
+                // Low-balance alert (fire-and-forget)
+                if (config.emailBalance === EMAIL_LOW_BALANCE_THRESHOLD) {
+                    const referrerInfo = await userServiceClient.getUserDetails(referrerId);
+                    if (referrerInfo?.email) {
+                        emailService.sendLowBalanceAlert(referrerInfo.email, referrerInfo.name || '', 'email', config.emailBalance)
+                            .catch(err => console.error('[Relance Sender] Low-balance alert failed:', err));
+                    }
+                } else if (config.emailBalance === 0) {
+                    const referrerInfo = await userServiceClient.getUserDetails(referrerId);
+                    if (referrerInfo?.email) {
+                        emailService.sendCreditsExhaustedAlert(referrerInfo.email, referrerInfo.name || '', 'email')
+                            .catch(err => console.error('[Relance Sender] Credits-exhausted alert failed:', err));
+                    }
+                }
+
+                // SMS send (same target, same day) — CM numbers only
+                if (config.smsEnabled && config.smsBalance > 0) {
+                    const phone: string | undefined = referralInfo.phoneNumber;
+                    if (phone && isCmNumber(phone)) {
+                        const smsTemplate = await RelanceSmsTemplateModel.findOne({
+                            type: isDefaultTarget ? 'auto' : 'manual',
+                            dayNumber: target.currentDay,
+                            active: true
+                        });
+                        if (smsTemplate) {
+                            const userLink = (config.smsLinks || []).find((l: any) =>
+                                l.type === (isDefaultTarget ? 'auto' : 'manual') &&
+                                l.dayNumber === target.currentDay
+                            );
+                            const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
+                            const smsSent = await smsService.sendSms({ to: formatCmNumber(phone!), body: smsText });
+                            if (smsSent) {
+                                config.smsBalance = Math.max(0, config.smsBalance - 1);
+                                target.messagesDelivered.push({
+                                    day: target.currentDay,
+                                    channel: 'sms',
+                                    sentAt: new Date(),
+                                    status: 'delivered' as any
+                                });
+                                if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
+                                    const referrerInfo2 = await userServiceClient.getUserDetails(referrerId);
+                                    if (referrerInfo2?.email) {
+                                        emailService.sendLowBalanceAlert(referrerInfo2.email, referrerInfo2.name || '', 'sms', config.smsBalance)
+                                            .catch(() => {});
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                await config.save();
 
                 // Update campaign stats
                 if (campaign) {
@@ -187,7 +279,7 @@ async function processUserTargets(
                     await campaign.save();
                 }
 
-                // Check if loop should continue
+                // Advance day: J0 → J1 after 24h; J1-J6 → next day; J7 → completed
                 if (target.currentDay >= 7) {
                     target.status = TargetStatus.COMPLETED;
                     target.exitReason = ExitReason.COMPLETED_7_DAYS;
@@ -337,28 +429,13 @@ async function runMessageSendingJob() {
                     return { userId: referrerId, sent: 0, failed: 0, exited: 0 };
                 }
 
-                // Verify user still has active relance subscription
-                const hasRelance = await userServiceClient.hasRelanceSubscription(referrerId);
-                if (!hasRelance) {
-                    console.log(`[Relance Sender] User ${referrerId} no longer has RELANCE subscription, marking ${userTargets.length} targets as exited`);
-
-                    // Mark all targets as exited
-                    for (const target of userTargets) {
-                        target.status = TargetStatus.COMPLETED;
-                        target.exitReason = ExitReason.REFERRER_INACTIVE;
-                        target.exitedLoopAt = new Date();
-                        await target.save();
-
-                        const campaign = target.campaignId as any;
-                        if (campaign) {
-                            campaign.targetsExited += 1;
-                            await campaign.save();
-                        }
-                    }
-                    return { userId: referrerId, sent: 0, failed: 0, exited: userTargets.length };
+                // Credits are the access gate — no subscription check needed
+                if (config.emailBalance <= 0 && config.smsBalance <= 0) {
+                    console.log(`[Relance Sender] User ${referrerId} has no credits (email: ${config.emailBalance}, sms: ${config.smsBalance}), skipping`);
+                    return { userId: referrerId, sent: 0, failed: 0, exited: 0 };
                 }
 
-                console.log(`[Relance Sender] [User:${referrerId.slice(-6)}] Processing ${userTargets.length} targets...`);
+                console.log(`[Relance Sender] [User:${referrerId.slice(-6)}] Processing ${userTargets.length} targets (email: ${config.emailBalance}, sms: ${config.smsBalance})...`);
                 const result = await processUserTargets(referrerId, userTargets, config);
                 return { userId: referrerId, ...result };
             })();

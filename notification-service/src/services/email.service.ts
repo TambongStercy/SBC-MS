@@ -1433,7 +1433,34 @@ class EmailService {
             return false;
         }
     }
+    async sendLowBalanceAlert(email: string, name: string, channel: 'email' | 'sms', remaining: number): Promise<boolean> {
+        const channelLabel = channel === 'email' ? 'emails' : 'SMS';
+        const subject = `⚠️ Crédits relance faibles — ${remaining} ${channelLabel} restants`;
+        const html = this.createBaseTemplate(
+            subject,
+            `<p>Bonjour ${name},</p>
+             <p>Il vous reste seulement <strong>${remaining} ${channelLabel}</strong> dans votre solde relance.</p>
+             <p>Rechargez maintenant pour éviter l'interruption de votre campagne.</p>
+             <p><a href="${config.app.frontendUrl}/relance/packs" style="background:#F59E0B;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Acheter des crédits</a></p>`,
+            'Sniper Business Center — Relance'
+        );
+        return this.sendEmail({ to: email, subject, html, from: config.email.from });
+    }
+
+    async sendCreditsExhaustedAlert(email: string, name: string, channel: 'email' | 'sms'): Promise<boolean> {
+        const channelLabel = channel === 'email' ? 'email' : 'SMS';
+        const subject = `🚫 Crédits ${channelLabel} épuisés — Relance suspendue`;
+        const html = this.createBaseTemplate(
+            subject,
+            `<p>Bonjour ${name},</p>
+             <p>Vos crédits <strong>${channelLabel}</strong> sont épuisés. L'envoi automatique de vos messages de relance est suspendu.</p>
+             <p>Rechargez votre solde pour reprendre immédiatement.</p>
+             <p><a href="${config.app.frontendUrl}/relance/packs" style="background:#EF4444;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Recharger maintenant</a></p>`,
+            'Sniper Business Center — Relance'
+        );
+        return this.sendEmail({ to: email, subject, html, from: config.email.from });
+    }
 }
 
 // Export service instance
-export const emailService = new EmailService(); 
+export const emailService = new EmailService();
