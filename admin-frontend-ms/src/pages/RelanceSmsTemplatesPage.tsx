@@ -80,7 +80,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
     };
 
     const dayLabel = (type: 'auto' | 'manual', day: number) =>
-        type === 'auto' ? (day === 0 ? 'J0 (15 min)' : `J${day}`) : `Jour ${day}`;
+        type === 'auto' ? `J${day}` : `Jour ${day}`;
 
     const charCount = (text: string) => text.replace(/\{\{link\}\}/g, previewLink).length;
 
@@ -116,7 +116,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                         }`}
                     >
-                        {tab === 'auto' ? '🤖 Automatique (J0–J7)' : '✍️ Manuel (Jour 1–7)'}
+                        {tab === 'auto' ? '🤖 Automatique (J1–J7)' : '✍️ Manuel (Jour 1–7)'}
                     </button>
                 ))}
             </div>
