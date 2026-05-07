@@ -91,22 +91,27 @@ const WITHDRAW_MODES: Record<string, Record<string, string>> = {
         'TMONEY_TG': 't-money-togo',
     },
     ML: {
+        // Docs only support orange-money-mali for Mali. Moov-Mali users cannot
+        // withdraw via MoneyFusion — lookup will return null and throw a clear
+        // "not supported" error instead of getting "indisponible" from the API.
         'ORANGE_MLI': 'orange-money-mali',
-        'MOOV_MLI': 'moov-money-mali',
     },
     CG: {
-        'AIRTEL_COG': 'airtel-money-cg',
-        'MTN_MOMO_COG': 'mtn-cg',
-        'ORANGE_CG': 'orange-money-cg',
+        // Docs literally specify "orange-money-mali" for Congo Brazzaville.
+        // Looks like a quirk in MoneyFusion's table — keep as-is until they
+        // confirm otherwise. Airtel-CG is NOT supported per docs.
+        'ORANGE_CG': 'orange-money-mali',
         'MTN_CG': 'mtn-cg',
+        'MTN_MOMO_COG': 'mtn-cg',
     },
     CD: {
-        'VODACOM_MPESA_COD': 'm-pesa-cd',
+        // Docs only support airtel-money-cd. Mpesa-CD and Orange-CD are not
+        // available via MoneyFusion — those users will fail at lookup time.
         'AIRTEL_COD': 'airtel-money-cd',
-        'ORANGE_COD': 'orange-money-cd',
     },
     GA: {
         'AIRTEL_GAB': 'airtel-money-ga',
+        'LIBERTIS_GA': 'libertis-ga',
     },
     GH: {
         'AIRTEL_GH': 'airtel-money-gh',
@@ -118,8 +123,16 @@ const WITHDRAW_MODES: Record<string, Record<string, string>> = {
         'MTN_GN': 'mtn-gn',
     },
     NE: {
-        'ORANGE_NER': 'orange-money-ne',
-        'MOOV_NER': 'moov-ne',
+        // Docs only support airtel-money-ne, mtn-ne, mauritel-ne for Niger.
+        // Orange-NE and Moov-NE are NOT available via MoneyFusion. If a user
+        // is registered with one of those operators, withdraw will fail at
+        // lookup with a clear error.
+        'AIRTEL_NER': 'airtel-money-ne',
+        'MTN_NER': 'mtn-ne',
+        'MAURITEL_NER': 'mauritel-ne',
+        'AIRTEL_NE': 'airtel-money-ne',
+        'MTN_NE': 'mtn-ne',
+        'MAURITEL_NE': 'mauritel-ne',
     },
     KE: {
         'MPESA_KEN': 'm-pesa-ke',
