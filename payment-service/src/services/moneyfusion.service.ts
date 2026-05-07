@@ -39,25 +39,112 @@ export interface MoneyFusionPayoutResult {
 }
 
 // --- Withdraw mode mapping per country ---
+// Keys cover BOTH the long-form storage names (e.g. MTN_MOMO_CMR, ORANGE_CMR — see operatorMaps.ts)
+// AND the short-form aliases (e.g. MTN_CM, ORANGE_CM). The lookup site passes whatever value is
+// stored on the transaction's accountInfo.momoOperator, so we accept both shapes defensively.
 
 const WITHDRAW_MODES: Record<string, Record<string, string>> = {
-    CM: { 'ORANGE_CM': 'orange-money-cm', 'MTN_CM': 'mtn-cm' },
-    CI: { 'ORANGE_CI': 'orange-money-ci', 'MTN_CI': 'mtn-ci', 'MOOV_CI': 'moov-ci', 'WAVE_CI': 'wave-ci' },
-    SN: { 'ORANGE_SN': 'orange-money-senegal', 'FREE_SN': 'free-money-senegal', 'WAVE_SN': 'wave-senegal', 'EXPRESSO_SN': 'expresso-senegal' },
-    BF: { 'ORANGE_BF': 'orange-money-burkina', 'MOOV_BF': 'moov-burkina-faso' },
-    BJ: { 'MTN_BJ': 'mtn-benin', 'MOOV_BJ': 'moov-benin' },
-    TG: { 'TMONEY_TG': 't-money-togo', 'MOOV_TG': 'moov-togo' },
-    // Keys match our internal momoOperator slugs (momoOperatorToCountryCode in operatorMaps.ts)
-    ML: { 'ORANGE_MLI': 'orange-money-mali' },
-    CG: { 'ORANGE_CG': 'orange-money-mali', 'MTN_CG': 'mtn-cg' },
-    CD: { 'AIRTEL_COD': 'airtel-money-cd' },
-    GA: { 'AIRTEL_GAB': 'airtel-money-ga' },
-    GH: { 'AIRTEL_GH': 'airtel-money-gh', 'MTN_GH': 'mtn-gh', 'VODAFONE_GH': 'vodafone-gh' },
-    GN: { 'ORANGE_GN': 'orange-gn', 'MTN_GN': 'mtn-gn' },
-    NE: { 'ORANGE_NER': 'orange-money-ne', 'MOOV_NER': 'moov-ne' },
-    KE: { 'MPESA_KE': 'm-pesa-ke' },
-    TD: { 'AIRTEL_TD': 'airtel-money-td', 'MOOV_TD': 'moov-td' },
-    RW: { 'MTN_RW': 'mtn-rw' },
+    CM: {
+        // Long-form (storage convention from operatorMaps.ts)
+        'MTN_MOMO_CMR': 'mtn-cm',
+        'ORANGE_CMR': 'orange-money-cm',
+        'ORANGE_MOMO_CMR': 'orange-money-cm',
+        // Short-form aliases
+        'ORANGE_CM': 'orange-money-cm',
+        'MTN_CM': 'mtn-cm',
+    },
+    CI: {
+        'MTN_MOMO_CIV': 'mtn-ci',
+        'ORANGE_CIV': 'orange-money-ci',
+        'WAVE_CIV': 'wave-ci',
+        'ORANGE_CI': 'orange-money-ci',
+        'MTN_CI': 'mtn-ci',
+        'MOOV_CI': 'moov-ci',
+        'WAVE_CI': 'wave-ci',
+    },
+    SN: {
+        'FREE_SEN': 'free-money-senegal',
+        'ORANGE_SEN': 'orange-money-senegal',
+        'WAVE_SEN': 'wave-senegal',
+        'ORANGE_SN': 'orange-money-senegal',
+        'FREE_SN': 'free-money-senegal',
+        'WAVE_SN': 'wave-senegal',
+        'EXPRESSO_SN': 'expresso-senegal',
+    },
+    BF: {
+        'MOOV_BFA': 'moov-burkina-faso',
+        'ORANGE_BFA': 'orange-money-burkina',
+        'ORANGE_BF': 'orange-money-burkina',
+        'MOOV_BF': 'moov-burkina-faso',
+    },
+    BJ: {
+        'MTN_MOMO_BEN': 'mtn-benin',
+        'MOOV_BEN': 'moov-benin',
+        'MTN_BJ': 'mtn-benin',
+        'MOOV_BJ': 'moov-benin',
+    },
+    TG: {
+        'TOGOCOM_TGO': 't-money-togo',
+        'MOOV_TGO': 'moov-togo',
+        'TOGOCOM_TG': 't-money-togo',
+        'MOOV_TG': 'moov-togo',
+        'TMONEY_TG': 't-money-togo',
+    },
+    ML: {
+        // Docs only support orange-money-mali for Mali. Moov-Mali users cannot
+        // withdraw via MoneyFusion — lookup will return null and throw a clear
+        // "not supported" error instead of getting "indisponible" from the API.
+        'ORANGE_MLI': 'orange-money-mali',
+    },
+    CG: {
+        // Docs literally specify "orange-money-mali" for Congo Brazzaville.
+        // Looks like a quirk in MoneyFusion's table — keep as-is until they
+        // confirm otherwise. Airtel-CG is NOT supported per docs.
+        'ORANGE_CG': 'orange-money-mali',
+        'MTN_CG': 'mtn-cg',
+        'MTN_MOMO_COG': 'mtn-cg',
+    },
+    CD: {
+        // Docs only support airtel-money-cd. Mpesa-CD and Orange-CD are not
+        // available via MoneyFusion — those users will fail at lookup time.
+        'AIRTEL_COD': 'airtel-money-cd',
+    },
+    GA: {
+        'AIRTEL_GAB': 'airtel-money-ga',
+        'LIBERTIS_GA': 'libertis-ga',
+    },
+    GH: {
+        'AIRTEL_GH': 'airtel-money-gh',
+        'MTN_GH': 'mtn-gh',
+        'VODAFONE_GH': 'vodafone-gh',
+    },
+    GN: {
+        'ORANGE_GN': 'orange-gn',
+        'MTN_GN': 'mtn-gn',
+    },
+    NE: {
+        // Docs only support airtel-money-ne, mtn-ne, mauritel-ne for Niger.
+        // Orange-NE and Moov-NE are NOT available via MoneyFusion. If a user
+        // is registered with one of those operators, withdraw will fail at
+        // lookup with a clear error.
+        'AIRTEL_NER': 'airtel-money-ne',
+        'MTN_NER': 'mtn-ne',
+        'MAURITEL_NER': 'mauritel-ne',
+        'AIRTEL_NE': 'airtel-money-ne',
+        'MTN_NE': 'mtn-ne',
+        'MAURITEL_NE': 'mauritel-ne',
+    },
+    KE: {
+        'MPESA_KEN': 'm-pesa-ke',
+        'MPESA_KE': 'm-pesa-ke',
+    },
+    TD: {
+        'AIRTEL_TD': 'airtel-money-td',
+        'MOOV_TD': 'moov-td',
+    },
+    RW: {
+        'MTN_RW': 'mtn-rw',
+    },
 };
 
 export class MoneyFusionService {
