@@ -276,13 +276,11 @@ async function runEnrollmentCheck() {
             try {
                 const userId = config.userId.toString();
 
-                // Check if user has active relance subscription
-                const hasRelance = await userServiceClient.hasRelanceSubscription(userId);
-                if (!hasRelance) {
-                    console.log(`[Relance Enrollment] User ${userId} no longer has active RELANCE subscription, skipping`);
-                    totalSkipped++;
-                    continue;
-                }
+                // (Removed: legacy `hasRelanceSubscription` gate. The credit-pack model
+                // replaces the monthly RELANCE subscription — access is now controlled
+                // by `config.enabled` and the email/sms balance, not a subscription
+                // status. The subscription check was blocking enrollment for every
+                // user who switched to the credit-pack model.)
 
                 // STEP 3: Process DEFAULT campaign (only if enabled and not paused)
                 if (config.enabled && !config.enrollmentPaused && !config.defaultCampaignPaused) {
