@@ -351,12 +351,21 @@ class TransactionRecoveryService {
      */
     private mapCinetPayAmountToSubscriptionAmount(amount: number): { actualAmount: number; subscriptionType: string; subscriptionPlan: string } {
         switch (amount) {
+            // Legacy CinetPay gross-with-their-fees → our old base prices.
+            // Kept for recovering historical transactions made before the price bump.
             case 2142:
                 return { actualAmount: 2070, subscriptionType: 'CLASSIQUE', subscriptionPlan: 'classique_monthly' };
             case 5320:
                 return { actualAmount: 5140, subscriptionType: 'CIBLE', subscriptionPlan: 'cible_monthly' };
             case 3177:
                 return { actualAmount: 3070, subscriptionType: 'UPGRADE', subscriptionPlan: 'upgrade_plan' };
+            // Current prices — gross == net (provider fees absorbed by the price margin).
+            case 2150:
+                return { actualAmount: 2150, subscriptionType: 'CLASSIQUE', subscriptionPlan: 'classique_monthly' };
+            case 5300:
+                return { actualAmount: 5300, subscriptionType: 'CIBLE', subscriptionPlan: 'cible_monthly' };
+            case 3150:
+                return { actualAmount: 3150, subscriptionType: 'UPGRADE', subscriptionPlan: 'upgrade_plan' };
             default:
                 // Return the original amount if no mapping found
                 log.warn(`No CinetPay amount mapping found for amount: ${amount}, using original amount`);
@@ -958,7 +967,7 @@ class TransactionRecoveryService {
      */
     private determineFeexPayTransactionType(feexpayResponse: any): RecoveryTransactionType {
         const amount = parseFloat(feexpayResponse.amount || '0');
-        const paymentAmounts = [2070, 3070, 5140]; // Known payment amounts
+        const paymentAmounts = [2070, 3070, 5140, 2150, 3150, 5300]; // Known payment amounts (legacy + current)
         
         // Check if it's a payment based on amount
         if (paymentAmounts.includes(amount)) {
