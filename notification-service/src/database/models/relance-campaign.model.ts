@@ -77,6 +77,15 @@ export interface ICampaign extends Document {
     targetsConverted: number;           // Converted (paid) during the campaign
     targetsExited: number;              // Exited early (manual, referrer inactive, etc.)
 
+    // Contact batch (lets user target a slice of their referral list to control spend)
+    contactBatch?: {
+        offset: number;  // 0-based start index, sorted by registration date asc
+        limit: number;   // max contacts to enroll
+    };
+
+    // Channel for this campaign
+    channel?: 'email' | 'sms' | 'both';
+
     // Rate limiting (for filtered campaigns)
     maxMessagesPerDay?: number;         // Limit messages/day for this campaign
 
@@ -223,6 +232,19 @@ const CampaignSchema = new Schema<ICampaign>(
         targetsExited: {
             type: Number,
             default: 0
+        },
+
+        // Contact batch selector
+        contactBatch: {
+            offset: { type: Number, default: 0, min: 0 },
+            limit: { type: Number, min: 1 }
+        },
+
+        // Channel
+        channel: {
+            type: String,
+            enum: ['email', 'sms', 'both'],
+            default: 'email'
         },
 
         // Rate limiting
