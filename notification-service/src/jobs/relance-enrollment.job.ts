@@ -55,16 +55,21 @@ async function enrollDefaultTargets(userId: string, config: any): Promise<number
                     continue;
                 }
 
-                // Enroll referral into default campaign (no campaignId)
+                // Enroll referral into default campaign (no campaignId).
+                // Default targets start at J0 — an SMS-only "15 minutes after signup"
+                // teaser. J0 is auto-only; manual campaigns enroll directly at Day 1.
+                // After J0 fires, the sender job advances to Day 1 with the regular
+                // 24h cadence.
                 const now = new Date();
-                const nextMessageDue = new Date(now); // Testing: send immediately
+                const nextMessageDue = new Date(now);
+                nextMessageDue.setMinutes(nextMessageDue.getMinutes() + 15);
 
                 const newTarget = await RelanceTargetModel.create({
                     referralUserId: referralId,
                     referrerUserId: userId,
                     campaignId: null, // Default campaign has no campaignId
                     enteredLoopAt: now,
-                    currentDay: 1,
+                    currentDay: 0,
                     nextMessageDue: nextMessageDue,
                     messagesDelivered: [],
                     status: TargetStatus.ACTIVE,

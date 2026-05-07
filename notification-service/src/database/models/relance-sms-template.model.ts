@@ -3,8 +3,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 export type SmsTemplateType = 'auto' | 'manual';
 
 export interface IRelanceSmsTemplate extends Document {
-    type: SmsTemplateType;   // 'auto' = default 7-day loop, 'manual' = campaign sequence
-    dayNumber: number;       // 1–7 (both auto and manual)
+    type: SmsTemplateType;   // 'auto' = default loop (J0 + Day 1–7), 'manual' = campaign sequence (Day 1–7)
+    dayNumber: number;       // 0–7 for auto (0 = J0 = 15-min SMS); 1–7 for manual
     templateText: string;    // Predefined message with {{link}} placeholder
     active: boolean;
     createdAt: Date;
@@ -21,7 +21,7 @@ const RelanceSmsTemplateSchema = new Schema<IRelanceSmsTemplate>(
         dayNumber: {
             type: Number,
             required: true,
-            min: 1,
+            min: 0,
             max: 7
         },
         templateText: {
