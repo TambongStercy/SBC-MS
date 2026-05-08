@@ -137,13 +137,25 @@ async function processUserTargets(
                 continue;
             }
 
-            // ───── J0 SMS-only fast path ─────
-            // Default (auto) targets start at currentDay = 0 = J0, the 15-min SMS-only
-            // teaser. There is no email at J0 (no RelanceMessage with dayNumber 0).
-            // Send the SMS if conditions are met, then unconditionally advance to
-            // Day 1 with the regular 24h cadence — J0 is best-effort, we don't retry.
-            // Manual campaigns never enroll at currentDay = 0; if one ever lands here,
-            // we just push it forward to Day 1 to keep the loop moving.
+            // ───── J0 fast path (default targets only) ─────
+            // Default (auto) targets start at currentDay = 0 = J0, the 15-min teaser.
+            // Per Rufus's spec, the FIRST email (J1) and FIRST SMS (J0) fire together
+            // at T+15min — not 24h apart. So at currentDay=0 we attempt BOTH the SMS
+            // J0 teaser AND the Email J1 welcome.
+            //
+            // After J0, the regular daily cadence kicks in but with SMS lagging email
+            // by one template-day for default targets:
+            //   currentDay=1 → SMS J1 + Email J2
+            //   currentDay=2 → SMS J2 + Email J3
+            //   ...
+            //   currentDay=6 → SMS J6 + Email J7
+            //   currentDay=7 → SMS J7 only (no email — out of email templates) → complete
+            //
+            // Manual campaigns enrol at currentDay=1 and use the same dayNumber for
+            // both email and SMS (no offset, no J0).
+            //
+            // Best-effort at J0: no retry on J0 — we always advance to Day 1.
+            // Manual campaigns landing here (shouldn't happen) get pushed forward.
             if (target.currentDay === 0) {
                 if (!isDefaultTarget) {
                     target.currentDay = 1;
@@ -161,49 +173,106 @@ async function processUserTargets(
                     continue;
                 }
 
+                // ─── J1 EMAIL (welcome) ───
+                const recipientEmail = referralInfo.email;
+                if (recipientEmail && config.emailBalance > 0) {
+                    const isSuppressed = await RelanceBounceSuppressionModel.exists({ email: recipientEmail.toLowerCase() });
+                    if (isSuppressed) {
+                        console.log(`${campaignLabel} J0: email ${recipientEmail} suppressed, exiting target`);
+                        target.status = TargetStatus.COMPLETED;
+                        target.exitReason = ExitReason.EMAIL_SUPPRESSED;
+                        target.exitedLoopAt = new Date();
+                        await target.save();
+                        exited++;
+                        continue;
+                    }
+
+                    const emailTemplate = await RelanceMessageModel.findOne({ dayNumber: 1, active: true });
+                    if (emailTemplate) {
+                        const referrerInfo = await userServiceClient.getUserDetails(referrerId);
+                        const language = target.language || 'fr';
+                        let messageText = language === 'en' ? emailTemplate.messageTemplate.en : emailTemplate.messageTemplate.fr;
+                        messageText = messageText
+                            .replace(/\{\{name\}\}/g, referralInfo.name || 'there')
+                            .replace(/\{\{referrerName\}\}/g, referrerInfo?.name || 'your referrer')
+                            .replace(/\{\{day\}\}/g, '1');
+                        const sendResult = await emailRelanceService.sendRelanceEmail(
+                            recipientEmail,
+                            referralInfo.name || 'Member',
+                            referrerInfo?.name || 'Your Referrer',
+                            messageText,
+                            1,
+                            emailTemplate.mediaUrls,
+                            emailTemplate.buttons,
+                            emailTemplate.subject
+                        );
+                        if (sendResult.success) {
+                            let sendGridMessageId: string | undefined;
+                            if (sendResult.messageId) {
+                                sendGridMessageId = sendResult.messageId.replace(/<|>/g, '').split('@')[0];
+                            }
+                            target.messagesDelivered.push({
+                                day: 0,
+                                channel: 'email',
+                                sentAt: new Date(),
+                                status: 'delivered' as any,
+                                sendGridMessageId
+                            });
+                            target.lastMessageSentAt = new Date();
+                            config.emailBalance = Math.max(0, config.emailBalance - 1);
+                            config.messagesSentToday = (config.messagesSentToday || 0) + 1;
+                            console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0: J1 email sent to ${recipientEmail}`);
+                        } else {
+                            console.error(`${campaignLabel} J0: email send failed for ${recipientEmail}: ${sendResult.error}`);
+                        }
+                    }
+                }
+
+                // ─── J0 SMS (teaser) ───
                 const phone: string | undefined = referralInfo.phoneNumber;
                 if (config.smsEnabled && config.smsBalance > 0 && phone && isCmNumber(phone)) {
                     if (await isSmsBlockedBySubscription(referralId)) {
                         console.log(`${campaignLabel} J0: skipping SMS for ${referralId} — has CLASSIQUE/CIBLE subscription`);
                     } else {
-                    const smsTemplate = await RelanceSmsTemplateModel.findOne({
-                        type: 'auto',
-                        dayNumber: 0,
-                        active: true
-                    });
-                    if (smsTemplate) {
-                        const userLink = (config.smsLinks || []).find((l: any) =>
-                            l.type === 'auto' && l.dayNumber === 0
-                        );
-                        const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
-                        const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
-                        if (smsSent) {
-                            config.smsBalance = Math.max(0, config.smsBalance - 1);
-                            target.messagesDelivered.push({
-                                day: 0,
-                                channel: 'sms',
-                                sentAt: new Date(),
-                                status: 'delivered' as any,
-                            });
-                            target.lastMessageSentAt = new Date();
-                            if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
-                                const referrerInfo = await userServiceClient.getUserDetails(referrerId);
-                                if (referrerInfo?.email) {
-                                    emailService.sendLowBalanceAlert(
-                                        referrerInfo.email,
-                                        referrerInfo.name || '',
-                                        'sms',
-                                        config.smsBalance
-                                    ).catch(() => { });
+                        const smsTemplate = await RelanceSmsTemplateModel.findOne({
+                            type: 'auto',
+                            dayNumber: 0,
+                            active: true
+                        });
+                        if (smsTemplate) {
+                            const userLink = (config.smsLinks || []).find((l: any) =>
+                                l.type === 'auto' && l.dayNumber === 0
+                            );
+                            const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
+                            const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
+                            if (smsSent) {
+                                config.smsBalance = Math.max(0, config.smsBalance - 1);
+                                target.messagesDelivered.push({
+                                    day: 0,
+                                    channel: 'sms',
+                                    sentAt: new Date(),
+                                    status: 'delivered' as any,
+                                });
+                                target.lastMessageSentAt = new Date();
+                                if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
+                                    const referrerInfo = await userServiceClient.getUserDetails(referrerId);
+                                    if (referrerInfo?.email) {
+                                        emailService.sendLowBalanceAlert(
+                                            referrerInfo.email,
+                                            referrerInfo.name || '',
+                                            'sms',
+                                            config.smsBalance
+                                        ).catch(() => { });
+                                    }
                                 }
+                                console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 SMS sent to ${phone}`);
                             }
-                            await config.save();
-                            sent++;
-                            console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 SMS sent to ${phone}`);
                         }
                     }
-                    }
                 }
+
+                await config.save();
+                sent++;
 
                 // Always advance J0 → Day 1 (best-effort, no retry on J0)
                 target.currentDay = 1;
@@ -214,16 +283,66 @@ async function processUserTargets(
                 continue;
             }
 
+            // ───── J7 SMS-only fast path (default targets only) ─────
+            // Default targets at currentDay=7 send the final SMS (J7) but no email
+            // (the email sequence ended at J7 sent at currentDay=6). Loop completes after.
+            if (isDefaultTarget && target.currentDay === 7) {
+                const referralInfo = await userServiceClient.getUserDetails(referralId);
+                const phone: string | undefined = referralInfo?.phoneNumber;
+                if (config.smsEnabled && config.smsBalance > 0 && phone && isCmNumber(phone)) {
+                    if (await isSmsBlockedBySubscription(referralId)) {
+                        console.log(`${campaignLabel} J7: skipping SMS for ${referralId} — has CLASSIQUE/CIBLE subscription`);
+                    } else {
+                        const smsTemplate = await RelanceSmsTemplateModel.findOne({
+                            type: 'auto', dayNumber: 7, active: true
+                        });
+                        if (smsTemplate) {
+                            const userLink = (config.smsLinks || []).find((l: any) =>
+                                l.type === 'auto' && l.dayNumber === 7
+                            );
+                            const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
+                            const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
+                            if (smsSent) {
+                                config.smsBalance = Math.max(0, config.smsBalance - 1);
+                                target.messagesDelivered.push({
+                                    day: 7,
+                                    channel: 'sms',
+                                    sentAt: new Date(),
+                                    status: 'delivered' as any,
+                                });
+                                target.lastMessageSentAt = new Date();
+                                console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J7 SMS sent to ${phone}`);
+                            }
+                        }
+                    }
+                }
+
+                await config.save();
+                target.status = TargetStatus.COMPLETED;
+                target.exitReason = ExitReason.COMPLETED_7_DAYS;
+                target.exitedLoopAt = new Date();
+                await target.save();
+                if (campaign) { campaign.targetsCompleted += 1; await campaign.save(); }
+                exited++;
+                continue;
+            }
+
+            // ───── Day-number resolution (default targets are offset by 1) ─────
+            // Default targets: at currentDay=N (1..6), send Email J(N+1) and SMS J(N).
+            // Manual campaigns: at currentDay=N (1..7), send Email J(N) and SMS J(N) — same.
+            // SMS dayNumber stays as target.currentDay (used in the SMS block below).
+            const emailDayNumber = isDefaultTarget ? target.currentDay + 1 : target.currentDay;
+
             // Get message template (campaign custom or default)
             let messageTemplate: any = null;
 
             if (campaign && campaign.customMessages && campaign.customMessages.length > 0) {
-                messageTemplate = campaign.customMessages.find((m: any) => m.dayNumber === target.currentDay);
+                messageTemplate = campaign.customMessages.find((m: any) => m.dayNumber === emailDayNumber);
             }
 
             if (!messageTemplate) {
                 messageTemplate = await RelanceMessageModel.findOne({
-                    dayNumber: target.currentDay,
+                    dayNumber: emailDayNumber,
                     active: true
                 });
             }
@@ -256,7 +375,7 @@ async function processUserTargets(
             messageText = messageText
                 .replace(/\{\{name\}\}/g, referralInfo.name || 'there')
                 .replace(/\{\{referrerName\}\}/g, referrerInfo.name || 'your referrer')
-                .replace(/\{\{day\}\}/g, target.currentDay.toString());
+                .replace(/\{\{day\}\}/g, emailDayNumber.toString());
 
             // Check for email address
             const recipientEmail = referralInfo.email;
@@ -278,20 +397,21 @@ async function processUserTargets(
                 continue;
             }
 
-            // Send email
+            // Send email (use emailDayNumber for the actual template day; for default
+            // targets this is currentDay+1, for manual it equals currentDay)
             const sendResult = await emailRelanceService.sendRelanceEmail(
                 recipientEmail,
                 referralInfo.name || 'Member',
                 referrerInfo.name || 'Your Referrer',
                 messageText,
-                target.currentDay,
+                emailDayNumber,
                 messageTemplate.mediaUrls,
                 messageTemplate.buttons,
                 messageTemplate.subject
             );
 
             if (sendResult.success) {
-                console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] Email sent to ${recipientEmail} (Day ${target.currentDay})`);
+                console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] Email J${emailDayNumber} sent to ${recipientEmail} (currentDay=${target.currentDay})`);
 
                 // Extract provider message ID
                 let sendGridMessageId: string | undefined;
