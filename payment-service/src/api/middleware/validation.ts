@@ -165,11 +165,11 @@ export const validateWithdrawal = (req: Request, res: Response, next: NextFuncti
 
     // Apply different minimum amounts based on withdrawal type
     if (withdrawalType === 'mobile_money') {
-        // Mobile money minimum: 500 XAF
-        if (amount < 500) {
+        // Mobile money minimum: 1500 XAF
+        if (amount < 1500) {
             return res.status(400).json({
                 success: false,
-                message: 'Minimum mobile money withdrawal amount is 500 XAF'
+                message: 'Minimum mobile money withdrawal amount is 1500 XAF'
             });
         }
 
@@ -225,10 +225,10 @@ export const validateAdminUserWithdrawal = (req: Request, res: Response, next: N
         });
     }
 
-    if (amount < 500) {
+    if (amount < 1500) {
         return res.status(400).json({
             success: false,
-            message: 'Minimum withdrawal amount is 500'
+            message: 'Minimum withdrawal amount is 1500'
         });
     }
 
@@ -302,10 +302,10 @@ export const validateAdminDirectPayout = (req: Request, res: Response, next: Nex
         });
     }
 
-    if (amount < 500) {
+    if (amount < 1500) {
         return res.status(400).json({
             success: false,
-            message: 'Minimum payout amount is 500'
+            message: 'Minimum payout amount is 1500'
         });
     }
 
