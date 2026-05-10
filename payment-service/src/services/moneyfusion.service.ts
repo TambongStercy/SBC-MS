@@ -296,11 +296,18 @@ export class MoneyFusionService {
         }
     }
 
-    mapPayoutWebhookStatus(event: string): 'completed' | 'failed' {
+    mapPayoutWebhookStatus(event: string): 'completed' | 'failed' | 'pending' {
         switch (event) {
             case 'payout.session.completed': return 'completed';
             case 'payout.session.cancelled': return 'failed';
-            default: return 'failed';
+            default:
+                // Unknown / intermediate events (e.g. payout.session.pending,
+                // payout.session.processing) are NOT failures. Returning 'pending'
+                // keeps the transaction in its current state so we don't prematurely
+                // mark it FAILED while MoneyFusion is still processing — which would
+                // cause our app's status to diverge from the MoneyFusion dashboard.
+                log.warn(`MoneyFusion payout webhook: unrecognized event "${event}", treating as pending no-op`);
+                return 'pending';
         }
     }
 }
