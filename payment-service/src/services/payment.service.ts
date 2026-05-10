@@ -3471,6 +3471,8 @@ class PaymentService {
                     tokenPay
                 );
             }
+        } else {
+            log.info(`MoneyFusion payout webhook: pending/no-op for ${transaction.transactionId} (event="${event}"), no status change`);
         }
     }
 
