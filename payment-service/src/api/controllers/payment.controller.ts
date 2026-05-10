@@ -461,7 +461,7 @@ export class PaymentController {
     public handleMoneyFusionPayoutWebhook = async (req: Request, res: Response) => {
         try {
             const payload = req.body;
-            log.info(`Received MoneyFusion payout webhook: event=${payload?.event}, tokenPay=${payload?.tokenPay}`);
+            log.info(`Received MoneyFusion payout webhook: event=${payload?.event}, tokenPay=${payload?.tokenPay}, rawPayload=${JSON.stringify(payload)}`);
             await paymentService.handleMoneyFusionPayoutWebhook(payload);
             res.status(200).json({ success: true });
         } catch (error: any) {
