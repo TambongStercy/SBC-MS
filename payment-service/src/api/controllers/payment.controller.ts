@@ -119,13 +119,13 @@ export class PaymentController {
                 // Fallback: try to determine subscription type from amount
                 if (paymentIntent && paymentIntent.amount) {
                     const amount = paymentIntent.amount;
-                    if (amount === 3070) { // UPGRADE amount (XAF)
+                    if (amount === 3150) { // UPGRADE amount (XAF)
                         cryptoUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription;
                         log.info(`Fallback: Set cryptoUsdAmount for UPGRADE based on amount ${amount}: ${cryptoUsdAmount}`);
-                    } else if (amount === 5140) { // CIBLE amount (XAF)
+                    } else if (amount === 5300) { // CIBLE amount (XAF)
                         cryptoUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.cible.inscription;
                         log.info(`Fallback: Set cryptoUsdAmount for CIBLE based on amount ${amount}: ${cryptoUsdAmount}`);
-                    } else if (amount === 2070) { // CLASSIQUE amount (XAF)
+                    } else if (amount === 2150) { // CLASSIQUE amount (XAF)
                         cryptoUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.classique.inscription;
                         log.info(`Fallback: Set cryptoUsdAmount for CLASSIQUE based on amount ${amount}: ${cryptoUsdAmount}`);
                     } else {
