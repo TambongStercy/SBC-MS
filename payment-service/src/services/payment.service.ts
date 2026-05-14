@@ -3095,6 +3095,16 @@ class PaymentService {
             return PaymentGateway.FEEXPAY;
         }
 
+        // RDC (CD) payins are temporarily suspended. Airtel Money RDC / M-Pesa Vodacom
+        // display a CDF→USD rate (~500) far below the market rate (~2810), which causes
+        // our XAF→CDF-converted amount to surface to customers as ~4.6× the real value
+        // (e.g. 2150 XAF → 8754 CDF → $17.51 USD instead of the correct ~$3.84).
+        // Withdrawals (isWithdrawal=true) still go through MoneyFusion; only payins are blocked.
+        if (!isWithdrawal && countryCode === 'CD') {
+            log.warn(`CD payin attempted while MoneyFusion-CD payins are temporarily disabled.`);
+            throw new Error('Les paiements depuis la RDC sont temporairement suspendus. Veuillez contacter le support.');
+        }
+
         // MoneyFusion: BF, SN, CM, ML, CD, GA, NE, GN, TD
         const moneyFusionCountries = ['BF', 'SN', 'CM', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD'];
         if (moneyFusionCountries.includes(countryCode)) {
