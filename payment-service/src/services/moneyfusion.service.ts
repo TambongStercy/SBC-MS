@@ -147,6 +147,24 @@ const WITHDRAW_MODES: Record<string, Record<string, string>> = {
     },
 };
 
+// Dialing prefixes for MoneyFusion-supported countries. Used to strip the country
+// code from the phone before sending it to the payout API (MF expects local format).
+const DIALING_PREFIXES: Record<string, string> = {
+    CI: '225', SN: '221', BF: '226', BJ: '229', TG: '228', ML: '223',
+    CG: '242', CD: '243', CM: '237', GA: '241', GH: '233', GN: '224',
+    NE: '227', KE: '254', TD: '235', RW: '250', GW: '245', MR: '222',
+    UG: '256', CF: '236', SL: '232', TZ: '255', GM: '220', ET: '251',
+};
+
+function stripDialingPrefix(phone: string, countryCode: string): string {
+    const digits = String(phone).replace(/\D/g, '');
+    const prefix = DIALING_PREFIXES[countryCode.toUpperCase()];
+    if (prefix && digits.startsWith(prefix)) {
+        return digits.slice(prefix.length);
+    }
+    return digits;
+}
+
 export class MoneyFusionService {
     private payinUrl: string;
     private payoutUrl: string;
@@ -230,15 +248,21 @@ export class MoneyFusionService {
             throw new Error('MoneyFusion private key not configured for payouts');
         }
 
+        // MoneyFusion expects the LOCAL phone number (no country dialing prefix).
+        // The MF dashboard confirms this: validated withdrawals show "650384125" while
+        // our recent rejected ones showed "237650384125" with the same operator slug
+        // — only difference being the leading 237. Strip the dialing prefix here.
+        const localPhone = stripDialingPrefix(request.phone, request.countryCode);
+
         const payload = {
             countryCode: request.countryCode.toLowerCase(),
-            phone: request.phone,
+            phone: localPhone,
             amount: request.amount,
             withdraw_mode: request.withdrawMode,
             webhook_url: request.webhookUrl,
         };
 
-        log.info(`Initiating MoneyFusion payout: ${request.amount} to ${request.phone} (${request.withdrawMode})`);
+        log.info(`Initiating MoneyFusion payout: ${request.amount} to ${localPhone} (${request.withdrawMode})`);
 
         try {
             const response = await axios.post(this.payoutUrl, payload, {
