@@ -1,6 +1,7 @@
 import logger from '../utils/logger';
 import config from '../config';
 import { emailService } from './email.service';
+import RelanceBounceSuppressionModel from '../database/models/relance-bounce-suppression.model';
 
 const log = logger.getLogger('BounceHandlerService');
 
@@ -97,8 +98,14 @@ export class BounceHandlerService {
     private async handleHardBounce(bounce: BounceEvent): Promise<void> {
         log.error('Hard bounce detected - adding to blacklist', { email: bounce.email });
 
-        // Add to blacklist immediately
-        this.blacklistedEmails.add(bounce.email);
+        // Add to in-memory blacklist for fast lookup
+        this.blacklistedEmails.add(bounce.email.toLowerCase());
+
+        // Persist to RelanceBounceSuppression so the block survives restarts AND is
+        // visible to all instances. Without this, every restart wipes the blacklist
+        // and we resume sending to permanently-undeliverable addresses, which kills
+        // sender reputation.
+        await this.persistSuppression(bounce.email, bounce.reason, 'sendgrid_webhook');
 
         // Remove from retry queue if exists
         this.retryQueue.delete(bounce.email);
@@ -108,6 +115,32 @@ export class BounceHandlerService {
             email: bounce.email,
             reason: bounce.reason
         });
+    }
+
+    /**
+     * Upsert a hard-bounced or spam-complaint email into the suppression collection.
+     * Idempotent: re-bounces don't create duplicates or change source/bouncedAt.
+     */
+    private async persistSuppression(email: string, reason: string, source: 'sendgrid_webhook' | 'ses_webhook'): Promise<void> {
+        try {
+            await RelanceBounceSuppressionModel.updateOne(
+                { email: email.toLowerCase() },
+                {
+                    $setOnInsert: {
+                        email: email.toLowerCase(),
+                        reason,
+                        bouncedAt: new Date(),
+                        source,
+                    },
+                },
+                { upsert: true }
+            );
+        } catch (err: any) {
+            // E11000 = duplicate (race condition under concurrent webhook fans). Safe to ignore.
+            if (err?.code !== 11000) {
+                log.error('Failed to persist suppression entry', { email, error: err?.message });
+            }
+        }
     }
 
     /**
@@ -145,8 +178,9 @@ export class BounceHandlerService {
     private async handleSpamComplaint(bounce: BounceEvent): Promise<void> {
         log.error('Spam complaint received', { email: bounce.email });
 
-        // Immediately blacklist
-        this.blacklistedEmails.add(bounce.email);
+        // Immediately blacklist (in-memory + persisted)
+        this.blacklistedEmails.add(bounce.email.toLowerCase());
+        await this.persistSuppression(bounce.email, `Spam complaint: ${bounce.reason}`, 'sendgrid_webhook');
 
         // Alert admin
         log.error('URGENT: Spam complaint - review email content and practices', {
@@ -284,10 +318,10 @@ export class BounceHandlerService {
     }
 
     /**
-     * Check if email is blacklisted
+     * Check if email is blacklisted (case-insensitive)
      */
     isBlacklisted(email: string): boolean {
-        return this.blacklistedEmails.has(email);
+        return this.blacklistedEmails.has(email.toLowerCase());
     }
 
     /**
@@ -359,12 +393,32 @@ export class BounceHandlerService {
     }
 
     /**
-     * Load blacklisted emails from persistent storage
+     * Load blacklisted emails from persistent storage (RelanceBounceSuppression).
+     * Runs asynchronously after construction so we don't block startup; if the
+     * service receives an email-send during the warm-up window, that send may
+     * still go through — acceptable risk vs blocking startup on DB.
+     * Also schedules a periodic refresh to pick up entries added by other
+     * processes (e.g. the backfill script or other service instances).
      */
     private loadBlacklistedEmails(): void {
-        // In a real implementation, load from database
-        // For now, start with empty set
-        log.info('Bounce handler service initialized');
+        const reloadFromDb = async () => {
+            try {
+                const entries = await RelanceBounceSuppressionModel
+                    .find({}, { email: 1, _id: 0 })
+                    .lean();
+                const next = new Set<string>(entries.map((e: any) => String(e.email).toLowerCase()));
+                this.blacklistedEmails = next;
+                log.info(`Bounce blacklist loaded: ${next.size} suppressed addresses`);
+            } catch (err: any) {
+                log.error('Failed to load bounce blacklist from DB', { error: err?.message });
+            }
+        };
+        // Initial load (deferred so Mongo is connected by the time we run)
+        setTimeout(reloadFromDb, 5000);
+        // Periodic refresh every 5 minutes — picks up backfill script writes
+        // and entries added by other service instances.
+        setInterval(reloadFromDb, 5 * 60 * 1000);
+        log.info('Bounce handler service initialized — blacklist will load shortly');
     }
 
     /**
