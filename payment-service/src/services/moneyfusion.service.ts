@@ -46,16 +46,15 @@ export interface MoneyFusionPayoutResult {
 const WITHDRAW_MODES: Record<string, Record<string, string>> = {
     CM: {
         // NOTE: MF's published docs list "orange-money-cm" for Cameroon Orange,
-        // but in practice their API returns "Ce moyen de retrait est momentanément
-        // indisponible" (the unknown-mode error) for that slug. Probing variants
-        // confirmed "orange-cm" is the actually-recognized slug. Docs are stale.
-        // MTN's "mtn-cm" remains correct per probe.
+        // but in practice their API rejects that slug. MF support confirmed via
+        // direct support reply: use "Orange-cm" (capital O) instead. Casing matters.
+        // MTN's "mtn-cm" remains correct.
         // Long-form (storage convention from operatorMaps.ts)
         'MTN_MOMO_CMR': 'mtn-cm',
-        'ORANGE_CMR': 'orange-cm',
-        'ORANGE_MOMO_CMR': 'orange-cm',
+        'ORANGE_CMR': 'Orange-cm',
+        'ORANGE_MOMO_CMR': 'Orange-cm',
         // Short-form aliases
-        'ORANGE_CM': 'orange-cm',
+        'ORANGE_CM': 'Orange-cm',
         'MTN_CM': 'mtn-cm',
     },
     CI: {
