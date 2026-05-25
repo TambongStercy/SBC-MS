@@ -184,6 +184,28 @@ class PaymentIntentRepository {
     }
 
     /**
+     * Find the most recent provider-confirmed (real) SUCCEEDED payment intent for a user.
+     * "Real" = has a gatewayPaymentId (i.e. the gateway issued a transaction reference).
+     * Used to detect potential duplicate recoveries in the admin manual-recovery flow.
+     */
+    async findRecentRealSuccessByUser(
+        userId: string | Types.ObjectId,
+        since: Date
+    ): Promise<IPaymentIntent | null> {
+        try {
+            return await this.model.findOne({
+                userId,
+                status: PaymentStatus.SUCCEEDED,
+                createdAt: { $gte: since },
+                gatewayPaymentId: { $exists: true, $nin: [null, ''] },
+            }).sort({ createdAt: -1 }).lean();
+        } catch (error) {
+            log.error(`Error finding recent real-success PI for user ${userId}: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
      * Update a payment intent by its ID
      */
     async update(id: string | Types.ObjectId, update: UpdatePaymentIntentInput): Promise<IPaymentIntent | null> {

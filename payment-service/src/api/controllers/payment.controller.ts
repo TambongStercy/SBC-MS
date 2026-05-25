@@ -1307,6 +1307,35 @@ export class PaymentController {
                 adminNote
             });
 
+            // ─── DUPLICATE-RECOVERY GUARD ─────────────────────────────────────
+            // If admin is about to auto-mark this as SUCCEEDED (and re-trigger commissions),
+            // first check whether the user already has a real (provider-confirmed) SUCCEEDED
+            // payment intent in the last 7 days. If yes, the admin most likely doesn't realize
+            // the original payment already went through — block to prevent double-distribution
+            // of commissions. Admin can override by sending `force: true` in the body if they
+            // are absolutely certain this is a separate payment.
+            if (autoMarkSucceeded) {
+                const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                const existingReal = await paymentIntentRepository.findRecentRealSuccessByUser(userId, sevenDaysAgo);
+
+                if (existingReal && !req.body.force) {
+                    log.warn(`Blocking duplicate recovery for user ${userId}: existing real SUCCEEDED PI ${existingReal.sessionId} created at ${existingReal.createdAt}`);
+                    res.status(409).json({
+                        success: false,
+                        message: `L'utilisateur a déjà un paiement réussi récent (session ${existingReal.sessionId}, créé le ${new Date(existingReal.createdAt).toISOString()}, montant ${existingReal.amount} ${existingReal.currency}). Vérifiez avant de procéder. Si ce nouveau paiement est réellement distinct, renvoyez la requête avec "force": true pour confirmer.`,
+                        existingPayment: {
+                            sessionId: existingReal.sessionId,
+                            amount: existingReal.amount,
+                            currency: existingReal.currency,
+                            createdAt: existingReal.createdAt,
+                            gatewayPaymentId: existingReal.gatewayPaymentId,
+                        },
+                    });
+                    return;
+                }
+            }
+            // ─── End duplicate-recovery guard ──────────────────────────────────
+
             // Fetch user information from user service including subscription info
             let userInfo = null;
             try {
