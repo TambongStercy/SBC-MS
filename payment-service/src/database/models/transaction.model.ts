@@ -12,6 +12,7 @@ export enum TransactionStatus {
     PENDING_ADMIN_APPROVAL = 'pending_admin_approval', // Withdrawal awaiting admin approval
     REJECTED_BY_ADMIN = 'rejected_by_admin', // Withdrawal rejected by admin
     EXPIRED = 'expired', // Withdrawal expired due to timeout (no admin action)
+    RECONCILED = 'reconciled', // Admin-driven adjustment offsetting an earlier transaction (e.g., reversing a ghost commission). Carries a negative amount and references the original via metadata.
 }
 
 // Define Transaction Type
