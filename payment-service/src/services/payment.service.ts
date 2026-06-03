@@ -3406,6 +3406,16 @@ class PaymentService {
 
     public async handleMoneyFusionPayinWebhook(payload: any): Promise<void> {
         const { event, tokenPay, Montant, personal_Info } = payload;
+
+        // MoneyFusion delivers both payin AND payout webhooks to the same globally-
+        // configured URL in their dashboard, ignoring the per-payout webhookUrl we pass
+        // when initiating a payout. Route by event prefix so payout events reach the
+        // payout handler (which marks COMPLETED + debits the wallet).
+        if (typeof event === 'string' && event.startsWith('payout.')) {
+            log.info(`MoneyFusion webhook: routing payout event "${event}" to payout handler (tokenPay=${tokenPay})`);
+            return this.handleMoneyFusionPayoutWebhook(payload);
+        }
+
         log.info(`MoneyFusion payin webhook received: event=${event}, tokenPay=${tokenPay}`);
 
         const paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(tokenPay, PaymentGateway.MONEYFUSION);
