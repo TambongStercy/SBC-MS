@@ -458,6 +458,38 @@ class PaymentServiceClient {
         }
     }
 
+    /**
+     * Mark a transaction as RECONCILED with audit metadata. Used by the admin-driven
+     * cancelActivationTransfer flow to mark the original activation_transfer_in
+     * after its balances have been reversed.
+     * Calls endpoint: POST /api/internal/transactions/:transactionId/mark-reconciled
+     */
+    async markTransactionReconciled(
+        transactionId: string,
+        payload: {
+            reason: string;
+            reversedByTransactionId?: string;
+            reconciledBy?: string;
+        },
+    ): Promise<{ amount: number; userId: string; type: string } | null> {
+        const url = `/internal/transactions/${transactionId}/mark-reconciled`;
+        try {
+            const response = await this.apiClient.post<ApiResponse<{ amount: number; userId: string; type: string }>>(url, payload);
+            if (response.status === 200 && response.data?.success && response.data.data) {
+                this.log.info(`Transaction ${transactionId} marked reconciled (amount=${response.data.data.amount})`);
+                return response.data.data;
+            }
+            this.log.warn(`Unexpected response shape from mark-reconciled for tx ${transactionId}`, { status: response.status });
+            return null;
+        } catch (error: any) {
+            this.log.error(`Error calling ${url} for tx ${transactionId}: ${error.message}`);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(error.response.data?.message || 'Failed to mark transaction reconciled', error.response.status);
+            }
+            throw new AppError('Failed to communicate with payment service for mark-reconciled.', 503);
+        }
+    }
+
     // This method is called by settings-service to get admin balance from payment-service.
     async getAdminBalance(): Promise<number> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/admin-balance`);
