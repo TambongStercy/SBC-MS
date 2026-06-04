@@ -921,6 +921,38 @@ export class PaymentController {
     }
 
     /**
+     * [INTERNAL] Mark a transaction as RECONCILED with audit metadata.
+     * Used by user-service when an admin cancels an activation transfer.
+     * @route POST /api/internal/transactions/:transactionId/mark-reconciled
+     * @access Internal Service Request
+     */
+    public markTransactionReconciled = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { transactionId } = req.params;
+        const { reason, reversedByTransactionId, reconciledBy } = req.body || {};
+        log.info(`Internal request: Mark transaction ${transactionId} reconciled`);
+        try {
+            if (!transactionId) {
+                return res.status(400).json({ success: false, message: 'Transaction ID is required.' });
+            }
+            if (!reason) {
+                return res.status(400).json({ success: false, message: 'Reconciliation reason is required.' });
+            }
+
+            const result = await paymentService.markTransactionAsReconciled(
+                transactionId,
+                reason,
+                reversedByTransactionId,
+                reconciledBy,
+            );
+
+            return res.status(200).json({ success: true, data: result });
+        } catch (error: any) {
+            log.error(`Error in markTransactionReconciled controller for tx ${transactionId}:`, error);
+            next(error);
+        }
+    }
+
+    /**
      * [INTERNAL] Check if user has a pending withdrawal specifically.
      * Distinct from checkUserPendingTransactions (which matches ANY pending tx).
      * Used by user-service to gate activation balance transfers.

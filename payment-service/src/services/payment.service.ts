@@ -4504,6 +4504,44 @@ class PaymentService {
         }
     }
 
+    /**
+     * [INTERNAL] Mark a transaction as RECONCILED with audit metadata.
+     * Used by user-service's cancelActivationTransfer flow to mark the original
+     * activation_transfer_in as reconciled after its balances have been reversed.
+     * Returns the updated transaction's amount + userId so the caller can verify
+     * what was reconciled.
+     */
+    async markTransactionAsReconciled(
+        transactionId: string,
+        reason: string,
+        reversedByTransactionId?: string,
+        reconciledBy?: string,
+    ): Promise<{ amount: number; userId: string; type: TransactionType }> {
+        log.info(`Service: Marking transaction ${transactionId} as reconciled. Reason: ${reason}`);
+
+        const tx = await TransactionModel.findOne({ transactionId });
+        if (!tx) {
+            throw new AppError(`Transaction ${transactionId} not found`, 404);
+        }
+        if (tx.status === TransactionStatus.RECONCILED) {
+            log.info(`Transaction ${transactionId} already reconciled — no-op`);
+            return { amount: tx.amount, userId: tx.userId.toString(), type: tx.type };
+        }
+
+        tx.status = TransactionStatus.RECONCILED;
+        tx.metadata = {
+            ...(tx.metadata || {}),
+            reconciliationReason: reason,
+            reconciledAt: new Date(),
+            reconciledBy: reconciledBy || 'admin',
+            ...(reversedByTransactionId ? { reversedByTransactionId } : {}),
+        };
+        await tx.save();
+
+        log.info(`Transaction ${transactionId} marked RECONCILED (amount=${tx.amount}, userId=${tx.userId})`);
+        return { amount: tx.amount, userId: tx.userId.toString(), type: tx.type };
+    }
+
     // Old CinetPay transfer methods (getCinetpayTransferAuthToken, addCinetpayContact, processCinetpayTransfer)
     // have been removed — all transfer/payout logic is now in cinetpay-payout.service.ts using the new API.
 

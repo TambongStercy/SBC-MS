@@ -31,6 +31,7 @@ router.patch('/users/:userId/unblock', adminController.unblockUser as any); // P
 router.delete('/users/:userId', adminController.deleteUser as any); // DELETE /api/admin/users/:userId (Soft Delete)
 router.patch('/users/:userId/restore', adminController.restoreUser as any); // PATCH /api/admin/users/:userId/restore
 router.post('/users/:userId/adjust-balance', adminController.adjustBalance as any); // POST /api/admin/users/:userId/adjust-balance
+router.post('/users/:userId/cancel-activation-transfer', adminController.cancelActivationTransfer as any); // POST /api/admin/users/:userId/cancel-activation-transfer
 
 // Route to set/update subscription type
 router.patch('/users/:userId/subscription', adminController.adminSetUserSubscription as any); // PATCH /api/admin/users/:userId/subscription

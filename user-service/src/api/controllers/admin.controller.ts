@@ -9,6 +9,7 @@ import { SubscriptionType } from '../../database/models/subscription.model'; // 
 import { AuthenticatedRequest } from '../middleware/auth.middleware'; // Import AuthenticatedRequest
 import { partnerService } from '../../services/partner.service'; // Import PartnerService
 import { subscriptionService } from '../../services/subscription.service'; // Import Subscription Service
+import { activationBalanceService } from '../../services/activation-balance.service'; // For cancelActivationTransfer
 import { AppError } from '../../utils/errors'; // Import AppError
 
 const log = logger.getLogger('AdminController');
@@ -296,6 +297,60 @@ class AdminController {
             log.error(`Error adjusting balance for user ${userId} (admin):`, error);
             res.status(error.message.includes('Invalid') || error.message.includes('required') ? 400 : 500)
                 .json({ success: false, message: error.message || 'Failed to adjust balance' });
+        }
+    }
+
+    /**
+     * Cancel an activation_transfer_in by reversing balances + marking the original
+     * RECONCILED. Used when a user transferred to activation balance under a misleading
+     * main wallet figure (e.g. caused by a stuck withdrawal — see mrdigit237 incident).
+     * @route POST /api/admin/users/:userId/cancel-activation-transfer
+     */
+    async cancelActivationTransfer(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        const { userId } = req.params;
+        if (!isValidObjectId(userId)) {
+            res.status(400).json({ success: false, message: 'Invalid User ID format' });
+            return;
+        }
+        const { transactionId, amount, reason } = req.body || {};
+        const adminUserId = req.user?.userId;
+
+        if (!adminUserId) {
+            res.status(401).json({ success: false, message: 'Admin user ID not found in token.' });
+            return;
+        }
+        if (!transactionId || typeof transactionId !== 'string') {
+            res.status(400).json({ success: false, message: 'transactionId is required.' });
+            return;
+        }
+        if (typeof amount !== 'number' || amount <= 0) {
+            res.status(400).json({ success: false, message: 'amount must be a positive number.' });
+            return;
+        }
+        if (!reason || typeof reason !== 'string') {
+            res.status(400).json({ success: false, message: 'reason is required.' });
+            return;
+        }
+
+        log.info(`Admin ${adminUserId} cancelling activation transfer ${transactionId} (${amount} XAF) for user ${userId}`);
+        try {
+            const result = await activationBalanceService.cancelActivationTransfer(
+                userId,
+                transactionId,
+                amount,
+                reason,
+                adminUserId,
+                req.ip,
+            );
+            res.status(200).json({
+                success: true,
+                message: 'Activation transfer cancelled successfully',
+                data: result,
+            });
+        } catch (error: any) {
+            log.error(`Error cancelling activation transfer for user ${userId} (admin):`, error);
+            const status = error instanceof AppError ? error.statusCode : 500;
+            res.status(status).json({ success: false, message: error.message || 'Failed to cancel activation transfer' });
         }
     }
 
