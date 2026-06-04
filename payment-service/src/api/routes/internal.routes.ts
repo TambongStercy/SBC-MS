@@ -56,6 +56,13 @@ statsRouter.get('/user/:userId/total-withdrawals', (req, res, next) => paymentCo
  */
 router.get('/user/:userId/has-pending-transactions', (req, res, next) => paymentController.checkUserPendingTransactions(req, res, next));
 
+/**
+ * @route   GET /api/internal/user/:userId/has-pending-withdrawal
+ * @desc    Check if user has a pending withdrawal specifically (gates activation transfers)
+ * @access  Private (Service-to-Service)
+ */
+router.get('/user/:userId/has-pending-withdrawal', (req, res, next) => paymentController.checkUserPendingWithdrawal(req, res, next));
+
 // General Admin Stats (Consider moving if this file becomes too large)
 statsRouter.get('/transactions', (req, res, next) => paymentController.adminGetTotalTransactionsCount(req, res, next));
 statsRouter.get('/total-withdrawals', (req, res, next) => paymentController.adminGetTotalWithdrawals(req, res, next));

@@ -921,16 +921,46 @@ export class PaymentController {
     }
 
     /**
+     * [INTERNAL] Check if user has a pending withdrawal specifically.
+     * Distinct from checkUserPendingTransactions (which matches ANY pending tx).
+     * Used by user-service to gate activation balance transfers.
+     * @route GET /api/internal/user/:userId/has-pending-withdrawal
+     * @access Internal Service Request
+     */
+    public checkUserPendingWithdrawal = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { userId } = req.params;
+        log.info(`Internal request: Check pending withdrawal for user ${userId}`);
+        try {
+            if (!userId) {
+                return res.status(400).json({ success: false, message: 'User ID parameter is required.' });
+            }
+
+            const hasPending = await paymentService.checkUserHasPendingWithdrawal(userId);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    userId: userId,
+                    hasPending: hasPending,
+                },
+            });
+        } catch (error: any) {
+            log.error(`Error in checkUserPendingWithdrawal controller for user ${userId}:`, error);
+            next(error);
+        }
+    }
+
+    /**
      * [INTERNAL] Create a conversion transaction record
      * @route POST /api/internal/conversion
      * @access Internal Service Request
      */
     public createConversionTransaction = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
-        const { 
-            userId, 
-            fromAmount, 
-            fromCurrency, 
-            toAmount, 
+        const {
+            userId,
+            fromAmount,
+            fromCurrency,
+            toAmount,
             toCurrency, 
             conversionRate,
             ipAddress 
