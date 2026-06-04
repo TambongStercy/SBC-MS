@@ -428,6 +428,68 @@ class PaymentServiceClient {
         }
     }
 
+    /**
+     * Check whether the user has a pending withdrawal in payment-service.
+     * Used to gate activation balance transfers — a pending withdrawal means
+     * the main wallet figure is misleading (debit-on-success), so allowing
+     * transfers risks the over-credit cascade seen with mrdigit237@gmail.com.
+     * Returns false on communication error (fail-open — better to allow the
+     * transfer than block legitimate users when payment-service is down).
+     * Calls endpoint: GET /api/internal/user/:userId/has-pending-withdrawal
+     */
+    async hasUserPendingWithdrawal(userId: string): Promise<boolean> {
+        const url = `/internal/user/${userId}/has-pending-withdrawal`;
+        this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}${url}`);
+        try {
+            const response = await this.apiClient.get<ApiResponse<{ userId: string; hasPending: boolean }>>(url);
+
+            if (response.status === 200 && response.data?.success && typeof response.data.data?.hasPending === 'boolean') {
+                this.log.info(`User ${userId} hasPendingWithdrawal=${response.data.data.hasPending}`);
+                return response.data.data.hasPending;
+            }
+            this.log.warn(`Payment service unexpected response shape for hasUserPendingWithdrawal (user ${userId}); failing open`, {
+                status: response.status,
+                responseData: response.data,
+            });
+            return false;
+        } catch (error: any) {
+            this.log.error(`Error calling payment service ${url} for user ${userId}: ${error.message}; failing open`);
+            return false;
+        }
+    }
+
+    /**
+     * Mark a transaction as RECONCILED with audit metadata. Used by the admin-driven
+     * cancelActivationTransfer flow to mark the original activation_transfer_in
+     * after its balances have been reversed.
+     * Calls endpoint: POST /api/internal/transactions/:transactionId/mark-reconciled
+     */
+    async markTransactionReconciled(
+        transactionId: string,
+        payload: {
+            reason: string;
+            reversedByTransactionId?: string;
+            reconciledBy?: string;
+        },
+    ): Promise<{ amount: number; userId: string; type: string } | null> {
+        const url = `/internal/transactions/${transactionId}/mark-reconciled`;
+        try {
+            const response = await this.apiClient.post<ApiResponse<{ amount: number; userId: string; type: string }>>(url, payload);
+            if (response.status === 200 && response.data?.success && response.data.data) {
+                this.log.info(`Transaction ${transactionId} marked reconciled (amount=${response.data.data.amount})`);
+                return response.data.data;
+            }
+            this.log.warn(`Unexpected response shape from mark-reconciled for tx ${transactionId}`, { status: response.status });
+            return null;
+        } catch (error: any) {
+            this.log.error(`Error calling ${url} for tx ${transactionId}: ${error.message}`);
+            if (axios.isAxiosError(error) && error.response) {
+                throw new AppError(error.response.data?.message || 'Failed to mark transaction reconciled', error.response.status);
+            }
+            throw new AppError('Failed to communicate with payment service for mark-reconciled.', 503);
+        }
+    }
+
     // This method is called by settings-service to get admin balance from payment-service.
     async getAdminBalance(): Promise<number> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/admin-balance`);

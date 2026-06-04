@@ -128,6 +128,19 @@ export class ActivationBalanceService {
             throw new AppError(`Insufficient balance. Available: ${user.balance} XAF, Required: ${amount} XAF`, 400);
         }
 
+        // Block transfer while a withdrawal is in flight. SBC uses debit-on-success,
+        // so a pending withdrawal means the user's visible balance includes funds that
+        // are already on the way out. Transferring under that figure causes the
+        // mrdigit237@gmail.com cascade: when the withdrawal reconciles later, the
+        // main wallet goes negative because the user "used" the un-debited amount.
+        const hasPendingWithdrawal = await paymentService.hasUserPendingWithdrawal(userId);
+        if (hasPendingWithdrawal) {
+            throw new AppError(
+                "Un retrait est en cours de traitement sur votre compte. Veuillez attendre qu'il soit complété avant de transférer vers votre solde d'activation.",
+                409
+            );
+        }
+
         // Perform the transfer (atomic operation)
         const updatedUser = await this.userRepository.transferToActivationBalance(userId, amount);
         if (!updatedUser) {
@@ -162,6 +175,109 @@ export class ActivationBalanceService {
         return {
             newActivationBalance: updatedUser.activationBalance,
             transactionId
+        };
+    }
+
+    /**
+     * Cancel a prior activation_transfer_in by reversing the balances and marking the
+     * original transaction as RECONCILED with audit metadata. Used when a user transferred
+     * to activation under a misleading main balance figure (e.g. caused by a stuck
+     * withdrawal — see mrdigit237@gmail.com incident).
+     *
+     * Flow:
+     *   1. Validate user exists and has sufficient activation balance
+     *   2. Atomically: balance += amount, activationBalance -= amount
+     *   3. Record reversal audit tx (activation_transfer_out, marked RECONCILED via metadata)
+     *   4. Mark original transaction as RECONCILED in payment-service
+     *
+     * If step 4 fails the balance reversal stands — balance correctness is the source of
+     * truth, the audit reconciliation status is secondary and can be fixed manually.
+     */
+    async cancelActivationTransfer(
+        userId: string,
+        originalTransactionId: string,
+        amount: number,
+        reason: string,
+        adminId?: string,
+        ipAddress?: string,
+    ): Promise<{ newBalance: number; newActivationBalance: number; reversalTransactionId: string }> {
+        log.info(`Cancel activation transfer: user=${userId}, originalTx=${originalTransactionId}, amount=${amount}, admin=${adminId || 'unknown'}`);
+
+        if (!amount || amount <= 0) {
+            throw new AppError('Reversal amount must be a positive number', 400);
+        }
+        if (!originalTransactionId) {
+            throw new AppError('Original transaction ID is required', 400);
+        }
+        if (!reason) {
+            throw new AppError('Reconciliation reason is required', 400);
+        }
+
+        const user = await this.userRepository.findById(new Types.ObjectId(userId));
+        if (!user) {
+            throw new AppError('User not found', 404);
+        }
+        if ((user.activationBalance || 0) < amount) {
+            throw new AppError(
+                `Insufficient activation balance to reverse. Available: ${user.activationBalance || 0} XAF, Required: ${amount} XAF`,
+                400,
+            );
+        }
+
+        // Atomic reverse — checks activationBalance >= amount inside the query
+        const updatedUser = await this.userRepository.transferFromActivationToMain(userId, amount);
+        if (!updatedUser) {
+            // Race condition guard: balance changed between findById and atomic update
+            throw new AppError('Failed to reverse activation transfer (concurrent balance change). Please retry.', 409);
+        }
+
+        log.info(`Reversed balances for user ${userId}: balance=${updatedUser.balance}, activationBalance=${updatedUser.activationBalance}`);
+
+        // Record the audit reversal transaction. The metadata documents the linkage to the
+        // original transaction. This is recorded even if the subsequent mark-reconciled fails.
+        let reversalTransactionId = '';
+        try {
+            const txResult = await paymentService.recordActivationTransaction({
+                userId,
+                type: 'activation_transfer_out',
+                amount,
+                description: `Reversal of activation_transfer_in ${originalTransactionId}: ${reason}`,
+                metadata: {
+                    reverses: originalTransactionId,
+                    reverseReason: reason,
+                    reconciledBy: adminId || 'admin',
+                    isReversal: true,
+                    previousBalance: user.balance,
+                    newBalance: updatedUser.balance,
+                    previousActivationBalance: user.activationBalance || 0,
+                    newActivationBalance: updatedUser.activationBalance,
+                },
+                ipAddress,
+            });
+            reversalTransactionId = txResult.transactionId;
+            log.info(`Reversal audit tx recorded: ${reversalTransactionId}`);
+        } catch (error: any) {
+            log.error(`Failed to record reversal audit tx for user ${userId} (balances already reversed): ${error.message}`);
+            // Don't throw — balance reversal is source of truth, audit can be repaired
+        }
+
+        // Mark the original transaction as RECONCILED. If this fails the balances are still
+        // correctly reversed; the original tx will remain status=completed and require manual
+        // cleanup. We log loud but don't undo the balance change.
+        try {
+            await paymentService.markTransactionReconciled(originalTransactionId, {
+                reason,
+                reversedByTransactionId: reversalTransactionId || undefined,
+                reconciledBy: adminId || 'admin',
+            });
+        } catch (error: any) {
+            log.error(`Failed to mark original tx ${originalTransactionId} as reconciled (balances are already reversed): ${error.message}`);
+        }
+
+        return {
+            newBalance: updatedUser.balance,
+            newActivationBalance: updatedUser.activationBalance,
+            reversalTransactionId,
         };
     }
 

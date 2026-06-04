@@ -188,6 +188,32 @@ export class UserRepository {
     }
 
     /**
+     * Inverse of transferToActivationBalance — moves funds from activation back to main.
+     * Used by admin-driven cancelActivationTransfer flow (e.g. when a user transferred
+     * to activation under a misleading main balance figure caused by a stuck withdrawal).
+     * Atomic with activationBalance >= amount precondition; returns null if insufficient.
+     */
+    async transferFromActivationToMain(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Reversal amount must be positive');
+        }
+
+        return UserModel.findOneAndUpdate(
+            {
+                _id: userId,
+                activationBalance: { $gte: amount }
+            },
+            {
+                $inc: {
+                    balance: amount,
+                    activationBalance: -amount
+                }
+            },
+            { new: true }
+        ).exec();
+    }
+
+    /**
      * Atomically transfers activation balance between two users.
      * @param fromUserId - The sender's user ID.
      * @param toUserId - The recipient's user ID.

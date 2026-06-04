@@ -4462,6 +4462,86 @@ class PaymentService {
         }
     }
 
+    /**
+     * [INTERNAL] Check if user has a pending WITHDRAWAL specifically.
+     * Used by user-service to block activation balance transfers while a withdrawal
+     * is in flight — prevents the over-credit cascade where a user transfers from
+     * main to activation under a wallet figure that doesn't yet reflect a stuck/
+     * pending withdrawal (debit-on-success model). See incident with mrdigit237@gmail.com.
+     */
+    async checkUserHasPendingWithdrawal(userId: string): Promise<boolean> {
+        log.info(`Service: Checking for pending withdrawal for user ${userId}`);
+        try {
+            if (!userId) {
+                throw new AppError('User ID is required', 400);
+            }
+
+            const userObjectId = new Types.ObjectId(userId);
+
+            const pendingWithdrawal = await TransactionModel.findOne({
+                userId: userObjectId,
+                type: TransactionType.WITHDRAWAL,
+                status: {
+                    $in: [
+                        TransactionStatus.PENDING_OTP_VERIFICATION,
+                        TransactionStatus.PENDING_ADMIN_APPROVAL,
+                        TransactionStatus.PENDING,
+                        TransactionStatus.PROCESSING,
+                    ],
+                },
+            });
+
+            const hasPending = !!pendingWithdrawal;
+            log.info(`User ${userId} has pending withdrawal: ${hasPending}${pendingWithdrawal ? ` (Transaction: ${pendingWithdrawal.transactionId}, status: ${pendingWithdrawal.status})` : ''}`);
+
+            return hasPending;
+        } catch (error: any) {
+            log.error(`Error checking pending withdrawal for user ${userId}:`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(error.message || 'Failed to check user pending withdrawal', 500);
+        }
+    }
+
+    /**
+     * [INTERNAL] Mark a transaction as RECONCILED with audit metadata.
+     * Used by user-service's cancelActivationTransfer flow to mark the original
+     * activation_transfer_in as reconciled after its balances have been reversed.
+     * Returns the updated transaction's amount + userId so the caller can verify
+     * what was reconciled.
+     */
+    async markTransactionAsReconciled(
+        transactionId: string,
+        reason: string,
+        reversedByTransactionId?: string,
+        reconciledBy?: string,
+    ): Promise<{ amount: number; userId: string; type: TransactionType }> {
+        log.info(`Service: Marking transaction ${transactionId} as reconciled. Reason: ${reason}`);
+
+        const tx = await TransactionModel.findOne({ transactionId });
+        if (!tx) {
+            throw new AppError(`Transaction ${transactionId} not found`, 404);
+        }
+        if (tx.status === TransactionStatus.RECONCILED) {
+            log.info(`Transaction ${transactionId} already reconciled — no-op`);
+            return { amount: tx.amount, userId: tx.userId.toString(), type: tx.type };
+        }
+
+        tx.status = TransactionStatus.RECONCILED;
+        tx.metadata = {
+            ...(tx.metadata || {}),
+            reconciliationReason: reason,
+            reconciledAt: new Date(),
+            reconciledBy: reconciledBy || 'admin',
+            ...(reversedByTransactionId ? { reversedByTransactionId } : {}),
+        };
+        await tx.save();
+
+        log.info(`Transaction ${transactionId} marked RECONCILED (amount=${tx.amount}, userId=${tx.userId})`);
+        return { amount: tx.amount, userId: tx.userId.toString(), type: tx.type };
+    }
+
     // Old CinetPay transfer methods (getCinetpayTransferAuthToken, addCinetpayContact, processCinetpayTransfer)
     // have been removed — all transfer/payout logic is now in cinetpay-payout.service.ts using the new API.
 
