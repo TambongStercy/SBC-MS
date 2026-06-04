@@ -4462,6 +4462,48 @@ class PaymentService {
         }
     }
 
+    /**
+     * [INTERNAL] Check if user has a pending WITHDRAWAL specifically.
+     * Used by user-service to block activation balance transfers while a withdrawal
+     * is in flight — prevents the over-credit cascade where a user transfers from
+     * main to activation under a wallet figure that doesn't yet reflect a stuck/
+     * pending withdrawal (debit-on-success model). See incident with mrdigit237@gmail.com.
+     */
+    async checkUserHasPendingWithdrawal(userId: string): Promise<boolean> {
+        log.info(`Service: Checking for pending withdrawal for user ${userId}`);
+        try {
+            if (!userId) {
+                throw new AppError('User ID is required', 400);
+            }
+
+            const userObjectId = new Types.ObjectId(userId);
+
+            const pendingWithdrawal = await TransactionModel.findOne({
+                userId: userObjectId,
+                type: TransactionType.WITHDRAWAL,
+                status: {
+                    $in: [
+                        TransactionStatus.PENDING_OTP_VERIFICATION,
+                        TransactionStatus.PENDING_ADMIN_APPROVAL,
+                        TransactionStatus.PENDING,
+                        TransactionStatus.PROCESSING,
+                    ],
+                },
+            });
+
+            const hasPending = !!pendingWithdrawal;
+            log.info(`User ${userId} has pending withdrawal: ${hasPending}${pendingWithdrawal ? ` (Transaction: ${pendingWithdrawal.transactionId}, status: ${pendingWithdrawal.status})` : ''}`);
+
+            return hasPending;
+        } catch (error: any) {
+            log.error(`Error checking pending withdrawal for user ${userId}:`, error);
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError(error.message || 'Failed to check user pending withdrawal', 500);
+        }
+    }
+
     // Old CinetPay transfer methods (getCinetpayTransferAuthToken, addCinetpayContact, processCinetpayTransfer)
     // have been removed — all transfer/payout logic is now in cinetpay-payout.service.ts using the new API.
 

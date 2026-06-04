@@ -128,6 +128,19 @@ export class ActivationBalanceService {
             throw new AppError(`Insufficient balance. Available: ${user.balance} XAF, Required: ${amount} XAF`, 400);
         }
 
+        // Block transfer while a withdrawal is in flight. SBC uses debit-on-success,
+        // so a pending withdrawal means the user's visible balance includes funds that
+        // are already on the way out. Transferring under that figure causes the
+        // mrdigit237@gmail.com cascade: when the withdrawal reconciles later, the
+        // main wallet goes negative because the user "used" the un-debited amount.
+        const hasPendingWithdrawal = await paymentService.hasUserPendingWithdrawal(userId);
+        if (hasPendingWithdrawal) {
+            throw new AppError(
+                "Un retrait est en cours de traitement sur votre compte. Veuillez attendre qu'il soit complété avant de transférer vers votre solde d'activation.",
+                409
+            );
+        }
+
         // Perform the transfer (atomic operation)
         const updatedUser = await this.userRepository.transferToActivationBalance(userId, amount);
         if (!updatedUser) {
