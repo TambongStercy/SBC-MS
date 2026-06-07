@@ -38,6 +38,40 @@ export interface MoneyFusionPayoutResult {
     message: string;
 }
 
+// --- MoneyFusion payin currency per country ---
+// Source: GET https://pay.moneyfusion.net/api/v1/withdraw/methods (returns one currency
+// field per country). MF treats RDC payins as USD and Guinée-Conakry as GNF, while
+// every other country we route to MF uses XAF or XOF (which our platform handles
+// as 1:1 with XAF — our internal currency). For non-CFA destinations we must
+// convert XAF -> destination currency BEFORE calling initiatePayment, otherwise
+// MF takes our XAF figure literally and the customer is asked to pay e.g. $2150 USD.
+const MF_PAYIN_CURRENCY: Record<string, string> = {
+    BF: 'XOF',
+    BJ: 'XOF',
+    CI: 'XOF',
+    GW: 'XOF',
+    ML: 'XOF',
+    NE: 'XOF',
+    SN: 'XOF',
+    TG: 'XOF',
+    CG: 'XAF',
+    CM: 'XAF',
+    GA: 'XAF',
+    TD: 'XAF',
+    CD: 'USD',  // ⚠ requires real-rate conversion
+    GN: 'GNF',  // ⚠ requires real-rate conversion
+};
+
+/**
+ * Returns the currency MoneyFusion expects in totalPrice for a given country.
+ * Returns undefined for unknown country codes; the caller should fall back to
+ * our internal currency (XAF) and log a warning.
+ */
+export function getMoneyFusionPayinCurrency(countryCode: string): string | undefined {
+    if (!countryCode) return undefined;
+    return MF_PAYIN_CURRENCY[countryCode.toUpperCase()];
+}
+
 // --- Withdraw mode mapping per country ---
 // Keys cover BOTH the long-form storage names (e.g. MTN_MOMO_CMR, ORANGE_CMR — see operatorMaps.ts)
 // AND the short-form aliases (e.g. MTN_CM, ORANGE_CM). The lookup site passes whatever value is
