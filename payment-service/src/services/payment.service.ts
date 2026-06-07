@@ -22,7 +22,8 @@ import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
-import { moneyFusionService } from './moneyfusion.service';
+import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.service';
+import { currencyService } from './currency.service';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -1673,116 +1674,14 @@ class PaymentService {
     }
 
     /**
-     * Placeholder function for currency conversion
-     * TODO: Replace with actual API call or rate table logic
+     * Delegates to the central currencyService (see services/currency.service.ts).
+     * Kept here as a thin wrapper so the many existing callers don't have to migrate
+     * all at once; new code paths should import currencyService directly. The
+     * service handles CFA-franc 1:1 pegging, in-memory rate caching, and the
+     * primary+fallback fetch against @fawazahmed0/currency-api.
      */
     private async convertCurrency(amount: number, fromCurrency: string, toCurrency: string): Promise<number> {
-        log.info(`Converting ${amount} ${fromCurrency} to ${toCurrency}`);
-        if (fromCurrency === toCurrency) {
-            return amount;
-        }
-
-        // Handle CFA Franc currencies (XAF and XOF) as equivalent with 1:1 rate
-        const cfaFrancs = ['XAF', 'XOF'];
-        if (cfaFrancs.includes(fromCurrency.toUpperCase()) && cfaFrancs.includes(toCurrency.toUpperCase())) {
-            log.info(`Converting between CFA francs (${fromCurrency} -> ${toCurrency}): Using 1:1 rate`);
-            return amount; // No conversion needed for CFA francs
-        }
-
-        // Check if we're converting TO a cryptocurrency
-        const isCryptoTarget = this.isCryptoCurrency(toCurrency);
-        log.info(`Target currency ${toCurrency} is crypto: ${isCryptoTarget}`);
-
-        const fromCurrencyLower = fromCurrency.toLowerCase();
-        const toCurrencyLower = toCurrency.toLowerCase();
-
-        const primaryUrl = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${fromCurrencyLower}.json`;
-        const fallbackUrl = `https://latest.currency-api.pages.dev/v1/currencies/${fromCurrencyLower}.json`;
-        let exchangeRate: number | undefined = undefined;
-
-        try {
-            log.debug(`Attempting to fetch exchange rates from: ${primaryUrl}`);
-            const response = await axios.get(primaryUrl, { timeout: 5000 });
-            if (response.data && response.data[fromCurrencyLower] && response.data[fromCurrencyLower][toCurrencyLower]) {
-                exchangeRate = response.data[fromCurrencyLower][toCurrencyLower];
-                log.info(`Fetched rate from primary URL: 1 ${fromCurrency} = ${exchangeRate} ${toCurrency}`);
-            } else {
-                log.warn(`Rate for ${fromCurrency} -> ${toCurrency} not found in primary response.`, response.data);
-            }
-        } catch (error: any) {
-            log.warn(`Failed to fetch from primary URL (${primaryUrl}): ${error.message}. Trying fallback.`);
-            try {
-                log.debug(`Attempting to fetch exchange rates from fallback: ${fallbackUrl}`);
-                const fallbackResponse = await axios.get(fallbackUrl, { timeout: 5000 });
-                if (fallbackResponse.data && fallbackResponse.data[fromCurrencyLower] && fallbackResponse.data[fromCurrencyLower][toCurrencyLower]) {
-                    exchangeRate = fallbackResponse.data[fromCurrencyLower][toCurrencyLower];
-                    log.info(`Fetched rate from fallback URL: 1 ${fromCurrency} = ${exchangeRate} ${toCurrency}`);
-                } else {
-                    log.warn(`Rate for ${fromCurrency} -> ${toCurrency} not found in fallback response.`, fallbackResponse.data);
-                }
-            } catch (fallbackError: any) {
-                log.error(`Failed to fetch from fallback URL (${fallbackUrl}): ${fallbackError.message}.`);
-            }
-        }
-
-        if (exchangeRate === undefined) {
-            log.warn(`Could not fetch exchange rate for ${fromCurrency} -> ${toCurrency}. Defaulting to 1:1.`);
-            // Fallback to 1:1 conversion if API fails
-            let rate = 1;
-            // For CFA francs, ensure 1:1 conversion
-            if (cfaFrancs.includes(fromCurrency.toUpperCase()) && cfaFrancs.includes(toCurrency.toUpperCase())) {
-                rate = 1;
-                log.info(`CFA franc fallback: Using 1:1 rate for ${fromCurrency} -> ${toCurrency}`);
-            }
-
-            let convertedAmount;
-            if (isCryptoTarget) {
-                // For crypto, preserve precision with 8 decimal places
-                convertedAmount = parseFloat((amount * rate).toFixed(8));
-                log.info(`Converted amount (using fallback rate, crypto): ${convertedAmount} ${toCurrency}`);
-            } else {
-                // For fiat currencies, round to whole numbers, except for USD
-                if (toCurrency.toUpperCase() === 'USD') {
-                    convertedAmount = parseFloat((amount * rate).toFixed(2));
-                    log.info(`Converted amount (using fallback rate, USD): ${convertedAmount} ${toCurrency}`);
-                } else {
-                    convertedAmount = Math.round(amount * rate);
-                    log.info(`Converted amount (using fallback rate, fiat): ${convertedAmount} ${toCurrency}`);
-                }
-            }
-            return convertedAmount;
-        }
-
-        let convertedAmount;
-        if (isCryptoTarget) {
-            // For cryptocurrency conversions, preserve decimal precision
-            // Use 8 decimal places (standard for most cryptocurrencies)
-            convertedAmount = parseFloat((amount * exchangeRate).toFixed(8));
-            log.info(`Converted amount (using API rate, crypto): ${convertedAmount} ${toCurrency}`);
-
-            // Additional validation for crypto amounts - they should be > 0 but can be very small
-            if (convertedAmount <= 0) {
-                log.error(`Crypto conversion resulted in zero or negative amount`, {
-                    originalAmount: amount,
-                    fromCurrency: fromCurrency,
-                    toCurrency: toCurrency,
-                    exchangeRate: exchangeRate,
-                    convertedAmount: convertedAmount
-                });
-                throw new Error(`Currency conversion to ${toCurrency} resulted in invalid amount: ${convertedAmount}`);
-            }
-        } else {
-            // For fiat currencies, round to whole numbers, except for USD which needs decimals for other gateways
-            if (toCurrency.toUpperCase() === 'USD') {
-                convertedAmount = parseFloat((amount * exchangeRate).toFixed(2));
-                log.info(`Converted amount (using API rate, USD): ${convertedAmount} ${toCurrency}`);
-            } else {
-                convertedAmount = Math.round(amount * exchangeRate);
-                log.info(`Converted amount (using API rate, fiat): ${convertedAmount} ${toCurrency}`);
-            }
-        }
-
-        return convertedAmount;
+        return currencyService.convert(amount, fromCurrency, toCurrency);
     }
 
     /**
@@ -3095,16 +2994,6 @@ class PaymentService {
             return PaymentGateway.FEEXPAY;
         }
 
-        // RDC (CD) payins are temporarily suspended. Airtel Money RDC / M-Pesa Vodacom
-        // display a CDF→USD rate (~500) far below the market rate (~2810), which causes
-        // our XAF→CDF-converted amount to surface to customers as ~4.6× the real value
-        // (e.g. 2150 XAF → 8754 CDF → $17.51 USD instead of the correct ~$3.84).
-        // Withdrawals (isWithdrawal=true) still go through MoneyFusion; only payins are blocked.
-        if (!isWithdrawal && countryCode === 'CD') {
-            log.warn(`CD payin attempted while MoneyFusion-CD payins are temporarily disabled.`);
-            throw new Error('Les paiements depuis la RDC sont temporairement suspendus. Veuillez contacter le support.');
-        }
-
         // MoneyFusion: BF, SN, CM, ML, CD, GA, NE, GN, TD
         const moneyFusionCountries = ['BF', 'SN', 'CM', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD'];
         if (moneyFusionCountries.includes(countryCode)) {
@@ -3367,11 +3256,31 @@ class PaymentService {
                 throw new Error('Aucun numéro de téléphone n\'est associé à ce compte. Veuillez ajouter un numéro à votre profil avant de payer.');
             }
 
+            // MoneyFusion declares one currency per country (see MF_PAYIN_CURRENCY in
+            // moneyfusion.service.ts). For CFA countries (XAF/XOF) this matches what
+            // we already send. For RDC (USD) and Guinée-Conakry (GNF) we must convert
+            // — otherwise MF takes our XAF figure literally and the customer is asked
+            // to pay an inflated amount in their local currency. Strict conversion so
+            // we never silently fall back to an unconverted amount on a money path.
+            let mfAmount = amount;
+            let mfCurrency = currency;
+            const countryCode = paymentIntent.countryCode;
+            const expectedMfCurrency = getMoneyFusionPayinCurrency(countryCode || '');
+
+            if (expectedMfCurrency && expectedMfCurrency.toUpperCase() !== currency.toUpperCase()) {
+                log.info(`MoneyFusion expects ${expectedMfCurrency} for country ${countryCode} — converting ${amount} ${currency}`);
+                mfAmount = await currencyService.convertStrict(amount, currency, expectedMfCurrency);
+                mfCurrency = expectedMfCurrency;
+                log.info(`Converted: ${amount} ${currency} -> ${mfAmount} ${mfCurrency} for MoneyFusion (country ${countryCode})`);
+            } else if (!expectedMfCurrency && countryCode) {
+                log.warn(`No MoneyFusion currency mapping for country ${countryCode}; sending ${amount} ${currency} as-is`);
+            }
+
             const webhookUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion`;
             const returnUrl = `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`;
 
             const result = await moneyFusionService.initiatePayment({
-                amount,
+                amount: mfAmount,
                 phoneNumber: contactPhone,
                 customerName,
                 returnUrl,
@@ -3388,6 +3297,17 @@ class PaymentService {
                 gatewayCheckoutUrl: result.checkoutUrl,
                 status: PaymentStatus.PENDING_PROVIDER,
                 gatewayRawResponse: result as any,
+                // Record what we actually sent to MF so the webhook handler can store
+                // paidCurrency without re-deriving it, and so audits can trace currency
+                // mismatches without spelunking the gateway response.
+                metadata: {
+                    ...(paymentIntent.metadata || {}),
+                    mfPayinCurrency: mfCurrency,
+                    mfPayinAmount: mfAmount,
+                    mfPayinCountry: countryCode,
+                    originalAmount: amount,
+                    originalCurrency: currency,
+                },
             };
 
             const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, updateData);
@@ -3446,9 +3366,17 @@ class PaymentService {
             return;
         }
 
+        // MoneyFusion reports Montant in the currency MF expected for the payin
+        // country (see MF_PAYIN_CURRENCY) — USD for RDC, GNF for Guinée-Conakry,
+        // XAF/XOF elsewhere. We recorded the expected currency on the intent's
+        // metadata when initiating; use it here so paidCurrency reflects reality
+        // and downstream code can distinguish raw paidAmount from our XAF books.
+        const paidCurrency = paymentIntent.metadata?.mfPayinCurrency || paymentIntent.currency;
+
         const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
             status: newPaymentStatus,
             paidAmount: Montant,
+            paidCurrency,
             webhookHistory: [...(paymentIntent.webhookHistory || []), { timestamp: new Date(), status: newPaymentStatus, providerData: payload }],
         } as any);
 
