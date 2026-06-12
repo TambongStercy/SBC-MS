@@ -3,6 +3,7 @@ import {
     userController
 } from '../controllers/user.controller';
 import { authenticate, AuthenticatedRequest, authenticateServiceRequest } from '../middleware/auth.middleware';
+import { requireActiveSubscription } from '../middleware/requireActiveSubscription.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { updateLastIp } from '../middleware/ip-update.middleware';
 import { UserRole } from '../../database/models/user.model';
@@ -117,22 +118,27 @@ router.put('/me/avatar', uploadLimiter, uploadAvatar, (req, res, next) => userCo
 router.post('/me/avatar', uploadLimiter, uploadAvatar, (req, res, next) => userController.uploadAvatar(req as AuthenticatedRequest, res, next));
 // --- End Avatar Upload ---
 
-router.get('/get-refered-users', (req, res) => userController.getReferredUsers(req as AuthenticatedRequest, res));
-router.get('/get-referals', (req, res) => userController.getReferredUsersInfo(req as AuthenticatedRequest, res));
-router.get('/get-products', (req, res) => userController.getUserProducts(req as AuthenticatedRequest, res));
-router.get('/get-product', (req, res) => userController.getUserProduct(req as AuthenticatedRequest, res));
+// --- Paywalled routes (require active subscription) ---
+// These mirror the frontend's <RequireSubscription /> guarded pages: Mes Filleuls,
+// product listings, wallet (currency conversion + crypto). An authenticated but
+// unactivated user can still hit /me, /affiliator, /logout etc. above — those stay
+// open so the user can complete their profile and reach the abonnement page.
+router.get('/get-refered-users', requireActiveSubscription as any, (req, res) => userController.getReferredUsers(req as AuthenticatedRequest, res));
+router.get('/get-referals', requireActiveSubscription as any, (req, res) => userController.getReferredUsersInfo(req as AuthenticatedRequest, res));
+router.get('/get-products', requireActiveSubscription as any, (req, res) => userController.getUserProducts(req as AuthenticatedRequest, res));
+router.get('/get-product', requireActiveSubscription as any, (req, res) => userController.getUserProduct(req as AuthenticatedRequest, res));
 
-// --- Currency Conversion Routes (Public for authenticated users) ---
-router.post('/convert-usd-to-xaf', mediumLimiter, (req, res) => userController.convertOwnUsdToXaf(req as AuthenticatedRequest, res));
-router.post('/convert-xaf-to-usd', mediumLimiter, (req, res) => userController.convertOwnXafToUsd(req as AuthenticatedRequest, res));
-router.get('/conversions', generalLimiter, (req, res) => userController.getConversionHistory(req as AuthenticatedRequest, res));
+// --- Currency Conversion Routes (paywalled — frontend Wallet is RequireSubscription) ---
+router.post('/convert-usd-to-xaf', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.convertOwnUsdToXaf(req as AuthenticatedRequest, res));
+router.post('/convert-xaf-to-usd', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.convertOwnXafToUsd(req as AuthenticatedRequest, res));
+router.get('/conversions', requireActiveSubscription as any, generalLimiter, (req, res) => userController.getConversionHistory(req as AuthenticatedRequest, res));
 
-// --- Crypto Withdrawal Routes ---
-router.post('/crypto/check-limits', mediumLimiter, (req, res) => userController.checkCryptoWithdrawalLimits(req as AuthenticatedRequest, res));
+// --- Crypto Withdrawal Routes (paywalled) ---
+router.post('/crypto/check-limits', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.checkCryptoWithdrawalLimits(req as AuthenticatedRequest, res));
 
-// --- Crypto Wallet Management Routes ---
-router.get('/crypto/wallet', (req, res) => userController.getCryptoWallet(req as AuthenticatedRequest, res));
-router.put('/crypto/wallet', mediumLimiter, (req, res) => userController.updateCryptoWallet(req as AuthenticatedRequest, res));
+// --- Crypto Wallet Management Routes (paywalled) ---
+router.get('/crypto/wallet', requireActiveSubscription as any, (req, res) => userController.getCryptoWallet(req as AuthenticatedRequest, res));
+router.put('/crypto/wallet', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.updateCryptoWallet(req as AuthenticatedRequest, res));
 
 // --- Public Profile View Route ---
 router.get('/:userId', (req, res, next) => userController.viewUserProfile(req, res, next));

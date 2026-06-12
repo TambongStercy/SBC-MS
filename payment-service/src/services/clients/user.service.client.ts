@@ -381,6 +381,19 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Boolean check for "is this user activated?". Used by the paywall middleware
+     * on protected payment-service endpoints (withdrawals, etc.). Reuses the
+     * existing /active-subscriptions endpoint instead of adding a focused one to
+     * minimise user-service surface area. Throws on transport failure so the
+     * middleware can return 503 (SUBSCRIPTION_CHECK_UNAVAILABLE) rather than
+     * silently 403'ing a subscribed user when user-service is unreachable.
+     */
+    async hasActiveSubscription(userId: string): Promise<boolean> {
+        const subs = await this.getUserActiveSubscriptions(userId);
+        return Array.isArray(subs) && subs.length > 0;
+    }
+
 
     // USD Balance methods for crypto payments
     async updateUserUsdBalance(userId: string, amount: number): Promise<void> {
