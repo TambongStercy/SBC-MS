@@ -36,6 +36,14 @@ interface IConfig {
         secret: string;
         expiresIn: string;
     };
+    sso: {
+        // SEPARATE secret from the main user JWT — keeps SSO access tokens and SBC user
+        // JWTs non-interchangeable. Compromise of one secret should not let an attacker
+        // mint tokens of the other class.
+        jwtSecret: string;
+        accessTokenTtl: string;   // jsonwebtoken expiresIn syntax — e.g. "1h"
+        refreshTokenTtl: string;
+    };
     services: {
         serviceSecret: string;
         userService: string;
@@ -82,6 +90,12 @@ const config: IConfig = {
     jwt: {
         secret: process.env.JWT_SECRET || 'your_jwt_secret',
         expiresIn: process.env.JWT_EXPIRATION || '1d'
+    },
+
+    sso: {
+        jwtSecret: process.env.SSO_JWT_SECRET || '__REPLACE_WITH_STRONG_RANDOM_SECRET__',
+        accessTokenTtl: process.env.SSO_ACCESS_TOKEN_TTL || '1h',
+        refreshTokenTtl: process.env.SSO_REFRESH_TOKEN_TTL || '30d',
     },
 
     services: {
