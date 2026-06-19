@@ -246,6 +246,61 @@ class SsoService {
         return this.buildUserInfo(decoded.sub);
     }
 
+    /**
+     * Asymmetric referral check used by SBC Live's filleul-gated lives:
+     * "Is the holder of this access token a direct (Niveau 1) referral of sponsorId?"
+     *
+     * Only checks the relationship in ONE direction (caller → sponsor) — unlike the
+     * symmetric `userService.checkDirectReferralRelationship` which returns true if
+     * either user is the other's direct referrer. The asymmetric semantic is what
+     * the SBC Live access rules actually need ("I'm watching X's live → am I one of
+     * X's filleuls?"), and it removes the risk of a Y-creator being treated as their
+     * own filleul because they're someone else's referrer.
+     *
+     * Depth is currently always 1 (direct). Indirect (Niveaux 2 & 3) referrals are
+     * NOT considered filleuls per SBC product semantics — they're trackable for
+     * commission purposes but the customer-facing word "filleul" means direct only.
+     * If a future use case needs the downline, add a separate referrals.downline
+     * scope and a `?depth=2` query param rather than relaxing this default.
+     */
+    async getReferralRelationship(
+        accessToken: string,
+        sponsorId: string,
+    ): Promise<{ isDirectFilleul: boolean; depth: 1 | null; callerId: string; sponsorId: string }> {
+        const decoded = this.verifyToken(accessToken);
+        if (decoded.type !== 'access') {
+            throw new AppError('Token is not an access token', 400);
+        }
+        if (!decoded.scopes.includes('referrals.read')) {
+            throw new AppError('Token does not have referrals.read scope', 403);
+        }
+        if (!sponsorId || sponsorId.length !== 24) {
+            throw new AppError('sponsorId is required and must be a 24-character ObjectId', 400);
+        }
+
+        const callerId = decoded.sub;
+        if (callerId === sponsorId) {
+            // A user can't be their own filleul. Don't even hit the DB.
+            return { isDirectFilleul: false, depth: null, callerId, sponsorId };
+        }
+
+        const directReferrer = await referralRepository.findDirectReferrerPopulated(
+            new Types.ObjectId(callerId),
+        );
+        const isDirectFilleul = directReferrer?._id?.toString() === sponsorId;
+
+        log.info(
+            `SSO referral check: caller=${callerId} sponsor=${sponsorId} isDirectFilleul=${isDirectFilleul} (client=${decoded.client_id})`,
+        );
+
+        return {
+            isDirectFilleul,
+            depth: isDirectFilleul ? 1 : null,
+            callerId,
+            sponsorId,
+        };
+    }
+
     /** Verifies a token and returns its decoded payload. Used by middleware and refresh. */
     verifyToken(token: string): SsoTokenPayload {
         try {

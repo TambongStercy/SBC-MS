@@ -103,6 +103,34 @@ class SsoController {
     }
 
     /**
+     * Check whether the bearer is a direct (Niveau 1) referral of sponsorId.
+     * Used by SBC Live access rules for filleul-gated and tiered-waiver lives.
+     *
+     * @route GET /api/sso/referrals/relationship?sponsorId=<24-char ObjectId>
+     * @access Bearer SSO access token with referrals.read scope
+     */
+    async referralRelationship(req: Request, res: Response): Promise<void> {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            res.status(401).json({ success: false, message: 'Bearer access_token required' });
+            return;
+        }
+        const accessToken = authHeader.slice('Bearer '.length).trim();
+        const sponsorId = (req.query.sponsorId as string | undefined)?.trim();
+        if (!sponsorId) {
+            res.status(400).json({ success: false, message: 'sponsorId query parameter is required' });
+            return;
+        }
+        try {
+            const result = await ssoService.getReferralRelationship(accessToken, sponsorId);
+            res.status(200).json({ success: true, data: result });
+        } catch (error: any) {
+            const status = error instanceof AppError ? error.statusCode : 500;
+            res.status(status).json({ success: false, message: error.message });
+        }
+    }
+
+    /**
      * Step 4 — refresh an expired access token.
      *
      * @route POST /api/sso/refresh

@@ -58,4 +58,16 @@ router.post(
     (req, res) => ssoController.refresh(req, res),
 );
 
+/**
+ * @route GET /api/sso/referrals/relationship?sponsorId=<24-char ObjectId>
+ * @desc  Check whether the bearer is a direct (Niveau 1) referral of sponsorId.
+ *        SBC Live calls this to enforce filleul-gated and tier-waiver access rules.
+ * @auth  Bearer <SSO access token> with referrals.read scope
+ */
+router.get(
+    '/referrals/relationship',
+    mediumLimiter,
+    (req, res) => ssoController.referralRelationship(req, res),
+);
+
 export default router;
