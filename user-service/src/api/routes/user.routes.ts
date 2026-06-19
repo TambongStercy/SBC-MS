@@ -25,6 +25,13 @@ serviceRouter.post('/:userId/balance', (req, res) => userController.updateUserBa
 // SBC Live wallet — credit/debit by payment-service when paid-live charges complete or refunds happen.
 serviceRouter.post('/:userId/sbc-live-balance', (req, res) => userController.updateSbcLiveBalance(req, res));
 
+// SSO client webhook config — payment-service fetches this when firing outbound
+// webhooks for SSO-driven payment events. webhookSecret is returned, so this MUST
+// stay behind authenticateServiceRequest. Imported here (not in sso.routes) because
+// sso.routes is public-facing (token exchange etc.) and lacks SERVICE_SECRET gating.
+import { ssoController as ssoControllerForInternal } from '../controllers/sso.controller';
+serviceRouter.get('/sso-clients/:clientId/webhook-config', (req, res) => ssoControllerForInternal.getWebhookConfig(req, res));
+
 // USD Balance routes
 serviceRouter.get('/:userId/usd-balance', (req, res) => userController.getUserUsdBalance(req, res));
 serviceRouter.post('/:userId/usd-balance', (req, res) => userController.updateUserUsdBalance(req, res));

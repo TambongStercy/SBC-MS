@@ -103,6 +103,28 @@ class SsoController {
     }
 
     /**
+     * Internal service-to-service: fetch the webhook configuration for an SSO
+     * client. Used by payment-service when firing outbound webhooks for
+     * SSO-driven payment events. Returns the full webhookSecret (which is
+     * normally `select: false`), so this endpoint MUST sit behind the service
+     * auth middleware (SERVICE_SECRET header).
+     *
+     * @route GET /api/users/internal/sso-clients/:clientId/webhook-config
+     * @access Internal (SERVICE_SECRET)
+     */
+    async getWebhookConfig(req: Request, res: Response): Promise<void> {
+        const { clientId } = req.params;
+        try {
+            const config = await ssoService.getWebhookConfig(clientId);
+            res.status(200).json({ success: true, data: config });
+        } catch (error: any) {
+            log.warn(`getWebhookConfig failed for client ${clientId}: ${error.message}`);
+            const status = error instanceof AppError ? error.statusCode : 500;
+            res.status(status).json({ success: false, message: error.message });
+        }
+    }
+
+    /**
      * Check whether the bearer is a direct (Niveau 1) referral of sponsorId.
      * Used by SBC Live access rules for filleul-gated and tiered-waiver lives.
      *
