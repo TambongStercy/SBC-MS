@@ -69,6 +69,16 @@ app.use('/api/partners', proxy(config.services.userServiceUrl, {
   }
 }));
 
+// SSO — OAuth-style flows for third-party apps (SBC Live etc.). Lives in user-service.
+// Missing here caused 404s on /api/sso/grant-code through the gateway after PR #60.
+app.use('/api/sso', proxy(config.services.userServiceUrl, {
+  parseReqBody: false,
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to sso (user-service)`);
+    return '/api/sso' + req.url;
+  }
+}));
+
 
 // // Admin services (for now, proxy to user service)
 // app.use('/api/admin', proxy(config.services.userServiceUrl, {
