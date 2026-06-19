@@ -30,6 +30,12 @@ interface IConfig {
         secret: string;
         expiresIn: string;
     };
+    sso: {
+        // MUST match user-service's SSO_JWT_SECRET — payment-service verifies SSO
+        // access tokens locally (no extra HTTP hop per request). Separate from the
+        // main JWT secret so user JWTs and SSO tokens stay non-interchangeable.
+        jwtSecret: string;
+    };
     feexpay: {
         apiKey: string;
         shopId: string;
@@ -106,6 +112,12 @@ const config: IConfig = {
     jwt: {
         secret: process.env.JWT_SECRET || 'default-payment-secret', // Use a specific secret
         expiresIn: process.env.JWT_EXPIRES_IN || '1h'
+    },
+
+    sso: {
+        // Must match user-service's SSO_JWT_SECRET. payment-service verifies SSO
+        // access tokens issued by user-service without a cross-service HTTP call.
+        jwtSecret: process.env.SSO_JWT_SECRET || '__REPLACE_WITH_STRONG_RANDOM_SECRET__',
     },
 
     feexpay: {

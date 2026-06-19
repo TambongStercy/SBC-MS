@@ -29,12 +29,23 @@ export interface SsoUserInfo {
     phoneNumber: string | null;
     country: string | null;
     avatarUrl: string | null;
-    /** Active subscription types: e.g. ['CLASSIQUE'] or ['CIBLE']. Empty if unactivated. */
+    /**
+     * Active subscription types for the user. Includes both registration tiers
+     * (CLASSIQUE, CIBLE) AND feature subscriptions (RELANCE, VISIBILITE_MAX) when
+     * present. SBC Live's creation gate is satisfied by either
+     * `directReferralCount >= 25` or `subscriptionTypes.includes('VISIBILITE_MAX')`.
+     */
     subscriptionTypes: string[];
-    /** Direct (level-1) paid referral count. Drives SBC Live's capacity tier. */
+    /** Direct (level-1) paid referral count. Drives SBC Live's capacity tier + the 25-ref creation gate. */
     directReferralCount: number;
     /** Convenience flag — true if any active subscription. */
     isActivated: boolean;
+    /**
+     * Creator earnings from SBC Live (75% of paid-live revenue after 25% SBC
+     * commission). Read-only here — payment-service writes via
+     * POST /users/internal/:userId/sbc-live-balance.
+     */
+    sbcLiveBalance: number;
 }
 
 /**
@@ -358,6 +369,7 @@ class SsoService {
             subscriptionTypes: Array.isArray(activeSubs) ? activeSubs.map(String) : [],
             directReferralCount: referralStats?.directReferrals ?? 0,
             isActivated: Array.isArray(activeSubs) && activeSubs.length > 0,
+            sbcLiveBalance: (user as any).sbcLiveBalance ?? 0,
         };
     }
 }

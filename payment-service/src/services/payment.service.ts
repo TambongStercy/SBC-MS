@@ -2725,11 +2725,85 @@ class PaymentService {
             // Notify originating service (do this regardless of commission outcome)
             await this.notifyOriginatingService(paymentIntent);
 
-            // TODO: Add any other internal logic based on payment type/status here if needed
+            // SBC Live (and future SSO third-party) payment split.
+            // Runs only on SUCCEEDED status to avoid crediting creators on partial/failed
+            // payments. Idempotent guard: check splitApplied flag on metadata before
+            // executing — webhook retries from providers can re-fire this handler.
+            if (
+                paymentIntent.status === PaymentStatus.SUCCEEDED &&
+                paymentIntent.metadata?.paymentSource === 'sso_third_party' &&
+                !paymentIntent.metadata?.splitApplied
+            ) {
+                await this.applySsoSplit(paymentIntent);
+            }
 
         } catch (error) {
             log.error(`Error during post-payment completion handling for PaymentIntent ${paymentIntent.sessionId}:`, error);
         }
+    }
+
+    /**
+     * Apply the 75/25 split for an SSO-driven payment that completed successfully.
+     * The creator (beneficiaryUserId) gets 75% credited to their sbcLiveBalance;
+     * the remaining 25% is stamped on the intent's metadata as the SBC commission
+     * for v1 reporting (no separate transfer to a commission account yet —
+     * accumulated commission tracking is a Batch 3 followup).
+     *
+     * Behaviour for the two SSO payment shapes:
+     *   - With beneficiaryUserId: split 75/25 as above.
+     *   - Without beneficiaryUserId (e.g. VISIBILITE_MAX purchase): no split,
+     *     100% conceptually belongs to SBC. We still stamp metadata so reporting
+     *     can distinguish SSO revenue from regular subscription revenue.
+     *
+     * Idempotency: writes metadata.splitApplied + metadata.splitAppliedAt on
+     * the intent. The caller checks splitApplied before invoking us — webhook
+     * retries can't double-credit.
+     */
+    private async applySsoSplit(paymentIntent: IPaymentIntent): Promise<void> {
+        const meta = paymentIntent.metadata || {};
+        const beneficiaryUserId = meta.beneficiaryUserId as string | null;
+        const grossAmount = paymentIntent.paidAmount ?? paymentIntent.amount ?? 0;
+        if (!grossAmount || grossAmount <= 0) {
+            log.warn(`SSO split: PaymentIntent ${paymentIntent.sessionId} has no usable amount, skipping`);
+            return;
+        }
+
+        let beneficiaryCredit = 0;
+        let sbcCommission = grossAmount;
+        if (beneficiaryUserId) {
+            beneficiaryCredit = Math.round(grossAmount * 0.75);
+            sbcCommission = grossAmount - beneficiaryCredit; // exact remainder, avoids 0.5-cent drift
+
+            const credited = await userServiceClient.updateSbcLiveBalance(beneficiaryUserId, beneficiaryCredit);
+            if (!credited) {
+                // user-service rejected — most likely the beneficiary userId doesn't exist.
+                // Log loud and stamp metadata so an admin can investigate; do NOT throw,
+                // the payment itself succeeded and we don't want to back-out the customer.
+                log.error(`SSO split: failed to credit beneficiary ${beneficiaryUserId} (PaymentIntent ${paymentIntent.sessionId}). Funds held pending manual reconciliation.`);
+                await paymentIntentRepository.update(String(paymentIntent._id), {
+                    metadata: {
+                        ...meta,
+                        splitApplied: false,
+                        splitFailureReason: `Failed to credit beneficiary ${beneficiaryUserId} (likely user not found). Manual reconciliation required.`,
+                        splitFailedAt: new Date(),
+                    },
+                });
+                return;
+            }
+            log.info(`SSO split: credited ${beneficiaryCredit} to beneficiary ${beneficiaryUserId} sbcLiveBalance (PaymentIntent ${paymentIntent.sessionId})`);
+        }
+
+        await paymentIntentRepository.update(String(paymentIntent._id), {
+            metadata: {
+                ...meta,
+                splitApplied: true,
+                splitAppliedAt: new Date(),
+                splitBeneficiaryCredit: beneficiaryCredit,
+                splitSbcCommission: sbcCommission,
+                splitGrossAmount: grossAmount,
+            },
+        });
+        log.info(`SSO split applied for PaymentIntent ${paymentIntent.sessionId}: beneficiary=${beneficiaryCredit}, SBC commission=${sbcCommission}, gross=${grossAmount}`);
     }
 
     /**
