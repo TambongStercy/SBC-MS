@@ -879,6 +879,13 @@ export class SubscriptionService {
                 return await this.activateRelanceSubscription(userObjectId, now);
             }
 
+            // Visibilité Maximale — independent monthly feature subscription for SBC Live
+            // (50,000 FCFA/month). Like RELANCE, it's a feature sub that doesn't interact
+            // with the CLASSIQUE/CIBLE hierarchy. Manual renewal v1 (autoRenew=false).
+            if (type === SubscriptionType.VISIBILITE_MAX) {
+                return await this.activateVisibiliteMaxSubscription(userObjectId, now);
+            }
+
             // 1. Check for existing *active* CIBLE subscription first
             const activeCibleSub = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CIBLE);
 
@@ -1008,6 +1015,61 @@ export class SubscriptionService {
         this.log.info(`Created new RELANCE subscription for user ${userObjectId}`);
 
         // No VCF cache regeneration needed for RELANCE (feature subscription)
+        return result;
+    }
+
+    /**
+     * Creates a Visibilité Maximale subscription for a creator on the SBC Live side.
+     * Per Rufus's eligibility rule: having an active VM subscription is one of the
+     * two ways (alongside ≥25 direct referrals) to unlock formation creation in
+     * SBC Live. Monthly recurring at 50,000 FCFA but renewal is manual in v1 —
+     * the user re-pays each month via SBC Live, which calls our /sso/intents
+     * endpoint, which on success triggers another activation. autoRenew=false
+     * to prevent the auto-renewal worker from charging anything.
+     *
+     * Re-activation behaviour: if an active VM sub exists with future endDate,
+     * we extend by one month rather than creating a duplicate.
+     */
+    private async activateVisibiliteMaxSubscription(
+        userObjectId: Types.ObjectId,
+        now: Date,
+    ): Promise<ISubscription | null> {
+        this.log.info(`Activating VISIBILITE_MAX subscription for user ${userObjectId.toString()}`);
+
+        const activeVmSub = await this.subscriptionRepository.findActiveSubscriptionByType(
+            userObjectId,
+            SubscriptionType.VISIBILITE_MAX,
+        );
+
+        if (activeVmSub && activeVmSub.endDate && activeVmSub.endDate > now) {
+            // Renewal of an already-active sub: extend by one month from the current endDate.
+            const newEnd = new Date(activeVmSub.endDate);
+            newEnd.setMonth(newEnd.getMonth() + 1);
+            const updated = await this.subscriptionRepository.updateById(activeVmSub._id, {
+                endDate: newEnd,
+                nextRenewalDate: newEnd,
+                status: SubscriptionStatus.ACTIVE,
+            });
+            this.log.info(`Extended VISIBILITE_MAX subscription ${activeVmSub._id} to ${newEnd.toISOString()} for user ${userObjectId}`);
+            return updated;
+        }
+
+        const endDate = new Date(now);
+        endDate.setMonth(endDate.getMonth() + 1);
+
+        const newSubscriptionData: Partial<ISubscription> = {
+            user: userObjectId,
+            subscriptionType: SubscriptionType.VISIBILITE_MAX,
+            category: SubscriptionCategory.FEATURE,
+            duration: SubscriptionDuration.MONTHLY,
+            startDate: now,
+            endDate,
+            nextRenewalDate: endDate,
+            autoRenew: false, // Manual renewal v1 per Rufus's decision
+            status: SubscriptionStatus.ACTIVE,
+        };
+        const result = await this.subscriptionRepository.create(newSubscriptionData as any);
+        this.log.info(`Created VISIBILITE_MAX subscription for user ${userObjectId}, expires ${endDate.toISOString()}`);
         return result;
     }
 

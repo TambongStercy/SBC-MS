@@ -312,6 +312,32 @@ class SsoService {
         };
     }
 
+    /**
+     * Returns the webhook configuration for an SSO client. webhookSecret is
+     * `select: false` on the model, so we explicitly opt in here. Used only
+     * by payment-service over service-to-service auth — never exposed publicly.
+     * Returns null fields if the client has no webhook configured.
+     */
+    async getWebhookConfig(
+        clientId: string,
+    ): Promise<{ clientId: string; webhookUrl: string | null; webhookSecret: string | null; enabled: boolean }> {
+        if (!clientId) {
+            throw new AppError('clientId is required', 400);
+        }
+        const client = await SsoClient.findOne({ clientId })
+            .select('+webhookSecret webhookUrl enabled clientId')
+            .exec();
+        if (!client) {
+            throw new AppError('SSO client not found', 404);
+        }
+        return {
+            clientId: client.clientId,
+            webhookUrl: client.webhookUrl || null,
+            webhookSecret: client.webhookSecret || null,
+            enabled: client.enabled,
+        };
+    }
+
     /** Verifies a token and returns its decoded payload. Used by middleware and refresh. */
     verifyToken(token: string): SsoTokenPayload {
         try {

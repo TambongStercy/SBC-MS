@@ -220,6 +220,41 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Fetch the webhook configuration for an SSO client. Used by the outbound
+     * webhook firing path to learn where to POST and which secret to sign with.
+     * Returns null when the client has no webhook configured or is disabled —
+     * caller should skip the webhook fire silently rather than error.
+     */
+    async getSsoClientWebhookConfig(
+        clientId: string,
+    ): Promise<{ webhookUrl: string; webhookSecret: string } | null> {
+        if (!this.baseUrl) {
+            log.error('Cannot fetch SSO client webhook config: User service URL not configured.');
+            return null;
+        }
+        const path = `/users/internal/sso-clients/${encodeURIComponent(clientId)}/webhook-config`;
+        try {
+            const response = await this.request<{ success: boolean; data?: { webhookUrl?: string | null; webhookSecret?: string | null; enabled?: boolean } }>('get', path);
+            if (!response?.success || !response.data) {
+                log.warn(`SSO webhook config lookup for client ${clientId} returned non-success`);
+                return null;
+            }
+            if (response.data.enabled === false) {
+                log.info(`SSO client ${clientId} is disabled, skipping webhook fire`);
+                return null;
+            }
+            if (!response.data.webhookUrl || !response.data.webhookSecret) {
+                log.info(`SSO client ${clientId} has no webhook configured, skipping fire`);
+                return null;
+            }
+            return { webhookUrl: response.data.webhookUrl, webhookSecret: response.data.webhookSecret };
+        } catch (error: any) {
+            log.error(`Failed to fetch SSO webhook config for client ${clientId}: ${error.message}`);
+            return null;
+        }
+    }
+
     async getBalance(userId: string): Promise<number> {
         if (!this.baseUrl) {
             log.error('Cannot get user balance: User service URL not configured.');

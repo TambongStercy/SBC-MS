@@ -223,28 +223,42 @@ export class PaymentController {
                 return res.status(400).json({ success: false, message: 'beneficiaryUserId cannot equal the paying user (a user cannot pay themselves)' });
             }
 
+            const metadata: Record<string, any> = {
+                paymentSource: 'sso_third_party',
+                ssoClientId: token.client_id,
+                ssoClientReference: clientReference || null,
+                beneficiaryUserId: beneficiaryUserId || null,
+                splitPercentageBeneficiary: beneficiaryUserId ? 75 : 0,
+                splitPercentageSbcCommission: beneficiaryUserId ? 25 : 100,
+                description: description || null,
+                returnUrl: returnUrl || null,
+                ssoSubscriptionType: subscriptionType || null,
+                ssoSubscriptionPlan: subscriptionPlan || null,
+            };
+
+            // When this SSO intent is for a feature subscription (e.g. VISIBILITE_MAX),
+            // hook into the existing user-service subscription-callback pipeline so the
+            // Subscription record is created automatically on payment success. The
+            // user-service webhook (handlePaymentWebhook) reads `planId` + `userId`
+            // from metadata and routes to activateSubscription, which dispatches to
+            // the matching activate*Subscription method based on type.
+            if (subscriptionType) {
+                if (!config.services.userServiceUrl) {
+                    return res.status(503).json({ success: false, message: 'user-service URL not configured; cannot wire subscription callback' });
+                }
+                metadata.originatingService = 'user-service';
+                metadata.callbackPath = `${config.services.userServiceUrl}/api/subscriptions/webhooks/payment-confirmation`;
+                metadata.userId = token.sub;
+                metadata.planId = subscriptionType; // validated server-side against SubscriptionType enum
+                metadata.planName = subscriptionType;
+            }
+
             const paymentIntent = await paymentService.createPaymentIntent({
                 userId: token.sub,
                 amount,
                 currency,
                 paymentType,
-                metadata: {
-                    paymentSource: 'sso_third_party',
-                    ssoClientId: token.client_id,
-                    ssoClientReference: clientReference || null,
-                    beneficiaryUserId: beneficiaryUserId || null,
-                    splitPercentageBeneficiary: beneficiaryUserId ? 75 : 0,
-                    splitPercentageSbcCommission: beneficiaryUserId ? 25 : 100,
-                    description: description || null,
-                    returnUrl: returnUrl || null,
-                    // Subscription details (when SBC Live sells VM, etc.) are stashed in
-                    // metadata rather than top-level columns so the generic intent
-                    // creator doesn't need to know about specific subscription types.
-                    // handlePaymentCompletion reads these on success to create the
-                    // appropriate Subscription record.
-                    ssoSubscriptionType: subscriptionType || null,
-                    ssoSubscriptionPlan: subscriptionPlan || null,
-                },
+                metadata,
             });
 
             const checkoutUrl = `${config.paymentServiceBaseUrl}/api/payments/page/${paymentIntent.sessionId}`;

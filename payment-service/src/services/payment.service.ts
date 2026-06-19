@@ -23,6 +23,7 @@ import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutRe
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
 import { moneyFusionService } from './moneyfusion.service';
+import { ssoWebhookService } from './sso-webhook.service';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -2722,7 +2723,11 @@ class PaymentService {
     public async handlePaymentCompletion(paymentIntent: IPaymentIntent): Promise<void> {
         log.info(`Handling payment completion for PaymentIntent ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
         try {
-            // Notify originating service (do this regardless of commission outcome)
+            // Notify originating service (do this regardless of commission outcome).
+            // For SSO payments tied to a feature subscription (e.g. VISIBILITE_MAX),
+            // the SSO controller sets metadata.originatingService='user-service' so this
+            // path routes the success event into user-service's existing subscription
+            // webhook → activates the Subscription record.
             await this.notifyOriginatingService(paymentIntent);
 
             // SBC Live (and future SSO third-party) payment split.
@@ -2735,6 +2740,24 @@ class PaymentService {
                 !paymentIntent.metadata?.splitApplied
             ) {
                 await this.applySsoSplit(paymentIntent);
+                // Re-read so the outbound webhook payload below reflects the
+                // freshly-stamped split fields (splitBeneficiaryCredit etc.).
+                const refreshed = await paymentIntentRepository.findBySessionId(paymentIntent.sessionId);
+                if (refreshed) {
+                    paymentIntent = refreshed;
+                }
+            }
+
+            // Outbound webhook to the SSO client (brother's app for SBC Live) on
+            // terminal status. Fires for both success and failure so brother can
+            // notify the end user either way. Internally guarded by
+            // lastWebhookFiredEvent so provider webhook retries don't double-deliver.
+            // Errors here MUST NOT throw — payment is already finalized; if delivery
+            // permanently fails, brother falls back to polling /status.
+            if (paymentIntent.metadata?.paymentSource === 'sso_third_party') {
+                await ssoWebhookService.firePaymentEvent(paymentIntent).catch((err: any) => {
+                    log.error(`SSO webhook firing threw for ${paymentIntent.sessionId}: ${err.message}`);
+                });
             }
 
         } catch (error) {

@@ -11,12 +11,16 @@
  *       --redirectUri=https://live.sniperbuisnesscenter.com/auth/callback \
  *       --redirectUri=http://localhost:5174/auth/callback \
  *       --scope=profile.read \
- *       --scope=payments.write
+ *       --scope=payments.write \
+ *       --scope=referrals.read \
+ *       --webhookUrl=https://live.sniperbuisnesscenter.com/sbc-webhook
  *
  *   Multiple --redirectUri and --scope flags are accepted (one per value).
+ *   --webhookUrl is optional; if set, a fresh webhookSecret is generated and
+ *   printed for the third-party to verify HMAC-SHA256 signatures.
  *
- * Re-running with the same clientId rotates the secret (returns a new one) and
- * replaces redirectUris + allowedScopes.
+ * Re-running with the same clientId rotates the secret AND the webhookSecret
+ * (if --webhookUrl provided) and replaces redirectUris + allowedScopes.
  */
 import 'dotenv/config';
 import crypto from 'crypto';
@@ -30,6 +34,7 @@ interface Args {
     name?: string;
     redirectUris: string[];
     scopes: string[];
+    webhookUrl?: string;
 }
 
 function parseArgs(): Args {
@@ -41,6 +46,7 @@ function parseArgs(): Args {
         else if (k === 'name') args.name = v;
         else if (k === 'redirectUri') args.redirectUris.push(v);
         else if (k === 'scope') args.scopes.push(v);
+        else if (k === 'webhookUrl') args.webhookUrl = v;
     }
     return args;
 }
@@ -58,18 +64,25 @@ async function main() {
     const secret = crypto.randomBytes(32).toString('hex');
     const hash = await bcrypt.hash(secret, 10);
 
+    const setFields: Record<string, any> = {
+        clientId: args.clientId,
+        name: args.name,
+        clientSecretHash: hash,
+        redirectUris: args.redirectUris,
+        allowedScopes: args.scopes,
+        enabled: true,
+    };
+
+    let webhookSecretForPrint: string | undefined;
+    if (args.webhookUrl) {
+        webhookSecretForPrint = crypto.randomBytes(32).toString('hex');
+        setFields.webhookUrl = args.webhookUrl;
+        setFields.webhookSecret = webhookSecretForPrint;
+    }
+
     const result = await SsoClient.findOneAndUpdate(
         { clientId: args.clientId },
-        {
-            $set: {
-                clientId: args.clientId,
-                name: args.name,
-                clientSecretHash: hash,
-                redirectUris: args.redirectUris,
-                allowedScopes: args.scopes,
-                enabled: true,
-            },
-        },
+        { $set: setFields },
         { upsert: true, new: true },
     );
 
@@ -83,6 +96,11 @@ async function main() {
     console.log(`  name:          ${result.name}`);
     console.log(`  redirectUris:  ${result.redirectUris.join(', ')}`);
     console.log(`  allowedScopes: ${result.allowedScopes.join(', ')}`);
+    if (args.webhookUrl) {
+        console.log(`  webhookUrl:    ${args.webhookUrl}`);
+        console.log(`  webhookSecret: ${webhookSecretForPrint}`);
+        console.log('  --> Configure your webhook endpoint to verify HMAC-SHA256 with this secret.');
+    }
     console.log('=================================================================');
 
     await mongoose.disconnect();
