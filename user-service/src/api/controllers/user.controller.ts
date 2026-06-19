@@ -172,6 +172,42 @@ export class UserController {
     }
 
     /**
+     * Update SBC Live balance (service-to-service only).
+     * Positive amount = credit, negative = debit. Used by payment-service when
+     * a paid-live charge completes (75% creator share) or when an admin issues
+     * a refund. Returns 404 if user not found, 409 if a debit would push the
+     * balance negative.
+     * @route POST /api/users/internal/:userId/sbc-live-balance
+     */
+    async updateSbcLiveBalance(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.userId;
+            const { amount } = req.body;
+            if (amount === undefined || isNaN(Number(amount))) {
+                res.status(400).json({ success: false, message: 'Valid amount is required' });
+                return;
+            }
+            const numericAmount = Number(amount);
+            const updated = await userRepository.updateSbcLiveBalance(userId, numericAmount);
+            if (updated === null) {
+                if (numericAmount < 0) {
+                    res.status(409).json({ success: false, message: 'Insufficient SBC Live balance' });
+                } else {
+                    res.status(404).json({ success: false, message: 'User not found' });
+                }
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data: { userId, sbcLiveBalance: updated.sbcLiveBalance },
+            });
+        } catch (error: any) {
+            log.error(`Error updating SBC Live balance for user ${req.params.userId}: ${error.message}`);
+            res.status(500).json({ success: false, message: 'Error updating SBC Live balance' });
+        }
+    }
+
+    /**
      * Get user USD balance
      * @route GET /api/users/:userId/usd-balance
      */

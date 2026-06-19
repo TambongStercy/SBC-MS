@@ -186,6 +186,40 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Credit (positive amount) or debit (negative amount) a user's sbcLiveBalance.
+     * Used by the SSO payment flow after a paid-live charge completes — the creator
+     * gets 75% credited to this dedicated wallet (separate from their main balance
+     * and activation balance).
+     *
+     * Returns true if applied, false if user-service refused the debit (insufficient
+     * funds). Throws on transport / 5xx errors so the caller can retry or alert.
+     */
+    async updateSbcLiveBalance(userId: string, amount: number): Promise<boolean> {
+        if (!this.baseUrl) {
+            log.error('Cannot update SBC Live balance: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/${userId}/sbc-live-balance`;
+        try {
+            log.info(`Updating sbcLiveBalance for user ${userId} by ${amount}`);
+            const response = await this.request<{ success: boolean; data?: { sbcLiveBalance?: number } }>('post', path, { amount });
+            if (response?.success) {
+                log.info(`Updated sbcLiveBalance for user ${userId}. New balance: ${response.data?.sbcLiveBalance ?? 'N/A'}`);
+                return true;
+            }
+            log.warn(`updateSbcLiveBalance for user ${userId} returned non-success.`);
+            return false;
+        } catch (error: any) {
+            log.error(`Error updating sbcLiveBalance for user ${userId}: ${error.message}`);
+            if (error instanceof AppError && error.statusCode === 409) {
+                // Insufficient funds — surface as false, not a throw
+                return false;
+            }
+            throw error;
+        }
+    }
+
     async getBalance(userId: string): Promise<number> {
         if (!this.baseUrl) {
             log.error('Cannot get user balance: User service URL not configured.');

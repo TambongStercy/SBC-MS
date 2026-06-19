@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
 import { validatePaymentIntent, validatePaymentDetails } from '../middleware/validation';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
+import { requireSsoScope } from '../middleware/sso-auth.middleware';
 import adminController from '../controllers/admin.controller';
 
 const router = Router();
@@ -50,6 +51,12 @@ router.post('/intents', validatePaymentIntent, paymentController.createPaymentIn
 
 // Submit payment details and initiate provider payment
 router.post('/intents/:sessionId/submit', validatePaymentDetails, paymentController.submitPaymentDetails);
+
+// SSO-driven payment intent — used by third-party apps (SBC Live) to charge users
+// via SBC's providers. Requires an SSO access token with payments.write scope.
+// See PaymentController.createSsoPaymentIntent for the two supported shapes
+// (paid-live with beneficiaryUserId, or feature subscription with subscriptionType).
+router.post('/sso/intents', requireSsoScope(['payments.write']), paymentController.createSsoPaymentIntent);
 
 // Check payment status (useful especially for Lygos polling)
 router.get('/intents/:sessionId/status', paymentController.getPaymentStatus);

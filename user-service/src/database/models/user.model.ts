@@ -86,6 +86,7 @@ export interface IUser extends Document {
     balance: number;
     usdBalance: number;
     activationBalance: number; // Dedicated balance for activating referrals' accounts (BEAC compliance)
+    sbcLiveBalance: number; // Creator earnings from SBC Live (75% of paid-live revenue after 25% SBC commission)
     // Crypto wallet information
     cryptoWalletAddress?: string;
     cryptoWalletCurrency?: string; // e.g., 'BTC', 'ETH', 'USDT'
@@ -169,6 +170,7 @@ const UserSchema = new Schema<IUser>(
         balance: { type: Number, default: 0, required: true },
         usdBalance: { type: Number, default: 0, required: true },
         activationBalance: { type: Number, default: 0, required: true }, // For sponsoring referral activations (BEAC compliance)
+        sbcLiveBalance: { type: Number, default: 0, required: true }, // Creator earnings from SBC Live (75% split after 25% SBC commission). Mongoose default handles backfill — no migration script needed.
         // Crypto wallet information
         cryptoWalletAddress: { 
             type: String, 

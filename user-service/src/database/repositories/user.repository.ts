@@ -214,6 +214,33 @@ export class UserRepository {
     }
 
     /**
+     * Atomically credit (positive amount) or debit (negative amount) a user's
+     * sbcLiveBalance. Used by payment-service when:
+     *   - A paid-live charge completes → credit the creator's 75% share
+     *   - A creator withdraws from their SBC Live earnings → debit the amount
+     *   - An admin issues a refund → debit
+     *
+     * Returns the updated user document, or null if the user doesn't exist.
+     * For debits, fails (returns null) if the post-update balance would be
+     * negative — caller should treat null as "insufficient funds" and not retry.
+     */
+    async updateSbcLiveBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount === 0) {
+            return UserModel.findById(userId).exec();
+        }
+        const filter: Record<string, any> = { _id: userId };
+        if (amount < 0) {
+            // Guard against going negative.
+            filter.sbcLiveBalance = { $gte: Math.abs(amount) };
+        }
+        return UserModel.findOneAndUpdate(
+            filter,
+            { $inc: { sbcLiveBalance: amount } },
+            { new: true },
+        ).exec();
+    }
+
+    /**
      * Atomically transfers activation balance between two users.
      * @param fromUserId - The sender's user ID.
      * @param toUserId - The recipient's user ID.

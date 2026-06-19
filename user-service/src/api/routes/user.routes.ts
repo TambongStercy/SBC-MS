@@ -22,6 +22,9 @@ serviceRouter.use(authenticateServiceRequest); // Apply service auth HERE
 serviceRouter.get('/:userId/balance', (req, res) => userController.getUserBalance(req, res));
 serviceRouter.post('/:userId/balance', (req, res) => userController.updateUserBalance(req, res));
 
+// SBC Live wallet — credit/debit by payment-service when paid-live charges complete or refunds happen.
+serviceRouter.post('/:userId/sbc-live-balance', (req, res) => userController.updateSbcLiveBalance(req, res));
+
 // USD Balance routes
 serviceRouter.get('/:userId/usd-balance', (req, res) => userController.getUserUsdBalance(req, res));
 serviceRouter.post('/:userId/usd-balance', (req, res) => userController.updateUserUsdBalance(req, res));

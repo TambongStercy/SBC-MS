@@ -5,6 +5,7 @@ export enum SubscriptionType {
     CLASSIQUE = 'CLASSIQUE',
     CIBLE = 'CIBLE',
     RELANCE = 'RELANCE', // Monthly recurring WhatsApp follow-up feature
+    VISIBILITE_MAX = 'VISIBILITE_MAX', // SBC Live "Visibilité Maximale" — 50,000 FCFA/month creator-side feature subscription. Per Rufus's eligibility rule: lets the user create formations even without 25 direct referrals.
     // Add other subscription types here
 }
 
