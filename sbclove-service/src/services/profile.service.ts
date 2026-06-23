@@ -7,6 +7,7 @@ import { Intention, ProfileStatus, ageBracketFromBirthDate } from '../types/sbcl
 import { userServiceClient, UserDetails } from './clients/user.service.client';
 import { settingsServiceClient } from './clients/settings.service.client';
 import { validateProfileText } from '../utils/contentFilter';
+import { generateBlurredDerivative } from '../utils/imageProcessing';
 import { AppError } from '../utils/errors';
 import config from '../config';
 import logger from '../utils/logger';
@@ -36,7 +37,7 @@ export interface PublicProfileView {
     otherIntentionText?: string;
     description: string;
     status: ProfileStatus;
-    photos: { url: string; blurred: boolean; order: number }[];
+    photos: { url?: string; blurred: boolean; order: number }[];
     createdAt?: Date;
 }
 
@@ -151,8 +152,19 @@ class ProfileService {
         let order = profile.photos.length;
         for (const file of files) {
             const uploaded = await settingsServiceClient.uploadPhoto(file.buffer, file.originalname, file.mimetype);
-            // NOTE (Phase 3): generate and store a blurred derivative; for now blurredFileId is unset.
-            newPhotos.push({ fileId: uploaded.fileId, order: order++ });
+
+            // Generate and store a blurred derivative served to non-profile viewers (spec §6).
+            let blurredFileId: string | undefined;
+            const blurredBuffer = await generateBlurredDerivative(file.buffer);
+            if (blurredBuffer) {
+                const blurredName = `blurred-${file.originalname.replace(/\.[^.]+$/, '')}.jpg`;
+                const blurredUpload = await settingsServiceClient.uploadPhoto(blurredBuffer, blurredName, 'image/jpeg');
+                blurredFileId = blurredUpload.fileId;
+            } else {
+                log.warn(`Blur generation failed for a photo of user ${userId}; it will not be browsable until reprocessed.`);
+            }
+
+            newPhotos.push({ fileId: uploaded.fileId, blurredFileId, order: order++ });
         }
 
         let updated = await loveProfileRepository.updateByUserId(userId, {
@@ -284,12 +296,14 @@ class ProfileService {
                 .slice()
                 .sort((a, b) => a.order - b.order)
                 .map(ph => {
-                    // Clear photo only when the viewer is allowed AND a clear file exists.
                     if (canSeeClearPhotos) {
                         return { url: settingsServiceClient.getFileUrl(ph.fileId), blurred: false, order: ph.order };
                     }
-                    const id = ph.blurredFileId || ph.fileId; // fall back to original id; frontend overlays until blur exists
-                    return { url: settingsServiceClient.getFileUrl(id), blurred: true, order: ph.order };
+                    // Non-approved viewer: ONLY ever serve the blurred derivative. If none
+                    // exists, serve no URL at all rather than leak the clear image (spec §3, §6).
+                    return ph.blurredFileId
+                        ? { url: settingsServiceClient.getFileUrl(ph.blurredFileId), blurred: true, order: ph.order }
+                        : { url: undefined, blurred: true, order: ph.order };
                 }),
             createdAt: profile.createdAt,
         };

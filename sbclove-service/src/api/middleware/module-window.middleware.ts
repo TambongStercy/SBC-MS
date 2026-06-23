@@ -20,7 +20,7 @@ export const enforceModuleWindow = async (req: AuthenticatedRequest, res: Respon
         if (!cfg.enabled) {
             return next(new AppError('SBCLOVE is currently disabled.', 423)); // 423 Locked
         }
-        if (!isWindowOpen()) {
+        if (!isWindowOpen(new Date(), cfg)) {
             return next(new AppError('SBCLOVE is closed. The module is open on its weekly session window only.', 423));
         }
         next();

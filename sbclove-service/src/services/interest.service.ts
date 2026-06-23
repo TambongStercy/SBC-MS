@@ -34,8 +34,8 @@ class InterestService {
             throw new AppError('Profile not found.', 404);
         }
 
-        const sessionDate = getSessionDateKey();
         const moduleCfg = await moduleConfigRepository.get();
+        const sessionDate = getSessionDateKey(new Date(), moduleCfg);
 
         const used = await interestRepository.countForSession(fromUserId, sessionDate);
         if (used >= moduleCfg.maxInterestsPerWeek) {
@@ -80,7 +80,7 @@ class InterestService {
 
     async remainingInterests(userId: string): Promise<number> {
         const moduleCfg = await moduleConfigRepository.get();
-        const used = await interestRepository.countForSession(userId, getSessionDateKey());
+        const used = await interestRepository.countForSession(userId, getSessionDateKey(new Date(), moduleCfg));
         return Math.max(0, moduleCfg.maxInterestsPerWeek - used);
     }
 }
