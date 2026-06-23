@@ -26,7 +26,8 @@ import {
   MessagesSquare,
   Rss,
   Trophy,
-  TrendingUp
+  TrendingUp,
+  Heart
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -102,6 +103,12 @@ const SIDEBAR_GROUPS = [
         icon: Trophy,
         color: "#f59e0b",
         path: "/impact-challenges",
+      },
+      {
+        name: "SBC Love",
+        icon: Heart,
+        color: "#3b82f6",
+        path: "/sbclove",
       },
     ]
   },
