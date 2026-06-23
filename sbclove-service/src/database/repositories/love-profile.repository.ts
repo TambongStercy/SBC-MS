@@ -29,6 +29,12 @@ export class LoveProfileRepository {
         return LoveProfileModel.findOne({ userId }).lean<ILoveProfile>().exec();
     }
 
+    /** Batch fetch profiles by userId (single $in query) for list hydration. */
+    async findByUserIds(userIds: (string | Types.ObjectId)[]): Promise<ILoveProfile[]> {
+        if (userIds.length === 0) return [];
+        return LoveProfileModel.find({ userId: { $in: userIds } }).lean<ILoveProfile[]>().exec();
+    }
+
     async findOne(query: FilterQuery<ILoveProfile>): Promise<ILoveProfile | null> {
         return LoveProfileModel.findOne(query).lean<ILoveProfile>().exec();
     }

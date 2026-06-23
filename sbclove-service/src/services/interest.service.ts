@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { interestRepository } from '../database/repositories/interest.repository';
+import { interestQuotaRepository } from '../database/repositories/interest-quota.repository';
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
 import { blockRepository } from '../database/repositories/block.repository';
 import { matchRepository } from '../database/repositories/match.repository';
@@ -42,22 +43,31 @@ class InterestService {
         const moduleCfg = await moduleConfigRepository.get();
         const sessionDate = getSessionDateKey(new Date(), moduleCfg);
 
-        const used = await interestRepository.countForSession(fromUserId, sessionDate);
-        if (used >= moduleCfg.maxInterestsPerWeek) {
-            throw new AppError(`Weekly interest limit reached (${moduleCfg.maxInterestsPerWeek}).`, 429);
-        }
-
+        // Reject an already-expressed interest before consuming a quota slot.
         if (await interestRepository.exists(fromUserId, toUserId)) {
             throw new AppError('You have already expressed interest in this profile.', 409);
         }
 
-        await interestRepository.create({
-            fromUserId: new Types.ObjectId(fromUserId),
-            toUserId: new Types.ObjectId(toUserId),
-            sessionDate,
-        });
+        // Atomically reserve a weekly slot. Race-free under concurrency: the
+        // conditional $inc can never push the count past the limit.
+        const reserved = await interestQuotaRepository.tryReserve(fromUserId, sessionDate, moduleCfg.maxInterestsPerWeek);
+        if (!reserved) {
+            throw new AppError(`Weekly interest limit reached (${moduleCfg.maxInterestsPerWeek}).`, 429);
+        }
 
-        const interestsLeft = Math.max(0, moduleCfg.maxInterestsPerWeek - (used + 1));
+        try {
+            await interestRepository.create({
+                fromUserId: new Types.ObjectId(fromUserId),
+                toUserId: new Types.ObjectId(toUserId),
+                sessionDate,
+            });
+        } catch (err) {
+            // Insert failed (e.g. a concurrent duplicate) — give the reserved slot back.
+            await interestQuotaRepository.release(fromUserId, sessionDate);
+            throw err;
+        }
+
+        const interestsLeft = Math.max(0, moduleCfg.maxInterestsPerWeek - await interestQuotaRepository.getCount(fromUserId, sessionDate));
 
         // Reciprocity check → match (spec §10).
         const reciprocal = await interestRepository.exists(toUserId, fromUserId);
@@ -85,7 +95,7 @@ class InterestService {
 
     async remainingInterests(userId: string): Promise<number> {
         const moduleCfg = await moduleConfigRepository.get();
-        const used = await interestRepository.countForSession(userId, getSessionDateKey(new Date(), moduleCfg));
+        const used = await interestQuotaRepository.getCount(userId, getSessionDateKey(new Date(), moduleCfg));
         return Math.max(0, moduleCfg.maxInterestsPerWeek - used);
     }
 }

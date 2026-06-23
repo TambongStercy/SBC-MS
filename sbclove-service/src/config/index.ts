@@ -44,6 +44,7 @@ interface IConfig {
             useNewUrlParser: boolean;
             useUnifiedTopology: boolean;
             serverSelectionTimeoutMS: number;
+            maxPoolSize: number;
         };
     };
     jwt: {
@@ -101,7 +102,9 @@ const config: IConfig = {
         options: {
             useNewUrlParser: true,
             useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000
+            serverSelectionTimeoutMS: 5000,
+            // Larger pool helps absorb the weekly concurrency spike per replica.
+            maxPoolSize: parseInt(process.env.SBCLOVE_DB_POOL_SIZE || '50', 10),
         }
     },
 

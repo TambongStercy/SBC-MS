@@ -40,10 +40,10 @@ class MatchService {
         const otherIds = visibleMatches.map(m => this.otherUserId(m, userId));
         const [users, profiles] = await Promise.all([
             userServiceClient.getUsersByIds(otherIds),
-            Promise.all(otherIds.map(id => loveProfileRepository.findByUserId(id))),
+            loveProfileRepository.findByUserIds(otherIds), // single $in query, not N round-trips
         ]);
         const userMap = new Map(users.map(u => [u._id.toString(), u]));
-        const profileMap = new Map(profiles.filter(Boolean).map(p => [p!.userId.toString(), p!]));
+        const profileMap = new Map(profiles.map(p => [p.userId.toString(), p]));
 
         return visibleMatches
             // Drop matches whose other party is no longer an active (approved) profile.
@@ -99,8 +99,10 @@ class MatchService {
         if (choice === ContactChoice.WANTS_CONTACT) {
             const bothWant = updated.participants.every(p => p.choice === ContactChoice.WANTS_CONTACT);
             if (bothWant) {
-                if (!updated.contactUnlocked) {
-                    await matchRepository.markContactUnlocked(matchId);
+                // Atomic flip: only the caller that actually unlocks sends the emails,
+                // so simultaneous mutual opt-ins can't double-send.
+                const flipped = await matchRepository.markContactUnlocked(matchId);
+                if (flipped) {
                     Promise.allSettled([
                         sbcloveNotificationService.sendContactUnlockedEmail(userId),
                         sbcloveNotificationService.sendContactUnlockedEmail(otherId),

@@ -86,9 +86,14 @@ export class MatchRepository {
         ).lean<IMatch>().exec();
     }
 
+    /**
+     * Atomically flips contactUnlocked false→true exactly once. Returns the
+     * updated doc if THIS call performed the flip, or null if it was already
+     * unlocked — so concurrent mutual opt-ins send the unlock emails only once.
+     */
     async markContactUnlocked(matchId: Types.ObjectId | string): Promise<IMatch | null> {
-        return MatchModel.findByIdAndUpdate(
-            matchId,
+        return MatchModel.findOneAndUpdate(
+            { _id: matchId, contactUnlocked: false },
             { contactUnlocked: true, contactUnlockedAt: new Date() },
             { new: true }
         ).lean<IMatch>().exec();

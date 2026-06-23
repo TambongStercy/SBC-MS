@@ -6,8 +6,11 @@ const log = logger.getLogger('Database');
 
 const connectDB = async () => {
     try {
-        await mongoose.connect(config.mongodb.uri);
-        log.info('MongoDB Connected successfully.');
+        await mongoose.connect(config.mongodb.uri, {
+            serverSelectionTimeoutMS: config.mongodb.options.serverSelectionTimeoutMS,
+            maxPoolSize: config.mongodb.options.maxPoolSize,
+        });
+        log.info(`MongoDB Connected successfully (maxPoolSize=${config.mongodb.options.maxPoolSize}).`);
 
         mongoose.connection.on('error', (err) => {
             log.error('MongoDB connection error after initial connection:', err);
