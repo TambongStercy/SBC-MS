@@ -8,11 +8,11 @@ const log = logger.getLogger('NotificationServiceClient');
 // (same contract used by tombola-service).
 interface InternalNotificationPayload {
     userId: string;
-    type: string;
-    channel: string;      // e.g. 'EMAIL'
+    type: string;         // must be a notification-service NotificationType (e.g. 'system')
+    channel: string;      // must be a DeliveryChannel (e.g. 'email')
     recipient?: string;
     data: {
-        title?: string;
+        subject?: string; // used as the email subject by notification-service
         body: string;
         templateId?: string;
         variables?: Record<string, any>;
