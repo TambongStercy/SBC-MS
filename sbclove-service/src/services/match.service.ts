@@ -72,6 +72,12 @@ class MatchService {
             throw new AppError('Match not found.', 404);
         }
 
+        // Idempotent: re-submitting the same choice is a no-op (no duplicate emails).
+        const previousChoice = this.choiceOf(match, userId);
+        if (previousChoice === choice) {
+            return { contactUnlocked: match.contactUnlocked };
+        }
+
         const updated = await matchRepository.setParticipantChoice(matchId, userId, choice);
         if (!updated) {
             throw new AppError('Could not update contact choice.', 500);
@@ -79,17 +85,21 @@ class MatchService {
 
         const otherId = this.otherUserId(updated, userId);
 
+        // Emails only fire on a real transition INTO wants_contact (guaranteed here
+        // because previousChoice !== choice), so they can't be spammed by repeats.
         if (choice === ContactChoice.WANTS_CONTACT) {
             const bothWant = updated.participants.every(p => p.choice === ContactChoice.WANTS_CONTACT);
-            if (bothWant && !updated.contactUnlocked) {
-                await matchRepository.markContactUnlocked(matchId);
-                Promise.allSettled([
-                    sbcloveNotificationService.sendContactUnlockedEmail(userId),
-                    sbcloveNotificationService.sendContactUnlockedEmail(otherId),
-                ]).catch(err => log.error('Contact-unlocked email error:', err));
+            if (bothWant) {
+                if (!updated.contactUnlocked) {
+                    await matchRepository.markContactUnlocked(matchId);
+                    Promise.allSettled([
+                        sbcloveNotificationService.sendContactUnlockedEmail(userId),
+                        sbcloveNotificationService.sendContactUnlockedEmail(otherId),
+                    ]);
+                }
                 return { contactUnlocked: true };
             }
-            // Only the caller has opted in so far → notify the other party (spec §13).
+            // First/only side to opt in → notify the other party once (spec §13).
             sbcloveNotificationService.sendContactRequestEmail(otherId)
                 .catch(err => log.error('Contact-request email error:', err));
         }

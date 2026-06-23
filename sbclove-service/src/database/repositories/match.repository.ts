@@ -17,27 +17,37 @@ export const canonicalPair = (
 
 export class MatchRepository {
 
-    async create(userX: Types.ObjectId | string, userY: Types.ObjectId | string): Promise<IMatch> {
+    /**
+     * Atomically gets-or-creates the match for a pair and reports whether THIS
+     * call created it. The atomic upsert makes concurrent reciprocal interests
+     * (A→B and B→A at the same time) converge to a single match with exactly one
+     * `created: true` result, so match notifications are sent exactly once.
+     */
+    async createOrGet(
+        userX: Types.ObjectId | string,
+        userY: Types.ObjectId | string
+    ): Promise<{ match: IMatch; created: boolean }> {
         const [userA, userB] = canonicalPair(userX, userY);
-        try {
-            const match = await MatchModel.create({
-                userA,
-                userB,
-                participants: [
-                    { userId: userA, choice: ContactChoice.PENDING },
-                    { userId: userB, choice: ContactChoice.PENDING },
-                ],
-                contactUnlocked: false,
-            });
-            log.info(`Created match ${match._id} between ${userA} and ${userB}`);
-            return match;
-        } catch (error: any) {
-            if (error.code === 11000) {
-                const existing = await this.findByPair(userA, userB);
-                if (existing) return existing;
-            }
-            throw error;
+        const res = await MatchModel.findOneAndUpdate(
+            { userA, userB },
+            {
+                $setOnInsert: {
+                    userA,
+                    userB,
+                    participants: [
+                        { userId: userA, choice: ContactChoice.PENDING },
+                        { userId: userB, choice: ContactChoice.PENDING },
+                    ],
+                    contactUnlocked: false,
+                },
+            },
+            { upsert: true, new: true, includeResultMetadata: true }
+        );
+        const created = res.lastErrorObject?.updatedExisting === false;
+        if (created) {
+            log.info(`Created match ${res.value?._id} between ${userA} and ${userB}`);
         }
+        return { match: res.value as IMatch, created };
     }
 
     async findById(id: Types.ObjectId | string): Promise<IMatch | null> {

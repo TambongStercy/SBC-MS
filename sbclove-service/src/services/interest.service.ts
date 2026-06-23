@@ -8,9 +8,6 @@ import { moduleConfigRepository } from '../database/repositories/module-config.r
 import { sbcloveNotificationService } from './notification.service';
 import { getSessionDateKey } from '../utils/sbcloveWindow';
 import { AppError } from '../utils/errors';
-import logger from '../utils/logger';
-
-const log = logger.getLogger('InterestService');
 
 class InterestService {
 
@@ -20,6 +17,14 @@ class InterestService {
      * on reciprocity (spec §10).
      */
     async expressInterest(fromUserId: string, targetProfileId: string): Promise<{ matched: boolean; matchId?: string; interestsLeft: number }> {
+        // The expresser must have an approved profile so any resulting match is
+        // well-formed (both sides have a browsable card). Spec §2: members without
+        // a profile only get limited (read) access.
+        const myProfile = await loveProfileRepository.findByUserId(fromUserId);
+        if (!myProfile || myProfile.status !== ProfileStatus.APPROVED) {
+            throw new AppError('You need an approved SBCLOVE profile to express interest.', 403);
+        }
+
         const target = await loveProfileRepository.findById(targetProfileId);
         if (!target || target.status !== ProfileStatus.APPROVED) {
             throw new AppError('Profile not found.', 404);
@@ -60,15 +65,15 @@ class InterestService {
             return { matched: false, interestsLeft };
         }
 
-        const existingMatch = await matchRepository.findByPair(fromUserId, toUserId);
-        const match = existingMatch ?? await matchRepository.create(fromUserId, toUserId);
+        // Atomic get-or-create; only the call that actually created the match emails.
+        const { match, created } = await matchRepository.createOrGet(fromUserId, toUserId);
 
-        if (!existingMatch) {
+        if (created) {
             // Notify both users (best-effort, never blocks the response).
             Promise.allSettled([
                 sbcloveNotificationService.sendMatchEmail(fromUserId),
                 sbcloveNotificationService.sendMatchEmail(toUserId),
-            ]).catch(err => log.error('Match email dispatch error:', err));
+            ]);
         }
 
         return { matched: true, matchId: match._id.toString(), interestsLeft };
