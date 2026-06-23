@@ -12,6 +12,7 @@ export interface IModuleConfig extends Document {
     timezone: string;
     maxInterestsPerWeek: number;
     autoSuspendThreshold: number;
+    autoApprove: boolean;       // auto-approve profiles passing content validation (spec §7)
     updatedBy?: string;
     createdAt: Date;
     updatedAt: Date;
@@ -27,6 +28,7 @@ const ModuleConfigSchema = new Schema<IModuleConfig>(
         timezone: { type: String, required: true, default: 'Africa/Douala' },
         maxInterestsPerWeek: { type: Number, required: true, default: 5 },
         autoSuspendThreshold: { type: Number, required: true, default: 3 },
+        autoApprove: { type: Boolean, required: true, default: false },
         updatedBy: { type: String },
     },
     {

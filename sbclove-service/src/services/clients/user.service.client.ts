@@ -18,12 +18,6 @@ export interface UserDetails {
     isVerified?: boolean;
 }
 
-interface SingleUserResponse {
-    success: boolean;
-    data: UserDetails;
-    message?: string;
-}
-
 interface BatchUserDetailsResponse {
     success: boolean;
     data: UserDetails[];
@@ -63,39 +57,32 @@ class UserServiceClient {
     }
 
     /**
-     * Fetches a single user's details by id.
+     * Fetches a single user's SBCLOVE details by id.
      */
     async getUserById(userId: string): Promise<UserDetails | null> {
-        try {
-            const response = await this.client.get<SingleUserResponse>(`/users/internal/${userId}`);
-            if (response.data?.success && response.data.data) {
-                return response.data.data;
-            }
-            return null;
-        } catch (error: any) {
-            log.warn(`Failed to fetch user ${userId}: ${error.message}`);
-            return null;
-        }
+        const [user] = await this.getUsersByIds([userId]);
+        return user ?? null;
     }
 
     /**
-     * Fetches details for multiple users by their IDs (batch hydration).
-     * Mirrors the tombola-service pattern (POST /users/internal/batch-details).
+     * Fetches the SBCLOVE demographic subset for multiple users (batch hydration).
+     * Backed by user-service POST /users/internal/sbclove-details, which returns
+     * { _id, name, avatar, sex, birthDate, city, country, isVerified }.
      */
     async getUsersByIds(userIds: string[]): Promise<UserDetails[]> {
         if (!userIds || userIds.length === 0) {
             return [];
         }
-        log.info(`Requesting user details for ${userIds.length} IDs from User Service.`);
+        log.info(`Requesting SBCLOVE user details for ${userIds.length} IDs from User Service.`);
         try {
-            const response = await this.client.post<BatchUserDetailsResponse>('/users/internal/batch-details', { userIds });
+            const response = await this.client.post<BatchUserDetailsResponse>('/users/internal/sbclove-details', { userIds });
             if (response.data?.success && Array.isArray(response.data.data)) {
                 return response.data.data;
             }
-            log.warn('User Service batch-details responded with an unexpected shape.');
+            log.warn('User Service sbclove-details responded with an unexpected shape.');
             return [];
         } catch (error: any) {
-            log.error(`Failed batch user fetch: ${error.message}`);
+            log.error(`Failed SBCLOVE user fetch: ${error.message}`);
             return [];
         }
     }

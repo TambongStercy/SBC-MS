@@ -70,6 +70,7 @@ interface IConfig {
         closeHour: number;      // 24h
         maxInterestsPerWeek: number;
         autoSuspendThreshold: number;
+        autoApprove: boolean;
         maxPhotos: number;
         descriptionMaxLength: number;
         otherIntentionMaxLength: number;
@@ -132,6 +133,9 @@ const config: IConfig = {
         closeHour: parseInt(process.env.SBCLOVE_CLOSE_HOUR || '21', 10),
         maxInterestsPerWeek: parseInt(process.env.SBCLOVE_MAX_INTERESTS_PER_WEEK || '5', 10),
         autoSuspendThreshold: parseInt(process.env.SBCLOVE_AUTO_SUSPEND_THRESHOLD || '3', 10),
+        // Manual validation is recommended by default (spec §7); set true to auto-approve
+        // profiles that pass content validation.
+        autoApprove: (process.env.SBCLOVE_AUTO_APPROVE || 'false').toLowerCase() === 'true',
         maxPhotos: parseInt(process.env.SBCLOVE_MAX_PHOTOS || '3', 10),
         descriptionMaxLength: parseInt(process.env.SBCLOVE_DESCRIPTION_MAX_LENGTH || '300', 10),
         otherIntentionMaxLength: parseInt(process.env.SBCLOVE_OTHER_INTENTION_MAX_LENGTH || '80', 10),

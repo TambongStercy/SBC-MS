@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
 import { blockRepository } from '../database/repositories/block.repository';
+import { moduleConfigRepository } from '../database/repositories/module-config.repository';
 import { ILoveProfile, IProfilePhoto } from '../database/models/love-profile.model';
 import { Intention, ProfileStatus, ageBracketFromBirthDate } from '../types/sbclove.enums';
 import { userServiceClient, UserDetails } from './clients/user.service.client';
@@ -11,6 +12,8 @@ import config from '../config';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('ProfileService');
+
+const DISPLAY_NAME_MAX_LENGTH = 50;
 
 export interface CreateProfileInput {
     displayName?: string;
@@ -41,6 +44,12 @@ class ProfileService {
 
     /** Validates SBCLOVE-owned text fields against config + content rules (spec §5, §7). */
     private validateContent(input: { displayName?: string; description: string; intention: Intention; otherIntentionText?: string }): void {
+        if (!input.intention || !Object.values(Intention).includes(input.intention)) {
+            throw new AppError(`Invalid intention. Allowed values: ${Object.values(Intention).join(', ')}.`, 400);
+        }
+        if (input.displayName !== undefined && input.displayName.length > DISPLAY_NAME_MAX_LENGTH) {
+            throw new AppError(`Display name must be at most ${DISPLAY_NAME_MAX_LENGTH} characters.`, 400);
+        }
         if (!input.description || input.description.trim().length === 0) {
             throw new AppError('Description is required.', 400);
         }
@@ -114,13 +123,14 @@ class ProfileService {
         this.validateContent(merged as any);
 
         // Any edit re-enters the validation queue (spec §7).
-        const updated = await loveProfileRepository.updateByUserId(userId, {
+        let updated = await loveProfileRepository.updateByUserId(userId, {
             displayName: merged.displayName?.trim(),
             intention: merged.intention,
             otherIntentionText: merged.intention === Intention.OTHER ? merged.otherIntentionText?.trim() : undefined,
             description: merged.description?.trim(),
             status: ProfileStatus.PENDING,
         });
+        updated = await this.maybeAutoApprove(updated as ILoveProfile) ?? updated;
 
         const user = await userServiceClient.getUserById(userId);
         return this.present(updated as ILoveProfile, user, true);
@@ -140,16 +150,77 @@ class ProfileService {
         const newPhotos: IProfilePhoto[] = [];
         let order = profile.photos.length;
         for (const file of files) {
-            const fileId = await settingsServiceClient.uploadPrivatePhoto(file.buffer, file.originalname, file.mimetype);
+            const uploaded = await settingsServiceClient.uploadPhoto(file.buffer, file.originalname, file.mimetype);
             // NOTE (Phase 3): generate and store a blurred derivative; for now blurredFileId is unset.
-            newPhotos.push({ fileId, order: order++ });
+            newPhotos.push({ fileId: uploaded.fileId, order: order++ });
         }
 
-        const updated = await loveProfileRepository.updateByUserId(userId, {
+        let updated = await loveProfileRepository.updateByUserId(userId, {
             photos: [...profile.photos, ...newPhotos],
         });
+        updated = await this.maybeAutoApprove(updated as ILoveProfile) ?? updated;
         const user = await userServiceClient.getUserById(userId);
         return this.present(updated as ILoveProfile, user, true);
+    }
+
+    /**
+     * Deletes a photo from the caller's profile by fileId and renumbers order.
+     * (The underlying storage object is left for a later cleanup pass.)
+     */
+    async deletePhoto(userId: string, fileId: string): Promise<PublicProfileView> {
+        const profile = await loveProfileRepository.findByUserId(userId);
+        if (!profile) {
+            throw new AppError('SBCLOVE profile not found.', 404);
+        }
+        const remaining = profile.photos.filter(p => p.fileId !== fileId);
+        if (remaining.length === profile.photos.length) {
+            throw new AppError('Photo not found on your profile.', 404);
+        }
+        const renumbered = remaining
+            .sort((a, b) => a.order - b.order)
+            .map((p, idx) => ({ ...p, order: idx }));
+
+        const updated = await loveProfileRepository.updateByUserId(userId, { photos: renumbered });
+        const user = await userServiceClient.getUserById(userId);
+        return this.present(updated as ILoveProfile, user, true);
+    }
+
+    /**
+     * Reorders the caller's photos to match the given fileId order.
+     */
+    async reorderPhotos(userId: string, orderedFileIds: string[]): Promise<PublicProfileView> {
+        const profile = await loveProfileRepository.findByUserId(userId);
+        if (!profile) {
+            throw new AppError('SBCLOVE profile not found.', 404);
+        }
+        const current = new Set(profile.photos.map(p => p.fileId));
+        if (orderedFileIds.length !== profile.photos.length || !orderedFileIds.every(id => current.has(id))) {
+            throw new AppError('The provided photo order must contain exactly your existing photos.', 400);
+        }
+        const byId = new Map(profile.photos.map(p => [p.fileId, p]));
+        const reordered = orderedFileIds.map((id, idx) => ({ ...byId.get(id)!, order: idx }));
+
+        const updated = await loveProfileRepository.updateByUserId(userId, { photos: reordered });
+        const user = await userServiceClient.getUserById(userId);
+        return this.present(updated as ILoveProfile, user, true);
+    }
+
+    /**
+     * If auto-approval is enabled (spec §7) and the profile is pending with at
+     * least one photo, transitions it to approved. Returns the updated doc or
+     * null when no change was made.
+     */
+    private async maybeAutoApprove(profile: ILoveProfile): Promise<ILoveProfile | null> {
+        if (!profile || profile.status !== ProfileStatus.PENDING || profile.photos.length === 0) {
+            return null;
+        }
+        const cfg = await moduleConfigRepository.get();
+        if (!cfg.autoApprove) {
+            return null;
+        }
+        return loveProfileRepository.setStatus(profile._id, ProfileStatus.APPROVED, {
+            validatedAt: new Date(),
+        });
     }
 
     /**

@@ -27,6 +27,9 @@ class AdminService {
         if (!profile) {
             throw new AppError('Profile not found.', 404);
         }
+        if (approve && profile.photos.length === 0) {
+            throw new AppError('Cannot approve a profile without at least one photo.', 400);
+        }
         const status = approve ? ProfileStatus.APPROVED : ProfileStatus.REJECTED;
         const updated = await loveProfileRepository.setStatus(profileId, status, {
             validatedBy: new Types.ObjectId(adminId),

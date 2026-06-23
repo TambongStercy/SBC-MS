@@ -621,6 +621,21 @@ export class UserRepository {
     }
 
     /**
+     * [Internal] Returns the demographic subset consumed by the SBCLOVE module
+     * (sbclove-service). Read-only projection — the SBCLOVE profile reuses this
+     * data rather than duplicating it.
+     */
+    async findSbcloveDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name avatar sex birthDate city country isVerified')
+            .lean()
+            .exec();
+    }
+
+    /**
      * Finds user IDs matching a given query.
      * @param query - Mongoose filter query (likely using $or for search).
      * @returns An array of user ID strings.

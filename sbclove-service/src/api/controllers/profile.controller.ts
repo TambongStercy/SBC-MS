@@ -65,6 +65,28 @@ class ProfileController {
         }
     }
 
+    async deletePhoto(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const view = await profileService.deletePhoto(req.user!.userId, req.params.fileId);
+            res.status(200).json({ success: true, message: 'Photo deleted.', data: view });
+        } catch (error) {
+            this.handle(error, res, next);
+        }
+    }
+
+    async reorderPhotos(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { order } = req.body as { order: string[] };
+            if (!Array.isArray(order) || order.some(id => typeof id !== 'string')) {
+                throw new AppError('`order` must be an array of photo fileIds.', 400);
+            }
+            const view = await profileService.reorderPhotos(req.user!.userId, order);
+            res.status(200).json({ success: true, message: 'Photos reordered.', data: view });
+        } catch (error) {
+            this.handle(error, res, next);
+        }
+    }
+
     async browse(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
             const { limit, skip, page } = parsePagination(req);

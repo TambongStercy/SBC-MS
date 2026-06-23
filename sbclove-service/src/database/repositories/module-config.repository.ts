@@ -24,6 +24,7 @@ export class ModuleConfigRepository {
                 timezone: config.sbclove.timezone,
                 maxInterestsPerWeek: config.sbclove.maxInterestsPerWeek,
                 autoSuspendThreshold: config.sbclove.autoSuspendThreshold,
+                autoApprove: config.sbclove.autoApprove,
             });
         }
         return cfg;

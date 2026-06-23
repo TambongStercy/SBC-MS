@@ -10,8 +10,16 @@ interface UploadResponse {
     data?: {
         fileId: string;
         url?: string;
+        fileName?: string;
+        mimeType?: string;
+        size?: number;
     };
     message?: string;
+}
+
+export interface UploadedPhoto {
+    fileId: string;
+    url?: string;
 }
 
 class SettingsServiceClient {
@@ -29,19 +37,24 @@ class SettingsServiceClient {
     }
 
     /**
-     * Uploads a SBCLOVE photo to the settings-service PRIVATE bucket
-     * (profile photos are privacy-sensitive). Returns the stored file id.
+     * Uploads a SBCLOVE photo via settings-service (public bucket, served by the
+     * /settings/files proxy). The returned fileId is a random UUID-based key, so
+     * the clear image is never reachable unless the API hands out its id —
+     * blurred/clear selection is enforced at the API layer (spec §3, §6).
+     *
+     * NOTE (future hardening): switch to the private bucket + signed URLs for
+     * stronger access control once per-view signed-URL latency is acceptable.
      *
      * @param fileBuffer raw image bytes
      * @param fileName   original file name (for content-type inference)
      * @param mimeType   image mime type
      */
-    async uploadPrivatePhoto(fileBuffer: Buffer, fileName: string, mimeType: string): Promise<string> {
+    async uploadPhoto(fileBuffer: Buffer, fileName: string, mimeType: string): Promise<UploadedPhoto> {
         const form = new FormData();
         form.append('file', fileBuffer, { filename: fileName, contentType: mimeType });
         form.append('folderName', 'sbclove');
 
-        const response = await this.client.post<UploadResponse>('/settings/internal/upload-private', form, {
+        const response = await this.client.post<UploadResponse>('/settings/internal/upload', form, {
             headers: form.getHeaders(),
         });
 
@@ -49,7 +62,7 @@ class SettingsServiceClient {
             log.error('Settings-service upload returned no fileId', { data: response.data });
             throw new Error('Photo upload failed.');
         }
-        return response.data.data.fileId;
+        return { fileId: response.data.data.fileId, url: response.data.data.url };
     }
 
     /**
