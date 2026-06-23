@@ -40,6 +40,36 @@ class AdminService {
         return updated;
     }
 
+    /**
+     * Manually suspends or reinstates a profile (spec §14). Reinstating clears
+     * the report counter so an old report tally can't immediately re-suspend it.
+     */
+    async setSuspension(adminId: string, profileId: string, suspend: boolean, reason?: string) {
+        const profile = await loveProfileRepository.findById(profileId);
+        if (!profile) {
+            throw new AppError('Profile not found.', 404);
+        }
+        if (suspend) {
+            const updated = await loveProfileRepository.setStatus(profileId, ProfileStatus.SUSPENDED, {
+                suspendedAt: new Date(),
+                rejectionReason: reason,
+                validatedBy: new Types.ObjectId(adminId),
+                validatedAt: new Date(),
+            });
+            log.info(`Admin ${adminId} suspended profile ${profileId}.`);
+            return updated;
+        }
+        // Reinstate → back to approved, reset the report tally.
+        const updated = await loveProfileRepository.setStatus(profileId, ProfileStatus.APPROVED, {
+            suspendedAt: undefined,
+            reportCount: 0,
+            validatedBy: new Types.ObjectId(adminId),
+            validatedAt: new Date(),
+        });
+        log.info(`Admin ${adminId} reinstated profile ${profileId}.`);
+        return updated;
+    }
+
     async listReports(status: ReportStatus | undefined, limit: number, skip: number) {
         const query = status ? { status } : {};
         const [items, total] = await Promise.all([

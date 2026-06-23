@@ -39,6 +39,19 @@ class AdminController {
         }
     }
 
+    async setSuspension(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { suspend, reason } = req.body as { suspend: boolean; reason?: string };
+            if (typeof suspend !== 'boolean') {
+                throw new AppError('`suspend` (boolean) is required.', 400);
+            }
+            const updated = await adminService.setSuspension(req.user!.userId, req.params.id, suspend, reason);
+            res.status(200).json({ success: true, message: suspend ? 'Profile suspended.' : 'Profile reinstated.', data: updated });
+        } catch (error) {
+            this.handle(error, res, next);
+        }
+    }
+
     async listReports(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
             const { limit, skip, page } = pagination(req);

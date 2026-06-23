@@ -1,8 +1,9 @@
 import { matchRepository } from '../database/repositories/match.repository';
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
+import { blockRepository } from '../database/repositories/block.repository';
 import { userServiceClient } from './clients/user.service.client';
 import { sbcloveNotificationService } from './notification.service';
-import { ContactChoice, ageBracketFromBirthDate } from '../types/sbclove.enums';
+import { ContactChoice, ProfileStatus, ageBracketFromBirthDate } from '../types/sbclove.enums';
 import { settingsServiceClient } from './clients/settings.service.client';
 import { IMatch } from '../database/models/match.model';
 import { AppError } from '../utils/errors';
@@ -31,7 +32,12 @@ class MatchService {
         const matches = await matchRepository.findForUser(userId, limit, skip);
         if (matches.length === 0) return [];
 
-        const otherIds = matches.map(m => this.otherUserId(m, userId));
+        // Hide matches with blocked users (either direction) — spec §14.
+        const blockedIds = new Set(await blockRepository.findRelatedUserIds(userId));
+        const visibleMatches = matches.filter(m => !blockedIds.has(this.otherUserId(m, userId)));
+        if (visibleMatches.length === 0) return [];
+
+        const otherIds = visibleMatches.map(m => this.otherUserId(m, userId));
         const [users, profiles] = await Promise.all([
             userServiceClient.getUsersByIds(otherIds),
             Promise.all(otherIds.map(id => loveProfileRepository.findByUserId(id))),
@@ -39,7 +45,10 @@ class MatchService {
         const userMap = new Map(users.map(u => [u._id.toString(), u]));
         const profileMap = new Map(profiles.filter(Boolean).map(p => [p!.userId.toString(), p!]));
 
-        return matches.map(m => {
+        return visibleMatches
+            // Drop matches whose other party is no longer an active (approved) profile.
+            .filter(m => profileMap.get(this.otherUserId(m, userId))?.status === ProfileStatus.APPROVED)
+            .map(m => {
             const otherId = this.otherUserId(m, userId);
             const user = userMap.get(otherId);
             const profile = profileMap.get(otherId);

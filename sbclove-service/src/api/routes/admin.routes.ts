@@ -11,6 +11,7 @@ router.use(authorizeAdmin);
 // Profile validation queue (spec §8)
 router.get('/profiles', (req, res, next) => adminController.listProfiles(req, res, next));
 router.patch('/profiles/:id/validate', (req, res, next) => adminController.validateProfile(req, res, next));
+router.patch('/profiles/:id/suspension', (req, res, next) => adminController.setSuspension(req, res, next));
 
 // Reports management (spec §14)
 router.get('/reports', (req, res, next) => adminController.listReports(req, res, next));

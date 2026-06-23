@@ -184,6 +184,7 @@ Strengthen SBC community engagement through a secured, serious and controlled we
 | POST | `/profiles/:id/block` | user | no |
 | GET | `/admin/profiles` | admin | no |
 | PATCH | `/admin/profiles/:id/validate` | admin | no |
+| PATCH | `/admin/profiles/:id/suspension` | admin | no |
 | GET | `/admin/reports` | admin | no |
 | PATCH | `/admin/reports/:id` | admin | no |
 | PATCH | `/admin/module` | admin | no |

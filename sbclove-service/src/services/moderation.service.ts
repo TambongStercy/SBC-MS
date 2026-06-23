@@ -9,6 +9,8 @@ import logger from '../utils/logger';
 
 const log = logger.getLogger('ModerationService');
 
+const REPORT_REASON_MAX_LENGTH = 500;
+
 class ModerationService {
 
     /**
@@ -18,6 +20,9 @@ class ModerationService {
     async reportProfile(reporterId: string, profileId: string, reason: string): Promise<{ reported: true; autoSuspended: boolean }> {
         if (!reason || reason.trim().length === 0) {
             throw new AppError('A reason is required to report a profile.', 400);
+        }
+        if (reason.length > REPORT_REASON_MAX_LENGTH) {
+            throw new AppError(`Reason must be at most ${REPORT_REASON_MAX_LENGTH} characters.`, 400);
         }
         const profile = await loveProfileRepository.findById(profileId);
         if (!profile) {
