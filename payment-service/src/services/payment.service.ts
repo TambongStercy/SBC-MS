@@ -518,8 +518,15 @@ class PaymentService {
 
             if (selectedGateway === PaymentGateway.CINETPAY) {
 
-                const cinetpayBalance = await cinetpayPayoutService.getBalance();
+                // CinetPay maintains a separate merchant balance per country (CI in XOF,
+                // CM in XAF, etc.). Without the countryCode arg, getBalance falls back
+                // to Object.keys(config.cinetpay.countries)[0] — so every withdrawal
+                // checked the same arbitrary country's balance and CI got blocked when
+                // CM was dry. Pass the user's actual country so the right account is
+                // queried.
+                const cinetpayBalance = await cinetpayPayoutService.getBalance(countryCode);
                 if (netAmountDesired > cinetpayBalance.available) {
+                    log.warn(`CinetPay balance shortfall for ${countryCode}: requested ${netAmountDesired}, available ${cinetpayBalance.available}. Withdrawal blocked for user ${userId}.`);
                     throw new AppError('Withdrawals unavailable for now', 400);
                 }
 
