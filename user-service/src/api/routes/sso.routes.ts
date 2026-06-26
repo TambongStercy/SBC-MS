@@ -70,4 +70,18 @@ router.get(
     (req, res) => ssoController.referralRelationship(req, res),
 );
 
+/**
+ * @route GET /api/sso/referrals/list?page=1&pageSize=50
+ * @desc  Paginated list of the caller's own direct (level-1) filleuls. Used by
+ *        SBC Live's "Mes filleuls" creator-side view. Caller is derived from the
+ *        token; no sponsorId param so a leaked token can only enumerate its own
+ *        owner's network. pageSize capped server-side at 100.
+ * @auth  Bearer <SSO access token> with referrals.read scope
+ */
+router.get(
+    '/referrals/list',
+    mediumLimiter,
+    (req, res) => ssoController.referralsList(req, res),
+);
+
 export default router;
