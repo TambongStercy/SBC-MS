@@ -338,6 +338,85 @@ class SsoService {
         };
     }
 
+    /**
+     * Returns the caller's direct (level-1) filleuls, paginated. Used by SBC Live's
+     * "Mes filleuls" creator-side view. Authenticated as the caller — no sponsorId
+     * param, so a token can only enumerate its own network (no way to scrape someone
+     * else's).
+     *
+     * Filters out blocked + soft-deleted referred users (handled by the existing
+     * `findDirectlyReferredUsersPopulated` aggregation), which matches what a real
+     * "my followers" view should show.
+     */
+    async listDirectFilleuls(
+        accessToken: string,
+        page: number,
+        pageSize: number,
+    ): Promise<{
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+        hasMore: boolean;
+        items: Array<{ id: string; name: string; avatarUrl: string | null; joinedAt: Date | null }>;
+    }> {
+        const decoded = this.verifyToken(accessToken);
+        if (decoded.type !== 'access') {
+            throw new AppError('Token is not an access token', 400);
+        }
+        if (!decoded.scopes.includes('referrals.read')) {
+            throw new AppError('Token does not have referrals.read scope', 403);
+        }
+        const pg = Math.max(1, Math.floor(page) || 1);
+        // Cap at 100 — large creator networks could be tens of thousands; keep one
+        // page transferable in a single mobile request without exploding payload size.
+        const ps = Math.min(100, Math.max(1, Math.floor(pageSize) || 50));
+
+        const result = await referralRepository.findDirectlyReferredUsersPopulated(
+            new Types.ObjectId(decoded.sub),
+            pg,
+            ps,
+        );
+
+        const items = result.referredUsers.map((u) => ({
+            id: u._id.toString(),
+            name: u.name || '',
+            avatarUrl: this.buildAvatarUrl((u as any).avatar),
+            joinedAt: (u as any).createdAt ?? null,
+        }));
+
+        log.info(`SSO listDirectFilleuls: caller=${decoded.sub} page=${pg} pageSize=${ps} returned=${items.length}/${result.totalCount} (client=${decoded.client_id})`);
+
+        return {
+            total: result.totalCount,
+            page: pg,
+            pageSize: ps,
+            totalPages: result.totalPages,
+            hasMore: Boolean(result.hasMore),
+            items,
+        };
+    }
+
+    /**
+     * Normalize a user's `avatar` field into a public, usable URL.
+     *
+     * Three cases the User model has accumulated:
+     *   1. null / empty → return null
+     *   2. Already an absolute URL (https://storage.googleapis.com/... or similar
+     *      from older Google-Drive-backed migrations) → return as-is
+     *   3. Bare file identifier → wrap with the avatar proxy endpoint
+     *
+     * Before this helper, `buildUserInfo` always wrapped, producing broken nested
+     * URLs like `http://localhost:6001/api/users/avatar/https://storage.googleapis.com/...`
+     * when the stored value was already a full URL. SBC Live's frontend reported
+     * the breakage.
+     */
+    private buildAvatarUrl(avatar: string | null | undefined): string | null {
+        if (!avatar) return null;
+        if (/^https?:\/\//i.test(avatar)) return avatar;
+        return `${config.selfBaseUrl}/api/users/avatar/${avatar}`;
+    }
+
     /** Verifies a token and returns its decoded payload. Used by middleware and refresh. */
     verifyToken(token: string): SsoTokenPayload {
         try {
@@ -391,7 +470,7 @@ class SsoService {
             email: (user as any).email || '',
             phoneNumber: (user as any).phoneNumber ? String((user as any).phoneNumber) : null,
             country: (user as any).country || null,
-            avatarUrl: (user as any).avatar ? `${config.selfBaseUrl}/api/users/avatar/${(user as any).avatar}` : null,
+            avatarUrl: this.buildAvatarUrl((user as any).avatar),
             subscriptionTypes: Array.isArray(activeSubs) ? activeSubs.map(String) : [],
             directReferralCount: referralStats?.directReferrals ?? 0,
             isActivated: Array.isArray(activeSubs) && activeSubs.length > 0,

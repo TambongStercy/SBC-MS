@@ -125,6 +125,33 @@ class SsoController {
     }
 
     /**
+     * Enumerate the caller's own direct (level-1) filleuls, paginated. Used by
+     * SBC Live's "Mes filleuls" view on the creator side. Authenticated as the
+     * caller — no sponsorId param, so a token cannot enumerate someone else's
+     * network. pageSize is capped server-side at 100.
+     *
+     * @route GET /api/sso/referrals/list?page=1&pageSize=50
+     * @access Bearer SSO access token with referrals.read scope
+     */
+    async referralsList(req: Request, res: Response): Promise<void> {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            res.status(401).json({ success: false, message: 'Bearer access_token required' });
+            return;
+        }
+        const accessToken = authHeader.slice('Bearer '.length).trim();
+        const page = Number(req.query.page) || 1;
+        const pageSize = Number(req.query.pageSize) || 50;
+        try {
+            const result = await ssoService.listDirectFilleuls(accessToken, page, pageSize);
+            res.status(200).json({ success: true, data: result });
+        } catch (error: any) {
+            const status = error instanceof AppError ? error.statusCode : 500;
+            res.status(status).json({ success: false, message: error.message });
+        }
+    }
+
+    /**
      * Check whether the bearer is a direct (Niveau 1) referral of sponsorId.
      * Used by SBC Live access rules for filleul-gated and tiered-waiver lives.
      *
