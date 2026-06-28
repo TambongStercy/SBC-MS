@@ -400,6 +400,93 @@ export class WithdrawalApprovalController {
     }
 
     /**
+     * Manually mark a MoneyFusion withdrawal as COMPLETED (debits the user's
+     * wallet using the same bookkeeping the webhook would have applied if MF
+     * delivered it). Per Rufus 2026-06-24 — MF never sends payout webhooks,
+     * so admin confirms out-of-band and clicks this.
+     *
+     * POST /api/admin/withdrawals/:transactionId/manual-complete
+     * Body: { adminNotes?: string }
+     */
+    async manualCompleteMoneyFusionWithdrawal(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                res.status(401).json({ success: false, message: 'Admin not authenticated' });
+                return;
+            }
+            const { transactionId } = req.params;
+            const { adminNotes } = req.body || {};
+
+            log.info(`Admin ${adminId} manually completing MoneyFusion withdrawal ${transactionId}`);
+
+            const result = await paymentService.manualCompleteMoneyFusionWithdrawal(
+                transactionId,
+                adminId,
+                adminNotes,
+            );
+
+            if (result.success) {
+                res.status(200).json({ success: true, message: 'Withdrawal marked completed; user wallet debited', data: result.transaction });
+            } else {
+                res.status(400).json({ success: false, message: result.error || 'Failed to mark withdrawal completed' });
+            }
+        } catch (error: any) {
+            log.error('Error in manualCompleteMoneyFusionWithdrawal:', error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            res.status(500).json({ success: false, message: 'Failed to mark withdrawal completed', error: error.message });
+        }
+    }
+
+    /**
+     * Manually mark a MoneyFusion withdrawal as FAILED (no wallet debit —
+     * debit-on-success means wallet was never debited, no refund needed).
+     * Same operational pattern as the COMPLETE counterpart above.
+     *
+     * POST /api/admin/withdrawals/:transactionId/manual-fail
+     * Body: { reason: string }
+     */
+    async manualFailMoneyFusionWithdrawal(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                res.status(401).json({ success: false, message: 'Admin not authenticated' });
+                return;
+            }
+            const { transactionId } = req.params;
+            const { reason } = req.body || {};
+            if (!reason || !String(reason).trim()) {
+                res.status(400).json({ success: false, message: 'Reason is required' });
+                return;
+            }
+
+            log.info(`Admin ${adminId} manually failing MoneyFusion withdrawal ${transactionId}: ${reason}`);
+
+            const result = await paymentService.manualFailMoneyFusionWithdrawal(
+                transactionId,
+                adminId,
+                reason,
+            );
+
+            if (result.success) {
+                res.status(200).json({ success: true, message: 'Withdrawal marked failed', data: result.transaction });
+            } else {
+                res.status(400).json({ success: false, message: result.error || 'Failed to mark withdrawal failed' });
+            }
+        } catch (error: any) {
+            log.error('Error in manualFailMoneyFusionWithdrawal:', error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            res.status(500).json({ success: false, message: 'Failed to mark withdrawal failed', error: error.message });
+        }
+    }
+
+    /**
      * Get withdrawal statistics for admin dashboard
      * GET /api/admin/withdrawals/stats
      */
