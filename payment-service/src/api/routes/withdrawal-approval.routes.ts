@@ -96,4 +96,30 @@ router.post('/:transactionId/reject', (req, res) => {
     withdrawalApprovalController.rejectWithdrawal(req, res);
 });
 
+/**
+ * @route   POST /api/admin/withdrawals/:transactionId/manual-complete
+ * @desc    Manually mark a MoneyFusion withdrawal as COMPLETED. Debits the user
+ *          wallet using the same bookkeeping the (never-arriving) MF payout
+ *          webhook would have applied. Per Rufus 2026-06-24 — MF doesn't
+ *          deliver payout webhooks, so admin confirms out-of-band and clicks
+ *          this. Service-side guard refuses non-MoneyFusion transactions.
+ * @access  Private (Admin only)
+ * @body    adminNotes: string (optional)
+ */
+router.post('/:transactionId/manual-complete', (req, res) => {
+    withdrawalApprovalController.manualCompleteMoneyFusionWithdrawal(req, res);
+});
+
+/**
+ * @route   POST /api/admin/withdrawals/:transactionId/manual-fail
+ * @desc    Manually mark a MoneyFusion withdrawal as FAILED. No wallet
+ *          movement — debit-on-success means the wallet was never debited
+ *          in the first place; no refund needed.
+ * @access  Private (Admin only)
+ * @body    reason: string (required)
+ */
+router.post('/:transactionId/manual-fail', (req, res) => {
+    withdrawalApprovalController.manualFailMoneyFusionWithdrawal(req, res);
+});
+
 export default router;
