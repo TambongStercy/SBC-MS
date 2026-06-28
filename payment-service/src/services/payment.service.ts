@@ -2988,14 +2988,12 @@ class PaymentService {
             throw new Error('Country code is required for fiat currency payments.');
         }
 
-        // CinetPay: Côte d'Ivoire + Cameroun (payin + payout).
-        // CM moved off MoneyFusion at Rufus's request — keep the same XAF pricing
-        // parameters (subscription prices in activation-pricing.ts, the 3.5%
-        // processing-fee surcharge applied per provider). Requires
-        // CINETPAY_CM_API_KEY + CINETPAY_CM_API_PASSWORD on the deployment env;
-        // CinetPay's per-country credentials map is loaded in config/index.ts and
-        // verified at runtime by cinetpay-payout.service.ts.
-        const cinetpaySupportedCountries = ['CI', 'CM'];
+        // CinetPay: Côte d'Ivoire only (payin + payout).
+        // CM was moved here in PR #61 but reverted in this PR — CinetPay's CM
+        // merchant account became unstable (140k+ XAF stuck in "inUse" with no
+        // settlement ETA, blocking real users). CinetPay-CM credentials remain
+        // in env so we can flip back quickly if CinetPay stabilises that account.
+        const cinetpaySupportedCountries = ['CI'];
         if (cinetpaySupportedCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using CINETPAY.`);
             return PaymentGateway.CINETPAY;
@@ -3008,8 +3006,10 @@ class PaymentService {
             return PaymentGateway.FEEXPAY;
         }
 
-        // MoneyFusion: BF, SN, ML, CD, GA, NE, GN, TD (CM moved to CinetPay above)
-        const moneyFusionCountries = ['BF', 'SN', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD'];
+        // MoneyFusion: BF, SN, ML, CD, GA, NE, GN, TD, CM
+        // CM restored to MoneyFusion (was here originally, briefly moved to CinetPay
+        // in PR #61, restored here per Rufus 2026-06-24).
+        const moneyFusionCountries = ['BF', 'SN', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD', 'CM'];
         if (moneyFusionCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using MONEYFUSION.`);
             return PaymentGateway.MONEYFUSION;
