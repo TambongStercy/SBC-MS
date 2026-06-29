@@ -106,6 +106,11 @@ export interface WithdrawalTransaction {
     rejectionReason?: string;
     adminNotes?: string;
 
+    // Provider that handled (or will handle) the payout. Set when the payout
+    // is initiated. Used by the admin UI to decide whether to show the
+    // MoneyFusion-specific "mark completed/failed" buttons.
+    serviceProvider?: string; // 'MoneyFusion' | 'FeexPay' | 'CinetPay' | etc.
+
     createdAt: string;
     updatedAt: string;
 
@@ -299,6 +304,58 @@ export async function rejectWithdrawal(
             axiosError.response?.data?.message ||
             axiosError.response?.data?.error ||
             'Failed to reject withdrawal'
+        );
+    }
+}
+
+/**
+ * Manually mark a MoneyFusion withdrawal as completed. Debits the user wallet
+ * using the same bookkeeping the payout webhook would have applied if MF
+ * delivered it. Only valid for MoneyFusion withdrawals in PROCESSING/PENDING
+ * status — the backend rejects others.
+ */
+export async function manualCompleteWithdrawal(
+    transactionId: string,
+    request: { adminNotes?: string } = {}
+): Promise<ApiResponse<WithdrawalTransaction>> {
+    try {
+        const response = await apiClient.post<ApiResponse<WithdrawalTransaction>>(
+            `/payments/admin/withdrawals/${transactionId}/manual-complete`,
+            request
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error manually completing withdrawal:', error);
+        const axiosError = error as AxiosError<ApiResponse>;
+        throw new Error(
+            axiosError.response?.data?.message ||
+            axiosError.response?.data?.error ||
+            'Failed to mark withdrawal as completed'
+        );
+    }
+}
+
+/**
+ * Manually mark a MoneyFusion withdrawal as failed. No wallet movement —
+ * debit-on-success means the wallet was never debited in the first place.
+ */
+export async function manualFailWithdrawal(
+    transactionId: string,
+    request: { reason: string }
+): Promise<ApiResponse<WithdrawalTransaction>> {
+    try {
+        const response = await apiClient.post<ApiResponse<WithdrawalTransaction>>(
+            `/payments/admin/withdrawals/${transactionId}/manual-fail`,
+            request
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error manually failing withdrawal:', error);
+        const axiosError = error as AxiosError<ApiResponse>;
+        throw new Error(
+            axiosError.response?.data?.message ||
+            axiosError.response?.data?.error ||
+            'Failed to mark withdrawal as failed'
         );
     }
 }

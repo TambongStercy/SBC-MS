@@ -3438,6 +3438,129 @@ class PaymentService {
         }
     }
 
+    /**
+     * Manually complete a MoneyFusion withdrawal that's stuck in PROCESSING because
+     * MoneyFusion never sends payout webhooks. The admin has confirmed (out-of-band,
+     * e.g. via MF's web dashboard or recipient confirmation) that the payout
+     * actually succeeded; we now apply the same debit-on-success bookkeeping the
+     * webhook handler WOULD have run if MF delivered one.
+     *
+     * Per Rufus 2026-06-24:
+     *   "quand je valide le retrait je débite leur solde directement"
+     *
+     * Guard rails:
+     *   - Only applies to MoneyFusion-serviceProvider transactions (refuses others
+     *     because their webhooks DO arrive, no manual override needed)
+     *   - Only from PROCESSING (or admin-approved PENDING already-routed state) —
+     *     refuses for PENDING_OTP_VERIFICATION / PENDING_ADMIN_APPROVAL / COMPLETED
+     *   - Idempotent on COMPLETED (returns success without re-debiting)
+     *   - Stamps metadata.manualCompletion with adminId + reason for audit
+     */
+    public async manualCompleteMoneyFusionWithdrawal(
+        transactionId: string,
+        adminId: string,
+        adminNotes?: string,
+    ): Promise<{ success: boolean; transaction?: any; error?: string }> {
+        const transaction = await transactionRepository.findByTransactionId(transactionId);
+        if (!transaction) {
+            return { success: false, error: 'Transaction not found' };
+        }
+        if (transaction.type !== TransactionType.WITHDRAWAL) {
+            return { success: false, error: 'Transaction is not a withdrawal' };
+        }
+        if (transaction.serviceProvider !== 'MoneyFusion') {
+            return { success: false, error: `Manual completion is only for MoneyFusion withdrawals (this is ${transaction.serviceProvider || 'unknown'})` };
+        }
+        if (transaction.status === TransactionStatus.COMPLETED) {
+            log.info(`Manual completion of MF withdrawal ${transactionId}: already COMPLETED, no-op`);
+            return { success: true, transaction };
+        }
+        if (
+            transaction.status !== TransactionStatus.PROCESSING &&
+            transaction.status !== TransactionStatus.PENDING
+        ) {
+            return {
+                success: false,
+                error: `Cannot manually complete withdrawal in status '${transaction.status}'. Only PROCESSING or PENDING transactions can be manually completed.`,
+            };
+        }
+
+        // Apply the same bookkeeping as the (never-arriving) success webhook would.
+        await transactionRepository.update(transaction._id, {
+            status: TransactionStatus.COMPLETED,
+            'metadata.payoutCompletedAt': new Date().toISOString(),
+            'metadata.manualCompletion': {
+                by: adminId,
+                at: new Date().toISOString(),
+                notes: adminNotes || null,
+                reason: 'MoneyFusion does not deliver payout webhooks; admin confirmed payout out-of-band',
+            },
+        });
+        const amountToDebit = -Math.abs(transaction.amount);
+        await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
+        log.info(`Admin ${adminId} manually completed MoneyFusion withdrawal ${transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
+
+        const updated = await transactionRepository.findByTransactionId(transactionId);
+        return { success: true, transaction: updated };
+    }
+
+    /**
+     * Mark a stuck MoneyFusion withdrawal as FAILED — same shape as
+     * manualCompleteMoneyFusionWithdrawal but routes through handleFailedWithdrawal
+     * (which is what the webhook would have triggered). Use when the admin knows
+     * the payout did NOT actually succeed at MF's end (e.g. recipient never
+     * received funds, MF dashboard shows échec).
+     *
+     * Wallet behavior: no debit (consistent with debit-on-success pattern —
+     * wallet was never debited, no refund needed). The transaction is just
+     * marked FAILED so the user can retry.
+     */
+    public async manualFailMoneyFusionWithdrawal(
+        transactionId: string,
+        adminId: string,
+        reason: string,
+    ): Promise<{ success: boolean; transaction?: any; error?: string }> {
+        if (!reason || !reason.trim()) {
+            return { success: false, error: 'Reason is required when marking a withdrawal as failed' };
+        }
+        const transaction = await transactionRepository.findByTransactionId(transactionId);
+        if (!transaction) {
+            return { success: false, error: 'Transaction not found' };
+        }
+        if (transaction.type !== TransactionType.WITHDRAWAL) {
+            return { success: false, error: 'Transaction is not a withdrawal' };
+        }
+        if (transaction.serviceProvider !== 'MoneyFusion') {
+            return { success: false, error: `Manual fail is only for MoneyFusion withdrawals (this is ${transaction.serviceProvider || 'unknown'})` };
+        }
+        if (transaction.status === TransactionStatus.FAILED) {
+            log.info(`Manual fail of MF withdrawal ${transactionId}: already FAILED, no-op`);
+            return { success: true, transaction };
+        }
+        if (transaction.status === TransactionStatus.COMPLETED) {
+            return { success: false, error: 'Cannot mark a COMPLETED withdrawal as failed' };
+        }
+        if (
+            transaction.status !== TransactionStatus.PROCESSING &&
+            transaction.status !== TransactionStatus.PENDING
+        ) {
+            return {
+                success: false,
+                error: `Cannot manually fail withdrawal in status '${transaction.status}'.`,
+            };
+        }
+
+        await this.handleFailedWithdrawal(
+            transactionId,
+            `Admin ${adminId} manually marked failed: ${reason}`,
+            transaction.externalTransactionId,
+        );
+        log.info(`Admin ${adminId} manually failed MoneyFusion withdrawal ${transactionId}; reason: ${reason}`);
+
+        const updated = await transactionRepository.findByTransactionId(transactionId);
+        return { success: true, transaction: updated };
+    }
+
     private async initiateCinetPayPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
         try {
             log.info(`Initiating CinetPay payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
