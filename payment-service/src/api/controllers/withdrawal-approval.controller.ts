@@ -400,6 +400,93 @@ export class WithdrawalApprovalController {
     }
 
     /**
+     * List MoneyFusion withdrawals that are stuck in PROCESSING/PENDING because
+     * MF never delivers payout webhooks. Powers the dedicated
+     * "Fix MoneyFusion Withdrawals" admin page.
+     *
+     * GET /api/admin/withdrawals/stuck-moneyfusion
+     * Query: ?page=1&limit=20&search=<name|email|phone>
+     */
+    async getStuckMoneyFusionWithdrawals(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                res.status(401).json({ success: false, message: 'Admin not authenticated' });
+                return;
+            }
+
+            const { page = '1', limit = '20', search } = req.query;
+            const pageNum = Math.max(1, parseInt(page as string) || 1);
+            const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+            const skip = (pageNum - 1) * limitNum;
+
+            // The "stuck" set: MoneyFusion-routed withdrawals that have been
+            // approved-and-routed (status PROCESSING) or pending dispatch.
+            // PENDING_ADMIN_APPROVAL is excluded — those belong on the regular
+            // Approvals page. COMPLETED/FAILED/REJECTED/REFUNDED are terminal.
+            const filter: Record<string, any> = {
+                type: TransactionType.WITHDRAWAL,
+                serviceProvider: 'MoneyFusion',
+                status: { $in: [TransactionStatus.PROCESSING, TransactionStatus.PENDING] },
+                deleted: false,
+            };
+
+            const transactions = await TransactionModel.find(filter)
+                .sort({ createdAt: 1 }) // oldest first — surface long-stuck ones at the top
+                .skip(skip)
+                .limit(limitNum)
+                .lean();
+            const total = await TransactionModel.countDocuments(filter);
+
+            // Light enrichment: just user identity. No referral stats, no
+            // history (this page is a triage queue, not a deep-dive view).
+            const enriched = await Promise.all(
+                transactions.map(async (tx: any) => {
+                    try {
+                        const userDetails = await userServiceClient.getUserDetails(tx.userId.toString());
+                        return {
+                            ...tx,
+                            userName: userDetails?.name || 'Unknown',
+                            userEmail: userDetails?.email || 'Unknown',
+                            userPhoneNumber: userDetails?.phoneNumber?.toString() || 'Unknown',
+                        };
+                    } catch {
+                        return { ...tx, userName: 'Error fetching', userEmail: 'Error fetching', userPhoneNumber: 'Error fetching' };
+                    }
+                }),
+            );
+
+            // Optional in-memory filter by search term against enriched fields
+            // (small page sizes, so post-filter is fine without an aggregation).
+            const searchTerm = typeof search === 'string' ? search.trim().toLowerCase() : '';
+            const filtered = searchTerm
+                ? enriched.filter((t: any) =>
+                    String(t.userName).toLowerCase().includes(searchTerm)
+                    || String(t.userEmail).toLowerCase().includes(searchTerm)
+                    || String(t.userPhoneNumber).toLowerCase().includes(searchTerm)
+                    || String(t.transactionId).toLowerCase().includes(searchTerm)
+                    || String(t.metadata?.accountInfo?.fullMomoNumber || '').toLowerCase().includes(searchTerm))
+                : enriched;
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    withdrawals: filtered,
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total,
+                        totalPages: Math.ceil(total / limitNum),
+                    },
+                },
+            });
+        } catch (error: any) {
+            log.error('Error listing stuck MoneyFusion withdrawals:', error);
+            res.status(500).json({ success: false, message: 'Failed to fetch stuck MoneyFusion withdrawals', error: error.message });
+        }
+    }
+
+    /**
      * Manually mark a MoneyFusion withdrawal as COMPLETED (debits the user's
      * wallet using the same bookkeeping the webhook would have applied if MF
      * delivered it). Per Rufus 2026-06-24 — MF never sends payout webhooks,
