@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Product Ownership
+
+**Rufus (also addressed as "Facilitateur") is the app owner and product authority.** When his
+feedback or his team's feedback (forwarded by Sterling) contradicts your read of how a feature
+should work, **Rufus is right by default**. Do not push back on his product calls with "but the
+current code does X" reasoning — the code is the implementation, his intent is the spec.
+
+In practice this means:
+- When Rufus says "users shouldn't be able to log in without paying" → that's a product rule,
+  even if the current frontend permits it. Treat it as a bug to fix, not a design discussion.
+- When his team reports "the filleul is logged in but not activated" as a bug → it IS a bug
+  from the product perspective, regardless of what login vs activation means architecturally.
+- Don't waste tokens explaining "this is how it currently works" to Sterling when he's relaying
+  a Rufus/Facilitateur complaint. Go straight to fixing it.
+- Disagree only if there's a concrete safety, security, or regulatory concern. Otherwise
+  implement Rufus's call.
+
+Sterling is the technical lead and the one you collaborate with day-to-day. He has full
+authority over technical decisions, deploys, and code. But when product behavior is in
+question, defer to what he says Rufus wants.
+
 ## Architecture Overview
 
 This is a microservices-based backend system for Sniper Business Center (SBC) with an admin frontend. The system consists of 8 Node.js/TypeScript microservices, a React admin frontend, and supporting infrastructure components.
@@ -251,6 +272,134 @@ diff looks small:**
 If any of these is unclear in a particular code area, stop and ask before
 merging. Real money has been moved or frozen by skipping these checks in the
 past; the cost of pausing is far lower than the cost of cleaning up.
+
+### Withdrawal investigation cheat-sheet (read before pinging Sterling)
+
+Recurring "user says they didn't receive their withdrawal" requests. The
+useful fields on a withdrawal Transaction document:
+
+| Field | What it tells you |
+|---|---|
+| `metadata.accountInfo.fullMomoNumber` | Recipient phone we sent to (canonical for withdrawal flow). NOT `metadata.phoneNumber` — that's used by other flows. |
+| `metadata.accountInfo.momoOperator` | Operator (e.g. ORANGE_CMR, MTN_MOMO_CMR) |
+| `metadata.accountInfo.countryCode` | Destination country |
+| `amount` | **Gross debit (what MF dashboard displays, rounded to integer)** |
+| `metadata.netAmountRequested` | Net amount the USER asked for, before our fees — **do NOT search MF dashboard for this number** |
+| `fee` | Our internal fee (gross − net) |
+| `externalTransactionId` / `metadata.moneyFusionTokenPay` | Provider tx id. Use this to search MF/CinetPay/FeexPay dashboards — it's the unambiguous lookup, beats searching by amount+phone. |
+| `metadata.payoutCompletedAt` | When WE marked it done (manual reconciliation OR real webhook) |
+| `metadata.manualCompletion` | Present only on records completed via the PR #72 admin UI. Absence + a 1-day-plus gap between `createdAt` and `payoutCompletedAt` is a flag that the old webhook-simulation pattern was used (which assumed delivery without verifying) — re-check MF dashboard before trusting `status=completed`. |
+
+Verified empirically 2026-06-29: MF dashboard `Montant` column = our `amount`
+rounded to integer (2306.25 → MF shows 2306; 2050 → MF shows 2050). NOT
+`netAmountRequested`. Investigating Rufus's "did user receive X" — search MF
+dashboard by tokenPay or by gross integer amount, not by net.
+
+### Gateway proxy registration
+
+`gateway-service/src/server.ts` uses explicit `app.use('/api/<prefix>', proxy(...))`
+per top-level route prefix. **Anything not explicitly proxied returns 404 at the
+gateway** — silently, without any service ever seeing the request. When adding
+a new top-level API route (e.g. PR #60 added `/api/sso`), the gateway file must
+be updated too. PR #66 fixed the post-#60 gap; PR #67 fixed a related issue
+where admin-frontend called paths the gateway didn't recognise.
+
+### user-service admin routes are mounted at `/users/admin/...`, not `/admin/...`
+
+`user-service/src/api/routes/index.ts` has `router.use('/users/admin', adminRoutes)`.
+So the full path is e.g. `/api/users/admin/users/:userId/unblock`. The inline
+comments inside `admin.routes.ts` claim `/api/admin/users/...` — **those comments
+are wrong**; the actual mount overrides them. Admin frontend must call
+`/users/admin/users/...`. PR #67 fixed an instance where the admin frontend was
+on the wrong pattern.
+
+### Health endpoints aren't standardised
+
+| Service (prod port / preprod port) | Health path |
+|---|---|
+| user (3001/6001), notification (3002/6002), payment (3003/6003), product (3004/6004), settings (3007/6007) | `/health` |
+| tombola (3006/6006), chat (3008/6008) | `/api/health` |
+
+Post-deploy health checks must try both URLs and pass if either responds 2xx
+(fixed in PR #74). Verified empirically 2026-06-29.
+
+### Prod deploy concurrency lock gotchas (post-PR #73)
+
+After PR #73, `deploy-web` no longer requires environment approval. Only
+`deploy-backend` does. So the normal flow per prod deploy:
+
+1. Merge PR to master → workflow triggers
+2. **Click Approve once on Backend** at github.com/.../actions (production env)
+3. Backend deploys (~30s) → Web UI auto-runs as no-op (~5s) → Health Check runs
+4. Concurrency lock releases — next deploy can pick up
+
+If a deploy gets stuck "waiting", check whether it's queued behind an older
+still-active prod deploy run. Old (pre-#73) deploys may still be in the queue
+holding the lock — cancel them to release.
+
+### CinetPay per-country accounts
+
+CinetPay's new platform (which we use, at `api.cinetpay.co` with OAuth) issues
+**separate merchant accounts and balances per country**. Each country has its
+own credentials in env: `CINETPAY_<CC>_API_KEY`, `CINETPAY_<CC>_API_PASSWORD`.
+`cinetpayPayoutService.getBalance(countryCode)` MUST be called with the
+specific country, otherwise it falls back to `Object.keys(config.cinetpay.countries)[0]`
+and returns an arbitrary country's balance. PR #68/69 fixed an instance where
+the caller passed nothing and CI users were blocked by CM's empty balance.
+
+The interface comment at `payment-service/src/config/index.ts:78` mentions
+`https://api.cinetpay.net` ("new unified API") but the actual base URL we use
+is `https://api.cinetpay.co`. Probably interchangeable aliases — but the `.co`
+host is what's in env and what the live code talks to.
+
+### MoneyFusion never sends payout webhooks
+
+This is permanent until MF builds them. Symptoms:
+  - Withdrawal sits in `PROCESSING` indefinitely after admin approval
+  - `metadata.payoutMessage` stays the default "Votre retrait est en cours de
+    traitement..." — would normally be overwritten on real success
+  - `metadata.payoutCompletedAt` set well after `createdAt` = manual reconciliation
+
+For NEW transactions, the admin can mark them completed/failed via the buttons
+PR #72 added to the Withdrawal Approval modal — that stamps
+`metadata.manualCompletion: { by, at, reason }` for audit. For OLD transactions
+(pre-PR #72), the gap between `createdAt` and `payoutCompletedAt` is the only
+clue that it was manually marked rather than webhook-confirmed; ALWAYS verify
+against MF dashboard before trusting the `completed` status on those.
+
+### MF dashboard limits — what you can and can't verify
+
+Sterling confirmed empirically 2026-06-29:
+  - MF dashboard's `Statut` column has NO filter for failed/cancelled
+    transactions — only shows pending + successful
+  - No public endpoint to query MF by tokenPay or our own reference
+  - So if our `externalTransactionId` (the MF tokenPay) is **absent from MF
+    dashboard**, three things are indistinguishable: never received, received
+    and silently failed, or received and pending forever. Treat all three as
+    "not delivered" for refund purposes.
+
+Investigation procedure when a user says "didn't receive":
+  1. Pull the tx — confirm `serviceProvider: 'MoneyFusion'`, status
+     `completed`, and grab `metadata.accountInfo.fullMomoNumber`, `amount`,
+     `externalTransactionId`
+  2. Ask admin to search MF dashboard for that recipient number AND/OR amount
+     (gross, rounded to integer). NOT `netAmountRequested` — MF shows our gross.
+  3. If absent from MF dashboard → refund full gross `amount` to user's
+     `balance`, insert a RECONCILIATION transaction citing the original tx,
+     update the original tx's status to `refunded` with metadata trail. Rhinansou
+     case 2026-06-29 is the canonical example.
+  4. If present in MF dashboard → push it to MF support / Orange CM (whichever
+     network); the money left our hands successfully.
+
+### Master deploys need ONE click (post-PR #73)
+
+Sterling has SSH access at the `contabo` host (configured in his `~/.ssh/config`)
+and standing approval to merge develop-target PRs once CI is green. Master-target
+PRs need his explicit OK to merge AND a manual click in GitHub Environments to
+release the deploy. After PR #73, that's a single click on Backend (Web UI
+auto-runs as a no-op). The prod environment is at `/var/www/SBC-MS/`, preprod at
+`/var/www/SBC-MS-preprod/`. Backend services managed by PM2 (`payment-service`,
+`user-service`, etc. for prod; `payment-preprod`, `user-preprod`, etc. for preprod).
 
 ## Database Conventions
 
