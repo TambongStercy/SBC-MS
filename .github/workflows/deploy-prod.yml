@@ -73,8 +73,13 @@ jobs:
           script: |
             echo "=== Production Health Check ==="
             FAILED=0
+            # Services are inconsistent about where health is mounted:
+            # user/notification/payment/product/settings expose it at /health,
+            # tombola/chat expose it at /api/health. Accept either so every
+            # genuinely-healthy service passes.
             for PORT in 3001 3002 3003 3004 3006 3007 3008; do
-              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1 \
+                 || curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
                 echo "Port $PORT: OK"
               else
                 echo "Port $PORT: FAILED"
