@@ -122,7 +122,10 @@ PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008")
 FAILED=0
 
 for PORT in "${PORTS[@]}"; do
-  if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+  # Services are inconsistent: user/notification/payment/product/settings
+  # expose /health; tombola/chat expose /api/health. Accept either.
+  if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1 \
+     || curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
     echo "$LOG_PREFIX  Port $PORT: OK"
   else
     echo "$LOG_PREFIX  Port $PORT: FAILED"

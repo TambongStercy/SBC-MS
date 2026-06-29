@@ -60,8 +60,11 @@ jobs:
             # Health check
             sleep 5
             FAILED=0
+            # Services inconsistent: user/notification/payment/product/settings
+            # expose /health; tombola/chat expose /api/health. Accept either.
             for PORT in 6001 6002 6003 6004 6006 6007 6008; do
-              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1 \
+                 || curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
                 echo "Port $PORT: OK"
               else
                 echo "Port $PORT: FAILED"
