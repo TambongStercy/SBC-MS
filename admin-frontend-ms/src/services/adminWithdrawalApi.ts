@@ -309,6 +309,35 @@ export async function rejectWithdrawal(
 }
 
 /**
+ * List MoneyFusion withdrawals stuck in PROCESSING/PENDING (MF doesn't deliver
+ * payout webhooks, so these need manual reconciliation). Powers the dedicated
+ * "Fix MoneyFusion Withdrawals" admin page.
+ */
+export async function getStuckMoneyFusionWithdrawals(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+): Promise<PendingWithdrawalsResponse> {
+    try {
+        const params: Record<string, string | number> = { page, limit };
+        if (search && search.trim()) params.search = search.trim();
+        const response = await apiClient.get<PendingWithdrawalsResponse>(
+            '/payments/admin/withdrawals/stuck-moneyfusion',
+            { params },
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching stuck MoneyFusion withdrawals:', error);
+        const axiosError = error as AxiosError<ApiResponse>;
+        throw new Error(
+            axiosError.response?.data?.message ||
+            axiosError.response?.data?.error ||
+            'Failed to fetch stuck MoneyFusion withdrawals'
+        );
+    }
+}
+
+/**
  * Manually mark a MoneyFusion withdrawal as completed. Debits the user wallet
  * using the same bookkeeping the payout webhook would have applied if MF
  * delivered it. Only valid for MoneyFusion withdrawals in PROCESSING/PENDING

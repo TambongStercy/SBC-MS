@@ -6,9 +6,7 @@ import {
     getStatusLabel,
     getStatusColor,
     approveWithdrawal,
-    rejectWithdrawal,
-    manualCompleteWithdrawal,
-    manualFailWithdrawal
+    rejectWithdrawal
 } from '../../services/adminWithdrawalApi';
 
 interface WithdrawalDetailsModalProps {
@@ -37,21 +35,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
     const [adminNotes, setAdminNotes] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    // MoneyFusion manual completion (MF doesn't deliver payout webhooks)
-    const [isManualCompleting, setIsManualCompleting] = useState(false);
-    const [isManualFailing, setIsManualFailing] = useState(false);
-    const [showManualCompleteConfirm, setShowManualCompleteConfirm] = useState(false);
-    const [showManualFailForm, setShowManualFailForm] = useState(false);
-    const [manualFailReason, setManualFailReason] = useState('');
-
     if (!isOpen || !withdrawal) return null;
-
-    // Show the MF manual actions only when:
-    //   1. Gateway is MoneyFusion (FeexPay/CinetPay deliver webhooks, no manual needed)
-    //   2. Status is PROCESSING or PENDING (already approved + routed to MF,
-    //      waiting on the webhook that won't come)
-    const canManuallyCompleteMf = withdrawal.serviceProvider === 'MoneyFusion'
-        && (withdrawal.status === 'processing' || withdrawal.status === 'pending');
 
     const handleApprove = async () => {
         if (!withdrawal) return;
@@ -112,48 +96,6 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
             }
         } finally {
             setIsRejecting(false);
-        }
-    };
-
-    const handleManualComplete = async () => {
-        if (!withdrawal) return;
-        setError(null);
-        setIsManualCompleting(true);
-        try {
-            await manualCompleteWithdrawal(withdrawal.transactionId, { adminNotes: adminNotes || undefined });
-            if (showSuccess) showSuccess('Withdrawal marked completed; user wallet debited.');
-            if (onApproved) onApproved();
-            onClose();
-        } catch (err: any) {
-            const errorMsg = err.message || 'Failed to mark withdrawal as completed';
-            setError(errorMsg);
-            if (showError) showError(errorMsg);
-        } finally {
-            setIsManualCompleting(false);
-        }
-    };
-
-    const handleManualFail = async () => {
-        if (!withdrawal) return;
-        if (!manualFailReason.trim()) {
-            const msg = 'Reason is required';
-            setError(msg);
-            if (showError) showError(msg);
-            return;
-        }
-        setError(null);
-        setIsManualFailing(true);
-        try {
-            await manualFailWithdrawal(withdrawal.transactionId, { reason: manualFailReason });
-            if (showSuccess) showSuccess('Withdrawal marked failed.');
-            if (onRejected) onRejected();
-            onClose();
-        } catch (err: any) {
-            const errorMsg = err.message || 'Failed to mark withdrawal as failed';
-            setError(errorMsg);
-            if (showError) showError(errorMsg);
-        } finally {
-            setIsManualFailing(false);
         }
     };
 
@@ -541,112 +483,6 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                         </div>
                     )}
 
-                    {/* MoneyFusion manual completion panel — only shown for MF withdrawals
-                        in PROCESSING/PENDING. MF doesn't deliver payout webhooks, so admin
-                        must confirm out-of-band (e.g. via MF dashboard) and click here to
-                        apply the same bookkeeping the webhook would have applied. */}
-                    {canManuallyCompleteMf && (
-                        <div className="px-6 pb-6">
-                            <div className="border-t border-gray-700 pt-4">
-                                <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4 mb-4">
-                                    <p className="text-sm text-yellow-200">
-                                        <strong>MoneyFusion withdrawal awaiting webhook.</strong> MoneyFusion does not
-                                        deliver payout webhooks, so this status will not change automatically.
-                                        Confirm the payout result on MoneyFusion's dashboard and use the buttons
-                                        below to record the outcome.
-                                    </p>
-                                </div>
-
-                                {!showManualCompleteConfirm && !showManualFailForm ? (
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => setShowManualCompleteConfirm(true)}
-                                            className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-medium transition-colors"
-                                        >
-                                            ✓ Mark as Completed (debit wallet)
-                                        </button>
-                                        <button
-                                            onClick={() => setShowManualFailForm(true)}
-                                            className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 font-medium transition-colors"
-                                        >
-                                            ✗ Mark as Failed
-                                        </button>
-                                    </div>
-                                ) : showManualCompleteConfirm ? (
-                                    <div>
-                                        <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-4">
-                                            <p className="text-sm text-red-200">
-                                                This will <strong>DEBIT {formatCurrency(withdrawal.amount, withdrawal.currency)}</strong> from
-                                                the user's wallet right now. Only proceed if the MoneyFusion payout actually
-                                                succeeded. This action cannot be undone automatically.
-                                            </p>
-                                        </div>
-                                        <div className="mb-4">
-                                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                                Admin Notes (Optional)
-                                            </label>
-                                            <textarea
-                                                value={adminNotes}
-                                                onChange={(e) => setAdminNotes(e.target.value)}
-                                                rows={2}
-                                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
-                                                placeholder="e.g. MF dashboard tx ID, recipient confirmation timestamp..."
-                                            />
-                                        </div>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => setShowManualCompleteConfirm(false)}
-                                                className="flex-1 bg-gray-700 text-gray-300 px-6 py-3 rounded-lg hover:bg-gray-600 font-medium transition-colors"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleManualComplete}
-                                                disabled={isManualCompleting}
-                                                className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed font-medium transition-colors"
-                                            >
-                                                {isManualCompleting ? 'Completing...' : 'Confirm — Debit Wallet'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <div className="mb-4">
-                                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                                Failure Reason <span className="text-red-400">*</span>
-                                            </label>
-                                            <textarea
-                                                value={manualFailReason}
-                                                onChange={(e) => setManualFailReason(e.target.value)}
-                                                rows={3}
-                                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-red-500 focus:border-transparent placeholder-gray-400"
-                                                placeholder="e.g. MoneyFusion dashboard shows échec, recipient confirmed no funds received..."
-                                                required
-                                            />
-                                        </div>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => {
-                                                    setShowManualFailForm(false);
-                                                    setManualFailReason('');
-                                                }}
-                                                className="flex-1 bg-gray-700 text-gray-300 px-6 py-3 rounded-lg hover:bg-gray-600 font-medium transition-colors"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleManualFail}
-                                                disabled={isManualFailing || !manualFailReason.trim()}
-                                                className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed font-medium transition-colors"
-                                            >
-                                                {isManualFailing ? 'Marking failed...' : 'Confirm — Mark Failed'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
