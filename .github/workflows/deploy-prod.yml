@@ -33,7 +33,14 @@ jobs:
     name: Deploy Web UI to Production
     runs-on: ubuntu-latest
     needs: deploy-backend
-    environment: production
+    # environment: production intentionally removed. This job targets
+    # /var/www/SBC-WEB-UI (a separate repo) whose deploy script does NOT exist
+    # on the server yet — the inner command falls through to the `|| echo skipping`
+    # branch and the job no-ops. Keeping `environment: production` here meant
+    # every backend hotfix left a zombie Web UI approval step holding the prod
+    # concurrency lock, blocking the next hotfix until someone clicked Approve
+    # for nothing. Once SBC-WEB-UI ships a real deploy script + this job does
+    # real work, add `environment: production` back.
 
     steps:
       - name: Deploy Web UI via SSH
