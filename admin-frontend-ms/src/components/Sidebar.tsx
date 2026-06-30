@@ -62,6 +62,12 @@ const SIDEBAR_GROUPS = [
         path: "/fix-feexpay-payments",
       },
       {
+        name: "Fix MoneyFusion Withdrawals",
+        icon: Hammer,
+        color: "#3b82f6",
+        path: "/fix-moneyfusion-withdrawals",
+      },
+      {
         name: "Récupération de Paiement",
         icon: LifeBuoy,
         color: "#10b981",

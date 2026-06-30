@@ -97,6 +97,18 @@ router.post('/:transactionId/reject', (req, res) => {
 });
 
 /**
+ * @route   GET /api/admin/withdrawals/stuck-moneyfusion
+ * @desc    List MoneyFusion withdrawals stuck in PROCESSING/PENDING (MF doesn't
+ *          deliver payout webhooks, so these need manual reconciliation).
+ *          Powers the dedicated "Fix MoneyFusion Withdrawals" admin page.
+ * @access  Private (Admin only)
+ * @query   page, limit (capped at 100), search (matches name/email/phone/tx/momo)
+ */
+router.get('/stuck-moneyfusion', (req, res) => {
+    withdrawalApprovalController.getStuckMoneyFusionWithdrawals(req, res);
+});
+
+/**
  * @route   POST /api/admin/withdrawals/:transactionId/manual-complete
  * @desc    Manually mark a MoneyFusion withdrawal as COMPLETED. Debits the user
  *          wallet using the same bookkeeping the (never-arriving) MF payout
