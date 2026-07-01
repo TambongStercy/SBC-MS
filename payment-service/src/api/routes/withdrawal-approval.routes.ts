@@ -109,6 +109,31 @@ router.get('/stuck-moneyfusion', (req, res) => {
 });
 
 /**
+ * @route   GET /api/admin/withdrawals/stuck-cinetpay
+ * @desc    List CinetPay withdrawals stuck in PROCESSING/PENDING (CinetPay
+ *          doesn't reliably deliver payout webhooks; polling their status API
+ *          is their own recommended fallback per their docs). Powers the
+ *          dedicated "Fix CinetPay Withdrawals" admin page.
+ * @access  Private (Admin only)
+ */
+router.get('/stuck-cinetpay', (req, res) => {
+    withdrawalApprovalController.getStuckCinetPayWithdrawals(req, res);
+});
+
+/**
+ * @route   POST /api/admin/withdrawals/:transactionId/reconcile-cinetpay
+ * @desc    Query CinetPay's status API and apply the resulting bookkeeping.
+ *          Different pattern from the MF manual buttons: this is deterministic
+ *          — we don't ask admin to verify out-of-band, we call CinetPay
+ *          directly. Per their own docs the recommended fallback when their
+ *          notification webhook doesn't arrive.
+ * @access  Private (Admin only)
+ */
+router.post('/:transactionId/reconcile-cinetpay', (req, res) => {
+    withdrawalApprovalController.reconcileCinetPayWithdrawal(req, res);
+});
+
+/**
  * @route   POST /api/admin/withdrawals/:transactionId/manual-complete
  * @desc    Manually mark a MoneyFusion withdrawal as COMPLETED. Debits the user
  *          wallet using the same bookkeeping the (never-arriving) MF payout

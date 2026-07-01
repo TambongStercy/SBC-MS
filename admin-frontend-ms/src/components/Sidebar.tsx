@@ -68,6 +68,12 @@ const SIDEBAR_GROUPS = [
         path: "/fix-moneyfusion-withdrawals",
       },
       {
+        name: "Fix CinetPay Withdrawals",
+        icon: Hammer,
+        color: "#a855f7",
+        path: "/fix-cinetpay-withdrawals",
+      },
+      {
         name: "Récupération de Paiement",
         icon: LifeBuoy,
         color: "#10b981",

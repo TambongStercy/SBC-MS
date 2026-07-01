@@ -309,6 +309,60 @@ export async function rejectWithdrawal(
 }
 
 /**
+ * List CinetPay withdrawals stuck in PROCESSING/PENDING. CinetPay doesn't
+ * reliably deliver notification webhooks; polling their status API is their
+ * own recommended fallback per docs. Powers /fix-cinetpay-withdrawals.
+ */
+export async function getStuckCinetPayWithdrawals(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+): Promise<PendingWithdrawalsResponse> {
+    try {
+        const params: Record<string, string | number> = { page, limit };
+        if (search && search.trim()) params.search = search.trim();
+        const response = await apiClient.get<PendingWithdrawalsResponse>(
+            '/payments/admin/withdrawals/stuck-cinetpay',
+            { params },
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching stuck CinetPay withdrawals:', error);
+        const axiosError = error as AxiosError<ApiResponse>;
+        throw new Error(
+            axiosError.response?.data?.message ||
+            axiosError.response?.data?.error ||
+            'Failed to fetch stuck CinetPay withdrawals'
+        );
+    }
+}
+
+/**
+ * Ask CinetPay for the current status of a stuck withdrawal and apply the
+ * resulting bookkeeping. Deterministic (calls their status API), no admin
+ * assertion required. Returns the action taken: completed / failed /
+ * still-pending / no-op.
+ */
+export async function reconcileCinetPayWithdrawal(
+    transactionId: string,
+): Promise<ApiResponse<WithdrawalTransaction> & { action?: string; cinetpayStatus?: string }> {
+    try {
+        const response = await apiClient.post<ApiResponse<WithdrawalTransaction> & { action?: string; cinetpayStatus?: string }>(
+            `/payments/admin/withdrawals/${transactionId}/reconcile-cinetpay`,
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error reconciling CinetPay withdrawal:', error);
+        const axiosError = error as AxiosError<ApiResponse>;
+        throw new Error(
+            axiosError.response?.data?.message ||
+            axiosError.response?.data?.error ||
+            'Failed to reconcile CinetPay withdrawal'
+        );
+    }
+}
+
+/**
  * List MoneyFusion withdrawals stuck in PROCESSING/PENDING (MF doesn't deliver
  * payout webhooks, so these need manual reconciliation). Powers the dedicated
  * "Fix MoneyFusion Withdrawals" admin page.
