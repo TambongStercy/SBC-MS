@@ -56,16 +56,14 @@ const SIDEBAR_GROUPS = [
         path: "/user-roles",
       },
       {
-        name: "Fix FeexPay Payments",
+        // Unified triage: three tabs (FeexPay Payins / MoneyFusion Withdrawals /
+        // CinetPay Withdrawals) in one page instead of three separate sidebar
+        // entries. Old paths still work for direct linking, but the sidebar
+        // exposes only this consolidated entry.
+        name: "Fix Provider Issues",
         icon: Hammer,
         color: "#f59e0b",
-        path: "/fix-feexpay-payments",
-      },
-      {
-        name: "Fix MoneyFusion Withdrawals",
-        icon: Hammer,
-        color: "#3b82f6",
-        path: "/fix-moneyfusion-withdrawals",
+        path: "/fix-provider-issues",
       },
       {
         name: "Récupération de Paiement",

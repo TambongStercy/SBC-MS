@@ -8,7 +8,11 @@ import { reprocessFeexpayPaymentsForUser, searchUsersForFeexPayFix, ReprocessFee
 import { AdminUserData } from '../services/adminUserApi'; // Reusing the AdminUserData interface
 import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
 
-function FixFeexpayPaymentsPage() {
+interface FixFeexpayPaymentsPageProps {
+    embedded?: boolean; // Suppress <Header /> when rendered inside the unified /fix-provider-issues tabbed page.
+}
+
+function FixFeexpayPaymentsPage({ embedded = false }: FixFeexpayPaymentsPageProps = {}) {
     const [searchTerm, setSearchTerm] = useState('');
     const [users, setUsers] = useState<AdminUserData[]>([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
@@ -77,7 +81,7 @@ function FixFeexpayPaymentsPage() {
 
     return (
         <div className="flex-1 overflow-auto relative z-10">
-            <Header title="Fix FeexPay Payments" />
+            {!embedded && <Header title="Fix FeexPay Payments" />}
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
                     className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
