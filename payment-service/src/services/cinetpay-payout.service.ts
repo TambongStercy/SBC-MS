@@ -432,7 +432,15 @@ export class CinetPayPayoutService {
                         comment: response.data.status,
                     };
                 } catch (innerError: any) {
-                    if (innerError.response?.status === 404) {
+                    // Continue to the next configured country on both 404 (transfer
+                    // not found by CinetPay under this country's account) and 422
+                    // (CinetPay's typical response when the transfer belongs to a
+                    // different country's merchant account than the one whose
+                    // credentials we authenticated with). Previously we only
+                    // continued on 404 — a 422 caused a throw and stopped the
+                    // whole loop, leaving stuck transactions unverifiable via
+                    // the fallback country iteration.
+                    if (innerError.response?.status === 404 || innerError.response?.status === 422) {
                         continue;
                     }
                     throw innerError;

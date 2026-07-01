@@ -222,6 +222,17 @@ export class TransactionStatusChecker {
                     await this.reconcileNOWPaymentsTransaction(transaction);
                     break;
 
+                case 'MoneyFusion':
+                    // MoneyFusion has no public status-verify API — their docs
+                    // define webhook events but no way to poll transaction state.
+                    // So we can't reconcile from the cron. These need admin
+                    // verification on MF's dashboard via the dedicated
+                    // /fix-moneyfusion-withdrawals admin page. Log at info level
+                    // (not warn) so this doesn't clutter the error stream every
+                    // 5 minutes.
+                    log.info(`Transaction ${transaction.transactionId} routed to MoneyFusion — no status API available; admin must reconcile via /fix-moneyfusion-withdrawals`);
+                    break;
+
                 default:
                     log.warn(`Unknown service provider '${serviceProvider}' for transaction ${transaction.transactionId}.`);
                     break;
