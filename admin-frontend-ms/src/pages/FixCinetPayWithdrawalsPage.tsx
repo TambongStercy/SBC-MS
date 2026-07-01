@@ -28,7 +28,11 @@ import Pagination from '../components/common/Pagination';
  */
 const PAGE_SIZE = 20;
 
-const FixCinetPayWithdrawalsPage: React.FC = () => {
+interface FixCinetPayWithdrawalsPageProps {
+    embedded?: boolean;
+}
+
+const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({ embedded = false }) => {
     const { toasts, removeToast, showSuccess, showError, showInfo } = useToast();
 
     const [withdrawals, setWithdrawals] = useState<WithdrawalTransaction[]>([]);
@@ -89,7 +93,7 @@ const FixCinetPayWithdrawalsPage: React.FC = () => {
 
     return (
         <div className="flex-1 overflow-auto relative z-10">
-            <Header title="Fix CinetPay Withdrawals" />
+            {!embedded && <Header title="Fix CinetPay Withdrawals" />}
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
                     className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
@@ -97,23 +101,6 @@ const FixCinetPayWithdrawalsPage: React.FC = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
                 >
-                    <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mb-6">
-                        <p className="text-sm text-blue-200">
-                            <strong>What this page is for.</strong> CinetPay doesn't reliably deliver
-                            payout notification webhooks — their own docs explicitly recommend polling
-                            the status API as fallback. Click <em>Verify &amp; Apply</em> on any row:
-                            we call CinetPay's status API and act on the answer:
-                            <br />
-                            &nbsp;&nbsp;• If CinetPay says <em>completed</em> → we mark the withdrawal COMPLETED and debit the user wallet
-                            <br />
-                            &nbsp;&nbsp;• If CinetPay says <em>failed</em> → we mark the withdrawal FAILED (no wallet movement — the user can retry)
-                            <br />
-                            &nbsp;&nbsp;• If CinetPay says <em>pending</em> → nothing changes; try again later
-                            <br />
-                            No manual dashboard verification needed — the CinetPay status API is authoritative.
-                        </p>
-                    </div>
-
                     <div className="flex items-center gap-3 mb-4">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />

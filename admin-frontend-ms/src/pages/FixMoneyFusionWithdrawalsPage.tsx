@@ -27,7 +27,11 @@ import Pagination from '../components/common/Pagination';
  */
 const PAGE_SIZE = 20;
 
-const FixMoneyFusionWithdrawalsPage: React.FC = () => {
+interface FixMoneyFusionWithdrawalsPageProps {
+    embedded?: boolean;
+}
+
+const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps> = ({ embedded = false }) => {
     const { toasts, removeToast, showSuccess, showError } = useToast();
 
     const [withdrawals, setWithdrawals] = useState<WithdrawalTransaction[]>([]);
@@ -106,7 +110,7 @@ const FixMoneyFusionWithdrawalsPage: React.FC = () => {
 
     return (
         <div className="flex-1 overflow-auto relative z-10">
-            <Header title="Fix MoneyFusion Withdrawals" />
+            {!embedded && <Header title="Fix MoneyFusion Withdrawals" />}
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
                     className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
@@ -114,17 +118,6 @@ const FixMoneyFusionWithdrawalsPage: React.FC = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
                 >
-                    <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4 mb-6">
-                        <p className="text-sm text-yellow-200">
-                            <strong>What this page is for.</strong> MoneyFusion doesn't deliver payout
-                            webhooks, so withdrawals routed through MF stay in <code>PROCESSING</code>
-                            forever after you approve them. Verify the payout on MoneyFusion's dashboard
-                            (search by amount + recipient phone, or by tokenPay), then mark each
-                            withdrawal here as <em>Completed</em> (debits the user wallet) or
-                            <em> Failed</em> (no wallet movement — user can retry).
-                        </p>
-                    </div>
-
                     <div className="flex items-center gap-3 mb-4">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
