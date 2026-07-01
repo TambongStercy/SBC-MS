@@ -5462,6 +5462,14 @@ class PaymentService {
             throw new AppError(errorMsg, 400);
         }
 
+        // Pass the destination country so checkPayoutStatus authenticates with the
+        // correct per-country CinetPay credentials on the first try. Without this
+        // it iterates through all configured countries and throws on the first
+        // non-404 error — which is 422 when using the wrong country's OAuth
+        // token to look up a transfer that belongs to a different country's
+        // merchant account. Root cause of the "CinetPay reconciliation cron
+        // has been silently failing all CI transactions" incident of 2026-07-01.
+        const destinationCountry = transaction.metadata?.accountInfo?.countryCode;
         let verifiedPayoutStatus: CinetPayPayoutStatus | null = null; // Declare outside try block
         try {
             // CRITICAL: Perform server-to-server validation with CinetPay's API.
@@ -5472,8 +5480,8 @@ class PaymentService {
             // "QvwPG-3fDMbfN"), so looking up by our raw merchant ID returns 404 NOT_FOUND for
             // any merchant ID containing underscores — which causes the reconciliation job to
             // throw 503 and leave the transaction stuck in PROCESSING forever.
-            log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId})`);
-            verifiedPayoutStatus = await cinetpayPayoutService.checkPayoutStatus(cinetpayTransactionId);
+            log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId}, country: ${destinationCountry || 'auto'})`);
+            verifiedPayoutStatus = await cinetpayPayoutService.checkPayoutStatus(cinetpayTransactionId, destinationCountry);
 
             if (!verifiedPayoutStatus) {
                 log.error(`CinetPay Payout Webhook: No status found from CinetPay API for Tx ID: ${cinetpayTransactionId}. Marking internal transaction ${internalTransactionId} as FAILED due to verification failure.`);
