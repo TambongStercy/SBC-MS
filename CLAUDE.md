@@ -352,20 +352,31 @@ The interface comment at `payment-service/src/config/index.ts:78` mentions
 is `https://api.cinetpay.co`. Probably interchangeable aliases — but the `.co`
 host is what's in env and what the live code talks to.
 
-### MoneyFusion never sends payout webhooks
+### MoneyFusion payout webhooks — reality check (corrected 2026-07-01)
 
-This is permanent until MF builds them. Symptoms:
-  - Withdrawal sits in `PROCESSING` indefinitely after admin approval
-  - `metadata.payoutMessage` stays the default "Votre retrait est en cours de
-    traitement..." — would normally be overwritten on real success
-  - `metadata.payoutCompletedAt` set well after `createdAt` = manual reconciliation
+Earlier notes in this doc claimed "MoneyFusion never sends payout webhooks".
+That was wrong. Sterling pulled MF's official docs which explicitly define
+`payout.session.completed` / `payout.session.cancelled` webhook events, and
+prod logs confirm MF has delivered payout webhooks (rare, but happens).
 
-For NEW transactions, the admin can mark them completed/failed via the buttons
-PR #72 added to the Withdrawal Approval modal — that stamps
-`metadata.manualCompletion: { by, at, reason }` for audit. For OLD transactions
-(pre-PR #72), the gap between `createdAt` and `payoutCompletedAt` is the only
-clue that it was manually marked rather than webhook-confirmed; ALWAYS verify
-against MF dashboard before trusting the `completed` status on those.
+Actual behavior:
+  - MF DOES send payout webhooks — but only when their system reaches a
+    terminal state (`completed` or `cancelled`)
+  - For many of our stuck payouts, MF's system never reaches terminal state
+    — it just hangs indefinitely on their side (neither confirmed nor
+    cancelled). No webhook fires because there's nothing to fire.
+  - Log-based sanity: prod has hundreds of payin webhooks from MF vs single
+    digits of payout webhooks. Payouts hanging is the norm, not the exception.
+  - MF has NO public status-verify API (unlike CinetPay), so we can't poll to
+    resolve hung ones — admin must verify on MF dashboard and mark manually.
+
+Fix workflow (PR #72 + #77):
+  - `/fix-moneyfusion-withdrawals` admin page lists all stuck MF withdrawals
+  - Admin verifies on MF dashboard, clicks Mark Completed / Mark Failed
+  - Marker `metadata.manualCompletion: { by, at, reason }` stamped for audit
+  - Old records (pre-PR #72) have no such marker — the gap between
+    `createdAt` and `payoutCompletedAt` is the only clue they were manually
+    marked without webhook confirmation
 
 ### MF dashboard limits — what you can and can't verify
 
@@ -379,9 +390,9 @@ Sterling confirmed empirically 2026-06-29:
     "not delivered" for refund purposes.
 
 Investigation procedure when a user says "didn't receive":
-  1. Pull the tx — confirm `serviceProvider: 'MoneyFusion'`, status
-     `completed`, and grab `metadata.accountInfo.fullMomoNumber`, `amount`,
-     `externalTransactionId`
+  1. Pull the tx — confirm `metadata.selectedPayoutService: 'MoneyFusion'`,
+     status `completed`, and grab `metadata.accountInfo.fullMomoNumber`,
+     `amount`, `externalTransactionId`
   2. Ask admin to search MF dashboard for that recipient number AND/OR amount
      (gross, rounded to integer). NOT `netAmountRequested` — MF shows our gross.
   3. If absent from MF dashboard → refund full gross `amount` to user's
@@ -390,6 +401,56 @@ Investigation procedure when a user says "didn't receive":
      case 2026-06-29 is the canonical example.
   4. If present in MF dashboard → push it to MF support / Orange CM (whichever
      network); the money left our hands successfully.
+
+### CinetPay payout webhooks — they mostly DON'T call us; POLL instead
+
+Confirmed empirically 2026-06-30 → 07-01. Nginx + app logs show CinetPay has
+NEVER hit `/api/payouts/webhooks/cinetpay` — zero requests across the entire
+prod history — despite our `notify_url` being correctly set and the route
+being reachable (FeexPay successfully hits the parallel `/feexpay` path).
+
+Our `notify_url` field name IS correct per CinetPay's own `/v1/transfer`
+docs (verified 2026-07-01 — they list it as required). Unknown why they
+don't call. Possibilities: their new-platform migration broke webhook
+delivery; needs to be enabled per-account; needs to be configured in
+merchant dashboard globally instead of per-request.
+
+**But CinetPay's own docs explicitly recommend polling their status API as
+the fallback when notifications don't arrive** (quote from their `/v1/transfer/{id}`
+docs: "vous pouvez utiliser le statut de transaction pour vérifier en temps
+réel le statut actuel d'un paiement. En pratique, cela peut être utile lorsque
+les notifications ne sont pas envoyées"). So we can't and shouldn't rely on
+their webhook.
+
+Fix workflow (PR shipped 2026-07-01, feature/fix-cinetpay-withdrawals-page):
+  - `/fix-cinetpay-withdrawals` admin page lists stuck CinetPay withdrawals
+  - Admin clicks "Verify & Apply" → we call `cinetpayPayoutService.checkPayoutStatus`
+    → we act on the answer:
+      - `completed` → mark COMPLETED + debit wallet
+      - `failed` → mark FAILED, no wallet movement
+      - `pending` → leave alone, tell admin to try later
+  - Marker `metadata.reconciliation: { by, at, source, cinetpayStatus, reason }`
+    stamped for audit
+  - No admin verification against CinetPay dashboard needed — the status API
+    is authoritative
+
+### CinetPay top-level `serviceProvider` field is NOT set
+
+Pre-existing gap: withdrawals routed through CinetPay have `serviceProvider: null`
+in the transaction document, but `metadata.selectedPayoutService: 'CinetPay'`.
+MoneyFusion sets both. This tripped up my first filter attempt for the CinetPay
+reconciler; use `$or: [{ serviceProvider: 'CinetPay' }, { 'metadata.selectedPayoutService': 'CinetPay' }]`
+when querying. Longer-term cleanup: set `serviceProvider` consistently on the
+CinetPay branch of `processMobileMoneyWithdrawalPayout`.
+
+### Provider webhook + API status quick-reference
+
+| Provider | Sends payout webhooks | Has status verify API | Recommended reconcile strategy |
+|---|---|---|---|
+| FeexPay | Yes (reliable) | Yes | Trust webhook; no manual tool needed |
+| MoneyFusion | Only on terminal state (many payouts hang) | No | Admin verifies on MF dashboard + `/fix-moneyfusion-withdrawals` page |
+| CinetPay | No (empirically zero calls, unknown why) | **Yes — recommended** | Poll status API via `/fix-cinetpay-withdrawals` page |
+| NOWPayments (crypto) | Yes | Yes | Trust webhook |
 
 ### Master deploys need ONE click (post-PR #73)
 

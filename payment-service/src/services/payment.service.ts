@@ -3713,6 +3713,133 @@ class PaymentService {
         return { success: true, transaction: updated };
     }
 
+    /**
+     * Reconcile a stuck CinetPay withdrawal by asking CinetPay's own status API
+     * for the current verdict, then applying the same bookkeeping the (never-
+     * arriving) webhook would have. Different pattern from the MoneyFusion
+     * equivalents above: with MF the admin verifies out-of-band and asserts the
+     * result; with CinetPay we query their API directly, so the "verification"
+     * is deterministic — admin just clicks and the right thing happens.
+     *
+     * Per CinetPay's own /v1/transfer docs:
+     *   "En pratique, [utiliser le statut de transaction] peut être utile lorsque
+     *   les notifications ne sont pas envoyées."
+     * → CinetPay explicitly recommends polling the status API as fallback when
+     * their notification webhook doesn't arrive. That's what this method does.
+     *
+     * Guard rails:
+     *   - Only applies to CinetPay-routed withdrawals in PROCESSING/PENDING
+     *   - Idempotent on COMPLETED / FAILED (returns success no-op)
+     *   - Refuses transactions without an externalTransactionId (can't verify)
+     *   - Stamps metadata.reconciliation with { by, at, cinetpayStatus }
+     */
+    public async reconcileCinetPayWithdrawal(
+        transactionId: string,
+        adminId: string,
+    ): Promise<{
+        success: boolean;
+        transaction?: any;
+        action?: 'completed' | 'failed' | 'still-pending' | 'no-op';
+        cinetpayStatus?: string;
+        error?: string;
+    }> {
+        const transaction = await transactionRepository.findByTransactionId(transactionId);
+        if (!transaction) {
+            return { success: false, error: 'Transaction not found' };
+        }
+        if (transaction.type !== TransactionType.WITHDRAWAL) {
+            return { success: false, error: 'Transaction is not a withdrawal' };
+        }
+        // CinetPay-routed detection — check both serviceProvider and metadata (some
+        // older transactions have `metadata.selectedPayoutService: "CinetPay"` but
+        // `serviceProvider: null` due to a pre-existing gap where CinetPay never
+        // stamped the top-level field on approval).
+        const isCinetPay = transaction.serviceProvider === 'CinetPay'
+            || transaction.metadata?.selectedPayoutService === 'CinetPay';
+        if (!isCinetPay) {
+            return { success: false, error: `Not a CinetPay withdrawal (serviceProvider=${transaction.serviceProvider || 'null'})` };
+        }
+        if (!transaction.externalTransactionId) {
+            return { success: false, error: 'Transaction has no CinetPay tokenPay — cannot verify status' };
+        }
+        if (transaction.status === TransactionStatus.COMPLETED) {
+            return { success: true, action: 'no-op', transaction };
+        }
+        if (transaction.status === TransactionStatus.FAILED) {
+            return { success: true, action: 'no-op', transaction };
+        }
+        if (
+            transaction.status !== TransactionStatus.PROCESSING &&
+            transaction.status !== TransactionStatus.PENDING
+        ) {
+            return { success: false, error: `Cannot reconcile a withdrawal in status '${transaction.status}'` };
+        }
+
+        // Query CinetPay for the current status of this transfer.
+        const country = transaction.metadata?.accountInfo?.countryCode || undefined;
+        let verified: any;
+        try {
+            verified = await cinetpayPayoutService.checkPayoutStatus(
+                transaction.externalTransactionId,
+                country,
+            );
+        } catch (err: any) {
+            log.error(`CinetPay status check failed for ${transactionId} (tokenPay=${transaction.externalTransactionId}): ${err.message}`);
+            return { success: false, error: `CinetPay status API error: ${err.message}` };
+        }
+        if (!verified) {
+            return { success: false, error: 'CinetPay returned no status for this transfer' };
+        }
+
+        const cinetpayStatus = verified.status;
+
+        // Apply based on CinetPay's verdict
+        if (cinetpayStatus === 'completed') {
+            await transactionRepository.update(transaction._id, {
+                status: TransactionStatus.COMPLETED,
+                'metadata.payoutCompletedAt': new Date().toISOString(),
+                'metadata.reconciliation': {
+                    by: adminId,
+                    at: new Date().toISOString(),
+                    source: 'CinetPay status API',
+                    cinetpayStatus,
+                    cinetpayComment: verified.comment || null,
+                    reason: 'CinetPay never called notify webhook; verified via status API per their docs recommendation',
+                },
+            });
+            const amountToDebit = -Math.abs(transaction.amount);
+            await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
+            log.info(`Admin ${adminId} reconciled CinetPay withdrawal ${transactionId} as COMPLETED; debited ${amountToDebit} from user ${transaction.userId}`);
+            const updated = await transactionRepository.findByTransactionId(transactionId);
+            return { success: true, action: 'completed', cinetpayStatus, transaction: updated };
+        }
+
+        if (cinetpayStatus === 'failed') {
+            await this.handleFailedWithdrawal(
+                transactionId,
+                `CinetPay status API reported failure${verified.comment ? ': ' + verified.comment : ''}`,
+                transaction.externalTransactionId,
+            );
+            await transactionRepository.update(transaction._id, {
+                'metadata.reconciliation': {
+                    by: adminId,
+                    at: new Date().toISOString(),
+                    source: 'CinetPay status API',
+                    cinetpayStatus,
+                    cinetpayComment: verified.comment || null,
+                    reason: 'CinetPay never called notify webhook; verified failed via status API',
+                },
+            });
+            log.info(`Admin ${adminId} reconciled CinetPay withdrawal ${transactionId} as FAILED`);
+            const updated = await transactionRepository.findByTransactionId(transactionId);
+            return { success: true, action: 'failed', cinetpayStatus, transaction: updated };
+        }
+
+        // Still pending on CinetPay's side — nothing to do
+        log.info(`CinetPay withdrawal ${transactionId} still ${cinetpayStatus} at CinetPay — leaving as-is`);
+        return { success: true, action: 'still-pending', cinetpayStatus, transaction };
+    }
+
     private async initiateCinetPayPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
         try {
             log.info(`Initiating CinetPay payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
