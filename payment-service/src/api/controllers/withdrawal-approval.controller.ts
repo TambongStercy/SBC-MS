@@ -400,6 +400,142 @@ export class WithdrawalApprovalController {
     }
 
     /**
+     * List CinetPay withdrawals stuck in PROCESSING/PENDING because CinetPay's
+     * notification webhook didn't arrive. Powers the dedicated "Fix CinetPay
+     * Withdrawals" admin page. Same shape as the MoneyFusion list endpoint,
+     * different filter.
+     *
+     * GET /api/admin/withdrawals/stuck-cinetpay
+     * Query: ?page=1&limit=20&search=<...>
+     */
+    async getStuckCinetPayWithdrawals(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                res.status(401).json({ success: false, message: 'Admin not authenticated' });
+                return;
+            }
+            const { page = '1', limit = '20', search } = req.query;
+            const pageNum = Math.max(1, parseInt(page as string) || 1);
+            const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+            const skip = (pageNum - 1) * limitNum;
+
+            // Filter: CinetPay-routed (checks both fields — the top-level
+            // serviceProvider isn't always set for CinetPay due to a pre-existing
+            // gap where MF sets it but CinetPay doesn't). Also require an
+            // externalTransactionId — without a tokenPay we can't call CinetPay's
+            // status API, so those rows would be permanently unresolvable here.
+            const filter: Record<string, any> = {
+                type: TransactionType.WITHDRAWAL,
+                $or: [
+                    { serviceProvider: 'CinetPay' },
+                    { 'metadata.selectedPayoutService': 'CinetPay' },
+                ],
+                status: { $in: [TransactionStatus.PROCESSING, TransactionStatus.PENDING] },
+                deleted: false,
+                externalTransactionId: { $ne: null, $exists: true },
+            };
+
+            const transactions = await TransactionModel.find(filter)
+                .sort({ createdAt: 1 })
+                .skip(skip)
+                .limit(limitNum)
+                .lean();
+            const total = await TransactionModel.countDocuments(filter);
+
+            const enriched = await Promise.all(
+                transactions.map(async (tx: any) => {
+                    try {
+                        const userDetails = await userServiceClient.getUserDetails(tx.userId.toString());
+                        return {
+                            ...tx,
+                            userName: userDetails?.name || 'Unknown',
+                            userEmail: userDetails?.email || 'Unknown',
+                            userPhoneNumber: userDetails?.phoneNumber?.toString() || 'Unknown',
+                        };
+                    } catch {
+                        return { ...tx, userName: 'Error fetching', userEmail: 'Error fetching', userPhoneNumber: 'Error fetching' };
+                    }
+                }),
+            );
+
+            const searchTerm = typeof search === 'string' ? search.trim().toLowerCase() : '';
+            const filtered = searchTerm
+                ? enriched.filter((t: any) =>
+                    String(t.userName).toLowerCase().includes(searchTerm)
+                    || String(t.userEmail).toLowerCase().includes(searchTerm)
+                    || String(t.userPhoneNumber).toLowerCase().includes(searchTerm)
+                    || String(t.transactionId).toLowerCase().includes(searchTerm)
+                    || String(t.metadata?.accountInfo?.fullMomoNumber || '').toLowerCase().includes(searchTerm))
+                : enriched;
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    withdrawals: filtered,
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total,
+                        totalPages: Math.ceil(total / limitNum),
+                    },
+                },
+            });
+        } catch (error: any) {
+            log.error('Error listing stuck CinetPay withdrawals:', error);
+            res.status(500).json({ success: false, message: 'Failed to fetch stuck CinetPay withdrawals', error: error.message });
+        }
+    }
+
+    /**
+     * Reconcile a stuck CinetPay withdrawal by asking CinetPay for its current
+     * status and applying the same bookkeeping the webhook would have. Per
+     * CinetPay's own docs this is the recommended fallback when notifications
+     * don't arrive.
+     *
+     * POST /api/admin/withdrawals/:transactionId/reconcile-cinetpay
+     */
+    async reconcileCinetPayWithdrawal(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.user?.userId;
+            if (!adminId) {
+                res.status(401).json({ success: false, message: 'Admin not authenticated' });
+                return;
+            }
+            const { transactionId } = req.params;
+            log.info(`Admin ${adminId} reconciling CinetPay withdrawal ${transactionId}`);
+
+            const result = await paymentService.reconcileCinetPayWithdrawal(transactionId, adminId);
+            if (result.success) {
+                res.status(200).json({
+                    success: true,
+                    action: result.action,
+                    cinetpayStatus: result.cinetpayStatus,
+                    message: result.action === 'completed'
+                        ? 'CinetPay confirmed completed — wallet debited'
+                        : result.action === 'failed'
+                            ? 'CinetPay confirmed failed — no wallet movement'
+                            : result.action === 'still-pending'
+                                ? `CinetPay still ${result.cinetpayStatus} — nothing changed`
+                                : result.action === 'no-op'
+                                    ? 'Already in terminal status — no change'
+                                    : 'OK',
+                    data: result.transaction,
+                });
+            } else {
+                res.status(400).json({ success: false, message: result.error || 'Failed to reconcile' });
+            }
+        } catch (error: any) {
+            log.error('Error reconciling CinetPay withdrawal:', error);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            res.status(500).json({ success: false, message: 'Failed to reconcile', error: error.message });
+        }
+    }
+
+    /**
      * List MoneyFusion withdrawals that are stuck in PROCESSING/PENDING because
      * MF never delivers payout webhooks. Powers the dedicated
      * "Fix MoneyFusion Withdrawals" admin page.
