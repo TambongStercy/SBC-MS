@@ -42,6 +42,18 @@ export class ConversationRepository {
     }
 
     /**
+     * Find the LOVE conversation for a given SBC Love match
+     */
+    async findLoveConversationByMatch(
+        matchId: string | Types.ObjectId
+    ): Promise<IConversation | null> {
+        return ConversationModel.findOne({
+            type: ConversationType.LOVE,
+            matchId
+        }).exec();
+    }
+
+    /**
      * Find conversation by status reply
      */
     async findStatusReplyConversation(

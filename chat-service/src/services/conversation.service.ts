@@ -65,6 +65,35 @@ class ConversationService {
     }
 
     /**
+     * Get or create the SBC Love conversation for a confirmed (contact-unlocked)
+     * match. Pre-ACCEPTED because the double opt-in IS the consent — the
+     * marketplace pending/3-message flow does not apply. Idempotent per matchId.
+     */
+    async getOrCreateLoveConversation(
+        userId1: string,
+        userId2: string,
+        matchId: string
+    ): Promise<IConversation> {
+        let conversation = await conversationRepository.findLoveConversationByMatch(matchId);
+
+        if (!conversation) {
+            conversation = await conversationRepository.create({
+                participants: [new Types.ObjectId(userId1), new Types.ObjectId(userId2)],
+                type: ConversationType.LOVE,
+                matchId: new Types.ObjectId(matchId),
+                acceptanceStatus: ConversationAcceptanceStatus.ACCEPTED,
+                acceptedAt: new Date(),
+                initiatorId: new Types.ObjectId(userId1),
+                unreadCounts: new Map(),
+                messageCounts: new Map()
+            });
+            log.info(`Created LOVE conversation for match ${matchId}`);
+        }
+
+        return conversation;
+    }
+
+    /**
      * Get or create a conversation for status reply
      */
     async getOrCreateStatusReplyConversation(

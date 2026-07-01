@@ -57,6 +57,7 @@ interface IConfig {
         notificationService: string;
         settingsService: string;
         apiGateway: string;
+        chatService: string;
     };
     logging: {
         level: string;
@@ -72,6 +73,7 @@ interface IConfig {
         maxInterestsPerWeek: number;
         autoSuspendThreshold: number;
         autoApprove: boolean;
+        requirePhoto: boolean;
         maxPhotos: number;
         descriptionMaxLength: number;
         otherIntentionMaxLength: number;
@@ -119,6 +121,7 @@ const config: IConfig = {
         notificationService: ensureApiSuffix(process.env.NOTIFICATION_SERVICE_URL, 'http://localhost:3002'),
         settingsService: ensureApiSuffix(process.env.SETTINGS_SERVICE_URL, 'http://localhost:3007'),
         apiGateway: ensureApiSuffix(process.env.API_GATEWAY_URL, 'http://localhost:3000'),
+        chatService: ensureApiSuffix(process.env.CHAT_SERVICE_URL, 'http://localhost:3008'),
     },
 
     logging: {
@@ -139,6 +142,9 @@ const config: IConfig = {
         // Manual validation is recommended by default (spec §7); set true to auto-approve
         // profiles that pass content validation.
         autoApprove: (process.env.SBCLOVE_AUTO_APPROVE || 'false').toLowerCase() === 'true',
+        // When false (e.g. environments without photo storage), profiles can be
+        // approved without a photo. Default true keeps the production guard.
+        requirePhoto: (process.env.SBCLOVE_REQUIRE_PHOTO || 'true').toLowerCase() !== 'false',
         maxPhotos: parseInt(process.env.SBCLOVE_MAX_PHOTOS || '3', 10),
         descriptionMaxLength: parseInt(process.env.SBCLOVE_DESCRIPTION_MAX_LENGTH || '300', 10),
         otherIntentionMaxLength: parseInt(process.env.SBCLOVE_OTHER_INTENTION_MAX_LENGTH || '80', 10),

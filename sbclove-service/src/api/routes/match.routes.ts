@@ -12,4 +12,7 @@ router.get('/me', (req, res, next) => matchController.getMyMatches(req, res, nex
 // POST /matches/:id/contact-choice - double opt-in choice (spec §13)
 router.post('/:id/contact-choice', (req, res, next) => matchController.setContactChoice(req, res, next));
 
+// POST /matches/:id/chat - open the encrypted chat (requires contact unlocked)
+router.post('/:id/chat', (req, res, next) => matchController.openChat(req, res, next));
+
 export default router;

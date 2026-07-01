@@ -2,9 +2,12 @@ import { Types } from 'mongoose';
 import { messageRepository } from '../database/repositories/message.repository';
 import { conversationRepository } from '../database/repositories/conversation.repository';
 import { IMessage, MessageType, MessageStatus } from '../database/models/message.model';
+import { ConversationType } from '../database/models/conversation.model';
 import { conversationService } from './conversation.service';
 import { userServiceClient } from './clients/user.service.client';
 import { settingsServiceClient } from './clients/settings.service.client';
+import { sbcloveServiceClient } from './clients/sbclove.service.client';
+import { encrypt, decrypt } from '../utils/loveCrypto';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -95,6 +98,18 @@ function groupMessagesByDate(messages: MessageWithSender[]): MessageGroup[] {
 
 class MessageService {
     /**
+     * Decrypt content + reply preview for a plain message object (post-toObject)
+     * when it was stored encrypted. No-op for plaintext/marketplace messages.
+     */
+    private decryptForRead<T extends { encrypted?: boolean; content?: string; replyTo?: { content?: string } | null }>(msg: T): T {
+        if (msg?.encrypted) {
+            if (msg.content) msg.content = decrypt(msg.content);
+            if (msg.replyTo?.content) msg.replyTo.content = decrypt(msg.replyTo.content);
+        }
+        return msg;
+    }
+
+    /**
      * Create a new message
      */
     async createMessage(data: CreateMessageData): Promise<IMessage> {
@@ -112,8 +127,33 @@ class MessageService {
             throw new Error('User is not a participant in this conversation');
         }
 
-        // Check 3-message limit for unaccepted conversations
-        await conversationService.checkMessageLimit(data.conversationId, data.senderId);
+        // Branch on conversation type: SBC Love conversations are consent-gated
+        // (double opt-in) + weekly-window-gated and encrypted at rest; marketplace
+        // conversations keep their 3-message pending limit and plaintext storage.
+        const conversation = await conversationRepository.findById(data.conversationId);
+        if (!conversation) {
+            throw new Error('Conversation not found');
+        }
+        const isLove = conversation.type === ConversationType.LOVE;
+
+        if (isLove) {
+            const matchId = conversation.matchId?.toString();
+            if (!matchId) {
+                throw new Error('Invalid love conversation');
+            }
+            // Authoritative server-side gate (client also disables the composer,
+            // but never trust the client for this).
+            const { unlocked, isOpen } = await sbcloveServiceClient.canChat(matchId, data.senderId);
+            if (!unlocked) {
+                throw new Error('This match is no longer available for chat.');
+            }
+            if (!isOpen) {
+                throw new Error('SBC Love chat is closed right now. It reopens during the weekly window.');
+            }
+        } else {
+            // Check 3-message limit for unaccepted conversations
+            await conversationService.checkMessageLimit(data.conversationId, data.senderId);
+        }
 
         // Get reply info if replying to a message
         let replyTo;
@@ -121,9 +161,13 @@ class MessageService {
             const replyMessage = await messageRepository.findById(data.replyToId);
             if (replyMessage) {
                 const replyUser = await userServiceClient.getUserDetails(replyMessage.senderId.toString());
+                // Parent may be stored encrypted; decrypt to build the preview,
+                // then re-encrypt it for LOVE so nothing lands in plaintext at rest.
+                const parentPlain = replyMessage.encrypted ? decrypt(replyMessage.content) : replyMessage.content;
+                const preview = parentPlain.substring(0, 100);
                 replyTo = {
                     messageId: replyMessage._id,
-                    content: replyMessage.content.substring(0, 100),
+                    content: isLove ? encrypt(preview) : preview,
                     senderId: replyMessage.senderId,
                     senderName: replyUser?.name || 'Unknown',
                     type: replyMessage.type
@@ -131,11 +175,12 @@ class MessageService {
             }
         }
 
-        // Create message
+        // Create message (content encrypted at rest for LOVE conversations)
         const message = await messageRepository.create({
             conversationId: new Types.ObjectId(data.conversationId),
             senderId: new Types.ObjectId(data.senderId),
-            content: data.content,
+            content: isLove ? encrypt(data.content) : data.content,
+            encrypted: isLove,
             type: data.type || MessageType.TEXT,
             documentUrl: data.documentUrl,
             documentName: data.documentName,
@@ -146,6 +191,13 @@ class MessageService {
             deliveredTo: [new Types.ObjectId(data.senderId)],
             replyTo
         });
+
+        // Return plaintext to in-process callers (REST response, forwarding) while
+        // the DB keeps ciphertext. Mutating without .save() doesn't re-persist.
+        if (isLove) {
+            message.content = data.content;
+            if (message.replyTo) message.replyTo.content = decrypt(message.replyTo.content);
+        }
 
         // Restore conversation for sender if they had deleted it
         // This makes the conversation reappear in their chat list
@@ -159,7 +211,9 @@ class MessageService {
             data.conversationId,
             message._id,
             message.senderId,
-            data.content,
+            // Never store a plaintext preview for LOVE conversations (it would
+            // leak content out of the encrypted message doc into the conversation).
+            isLove ? '' : data.content,
             otherParticipants
         );
 
@@ -199,7 +253,7 @@ class MessageService {
 
         // Add sender details to messages
         const messagesWithSenders: MessageWithSender[] = messages.map(message => {
-            const msg = message.toObject() as MessageWithSender;
+            const msg = this.decryptForRead(message.toObject() as MessageWithSender);
             const sender = userDetails.get(message.senderId.toString());
             msg.sender = sender ? {
                 _id: sender._id,
@@ -294,7 +348,7 @@ class MessageService {
         // Get sender details
         const sender = await userServiceClient.getUserDetails(message.senderId.toString());
 
-        const messageWithSender = message.toObject() as MessageWithSender;
+        const messageWithSender = this.decryptForRead(message.toObject() as MessageWithSender);
         messageWithSender.sender = sender ? {
             _id: sender._id,
             name: sender.name,
@@ -362,7 +416,9 @@ class MessageService {
                 await this.createMessage({
                     conversationId: convId,
                     senderId: userId,
-                    content: message.content,
+                    // Decrypt if the source was a LOVE message; createMessage
+                    // re-encrypts per the target conversation's type.
+                    content: message.encrypted ? decrypt(message.content) : message.content,
                     type: message.type,
                     documentUrl: message.documentUrl,
                     documentName: message.documentName,
