@@ -328,16 +328,37 @@ export class FeexPayPayoutService {
                 });
             }
 
-            // Validate and prepare motif (description) according to FeexPay documentation
-            // Minimum 5 characters, no special characters
+            // Validate and prepare motif (description) according to FeexPay v2 API:
+            //   - min 5 characters
+            //   - max 30 characters (NEW in v2 API; not enforced in v1)
+            //   - no special characters (only alphanumeric + spaces)
+            //
+            // The 30-char ceiling was introduced when FeexPay migrated to
+            // api-v2.feexpay.me on 2026-06-30. Our default "Withdrawal payout
+            // for transaction <16-char-id>" totals ~50 chars and was silently
+            // rejected with:
+            //   "message": "Validation failed",
+            //   "errors": [{ "property": "motif",
+            //     "constraints": ["motif must be shorter than or equal to 30 characters"] }]
+            // Until 2026-07-02 this broke every FeexPay withdrawal (Rufus flag).
             let motif = request.description || `SBC Withdrawal ${request.client_transaction_id}`;
 
             // Remove special characters (keep only alphanumeric and spaces)
             motif = motif.replace(/[^a-zA-Z0-9\s]/g, '');
 
-            // Ensure minimum 5 characters
+            // Enforce the v2 max-30-chars cap. Truncate rather than throw so a
+            // slightly-long caller-supplied description doesn't kill a payout.
+            if (motif.length > 30) {
+                motif = motif.substring(0, 30).trim();
+            }
+
+            // Ensure minimum 5 characters. If truncation stripped us below the
+            // floor, fall back to a short deterministic string. Uses last 8
+            // chars of the tx id which stays well inside 30 and identifies
+            // the payout for FeexPay support requests.
             if (motif.length < 5) {
-                motif = `SBC Withdrawal ${request.client_transaction_id || Date.now()}`.replace(/[^a-zA-Z0-9\s]/g, '');
+                const shortId = String(request.client_transaction_id || Date.now()).slice(-8).replace(/[^a-zA-Z0-9]/g, '');
+                motif = `SBC ${shortId}`.substring(0, 30).trim();
             }
 
             // Prepare request body according to official FeexPay Togo API documentation
