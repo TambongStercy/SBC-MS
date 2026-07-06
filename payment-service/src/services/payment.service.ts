@@ -1698,59 +1698,39 @@ class PaymentService {
         const { reference, status, callback_info } = payload;
         const { sessionId } = callback_info || {};
 
-        if (!reference) {
-            if (sessionId) {
-                log.warn(`Received Feexpay webhook with missing reference but with sessionId: ${sessionId}.`);
-            } else {
-                log.warn('Received Feexpay webhook with missing reference and no sessionId in callback_info. Ignoring webhook.', payload);
-                throw new Error('Webhook payload missing required reference field');
+        if (!reference && !sessionId) {
+            log.warn('Received Feexpay webhook with missing reference and no sessionId in callback_info. Ignoring webhook.', payload);
+            throw new Error('Webhook payload missing required reference field');
+        }
+
+        // Resolve to a reference we can query FeexPay's status API with. If webhook
+        // only sent sessionId, look up the intent to recover the reference.
+        let feexpayReference: string | undefined = reference;
+        if (!feexpayReference && sessionId) {
+            const bySession = await paymentIntentRepository.findBySessionId(sessionId);
+            if (!bySession) {
+                log.error(`Feexpay webhook: no intent for sessionId ${sessionId}`);
+                throw new Error('Payment intent not found for Feexpay webhook');
+            }
+            feexpayReference = bySession.gatewayPaymentId;
+            if (!feexpayReference) {
+                log.error(`Feexpay webhook: intent ${sessionId} has no gatewayPaymentId — cannot verify with FeexPay`);
+                throw new Error('PaymentIntent missing gatewayPaymentId');
             }
         }
 
-        // Find the payment intent using ONLY the reference (which is Feexpay's ID) or sessionId if provided
-        const paymentIntent = reference ? await paymentIntentRepository.findByGatewayPaymentId(reference, PaymentGateway.FEEXPAY) : await paymentIntentRepository.findBySessionId(sessionId);
+        log.info(`Feexpay webhook: verifying reference=${feexpayReference} (payload status=${status}) via FeexPay status API before applying.`);
 
-        if (!paymentIntent) {
-            // Use reference in the log message as sessionId might not be available
-            log.error(`Payment intent not found for Feexpay webhook reference: ${reference}`);
-            throw new Error('Payment intent not found for Feexpay webhook');
-        }
-
-        // Log the sessionId found from the intent for context
-        log.info(`Found PaymentIntent ${paymentIntent.sessionId} for Feexpay reference ${reference}`);
-
-        if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
-            log.warn(`Webhook received for already processed payment intent: ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
-            return;
-        }
-
-        let newStatus: PaymentStatus = paymentIntent.status;
-        if (status === 'SUCCESSFUL') {
-            newStatus = PaymentStatus.SUCCEEDED;
-        } else if (status === 'FAILED') {
-            newStatus = PaymentStatus.FAILED;
-        } else {
-            // If status is not SUCCESSFUL or FAILED, update internal status based on current state
-            // PENDING_PROVIDER -> PROCESSING, otherwise keep current (e.g., might be PROCESSING already)
-            newStatus = paymentIntent.status === PaymentStatus.PENDING_PROVIDER ? PaymentStatus.PROCESSING : paymentIntent.status;
-            log.info(`Received non-final Feexpay status: ${status}. Setting internal status to ${newStatus} for ${paymentIntent.sessionId}`);
-        }
-
-        let updatedIntent: IPaymentIntent | null = paymentIntent;
-        if (newStatus !== paymentIntent.status) {
-            // Use the sessionId from the fetched paymentIntent
-            updatedIntent = await paymentIntentRepository.addWebhookEvent(paymentIntent.sessionId, newStatus, payload);
-            log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to ${newStatus} via Feexpay webhook.`);
-            if (!updatedIntent) {
-                log.error(`Failed to update PaymentIntent ${paymentIntent.sessionId} after webhook event. Cannot proceed.`);
-                return;
-            }
-        }
-
-        // Check if status is final and updatedIntent is not null
-        if (updatedIntent && (updatedIntent.status === PaymentStatus.SUCCEEDED || updatedIntent.status === PaymentStatus.FAILED)) {
-            await this.handlePaymentCompletion(updatedIntent);
-        }
+        // Verify via FeexPay's status API. Since v2 payin webhooks no longer carry
+        // an Authorization header (FeexPay support confirmed 2026-07-06), the
+        // controller now accepts them unauthenticated. The verification here is
+        // what prevents a spoofed webhook from crediting a user: we don't trust
+        // the incoming payload's `status` field, we ask FeexPay directly.
+        //
+        // checkFeexpayTransactionStatus is idempotent, handles the intent lookup,
+        // applies the correct final status, and triggers handlePaymentCompletion
+        // when appropriate. So the whole thing collapses to this single call.
+        await this.checkFeexpayTransactionStatus(feexpayReference as string);
     }
 
     /**
