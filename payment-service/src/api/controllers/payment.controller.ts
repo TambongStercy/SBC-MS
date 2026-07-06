@@ -263,21 +263,36 @@ export class PaymentController {
             const payload = req.body;
             const authHeader = req.headers.authorization;
 
-            console.log('payload: ', payload)
-
             log.info(`Received Feexpay webhook for reference: ${payload?.reference}`);
             log.info('Feexpay webhook payload:', payload);
             log.info(`Feexpay webhook auth header: ${authHeader}`);
 
-            if (!this.verifyFeexpayWebhookAuth(authHeader)) {
-                log.warn('Feexpay webhook authorization failed.');
+            // FeexPay v2 (rolled out 2026-06-30) no longer sends an Authorization
+            // header on payin webhooks. Their support (2026-07-06) confirmed our
+            // 401 rejection is why they don't retry — they consider the webhook
+            // delivered once their POST fires. Rejecting with 401 is what caused
+            // 5,790+ CinetPay-style stuck payins on our side.
+            //
+            // Auth trust model going forward:
+            //   1. If a v1-style Authorization header IS present, we still verify it
+            //      (defensive, in case FeexPay adds signed webhooks later).
+            //   2. If missing (v2 default), we accept the webhook — but the service
+            //      layer (paymentService.handleFeexpayWebhook) MUST verify the
+            //      payload against FeexPay's own status API before applying any
+            //      state change, so a spoofed webhook can't credit a user.
+            if (authHeader && !this.verifyFeexpayWebhookAuth(authHeader)) {
+                log.warn('Feexpay webhook authorization failed (header present but invalid).');
                 return res.status(401).json({
                     success: false,
                     message: 'Unauthorized'
                 });
             }
 
-            log.info('Feexpay webhook authorization successful.');
+            if (!authHeader) {
+                log.info('Feexpay v2 webhook accepted without Authorization header; will verify via FeexPay status API before applying.');
+            } else {
+                log.info('Feexpay webhook authorization successful.');
+            }
             await paymentService.handleFeexpayWebhook(payload);
             log.info(`Successfully processed Feexpay webhook for reference: ${payload?.reference}`);
 
