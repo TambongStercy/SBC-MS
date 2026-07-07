@@ -58,6 +58,7 @@ const MF_PAYIN_CURRENCY: Record<string, string> = {
     CM: 'XAF',
     GA: 'XAF',
     TD: 'XAF',
+    CF: 'XAF',  // Centrafrique — added 2026-07-08 after Rufus flagged MF supports it
     CD: 'USD',  // ⚠ requires real-rate conversion
     GN: 'GNF',  // ⚠ requires real-rate conversion
 };
