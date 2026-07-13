@@ -23,10 +23,12 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bo
 console.log('MongoDB URI:', config.mongodb.uri);
 
 // --- Trust Proxy ---
-// This is important for accurately getting req.ip behind a reverse proxy (like Nginx)
-if (config.nodeEnv === 'production') {
-    app.set('trust proxy', 1); // Trust the first proxy hop
-}
+// This is important for accurately getting req.ip behind a reverse proxy (like Nginx).
+// Applied for ALL environments (prod + preprod + dev) because nginx sits in front of
+// every deployed environment and forwards X-Forwarded-For. Without this, express-rate-limit
+// (v7+) throws ValidationError: ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every request that
+// hits a rate-limited endpoint, which was 500ing /api/users/admin/users on preprod.
+app.set('trust proxy', 1); // Trust the first proxy hop
 
 // Set up logging
 if (config.nodeEnv !== 'test') {
