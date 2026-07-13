@@ -3143,6 +3143,20 @@ export class UserService {
     }
 
     /**
+     * [Internal] Returns the SBCLOVE demographic subset for the given user IDs.
+     * Used by sbclove-service to hydrate matchmaking profiles (reuse, no copy).
+     */
+    async getSbcloveDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        try {
+            const objectIds = userIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
+            return await userRepository.findSbcloveDetailsByIds(objectIds);
+        } catch (error: any) {
+            log.error(`Error fetching SBCLOVE user details by IDs: ${error.message}`, { userIds });
+            throw new Error('Failed to fetch SBCLOVE user details');
+        }
+    }
+
+    /**
      * [Internal] Finds user IDs by searching name, email, or phone number.
      * @param searchTerm - The term to search for.
      * @returns A promise resolving to an array of user ID strings.

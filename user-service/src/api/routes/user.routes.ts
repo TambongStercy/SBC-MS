@@ -58,6 +58,9 @@ serviceRouter.post('/find-by-criteria', (req, res, next) => userController.findU
 // Internal route to get multiple users by IDs
 serviceRouter.post('/batch-details', (req, res) => userController.getUsersDetailsByIds(req, res));
 
+// Internal route to get the SBCLOVE demographic subset for one or more users
+serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDetailsByIds(req, res));
+
 // Internal route to search user IDs by name/email/phone
 serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsBySearchTerm(req, res, next));
 

@@ -1897,6 +1897,43 @@ export class UserController {
     }
 
     /**
+     * [Internal] Get the SBCLOVE demographic subset for one or more users.
+     * @route POST /api/users/internal/sbclove-details
+     * Body: { userIds: string[] }
+     */
+    async getSbcloveDetailsByIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds } = req.body;
+
+            if (!Array.isArray(userIds) || userIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'An array of user IDs must be provided in the request body.',
+                });
+                return;
+            }
+
+            const invalidIds = userIds.filter(id => !isValidObjectId(id));
+            if (invalidIds.length > 0) {
+                res.status(400).json({
+                    success: false,
+                    message: `Invalid user IDs found: ${invalidIds.join(', ')}`,
+                });
+                return;
+            }
+
+            const details = await this.userService.getSbcloveDetailsByIds(userIds);
+            res.status(200).json({ success: true, data: details });
+        } catch (error: any) {
+            this.log.error(`Error getting SBCLOVE user details by IDs: ${error.message}`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to retrieve SBCLOVE user details.',
+            });
+        }
+    }
+
+    /**
      * [Internal] Get user IDs filtered by country code.
      * @route GET /api/users/internal/ids-by-country?country=CM
      */

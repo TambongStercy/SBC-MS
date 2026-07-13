@@ -266,6 +266,15 @@ app.use('/api/chat', proxy(config.services.chatServiceUrl, {
   }
 }));
 
+// SBCLOVE service (community matchmaking module)
+app.use('/api/sbclove', proxy(config.services.sbcloveServiceUrl, {
+  parseReqBody: false, // Allow profile photo uploads (multipart) to stream through
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to sbclove service`);
+    return '/api/sbclove' + req.url;
+  }
+}));
+
 // --- GLOBAL MIDDLEWARE ---
 // Apply body parsers AFTER proxy routes
 app.use(express.json({ limit: '200mb' }));

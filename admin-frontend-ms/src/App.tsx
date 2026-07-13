@@ -9,6 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import ProductsManagementPage from "./pages/ProductsManagementPage";
 import TombolaManagementPage from "./pages/TombolaManagementPage";
 import TombolaDrawPage from './pages/TombolaDrawPage';
+import SbcLoveManagementPage from "./pages/SbcLoveManagementPage";
 import TransactionManagementPage from './pages/TransactionManagementPage';
 import AccountTransactionsManagementPage from './pages/AccountTransactionsManagementPage';
 import SettingsManagementPage from './pages/SettingsManagementPage';
@@ -81,6 +82,7 @@ function App() {
             <Route path="/storage" element={<StorageMonitoringPage />} />
             <Route path="/tombola" element={<TombolaManagementPage />} />
             <Route path="/tombola/draw/:monthId" element={<TombolaDrawPage />} />
+            <Route path="/sbclove" element={<SbcLoveManagementPage />} />
             <Route path="/logout" element={<Deconnexion />} />
             <Route path="/userpage/:userId" element={<UsersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
