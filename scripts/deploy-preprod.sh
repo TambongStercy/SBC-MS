@@ -42,6 +42,7 @@ declare -A PM2_NAME=(
   [tombola-service]="tombola-preprod"
   [settings-service]="settings-preprod"
   [chat-service]="chat-preprod"
+  [sbclove-service]="sbclove-preprod"
 )
 
 CHANGED_SERVICES=()
