@@ -254,7 +254,10 @@ export const addFormation = async (formationData: { title: string; link: string;
     }
 };
 
-export const updateFormation = async (formationId: string, formationData: Partial<Omit<IFormation, '_id'>>): Promise<IFormation> => {
+export const updateFormation = async (
+    formationId: string,
+    formationData: { title?: string; link?: string; requiredSubscriptionType?: FormationSubscriptionGate | ''; decoration?: string }
+): Promise<IFormation> => {
     try {
         const response = await apiClient.put<ApiResponse<IFormation>>(`/settings/formations/${formationId}`, formationData);
         return response.data.data;

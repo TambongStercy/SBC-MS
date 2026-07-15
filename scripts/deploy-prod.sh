@@ -107,7 +107,15 @@ if [ "$REBUILD_ADMIN" = true ]; then
   if git diff --name-only "$OLD_HEAD" "$NEW_HEAD" | grep -qE "^admin-frontend-ms/package(-lock)?\.json$" || [ "$FULL_DEPLOY" = true ]; then
     npm install
   fi
-  npm run build
+  # Explicit exit-code check. Historically an admin-side TS error slipped through
+  # here even with `set -e` at the top of the script — the SSH-action wrapper
+  # reported the whole deploy green and prod kept serving the stale bundle
+  # (dist last touched Jul 1). Forcing the check + explicit exit 1 makes the
+  # deploy step visibly fail in GitHub Actions when the admin build breaks.
+  if ! npm run build; then
+    echo "$LOG_PREFIX ERROR: Admin frontend build failed. Prod dist NOT updated."
+    exit 1
+  fi
   cd "$PROD_DIR"
   echo "$LOG_PREFIX Admin frontend rebuilt"
 fi

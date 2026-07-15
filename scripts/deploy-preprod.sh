@@ -107,7 +107,11 @@ if [ "$REBUILD_ADMIN" = true ]; then
   if git diff --name-only "$OLD_HEAD" "$NEW_HEAD" | grep -qE "^admin-frontend-ms/package(-lock)?\.json$" || [ "$FULL_DEPLOY" = true ]; then
     npm install
   fi
-  npm run build
+  # Explicit exit-code check — see the matching comment in deploy-prod.sh.
+  if ! npm run build; then
+    echo "$LOG_PREFIX ERROR: Admin frontend build failed. Preprod dist NOT updated."
+    exit 1
+  fi
   cd "$PREPROD_DIR"
   echo "$LOG_PREFIX Admin frontend rebuilt"
 fi
