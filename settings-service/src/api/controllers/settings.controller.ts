@@ -274,10 +274,39 @@ export const getAdminBalance = async (req: Request, res: Response, next: NextFun
 
 // --- Formations Controllers ---
 
+const ADMIN_ROLES = new Set(['admin', 'tester']);
+
+const isAdminCaller = (req: Request): boolean => {
+    const user = (req as any).user;
+    if (!user) return false;
+    const role = user.role;
+    if (typeof role === 'string' && ADMIN_ROLES.has(role)) return true;
+    const roles = user.roles;
+    if (Array.isArray(roles) && roles.some((r: any) => typeof r === 'string' && ADMIN_ROLES.has(r))) return true;
+    return false;
+};
+
+const callerUserId = (req: Request): string | undefined => {
+    const user = (req as any).user;
+    return user?.userId || user?.id;
+};
+
+const ALLOWED_TIERS = new Set(['CLASSIQUE', 'CIBLE']);
+const parseTier = (val: unknown): 'CLASSIQUE' | 'CIBLE' | undefined | null => {
+    // undefined = don't touch, null / '' = clear, valid string = set
+    if (val === undefined) return undefined;
+    if (val === null || val === '') return null as any;
+    if (typeof val === 'string' && ALLOWED_TIERS.has(val)) return val as 'CLASSIQUE' | 'CIBLE';
+    return undefined; // ignore invalid
+};
+
 export const getFormations = async (req: Request, res: Response, next: NextFunction) => {
     log.info('Handling GET /settings/formations request');
     try {
-        const formations = await settingsService.getFormations();
+        const formations = await settingsService.getFormations({
+            userId: callerUserId(req),
+            bypassSubscriptionFilter: isAdminCaller(req),
+        });
         log.info('Formations retrieved successfully');
         res.status(200).json({ success: true, data: formations });
     } catch (error) {
@@ -288,15 +317,24 @@ export const getFormations = async (req: Request, res: Response, next: NextFunct
 
 export const addFormation = async (req: Request, res: Response, next: NextFunction) => {
     log.info('Handling POST /settings/formations request', req.body);
-    const { title, link } = req.body;
+    const { title, link, requiredSubscriptionType, decoration } = req.body;
 
     if (!title || !link) {
         log.warn('Missing title or link for adding formation.');
         return next(new BadRequestError('Title and link are required to add a formation.'));
     }
 
+    const tier = parseTier(requiredSubscriptionType);
+    // For add: only pass tier if it's a valid value (null/undefined both mean "no gate")
+    const tierForAdd = typeof tier === 'string' ? tier : undefined;
+
     try {
-        const newFormation = await settingsService.addFormation({ title, link });
+        const newFormation = await settingsService.addFormation({
+            title,
+            link,
+            requiredSubscriptionType: tierForAdd,
+            decoration: typeof decoration === 'string' && decoration.trim() ? decoration.trim() : undefined,
+        });
         log.info('Formation added successfully.', newFormation);
         res.status(201).json({ success: true, data: newFormation, message: 'Formation added successfully.' });
     } catch (error) {
@@ -307,16 +345,22 @@ export const addFormation = async (req: Request, res: Response, next: NextFuncti
 
 export const updateFormation = async (req: Request, res: Response, next: NextFunction) => {
     const { formationId } = req.params;
-    const { title, link } = req.body;
+    const { title, link, requiredSubscriptionType, decoration } = req.body;
     log.info(`Handling PUT /settings/formations/${formationId} request`, req.body);
 
-    if (!title && !link) {
+    const tier = parseTier(requiredSubscriptionType);
+    const hasDecoration = decoration !== undefined;
+
+    if (!title && !link && tier === undefined && !hasDecoration) {
         log.warn('No update data provided for formation.');
-        return next(new BadRequestError('At least one field (title or link) is required for update.'));
+        return next(new BadRequestError('At least one field is required for update.'));
     }
 
     try {
-        const updatedFormation = await settingsService.updateFormation(formationId, { title, link });
+        const updates: any = { title, link };
+        if (tier !== undefined) updates.requiredSubscriptionType = tier; // may be null to clear or string to set
+        if (hasDecoration) updates.decoration = typeof decoration === 'string' ? decoration.trim() : '';
+        const updatedFormation = await settingsService.updateFormation(formationId, updates);
         log.info(`Formation with ID ${formationId} updated successfully.`, updatedFormation);
         res.status(200).json({ success: true, data: updatedFormation, message: 'Formation updated successfully.' });
     } catch (error) {

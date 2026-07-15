@@ -269,6 +269,8 @@ const SettingsManagementPage: React.FC = () => {
     const [isLoadingFormations, setIsLoadingFormations] = useState(false);
     const [newFormationTitle, setNewFormationTitle] = useState('');
     const [newFormationLink, setNewFormationLink] = useState('');
+    const [newFormationTier, setNewFormationTier] = useState<'' | 'CLASSIQUE' | 'CIBLE'>('');
+    const [newFormationDecoration, setNewFormationDecoration] = useState<string>('');
     const [isCreatingOrUpdatingFormation, setIsCreatingOrUpdatingFormation] = useState(false);
     const [formationCreateOrUpdateError, setFormationCreateOrUpdateError] = useState<string | null>(null);
     const [isEditingFormation, setIsEditingFormation] = useState<boolean>(false);
@@ -538,6 +540,8 @@ const SettingsManagementPage: React.FC = () => {
     const resetFormationForm = () => {
         setNewFormationTitle('');
         setNewFormationLink('');
+        setNewFormationTier('');
+        setNewFormationDecoration('');
         setIsEditingFormation(false);
         setEditingFormationId(null);
         setFormationCreateOrUpdateError(null);
@@ -558,6 +562,8 @@ const SettingsManagementPage: React.FC = () => {
         const formationData = {
             title: newFormationTitle.trim(),
             link: newFormationLink.trim(),
+            requiredSubscriptionType: newFormationTier || '' as '' | 'CLASSIQUE' | 'CIBLE',
+            decoration: newFormationDecoration.trim(),
         };
 
         try {
@@ -585,6 +591,8 @@ const SettingsManagementPage: React.FC = () => {
         setEditingFormationId(formation._id);
         setNewFormationTitle(formation.title);
         setNewFormationLink(formation.link);
+        setNewFormationTier(formation.requiredSubscriptionType || '');
+        setNewFormationDecoration(formation.decoration || '');
         setFormationCreateOrUpdateError(null);
         setTabValue('general'); // Ensure we are on the correct tab
     };
@@ -710,6 +718,39 @@ const SettingsManagementPage: React.FC = () => {
                                     />
                                 </div>
 
+                                {/* Subscription Gate */}
+                                <div>
+                                    <label htmlFor="formationTier" className="block text-sm font-medium text-gray-300 mb-1">Access Restriction</label>
+                                    <select
+                                        id="formationTier"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                        value={newFormationTier}
+                                        onChange={(e) => setNewFormationTier(e.target.value as '' | 'CLASSIQUE' | 'CIBLE')}
+                                    >
+                                        <option value="">All active subscribers</option>
+                                        <option value="CLASSIQUE">CLASSIQUE and above (2150 XAF)</option>
+                                        <option value="CIBLE">CIBLE only (5000 XAF)</option>
+                                    </select>
+                                    <p className="mt-1 text-xs text-gray-400">Controls who sees this formation on the user app.</p>
+                                </div>
+
+                                {/* Decoration */}
+                                <div>
+                                    <label htmlFor="formationDecoration" className="block text-sm font-medium text-gray-300 mb-1">Decoration (optional)</label>
+                                    <select
+                                        id="formationDecoration"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                        value={newFormationDecoration}
+                                        onChange={(e) => setNewFormationDecoration(e.target.value)}
+                                    >
+                                        <option value="">None</option>
+                                        <option value="orange">Orange highlight</option>
+                                        <option value="gold">Gold highlight</option>
+                                        <option value="new">"New" badge</option>
+                                    </select>
+                                    <p className="mt-1 text-xs text-gray-400">Visual hint for the user frontend to style the formation card.</p>
+                                </div>
+
                                 {/* Error Display */}
                                 {formationCreateOrUpdateError && (
                                     <div className="p-3 bg-red-900 border border-red-700 rounded-md text-red-100 text-sm">
@@ -754,7 +795,19 @@ const SettingsManagementPage: React.FC = () => {
                                         {formations.map((formation) => (
                                             <div key={formation._id} className="flex items-start space-x-4 p-4 bg-gray-700 rounded-md">
                                                 <div className="flex-grow">
-                                                    <p className="text-md font-semibold text-white mb-1 line-clamp-2">{formation.title}</p>
+                                                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                        <p className="text-md font-semibold text-white line-clamp-2">{formation.title}</p>
+                                                        {formation.requiredSubscriptionType && (
+                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${formation.requiredSubscriptionType === 'CIBLE' ? 'bg-purple-800 text-purple-100' : 'bg-blue-800 text-blue-100'}`}>
+                                                                {formation.requiredSubscriptionType} only
+                                                            </span>
+                                                        )}
+                                                        {formation.decoration && (
+                                                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-800 text-orange-100">
+                                                                {formation.decoration}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <a href={formation.link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline break-all">
                                                         {formation.link}
                                                         <ExternalLink className="inline h-3 w-3 ml-1" />

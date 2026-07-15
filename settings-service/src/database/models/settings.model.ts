@@ -16,6 +16,13 @@ export interface IFormation extends Types.Subdocument { // Use Subdocument for a
     _id: Types.ObjectId; // Mongoose adds _id by default to subdocuments
     title: string;
     link: string;
+    // Optional subscription gate. If set, only users whose active subscriptions
+    // include this type see the formation on the public GET /formations endpoint.
+    // Admin panel always shows all formations regardless.
+    requiredSubscriptionType?: 'CLASSIQUE' | 'CIBLE';
+    // Optional visual decoration hint for the user frontend (e.g. 'orange').
+    // Backend just stores/returns the string; frontend interprets styling.
+    decoration?: string;
 }
 
 // Remove IEventItem interface - moved to event.model.ts
@@ -62,6 +69,8 @@ export const FileReferenceSchema: Schema = new Schema({
 export const FormationSchema: Schema = new Schema({
     title: { type: String, required: true, trim: true },
     link: { type: String, required: true, trim: true },
+    requiredSubscriptionType: { type: String, enum: ['CLASSIQUE', 'CIBLE'], required: false },
+    decoration: { type: String, trim: true, required: false },
 }, { _id: true }); // Mongoose adds _id by default, but explicitly setting it to true for clarity
 
 const SettingsSchema: Schema = new Schema(
