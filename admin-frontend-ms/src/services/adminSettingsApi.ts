@@ -9,10 +9,14 @@ interface IFileReference {
     size?: number;
 }
 
+export type FormationSubscriptionGate = 'CLASSIQUE' | 'CIBLE';
+
 export interface IFormation {
     _id: string; // Mongoose adds _id to subdocuments
     title: string;
     link: string;
+    requiredSubscriptionType?: FormationSubscriptionGate;
+    decoration?: string;
 }
 
 export interface ISettings {
@@ -240,7 +244,7 @@ export const getFormations = async (): Promise<IFormation[]> => {
     }
 };
 
-export const addFormation = async (formationData: { title: string; link: string }): Promise<IFormation> => {
+export const addFormation = async (formationData: { title: string; link: string; requiredSubscriptionType?: FormationSubscriptionGate | ''; decoration?: string }): Promise<IFormation> => {
     try {
         const response = await apiClient.post<ApiResponse<IFormation>>('/settings/formations', formationData);
         return response.data.data;
