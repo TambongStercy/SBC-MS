@@ -17,6 +17,10 @@ export interface IFormation {
     link: string;
     requiredSubscriptionType?: FormationSubscriptionGate;
     decoration?: string;
+    // Server-computed for user-facing endpoints. Admin JWTs bypass the tier
+    // filter, so admins always receive `locked: false` — safe to ignore in
+    // the admin panel.
+    locked?: boolean;
 }
 
 export interface ISettings {

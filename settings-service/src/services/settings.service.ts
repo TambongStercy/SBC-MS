@@ -243,33 +243,42 @@ class SettingsService {
     // --- Formations Management Methods ---
 
     /**
-     * Retrieves formations, optionally filtered by the caller's active subscription tier.
-     * @param options.userId — if provided (and bypassSubscriptionFilter=false), formations with a
-     *   requiredSubscriptionType are only returned when the user has that active subscription.
-     * @param options.bypassSubscriptionFilter — admins skip the filter and see everything.
+     * Retrieves ALL formations, annotating each with a computed `locked` flag
+     * based on the caller's active subscription tier. The frontend can render
+     * locked formations with a lock icon + "Upgrade to CIBLE" popup instead of
+     * hiding them entirely (Rufus's product call — visibility drives upsells).
+     *
+     * Rules:
+     *   - No requiredSubscriptionType on the formation → locked: false for everyone
+     *   - requiredSubscriptionType: 'CLASSIQUE' → unlocked for anyone with CLASSIQUE or CIBLE
+     *   - requiredSubscriptionType: 'CIBLE'     → unlocked only for CIBLE holders
+     *   - bypassSubscriptionFilter (admin/tester JWT) → locked: false on everything
+     *   - No userId (unauthenticated fallback) → gated formations are locked
      */
-    async getFormations(options: { userId?: string; bypassSubscriptionFilter?: boolean } = {}): Promise<IFormation[]> {
+    async getFormations(options: { userId?: string; bypassSubscriptionFilter?: boolean } = {}): Promise<Array<IFormation & { locked: boolean }>> {
         log.info('Fetching formations...', options);
         try {
             const settings = await this.repository.findSingle();
             const all = settings?.formations || [];
 
-            if (options.bypassSubscriptionFilter || !options.userId) {
-                // Admin path (bypass) OR unauthenticated fallback (no userId → only unrestricted ones)
-                return options.bypassSubscriptionFilter
-                    ? [...all]
-                    : all.filter(f => !f.requiredSubscriptionType);
+            let hasCible = false;
+            let hasClassique = false;
+            if (options.userId && !options.bypassSubscriptionFilter) {
+                const activeTypes = await userServiceClient.getActiveSubscriptionTypes(options.userId);
+                hasCible = activeTypes.includes('CIBLE');
+                hasClassique = activeTypes.includes('CLASSIQUE');
             }
 
-            const activeTypes = await userServiceClient.getActiveSubscriptionTypes(options.userId);
-            const hasCible = activeTypes.includes('CIBLE');
-            const hasClassique = activeTypes.includes('CLASSIQUE');
-            return all.filter(f => {
-                if (!f.requiredSubscriptionType) return true;
-                // CIBLE grants access to CLASSIQUE-gated formations too (hierarchy).
-                if (f.requiredSubscriptionType === 'CLASSIQUE') return hasClassique || hasCible;
-                if (f.requiredSubscriptionType === 'CIBLE') return hasCible;
-                return false;
+            return all.map(f => {
+                // Subdocuments need .toObject() to spread into a plain object cleanly.
+                const raw = (f as any).toObject ? (f as any).toObject() : f;
+                let locked = false;
+                if (!options.bypassSubscriptionFilter && f.requiredSubscriptionType) {
+                    if (f.requiredSubscriptionType === 'CLASSIQUE') locked = !(hasClassique || hasCible);
+                    else if (f.requiredSubscriptionType === 'CIBLE') locked = !hasCible;
+                    else locked = true;
+                }
+                return { ...raw, locked };
             });
         } catch (dbError: any) {
             log.error('Database error fetching formations:', dbError);
