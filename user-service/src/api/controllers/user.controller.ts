@@ -2385,6 +2385,24 @@ export class UserController {
         }
     }
 
+    // Lightweight variant of the above — returns just the SubscriptionType[] array
+    // rather than the full user profile. Used by other services (e.g. settings)
+    // when they only need the tier list for a subscription-gated feature.
+    async getActiveSubscriptionTypes(req: Request, res: Response): Promise<void> {
+        const { userId } = req.params;
+        try {
+            if (!userId) {
+                res.status(400).json({ success: false, message: 'User ID is required.' });
+                return;
+            }
+            const types = await this.subscriptionService.getActiveSubscriptionTypes(userId);
+            res.status(200).json({ success: true, data: types });
+        } catch (error: any) {
+            this.log.error(`Error getting active subscription types for user ${userId}:`, error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Failed to retrieve active subscription types.' });
+        }
+    }
+
     // NEW: Get Referral Stats (Internal Route for Payment Service)
     async getReferralStats(req: Request, res: Response): Promise<void> {
         const { userId } = req.params;
