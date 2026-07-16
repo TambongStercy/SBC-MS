@@ -465,9 +465,34 @@ auto-runs as a no-op). The prod environment is at `/var/www/SBC-MS/`, preprod at
 ## Database Conventions
 
 - Each service uses its own MongoDB database
-- Development databases: `sbc_{service}_dev` (e.g., `sbc_user_dev`)
-- Models use Mongoose schemas with TypeScript interfaces
-- Repository pattern for data access
+- Mongo host on prod: `mongodb://localhost:27017` (no auth). Same host serves preprod DBs alongside prod.
+- Models use Mongoose schemas with TypeScript interfaces; repository pattern for data access
+- Development databases (local): `sbc_{service}_dev` (e.g., `sbc_user_dev`)
+
+### Actual prod / preprod DB names (empirically verified 2026-07-16, do not guess)
+
+| Service | Prod DB | Preprod DB |
+|---|---|---|
+| user | `sbc_users` (plural, no suffix) | `sbc_users_preprod` |
+| payment | `sbc_payment_prod` (**with `_prod` suffix — the odd one**) | `sbc_payment_preprod` |
+| notification | `sbc_notifications` | `sbc_notifications_preprod` |
+| product | `sbc_products` | `sbc_products_preprod` |
+| settings | `sbc_settings` | `sbc_settings_preprod` |
+| tombola | `sbc_tombola` | `sbc_tombola_preprod` |
+| chat | `sbc_chat` | `sbc_chat_preprod` |
+| sbclove | (not yet on prod) | `sbc_sbclove_preprod` |
+| advertising | `sbc_advertising` | (n/a) |
+
+Gotchas:
+- **user db is `sbc_users` (plural), not `sbc_users_prod` or `sbc_user_prod`.** Every other service uses the singular/no-suffix form on prod EXCEPT payment which has `_prod`.
+- Guessing `sbc_users_prod` returns null silently — always confirm with `db.getMongo().getDBNames().filter(n=>/sbc/i.test(n))` when unsure.
+
+### User model quick-reference (`sbc_users.users`)
+
+- `role`: `'user' | 'admin' | 'withdrawal_admin' | 'tester'` (single string, not array). Enum defined in `user-service/src/database/models/user.model.ts` as `UserRole`.
+- JWT payload shape (signed in user-service): `{ userId, id, email, role }` — both `userId` and `id` are the same ObjectId string. Callers should read `req.user.userId` (canonical) with `req.user.id` as fallback.
+- Admin panel bypasses various tier gates by checking `role === 'admin' || 'tester'` in JWT — e.g. the formation subscription filter in `settings-service/src/api/controllers/settings.controller.ts`.
+- Test a subscription-gated feature as a real non-admin user. Admin accounts falsely appear to "see everything" because bypass is intentional.
 
 ## File Structure Notes
 
