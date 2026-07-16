@@ -278,6 +278,12 @@ class SettingsService {
                     else if (f.requiredSubscriptionType === 'CIBLE') locked = !hasCible;
                     else locked = true;
                 }
+                // Strip the link when locked. Without this, a non-CIBLE user could
+                // open DevTools → Network, read the raw JSON, and paste the
+                // Telegram invite URL directly — bypassing the upsell entirely.
+                if (locked) {
+                    return { ...raw, link: '', locked };
+                }
                 return { ...raw, locked };
             });
         } catch (dbError: any) {
