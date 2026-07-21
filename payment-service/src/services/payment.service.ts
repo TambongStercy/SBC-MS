@@ -3,6 +3,7 @@ import transactionRepository, { CreateTransactionInput } from '../database/repos
 import paymentIntentRepository, { CreatePaymentIntentInput, UpdatePaymentIntentInput } from '../database/repositories/paymentIntent.repository';
 import { TransactionStatus, TransactionType, Currency, ITransaction } from '../database/models/transaction.model';
 import TransactionModel from '../database/models/transaction.model';
+import pendingPayoutWebhookModel from '../database/models/pending-payout-webhook.model';
 import { userServiceClient, UserDetails, UserDetailsWithMomo } from './clients/user.service.client';
 import { productServiceClient } from './clients/product.service.client';
 import notificationService, { DeliveryChannel } from './clients/notification.service.client';
@@ -3384,14 +3385,82 @@ class PaymentService {
         }
     }
 
+    /**
+     * Replay any payout webhooks that arrived before we finished storing
+     * tokenPay on the transaction. Called immediately after tokenPay is
+     * persisted; safe to call for any provider — it's a no-op unless a
+     * matching buffered payload exists.
+     *
+     * Idempotent: handleMoneyFusionPayoutWebhook checks
+     * transaction.status !== COMPLETED before applying the debit, so
+     * replaying + a late "real" webhook + this replay together will not
+     * double-debit.
+     */
+    public async replayBufferedPayoutWebhook(
+        provider: 'MoneyFusion' | 'CinetPay' | 'FeexPay',
+        tokenPay: string,
+    ): Promise<void> {
+        if (!tokenPay) return;
+        try {
+            const buffered = await pendingPayoutWebhookModel.findOne({ tokenPay, provider, processed: false });
+            if (!buffered) return;
+            log.info(`Replaying buffered ${provider} payout webhook for tokenPay=${tokenPay} (buffered ${((Date.now() - buffered.receivedAt.getTime()) / 1000).toFixed(2)}s ago)`);
+            try {
+                buffered.replayAttempts = (buffered.replayAttempts || 0) + 1;
+                if (provider === 'MoneyFusion') {
+                    await this.handleMoneyFusionPayoutWebhook(buffered.payload);
+                } else {
+                    // Only MF race is known in prod today. Other providers can plug in
+                    // their own handlers here as buffering is added for them.
+                    log.warn(`Buffered payout webhook replay requested for unsupported provider ${provider}; leaving as pending.`);
+                    buffered.lastReplayError = 'No replay handler wired for this provider';
+                    await buffered.save();
+                    return;
+                }
+                buffered.processed = true;
+                buffered.processedAt = new Date();
+                buffered.lastReplayError = undefined;
+                await buffered.save();
+            } catch (replayErr: any) {
+                buffered.lastReplayError = replayErr.message || String(replayErr);
+                await buffered.save().catch(() => { /* swallow — main error already logged */ });
+                log.error(`Buffered payout webhook replay failed for tokenPay=${tokenPay}: ${replayErr.message}`);
+            }
+        } catch (queryErr: any) {
+            log.error(`Failed to query pending payout webhook buffer for tokenPay=${tokenPay}: ${queryErr.message}`);
+        }
+    }
+
     public async handleMoneyFusionPayoutWebhook(payload: any): Promise<void> {
         const { event, tokenPay } = payload;
         log.info(`MoneyFusion payout webhook received: event=${event}, tokenPay=${tokenPay}`);
 
+        if (!tokenPay) {
+            log.warn(`MoneyFusion payout webhook received without tokenPay; ignoring. Payload: ${JSON.stringify(payload)}`);
+            return;
+        }
+
         // Find the transaction by the MoneyFusion token stored in externalTransactionId
         const transaction = await transactionRepository.findByExternalId(tokenPay);
         if (!transaction) {
-            log.warn(`MoneyFusion payout webhook: Transaction not found for tokenPay ${tokenPay}`);
+            // Race: MF fires the webhook basically the same instant they return
+            // tokenPay in the /withdraw response, and can arrive before our own
+            // code finishes storing tokenPay on the tx. Buffer the payload so
+            // the initiation code can replay it right after it saves tokenPay
+            // (see replayBufferedPayoutWebhook below). Return normally so MF
+            // doesn't retry-storm us — the buffer is the retry mechanism.
+            try {
+                await pendingPayoutWebhookModel.create({
+                    tokenPay,
+                    provider: 'MoneyFusion',
+                    payload,
+                    receivedAt: new Date(),
+                    processed: false,
+                });
+                log.info(`MoneyFusion payout webhook buffered for later replay: tokenPay=${tokenPay} (transaction not yet stored)`);
+            } catch (bufErr: any) {
+                log.error(`Failed to buffer MoneyFusion payout webhook for tokenPay=${tokenPay}: ${bufErr.message}`);
+            }
             return;
         }
 
@@ -6555,6 +6624,10 @@ class PaymentService {
                         },
                     });
                     log.info(`Stored MoneyFusion tokenPay ${result.tokenPay} for transaction ${transaction.transactionId}`);
+                    // Replay any webhook that beat us to storing tokenPay (MF fires
+                    // the webhook the same instant they return the tokenPay in the
+                    // /withdraw response — see race notes in CLAUDE.md).
+                    await this.replayBufferedPayoutWebhook('MoneyFusion', result.tokenPay);
                 }
             } else {
                 // Fail loudly on unknown gateways so we don't silently no-op (cause of bug fixed here)
