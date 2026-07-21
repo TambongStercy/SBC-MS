@@ -3069,28 +3069,33 @@ class PaymentService {
             throw new Error('Internal error: Phone number missing for Feexpay initiation.');
         }
 
-        // Attempt to parse phone number as integer
-        let phoneNumberAsInt: number | undefined;
-        try {
-            const cleanedPhone = paymentIntent.phoneNumber.replace(/\s+/g, '').replace('+', '');
-            if (cleanedPhone && /^[0-9]+$/.test(cleanedPhone)) {
-                phoneNumberAsInt = parseInt(cleanedPhone, 10);
-            }
-        } catch (parseError) {
-            log.error(`Error parsing FeexPay phoneNumber ${paymentIntent.phoneNumber}: ${parseError}`);
+        // FeexPay v2 requires country+operator-prefixed phones (BJ MTN wants
+        // "22901XXXXXXXX" = 13 chars). paymentIntent.phoneNumber is often the
+        // short form (country + local, no operator prefix) collected at
+        // checkout. Fetch userDetails EARLY so we can pick the richer of the
+        // two sources — the one stored at signup usually has the operator
+        // prefix while the one re-typed at checkout doesn't.
+        const _preFetchUserDetails = await userServiceClient.getUserDetails(paymentIntent.userId);
+        const intentPhoneDigits = paymentIntent.phoneNumber.replace(/\D/g, '');
+        const userPhoneDigits = String(_preFetchUserDetails?.phoneNumber || '').replace(/\D/g, '');
+        // Prefer whichever is longer AND at least 12 digits — the operator-prefixed form.
+        let cleanedPhone = intentPhoneDigits;
+        if (userPhoneDigits.length >= 12 && userPhoneDigits.length > intentPhoneDigits.length) {
+            log.info(`FeexPay: using userDetails.phoneNumber (${userPhoneDigits.length} digits) instead of paymentIntent.phoneNumber (${intentPhoneDigits.length} digits) — richer format`);
+            cleanedPhone = userPhoneDigits;
         }
 
-        if (phoneNumberAsInt === undefined) {
-            log.error(`Could not parse FeexPay phoneNumber to integer: ${paymentIntent.phoneNumber}`);
+        if (!cleanedPhone || !/^[0-9]+$/.test(cleanedPhone)) {
+            log.error(`Could not derive FeexPay phoneNumber from intent="${paymentIntent.phoneNumber}" user="${_preFetchUserDetails?.phoneNumber}"`);
             throw new Error('Invalid phone number format provided.');
         }
 
         // Log details before sending
         log.info(`Initiating FeexPay payment for sessionId: ${paymentIntent.sessionId}`);
-        log.info(`FeexPay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${phoneNumberAsInt}`);
+        log.info(`FeexPay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${cleanedPhone}`);
         log.info(`FeexPay config: baseUrl=${config.feexpay.baseUrl}, shopId=${config.feexpay.shopId}`);
 
-        const userDetails = await userServiceClient.getUserDetails(paymentIntent.userId);
+        const userDetails = _preFetchUserDetails;
 
         // FeexPay v2 caps `description` at 40 chars and validates
         // `phoneNumber` as a string of the exact operator-specific length
@@ -3115,7 +3120,7 @@ class PaymentService {
         } = {
             shop: config.feexpay.shopId,
             amount: amount,
-            phoneNumber: String(phoneNumberAsInt),
+            phoneNumber: cleanedPhone,
             description,
             firstName: userDetails?.name || "User",
             lastName: userDetails?.phoneNumber?.toString() || "SBC",
