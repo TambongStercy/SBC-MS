@@ -352,23 +352,52 @@ The interface comment at `payment-service/src/config/index.ts:78` mentions
 is `https://api.cinetpay.co`. Probably interchangeable aliases — but the `.co`
 host is what's in env and what the live code talks to.
 
-### MoneyFusion payout webhooks — reality check (corrected 2026-07-01)
+### MoneyFusion payout webhooks — reality check (rewritten 2026-07-21)
 
-Earlier notes in this doc claimed "MoneyFusion never sends payout webhooks".
-That was wrong. Sterling pulled MF's official docs which explicitly define
-`payout.session.completed` / `payout.session.cancelled` webhook events, and
-prod logs confirm MF has delivered payout webhooks (rare, but happens).
+**MoneyFusion DOES send payout webhooks reliably.** Do not repeat the earlier
+wrong assumption that they "hang" or "never fire". Verified empirically
+2026-07-21 by comparing 55+ transactions we had stuck in `processing` against
+Rufus's MF-dashboard export — every single one was `Validé` on MF's side. MF
+finished, MF sent us the webhook. **We dropped it.**
 
-Actual behavior:
-  - MF DOES send payout webhooks — but only when their system reaches a
-    terminal state (`completed` or `cancelled`)
-  - For many of our stuck payouts, MF's system never reaches terminal state
-    — it just hangs indefinitely on their side (neither confirmed nor
-    cancelled). No webhook fires because there's nothing to fire.
-  - Log-based sanity: prod has hundreds of payin webhooks from MF vs single
-    digits of payout webhooks. Payouts hanging is the norm, not the exception.
-  - MF has NO public status-verify API (unlike CinetPay), so we can't poll to
-    resolve hung ones — admin must verify on MF dashboard and mark manually.
+Root cause: race condition between MF's async webhook and our own sync
+initiation flow.
+
+  1. We POST to MF `/api/v1/withdraw` with a `webhook_url`
+  2. MF generates a `tokenPay`, returns it in the response, AND fires the
+     `payout.session.completed` webhook at basically the same instant
+     (empirical: <50ms after our POST returns; sometimes BEFORE our POST
+     response is fully awaited by our own code)
+  3. Our webhook handler at `payment.service.ts:3392` looks up
+     `findByExternalId(tokenPay)` → returns null because our initiation flow
+     hasn't finished storing that tokenPay on the transaction yet
+  4. Handler logs "Transaction not found for tokenPay X" and returns `200`
+  5. MF sees `200`, considers the webhook delivered, never retries
+  6. Our own initiation flow completes seconds later and stores the tokenPay,
+     but the webhook is already gone. Transaction stays `processing` forever.
+
+Prod evidence (2026-07-20 18:33):
+  - `18:33:15` — webhook arrives with tokenPay `6a5e4dbfbb...7d64`, handler
+    logs "Transaction not found", returns 200
+  - `18:33:15` — our own initiation code finally logs "Stored MF tokenPay
+    6a5e4dbfbb...7d64 for tx hJGzLePYgM2xIXDO"
+
+Same pattern for every other stuck payout — MF fired, we weren't ready to
+receive it. Only 5 payout webhooks recorded across all of prod's rotated
+nginx logs (vs 2000+ payin webhooks), and every one shows this race in the
+payment-service logs.
+
+Log-based sanity: prod nginx has hundreds of MF payin webhook hits vs
+5 payout hits across all rotated logs. Payin is fine (initiation is a
+redirect flow, tokenPay lands in DB before payer even authenticates).
+Payout is the race-loser because it's an async server-side confirmation.
+
+**Do NOT investigate this as "MF is unreliable" or "MF hangs" — the fix is
+on our side.** Ideas: pending-webhook buffer keyed by tokenPay that gets
+swept after initiation stores tokenPay; return 500 on tx-not-found so MF
+retries; poll MF `/paiementNotif/{tokenPay}` after initiation (payin uses
+this pattern already at `moneyfusion.service.ts:268` — payout equivalent
+unknown but worth asking MF).
 
 Fix workflow (PR #72 + #77):
   - `/fix-moneyfusion-withdrawals` admin page lists all stuck MF withdrawals
