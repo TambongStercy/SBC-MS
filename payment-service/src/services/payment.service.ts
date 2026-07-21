@@ -2767,17 +2767,26 @@ class PaymentService {
         }
 
         // --- Construct Full Phone Number ---
+        // The frontend sometimes sends the number already in international
+        // form ("22999318173" for BJ) and sometimes strictly national
+        // ("99318173"). Old code blindly prepended the dialing code either way,
+        // producing "22922999318173" (14 digits) when the number was already
+        // international — which then broke FeexPay v2's strict length check
+        // (see prod incident 2026-07-21 for CHITOU Nawaal). Strip the leading
+        // dialing code before re-adding it so we always end up with exactly
+        // one country prefix.
         let fullPhoneNumber: string | undefined = details.phoneNumber;
         if (details.countryCode && details.phoneNumber) {
             const dialingCode = countryDialingCodes[details.countryCode];
             if (dialingCode) {
-                // Remove ALL non-digit characters from the national number part
-                const nationalNumber = details.phoneNumber.replace(/\D/g, '');
+                let nationalNumber = details.phoneNumber.replace(/\D/g, '');
+                if (nationalNumber.startsWith(dialingCode)) {
+                    nationalNumber = nationalNumber.substring(dialingCode.length);
+                }
                 fullPhoneNumber = dialingCode + nationalNumber;
-                log.info(`Constructed full phone number for ${details.countryCode}: ${fullPhoneNumber} from national: ${details.phoneNumber}`);
+                log.info(`Constructed full phone number for ${details.countryCode}: ${fullPhoneNumber} from input: ${details.phoneNumber}`);
             } else {
                 log.warn(`No dialing code found for country: ${details.countryCode}. Using phone number as is: ${details.phoneNumber}`);
-                // fullPhoneNumber remains details.phoneNumber in this case
             }
         } else {
             log.info('Phone number or country code not provided for full phone number construction.');
