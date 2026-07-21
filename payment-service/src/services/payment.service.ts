@@ -3092,20 +3092,31 @@ class PaymentService {
 
         const userDetails = await userServiceClient.getUserDetails(paymentIntent.userId);
 
+        // FeexPay v2 caps `description` at 40 chars and validates
+        // `phoneNumber` as a string of the exact operator-specific length
+        // (e.g. BJ MTN requires 13 chars starting 22901). Numeric type is
+        // rejected by their string-length check even when digits are right.
+        // Old code sent "Subscription Payment for user <ObjectId>" (54 chars)
+        // + phoneNumber as `number` — both fail v2. See CLAUDE.md 2026-07-21
+        // for the payin failure incident that caught this.
+        const shortSid = String(paymentIntent.sessionId || '').slice(-10);
+        let description = `SBC subscription ${shortSid}`.trim();
+        if (description.length > 40) description = description.slice(0, 40).trim();
+
         const requestBody: {
             shop: string;
             amount: number;
-            phoneNumber: number;
+            phoneNumber: string;
             description: string;
             firstName: string;
             lastName: string;
             callback_info: any;
-            otp?: string; // Added optional otp property
+            otp?: string;
         } = {
             shop: config.feexpay.shopId,
             amount: amount,
-            phoneNumber: phoneNumberAsInt,
-            description: `Subscription Payment for user ${paymentIntent.userId}`, // Simplified
+            phoneNumber: String(phoneNumberAsInt),
+            description,
             firstName: userDetails?.name || "User",
             lastName: userDetails?.phoneNumber?.toString() || "SBC",
             callback_info: {
@@ -3117,8 +3128,6 @@ class PaymentService {
                 userCountry: userDetails?.country || "N/A",
                 userCity: userDetails?.city || "Unknown",
             },
-            // Removed currency, callback_info based on previous analysis
-            // Optional firstName, lastName could be added if user data is available
         };
 
         // Add OTP to request body if operator is orange_sn and OTP is provided
