@@ -986,6 +986,7 @@ export class UserController {
                 phoneNumber,
                 momoNumber,
                 momoOperator,
+                whatsappGroupLink,
                 avatar,
                 sex,
                 birthDate,
@@ -1045,6 +1046,7 @@ export class UserController {
             }
             if (momoNumber !== undefined) updateData.momoNumber = momoNumber;
             if (momoOperator !== undefined) updateData.momoOperator = momoOperator;
+            if (whatsappGroupLink !== undefined) updateData.whatsappGroupLink = whatsappGroupLink;
             if (avatar !== undefined) updateData.avatar = avatar;
             if (sex !== undefined) {
                 if (typeof sex === 'string' && sex.trim() !== '') {
