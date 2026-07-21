@@ -474,7 +474,7 @@ auto-runs as a no-op). The prod environment is at `/var/www/SBC-MS/`, preprod at
 | Service | Prod DB | Preprod DB |
 |---|---|---|
 | user | `sbc_users` (plural, no suffix) | `sbc_users_preprod` |
-| payment | `sbc_payment_prod` (**with `_prod` suffix — the odd one**) | `sbc_payment_preprod` |
+| payment | `sbc_payment` (no suffix — 190k+ tx docs; `sbc_payment_prod` also exists but is EMPTY, do NOT query it) | `sbc_payment_preprod` |
 | notification | `sbc_notifications` | `sbc_notifications_preprod` |
 | product | `sbc_products` | `sbc_products_preprod` |
 | settings | `sbc_settings` | `sbc_settings_preprod` |
@@ -484,8 +484,9 @@ auto-runs as a no-op). The prod environment is at `/var/www/SBC-MS/`, preprod at
 | advertising | `sbc_advertising` | (n/a) |
 
 Gotchas:
-- **user db is `sbc_users` (plural), not `sbc_users_prod` or `sbc_user_prod`.** Every other service uses the singular/no-suffix form on prod EXCEPT payment which has `_prod`.
-- Guessing `sbc_users_prod` returns null silently — always confirm with `db.getMongo().getDBNames().filter(n=>/sbc/i.test(n))` when unsure.
+- **user db is `sbc_users` (plural), not `sbc_users_prod` or `sbc_user_prod`.** Every service uses a no-suffix name on prod.
+- `sbc_payment_prod` shows up in `getDBNames()` but is EMPTY (a stale ghost). Real prod payment data lives in `sbc_payment` (no suffix). Verified 2026-07-19.
+- Guessing DB names returns null silently — always confirm with `db.getMongo().getDBNames().filter(n=>/sbc/i.test(n))` AND `db.<coll>.countDocuments({})` on a stable collection before running real queries.
 
 ### User model quick-reference (`sbc_users.users`)
 
