@@ -3099,6 +3099,18 @@ class PaymentService {
             throw new Error('Invalid phone number format provided.');
         }
 
+        // FeexPay v2 BJ payin format is `229` + fixed `01` + 8-digit-local
+        // (13 chars total) regardless of operator (mtn/moov/celtiis_bj all
+        // require the same "01"). Verified 2026-07-21 against every SUCCEEDED
+        // BJ intent in prod. If we have the 11-char country+local form
+        // ("22960138681"), inject "01" so the request meets v2's strict length
+        // check.
+        if (paymentIntent.countryCode === 'BJ' && cleanedPhone.length === 11 && cleanedPhone.startsWith('229')) {
+            const local = cleanedPhone.substring(3);
+            cleanedPhone = '229' + '01' + local;
+            log.info(`FeexPay BJ: injected "01" prefix. Final phone: ${cleanedPhone}`);
+        }
+
         // Log details before sending
         log.info(`Initiating FeexPay payment for sessionId: ${paymentIntent.sessionId}`);
         log.info(`FeexPay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${cleanedPhone}`);
