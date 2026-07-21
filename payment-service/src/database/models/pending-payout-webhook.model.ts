@@ -33,7 +33,9 @@ const PendingPayoutWebhookSchema = new Schema<IPendingPayoutWebhook>(
         tokenPay: { type: String, required: true, index: true },
         provider: { type: String, required: true, enum: ['MoneyFusion', 'CinetPay', 'FeexPay'] },
         payload: { type: Schema.Types.Mixed, required: true },
-        receivedAt: { type: Date, default: Date.now, index: true },
+        // Not marking `index: true` here on purpose — Mongoose treats that as
+        // a competing index declaration and silently drops the TTL one below.
+        receivedAt: { type: Date, default: Date.now },
         processed: { type: Boolean, default: false, index: true },
         processedAt: { type: Date },
         replayAttempts: { type: Number, default: 0 },
