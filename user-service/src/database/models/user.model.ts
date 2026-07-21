@@ -58,6 +58,7 @@ export interface IUser extends Document {
     phoneNumber: string;
     momoNumber?: string;
     momoOperator?: string;
+    whatsappGroupLink?: string;
     email: string;
     password?: string; // Exists in DB but often excluded from responses
     token?: string;
@@ -129,6 +130,7 @@ const UserSchema = new Schema<IUser>(
         phoneNumber: { type: String, required: true, unique: true, index: true },
         momoNumber: { type: String },
         momoOperator: { type: String },
+        whatsappGroupLink: { type: String, trim: true },
         email: {
             type: String,
             required: true,

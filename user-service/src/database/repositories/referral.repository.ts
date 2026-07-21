@@ -14,6 +14,7 @@ interface PopulatedReferrerInfo {
     phoneNumber?: number;
     region?: string;
     avatar?: string;
+    whatsappGroupLink?: string;
     // Add other fields from userPopulationFields if needed, mark as optional
 }
 
@@ -99,7 +100,7 @@ export interface ReferralStatsResponse {
 export class ReferralRepository {
 
     // Fields to select when populating user data
-    private userPopulationFields = 'name email phoneNumber region country avatar avatarId _id';
+    private userPopulationFields = 'name email phoneNumber region country avatar avatarId whatsappGroupLink _id';
 
     /**
      * Creates a single new referral record.
