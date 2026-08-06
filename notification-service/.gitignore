@@ -4,3 +4,7 @@
 
 # Ignore uploaded files directory
 uploads/ 
+# WhatsApp status extraction output — contains real phone numbers
+src/scripts/my-status-output/
+src/scripts/harvest-output/
+*.har
