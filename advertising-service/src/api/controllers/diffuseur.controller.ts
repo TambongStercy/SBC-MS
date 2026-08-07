@@ -1,11 +1,11 @@
 import { Response } from 'express';
 import { Types } from 'mongoose';
 import DiffuseurProfileModel, { ReferralTier } from '../../database/models/diffuseur-profile.model';
-import CampaignParticipationModel, { ParticipationStatus } from '../../database/models/campaign-participation.model';
+import CampaignParticipationModel, { ParticipationStatus, DayStatus } from '../../database/models/campaign-participation.model';
 import CampaignModel from '../../database/models/campaign.model';
 import { acceptOffer } from '../../services/allocation.service';
 import { buildTrackingUrl, buildShareCaption } from '../../services/tracking.service';
-import { scheduleSummary } from '../../services/day-window.service';
+import { scheduleSummary, currentDay } from '../../services/day-window.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import { getUserProfile, IUserProfile } from '../../services/clients/user.service.client';
@@ -181,6 +181,55 @@ export const declineParticipation = async (req: AuthenticatedRequest, res: Respo
         return res.json({ success: true, data: { status: participation.status } });
     } catch (err) {
         return fail(res, err, 'declineParticipation');
+    }
+};
+
+/**
+ * Diffuseur confirms they have shared the status. Called right after the share
+ * sheet closes.
+ *
+ * This is NOT proof of anything — the timestamp is self-declared and verification
+ * overwrites it with the real one read off WhatsApp. Its only job is to start the
+ * 24h clock so we can remind them to verify before the status expires, which is
+ * the one deadline no grace budget can undo.
+ */
+export const markPosted = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = currentUserId(req);
+        const participation = await CampaignParticipationModel.findOne({
+            _id: req.params.id,
+            diffuseurUserId: userId,
+        });
+        if (!participation) throw new AppError('Participation introuvable.', 404);
+        if (participation.status !== ParticipationStatus.IN_PROGRESS) {
+            throw new AppError("Cette campagne n'est pas en cours.", 400);
+        }
+
+        const pending = currentDay(participation);
+        if (!pending) throw new AppError('Toutes les journées sont déjà publiées.', 400);
+
+        const now = new Date();
+        if (pending.windowOpensAt && now < pending.windowOpensAt) {
+            throw new AppError(
+                `Le jour ${pending.day} ne peut pas encore être publié. Réessayez après ${pending.windowOpensAt.toLocaleString('fr-FR')}.`,
+                400,
+            );
+        }
+
+        pending.status = DayStatus.POSTED;
+        pending.postedAt = now;
+        await participation.save();
+
+        return res.json({
+            success: true,
+            data: {
+                day: pending.day,
+                schedule: scheduleSummary(participation, now),
+                warning: 'Vérifiez votre publication avant 24h, sinon les vues de cette journée seront perdues.',
+            },
+        });
+    } catch (err) {
+        return fail(res, err, 'markPosted');
     }
 };
 

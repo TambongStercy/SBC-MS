@@ -48,6 +48,13 @@ export interface IDayProof {
     /** Whole days late, 0 when on time. Charged against graceDaysUsed. */
     graceDaysConsumed?: number;
 
+    /**
+     * Reminder stamps. Set whether or not delivery succeeded, so a mail outage
+     * cannot turn into a reminder on every scheduler tick once it recovers.
+     */
+    dayReminderSentAt?: Date;
+    verificationReminderSentAt?: Date;
+
     /** WhatsApp status message id. Globally unique, so one post is claimed once. */
     statusMessageId?: string;
     postedAt?: Date;
@@ -135,6 +142,8 @@ const DayProofSchema = new Schema<IDayProof>({
     windowOpensAt: { type: Date },
     dueAt: { type: Date },
     graceDaysConsumed: { type: Number, default: 0, min: 0 },
+    dayReminderSentAt: { type: Date },
+    verificationReminderSentAt: { type: Date },
 
     statusMessageId: { type: String },
     postedAt: { type: Date },

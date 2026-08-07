@@ -3,6 +3,7 @@ import connectDB from './database/connection';
 import config from './config';
 import logger from './utils/logger';
 import app from './app';
+import { startScheduler, stopScheduler } from './services/scheduler.service';
 
 const log = logger.getLogger('AdvertisingService');
 
@@ -17,10 +18,12 @@ const startServer = async () => {
         const server = app.listen(PORT, () => {
             log.info(`Advertising Service started on port ${PORT} in ${config.nodeEnv} mode.`);
             log.info(`Public base URL: ${config.publicBaseUrl}`);
+            startScheduler();
         });
 
         const shutdown = (signal: string) => {
             log.warn(`Received ${signal}. Initiating graceful shutdown...`);
+            stopScheduler();
             server.close(async () => {
                 log.info('HTTP server closed.');
                 try {
