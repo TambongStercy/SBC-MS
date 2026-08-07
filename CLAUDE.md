@@ -34,7 +34,7 @@ This is a microservices-based backend system for Sniper Business Center (SBC) wi
 - **Notification Service** (port 3002): Email, SMS, WhatsApp notifications with Redis queue
 - **Payment Service** (port 3003): Payment processing, transactions, crypto payments, withdrawals
 - **Product Service** (port 3004): Product management and flash sales
-- **Advertising Service** (port 3005): Advertisement management
+- **Advertising Service** (port 3010 / preprod 6010): WhatsApp status advertising marketplace — campaigns, landing pages, tracking links, diffuseur payouts. Spec: `docs/ADVERTISING-FEATURE-SPEC.md`
 - **Tombola Service** (port 3006): Lottery/tombola functionality
 - **Settings Service** (port 3007): Global settings and file storage (Google Drive integration)
 - **Admin Frontend** (port 3030): React/TypeScript admin dashboard with Vite
