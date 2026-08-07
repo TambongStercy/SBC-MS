@@ -2,11 +2,13 @@ import { Router } from 'express';
 import campaignRoutes from './campaign.routes';
 import diffuseurRoutes from './diffuseur.routes';
 import internalRoutes from './internal.routes';
+import verificationRoutes from './verification.routes';
 
 const router = Router();
 
 router.use('/advertising/campaigns', campaignRoutes);
 router.use('/advertising/diffuseurs', diffuseurRoutes);
+router.use('/advertising/verification', verificationRoutes);
 router.use('/advertising/internal', internalRoutes);
 
 export default router;

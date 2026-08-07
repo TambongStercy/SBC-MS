@@ -1,10 +1,8 @@
 import type { WAMessage, WASocket } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
 import logger from '../utils/logger';
+import { useInMemoryAuthState } from './in-memory-auth-state';
 
 const log = logger.getLogger('WhatsAppStatusService');
 
@@ -63,12 +61,6 @@ type ExtractOptions = {
     downloadMedia?: boolean;
     /** Hard ceiling. A diffuseur who never scans must not pin a socket open. */
     timeoutMs?: number;
-    /**
-     * Existing auth state. Omitted means a fresh QR link. Reconnecting from stored
-     * creds is UNVERIFIED — history sync may only fire on an initial link. Do not
-     * rely on it without testing first.
-     */
-    authDir?: string;
 };
 
 const userPart = (jid?: string | null): string => (jid ?? '').split('@')[0].split(':')[0];
@@ -91,20 +83,33 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
 
     let sock: WASocket | undefined;
     let done = false;
-    let ownAuthDir: string | undefined;
     let timer: NodeJS.Timeout | undefined;
 
+    /**
+     * Credentials live only in memory (see in-memory-auth-state.ts), so there is
+     * nothing on disk to clean up here. All this does is unlink the device so SBC
+     * does not linger in the diffuseur's WhatsApp.
+     *
+     * logout() is a network round-trip and can hang, so it is bounded. A hung
+     * logout must not keep the socket alive.
+     */
     const teardown = async (unlink: boolean) => {
         if (timer) clearTimeout(timer);
         try {
-            // Unlink so the device does not linger in the diffuseur's WhatsApp.
-            if (unlink && sock) await sock.logout();
-            else sock?.end(undefined);
+            if (unlink && sock) {
+                await Promise.race([
+                    sock.logout(),
+                    new Promise(r => setTimeout(r, 5000)),
+                ]);
+            }
         } catch {
-            /* socket may already be gone */
+            /* socket may already be gone; the end() below is what matters */
         }
-        // Only remove a dir we created; a caller-supplied one is theirs to manage.
-        if (ownAuthDir) await fs.rm(ownAuthDir, { recursive: true, force: true }).catch(() => { });
+        try {
+            sock?.end(undefined);
+        } catch {
+            /* already closed */
+        }
     };
 
     const finish = async (value: ExtractionResult) => {
@@ -124,7 +129,7 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
     void (async () => {
         try {
             const {
-                makeWASocket, DisconnectReason, useMultiFileAuthState,
+                makeWASocket, DisconnectReason,
                 isJidStatusBroadcast, downloadMediaMessage,
                 fetchLatestBaileysVersion, Browsers,
             } = await import('@whiskeysockets/baileys');
@@ -137,9 +142,10 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
                 log.warn('fetchLatestBaileysVersion failed; using pinned version');
             }
 
-            const authDir = opts.authDir
-                ?? (ownAuthDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sbc-wa-')));
-            const { state, saveCreds } = await useMultiFileAuthState(authDir);
+            // In-memory, never on disk: an extraction is seconds long and creds are
+            // never reused, so persisting them would only create something that has
+            // to be deleted afterwards — and that deletion can fail.
+            const { state, saveCreds } = await useInMemoryAuthState();
 
             timer = setTimeout(
                 () => void abort(new Error('WhatsApp link timed out')),
