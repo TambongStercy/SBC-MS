@@ -3,6 +3,7 @@ import CampaignModel from '../database/models/campaign.model';
 import CampaignParticipationModel, {
     DayStatus,
     ICampaignParticipation,
+    IDayProof,
     ParticipationStatus,
 } from '../database/models/campaign-participation.model';
 import { ExtractedStatus, ExtractionResult } from './whatsapp-status.service';
@@ -42,13 +43,42 @@ const captionHasTrackingCode = (caption: string | undefined, trackingCode: strin
  * A diffuseur may post several statuses in a day, most unrelated to us, so this
  * selects on the tracking code rather than assuming the newest post is ours.
  */
-const findMatchingStatus = (
+export const findMatchingStatus = (
     statuses: ExtractedStatus[],
     trackingCode: string,
     alreadyClaimed: Set<string>,
+    /** Posts before this cannot satisfy the day; see enforceDayGap. */
+    notBefore?: Date,
 ): ExtractedStatus | undefined =>
-    statuses.find(s =>
-        !alreadyClaimed.has(s.statusMessageId) && captionHasTrackingCode(s.caption, trackingCode));
+    statuses
+        // Oldest first, so consecutive days consume statuses in the order they were
+        // actually posted rather than whatever order the sync returned them in.
+        .slice()
+        .sort((a, b) => (a.postedAt?.getTime() ?? 0) - (b.postedAt?.getTime() ?? 0))
+        .find(s =>
+            !alreadyClaimed.has(s.statusMessageId)
+            && captionHasTrackingCode(s.caption, trackingCode)
+            && (!notBefore || !s.postedAt || s.postedAt >= notBefore));
+
+/**
+ * Earliest a given day may be satisfied.
+ *
+ * The 3-day structure only delivers what the advertiser paid for if the posts are
+ * spread out. Without this, three statuses posted in one afternoon would satisfy
+ * days 1, 2 and 3 in a single verification pass, and the advertiser would be billed
+ * for repeat reach that never happened.
+ */
+export const earliestAllowedPost = (
+    days: IDayProof[],
+    day: number,
+): Date | undefined => {
+    if (day <= 1) return undefined;
+    const previous = days.find(d => d.day === day - 1);
+    if (!previous?.postedAt) return undefined;
+    return new Date(
+        previous.postedAt.getTime() + config.campaign.minHoursBetweenDays * 60 * 60 * 1000,
+    );
+};
 
 /**
  * Applies an extraction to a participation, filling in whichever days it proves.
@@ -86,12 +116,26 @@ export const applyExtraction = async (
     for (const day of participation.days) {
         if (day.status === DayStatus.VERIFIED) continue;
 
-        const match = findMatchingStatus(extraction.statuses, participation.trackingCode, claimed);
+        const notBefore = earliestAllowedPost(participation.days, day.day);
+        const match = findMatchingStatus(
+            extraction.statuses,
+            participation.trackingCode,
+            claimed,
+            notBefore,
+        );
+
         if (!match) {
+            // Distinguish "you posted too soon" from "we found nothing": the first is
+            // recoverable by waiting, the second means they have to post.
+            const postedTooSoon = notBefore && findMatchingStatus(
+                extraction.statuses, participation.trackingCode, claimed,
+            );
             verdicts.push({
                 day: day.day,
                 accepted: false,
-                reason: 'Aucune publication contenant votre lien de suivi n\'a été trouvée.',
+                reason: postedTooSoon
+                    ? `La publication du jour ${day.day} doit être faite au moins ${config.campaign.minHoursBetweenDays}h après celle du jour ${day.day - 1}.`
+                    : "Aucune publication contenant votre lien de suivi n'a été trouvée.",
                 viewCount: 0,
                 deliveredCount: 0,
                 earnedAmount: 0,
