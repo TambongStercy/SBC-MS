@@ -64,6 +64,9 @@ export const start = async (req: AuthenticatedRequest, res: Response) => {
             diffuseurUserId: userId,
             participationId: participation._id,
             day: pending.day,
+            // Needed for the perceptual media check; without the bytes there is
+            // nothing to compare against the campaign creative.
+            downloadMedia: true,
         });
 
         return res.status(201).json({

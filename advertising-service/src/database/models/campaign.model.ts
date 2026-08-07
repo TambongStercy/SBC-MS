@@ -42,12 +42,16 @@ export interface ICampaign extends Document {
     mediaFileId: string;
     mediaType: 'image' | 'video';
     mediaMimeType?: string;
-    /**
-     * sha256 of the original upload, used to prove a diffuseur posted THIS flyer.
-     * NOTE: unverified whether WhatsApp's re-encode preserves it; if not this
-     * becomes a perceptual hash. See spec section 11.
-     */
+    /** sha256 of the original upload. Free exact-match fast path; usually misses. */
     mediaSha256?: string;
+    /**
+     * dHash of the creative, the real "did they post OUR flyer" check.
+     *
+     * Computed lazily on first verification and cached here, so campaign creation
+     * does not block on fetching the file and a creative uploaded later is still
+     * covered.
+     */
+    mediaPerceptualHash?: string;
 
     /** Caption text suggested to diffuseurs. Their tracking link is appended. */
     suggestedCaption?: string;
@@ -104,6 +108,7 @@ const CampaignSchema = new Schema<ICampaign>({
     mediaType: { type: String, enum: ['image', 'video'], required: true },
     mediaMimeType: { type: String },
     mediaSha256: { type: String, index: true },
+    mediaPerceptualHash: { type: String },
 
     suggestedCaption: { type: String, trim: true, maxlength: 700 },
 

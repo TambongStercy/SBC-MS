@@ -56,8 +56,18 @@ export interface IDayProof {
     captionCaptured?: string;
     /** Whether the caption contained this diffuseur's tracking link. */
     trackingLinkPresent?: boolean;
-    /** Whether the posted media matched the campaign creative. */
     mediaSha256?: string;
+    /** dHash of what was actually posted. */
+    mediaPerceptualHash?: string;
+    /** Differing bits vs the campaign creative. Lower is more similar. */
+    mediaDistance?: number;
+    /**
+     * Whether the posted media is the campaign creative.
+     *
+     * undefined means "could not check" — an unhashable format or an unreachable
+     * creative — and is deliberately distinct from false. Refusing to pay because
+     * we could not process something would punish the diffuseur for our limitation.
+     */
     mediaMatches?: boolean;
 
     /**
@@ -133,6 +143,8 @@ const DayProofSchema = new Schema<IDayProof>({
     captionCaptured: { type: String },
     trackingLinkPresent: { type: Boolean },
     mediaSha256: { type: String },
+    mediaPerceptualHash: { type: String },
+    mediaDistance: { type: Number },
     mediaMatches: { type: Boolean },
 
     viewCount: { type: Number, default: 0, min: 0 },

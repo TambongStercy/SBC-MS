@@ -1,5 +1,7 @@
 import { Types } from 'mongoose';
-import CampaignModel from '../database/models/campaign.model';
+import CampaignModel, { ICampaign } from '../database/models/campaign.model';
+import { perceptualHash, compareMedia } from './media-hash.service';
+import { downloadFile } from './clients/settings.service.client';
 import CampaignParticipationModel, {
     DayStatus,
     ICampaignParticipation,
@@ -88,6 +90,32 @@ export const earliestAllowedPost = (
 };
 
 /**
+ * Campaign creative hash, computed once and cached.
+ *
+ * Lazy rather than at campaign creation so creating a campaign never blocks on a
+ * file fetch, and a creative uploaded afterwards is still covered. Returns
+ * undefined on failure, which degrades the media check to "unknown".
+ */
+const ensureCampaignHash = async (campaign: ICampaign): Promise<string | undefined> => {
+    if (campaign.mediaPerceptualHash) return campaign.mediaPerceptualHash;
+    // Only images are perceptually hashable; video would need frame extraction.
+    if (campaign.mediaType !== 'image') return undefined;
+
+    const bytes = await downloadFile(campaign.mediaFileId);
+    if (!bytes) return undefined;
+
+    const hash = await perceptualHash(bytes);
+    if (!hash) return undefined;
+
+    campaign.mediaPerceptualHash = hash;
+    await CampaignModel.updateOne(
+        { _id: campaign._id },
+        { $set: { mediaPerceptualHash: hash } },
+    );
+    return hash;
+};
+
+/**
  * Applies an extraction to a participation, filling in whichever days it proves.
  *
  * Deliberately reconciles ALL unverified days rather than only the current one: a
@@ -103,6 +131,8 @@ export const applyExtraction = async (
 
     const campaign = await CampaignModel.findById(participation.campaignId);
     if (!campaign) throw new Error('Campaign not found');
+
+    const campaignHash = await ensureCampaignHash(campaign);
 
     // A status can only ever back one day, here or on any other participation.
     const claimedElsewhere = await CampaignParticipationModel.find({
@@ -162,11 +192,23 @@ export const applyExtraction = async (
         day.captionCaptured = match.caption;
         day.trackingLinkPresent = true;
         day.mediaSha256 = match.mediaSha256;
-        // Exact-hash matching is unreliable because WhatsApp recompresses on
-        // upload; a perceptual check lands separately. Recorded, not gated on.
-        day.mediaMatches = campaign.mediaSha256
-            ? campaign.mediaSha256 === match.mediaSha256
-            : undefined;
+
+        // Perceptual, not exact: WhatsApp recompresses on upload, so identical
+        // pictures produce different bytes. Recorded rather than gated on — the
+        // tracking code is the proof, this catches the link pasted onto an
+        // unrelated photo.
+        const postedHash = match.mediaBuffer ? await perceptualHash(match.mediaBuffer) : null;
+        const comparison = compareMedia(campaignHash, postedHash);
+        day.mediaPerceptualHash = postedHash ?? undefined;
+        day.mediaDistance = comparison.distance ?? undefined;
+        day.mediaMatches = comparison.matches ?? undefined;
+
+        if (comparison.matches === false) {
+            log.warn(
+                `Participation ${participation._id} day ${day.day}: posted media does not match ` +
+                `campaign creative (distance ${comparison.distance})`,
+            );
+        }
         day.viewCount = match.viewCount;
         day.deliveredCount = match.deliveredCount;
         day.earnedAmount = earned;
