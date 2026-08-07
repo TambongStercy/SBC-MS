@@ -26,7 +26,8 @@ interface InternalTransactionPayload {
 // Payload for activation balance transactions
 interface ActivationTransactionPayload {
     userId: string;
-    type: 'activation_transfer_in' | 'activation_transfer_out' | 'sponsor_activation';
+    type: 'activation_transfer_in' | 'activation_transfer_out' | 'sponsor_activation'
+        | 'advertising_earnings' | 'advertising_transfer_out';
     amount: number;
     description: string;
     metadata?: Record<string, any>;

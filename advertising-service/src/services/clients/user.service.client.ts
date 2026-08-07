@@ -47,6 +47,26 @@ export const getUserProfile = async (userId: string): Promise<IUserProfile | nul
  * Bulk lookup for the allocation engine, which resolves hundreds of candidate
  * diffuseurs at once and must not issue one request each.
  */
+/**
+ * Credits a diffuseur's advertising balance.
+ *
+ * Throws on failure, deliberately: the caller releases its payout claim so the
+ * next sweep retries. Swallowing this would mean a diffuseur silently never gets
+ * paid.
+ */
+export const creditAdvertisingEarnings = async (args: {
+    userId: string;
+    amount: number;
+    reference: string;
+    description: string;
+}): Promise<{ newAdvertisingBalance: number; transactionId: string }> => {
+    const { data } = await client.post('/advertising-balance/internal/credit', args);
+    if (!data?.success) {
+        throw new Error(data?.message || 'user-service refused the advertising credit');
+    }
+    return data.data;
+};
+
 export const getUserProfiles = async (userIds: string[]): Promise<IUserProfile[]> => {
     if (!userIds.length) return [];
     try {

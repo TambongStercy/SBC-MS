@@ -1883,7 +1883,10 @@ export class PaymentController {
             }
 
             // Validate transaction type
-            const validTypes = ['activation_transfer_in', 'activation_transfer_out', 'sponsor_activation'];
+            const validTypes = [
+                'activation_transfer_in', 'activation_transfer_out', 'sponsor_activation',
+                'advertising_earnings', 'advertising_transfer_out'
+            ];
             if (!validTypes.includes(type)) {
                 return res.status(400).json({
                     success: false,

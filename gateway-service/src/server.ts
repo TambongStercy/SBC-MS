@@ -103,6 +103,15 @@ app.use('/api/activation-balance', proxy(config.services.userServiceUrl, {
   }
 }));
 
+// Diffuseur advertising earnings. Lives in user-service alongside the other
+// balances, not in advertising-service, so all of a user's money is in one place.
+app.use('/api/advertising-balance', proxy(config.services.userServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to advertising-balance (user service)`);
+    return '/api/advertising-balance' + req.url;
+  }
+}));
+
 app.use('/api/withdrawals', proxy(config.services.paymentServiceUrl, {
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to withdrawals service (payment service)`);

@@ -214,6 +214,57 @@ export class UserRepository {
     }
 
     /**
+     * Credits diffuseur earnings from a completed advertising campaign.
+     *
+     * Only ever called by advertising-service once all campaign days are verified.
+     * Credit-only by design: nothing debits advertisingBalance except the transfer
+     * to main, so there is exactly one way money leaves it.
+     */
+    async creditAdvertisingBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Credit amount must be positive');
+        }
+
+        return UserModel.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { advertisingBalance: amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Moves advertising earnings into the main balance so they can be withdrawn.
+     *
+     * This is deliberately the ONLY exit from advertisingBalance. Teaching the
+     * payout path to debit a second source would mean branching
+     * processMobileMoneyWithdrawalPayout, which is the most incident-prone code in
+     * the system — a silent no-op there once froze a real user's withdrawal.
+     * Routing through the main balance keeps the payout path untouched.
+     *
+     * The advertisingBalance >= amount precondition is part of the query, so two
+     * concurrent transfers cannot both succeed and overdraw.
+     */
+    async transferFromAdvertisingToMain(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Transfer amount must be positive');
+        }
+
+        return UserModel.findOneAndUpdate(
+            {
+                _id: userId,
+                advertisingBalance: { $gte: amount }
+            },
+            {
+                $inc: {
+                    balance: amount,
+                    advertisingBalance: -amount
+                }
+            },
+            { new: true }
+        ).exec();
+    }
+
+    /**
      * Atomically credit (positive amount) or debit (negative amount) a user's
      * sbcLiveBalance. Used by payment-service when:
      *   - A paid-live charge completes → credit the creator's 75% share

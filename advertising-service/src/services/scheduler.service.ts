@@ -5,6 +5,7 @@ import CampaignParticipationModel, {
 } from '../database/models/campaign-participation.model';
 import DiffuseurProfileModel, { ReferralTier } from '../database/models/diffuseur-profile.model';
 import { forfeitExpired } from './verification.service';
+import { sweepPendingPayouts } from './payout.service';
 import { currentDay, scheduleSummary } from './day-window.service';
 import {
     notifyVerificationDue,
@@ -207,6 +208,9 @@ export const runScheduledJobs = async (): Promise<void> => {
         ['sweepForfeits', sweepForfeits],
         ['sweepReferralSuspensions', sweepReferralSuspensions],
         ['sweepCompletedCampaigns', sweepCompletedCampaigns],
+        // Last: it depends on participations the earlier jobs may have just
+        // completed, and a credit that fails here is simply retried next tick.
+        ['sweepPendingPayouts', async () => (await sweepPendingPayouts()).credited],
     ];
 
     for (const [name, job] of jobs) {
