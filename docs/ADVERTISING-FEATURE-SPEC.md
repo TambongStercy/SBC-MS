@@ -215,9 +215,12 @@ conversions.
 
 ## 6. Referral commission (20%)
 
-- Unlocks after **100 completed campaigns**.
+- Unlocks after **100 completed campaigns** as a diffuseur.
 - Then: whenever someone the diffuseur **directly invited** launches a campaign as
   an advertiser, they earn **20% of SBC's margin** on it.
+- **Paid whether or not the referrer participates in that campaign** — confirmed
+  07/08: « qu'il participe ou pas, il gagne les 20 % ». The commission rewards
+  having brought the advertiser in, not doing the work.
 - On a 6,000 F campaign SBC's margin is 2,500 F, so the referrer gets **500 F**.
   100 such campaigns in a month = 50,000 F, which matches Rufus's own figures.
 
@@ -341,18 +344,21 @@ nobody but Rufus can make, and two of them can change money.
    confirmed this reading; worth Rufus confirming, as it decides how forgiving the
    feature feels.
 
-3. **Referral commission base.** Built as 20% of SBC's **margin** (500 F on a
-   6 000 F campaign), because that is the only reading where his own arithmetic —
-   100 campaigns a month = 50 000 F — comes out right. If he meant 20% of campaign
-   value, every payout is **2.4x higher** than built.
+3. ~~**Referral commission base.**~~ **ANSWERED 07/08.** « 20 % sur ce que la SBC
+   doit gagner sur ses filleuls » — 20% of SBC's margin, as built. He also
+   clarified a point the code already got right: the referrer earns
+   **« qu'il participe ou pas »** to the filleul's campaign. Nothing in
+   `payReferralCommission` looks at participation.
 
 4. **Advertiser refund on an unfilled campaign.** Built as bank-as-credit, per his
    instruction. There is currently no path to refund cash instead. Confirm that is
    intended.
 
-5. **Trust score effects.** Built as +5 completion, −15 forfeit, −10 media
-   mismatch, starting at 50. Nobody specified these numbers; they are a starting
-   point that will need tuning once real behaviour exists.
+5. ~~**Trust score effects.**~~ **ANSWERED 07/08.** Rufus confirmed the mechanic
+   and left the numbers to us: « quand un diffuseur ne respecte pas tel truc ou
+   quand le gars respecte, ça lui donne un certain score de confiance ». Built as
+   +5 completion, −15 forfeit, −10 media mismatch, starting at 50. Still worth
+   tuning once real behaviour exists.
 
 6. **Test campaign content.** He described a landing page with a video and a
    « Je m'inscris » button, and said diffuseurs earn their normal SBC commission on
