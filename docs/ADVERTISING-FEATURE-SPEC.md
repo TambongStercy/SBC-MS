@@ -163,17 +163,32 @@ end of the window** (~1h to 1h30 before expiry), not right after posting.
 | Layer | Mechanism |
 |---|---|
 | One WhatsApp per SBC account | unique index on `whatsappLid` (stable; phone numbers get recycled) |
-| One post claimed once | unique index on `statusMessageId` |
-| Shared-audience detection | overlap in viewer sets across accounts |
-| Right flyer posted | `fileSha256` match against the advertiser's upload |
-| Link present | caption contains the diffuseur's tracking link |
+| One post claimed once | unique index on `days.statusMessageId` |
+| Right campaign posted | caption contains the diffuseur's tracking link (**primary**) |
+| Right creative posted | perceptual hash of the image (**secondary**) |
 
-Viewer phone numbers are stored **salted-hashed**, not plaintext. Overlap detection
-works identically on hashes and a leak exposes far less. These are third parties
-who never signed up for SBC.
+**Viewer identities are not stored at all**, not even hashed. They would only serve
+shared-audience detection, and at 1 F/view an attacker needs real WhatsApp accounts
+to make that pay — the economics don't justify it. These are third parties who
+never signed up for SBC, so the right amount to retain is none. Only counts are
+kept.
 
-**OPEN:** does `fileSha256` survive WhatsApp's re-encode on repost? If not,
-flyer-matching needs perceptual hashing instead. Untested and load-bearing.
+### Media matching — decided
+
+`fileSha256` exact matching **will not work**. WhatsApp recompresses images on
+upload, so the advertiser's original and the bytes read back off the status are
+different files.
+
+- **Primary proof is the tracking link in the caption.** It is unique per diffuseur
+  per campaign and unguessable — obtainable only from that campaign's page.
+- **Secondary is a perceptual hash** (dHash) on images, which survives
+  recompression and resizing. Catches someone pasting the link onto an unrelated
+  photo.
+- **Video: caption check only** initially. Frame hashing needs ffmpeg, a heavier
+  dependency than is justified before fraud is observed.
+
+`mediaSha256` is retained as a free exact-match fast path for the cases where it
+does hit.
 
 ---
 
@@ -264,11 +279,14 @@ the page. Once it has finished loading, a **Share** button becomes enabled.
 Tapping it opens the device's native share sheet (Web Share API), from which the
 user picks WhatsApp → Status.
 
-**OPEN / RISK:** the share sheet can carry `files` plus `text`, but whether
-WhatsApp puts that text into the **status caption** varies by platform. Our
-verification requires the tracking link to be in the caption. Needs testing on a
-real Android and a real iPhone before this flow is finalised. Fallbacks: a
-copy-link button with instructions, or accepting link-in-first-comment.
+The share sheet carries the caption text through to WhatsApp (confirmed). The
+caption is pre-filled with the campaign text plus the diffuseur's tracking link.
+
+**The UI must warn, prominently and before sharing, that the caption must not be
+edited — above all the link.** Removing it means the post cannot be verified and
+the day does not count. This is the single most likely way a diffuseur loses
+earnings through no bad intent, so the warning belongs on the share screen itself,
+not buried in help text. Restate it in the post-share confirmation.
 
 Also needs a plain download fallback for browsers without Web Share Level 2.
 

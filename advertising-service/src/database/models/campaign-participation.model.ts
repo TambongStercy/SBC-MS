@@ -46,16 +46,17 @@ export interface IDayProof {
     mediaSha256?: string;
     mediaMatches?: boolean;
 
-    /** Read receipts. This is the number WhatsApp shows, and what we pay on. */
+    /**
+     * Read receipts. This is the number WhatsApp shows, and what we pay on.
+     *
+     * Viewer identities are deliberately NOT stored, not even hashed. They would
+     * only serve shared-audience fraud detection, and at 1 F/view an attacker
+     * would need real WhatsApp accounts to make that pay. These are third parties
+     * who never signed up for SBC, so the right amount to keep is none.
+     */
     viewCount: number;
     /** Recipients reached. Always >= viewCount. NOT what we pay on. */
     deliveredCount: number;
-    /**
-     * Salted hashes of viewer numbers, never plaintext. Enough for cross-account
-     * overlap detection, and a leak exposes nothing about people who never
-     * signed up for SBC.
-     */
-    viewerHashes: string[];
 
     ratePerView: number;
     earnedAmount: number;
@@ -113,7 +114,6 @@ const DayProofSchema = new Schema<IDayProof>({
 
     viewCount: { type: Number, default: 0, min: 0 },
     deliveredCount: { type: Number, default: 0, min: 0 },
-    viewerHashes: [{ type: String }],
 
     ratePerView: { type: Number, required: true, min: 0 },
     earnedAmount: { type: Number, default: 0, min: 0 },

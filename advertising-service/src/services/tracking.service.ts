@@ -31,15 +31,6 @@ export const hashVisitor = (req: Request, trackingCode: string): string => {
         .slice(0, 32);
 };
 
-/** Salted hash of a viewer's phone number. Plaintext is never stored. */
-export const hashViewer = (phoneOrJid: string): string => {
-    const normalised = phoneOrJid.split('@')[0].split(':')[0];
-    return createHash('sha256')
-        .update(`${config.services.serviceSecret}:viewer:${normalised}`)
-        .digest('hex')
-        .slice(0, 32);
-};
-
 type RecordArgs = {
     req: Request;
     trackingCode?: string;
@@ -102,3 +93,16 @@ export const recordClick = async ({ req, trackingCode, campaignId, action }: Rec
 /** Public URL a diffuseur pastes into their status. Kept short on purpose. */
 export const buildTrackingUrl = (trackingCode: string): string =>
     `${config.publicBaseUrl.replace(/\/$/, '')}/s/${trackingCode}`;
+
+/**
+ * Caption pre-filled into the share sheet.
+ *
+ * The link must survive into the WhatsApp status caption: verification looks for
+ * it, and a diffuseur who edits it out silently loses the day. It goes on its own
+ * line at the end so it stays visible and is hard to delete by accident.
+ */
+export const buildShareCaption = (suggestedCaption: string | undefined, trackingCode: string): string => {
+    const url = buildTrackingUrl(trackingCode);
+    const body = suggestedCaption?.trim();
+    return body ? `${body}\n\n${url}` : url;
+};

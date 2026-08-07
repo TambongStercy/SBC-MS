@@ -5,6 +5,8 @@ import {
     enroll,
     getMyProfile,
     listMyParticipations,
+    acceptParticipation,
+    declineParticipation,
 } from '../controllers/diffuseur.controller';
 
 const router = Router();
@@ -15,5 +17,7 @@ router.get('/eligibility', getEligibility);
 router.post('/enroll', enroll);
 router.get('/me', getMyProfile);
 router.get('/me/participations', listMyParticipations);
+router.post('/participations/:id/accept', acceptParticipation);
+router.post('/participations/:id/decline', declineParticipation);
 
 export default router;

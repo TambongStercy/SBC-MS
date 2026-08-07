@@ -1,7 +1,10 @@
 import { Response } from 'express';
 import { Types } from 'mongoose';
 import DiffuseurProfileModel, { ReferralTier } from '../../database/models/diffuseur-profile.model';
-import CampaignParticipationModel from '../../database/models/campaign-participation.model';
+import CampaignParticipationModel, { ParticipationStatus } from '../../database/models/campaign-participation.model';
+import CampaignModel from '../../database/models/campaign.model';
+import { acceptOffer } from '../../services/allocation.service';
+import { buildTrackingUrl, buildShareCaption } from '../../services/tracking.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import { getUserProfile, IUserProfile } from '../../services/clients/user.service.client';
@@ -126,6 +129,57 @@ export const getMyProfile = async (req: AuthenticatedRequest, res: Response) => 
         });
     } catch (err) {
         return fail(res, err, 'getMyProfile');
+    }
+};
+
+/**
+ * Accept an offer. Whoever accepts first wins, so this re-checks the campaign's
+ * remaining target rather than trusting that the offer is still good.
+ */
+export const acceptParticipation = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = currentUserId(req);
+        const participation = await acceptOffer(new Types.ObjectId(req.params.id), userId);
+
+        const campaign = await CampaignModel.findById(participation.campaignId)
+            .select('title suggestedCaption mediaFileId mediaType')
+            .lean();
+
+        return res.json({
+            success: true,
+            data: {
+                participation,
+                campaign,
+                // Everything the share screen needs. The link MUST survive into the
+                // status caption or the day cannot be verified.
+                shareCaption: buildShareCaption(campaign?.suggestedCaption, participation.trackingCode),
+                trackingUrl: buildTrackingUrl(participation.trackingCode),
+                warning: 'Ne modifiez pas le texte, surtout le lien. Sans le lien, votre publication ne peut pas être vérifiée et la journée ne sera pas comptée.',
+            },
+        });
+    } catch (err) {
+        return fail(res, err, 'acceptParticipation');
+    }
+};
+
+export const declineParticipation = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = currentUserId(req);
+        const participation = await CampaignParticipationModel.findOne({
+            _id: req.params.id,
+            diffuseurUserId: userId,
+        });
+        if (!participation) throw new AppError('Offre introuvable.', 404);
+        if (participation.status !== ParticipationStatus.OFFERED) {
+            throw new AppError('Cette offre ne peut plus être refusée.', 400);
+        }
+
+        participation.status = ParticipationStatus.DECLINED;
+        await participation.save();
+
+        return res.json({ success: true, data: { status: participation.status } });
+    } catch (err) {
+        return fail(res, err, 'declineParticipation');
     }
 };
 
