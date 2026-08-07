@@ -9,7 +9,8 @@
         "start": "node dist/server.js",
         "dev": "nodemon --exec ts-node src/server.ts",
         "lint": "eslint . --ext .ts",
-        "lint:fix": "eslint . --ext .ts --fix"
+        "lint:fix": "eslint . --ext .ts --fix",
+        "postinstall": "patch-package"
     },
     "keywords": [
         "microservice",
@@ -19,6 +20,8 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
+        "@hapi/boom": "^10.0.1",
+        "@whiskeysockets/baileys": "6.7.18",
         "axios": "^1.7.2",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",
@@ -30,7 +33,8 @@
         "morgan": "^1.10.0",
         "nanoid": "^3.3.4",
         "pino": "^9.3.1",
-        "pino-pretty": "^11.2.1"
+        "pino-pretty": "^11.2.1",
+        "qrcode-terminal": "^0.12.0"
     },
     "devDependencies": {
         "@types/cors": "^2.8.17",
@@ -39,10 +43,12 @@
         "@types/jsonwebtoken": "^9.0.9",
         "@types/morgan": "^1.9.9",
         "@types/node": "^20.14.10",
+        "@types/qrcode-terminal": "^0.12.2",
         "@typescript-eslint/eslint-plugin": "^7.16.0",
         "@typescript-eslint/parser": "^7.16.0",
         "eslint": "^8.57.0",
         "nodemon": "^3.1.4",
+        "patch-package": "^8.0.1",
         "ts-node": "^10.9.2",
         "typescript": "^5.5.3"
     }

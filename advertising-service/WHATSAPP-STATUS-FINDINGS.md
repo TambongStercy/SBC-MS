@@ -36,6 +36,37 @@ capability, never fetched the blob, and never parsed the field. §6's senderKey
 decryption hypothesis and §7's `fromMe` mislabelling hypothesis were both wrong
 too. The sections are kept only as a record of what was ruled out.
 
+## Posting a status DOES work (2026-08-07) — parked, not blocked
+
+Baileys issues #1196, #2118, #619 and #32 all report that posting to
+`status@broadcast` silently fails. **It works.** Verified: a text status and an
+image status both published and appeared on the phone.
+
+The failures in those issues are an empty `statusJidList`. A status is fanned out
+to an explicit recipient list; with no list the server accepts the send, returns a
+message id, and shows it to nobody — indistinguishable from "posting is broken".
+
+```ts
+const jids = [...]                       // real @s.whatsapp.net contact JIDs
+await sock.sendMessage('status@broadcast', { text: 'hello' }, { statusJidList: jids })
+await sock.sendMessage('status@broadcast', { image: buf, caption: 'hi' }, { statusJidList: jids })
+```
+
+Harvest the JIDs from `messaging-history.set` on `INITIAL_BOOTSTRAP`. Probe is
+`whatsapp-post-status.ts`.
+
+**Deliberately not used for now.** Auto-posting on a user's behalf carries far more
+WhatsApp ban risk than reading does, and it is more invasive. The campaign feature
+ships with diffuseurs posting manually. Revisit later, possibly as a paid
+convenience tier.
+
+Two unknowns if it is ever revived:
+- whether `INITIAL_STATUS_V3` is re-sent on a *reconnect* with saved creds, or only
+  on a fresh QR link (untested; the whole store-creds-and-reconnect-daily design
+  depends on it)
+- stored auth state measured at **2.4 MB / 621 files** after one bootstrap sync,
+  85% of it peer `session-*` files. Pruning those should give ~420 KB, untested.
+
 ---
 
 # Original investigation notes (superseded)
