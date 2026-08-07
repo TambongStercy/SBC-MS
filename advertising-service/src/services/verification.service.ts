@@ -7,7 +7,7 @@ import CampaignParticipationModel, {
     ParticipationStatus,
 } from '../database/models/campaign-participation.model';
 import { ExtractedStatus, ExtractionResult } from './whatsapp-status.service';
-import { buildTrackingUrl } from './tracking.service';
+import { chargeGrace, openNextDay, isBeyondRecovery } from './day-window.service';
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import config from '../config';
 import logger from '../utils/logger';
@@ -22,6 +22,8 @@ export type DayVerdict = {
     viewCount: number;
     deliveredCount: number;
     earnedAmount: number;
+    /** Whole days late this post cost, charged to the shared grace budget. */
+    graceDaysConsumed?: number;
 };
 
 /**
@@ -72,6 +74,11 @@ export const earliestAllowedPost = (
     days: IDayProof[],
     day: number,
 ): Date | undefined => {
+    const target = days.find(d => d.day === day);
+    // Set when the previous day was posted; falling back to recomputing keeps
+    // older participations working.
+    if (target?.windowOpensAt) return target.windowOpensAt;
+
     if (day <= 1) return undefined;
     const previous = days.find(d => d.day === day - 1);
     if (!previous?.postedAt) return undefined;
@@ -164,6 +171,11 @@ export const applyExtraction = async (
         day.deliveredCount = match.deliveredCount;
         day.earnedAmount = earned;
 
+        // Charge lateness before opening the next window, so a diffuseur who has
+        // already blown the budget is not handed another day to post.
+        const grace = chargeGrace(participation, day, match.postedAt ?? new Date());
+        openNextDay(participation, day.day);
+
         verdicts.push({
             day: day.day,
             accepted: true,
@@ -171,7 +183,17 @@ export const applyExtraction = async (
             viewCount: match.viewCount,
             deliveredCount: match.deliveredCount,
             earnedAmount: earned,
+            graceDaysConsumed: grace.consumed,
         });
+
+        if (grace.exhausted) {
+            participation.status = ParticipationStatus.FORFEITED;
+            log.info(
+                `Participation ${participation._id} forfeited: grace budget exhausted ` +
+                `(${grace.totalUsed}/${config.campaign.graceDays})`,
+            );
+            break;
+        }
     }
 
     recomputeTotals(participation);
@@ -286,13 +308,21 @@ export const bindWhatsAppIdentity = async (
     }
 };
 
-/** Grace window is over: nothing was completed, so nothing is paid. */
+/**
+ * Forfeits participations that can no longer finish inside their grace budget.
+ *
+ * Evaluated per participation rather than against a shared deadline: with a quota,
+ * "out of time" depends on how late each individual day already was. Runs as soon
+ * as recovery becomes impossible, so nobody is left thinking they can still catch
+ * up for days afterwards.
+ */
 export const forfeitExpired = async (): Promise<number> => {
     const now = new Date();
-    const expired = await CampaignParticipationModel.find({
+    const candidates = await CampaignParticipationModel.find({
         status: ParticipationStatus.IN_PROGRESS,
-        graceDeadline: { $lt: now },
     });
+
+    const expired = candidates.filter(p => isBeyondRecovery(p, now));
 
     for (const p of expired) {
         p.status = ParticipationStatus.FORFEITED;

@@ -5,6 +5,7 @@ import CampaignParticipationModel, { ParticipationStatus } from '../../database/
 import CampaignModel from '../../database/models/campaign.model';
 import { acceptOffer } from '../../services/allocation.service';
 import { buildTrackingUrl, buildShareCaption } from '../../services/tracking.service';
+import { scheduleSummary } from '../../services/day-window.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import { getUserProfile, IUserProfile } from '../../services/clients/user.service.client';
@@ -203,7 +204,14 @@ export const listMyParticipations = async (req: AuthenticatedRequest, res: Respo
 
         return res.json({
             success: true,
-            data: items,
+            data: items.map(p => ({
+                ...p.toObject(),
+                // Which day is owed, when its window opens, and how much grace is
+                // left. Without this a diffuseur cannot tell whether they are late.
+                schedule: p.status === ParticipationStatus.IN_PROGRESS
+                    ? scheduleSummary(p)
+                    : undefined,
+            })),
             pagination: { page, limit, total, pages: Math.ceil(total / limit) },
         });
     } catch (err) {

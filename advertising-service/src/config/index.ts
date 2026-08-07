@@ -74,9 +74,9 @@ interface IConfig {
          * Minimum gap between two campaign days, in hours.
          *
          * The 3-day structure exists so the advertiser's product is seen repeatedly
-         * over time; three posts in one afternoon buy none of that. 20h rather than
-         * 24h so someone posting each morning does not drift a little later each
-         * day and eventually fall out of their own window.
+         * over time; three posts in one afternoon buy none of that. A full 24h so
+         * the three posts genuinely span three days — a shorter gap would let each
+         * post creep earlier than the last and compress the campaign.
          */
         minHoursBetweenDays: number;
     };
@@ -125,7 +125,7 @@ const config: IConfig = {
         durationDays: parseInt(process.env.CAMPAIGN_DURATION_DAYS || '3', 10),
         graceDays: parseInt(process.env.CAMPAIGN_GRACE_DAYS || '3', 10),
         maxCampaignsPerDiffuseurPerDay: parseInt(process.env.MAX_CAMPAIGNS_PER_DAY || '1', 10),
-        minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '20', 10),
+        minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '24', 10),
     },
     referral: {
         campaignsToUnlock: parseInt(process.env.REFERRAL_CAMPAIGNS_TO_UNLOCK || '100', 10),

@@ -34,6 +34,20 @@ export interface IDayProof {
     day: number;
     status: DayStatus;
 
+    /**
+     * Earliest this day may be posted: 20h after the previous day's post (day 1
+     * opens on acceptance). Recorded rather than derived so the diffuseur can be
+     * shown exactly when their next window opens.
+     */
+    windowOpensAt?: Date;
+    /**
+     * On-time deadline, 24h after the window opens. Posting later still counts but
+     * consumes grace days from the campaign's shared budget.
+     */
+    dueAt?: Date;
+    /** Whole days late, 0 when on time. Charged against graceDaysUsed. */
+    graceDaysConsumed?: number;
+
     /** WhatsApp status message id. Globally unique, so one post is claimed once. */
     statusMessageId?: string;
     postedAt?: Date;
@@ -77,10 +91,15 @@ export interface ICampaignParticipation extends Document {
 
     offeredAt: Date;
     acceptedAt?: Date;
-    /** Day-1 post time. All day deadlines derive from this. */
     startedAt?: Date;
-    /** After this, missed days can no longer be made up. startedAt + duration + grace. */
-    graceDeadline?: Date;
+    /**
+     * Grace days spent so far, against a single budget shared across the campaign.
+     *
+     * A quota rather than a fixed calendar deadline: a deadline set at acceptance
+     * punishes someone who posted day 1 immediately and rewards someone who
+     * stalled, because both hit the same wall.
+     */
+    graceDaysUsed: number;
     completedAt?: Date;
 
     days: IDayProof[];
@@ -102,6 +121,10 @@ export interface ICampaignParticipation extends Document {
 const DayProofSchema = new Schema<IDayProof>({
     day: { type: Number, required: true, min: 1 },
     status: { type: String, enum: Object.values(DayStatus), default: DayStatus.PENDING },
+
+    windowOpensAt: { type: Date },
+    dueAt: { type: Date },
+    graceDaysConsumed: { type: Number, default: 0, min: 0 },
 
     statusMessageId: { type: String },
     postedAt: { type: Date },
@@ -138,7 +161,7 @@ const CampaignParticipationSchema = new Schema<ICampaignParticipation>({
     offeredAt: { type: Date, default: Date.now },
     acceptedAt: { type: Date },
     startedAt: { type: Date },
-    graceDeadline: { type: Date },
+    graceDaysUsed: { type: Number, default: 0, min: 0 },
     completedAt: { type: Date },
 
     days: { type: [DayProofSchema], default: [] },
@@ -162,8 +185,8 @@ CampaignParticipationSchema.index({ diffuseurUserId: 1, status: 1, startedAt: -1
 // most day entries have no id until they are posted.
 CampaignParticipationSchema.index({ 'days.statusMessageId': 1 }, { unique: true, sparse: true });
 
-// Sweeps for participations whose grace window has run out.
-CampaignParticipationSchema.index({ status: 1, graceDeadline: 1 });
+// Sweeps for participations with an overdue day.
+CampaignParticipationSchema.index({ status: 1, 'days.dueAt': 1 });
 
 const CampaignParticipationModel = mongoose.model<ICampaignParticipation>(
     'CampaignParticipation',

@@ -8,6 +8,7 @@ import CampaignParticipationModel, {
 import DiffuseurProfileModel, { IDiffuseurProfile } from '../database/models/diffuseur-profile.model';
 import { getUserProfiles, IUserProfile } from './clients/user.service.client';
 import { newTrackingCode } from './campaign.service';
+import { openDayOne } from './day-window.service';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -251,13 +252,13 @@ export const acceptOffer = async (
     }
 
     const now = new Date();
-    const totalDays = config.campaign.durationDays + config.campaign.graceDays;
 
     participation.status = ParticipationStatus.IN_PROGRESS;
     participation.acceptedAt = now;
     participation.startedAt = now;
-    // Grace deadline is fixed at acceptance so it cannot drift as days are posted.
-    participation.graceDeadline = new Date(now.getTime() + totalDays * 24 * 60 * 60 * 1000);
+    // Day 1 opens immediately; every later window is anchored to the previous
+    // day's actual post time, not to acceptance.
+    openDayOne(participation, now);
     await participation.save();
 
     return participation;
