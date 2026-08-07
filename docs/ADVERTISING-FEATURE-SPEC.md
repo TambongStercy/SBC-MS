@@ -294,27 +294,86 @@ Also needs a plain download fallback for browsers without Web Share Level 2.
 
 ## 10. Build phases
 
-| Phase | Scope | Blocked by |
+| Phase | Scope | Status |
 |---|---|---|
-| 1 | `advertising-service` skeleton, campaign CRUD, criteria matching, landing pages, tracking links, click events | nothing |
-| 2 | allocation engine: matching, first-to-accept, progressive top-up, 1/day cap, fair spread | nothing |
-| 3 | WhatsApp verification worker (queued, capped) | share-caption test, `fileSha256` test |
-| 4 | payout engine: 3-day gate, declining rates, grace period, separate balance, withdrawals | financial review |
-| 5 | ranking + test campaign | phase 3 |
-| 6 | 20% referral + suspension | nothing |
+| 1 | service skeleton, campaign CRUD, criteria matching, landing pages, tracking links, click events | **done** |
+| 2 | allocation: matching, first-to-accept, progressive top-up, 1/day cap | **done** |
+| 3 | WhatsApp verification (queued, capped at 8), media hash, scheduler | **done** |
+| 4 | advertising balance, payout engine, 3-day gate, transfer-to-main | **done** |
+| 5 | ranking, trust score, test campaign, leaderboard | **done** |
+| 6 | 20% referral commission + suspension | **done** |
 
-Phase 4 touches real money and gets the full CLAUDE.md payment treatment: trace
-every path, explicit failure handling, no silent no-ops.
+All backend code is on `feature/advertising-service` (PR #104). **No frontend
+exists yet** — every endpoint below needs UI.
+
+### Assertion suites
+
+Run from `advertising-service/`. The last two need a local Mongo.
+
+```
+npx ts-node src/scripts/check-day-gap.ts             8 checks, no DB
+npx ts-node src/scripts/check-media-hash.ts          8 checks, no DB
+npx ts-node src/scripts/check-payout.ts             12 checks, needs Mongo
+npx ts-node src/scripts/check-referral-commission.ts 13 checks, needs Mongo
+npx ts-node src/scripts/verify-extraction.ts        manual, needs a WhatsApp scan
+```
+
+`verify-extraction.ts` is the one that has NOT been run end to end — it needs a
+real QR scan. The in-memory Baileys auth state is our own implementation of a
+library interface, so a structural mistake there would only surface against a live
+server.
 
 ---
 
-## 11. Open questions
+## 11. Open questions for Rufus
 
-1. Does `fileSha256` survive WhatsApp's re-encode? (blocks phase 3 design)
-2. Does the Web Share API carry the tracking link into the status caption on
-   Android and iOS? (blocks phase 9 flow)
-3. Peak memory per verification socket, to set the concurrency cap from measurement
-   rather than a guess.
+Everything is built and asserted. These are product and compliance calls that
+nobody but Rufus can make, and two of them can change money.
+
+1. **BEAC compliance.** `activationBalance` is annotated *"(BEAC compliance)"* in
+   the user model — separating balances there was a regulatory decision, not a
+   product one. Does `advertisingBalance` need equivalent treatment, and is the
+   transfer-to-main step acceptable under it? **This can invalidate the withdrawal
+   design.**
+
+2. **Grace budget: shared or per day?** Built as a single pool of 3 days across the
+   campaign, so being 2 days late on day 2 leaves only 1 for day 3. Sterling
+   confirmed this reading; worth Rufus confirming, as it decides how forgiving the
+   feature feels.
+
+3. **Referral commission base.** Built as 20% of SBC's **margin** (500 F on a
+   6 000 F campaign), because that is the only reading where his own arithmetic —
+   100 campaigns a month = 50 000 F — comes out right. If he meant 20% of campaign
+   value, every payout is **2.4x higher** than built.
+
+4. **Advertiser refund on an unfilled campaign.** Built as bank-as-credit, per his
+   instruction. There is currently no path to refund cash instead. Confirm that is
+   intended.
+
+5. **Trust score effects.** Built as +5 completion, −15 forfeit, −10 media
+   mismatch, starting at 50. Nobody specified these numbers; they are a starting
+   point that will need tuning once real behaviour exists.
+
+6. **Test campaign content.** He described a landing page with a video and a
+   « Je m'inscris » button, and said diffuseurs earn their normal SBC commission on
+   conversions. The generic landing page is built; the test-campaign variant with
+   the video is not, and the video does not exist yet.
+
+7. **Concurrency cap.** Set to 8 simultaneous WhatsApp verifications by env
+   (`MAX_CONCURRENT_VERIFICATIONS`). Not derived from measurement — peak memory per
+   socket should be measured on the real server before launch.
+
+## 12. Not built
+
+- **All frontend.** Every endpoint needs UI: advertiser campaign creation and
+  dashboard, diffuseur offers/share/verify flow, leaderboard, balance and transfer.
+- **Admin tooling.** No moderation of campaign creatives, no manual verification
+  override, no view into stuck participations. Every other SBC feature ended up
+  needing these.
+- **Campaign payment.** `activateCampaign` is service-authenticated and ready, but
+  nothing in payment-service calls it yet. An advertiser cannot actually pay.
+- **Video creative matching.** Perceptual hashing covers images only; video would
+  need ffmpeg frame extraction.
 
 ---
 

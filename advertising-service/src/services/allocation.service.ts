@@ -9,6 +9,7 @@ import DiffuseurProfileModel, { IDiffuseurProfile } from '../database/models/dif
 import { getUserProfiles, IUserProfile } from './clients/user.service.client';
 import { newTrackingCode } from './campaign.service';
 import { openDayOne } from './day-window.service';
+import { notifyCampaignOffer } from './clients/notification.service.client';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -205,6 +206,19 @@ export const allocateCampaign = async (campaignId: Types.ObjectId): Promise<Allo
     await DiffuseurProfileModel.updateMany(
         { _id: { $in: offers.map(o => o.diffuseurProfileId) } },
         { $set: { lastCampaignOfferedAt: new Date() } },
+    );
+
+    // Fire and forget. Allocation must not slow down or fail because a mail
+    // server is unhappy, and an undelivered offer email is recoverable — the offer
+    // is still visible in the app.
+    void Promise.all(
+        offers.map(o =>
+            notifyCampaignOffer(
+                String(o.diffuseurUserId),
+                campaign.title,
+                expectedViews(eligible.find(c => String(c._id) === String(o.diffuseurProfileId))!),
+            ).catch(() => undefined),
+        ),
     );
 
     log.info(`Campaign ${campaign._id}: ${offers.length} offers, ~${projected} projected views, ${remaining} needed`);

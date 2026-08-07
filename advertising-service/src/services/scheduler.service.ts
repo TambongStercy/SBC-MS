@@ -13,6 +13,7 @@ import {
     notifyDayDue,
     notifyCampaignForfeited,
     notifyReferralSuspended,
+    notifyAdvertiserCampaignComplete,
 } from './clients/notification.service.client';
 import config from '../config';
 import logger from '../utils/logger';
@@ -189,6 +190,11 @@ export const sweepCompletedCampaigns = async (): Promise<number> => {
         campaign.status = CampaignStatus.COMPLETED;
         campaign.completedAt = new Date();
         await campaign.save();
+        await notifyAdvertiserCampaignComplete(
+            String(campaign.advertiserUserId),
+            campaign.title,
+            campaign.uniqueViewsDelivered,
+        );
         closed++;
     }
 
