@@ -6,6 +6,7 @@ import CampaignParticipationModel, {
 import DiffuseurProfileModel, { ReferralTier } from '../database/models/diffuseur-profile.model';
 import { forfeitExpired } from './verification.service';
 import { sweepPendingPayouts } from './payout.service';
+import { sweepReferralCommissions } from './referral-commission.service';
 import { currentDay, scheduleSummary } from './day-window.service';
 import {
     notifyVerificationDue,
@@ -211,6 +212,9 @@ export const runScheduledJobs = async (): Promise<void> => {
         // Last: it depends on participations the earlier jobs may have just
         // completed, and a credit that fails here is simply retried next tick.
         ['sweepPendingPayouts', async () => (await sweepPendingPayouts()).credited],
+        // After payouts: completing a campaign can unlock a referrer's tier, and
+        // that unlock should apply from the same tick.
+        ['sweepReferralCommissions', async () => (await sweepReferralCommissions()).paid],
     ];
 
     for (const [name, job] of jobs) {

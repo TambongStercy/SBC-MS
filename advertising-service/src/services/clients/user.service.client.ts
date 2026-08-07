@@ -67,6 +67,22 @@ export const creditAdvertisingEarnings = async (args: {
     return data.data;
 };
 
+/**
+ * The user's direct (level 1) referrer, or null.
+ *
+ * Only level 1 matters: Rufus's rule is « quelqu'un qu'il aura invite
+ * directement ». Deeper levels earn nothing from advertising campaigns.
+ */
+export const getDirectReferrer = async (userId: string): Promise<string | null> => {
+    try {
+        const { data } = await client.get(`/users/internal/${userId}/referrers`);
+        return data?.data?.level1 ?? null;
+    } catch (err) {
+        log.warn(`Could not resolve referrer for ${userId}: ${(err as Error).message}`);
+        return null;
+    }
+};
+
 export const getUserProfiles = async (userIds: string[]): Promise<IUserProfile[]> => {
     if (!userIds.length) return [];
     try {

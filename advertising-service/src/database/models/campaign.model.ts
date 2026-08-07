@@ -82,6 +82,9 @@ export interface ICampaign extends Document {
 
     activatedAt?: Date;
     completedAt?: Date;
+    /** Set once the advertiser's referrer has been paid. Guards double payment. */
+    referralCommissionPaidAt?: Date;
+    referralCommissionAmount?: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -137,6 +140,8 @@ const CampaignSchema = new Schema<ICampaign>({
 
     activatedAt: { type: Date },
     completedAt: { type: Date },
+    referralCommissionPaidAt: { type: Date },
+    referralCommissionAmount: { type: Number, min: 0 },
 }, { timestamps: true });
 
 // The allocation engine's hot query: active campaigns still short of target.

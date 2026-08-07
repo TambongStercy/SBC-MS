@@ -2,8 +2,8 @@ import { Response } from 'express';
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
 import CampaignParticipationModel from '../../database/models/campaign-participation.model';
-import ClickEventModel, { ClickAction } from '../../database/models/click-event.model';
 import { createCampaign, quoteCampaign, campaignProgress } from '../../services/campaign.service';
+import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../services/ranking.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
@@ -146,18 +146,7 @@ export const getPerformance = async (req: AuthenticatedRequest, res: Response) =
             .select('diffuseurUserId status uniqueViews repeatViews totalViews clicksGenerated trackingCode')
             .lean();
 
-        const clickBreakdown = await ClickEventModel.aggregate([
-            { $match: { campaignId: campaign._id, action: { $ne: ClickAction.VIEW } } },
-            { $group: { _id: { diffuseur: '$diffuseurUserId', action: '$action' }, count: { $sum: 1 } } },
-        ]);
-
-        const byDiffuseur = new Map<string, Record<string, number>>();
-        for (const row of clickBreakdown) {
-            const key = String(row._id.diffuseur ?? 'direct');
-            const entry = byDiffuseur.get(key) ?? {};
-            entry[row._id.action] = row.count;
-            byDiffuseur.set(key, entry);
-        }
+        const byDiffuseur = await campaignClickBreakdown(campaign._id);
 
         return res.json({
             success: true,
@@ -222,5 +211,30 @@ export const decideUnfilled = async (req: AuthenticatedRequest, res: Response) =
         });
     } catch (err) {
         return fail(res, err, 'decideUnfilled');
+    }
+};
+
+/**
+ * Public classement of diffuseurs by reach, clicks and reliability.
+ *
+ * Advertisers use this to pick who to target, which is the point of tracking
+ * clicks at all — reach alone does not tell them who delivers results.
+ */
+export const getLeaderboard = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { entries, total } = await leaderboard({
+            page: Number(req.query.page) || 1,
+            limit: Number(req.query.limit) || 50,
+            sortBy: req.query.sortBy as 'views' | 'clicks' | 'trust' | undefined,
+            measuredOnly: req.query.measuredOnly === 'true',
+        });
+
+        return res.json({
+            success: true,
+            data: entries,
+            pagination: { total, page: Number(req.query.page) || 1 },
+        });
+    } catch (err) {
+        return fail(res, err, 'getLeaderboard');
     }
 };

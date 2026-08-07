@@ -10,6 +10,7 @@ import CampaignParticipationModel, {
 } from '../database/models/campaign-participation.model';
 import { ExtractedStatus, ExtractionResult } from './whatsapp-status.service';
 import { chargeGrace, openNextDay, isBeyondRecovery } from './day-window.service';
+import { recordCompletion, recordForfeit } from './ranking.service';
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import config from '../config';
 import logger from '../utils/logger';
@@ -301,13 +302,9 @@ const syncCampaignCounters = async (p: ICampaignParticipation): Promise<void> =>
     );
 
     if (p.status === ParticipationStatus.COMPLETED) {
-        await DiffuseurProfileModel.updateOne(
-            { _id: p.diffuseurProfileId },
-            {
-                $inc: { campaignsCompleted: 1, totalVerifiedViews: p.totalViews },
-                $set: { lastCampaignCompletedAt: new Date() },
-            },
-        );
+        // Ranking owns profile stats: it also recomputes the measured average and
+        // trust score, which a bare $inc here would silently skip.
+        await recordCompletion(p);
     }
 };
 
@@ -369,14 +366,8 @@ export const forfeitExpired = async (): Promise<number> => {
     for (const p of expired) {
         p.status = ParticipationStatus.FORFEITED;
         await p.save();
-        await DiffuseurProfileModel.updateOne(
-            { _id: p.diffuseurProfileId },
-            {
-                $inc: { campaignsAbandoned: 1 },
-                // Trust is what keeps serial abandoners out of future allocations.
-                $max: { trustScore: 0 },
-            },
-        );
+        // Trust is what keeps serial abandoners out of future allocations.
+        await recordForfeit(p);
         log.info(`Participation ${p._id} forfeited: grace window expired`);
     }
 
