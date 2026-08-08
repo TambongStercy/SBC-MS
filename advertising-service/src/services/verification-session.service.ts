@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import QRCode from 'qrcode';
 import { Types } from 'mongoose';
 import { extractOwnStatuses, ExtractionResult, ExtractionHandle } from './whatsapp-status.service';
 import config from '../config';
@@ -98,7 +99,15 @@ export const startSession = (args: {
     const handle = extractOwnStatuses({
         downloadMedia: args.downloadMedia,
         onQr: qr => {
-            session.qr = qr;
+            // Baileys hands over the raw QR payload ("2@...") — not something a
+            // browser can render. Convert once here rather than on every poll.
+            QRCode.toDataURL(qr)
+                .then(dataUrl => { session.qr = dataUrl; })
+                .catch(err => {
+                    log.error(`Failed to render QR for session ${id}:`, err);
+                    session.state = 'failed';
+                    session.error = "Impossible d'afficher le code QR.";
+                });
             session.state = 'awaiting_scan';
         },
         onConnected: () => {
