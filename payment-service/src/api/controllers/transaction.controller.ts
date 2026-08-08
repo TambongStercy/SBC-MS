@@ -54,7 +54,10 @@ export class TransactionController {
             if (includeActivation !== 'true') {
                 options.excludeTypes = [
                     TransactionType.SPONSOR_ACTIVATION,
-                    TransactionType.ACTIVATION_TRANSFER_OUT
+                    TransactionType.ACTIVATION_TRANSFER_OUT,
+                    // Credits the advertising balance only; the main balance is
+                    // untouched until the user transfers, which is its own row.
+                    TransactionType.ADVERTISING_EARNINGS
                 ];
             }
 

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <meta property="og:title" content="<%= title %>">
+    <% if (description) { %><meta property="og:description" content="<%= description %>"><% } %>
+    <meta property="og:image" content="<%= mediaUrl %>">
+    <style>
+        :root {
+            --bg: #0f1115;
+            --card: #191c23;
+            --text: #f2f4f8;
+            --muted: #9aa3b2;
+            --accent: #f97316;
+            --wa: #25d366;
+            --border: #262a33;
+        }
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg: #f5f6f8; --card: #ffffff; --text: #14161a;
+                --muted: #5d6673; --border: #e3e6eb;
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.5;
+            padding: 16px;
+            display: flex;
+            justify-content: center;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            width: 100%;
+            max-width: 480px;
+        }
+        .media { width: 100%; display: block; background: #000; }
+        .media img, .media video { width: 100%; height: auto; display: block; max-height: 70vh; object-fit: contain; }
+        .body { padding: 20px; }
+        h1 { font-size: 1.25rem; font-weight: 650; margin-bottom: 8px; }
+        p.desc { color: var(--muted); font-size: 0.95rem; white-space: pre-wrap; margin-bottom: 20px; }
+        .actions { display: flex; flex-direction: column; gap: 10px; }
+        a.btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            color: #fff;
+            transition: opacity .15s ease;
+        }
+        a.btn:active { opacity: .75; }
+        .btn-wa { background: var(--wa); }
+        .btn-call { background: var(--accent); }
+        .btn-site { background: transparent; color: var(--text); border: 1px solid var(--border); }
+        .btn-join { background: var(--accent); }
+        .join { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .join p { font-size: 13px; opacity: .75; margin: 0 0 10px; }
+        footer { text-align: center; padding: 18px 0 4px; color: var(--muted); font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="media">
+            <% if (mediaType === 'video') { %>
+                <video src="<%= mediaUrl %>" controls playsinline preload="metadata"></video>
+            <% } else { %>
+                <img src="<%= mediaUrl %>" alt="<%= title %>">
+            <% } %>
+        </div>
+        <div class="body">
+            <h1><%= title %></h1>
+            <% if (description) { %><p class="desc"><%= description %></p><% } %>
+            <div class="actions">
+                <% if (hasWhatsapp) { %>
+                    <a class="btn btn-wa" href="<%= whatsappUrl %>" rel="nofollow">Contacter sur WhatsApp</a>
+                <% } %>
+                <% if (hasPhone) { %>
+                    <a class="btn btn-call" href="<%= callUrl %>" rel="nofollow">Appeler</a>
+                <% } %>
+                <% if (hasWebsite) { %>
+                    <a class="btn btn-site" href="<%= siteUrl %>" rel="nofollow">Visiter le site</a>
+                <% } %>
+            </div>
+            <% if (hasSignup) { %>
+                <div class="join">
+                    <p>Vous aussi, gagnez de l'argent en publiant des annonces sur votre statut WhatsApp.</p>
+                    <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris</a>
+                </div>
+            <% } %>
+            <footer>Propulsé par Sniper Business Center</footer>
+        </div>
+    </div>
+</body>
+</html>

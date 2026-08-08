@@ -27,7 +27,9 @@ import {
   Rss,
   Trophy,
   TrendingUp,
-  Heart
+  Heart,
+  Megaphone,
+  ShieldCheck
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -121,6 +123,36 @@ const SIDEBAR_GROUPS = [
         icon: Heart,
         color: "#3b82f6",
         path: "/sbclove",
+      },
+    ]
+  },
+  {
+    id: "ads-network",
+    name: "SBC Ads Network",
+    items: [
+      {
+        name: "Tableau de bord",
+        icon: Megaphone,
+        color: "#6366f1",
+        path: "/ads-network",
+      },
+      {
+        name: "Validation des campagnes",
+        icon: ShieldCheck,
+        color: "#f59e0b",
+        path: "/ads-network/review",
+      },
+      {
+        name: "Campagnes",
+        icon: Target,
+        color: "#a855f7",
+        path: "/ads-network/campaigns",
+      },
+      {
+        name: "Diffuseurs",
+        icon: Trophy,
+        color: "#10b981",
+        path: "/ads-network/diffuseurs",
       },
     ]
   },

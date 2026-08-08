@@ -1,0 +1,177 @@
+import axios from 'axios';
+import config from '../../config';
+import logger from '../../utils/logger';
+
+const log = logger.getLogger('NotificationServiceClient');
+
+/** Matches notification-service POST /internal/create, same contract as sbclove/tombola. */
+interface InternalNotificationPayload {
+    userId: string;
+    type: string;
+    channel: string;
+    recipient?: string;
+    data: {
+        subject?: string;
+        body: string;
+        templateId?: string;
+        variables?: Record<string, unknown>;
+        relatedData?: Record<string, unknown>;
+    };
+}
+
+const client = axios.create({
+    baseURL: config.services.notificationService,
+    timeout: 5000,
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.services.serviceSecret}`,
+        'X-Service-Name': 'advertising-service',
+    },
+});
+
+/**
+ * Best-effort send. Never throws.
+ *
+ * A campaign must not fail because an email did not go out — a diffuseur who
+ * misses a reminder still has their grace budget, but one whose verification blew
+ * up because of a mail server has lost a day for nothing.
+ */
+const send = async (payload: InternalNotificationPayload): Promise<boolean> => {
+    try {
+        const { data } = await client.post('/internal/create', payload);
+        if (data?.success) return true;
+        log.warn('Notification service responded with failure', { userId: payload.userId });
+        return false;
+    } catch (err) {
+        log.error(`Notification send failed for ${payload.userId}: ${(err as Error).message}`);
+        return false;
+    }
+};
+
+const email = (userId: string, subject: string, body: string, relatedData?: Record<string, unknown>) =>
+    send({
+        userId,
+        type: 'system',
+        channel: 'email',
+        data: { subject, body, relatedData },
+    });
+
+/** French throughout: the diffuseur audience is Cameroon and francophone Africa. */
+export const notifyCampaignOffer = (userId: string, campaignTitle: string, expectedViews: number) =>
+    email(
+        userId,
+        'Nouvelle campagne disponible',
+        `Une nouvelle campagne est disponible pour vous : « ${campaignTitle} ».\n\n`
+        + `Elle est proposée à plusieurs diffuseurs et les premiers à accepter l'obtiennent. `
+        + `Vous pourriez gagner environ ${expectedViews} vues sur 3 jours.\n\n`
+        + `Connectez-vous à SBC pour l'accepter.`,
+        { campaignTitle },
+    );
+
+/**
+ * Sent while the current status is still alive. Once it expires the views are
+ * unrecoverable, so this is the single most valuable notification in the flow.
+ */
+export const notifyVerificationDue = (
+    userId: string,
+    campaignTitle: string,
+    day: number,
+    hoursLeft: number,
+) =>
+    email(
+        userId,
+        'Vérifiez votre publication maintenant',
+        `Votre publication du jour ${day} pour « ${campaignTitle} » expire dans environ ${hoursLeft}h.\n\n`
+        + `Connectez votre WhatsApp sur SBC dès maintenant pour que vos vues soient comptées. `
+        + `Une fois le statut expiré, les vues de cette journée ne peuvent plus être récupérées.`,
+        { campaignTitle, day },
+    );
+
+export const notifyDayDue = (userId: string, campaignTitle: string, day: number, graceRemaining: number) =>
+    email(
+        userId,
+        `Jour ${day} à publier`,
+        `Il est temps de publier le jour ${day} de « ${campaignTitle} ».\n\n`
+        + (graceRemaining > 0
+            ? `Il vous reste ${graceRemaining} jour(s) de report. Au-delà, vos gains sur cette campagne seront annulés.`
+            : `Attention : vous n'avez plus de jour de report. Publiez aujourd'hui, sinon vos gains sur cette campagne seront annulés.`),
+        { campaignTitle, day, graceRemaining },
+    );
+
+export const notifyCampaignCompleted = (userId: string, campaignTitle: string, totalViews: number, earned: number) =>
+    email(
+        userId,
+        'Campagne terminée',
+        `Bravo ! Vous avez terminé les 3 jours de « ${campaignTitle} ».\n\n`
+        + `Total : ${totalViews} vues vérifiées, ${earned} FCFA.\n\n`
+        + `Vos gains seront crédités sur votre solde publicitaire.`,
+        { campaignTitle, totalViews, earned },
+    );
+
+export const notifyCampaignForfeited = (userId: string, campaignTitle: string) =>
+    email(
+        userId,
+        'Campagne non terminée',
+        `Votre campagne « ${campaignTitle} » n'a pas été terminée dans les délais et vos gains ont été annulés.\n\n`
+        + `Pour vos prochaines campagnes, pensez à publier chaque jour et à vérifier votre statut avant qu'il n'expire.`,
+        { campaignTitle },
+    );
+
+/** The test campaign is what replaces a diffuseur's self-declared average. */
+export const notifyTestCampaignCompleted = (userId: string, measuredAverageViews: number) =>
+    email(
+        userId,
+        'Félicitations, votre profil diffuseur est validé',
+        `Vous avez terminé votre campagne test.\n\n`
+        + `Votre moyenne vérifiée est de ${measuredAverageViews} vues par publication. `
+        + `Elle sera utilisée pour vous proposer des campagnes adaptées à votre audience.`,
+        { measuredAverageViews },
+    );
+
+export const notifyReferralUnlocked = (userId: string, rate: number) =>
+    email(
+        userId,
+        'Commission parrainage débloquée',
+        `Vous avez atteint 100 campagnes terminées.\n\n`
+        + `Vous gagnez désormais ${Math.round(rate * 100)}% sur les campagnes lancées par les annonceurs que vous avez invités. `
+        + `Continuez à faire des campagnes pour conserver cet avantage.`,
+        { rate },
+    );
+
+export const notifyReferralSuspended = (userId: string) =>
+    email(
+        userId,
+        'Commission parrainage suspendue',
+        `Votre commission parrainage est suspendue : aucune campagne terminée ce mois-ci alors que des campagnes vous ont été proposées.\n\n`
+        + `Terminez une campagne pour la réactiver. Vous n'avez pas besoin de recommencer les 100 campagnes.`,
+    );
+
+export const notifyCampaignApproved = (userId: string, campaignTitle: string) =>
+    email(
+        userId,
+        'Votre campagne est validée',
+        `Votre campagne « ${campaignTitle} » a été validée par notre équipe.\n\n`
+        + `Vous pouvez maintenant procéder au paiement pour la lancer. `
+        + `Dès le paiement confirmé, elle sera proposée aux diffuseurs.`,
+        { campaignTitle },
+    );
+
+/** The reason is the whole point of this mail: without it nothing can be corrected. */
+export const notifyCampaignRejected = (userId: string, campaignTitle: string, reason: string) =>
+    email(
+        userId,
+        'Votre campagne n\'a pas été validée',
+        `Votre campagne « ${campaignTitle} » n'a pas été validée.\n\n`
+        + `Motif : ${reason}\n\n`
+        + `Vous pouvez la modifier et la soumettre à nouveau depuis votre tableau de bord annonceur.`,
+        { campaignTitle, reason },
+    );
+
+export const notifyAdvertiserCampaignComplete = (userId: string, campaignTitle: string, uniqueViews: number) =>
+    email(
+        userId,
+        'Votre campagne est terminée',
+        `Votre campagne « ${campaignTitle} » a atteint son objectif : ${uniqueViews} vues uniques vérifiées.\n\n`
+        + `Consultez votre tableau de bord pour le détail par diffuseur.`,
+        { campaignTitle, uniqueViews },
+    );

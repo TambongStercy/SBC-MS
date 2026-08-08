@@ -8,3 +8,6 @@ uploads/
 src/scripts/my-status-output/
 src/scripts/harvest-output/
 *.har
+
+# WhatsApp probe auth state — live credentials, never commit
+src/scripts/wa-auth/

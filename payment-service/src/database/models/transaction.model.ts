@@ -29,6 +29,10 @@ export enum TransactionType {
     ACTIVATION_TRANSFER_IN = 'activation_transfer_in',   // Main balance → Activation balance
     ACTIVATION_TRANSFER_OUT = 'activation_transfer_out', // Activation balance → Another user's activation balance
     SPONSOR_ACTIVATION = 'sponsor_activation',           // Using activation balance to activate a referral's account
+
+    // Advertising balance (WhatsApp status marketplace diffuseur earnings)
+    ADVERTISING_EARNINGS = 'advertising_earnings',             // Campaign payout → Advertising balance
+    ADVERTISING_TRANSFER_OUT = 'advertising_transfer_out',     // Advertising balance → Main balance
 }
 
 // Define Currency
