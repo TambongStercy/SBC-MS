@@ -7,6 +7,7 @@ import {
     approvedCampaignCounts,
     campaignProgress,
 } from '../../services/campaign.service';
+import { overview, monthlySeries, inFlight } from '../../services/analytics.service';
 import { getUserProfiles } from '../../services/clients/user.service.client';
 import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/clients/notification.service.client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -94,6 +95,22 @@ export const listForReview = async (req: AuthenticatedRequest, res: Response) =>
         });
     } catch (err) {
         return fail(res, err, 'listForReview');
+    }
+};
+
+/** Everything the dashboard draws, computed here — the frontend aggregates nothing. */
+export const getAnalytics = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const months = Math.min(36, Math.max(1, Number(req.query.months) || 12));
+        const [summary, series, pipeline] = await Promise.all([
+            overview(),
+            monthlySeries(months),
+            inFlight(),
+        ]);
+
+        return res.json({ success: true, data: { ...summary, pipeline, series } });
+    } catch (err) {
+        return fail(res, err, 'getAnalytics');
     }
 };
 
