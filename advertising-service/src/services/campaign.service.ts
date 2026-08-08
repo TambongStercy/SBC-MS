@@ -78,8 +78,8 @@ export const createCampaign = async (args: CreateArgs): Promise<ICampaign> => {
         );
     }
 
-    // Created as DRAFT. Payment flips it to ACTIVE, so an unpaid campaign can never
-    // be offered to diffuseurs.
+    // Created as DRAFT. It must pass moderation, then payment, before it is ever
+    // offered to diffuseurs.
     return CampaignModel.create({
         advertiserUserId: args.advertiserUserId,
         title: args.title,
@@ -100,6 +100,153 @@ export const createCampaign = async (args: CreateArgs): Promise<ICampaign> => {
         targetUniqueViews: quote.uniqueViews,
         status: CampaignStatus.DRAFT,
     });
+};
+
+/** Statuses an annonceur may still edit: nothing has been reviewed or paid yet. */
+const EDITABLE_STATUSES = [CampaignStatus.DRAFT, CampaignStatus.REJECTED];
+
+type UpdateArgs = Partial<Omit<CreateArgs, 'advertiserUserId'>>;
+
+/**
+ * Edits a campaign that has not gone live.
+ *
+ * Exists because rejection is only useful if the annonceur can act on the reason
+ * and resubmit. Refuses anything past review so an approved creative cannot be
+ * swapped for a different one after an admin has looked at it.
+ */
+export const updateCampaign = async (campaign: ICampaign, args: UpdateArgs): Promise<ICampaign> => {
+    if (!EDITABLE_STATUSES.includes(campaign.status)) {
+        throw new AppError(
+            'Cette campagne ne peut plus être modifiée. Seul un brouillon ou une campagne refusée est modifiable.',
+            400,
+        );
+    }
+
+    const scalarFields = [
+        'title', 'description', 'mediaFileId', 'mediaType', 'mediaMimeType', 'mediaSha256',
+        'suggestedCaption', 'contactWhatsapp', 'contactPhone', 'websiteUrl',
+    ] as const;
+    for (const field of scalarFields) {
+        if (args[field] !== undefined) (campaign as any)[field] = args[field];
+    }
+    if (args.targeting !== undefined) campaign.targeting = args.targeting;
+
+    if (args.mediaFileId !== undefined) {
+        // The cached hash describes the old creative. Left in place it would make
+        // verification match the previous flyer and pay for the wrong post.
+        campaign.mediaPerceptualHash = undefined;
+    }
+
+    if (args.amount !== undefined) {
+        const quote = quoteCampaign(Number(args.amount));
+        campaign.amountPaid = quote.amount;
+        campaign.pricePerUniqueView = quote.pricePerUniqueView;
+        campaign.targetUniqueViews = quote.uniqueViews;
+    }
+
+    if (!campaign.contactWhatsapp && !campaign.contactPhone && !campaign.websiteUrl) {
+        throw new AppError(
+            'Une annonce doit avoir au moins un moyen de contact (WhatsApp, téléphone ou site web).',
+            400,
+        );
+    }
+
+    return campaign.save();
+};
+
+/**
+ * Hands a campaign to the moderation queue.
+ *
+ * Also the resubmit path after a rejection, which is why the previous reason and
+ * reviewer are cleared: a stale rejection shown next to a pending campaign reads
+ * as though it had already been refused again.
+ */
+export const submitForReview = async (campaign: ICampaign): Promise<ICampaign> => {
+    if (campaign.status === CampaignStatus.PENDING_REVIEW) {
+        throw new AppError('Cette campagne est déjà en attente de validation.', 400);
+    }
+    if (!EDITABLE_STATUSES.includes(campaign.status)) {
+        throw new AppError(
+            `Une campagne au statut « ${campaign.status} » ne peut pas être soumise à validation.`,
+            400,
+        );
+    }
+
+    campaign.status = CampaignStatus.PENDING_REVIEW;
+    campaign.submittedForReviewAt = new Date();
+    campaign.rejectionReason = undefined;
+    campaign.reviewedBy = undefined;
+    campaign.reviewedAt = undefined;
+    return campaign.save();
+};
+
+/** Admin verdict: the creative may now be paid for and go live. */
+export const approveCampaign = async (campaign: ICampaign, adminUserId: Types.ObjectId): Promise<ICampaign> => {
+    if (campaign.status !== CampaignStatus.PENDING_REVIEW) {
+        throw new AppError(
+            `Seule une campagne en attente de validation peut être approuvée (statut actuel : ${campaign.status}).`,
+            400,
+        );
+    }
+
+    campaign.status = CampaignStatus.APPROVED;
+    campaign.reviewedBy = adminUserId;
+    campaign.reviewedAt = new Date();
+    campaign.rejectionReason = undefined;
+    return campaign.save();
+};
+
+/** Admin verdict: refused. The reason is mandatory — without it nothing can be fixed. */
+export const rejectCampaign = async (
+    campaign: ICampaign,
+    adminUserId: Types.ObjectId,
+    reason: string,
+): Promise<ICampaign> => {
+    if (campaign.status !== CampaignStatus.PENDING_REVIEW) {
+        throw new AppError(
+            `Seule une campagne en attente de validation peut être refusée (statut actuel : ${campaign.status}).`,
+            400,
+        );
+    }
+    const trimmed = (reason ?? '').trim();
+    if (!trimmed) {
+        throw new AppError('Un motif de refus est obligatoire.', 400);
+    }
+
+    campaign.status = CampaignStatus.REJECTED;
+    campaign.reviewedBy = adminUserId;
+    campaign.reviewedAt = new Date();
+    campaign.rejectionReason = trimmed;
+    return campaign.save();
+};
+
+/**
+ * How many campaigns this annonceur has already had approved.
+ *
+ * Surfaced in the review queue so a first-time annonceur can be looked at harder
+ * than one with a clean history — Rufus's open question on review depth.
+ */
+export const approvedCampaignCounts = async (
+    advertiserUserIds: Types.ObjectId[],
+): Promise<Map<string, number>> => {
+    if (!advertiserUserIds.length) return new Map();
+
+    const rows = await CampaignModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+        {
+            $match: {
+                advertiserUserId: { $in: advertiserUserIds },
+                status: {
+                    $in: [
+                        CampaignStatus.APPROVED, CampaignStatus.ACTIVE,
+                        CampaignStatus.COMPLETED, CampaignStatus.BANKED,
+                    ],
+                },
+            },
+        },
+        { $group: { _id: '$advertiserUserId', count: { $sum: 1 } } },
+    ]);
+
+    return new Map(rows.map(r => [String(r._id), r.count]));
 };
 
 /** Shape returned to the advertiser's dashboard. */

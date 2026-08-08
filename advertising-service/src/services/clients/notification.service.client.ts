@@ -146,6 +146,27 @@ export const notifyReferralSuspended = (userId: string) =>
         + `Terminez une campagne pour la réactiver. Vous n'avez pas besoin de recommencer les 100 campagnes.`,
     );
 
+export const notifyCampaignApproved = (userId: string, campaignTitle: string) =>
+    email(
+        userId,
+        'Votre campagne est validée',
+        `Votre campagne « ${campaignTitle} » a été validée par notre équipe.\n\n`
+        + `Vous pouvez maintenant procéder au paiement pour la lancer. `
+        + `Dès le paiement confirmé, elle sera proposée aux diffuseurs.`,
+        { campaignTitle },
+    );
+
+/** The reason is the whole point of this mail: without it nothing can be corrected. */
+export const notifyCampaignRejected = (userId: string, campaignTitle: string, reason: string) =>
+    email(
+        userId,
+        'Votre campagne n\'a pas été validée',
+        `Votre campagne « ${campaignTitle} » n'a pas été validée.\n\n`
+        + `Motif : ${reason}\n\n`
+        + `Vous pouvez la modifier et la soumettre à nouveau depuis votre tableau de bord annonceur.`,
+        { campaignTitle, reason },
+    );
+
 export const notifyAdvertiserCampaignComplete = (userId: string, campaignTitle: string, uniqueViews: number) =>
     email(
         userId,

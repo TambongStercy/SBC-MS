@@ -8,6 +8,8 @@ import {
     getPerformance,
     decideUnfilled,
     getLeaderboard,
+    update,
+    submit,
 } from '../controllers/campaign.controller';
 
 const router = Router();
@@ -20,6 +22,8 @@ router.get('/leaderboard', getLeaderboard);
 router.post('/', create);
 router.get('/', listMine);
 router.get('/:id', getOne);
+router.patch('/:id', update);
+router.post('/:id/submit', submit);
 router.get('/:id/performance', getPerformance);
 router.post('/:id/decide', decideUnfilled);
 

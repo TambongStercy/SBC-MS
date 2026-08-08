@@ -2,7 +2,13 @@ import { Response } from 'express';
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
 import CampaignParticipationModel from '../../database/models/campaign-participation.model';
-import { createCampaign, quoteCampaign, campaignProgress } from '../../services/campaign.service';
+import {
+    createCampaign,
+    quoteCampaign,
+    campaignProgress,
+    updateCampaign,
+    submitForReview,
+} from '../../services/campaign.service';
 import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../services/ranking.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
@@ -16,6 +22,16 @@ const currentUserId = (req: AuthenticatedRequest): Types.ObjectId => {
     const id = req.user?.userId || req.user?.id;
     if (!id) throw new AppError('Authentication required', 401);
     return new Types.ObjectId(id);
+};
+
+/** Every per-campaign route scopes by owner, so a campaign id alone leaks nothing. */
+const ownedCampaign = async (req: AuthenticatedRequest) => {
+    const campaign = await CampaignModel.findOne({
+        _id: req.params.id,
+        advertiserUserId: currentUserId(req),
+    });
+    if (!campaign) throw new AppError('Campagne introuvable.', 404);
+    return campaign;
 };
 
 const fail = (res: Response, err: unknown, context: string) => {
@@ -113,9 +129,7 @@ export const listMine = async (req: AuthenticatedRequest, res: Response) => {
 
 export const getOne = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const userId = currentUserId(req);
-        const campaign = await CampaignModel.findOne({ _id: req.params.id, advertiserUserId: userId });
-        if (!campaign) throw new AppError('Campagne introuvable.', 404);
+        const campaign = await ownedCampaign(req);
 
         return res.json({
             success: true,
@@ -130,6 +144,40 @@ export const getOne = async (req: AuthenticatedRequest, res: Response) => {
     }
 };
 
+/** Editing a draft or a rejected campaign. The service enforces which statuses allow it. */
+export const update = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await updateCampaign(await ownedCampaign(req), req.body);
+        return res.json({
+            success: true,
+            data: { ...campaign.toObject(), progress: campaignProgress(campaign) },
+        });
+    } catch (err) {
+        return fail(res, err, 'updateCampaign');
+    }
+};
+
+/**
+ * Sends a campaign to moderation. Nothing an annonceur can do puts a creative in
+ * front of diffuseurs without an admin having approved it first.
+ */
+export const submit = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await submitForReview(await ownedCampaign(req));
+        log.info(`Campaign ${campaign._id} submitted for review`);
+        return res.json({
+            success: true,
+            data: {
+                status: campaign.status,
+                submittedForReviewAt: campaign.submittedForReviewAt,
+                message: 'Votre campagne est en attente de validation par notre équipe.',
+            },
+        });
+    } catch (err) {
+        return fail(res, err, 'submitCampaign');
+    }
+};
+
 /**
  * Per-diffuseur breakdown: views delivered against clicks generated. This is what
  * lets an advertiser pick better diffuseurs next time, and it is the reason the
@@ -137,9 +185,7 @@ export const getOne = async (req: AuthenticatedRequest, res: Response) => {
  */
 export const getPerformance = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const userId = currentUserId(req);
-        const campaign = await CampaignModel.findOne({ _id: req.params.id, advertiserUserId: userId });
-        if (!campaign) throw new AppError('Campagne introuvable.', 404);
+        const campaign = await ownedCampaign(req);
 
         const participations = await CampaignParticipationModel
             .find({ campaignId: campaign._id })
@@ -179,14 +225,12 @@ export const getPerformance = async (req: AuthenticatedRequest, res: Response) =
  */
 export const decideUnfilled = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const userId = currentUserId(req);
         const { decision } = req.body;
         if (decision !== 'bank' && decision !== 'wait') {
             throw new AppError("decision doit être 'bank' ou 'wait'.", 400);
         }
 
-        const campaign = await CampaignModel.findOne({ _id: req.params.id, advertiserUserId: userId });
-        if (!campaign) throw new AppError('Campagne introuvable.', 404);
+        const campaign = await ownedCampaign(req);
         if (campaign.status !== CampaignStatus.ACTIVE) {
             throw new AppError('Seule une campagne active peut être clôturée.', 400);
         }
@@ -203,7 +247,7 @@ export const decideUnfilled = async (req: AuthenticatedRequest, res: Response) =
         campaign.completedAt = new Date();
         await campaign.save();
 
-        log.info(`Campaign ${campaign._id} banked with ${remaining} FCFA credit for advertiser ${userId}`);
+        log.info(`Campaign ${campaign._id} banked with ${remaining} FCFA credit for advertiser ${campaign.advertiserUserId}`);
 
         return res.json({
             success: true,
