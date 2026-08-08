@@ -313,6 +313,26 @@ are wrong**; the actual mount overrides them. Admin frontend must call
 `/users/admin/users/...`. PR #67 fixed an instance where the admin frontend was
 on the wrong pattern.
 
+### user-service internal routes: there is no `GET /users/internal/:userId`
+
+Only the routes explicitly registered on `serviceRouter` in
+`user-service/src/api/routes/user.routes.ts` exist. A bare single-user fetch is
+**not** among them — `GET /users/internal/<id>` 404s. Use one of the POST batch
+endpoints with a single id.
+
+Worse: **`POST /internal/batch-details` returns a narrow projection** —
+`name email phoneNumber avatar momoNumber momoOperator balance notificationPreference
+role language cryptoWalletAddress cryptoWalletCurrency`. No `country`, `city`,
+`region`, `sex`, `birthDate`, `interests`, `profession`, `referralCode`. A consumer
+that needs demographics gets objects back with every such field `undefined` — no
+error, just silently empty matching. This broke advertising-service's campaign
+targeting (fixed 2026-08-08); `sbclove-service` avoided it with its own
+`POST /internal/sbclove-details` projection.
+
+**When a module needs profile fields, add its own internal projection endpoint**
+(`advertising-details`, `sbclove-details`) rather than reusing `batch-details`.
+Always read the repository's `.select()` before trusting an internal route.
+
 ### Health endpoints aren't standardised
 
 | Service (prod port / preprod port) | Health path |
