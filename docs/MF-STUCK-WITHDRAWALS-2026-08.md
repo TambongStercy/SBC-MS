@@ -84,3 +84,76 @@ whenever the response is lost. That coupling is the real fault.
 `TransactionStatusChecker` logs three lines per stuck MF transaction every five
 minutes, forever. With 9 stuck that is ~7 800 lines a day saying an admin must
 reconcile. Worth rate-limiting or skipping MF once flagged.
+
+---
+
+## How to actually clear one (verified procedure)
+
+The admin page at `/fix-provider-issues` still shows **0 stuck withdrawals** even
+after the PR #105 fix deployed. Verified on prod: the `$or` filter IS in the
+running `dist`, payment-service restarted with it, and running that exact filter
+against Mongo returns **9**. The endpoint is live (401 without a token). So the
+break is between the endpoint and the render — check the Network tab on that page
+for the `stuck-moneyfusion` response to see which side returns 0.
+
+Until that is fixed, use the webhook simulation pattern CLAUDE.md documents. This
+runs the REAL handler, so the debit and bookkeeping are identical to a genuine
+webhook, and `handleMoneyFusionPayoutWebhook` checks `status !== COMPLETED` first
+so it cannot double-debit.
+
+**Step 1 — plant a sentinel token.** These transactions have no `tokenPay`, which
+is exactly why no webhook could ever match them.
+
+```bash
+mongosh --quiet --eval '
+db.getSiblingDB("sbc_payment").transactions.updateOne(
+  {transactionId:"<TX_ID>"},
+  {$set:{
+    externalTransactionId:"MANUAL-RECONCILE-<TX_ID>",
+    serviceProvider:"MoneyFusion",
+    "metadata.manualReconciliation":{by:"<admin>",at:new Date().toISOString(),reason:"<MF dashboard evidence>"}
+  }}
+)'
+```
+
+Setting `serviceProvider` also makes the transaction visible to the admin page
+from then on.
+
+**Step 2 — fire the event.**
+
+```bash
+curl -s -X POST 'http://localhost:3003/api/payments/webhooks/moneyfusion/payout' \
+  -H 'Content-Type: application/json' \
+  -d '{"event":"payout.session.completed","tokenPay":"MANUAL-RECONCILE-<TX_ID>"}'
+```
+
+- `payout.session.completed` → marks COMPLETED **and debits the wallet**
+- `payout.session.cancelled` → marks FAILED, **no wallet movement** (correct: with
+  debit-on-success nothing was ever taken, so there is nothing to refund)
+
+Any other event string is treated as pending and does nothing.
+
+**Step 3 — verify.**
+
+```bash
+mongosh --quiet --eval '
+const t=db.getSiblingDB("sbc_payment").transactions.findOne({transactionId:"<TX_ID>"});
+print("status: "+t.status);
+print("balance: "+db.getSiblingDB("sbc_users").users.findOne({_id:t.userId},{balance:1}).balance);'
+```
+
+### Outstanding
+
+`hC8NgERB4Oa3LC_1` (Rufus, snipertradebusiness@gmail.com, 3 075) was **not yet
+run** as of 08/08. He cannot initiate a new withdrawal until it clears — the app
+blocks it by name:
+
+> « Vous avez une demande de retrait en cours (ID: hC8NgERB4Oa3LC_1) qui est
+> actuellement en traitement. »
+
+Expect his balance to drop by 3 075 afterwards. That is correct — MoneyFusion paid
+that recipient on 09/06 and it was never deducted — but warn him first or it looks
+like money vanishing.
+
+Use `payout.session.completed` for the three marked Validé above, and
+`payout.session.cancelled` for the four marked absent.
