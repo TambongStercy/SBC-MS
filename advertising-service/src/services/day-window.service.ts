@@ -13,41 +13,40 @@ const DAY_MS = 24 * HOUR_MS;
  *      stops someone accepting a campaign and sitting on it, which would block a
  *      slot other diffuseurs could have filled.
  *
- *   2. From the day-1 post, the diffuseur has durationDays (3) to finish, then
+ *   2. From ACCEPTANCE, the diffuseur has durationDays (3) to finish, then
  *      graceDays (3) more regardless of what happened. Miss that and the whole
  *      campaign is forfeited.
  *
- * Anchored to the day-1 POST, not to acceptance: someone who accepts and posts
- * promptly should not lose window to someone who accepted at the same moment and
- * posted 23h later.
+ * Both clocks start at acceptance, so a diffuseur knows their whole timeline the
+ * moment they accept rather than having it shift under them depending on when they
+ * got around to posting.
  *
  * Days are still spaced minHoursBetweenDays (24h) apart, so the three posts really
  * do span three days.
  */
 
-/** Day 1 opens on acceptance and must be posted within 24h. */
-export const openDayOne = (participation: ICampaignParticipation, acceptedAt: Date): void => {
+/**
+ * Starts both clocks at acceptance.
+ *
+ * The 24h day-1 rule is what lets an unclaimed slot be released to another
+ * diffuseur when the selected one does not act.
+ */
+export const openParticipation = (participation: ICampaignParticipation, acceptedAt: Date): void => {
     const first = participation.days.find(d => d.day === 1);
-    if (!first) return;
-    first.windowOpensAt = acceptedAt;
-    first.dueAt = new Date(acceptedAt.getTime() + DAY_MS);
-    participation.day1Deadline = first.dueAt;
+    if (first) {
+        first.windowOpensAt = acceptedAt;
+        first.dueAt = new Date(acceptedAt.getTime() + DAY_MS);
+    }
+    participation.day1Deadline = new Date(acceptedAt.getTime() + DAY_MS);
+    participation.completionDeadline = new Date(
+        acceptedAt.getTime() + (config.campaign.durationDays + config.campaign.graceDays) * DAY_MS,
+    );
 };
 
-/**
- * Opens day N+1 once day N is posted, and on the first post fixes the deadline for
- * the whole campaign.
- */
+/** Opens day N+1 once day N is posted. Deadlines were fixed at acceptance. */
 export const openNextDay = (participation: ICampaignParticipation, postedDay: number): void => {
     const posted = participation.days.find(d => d.day === postedDay);
     if (!posted?.postedAt) return;
-
-    if (postedDay === 1) {
-        participation.completionDeadline = new Date(
-            posted.postedAt.getTime()
-            + (config.campaign.durationDays + config.campaign.graceDays) * DAY_MS,
-        );
-    }
 
     const next = participation.days.find(d => d.day === postedDay + 1);
     if (!next) return;
@@ -74,8 +73,9 @@ export const isBeyondRecovery = (participation: ICampaignParticipation, at: Date
 
     const dayOnePosted = participation.days.find(d => d.day === 1)?.postedAt;
 
-    if (!dayOnePosted) {
-        return Boolean(participation.day1Deadline && at > participation.day1Deadline);
+    // Day 1 not posted in time: the slot is released so another diffuseur can take it.
+    if (!dayOnePosted && participation.day1Deadline && at > participation.day1Deadline) {
+        return true;
     }
     return Boolean(participation.completionDeadline && at > participation.completionDeadline);
 };
@@ -88,8 +88,8 @@ export const scheduleSummary = (participation: ICampaignParticipation, at = new 
     // Before day 1 the clock that matters is the 24h acceptance deadline; after it,
     // the campaign completion deadline.
     const deadline = dayOnePosted ? participation.completionDeadline : participation.day1Deadline;
-    const normalEnd = dayOnePosted
-        ? new Date(dayOnePosted.getTime() + config.campaign.durationDays * DAY_MS)
+    const normalEnd = participation.acceptedAt
+        ? new Date(participation.acceptedAt.getTime() + config.campaign.durationDays * DAY_MS)
         : undefined;
 
     return {

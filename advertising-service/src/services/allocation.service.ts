@@ -8,7 +8,7 @@ import CampaignParticipationModel, {
 import DiffuseurProfileModel, { IDiffuseurProfile } from '../database/models/diffuseur-profile.model';
 import { getUserProfiles, IUserProfile } from './clients/user.service.client';
 import { newTrackingCode } from './campaign.service';
-import { openDayOne } from './day-window.service';
+import { openParticipation } from './day-window.service';
 import { notifyCampaignOffer } from './clients/notification.service.client';
 import config from '../config';
 import logger from '../utils/logger';
@@ -270,9 +270,9 @@ export const acceptOffer = async (
     participation.status = ParticipationStatus.IN_PROGRESS;
     participation.acceptedAt = now;
     participation.startedAt = now;
-    // Day 1 opens immediately; every later window is anchored to the previous
-    // day's actual post time, not to acceptance.
-    openDayOne(participation, now);
+    // Both clocks start now: 24h to post day 1, and durationDays + graceDays to
+    // finish everything.
+    openParticipation(participation, now);
     await participation.save();
 
     return participation;

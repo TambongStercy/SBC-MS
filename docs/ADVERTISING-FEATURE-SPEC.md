@@ -83,16 +83,17 @@ earnings sit uncredited as *campagne non terminée*.
 
 Two independent deadlines, and lateness inside them costs nothing:
 
+Both clocks start at **acceptance**, so a diffuseur knows their whole timeline the
+moment they accept:
+
 | Deadline | Rule | Miss it |
 |---|---|---|
-| Day 1 | post within **24h of accepting** | offer dropped |
-| Completion | **3 days + 3 grace days from the day-1 post** | forfeited, nothing paid |
+| Day 1 | post within **24h of accepting** | slot released to another diffuseur |
+| Completion | **3 days + 3 grace days from acceptance** | forfeited, nothing paid |
 
-Anchored to the day-1 post rather than acceptance, so a diffuseur who posts
-promptly is not given less time than one who sat on the offer for 23h.
-
-The 24h day-1 rule also stops someone accepting a campaign and holding a slot that
-other diffuseurs could have filled.
+The 24h day-1 rule exists so an unclaimed slot can be reoffered rather than
+silently costing the advertiser their views. Forfeiting therefore **triggers
+reallocation** of that campaign.
 
 ### Advertiser: unfilled campaign
 

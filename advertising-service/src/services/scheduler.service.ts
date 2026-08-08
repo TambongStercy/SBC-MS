@@ -1,4 +1,6 @@
+import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../database/models/campaign.model';
+import { allocateCampaign } from './allocation.service';
 import CampaignParticipationModel, {
     DayStatus,
     ParticipationStatus,
@@ -141,12 +143,25 @@ export const sweepForfeits = async (): Promise<number> => {
         status: ParticipationStatus.FORFEITED,
     }).select('campaignId diffuseurUserId').lean();
 
+    const affectedCampaigns = new Set<string>();
     for (const p of forfeited) {
         const campaign = await CampaignModel.findById(p.campaignId).select('title').lean();
         await notifyCampaignForfeited(String(p.diffuseurUserId), campaign?.title ?? 'votre campagne');
+        affectedCampaigns.add(String(p.campaignId));
     }
 
-    log.info(`Forfeited ${count} participations`);
+    // The 24h day-1 rule exists so an unclaimed slot can go to someone else, which
+    // only happens if the campaign is re-offered. Without this, a diffuseur who
+    // accepts and ghosts silently costs the advertiser their views.
+    for (const campaignId of affectedCampaigns) {
+        try {
+            await allocateCampaign(new Types.ObjectId(campaignId));
+        } catch (err) {
+            log.error(`Reallocation after forfeit failed for campaign ${campaignId}:`, err);
+        }
+    }
+
+    log.info(`Forfeited ${count} participations, reallocated ${affectedCampaigns.size} campaigns`);
     return count;
 };
 
