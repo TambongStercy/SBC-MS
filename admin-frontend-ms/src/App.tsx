@@ -33,6 +33,10 @@ import ChatPage from './pages/ChatPage';
 import StatusPage from './pages/StatusPage';
 import ImpactChallengePage from './pages/ImpactChallengePage';
 import ChallengeDetailsPage from './pages/ChallengeDetailsPage';
+import AdsNetworkDashboardPage from './pages/AdsNetworkDashboardPage';
+import AdsNetworkReviewPage from './pages/AdsNetworkReviewPage';
+import AdsNetworkCampaignsPage from './pages/AdsNetworkCampaignsPage';
+import AdsNetworkDiffuseursPage from './pages/AdsNetworkDiffuseursPage';
 import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from './contexts/SocketContext';
 
@@ -103,6 +107,10 @@ function App() {
             <Route path="/statuses" element={<StatusPage />} />
             <Route path="/impact-challenges" element={<ImpactChallengePage />} />
             <Route path="/impact-challenges/:challengeId" element={<ChallengeDetailsPage />} />
+            <Route path="/ads-network" element={<AdsNetworkDashboardPage />} />
+            <Route path="/ads-network/review" element={<AdsNetworkReviewPage />} />
+            <Route path="/ads-network/campaigns" element={<AdsNetworkCampaignsPage />} />
+            <Route path="/ads-network/diffuseurs" element={<AdsNetworkDiffuseursPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

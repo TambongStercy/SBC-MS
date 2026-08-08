@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
+import CampaignParticipationModel from '../../database/models/campaign-participation.model';
+import { campaignClickBreakdown, getLeaderboard as leaderboard } from '../../services/ranking.service';
 import {
     approveCampaign,
     rejectCampaign,
@@ -111,6 +113,92 @@ export const getAnalytics = async (req: AuthenticatedRequest, res: Response) => 
         return res.json({ success: true, data: { ...summary, pipeline, series } });
     } catch (err) {
         return fail(res, err, 'getAnalytics');
+    }
+};
+
+/**
+ * Per-diffuseur breakdown for any campaign.
+ *
+ * Same shape the annonceur sees on their own campaign, minus the ownership scope —
+ * an admin investigating a complaint has no way in otherwise.
+ */
+export const getCampaignPerformance = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await CampaignModel.findById(req.params.id);
+        if (!campaign) throw new AppError('Campagne introuvable.', 404);
+
+        const participations = await CampaignParticipationModel
+            .find({ campaignId: campaign._id })
+            .select('diffuseurUserId status uniqueViews repeatViews totalViews clicksGenerated totalEarned creditedAt trackingCode acceptedAt')
+            .lean();
+
+        const [byDiffuseur, profiles] = await Promise.all([
+            campaignClickBreakdown(campaign._id),
+            getUserProfiles([...new Set(participations.map(p => String(p.diffuseurUserId)))]).catch(() => []),
+        ]);
+        const profileById = new Map(profiles.map(p => [String(p._id), p]));
+
+        return res.json({
+            success: true,
+            data: {
+                campaign: { ...campaign.toObject(), progress: campaignProgress(campaign) },
+                diffuseurs: participations.map(p => ({
+                    diffuseurUserId: p.diffuseurUserId,
+                    name: profileById.get(String(p.diffuseurUserId))?.name ?? null,
+                    phoneNumber: profileById.get(String(p.diffuseurUserId))?.phoneNumber ?? null,
+                    status: p.status,
+                    acceptedAt: p.acceptedAt,
+                    uniqueViews: p.uniqueViews,
+                    repeatViews: p.repeatViews,
+                    totalViews: p.totalViews,
+                    clicks: p.clicksGenerated,
+                    clicksByAction: byDiffuseur.get(String(p.diffuseurUserId)) ?? {},
+                    earned: p.totalEarned,
+                    paidAt: p.creditedAt ?? null,
+                    clickThroughRate: p.totalViews > 0
+                        ? Number((p.clicksGenerated / p.totalViews).toFixed(4))
+                        : 0,
+                })),
+            },
+        });
+    } catch (err) {
+        return fail(res, err, 'getCampaignPerformance');
+    }
+};
+
+/**
+ * The diffuseur leaderboard with identities attached.
+ *
+ * The public leaderboard deliberately exposes user ids only; an admin chasing a
+ * complaint needs to know who the row actually is.
+ */
+export const listDiffuseurs = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { entries, total } = await leaderboard({
+            page: Number(req.query.page) || 1,
+            limit: Number(req.query.limit) || 50,
+            sortBy: req.query.sortBy as 'views' | 'clicks' | 'trust' | undefined,
+            measuredOnly: req.query.measuredOnly === 'true',
+        });
+
+        const profiles = await getUserProfiles(entries.map(e => e.userId)).catch(err => {
+            log.warn(`Could not resolve diffuseur profiles: ${(err as Error).message}`);
+            return [];
+        });
+        const profileById = new Map(profiles.map(p => [String(p._id), p]));
+
+        return res.json({
+            success: true,
+            data: entries.map(e => ({
+                ...e,
+                name: profileById.get(e.userId)?.name ?? null,
+                phoneNumber: profileById.get(e.userId)?.phoneNumber ?? null,
+                country: profileById.get(e.userId)?.country ?? null,
+            })),
+            pagination: { total, page: Number(req.query.page) || 1 },
+        });
+    } catch (err) {
+        return fail(res, err, 'listDiffuseurs');
     }
 };
 
