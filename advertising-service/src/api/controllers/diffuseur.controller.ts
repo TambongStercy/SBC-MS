@@ -251,10 +251,24 @@ export const listMyParticipations = async (req: AuthenticatedRequest, res: Respo
             CampaignParticipationModel.countDocuments(filter),
         ]);
 
+        // Without the campaign attached, an offer row is just an id — a diffuseur
+        // cannot tell what they are being asked to post, let alone decide.
+        const campaigns = await CampaignModel
+            .find({ _id: { $in: items.map(p => p.campaignId) } })
+            .select('title description mediaFileId mediaType suggestedCaption landingPageSlug')
+            .lean();
+        const campaignById = new Map(campaigns.map(c => [String(c._id), c]));
+
         return res.json({
             success: true,
             data: items.map(p => ({
                 ...p.toObject(),
+                campaign: campaignById.get(String(p.campaignId)) ?? null,
+                trackingUrl: buildTrackingUrl(p.trackingCode),
+                shareCaption: buildShareCaption(
+                    campaignById.get(String(p.campaignId))?.suggestedCaption,
+                    p.trackingCode,
+                ),
                 // Which day is owed, when its window opens, and how much grace is
                 // left. Without this a diffuseur cannot tell whether they are late.
                 schedule: p.status === ParticipationStatus.IN_PROGRESS
