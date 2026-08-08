@@ -43,6 +43,7 @@ declare -A PM2_NAME=(
   [settings-service]="settings-preprod"
   [chat-service]="chat-preprod"
   [sbclove-service]="sbclove-preprod"
+  [advertising-service]="advertising-preprod"
 )
 
 CHANGED_SERVICES=()

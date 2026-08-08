@@ -42,6 +42,7 @@ declare -A PM2_NAME=(
   [tombola-service]="tombola-service"
   [settings-service]="settings-service"
   [chat-service]="chat-service"
+  [advertising-service]="advertising-service"
 )
 
 CHANGED_SERVICES=()

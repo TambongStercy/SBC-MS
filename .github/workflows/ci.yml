@@ -19,6 +19,8 @@ jobs:
           - tombola-service
           - settings-service
           - chat-service
+          - sbclove-service
+          - advertising-service
       fail-fast: false
 
     steps:
