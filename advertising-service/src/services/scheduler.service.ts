@@ -10,6 +10,7 @@ import { forfeitExpired } from './verification.service';
 import { sweepPendingPayouts } from './payout.service';
 import { sweepReferralCommissions } from './referral-commission.service';
 import { currentDay, scheduleSummary } from './day-window.service';
+import { sweepStaleCreditReservations } from './credit.service';
 import {
     notifyVerificationDue,
     notifyDayDue,
@@ -230,6 +231,9 @@ export const runScheduledJobs = async (): Promise<void> => {
         ['sweepForfeits', sweepForfeits],
         ['sweepReferralSuspensions', sweepReferralSuspensions],
         ['sweepCompletedCampaigns', sweepCompletedCampaigns],
+        // Returns credit held by campaigns whose payment page was abandoned. No
+        // callback ever arrives for those, so a timeout is the only signal.
+        ['sweepStaleCreditReservations', sweepStaleCreditReservations],
         // Last: it depends on participations the earlier jobs may have just
         // completed, and a credit that fails here is simply retried next tick.
         ['sweepPendingPayouts', async () => (await sweepPendingPayouts()).credited],

@@ -83,8 +83,26 @@ export interface ICampaign extends Document {
     clicksTotal: number;
 
     status: CampaignStatus;
-    /** Set when the advertiser banks an unfilled campaign; refundable as credit. */
+    /**
+     * Set when the advertiser banks an unfilled campaign.
+     *
+     * Doubles as the remaining balance of that credit: spending it on a later
+     * campaign decrements this, so a partly-used voucher stays usable. Never cash —
+     * Rufus's rule is credit toward a future campaign only.
+     */
     bankedAmount?: number;
+
+    /**
+     * Credit taken from banked campaigns to reduce what this one costs.
+     *
+     * Held as a reservation from the moment the payment session opens: the credit
+     * is already decremented from the vouchers, so two campaigns cannot spend the
+     * same credit while both sit on a payment page. Released by the scheduler if
+     * the payment never lands.
+     */
+    creditApplied?: number;
+    creditSources?: Array<{ campaignId: Types.ObjectId; amount: number }>;
+    creditReservedAt?: Date;
 
     // --- Moderation ---
     // A creative goes onto thousands of people's personal WhatsApp statuses, so
@@ -156,6 +174,14 @@ const CampaignSchema = new Schema<ICampaign>({
         index: true,
     },
     bankedAmount: { type: Number, min: 0 },
+
+    creditApplied: { type: Number, min: 0 },
+    creditSources: [{
+        _id: false,
+        campaignId: { type: Schema.Types.ObjectId, required: true },
+        amount: { type: Number, required: true, min: 0 },
+    }],
+    creditReservedAt: { type: Date },
 
     submittedForReviewAt: { type: Date },
     reviewedBy: { type: Schema.Types.ObjectId },

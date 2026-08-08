@@ -37,6 +37,7 @@ npx ts-node src/scripts/check-media-hash.ts            8 checks, no DB
 npx ts-node src/scripts/check-payout.ts               16 checks, needs Mongo
 npx ts-node src/scripts/check-moderation.ts           30 checks, needs Mongo
 npx ts-node src/scripts/check-analytics.ts            17 checks, needs Mongo
+npx ts-node src/scripts/check-credit.ts               19 checks, needs Mongo
 npx ts-node src/scripts/check-referral-commission.ts  13 checks, needs Mongo
 npx ts-node src/scripts/verify-extraction.ts          manual, needs a QR scan
 ```
@@ -67,7 +68,9 @@ Endpoints:
 ```
 PATCH /campaigns/:id          edit a draft or rejected campaign
 POST  /campaigns/:id/submit   send to moderation
-POST  /campaigns/:id/pay      open a payment session (APPROVED only)
+POST  /campaigns/:id/pay      open a payment session (APPROVED only). Banked
+                              credit is applied first; a sessionId of null means
+                              credit covered it all and the campaign is already live
 GET   /admin/campaigns        review queue (defaults to pending_review)
 POST  /admin/campaigns/:id/approve
 POST  /admin/campaigns/:id/reject   { reason }  — reason mandatory
@@ -85,6 +88,18 @@ Two guards worth not undoing:
   approved and a different one swapped in before payment.
 - `activateApprovedCampaign` is the single path to ACTIVE, shared by the webhook
   and the internal recovery endpoint, and it refuses anything not APPROVED.
+
+### Banked credit
+
+An unfilled campaign can be banked, and `bankedAmount` doubles as the remaining
+balance of that credit. `POST /campaigns/:id/pay` spends it before charging
+anything, per Rufus: credit toward a new campaign, never cash.
+
+Credit is **reserved when the payment session opens**, not when payment lands.
+Otherwise the same annonceur can open two payment pages and both spend the same
+voucher. An abandoned payment page produces no callback at all, so
+`sweepStaleCreditReservations` returns anything held longer than
+`CREDIT_RESERVATION_TTL_MS` (default 2h) by a campaign that never went live.
 
 **Still open with Rufus:** whether every campaign is reviewed or only the first
 from a new annonceur. The queue exposes `isFirstCampaign` and

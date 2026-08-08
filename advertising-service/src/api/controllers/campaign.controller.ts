@@ -11,6 +11,8 @@ import {
 } from '../../services/campaign.service';
 import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../services/ranking.service';
 import { createCampaignPaymentIntent } from '../../services/clients/payment.service.client';
+import { activateApprovedCampaign } from '../../services/activation.service';
+import { reserveCredit, releaseCredit, availableCredit } from '../../services/credit.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
@@ -54,6 +56,10 @@ export const getQuote = async (req: AuthenticatedRequest, res: Response) => {
         if (!Number.isFinite(amount)) throw new AppError('Montant invalide.', 400);
 
         const quote = quoteCampaign(amount);
+        // Shown alongside the quote so an annonceur sitting on banked credit knows
+        // what they will actually be charged before they commit to a budget.
+        const credit = await availableCredit(currentUserId(req));
+
         return res.json({
             success: true,
             data: {
@@ -61,6 +67,8 @@ export const getQuote = async (req: AuthenticatedRequest, res: Response) => {
                 uniqueViews: quote.uniqueViews,
                 repeatViews: quote.repeatViews,
                 totalViews: quote.totalViews,
+                availableCredit: credit,
+                amountDue: Math.max(0, quote.amount - credit),
                 message: `${quote.amount} FCFA = ${quote.uniqueViews} vues uniques + ${quote.repeatViews} vues répétées`,
             },
         });
@@ -197,21 +205,54 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
             );
         }
 
-        const intent = await createCampaignPaymentIntent({
-            userId: String(campaign.advertiserUserId),
-            amount: campaign.amountPaid,
-            campaignId: String(campaign._id),
-            campaignTitle: campaign.title,
-        });
+        // Banked credit from earlier unfilled campaigns comes off the price first.
+        // Rufus's rule: it comes back as credit toward a new campaign, never cash.
+        const credit = await reserveCredit(campaign);
+        const due = Math.max(0, campaign.amountPaid - credit);
 
-        log.info(`Payment session ${intent.sessionId} opened for campaign ${campaign._id}`);
+        if (due === 0) {
+            // Fully covered by credit — this campaign has already been paid for, so
+            // there is nothing for a payment provider to do.
+            const result = await activateApprovedCampaign(campaign._id);
+            campaign.paidAt = new Date();
+            await campaign.save();
 
-        return res.json({
-            success: true,
-            // Only the session id: the frontend builds the payment page URL from it
-            // (SBCApiService.generatePaymentUrl), same as subscriptions and tombola.
-            data: { sessionId: intent.sessionId, amount: campaign.amountPaid },
-        });
+            log.info(`Campaign ${campaign._id} activated entirely from ${credit} XAF of credit`);
+            return res.json({
+                success: true,
+                data: {
+                    sessionId: null,
+                    amount: 0,
+                    creditApplied: credit,
+                    status: result.status,
+                    message: 'Votre crédit couvre entièrement cette campagne. Elle est lancée.',
+                },
+            });
+        }
+
+        try {
+            const intent = await createCampaignPaymentIntent({
+                userId: String(campaign.advertiserUserId),
+                amount: due,
+                campaignId: String(campaign._id),
+                campaignTitle: campaign.title,
+            });
+
+            log.info(`Payment session ${intent.sessionId} opened for campaign ${campaign._id} (${due} XAF due, ${credit} from credit)`);
+
+            return res.json({
+                success: true,
+                // Only the session id: the frontend builds the payment page URL from it
+                // (SBCApiService.generatePaymentUrl), same as subscriptions and tombola.
+                data: { sessionId: intent.sessionId, amount: due, creditApplied: credit },
+            });
+        } catch (err) {
+            // No payment session means nothing will ever consume the reservation,
+            // and no callback will arrive to tell us so. Hand the credit back now
+            // rather than leaving the annonceur to wait out the sweep.
+            await releaseCredit(campaign).catch(() => { });
+            throw err;
+        }
     } catch (err) {
         return fail(res, err, 'payCampaign');
     }
