@@ -50,6 +50,10 @@ interface IConfig {
     /** Public origin the tracking links and landing pages are served from. */
     publicBaseUrl: string;
     /**
+     * The SBC web app. Where « Je m'inscris » on a landing page sends visitors.
+     */
+    appBaseUrl: string;
+    /**
      * Where payment-service reaches us back. Service-to-service, so this is the
      * internal address, not the public one.
      */
@@ -122,6 +126,7 @@ const config: IConfig = {
         paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
     },
     publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3010',
+    appBaseUrl: process.env.APP_BASE_URL || 'https://sniperbuisnesscenter.com',
     // Derived from the running port, not hardcoded: preprod listens on 6010, and a
     // fixed 3010 default would have preprod's payment callbacks land on prod.
     selfBaseUrl: process.env.SELF_BASE_URL || `http://localhost:${port}`,

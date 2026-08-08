@@ -64,6 +64,9 @@
         .btn-wa { background: var(--wa); }
         .btn-call { background: var(--accent); }
         .btn-site { background: transparent; color: var(--text); border: 1px solid var(--border); }
+        .btn-join { background: var(--accent); }
+        .join { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .join p { font-size: 13px; opacity: .75; margin: 0 0 10px; }
         footer { text-align: center; padding: 18px 0 4px; color: var(--muted); font-size: 0.75rem; }
     </style>
 </head>
@@ -90,6 +93,12 @@
                     <a class="btn btn-site" href="<%= siteUrl %>" rel="nofollow">Visiter le site</a>
                 <% } %>
             </div>
+            <% if (hasSignup) { %>
+                <div class="join">
+                    <p>Vous aussi, gagnez de l'argent en publiant des annonces sur votre statut WhatsApp.</p>
+                    <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris</a>
+                </div>
+            <% } %>
             <footer>Propulsé par Sniper Business Center</footer>
         </div>
     </div>
