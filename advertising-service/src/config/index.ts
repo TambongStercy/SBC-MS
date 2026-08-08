@@ -8,11 +8,15 @@ const loadEnv = () => {
     const envPath = path.resolve(__dirname, `../../.env.${env}`);
     const defaultEnvPath = path.resolve(__dirname, '../../.env');
 
+    // Both, always. dotenv never overwrites a variable that is already set, so
+    // .env.<NODE_ENV> still wins and .env only fills gaps.
+    //
+    // The previous guard was `if (!process.env.PORT)`, which reads as "nothing
+    // loaded yet" but is false whenever PM2 injects PORT — as the ecosystem
+    // files do. The fallback therefore never ran under PM2, JWT_SECRET stayed
+    // empty, and every authenticated route answered 500.
     dotenv.config({ path: envPath });
-
-    if (!process.env.PORT) {
-        dotenv.config({ path: defaultEnvPath });
-    }
+    dotenv.config({ path: defaultEnvPath });
 };
 
 loadEnv();
