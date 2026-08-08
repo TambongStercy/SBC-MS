@@ -96,7 +96,14 @@ if [ ${#CHANGED_SERVICES[@]} -gt 0 ]; then
       bash ./build-all.sh --build "$SERVICE"
     fi
 
-    pm2 restart "${PM2_NAME[$SERVICE]}" --update-env
+    # Same first-deploy guard as preprod: pm2 restart on an app that was never
+    # started fails, the deploy still reports success, and the service never runs.
+    if pm2 describe "${PM2_NAME[$SERVICE]}" > /dev/null 2>&1; then
+      pm2 restart "${PM2_NAME[$SERVICE]}" --update-env
+    else
+      echo "$LOG_PREFIX  ${PM2_NAME[$SERVICE]} not running — starting it for the first time"
+      pm2 start ecosystem.config.js --only "${PM2_NAME[$SERVICE]}"
+    fi
     echo "$LOG_PREFIX  ${PM2_NAME[$SERVICE]} restarted"
   done
 fi
@@ -119,7 +126,7 @@ pm2 save
 echo "$LOG_PREFIX Running health checks..."
 sleep 5
 
-PORTS=("3001" "3002" "3003" "3004" "3006" "3007" "3008")
+PORTS=("3001" "3002" "3003" "3004" "3006" "3007" "3008" "3010")
 FAILED=0
 
 for PORT in "${PORTS[@]}"; do

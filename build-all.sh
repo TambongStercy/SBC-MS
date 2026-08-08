@@ -19,6 +19,8 @@ ALL_SERVICES=(
   "tombola-service"
   "settings-service"
   "chat-service"
+  "sbclove-service"
+  "advertising-service"
 )
 
 ROOT_DIR=$(pwd)
