@@ -245,6 +245,11 @@ POST /internal/credit         service auth
   disk-backed store without encrypting at rest.
 - **Payment-service does not call `activateCampaign` yet.** Nothing activates a
   campaign, so an annonceur cannot actually pay. Shortest path to a working demo.
+- **Auto-posting is not just parked, it is unsafe as previously written.** The
+  probe ignored the account's status privacy settings and published to contacts
+  the user had blocked from their status, and deletions did not propagate. Anything
+  reviving it must read and honour those settings first. Diffuseurs posting through
+  their own WhatsApp client avoids the whole class of problem.
 - **Concurrency cap of 8 is a guess.** Measure peak RSS of one verification on the
   real server and set `MAX_CONCURRENT_VERIFICATIONS` from that.
 

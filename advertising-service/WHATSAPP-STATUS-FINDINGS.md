@@ -55,10 +55,31 @@ await sock.sendMessage('status@broadcast', { image: buf, caption: 'hi' }, { stat
 Harvest the JIDs from `messaging-history.set` on `INITIAL_BOOTSTRAP`. Probe is
 `whatsapp-post-status.ts`.
 
-**Deliberately not used for now.** Auto-posting on a user's behalf carries far more
-WhatsApp ban risk than reading does, and it is more invasive. The campaign feature
-ships with diffuseurs posting manually. Revisit later, possibly as a paid
-convenience tier.
+**Deliberately not used, and the bar for revisiting it is now much higher.**
+
+### It ignored the user's status privacy settings (observed 2026-08-08)
+
+Sterling ran the probe, then reported that people he had **blocked from his
+status still received it**, and that statuses he deleted from his phone **remained
+visible and repliable** for recipients.
+
+Both come from the same mistake in `whatsapp-post-status.ts`: `statusJidList` was
+built from every contact in the history sync. WhatsApp's own client builds that
+list from the user's status privacy settings — « Mes contacts sauf… » — and
+honours exclusions. Ours did not, so it published to an audience the user had
+explicitly excluded.
+
+The failed deletion is the same cause. Deleting a status sends a revoke to the
+recipients the *phone* believes received it. A send that bypassed that bookkeeping
+leaves recipients the revoke never reaches, holding a copy the user thinks is gone.
+
+**Anything that revives auto-posting must first read the account's status privacy
+settings and honour them**, including exclusion lists and any "only share with"
+list, and must ensure deletions propagate. Posting to people a user deliberately
+excluded is worse than a ban risk — it is a privacy breach we caused.
+
+The campaign feature ships with diffuseurs posting manually through their own
+WhatsApp client, which sidesteps all of this: WhatsApp itself decides the audience.
 
 Two unknowns if it is ever revived:
 - whether `INITIAL_STATUS_V3` is re-sent on a *reconnect* with saved creds, or only
