@@ -83,7 +83,14 @@ const ACTIONS: Record<string, { action: ClickAction; target: (c: ICampaign) => s
     whatsapp: {
         action: ClickAction.CONTACT_WHATSAPP,
         // wa.me wants digits only, no +, no spaces.
-        target: c => c.contactWhatsapp && `https://wa.me/${c.contactWhatsapp.replace(/\D/g, '')}`,
+        //
+        // Prefilled message, per Rufus: an annonceur receiving a bare "Bonjour"
+        // has no idea which campaign produced it. Naming the campaign and SBC Ads
+        // Network makes the lead self-identifying, the way the marketplace already
+        // works.
+        target: c => c.contactWhatsapp && `https://wa.me/${c.contactWhatsapp.replace(/\D/g, '')}/?text=${encodeURIComponent(
+            `Bonjour, je suis intéressé(e) par « ${c.title} », vu sur SBC Ads Network.`,
+        )}`,
     },
     call: {
         action: ClickAction.CALL,
