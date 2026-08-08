@@ -116,66 +116,50 @@ building that concept:
 Ask Rufus whether the test campaign should also be usable as a normal recruitment
 tool before designing this.
 
-## 4. Next — user app (`SBC-WEB-UI`)
+## 4. User app — done
 
-Separate repo: `/Users/mac/Projects/Customer/SBC-WEB-UI`, branch `develop`.
-React 18 + Vite + Tailwind + react-query + i18next. API layer is
-`src/services/SBCApiService.ts`; follow it rather than calling axios directly.
+Repo `Bahanack-GY/SBC-WEB-UI`, branch `feature/ads-network` (off `develop`).
 
-**Research the dual-role UX before building** — Sterling asked for this
-explicitly. Prior art: Uber driver/rider, Airbnb host/guest, Fiverr buyer/seller.
-The common pattern is one account, an explicit role switcher, and separate
-dashboards — not a merged view.
+| Route | What it does |
+|---|---|
+| `/ads-network` | role choice; both roles on one account |
+| `/ads-network/diffuseur/onboarding` | rules, eligibility checklist, enrolment |
+| `/ads-network/diffuseur` | offers, campaign in progress, share, verify, earnings |
+| `/ads-network/annonceur/onboarding` | what a budget buys, live quote |
+| `/ads-network/annonceur/nouvelle-campagne` | creative, caption, contacts, targeting |
+| `/ads-network/annonceur` | campaigns, progress, per-diffuseur results |
 
-### Pages
+Reached from an "Ads Network" button on the home screen. Paywalled with the rest
+of the member area.
 
-**`/ads-network`** — program landing for signed-in users. Two cards: *Devenir
-annonceur* / *Devenir diffuseur*, each with a short description. This is where
-« Je m'inscris » sends an existing user.
+Role model, as researched: one account, separate onboarding per role, separate
+dashboards — the Uber driver/rider and Airbnb host/guest pattern. Views delivered
+and views bought are different questions and a merged dashboard answers neither.
 
-**`/ads-network/annonceur/onboarding`** — explains the role, the dashboard, the
-pricing (`6 000 F = 2 000 vues uniques + 4 000 vues répétées`, from
-`GET /campaigns/quote`), and that **creatives are reviewed before going live**.
+The landing page « Je m'inscris » is served by advertising-service, not the web
+app: `/c/:trackingCode/signup` records the click and redirects to the app's signup
+with the diffuseur's `referralCode` attached. Shown only on a diffuseur's tracking
+link — `/a/:slug` has nobody to credit.
 
-**`/ads-network/annonceur`** — dashboard: campaigns, progress, per-diffuseur
-performance, create campaign, bank-or-wait on an unfilled campaign.
+### Two live bugs this build surfaced
 
-**`/ads-network/diffuseur/onboarding`** — explains the role, the 3-day commitment,
-the 24h day-1 rule, how payment works. Ends by collecting
-`declaredAverageViews` and enrolling, then **runs the test campaign** (unpaid —
-its purpose is measuring their real average).
+Both fixed in `cd77a13`, both silent:
 
-**`/ads-network/diffuseur`** — dashboard: current offers, active campaign with its
-schedule, earnings, balance and transfer-to-main.
+1. `getUserProfile` called `GET /users/internal/:userId`, **which does not exist**.
+   Every call 404'd, and the client maps 404 to null, so diffuseur eligibility
+   answered "profil introuvable" for everybody. Enrolment was unreachable.
+2. `getUserProfiles` used `POST /internal/batch-details`, whose projection has
+   **none of the targeting fields** — no country, city, region, sex, birthDate,
+   language, interests or profession. The call succeeded, the objects came back,
+   every field the matcher reads was undefined. Any targeted campaign would have
+   matched nobody and issued zero offers.
 
-**Share flow** — the highest-risk screen:
-- media preview and pre-filled caption from `POST /participations/:id/accept`
-- **prominent warning not to edit the caption, above all the link.** Removing it
-  means the day cannot be verified. This is the single most likely way a diffuseur
-  loses earnings through no bad intent.
-- Web Share API with `files` + `text`; download fallback for older browsers
-- after sharing, call `POST /participations/:id/mark-posted`, and restate the
-  warning plus the 24h verification deadline
+Both now go through `POST /users/internal/advertising-details`, a projection owned
+by this module, following the `sbclove-details` precedent.
 
-**Verify flow** — QR polling:
-- `POST /verification/participations/:id/start` → `sessionId`
-- poll `GET /verification/sessions/:sessionId` for `state` then `qr`, then verdicts
-- handle **503 + `Retry-After`** — that means all 8 verification slots are busy,
-  and the UI should say so rather than showing a generic error
-
-**Landing page** — `/a/:slug` and `/s/:trackingCode`, public, no auth. Fetches
-campaign content from advertising-service. Action buttons must route through the
-service's `/c/...` endpoints so clicks are tracked. « Je m'inscris » signs new
-users up carrying the diffuseur's referral code, and sends existing users to
-`/ads-network`.
-
-### Role switching
-
-Once a user holds a role, a button appears on the home page taking them straight
-to that dashboard. Holding both shows both. Taking the second role means going
-through its onboarding.
-
----
+The lesson worth keeping: a projection endpoint that returns the wrong *fields*
+fails silently in a way a missing endpoint does not. Check the `.select()` before
+reusing someone else's internal route.
 
 ## 5. API surface
 
@@ -268,12 +252,20 @@ POST /internal/credit         service auth
 
 ---
 
-## 8. Suggested order
+## 8. What remains
 
-Steps 1-3 and 7's analytics half are done. What remains:
+The feature is end-to-end complete: an annonceur can create, be reviewed, pay,
+and see results; a diffuseur can enrol, accept, post, verify and be paid; an
+admin can moderate and read the numbers. Outstanding:
 
-1. Diffuseur flow in SBC-WEB-UI: onboarding, offers, share, verify
-2. Annonceur flow: onboarding, create campaign, pay, dashboard
-3. Landing page + « Je m'inscris »
-4. Designated test campaign (backend) and Rufus's editor for it — see §3
-5. Run `verify-extraction.ts` against a real account before preprod
+1. **Designated test campaign** and Rufus's editor for it — see §3. Today
+   `hasCompletedTestCampaign` just flips after a diffuseur's first campaign,
+   whatever it was. Needs a product decision from Rufus first.
+2. **Run `verify-extraction.ts` against a real WhatsApp account** before preprod.
+   The verification path has never run against live data end to end.
+3. **Measure peak RSS of one verification** on the real server and set
+   `MAX_CONCURRENT_VERIFICATIONS` from it. The cap of 8 is a guess, and Sterling's
+   constraint is 5-10 concurrent sessions maximum.
+4. **Set `APP_BASE_URL` and `PUBLIC_BASE_URL`** on preprod and prod. Defaults are
+   fine for `SELF_BASE_URL` (derived from `$PORT`), but `PUBLIC_BASE_URL` defaults
+   to localhost and those URLs get pasted into WhatsApp statuses.
