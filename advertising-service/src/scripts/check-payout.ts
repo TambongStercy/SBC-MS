@@ -17,6 +17,7 @@ import CampaignParticipationModel, {
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import CampaignModel, { CampaignStatus } from '../database/models/campaign.model';
 import { creditParticipation } from '../services/payout.service';
+import { activateCampaign } from '../api/controllers/internal.controller';
 import * as userClient from '../services/clients/user.service.client';
 import * as notifier from '../services/clients/notification.service.client';
 
@@ -129,6 +130,32 @@ const main = async () => {
     const p7 = await seed({ totalEarned: 999999 });
     const r7 = await creditParticipation(p7._id);
     check('ignores the denormalised total', r7.amount === 175, `got ${r7.amount}`);
+
+    // --- Moderation gate: payment must never bypass review ---
+    const activateWith = async (status: CampaignStatus) => {
+        const c = await CampaignModel.create({
+            advertiserUserId: new Types.ObjectId(),
+            title: 'Gate test', mediaFileId: 'f', mediaType: 'image',
+            landingPageSlug: `gate${status}${Date.now()}`,
+            amountPaid: 6000, pricePerUniqueView: 3, targetUniqueViews: 2000,
+            status,
+        });
+        let code = 0;
+        const res: any = {
+            status(n: number) { code = n; return this; },
+            json() { return this; },
+        };
+        await activateCampaign({ params: { id: String(c._id) } } as any, res);
+        const after = await CampaignModel.findById(c._id).lean();
+        return { code, status: after?.status };
+    };
+
+    for (const s of [CampaignStatus.DRAFT, CampaignStatus.PENDING_REVIEW, CampaignStatus.REJECTED]) {
+        const r = await activateWith(s);
+        check(`activation refuses ${s}`, r.code === 400 && r.status === s, `code ${r.code}`);
+    }
+    const ok = await activateWith(CampaignStatus.APPROVED);
+    check('activation accepts approved', ok.status === CampaignStatus.ACTIVE, `got ${ok.status}`);
 
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

@@ -32,8 +32,16 @@ export const activateCampaign = async (req: Request, res: Response) => {
             log.info(`Campaign ${campaign._id} already active, ignoring duplicate activation`);
             return res.json({ success: true, data: { status: campaign.status, alreadyActive: true } });
         }
-        if (campaign.status !== CampaignStatus.DRAFT) {
-            throw new AppError(`Cannot activate a campaign in status ${campaign.status}`, 400);
+        // ONLY an approved campaign may go live. Payment must never be able to
+        // skip moderation — a creative reaching ACTIVE unreviewed lands on
+        // thousands of people's personal WhatsApp statuses.
+        if (campaign.status !== CampaignStatus.APPROVED) {
+            throw new AppError(
+                campaign.status === CampaignStatus.DRAFT || campaign.status === CampaignStatus.PENDING_REVIEW
+                    ? 'Cette campagne doit être approuvée par un administrateur avant activation.'
+                    : `Cannot activate a campaign in status ${campaign.status}`,
+                400,
+            );
         }
 
         campaign.status = CampaignStatus.ACTIVE;

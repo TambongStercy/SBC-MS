@@ -1,8 +1,14 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export enum CampaignStatus {
-    /** Created but not paid for yet. */
+    /** Created but not submitted for review. */
     DRAFT = 'draft',
+    /** Submitted; an admin must approve the creative before it can go live. */
+    PENDING_REVIEW = 'pending_review',
+    /** Admin approved. Payment may now activate it. */
+    APPROVED = 'approved',
+    /** Admin rejected. The annonceur edits and resubmits. */
+    REJECTED = 'rejected',
     /** Paid, accepting diffuseurs, accruing views. */
     ACTIVE = 'active',
     /** Unique-view target reached. */
@@ -80,6 +86,15 @@ export interface ICampaign extends Document {
     /** Set when the advertiser banks an unfilled campaign; refundable as credit. */
     bankedAmount?: number;
 
+    // --- Moderation ---
+    // A creative goes onto thousands of people's personal WhatsApp statuses, so
+    // nothing reaches ACTIVE without a human having looked at it.
+    submittedForReviewAt?: Date;
+    reviewedBy?: Types.ObjectId;
+    reviewedAt?: Date;
+    /** Required on rejection — without it the annonceur cannot fix anything. */
+    rejectionReason?: string;
+
     activatedAt?: Date;
     completedAt?: Date;
     /** Set once the advertiser's referrer has been paid. Guards double payment. */
@@ -137,6 +152,11 @@ const CampaignSchema = new Schema<ICampaign>({
         index: true,
     },
     bankedAmount: { type: Number, min: 0 },
+
+    submittedForReviewAt: { type: Date },
+    reviewedBy: { type: Schema.Types.ObjectId },
+    reviewedAt: { type: Date },
+    rejectionReason: { type: String, trim: true, maxlength: 1000 },
 
     activatedAt: { type: Date },
     completedAt: { type: Date },
