@@ -24,35 +24,37 @@ English (`advertiserUserId` etc.), agreed with Sterling.
 | Payout engine | complete |
 | Ranking, trust score, test campaign, leaderboard | complete |
 | Referral commission (20% of margin) | complete |
+| Campaign moderation: submit / approve / reject | complete |
+| Annonceur payment + activation callback | complete |
+| Admin analytics, performance and diffuseur endpoints | complete |
+| Admin panel in `admin-frontend-ms` (4 pages) | complete |
 
 Assertion suites, run from `advertising-service/`:
 
 ```
 npx ts-node src/scripts/check-day-gap.ts              16 checks, no DB
 npx ts-node src/scripts/check-media-hash.ts            8 checks, no DB
-npx ts-node src/scripts/check-payout.ts               12 checks, needs Mongo
+npx ts-node src/scripts/check-payout.ts               16 checks, needs Mongo
+npx ts-node src/scripts/check-moderation.ts           30 checks, needs Mongo
+npx ts-node src/scripts/check-analytics.ts            17 checks, needs Mongo
 npx ts-node src/scripts/check-referral-commission.ts  13 checks, needs Mongo
 npx ts-node src/scripts/verify-extraction.ts          manual, needs a QR scan
 ```
 
 ### Not started
 
-1. **Campaign moderation gate** — backend, blocks everything else
-2. **Admin panel** — `admin-frontend-ms` (React/Vite, in SBC-MS repo)
-3. **User-facing app** — `SBC-WEB-UI` (React/Vite, repo `Bahanack-GY/SBC-WEB-UI`, branch `develop`)
+1. **User-facing app** — `SBC-WEB-UI` (React/Vite, repo `Bahanack-GY/SBC-WEB-UI`,
+   branch `develop`). Nothing exists yet; this is now the only thing between the
+   backend and a working product.
+2. **Test-campaign editor** — deliberately deferred, see §3 below. There is no
+   "test campaign" entity in the backend: `hasCompletedTestCampaign` simply flips
+   after a diffuseur's first completed campaign, whatever it was. Giving Rufus an
+   editor means first designing a designated test campaign that new diffuseurs are
+   offered ahead of paid ones. That is a backend feature, not a form.
 
 ---
 
-## 2. Step 1 — campaign moderation gate
-
-**Why:** an annonceur's creative goes onto thousands of people's personal WhatsApp
-statuses. Rufus: *« On ne peut pas juste laisser n'importe qui poster n'importe
-quoi sur le statut privé de quelqu'un. »* Unreviewed content here is the kind of
-thing that ends a product.
-
-**Current flow:** `DRAFT → ACTIVE` on payment, via `activateCampaign`.
-
-**Required flow:**
+## 2. Moderation gate and payment — done
 
 ```
 DRAFT ──submit──> PENDING_REVIEW ──admin approves──> APPROVED ──payment──> ACTIVE
@@ -60,73 +62,61 @@ DRAFT ──submit──> PENDING_REVIEW ──admin approves──> APPROVED �
                         └──admin rejects──> REJECTED (annonceur edits, resubmits)
 ```
 
-### Work
+Endpoints:
 
-- Add `PENDING_REVIEW`, `APPROVED`, `REJECTED` to `CampaignStatus`
-  (`src/database/models/campaign.model.ts`)
-- Add `reviewedBy`, `reviewedAt`, `rejectionReason` to the campaign
-- `activateCampaign` (`src/api/controllers/internal.controller.ts`) must **refuse
-  anything not `APPROVED`**. Payment must never be able to skip review — that is
-  the whole guard.
-- New admin endpoints: list pending, approve, reject with reason
-- Notify the annonceur on approve and reject; rejection must carry the reason or
-  they cannot fix it
-- **First campaign per annonceur should be reviewed more carefully** — consider a
-  flag once an annonceur has an approved history
+```
+PATCH /campaigns/:id          edit a draft or rejected campaign
+POST  /campaigns/:id/submit   send to moderation
+POST  /campaigns/:id/pay      open a payment session (APPROVED only)
+GET   /admin/campaigns        review queue (defaults to pending_review)
+POST  /admin/campaigns/:id/approve
+POST  /admin/campaigns/:id/reject   { reason }  — reason mandatory
+POST  /webhooks/payment-confirmation  payment-service calls this; activates
+```
 
-### Test
+Payment uses the existing `metadata.originatingService` + `metadata.callbackPath`
+mechanism, the same one subscriptions and tombola use, so **payment-service
+required no change**. Deliberate: it moves real money and the safest diff there
+is none.
 
-Extend `check-payout.ts` style: assert `activateCampaign` refuses `DRAFT`,
-`PENDING_REVIEW` and `REJECTED`, and accepts only `APPROVED`.
+Two guards worth not undoing:
 
----
+- Editing is refused from APPROVED onward. Otherwise a clean creative gets
+  approved and a different one swapped in before payment.
+- `activateApprovedCampaign` is the single path to ACTIVE, shared by the webhook
+  and the internal recovery endpoint, and it refuses anything not APPROVED.
 
-## 3. Step 2 — admin panel (`admin-frontend-ms`)
+**Still open with Rufus:** whether every campaign is reviewed or only the first
+from a new annonceur. The queue exposes `isFirstCampaign` and
+`priorApprovedCampaigns` so either policy can be applied without a schema change.
 
-Follow the existing conventions in that app. **No `alert()`, `confirm()` or
-`prompt()`** — use `useToast` and `ConfirmationModal` (see CLAUDE.md).
+## 3. Admin panel — done
 
-### Pages
+Four pages in `admin-frontend-ms`, wired into the sidebar under "SBC Ads Network":
 
-**`/ads-network` — dashboard**
+| Route | What it does |
+|---|---|
+| `/ads-network` | dashboard: the figures Rufus listed, Recharts graphs, banner linking to the queue when it is non-empty |
+| `/ads-network/review` | moderation queue — creative at full size, mandatory rejection reason |
+| `/ads-network/campaigns` | every campaign, any status, drill into per-diffuseur performance |
+| `/ads-network/diffuseurs` | leaderboard with names and phones resolved |
 
-Analytics Rufus asked for:
-- new annonceurs this month, new diffuseurs this month
-- successful campaigns this month
-- total annonceurs, total diffuseurs
-- views delivered, clicks generated, revenue, amount paid to diffuseurs
-- graphs over time (the app already uses Recharts)
+**Not built: the test-campaign editor.** It is listed in Rufus's asks but there is
+nothing behind it yet. `hasCompletedTestCampaign` flips after a diffuseur's *first
+completed campaign*, whatever that campaign happened to be — there is no
+designated test campaign entity, no creative of its own, and no rule that new
+diffuseurs get offered it ahead of paid work. Building the editor means first
+building that concept:
 
-**`/ads-network/review` — moderation queue**
+- a campaign flagged as the test campaign (one active at a time)
+- allocation offering it first to any diffuseur with no completed campaigns
+- unpaid to the diffuseur, since its purpose is measuring their real average
+- its landing page is the video plus « Je m'inscris », per the spec
 
-The one that blocks launch. Shows pending campaigns with creative preview,
-caption, targeting and annonceur identity. Approve, or reject with a reason.
+Ask Rufus whether the test campaign should also be usable as a normal recruitment
+tool before designing this.
 
-**`/ads-network/campaigns` — all campaigns**
-
-Filter by status. Drill into per-diffuseur performance
-(`GET /campaigns/:id/performance` already returns it).
-
-**`/ads-network/diffuseurs` — leaderboard**
-
-Backed by `GET /campaigns/leaderboard`. Shows measured vs declared averages,
-click-through rate, trust score, campaigns completed.
-
-**`/ads-network/test-campaign` — Rufus's own editor**
-
-He configures the test campaign creative, its caption, and the **video shown on
-the landing page** with the « Je m'inscris » button. Needs upload via
-settings-service, same as other media in the app.
-
-### Backend needed
-
-Admin endpoints do not exist yet. Add an `admin.routes.ts` in advertising-service
-guarded by the admin role, exposing the aggregates above. Do **not** compute
-analytics in the frontend.
-
----
-
-## 4. Step 3 — user app (`SBC-WEB-UI`)
+## 4. Next — user app (`SBC-WEB-UI`)
 
 Separate repo: `/Users/mac/Projects/Customer/SBC-WEB-UI`, branch `develop`.
 React 18 + Vite + Tailwind + react-query + i18next. API layer is
@@ -198,6 +188,9 @@ POST   /campaigns
 GET    /campaigns
 GET    /campaigns/:id
 GET    /campaigns/:id/performance
+PATCH  /campaigns/:id                   edit a draft or rejected campaign
+POST   /campaigns/:id/submit            send to moderation
+POST   /campaigns/:id/pay               open a payment session (APPROVED only)
 POST   /campaigns/:id/decide            { decision: 'bank' | 'wait' }
 
 GET    /diffuseurs/eligibility
@@ -213,7 +206,15 @@ POST   /verification/participations/:id/start
 GET    /verification/sessions/:sessionId
 DELETE /verification/sessions/:sessionId
 
-POST   /internal/campaigns/:id/activate      service auth
+GET    /admin/analytics?months=12            admin role
+GET    /admin/campaigns?status=…             admin role, defaults to pending_review
+GET    /admin/campaigns/:id/performance      admin role
+GET    /admin/diffuseurs                     admin role
+POST   /admin/campaigns/:id/approve          admin role
+POST   /admin/campaigns/:id/reject           admin role, { reason } required
+
+POST   /webhooks/payment-confirmation        service auth, payment-service only
+POST   /internal/campaigns/:id/activate      service auth, manual recovery
 POST   /internal/campaigns/:id/reallocate    service auth
 ```
 
@@ -243,8 +244,10 @@ POST /internal/credit         service auth
   `postinstall: patch-package` reapplies it.
 - **WhatsApp creds never touch disk** (`in-memory-auth-state.ts`). Do not swap in a
   disk-backed store without encrypting at rest.
-- **Payment-service does not call `activateCampaign` yet.** Nothing activates a
-  campaign, so an annonceur cannot actually pay. Shortest path to a working demo.
+- **`SELF_BASE_URL` is baked into payment intents** as `metadata.callbackPath`.
+  Changing it strands every intent already in flight. It defaults to
+  `http://localhost:$PORT`, which is correct for prod (3010) and preprod (6010) —
+  do not hardcode 3010 back in.
 - **Auto-posting is not just parked, it is unsafe as previously written.** The
   probe ignored the account's status privacy settings and published to contacts
   the user had blocked from their status, and deletions did not propagate. Anything
@@ -267,11 +270,10 @@ POST /internal/credit         service auth
 
 ## 8. Suggested order
 
-1. Moderation gate (backend, blocks the rest)
-2. Admin review queue — Rufus cannot approve anything without it
-3. Payment-service → `activateCampaign` wiring — makes a demo possible
-4. Diffuseur flow in SBC-WEB-UI: onboarding, offers, share, verify
-5. Annonceur flow: onboarding, create campaign, dashboard
-6. Landing page + « Je m'inscris »
-7. Admin analytics and test-campaign editor
-8. Run `verify-extraction.ts` against a real account before preprod
+Steps 1-3 and 7's analytics half are done. What remains:
+
+1. Diffuseur flow in SBC-WEB-UI: onboarding, offers, share, verify
+2. Annonceur flow: onboarding, create campaign, pay, dashboard
+3. Landing page + « Je m'inscris »
+4. Designated test campaign (backend) and Rufus's editor for it — see §3
+5. Run `verify-extraction.ts` against a real account before preprod
