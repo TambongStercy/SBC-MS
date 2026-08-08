@@ -26,7 +26,11 @@ const client = axios.create({
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json',
-        'X-Service-Secret': config.services.serviceSecret,
+        // user-service's authenticateServiceRequest reads Authorization: Bearer.
+        // An X-Service-Secret header is ignored and every internal call 401s —
+        // which is what broke diffuseur eligibility on preprod.
+        'Authorization': `Bearer ${config.services.serviceSecret}`,
+        'X-Service-Name': 'advertising-service',
     },
 });
 
