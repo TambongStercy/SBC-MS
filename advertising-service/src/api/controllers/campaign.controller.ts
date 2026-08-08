@@ -10,6 +10,7 @@ import {
     submitForReview,
 } from '../../services/campaign.service';
 import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../services/ranking.service';
+import { createCampaignPaymentIntent } from '../../services/clients/payment.service.client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
@@ -175,6 +176,44 @@ export const submit = async (req: AuthenticatedRequest, res: Response) => {
         });
     } catch (err) {
         return fail(res, err, 'submitCampaign');
+    }
+};
+
+/**
+ * Opens the payment session for an approved campaign.
+ *
+ * Refused before approval, so an annonceur cannot pay for something that would
+ * then sit unusable — and cannot use payment as a way around review.
+ */
+export const pay = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await ownedCampaign(req);
+        if (campaign.status !== CampaignStatus.APPROVED) {
+            throw new AppError(
+                campaign.status === CampaignStatus.PENDING_REVIEW
+                    ? 'Votre campagne est encore en attente de validation.'
+                    : `Une campagne au statut « ${campaign.status} » ne peut pas être payée.`,
+                400,
+            );
+        }
+
+        const intent = await createCampaignPaymentIntent({
+            userId: String(campaign.advertiserUserId),
+            amount: campaign.amountPaid,
+            campaignId: String(campaign._id),
+            campaignTitle: campaign.title,
+        });
+
+        log.info(`Payment session ${intent.sessionId} opened for campaign ${campaign._id}`);
+
+        return res.json({
+            success: true,
+            // Only the session id: the frontend builds the payment page URL from it
+            // (SBCApiService.generatePaymentUrl), same as subscriptions and tombola.
+            data: { sessionId: intent.sessionId, amount: campaign.amountPaid },
+        });
+    } catch (err) {
+        return fail(res, err, 'payCampaign');
     }
 };
 

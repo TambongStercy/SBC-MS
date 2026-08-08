@@ -95,6 +95,10 @@ export interface ICampaign extends Document {
     /** Required on rejection — without it the annonceur cannot fix anything. */
     rejectionReason?: string;
 
+    /** payment-service session. The link between a campaign and the money for it. */
+    paymentSessionId?: string;
+    paidAt?: Date;
+
     activatedAt?: Date;
     completedAt?: Date;
     /** Set once the advertiser's referrer has been paid. Guards double payment. */
@@ -157,6 +161,9 @@ const CampaignSchema = new Schema<ICampaign>({
     reviewedBy: { type: Schema.Types.ObjectId },
     reviewedAt: { type: Date },
     rejectionReason: { type: String, trim: true, maxlength: 1000 },
+
+    paymentSessionId: { type: String, index: true, sparse: true },
+    paidAt: { type: Date },
 
     activatedAt: { type: Date },
     completedAt: { type: Date },

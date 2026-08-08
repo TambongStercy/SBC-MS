@@ -10,6 +10,7 @@ import {
     getLeaderboard,
     update,
     submit,
+    pay,
 } from '../controllers/campaign.controller';
 
 const router = Router();
@@ -24,6 +25,7 @@ router.get('/', listMine);
 router.get('/:id', getOne);
 router.patch('/:id', update);
 router.post('/:id/submit', submit);
+router.post('/:id/pay', pay);
 router.get('/:id/performance', getPerformance);
 router.post('/:id/decide', decideUnfilled);
 

@@ -50,6 +50,11 @@ interface IConfig {
     /** Public origin the tracking links and landing pages are served from. */
     publicBaseUrl: string;
     /**
+     * Where payment-service reaches us back. Service-to-service, so this is the
+     * internal address, not the public one.
+     */
+    selfBaseUrl: string;
+    /**
      * Commercial rules. Defaults follow the agreed spec
      * (docs/ADVERTISING-FEATURE-SPEC.md); env can override without a redeploy.
      */
@@ -90,9 +95,11 @@ interface IConfig {
     };
 }
 
+const port = parseInt(process.env.PORT || '3010', 10);
+
 const config: IConfig = {
     nodeEnv: process.env.NODE_ENV || 'development',
-    port: parseInt(process.env.PORT || '3010', 10),
+    port,
     host: process.env.HOST || '0.0.0.0',
     server: {
         bodyLimit: process.env.BODY_LIMIT || '10mb',
@@ -115,6 +122,9 @@ const config: IConfig = {
         paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
     },
     publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3010',
+    // Derived from the running port, not hardcoded: preprod listens on 6010, and a
+    // fixed 3010 default would have preprod's payment callbacks land on prod.
+    selfBaseUrl: process.env.SELF_BASE_URL || `http://localhost:${port}`,
     pricing: {
         advertiserPricePerUniqueView: parseFloat(process.env.ADVERTISER_PRICE_PER_VIEW || '3'),
         diffuseurRatePerDay: (process.env.DIFFUSEUR_RATES || '1,0.5,0.25').split(',').map(parseFloat),

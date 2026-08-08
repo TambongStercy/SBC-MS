@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
 import { allocateCampaign, expireStaleOffers, remainingViewsToCover } from '../../services/allocation.service';
+import { activateApprovedCampaign } from '../../services/activation.service';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
 
@@ -14,46 +15,50 @@ const fail = (res: Response, err: unknown, context: string) => {
 };
 
 /**
- * Flips a paid campaign live and issues the first round of offers.
+ * Manual activation, for recovery when a payment landed but the callback did not.
  *
- * Called by payment-service once the advertiser's money has actually landed.
- * Deliberately the only path to ACTIVE, so an unpaid campaign can never be offered
- * to diffuseurs.
- *
- * Idempotent: payment webhooks retry, and a second call must not produce a second
- * round of offers.
+ * The normal path is the payment-confirmation webhook; both go through the same
+ * service function, so neither can bypass the moderation guard.
  */
 export const activateCampaign = async (req: Request, res: Response) => {
     try {
-        const campaign = await CampaignModel.findById(req.params.id);
-        if (!campaign) throw new AppError('Campaign not found', 404);
-
-        if (campaign.status === CampaignStatus.ACTIVE) {
-            log.info(`Campaign ${campaign._id} already active, ignoring duplicate activation`);
-            return res.json({ success: true, data: { status: campaign.status, alreadyActive: true } });
-        }
-        // ONLY an approved campaign may go live. Payment must never be able to
-        // skip moderation — a creative reaching ACTIVE unreviewed lands on
-        // thousands of people's personal WhatsApp statuses.
-        if (campaign.status !== CampaignStatus.APPROVED) {
-            throw new AppError(
-                campaign.status === CampaignStatus.DRAFT || campaign.status === CampaignStatus.PENDING_REVIEW
-                    ? 'Cette campagne doit être approuvée par un administrateur avant activation.'
-                    : `Cannot activate a campaign in status ${campaign.status}`,
-                400,
-            );
-        }
-
-        campaign.status = CampaignStatus.ACTIVE;
-        campaign.activatedAt = new Date();
-        await campaign.save();
-
-        const allocation = await allocateCampaign(campaign._id);
-        log.info(`Campaign ${campaign._id} activated; ${allocation.offersCreated} offers issued`);
-
-        return res.json({ success: true, data: { status: campaign.status, allocation } });
+        const result = await activateApprovedCampaign(req.params.id);
+        return res.json({ success: true, data: result });
     } catch (err) {
         return fail(res, err, 'activateCampaign');
+    }
+};
+
+/**
+ * Payment-service's terminal-status callback, registered as `metadata.callbackPath`
+ * when the intent is created. This is what actually puts campaigns live.
+ *
+ * Always answers 200 on a non-success status: payment-service treats a non-2xx as
+ * a delivery failure, and there is nothing to retry when a payment simply failed.
+ */
+export const handlePaymentConfirmation = async (req: Request, res: Response) => {
+    const { sessionId, status, metadata } = req.body ?? {};
+    const campaignId = metadata?.campaignId;
+
+    if (status !== 'SUCCEEDED') {
+        log.info(`Payment ${sessionId} for campaign ${campaignId} ended as ${status}; campaign stays unpaid`);
+        return res.json({ success: true, message: `Webhook received (status: ${status}).` });
+    }
+    if (!campaignId) {
+        log.error(`Payment ${sessionId} succeeded but carries no campaignId; cannot activate`);
+        return res.status(400).json({ success: false, message: 'Missing campaignId in payment metadata.' });
+    }
+
+    try {
+        const result = await activateApprovedCampaign(campaignId);
+        await CampaignModel.updateOne(
+            { _id: campaignId },
+            { $set: { paymentSessionId: sessionId, paidAt: new Date() } },
+        );
+        log.info(`Campaign ${campaignId} activated from payment ${sessionId}`);
+        return res.json({ success: true, data: result });
+    } catch (err) {
+        return fail(res, err, 'handlePaymentConfirmation');
     }
 };
 

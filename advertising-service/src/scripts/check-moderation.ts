@@ -18,6 +18,7 @@ import {
     updateCampaign,
     approvedCampaignCounts,
 } from '../services/campaign.service';
+import { handlePaymentConfirmation } from '../api/controllers/internal.controller';
 
 const DB = process.env.MODERATION_TEST_DB || 'mongodb://127.0.0.1:27017/sbc_advertising_moderation_check';
 
@@ -139,6 +140,59 @@ const main = async () => {
     const counts = await approvedCampaignCounts([veteran, newcomer]);
     check('counts an annonceur\'s vetted history', counts.get(String(veteran)) === 2, `got ${counts.get(String(veteran))}`);
     check('a first-time annonceur counts zero', (counts.get(String(newcomer)) ?? 0) === 0);
+
+    // --- Payment callback: the only thing that puts a campaign live ---
+    const callback = async (body: unknown) => {
+        let code = 200;
+        let payload: any;
+        const res: any = {
+            status(n: number) { code = n; return this; },
+            json(b: unknown) { payload = b; return this; },
+        };
+        await handlePaymentConfirmation({ body } as any, res);
+        return { code, payload };
+    };
+
+    const failedPayment = await seed({ status: CampaignStatus.APPROVED });
+    const failedResult = await callback({
+        sessionId: 's1', status: 'FAILED', metadata: { campaignId: String(failedPayment._id) },
+    });
+    check('acknowledges a failed payment', failedResult.code === 200);
+    check(
+        'a failed payment does not activate',
+        (await CampaignModel.findById(failedPayment._id))?.status === CampaignStatus.APPROVED,
+    );
+
+    const orphan = await callback({ sessionId: 's2', status: 'SUCCEEDED', metadata: {} });
+    check('rejects a success carrying no campaignId', orphan.code === 400);
+
+    // The whole point of the gate: paying for an unreviewed campaign must not work.
+    const unreviewed = await seed({ status: CampaignStatus.DRAFT });
+    const bypass = await callback({
+        sessionId: 's3', status: 'SUCCEEDED', metadata: { campaignId: String(unreviewed._id) },
+    });
+    check(
+        'payment cannot activate an unreviewed campaign',
+        bypass.code === 400 && (await CampaignModel.findById(unreviewed._id))?.status === CampaignStatus.DRAFT,
+        `code ${bypass.code}`,
+    );
+
+    const paid = await seed({ status: CampaignStatus.APPROVED });
+    const paidResult = await callback({
+        sessionId: 'sess_abc', status: 'SUCCEEDED', metadata: { campaignId: String(paid._id) },
+    });
+    const live = await CampaignModel.findById(paid._id);
+    check('a successful payment activates an approved campaign', live?.status === CampaignStatus.ACTIVE, `code ${paidResult.code}`);
+    check('the payment session is recorded on the campaign', live?.paymentSessionId === 'sess_abc' && !!live?.paidAt);
+
+    const replay = await callback({
+        sessionId: 'sess_abc', status: 'SUCCEEDED', metadata: { campaignId: String(paid._id) },
+    });
+    check(
+        'a replayed webhook is a no-op',
+        replay.code === 200 && replay.payload?.data?.alreadyActive === true,
+        'providers retry; a second round of offers would double-book diffuseurs',
+    );
 
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
