@@ -687,6 +687,23 @@ export class UserRepository {
     }
 
     /**
+     * [Internal] Returns the projection consumed by advertising-service.
+     *
+     * Campaign targeting runs on these fields, so an omission here does not error —
+     * it silently makes every targeted campaign match nobody. `batch-details` looks
+     * close enough to reuse but carries none of them.
+     */
+    async findAdvertisingDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name email phoneNumber avatar sex birthDate city region country language interests profession referralCode')
+            .lean()
+            .exec();
+    }
+
+    /**
      * Finds user IDs matching a given query.
      * @param query - Mongoose filter query (likely using $or for search).
      * @returns An array of user ID strings.

@@ -61,6 +61,10 @@ serviceRouter.post('/batch-details', (req, res) => userController.getUsersDetail
 // Internal route to get the SBCLOVE demographic subset for one or more users
 serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDetailsByIds(req, res));
 
+// Internal route to get the advertising targeting subset (advertising-service).
+// Campaign targeting runs on these fields; batch-details carries none of them.
+serviceRouter.post('/advertising-details', (req, res) => userController.getAdvertisingDetailsByIds(req, res));
+
 // Internal route to search user IDs by name/email/phone
 serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsBySearchTerm(req, res, next));
 

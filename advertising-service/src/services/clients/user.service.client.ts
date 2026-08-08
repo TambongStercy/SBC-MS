@@ -10,6 +10,8 @@ export interface IUserProfile {
     email?: string;
     phoneNumber?: string;
     country?: string;
+    /** Doubles as the diffuseur's affiliate code on their tracking links. */
+    referralCode?: string;
     region?: string;
     city?: string;
     sex?: string;
@@ -31,16 +33,14 @@ const client = axios.create({
 /**
  * Returns null rather than throwing when the user simply isn't found, so callers
  * can distinguish "no such user" from "user-service is down" (which does throw).
+ *
+ * Goes through the batch endpoint because user-service has no single-user internal
+ * route — an earlier GET /users/internal/:userId here 404'd on every call, which
+ * made diffuseur eligibility permanently fail with "profil introuvable".
  */
 export const getUserProfile = async (userId: string): Promise<IUserProfile | null> => {
-    try {
-        const { data } = await client.get(`/users/internal/${userId}`);
-        return data?.data ?? data ?? null;
-    } catch (err) {
-        if (axios.isAxiosError(err) && err.response?.status === 404) return null;
-        log.error(`Failed to fetch user ${userId} from user-service:`, err);
-        throw err;
-    }
+    const [profile] = await getUserProfiles([userId]);
+    return profile ?? null;
 };
 
 /**
@@ -83,10 +83,17 @@ export const getDirectReferrer = async (userId: string): Promise<string | null> 
     }
 };
 
+/**
+ * Targeting projection, NOT `batch-details`.
+ *
+ * batch-details returns name/email/balance and none of country, city, region,
+ * sex, birthDate, language, interests or profession. Using it does not error —
+ * every targeted campaign simply matches nobody, silently.
+ */
 export const getUserProfiles = async (userIds: string[]): Promise<IUserProfile[]> => {
     if (!userIds.length) return [];
     try {
-        const { data } = await client.post('/users/internal/batch-details', { userIds });
+        const { data } = await client.post('/users/internal/advertising-details', { userIds });
         return data?.data ?? [];
     } catch (err) {
         log.error(`Failed to batch-fetch ${userIds.length} users from user-service:`, err);
