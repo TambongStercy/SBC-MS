@@ -35,18 +35,16 @@ export interface IDayProof {
     status: DayStatus;
 
     /**
-     * Earliest this day may be posted: 20h after the previous day's post (day 1
+     * Earliest this day may be posted: 24h after the previous day's post (day 1
      * opens on acceptance). Recorded rather than derived so the diffuseur can be
      * shown exactly when their next window opens.
      */
     windowOpensAt?: Date;
     /**
-     * On-time deadline, 24h after the window opens. Posting later still counts but
-     * consumes grace days from the campaign's shared budget.
+     * Informational nudge target, 24h after the window opens. Not a hard deadline —
+     * the only hard ones are day1Deadline and completionDeadline.
      */
     dueAt?: Date;
-    /** Whole days late, 0 when on time. Charged against graceDaysUsed. */
-    graceDaysConsumed?: number;
 
     /**
      * Reminder stamps. Set whether or not delivery succeeded, so a mail outage
@@ -110,13 +108,15 @@ export interface ICampaignParticipation extends Document {
     acceptedAt?: Date;
     startedAt?: Date;
     /**
-     * Grace days spent so far, against a single budget shared across the campaign.
-     *
-     * A quota rather than a fixed calendar deadline: a deadline set at acceptance
-     * punishes someone who posted day 1 immediately and rewards someone who
-     * stalled, because both hit the same wall.
+     * Post day 1 by here or the offer is dropped: acceptedAt + 24h. Stops someone
+     * accepting and sitting on a slot other diffuseurs could have used.
      */
-    graceDaysUsed: number;
+    day1Deadline?: Date;
+    /**
+     * Finish every day by here: day-1 post + durationDays + graceDays. Anchored to
+     * the day-1 POST, so posting promptly is not punished.
+     */
+    completionDeadline?: Date;
     completedAt?: Date;
 
     days: IDayProof[];
@@ -141,7 +141,6 @@ const DayProofSchema = new Schema<IDayProof>({
 
     windowOpensAt: { type: Date },
     dueAt: { type: Date },
-    graceDaysConsumed: { type: Number, default: 0, min: 0 },
     dayReminderSentAt: { type: Date },
     verificationReminderSentAt: { type: Date },
 
@@ -182,7 +181,8 @@ const CampaignParticipationSchema = new Schema<ICampaignParticipation>({
     offeredAt: { type: Date, default: Date.now },
     acceptedAt: { type: Date },
     startedAt: { type: Date },
-    graceDaysUsed: { type: Number, default: 0, min: 0 },
+    day1Deadline: { type: Date },
+    completionDeadline: { type: Date },
     completedAt: { type: Date },
 
     days: { type: [DayProofSchema], default: [] },
@@ -206,8 +206,9 @@ CampaignParticipationSchema.index({ diffuseurUserId: 1, status: 1, startedAt: -1
 // most day entries have no id until they are posted.
 CampaignParticipationSchema.index({ 'days.statusMessageId': 1 }, { unique: true, sparse: true });
 
-// Sweeps for participations with an overdue day.
-CampaignParticipationSchema.index({ status: 1, 'days.dueAt': 1 });
+// Sweeps for participations past either deadline.
+CampaignParticipationSchema.index({ status: 1, completionDeadline: 1 });
+CampaignParticipationSchema.index({ status: 1, day1Deadline: 1 });
 
 const CampaignParticipationModel = mongoose.model<ICampaignParticipation>(
     'CampaignParticipation',

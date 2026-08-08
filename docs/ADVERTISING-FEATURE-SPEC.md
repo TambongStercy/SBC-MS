@@ -81,9 +81,18 @@ Only diffuseurs who posted on day 1 may repost on days 2 and 3.
 **Nothing is credited until all 3 days are done.** Post day 1 and stop, and the
 earnings sit uncredited as *campagne non terminée*.
 
-**Grace period: 3 days.** After the campaign's 3-day span, the diffuseur has 3 more
-days to post the missing days and still be paid. After that the earnings are
-cancelled.
+Two independent deadlines, and lateness inside them costs nothing:
+
+| Deadline | Rule | Miss it |
+|---|---|---|
+| Day 1 | post within **24h of accepting** | offer dropped |
+| Completion | **3 days + 3 grace days from the day-1 post** | forfeited, nothing paid |
+
+Anchored to the day-1 post rather than acceptance, so a diffuseur who posts
+promptly is not given less time than one who sat on the offer for 23h.
+
+The 24h day-1 rule also stops someone accepting a campaign and holding a slot that
+other diffuseurs could have filled.
 
 ### Advertiser: unfilled campaign
 
@@ -333,16 +342,14 @@ server.
 Everything is built and asserted. These are product and compliance calls that
 nobody but Rufus can make, and two of them can change money.
 
-1. **BEAC compliance.** `activationBalance` is annotated *"(BEAC compliance)"* in
-   the user model — separating balances there was a regulatory decision, not a
-   product one. Does `advertisingBalance` need equivalent treatment, and is the
-   transfer-to-main step acceptable under it? **This can invalidate the withdrawal
-   design.**
+1. ~~**BEAC compliance.**~~ **ANSWERED 08/08.** The transfer-to-main design holds.
+   Diffuseurs may withdraw because it is payment for work (posting 3 days).
+   Annonceurs may never take money back out as cash. And advertising money
+   **cannot be transferred between users** — no P2P on this balance, ever.
 
-2. **Grace budget: shared or per day?** Built as a single pool of 3 days across the
-   campaign, so being 2 days late on day 2 leaves only 1 for day 3. Sterling
-   confirmed this reading; worth Rufus confirming, as it decides how forgiving the
-   feature feels.
+2. ~~**Grace budget.**~~ **ANSWERED 08/08.** Not a quota. Day 1 within 24h of
+   accepting or the offer is dropped; then 3 days plus 3 grace days from the day-1
+   post to finish everything. Being late inside that window costs nothing.
 
 3. ~~**Referral commission base.**~~ **ANSWERED 07/08.** « 20 % sur ce que la SBC
    doit gagner sur ses filleuls » — 20% of SBC's margin, as built. He also
@@ -350,9 +357,10 @@ nobody but Rufus can make, and two of them can change money.
    **« qu'il participe ou pas »** to the filleul's campaign. Nothing in
    `payReferralCommission` looks at participation.
 
-4. **Advertiser refund on an unfilled campaign.** Built as bank-as-credit, per his
-   instruction. There is currently no path to refund cash instead. Confirm that is
-   intended.
+4. ~~**Advertiser refund.**~~ **ANSWERED 08/08.** No cash refund, ever. Credit
+   toward a future campaign or wait for the target. This is also a BEAC point:
+   annonceur money cannot come back out as cash, while diffuseur earnings can
+   because they are payment for work performed.
 
 5. ~~**Trust score effects.**~~ **ANSWERED 07/08.** Rufus confirmed the mechanic
    and left the numbers to us: « quand un diffuseur ne respecte pas tel truc ou

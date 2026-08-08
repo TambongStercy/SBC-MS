@@ -116,7 +116,7 @@ export const remindDueDays = async (): Promise<number> => {
             String(p.diffuseurUserId),
             campaign?.title ?? 'votre campagne',
             pending.day,
-            summary.graceDaysRemaining,
+            summary.hoursRemaining ?? 0,
         );
         pending.dayReminderSentAt = now;
         sent++;

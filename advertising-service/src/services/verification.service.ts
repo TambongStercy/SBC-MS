@@ -9,7 +9,7 @@ import CampaignParticipationModel, {
     ParticipationStatus,
 } from '../database/models/campaign-participation.model';
 import { ExtractedStatus, ExtractionResult } from './whatsapp-status.service';
-import { chargeGrace, openNextDay, isBeyondRecovery } from './day-window.service';
+import { openNextDay, isBeyondRecovery } from './day-window.service';
 import { recordCompletion, recordForfeit } from './ranking.service';
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import config from '../config';
@@ -25,8 +25,6 @@ export type DayVerdict = {
     viewCount: number;
     deliveredCount: number;
     earnedAmount: number;
-    /** Whole days late this post cost, charged to the shared grace budget. */
-    graceDaysConsumed?: number;
 };
 
 /**
@@ -214,9 +212,6 @@ export const applyExtraction = async (
         day.deliveredCount = match.deliveredCount;
         day.earnedAmount = earned;
 
-        // Charge lateness before opening the next window, so a diffuseur who has
-        // already blown the budget is not handed another day to post.
-        const grace = chargeGrace(participation, day, match.postedAt ?? new Date());
         openNextDay(participation, day.day);
 
         verdicts.push({
@@ -226,17 +221,7 @@ export const applyExtraction = async (
             viewCount: match.viewCount,
             deliveredCount: match.deliveredCount,
             earnedAmount: earned,
-            graceDaysConsumed: grace.consumed,
         });
-
-        if (grace.exhausted) {
-            participation.status = ParticipationStatus.FORFEITED;
-            log.info(
-                `Participation ${participation._id} forfeited: grace budget exhausted ` +
-                `(${grace.totalUsed}/${config.campaign.graceDays})`,
-            );
-            break;
-        }
     }
 
     recomputeTotals(participation);

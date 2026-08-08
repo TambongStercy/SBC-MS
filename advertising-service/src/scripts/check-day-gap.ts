@@ -8,6 +8,7 @@
  *   npx ts-node src/scripts/check-day-gap.ts
  */
 import { findMatchingStatus, earliestAllowedPost } from '../services/verification.service';
+import { openDayOne, openNextDay, isBeyondRecovery } from '../services/day-window.service';
 import { DayStatus, IDayProof } from '../database/models/campaign-participation.model';
 import { ExtractedStatus } from '../services/whatsapp-status.service';
 import config from '../config';
@@ -98,6 +99,46 @@ const outOfOrder = findMatchingStatus(
     new Set(),
 );
 check('picks the oldest matching status first', outOfOrder?.statusMessageId === 'EARLY');
+
+// --- Deadlines: day 1 within 24h of accepting, then 6 days to finish ---
+const mkParticipation = (ds: IDayProof[]) => ({ days: ds } as any);
+
+const accepted = T0;
+const p1 = mkParticipation([day(1), day(2), day(3)]);
+openDayOne(p1, accepted);
+check(
+    'day 1 deadline is 24h after accepting',
+    p1.day1Deadline?.getTime() === accepted.getTime() + 24 * HOUR,
+);
+check(
+    'not forfeited while inside the day-1 window',
+    isBeyondRecovery(p1, new Date(accepted.getTime() + 23 * HOUR)) === false,
+);
+check(
+    'forfeited when day 1 was never posted in 24h',
+    isBeyondRecovery(p1, new Date(accepted.getTime() + 25 * HOUR)) === true,
+);
+
+const p2 = mkParticipation([day(1, T0), day(2), day(3)]);
+openDayOne(p2, accepted);
+openNextDay(p2, 1);
+const totalWindow = (config.campaign.durationDays + config.campaign.graceDays) * 24 * HOUR;
+check(
+    'completion deadline is duration + grace from the day-1 post',
+    p2.completionDeadline?.getTime() === T0.getTime() + totalWindow,
+);
+check(
+    'still recoverable inside the grace period',
+    isBeyondRecovery(p2, new Date(T0.getTime() + totalWindow - HOUR)) === false,
+);
+check(
+    'forfeited once the full window has passed',
+    isBeyondRecovery(p2, new Date(T0.getTime() + totalWindow + HOUR)) === true,
+);
+check(
+    'lateness alone does not forfeit, only the deadline does',
+    isBeyondRecovery(p2, new Date(T0.getTime() + 4 * 24 * HOUR)) === false,
+);
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) FAILED.`}`);
 process.exit(failures === 0 ? 0 : 1);
