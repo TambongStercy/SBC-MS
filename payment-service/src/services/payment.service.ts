@@ -3557,8 +3557,15 @@ class PaymentService {
         if (transaction.type !== TransactionType.WITHDRAWAL) {
             return { success: false, error: 'Transaction is not a withdrawal' };
         }
-        if (transaction.serviceProvider !== 'MoneyFusion') {
-            return { success: false, error: `Manual completion is only for MoneyFusion withdrawals (this is ${transaction.serviceProvider || 'unknown'})` };
+        // serviceProvider is only written by the same block that stores the MF
+        // tokenPay. When the payout response is lost that block never runs, so the
+        // field stays unset on exactly the transactions that need reconciling —
+        // which made this tool refuse the ones it exists for. Fall back to
+        // metadata.selectedPayoutService, which is written at routing time.
+        // Same shape as the CinetPay $or documented in CLAUDE.md.
+        const provider = transaction.serviceProvider || (transaction.metadata as any)?.selectedPayoutService;
+        if (provider !== 'MoneyFusion') {
+            return { success: false, error: `Manual completion is only for MoneyFusion withdrawals (this is ${provider || 'unknown'})` };
         }
         if (transaction.status === TransactionStatus.COMPLETED) {
             log.info(`Manual completion of MF withdrawal ${transactionId}: already COMPLETED, no-op`);
@@ -3619,7 +3626,10 @@ class PaymentService {
         if (transaction.type !== TransactionType.WITHDRAWAL) {
             return { success: false, error: 'Transaction is not a withdrawal' };
         }
-        if (transaction.serviceProvider !== 'MoneyFusion') {
+        // Same fallback as manualComplete: serviceProvider is unset on precisely the
+        // transactions that need reconciling.
+        const provider = transaction.serviceProvider || (transaction.metadata as any)?.selectedPayoutService;
+        if (provider !== 'MoneyFusion') {
             return { success: false, error: `Manual fail is only for MoneyFusion withdrawals (this is ${transaction.serviceProvider || 'unknown'})` };
         }
         if (transaction.status === TransactionStatus.FAILED) {
