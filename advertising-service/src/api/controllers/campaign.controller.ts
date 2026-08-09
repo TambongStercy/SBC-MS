@@ -311,6 +311,43 @@ export const getPerformance = async (req: AuthenticatedRequest, res: Response) =
  * bank it as credit, or keep waiting. Recorded either way because it feeds the
  * recommendation system.
  */
+/**
+ * Cancels a campaign that has not yet been paid.
+ *
+ * Only pre-money statuses: an active campaign is closed via decideUnfilled
+ * (bank), which settles the budget — cancelling would orphan it. Cancelling an
+ * approved campaign forfeits the approval: re-launching means a new review.
+ * Any credit reserved by an abandoned payment attempt is released on the spot
+ * rather than waiting for the stale-reservation sweep.
+ */
+export const cancel = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await ownedCampaign(req);
+
+        const cancellable = [
+            CampaignStatus.DRAFT,
+            CampaignStatus.PENDING_REVIEW,
+            CampaignStatus.APPROVED,
+            CampaignStatus.REJECTED,
+        ];
+        if (!cancellable.includes(campaign.status)) {
+            throw new AppError(
+                'Seule une campagne non payée peut être annulée. Une campagne en diffusion se clôture depuis son tableau de bord.',
+                400,
+            );
+        }
+
+        await releaseCredit(campaign);
+        campaign.status = CampaignStatus.CANCELLED;
+        await campaign.save();
+
+        log.info(`Campaign ${campaign._id} cancelled by advertiser before payment`);
+        return res.json({ success: true, data: { status: campaign.status } });
+    } catch (err) {
+        return fail(res, err, 'cancel');
+    }
+};
+
 export const decideUnfilled = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { decision } = req.body;
