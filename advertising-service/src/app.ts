@@ -2,6 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import { randomBytes } from 'crypto';
 import config from './config';
 import logger from './utils/logger';
 import apiRoutes from './api/routes';
@@ -12,10 +13,38 @@ const log = logger.getLogger('App');
 const app: Application = express();
 
 app.use(cors());
+
+/** Where uploaded media actually ends up; /api/settings/files redirects there. */
+const CDN_ORIGIN = 'https://storage.googleapis.com';
+
+// A per-response nonce lets the landing page keep its inline player script
+// without opening the door to 'unsafe-inline', which would let any script that
+// ever reached this page — including through advertiser-supplied text — run.
+app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.locals.cspNonce = randomBytes(16).toString('base64');
+    next();
+});
+
 // The landing page renders advertiser-supplied media and is embedded from
 // WhatsApp's in-app browser, so the default cross-origin resource policy is too
 // strict here. API routes are unaffected.
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+            // The file proxy 302s to the bucket, and CSP is judged on where the
+            // request finally lands — so the CDN has to be named here or every
+            // creative is blocked.
+            'img-src': ["'self'", 'data:', CDN_ORIGIN],
+            'media-src': ["'self'", CDN_ORIGIN],
+            'script-src': ["'self'", (_req, res) => `'nonce-${(res as Response).locals.cspNonce}'`],
+            // Nothing here posts anywhere else, and upgrade-insecure-requests
+            // would rewrite the localhost URLs used in development.
+            'upgrade-insecure-requests': null,
+        },
+    },
+}));
 app.use(express.json({ limit: config.server.bodyLimit }));
 app.use(express.urlencoded({ extended: true }));
 
