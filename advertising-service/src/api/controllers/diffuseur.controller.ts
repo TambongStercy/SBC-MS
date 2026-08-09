@@ -6,6 +6,7 @@ import CampaignModel from '../../database/models/campaign.model';
 import { acceptOffer } from '../../services/allocation.service';
 import { buildTrackingUrl, buildShareCaption } from '../../services/tracking.service';
 import { scheduleSummary, nextUnpostedDay, openNextDay } from '../../services/day-window.service';
+import { offerTestCampaignToNewDiffuseurs } from '../../services/test-campaign.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import { getUserProfile, IUserProfile } from '../../services/clients/user.service.client';
@@ -93,6 +94,15 @@ export const enroll = async (req: AuthenticatedRequest, res: Response) => {
             { userId },
             { $set: { declaredAverageViews: declared, isActive: true } },
             { new: true, upsert: true, setDefaultsOnInsert: true },
+        );
+
+        // Offer the test campaign right away instead of leaving the new
+        // diffuseur to stare at an empty dashboard until the next scheduler
+        // tick — up to 10 minutes, which reads as "it doesn't work" (it did,
+        // to Rufus). Fire-and-forget: enrollment must not fail on it, and the
+        // sweep remains the safety net.
+        offerTestCampaignToNewDiffuseurs().catch(err =>
+            log.warn(`Instant test-campaign offer after enrollment failed (sweep will retry): ${err.message}`),
         );
 
         return res.status(201).json({ success: true, data: profile });
