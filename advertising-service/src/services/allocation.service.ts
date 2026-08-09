@@ -187,20 +187,40 @@ export const allocateCampaign = async (campaignId: Types.ObjectId): Promise<Allo
     // Best reach first, so the target is covered by as few diffuseurs as possible.
     eligible.sort((a, b) => expectedViews(b) - expectedViews(a) || b.trustScore - a.trustScore);
 
+    // Big diffuseurs carry the bulk, then the tail is fitted to what is actually
+    // left. Taking them in pure descending order overshot badly at the end: with
+    // 200 views still needed, the next 1000-view diffuseur was taken anyway, and
+    // an annonceur who bought 2000 unique views received 3000. Generous, but they
+    // paid for 2000 and the extra comes out of SBC's margin.
+    //
+    // At each step: the largest diffuseur who still fits inside the shortfall;
+    // and if nobody fits, the smallest who overshoots — so the campaign always
+    // completes, by the narrowest margin available.
     const offers: Array<Record<string, unknown>> = [];
+    const taken = new Set<string>();
     let projected = 0;
-    for (const c of eligible) {
-        if (projected >= remaining) break;
+
+    while (projected < remaining) {
+        const stillNeeded = remaining - projected;
+        const available = eligible.filter(c => !taken.has(String(c._id)));
+        if (!available.length) break;
+
+        const fits = available.filter(c => Math.max(1, expectedViews(c)) <= stillNeeded);
+        const pick = fits.length
+            ? fits[0]                                  // already descending: the largest that fits
+            : available[available.length - 1];         // nobody fits: the smallest overshoot
+
+        taken.add(String(pick._id));
         offers.push({
             campaignId: campaign._id,
-            diffuseurUserId: c.userId,
-            diffuseurProfileId: c._id,
+            diffuseurUserId: pick.userId,
+            diffuseurProfileId: pick._id,
             status: ParticipationStatus.OFFERED,
             trackingCode: newTrackingCode(),
             offeredAt: new Date(),
             days: buildDays(),
         });
-        projected += Math.max(1, expectedViews(c));
+        projected += Math.max(1, expectedViews(pick));
     }
 
     if (!offers.length) {
