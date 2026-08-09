@@ -99,12 +99,25 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
         }
     };
 
+    /**
+     * Money that arrived over the wire, as a number you can safely format.
+     *
+     * A provider returning "12.34" instead of 12.34 used to throw
+     * `.toFixed is not a function` from render, which unmounts the whole admin
+     * dashboard — one gateway's bad field took out transactions, withdrawals
+     * and stats with it.
+     */
+    const money = (value: unknown): number => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : 0;
+    };
+
     // Calculate separate USD and XAF revenues
     const calculateRevenue = () => {
         // USD calculation (NOWPayments only)
         let totalExternalUSD = 0;
         if (showLiveBalances && liveBalances?.nowpayments.available) {
-            totalExternalUSD = liveBalances.nowpayments.totalUsd;
+            totalExternalUSD = money(liveBalances.nowpayments.totalUsd);
         } else {
             totalExternalUSD = balances?.nowpaymentsBalanceUSD || 0;
         }
@@ -266,12 +279,12 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                             <>
                                 <p className="text-2xl font-semibold text-green-400">
                                     ${showLiveBalances && liveBalances?.nowpayments.available
-                                        ? liveBalances.nowpayments.totalUsd.toFixed(2)
-                                        : (balances?.nowpaymentsBalanceUSD.toFixed(2) || '0.00')}
+                                        ? money(liveBalances.nowpayments.totalUsd).toFixed(2)
+                                        : money(balances?.nowpaymentsBalanceUSD).toFixed(2)}
                                 </p>
-                                {showLiveBalances && liveBalances?.nowpayments.available && liveBalances.nowpayments.totalPendingUsd > 0 && (
+                                {showLiveBalances && liveBalances?.nowpayments.available && money(liveBalances.nowpayments.totalPendingUsd) > 0 && (
                                     <p className="text-xs text-yellow-400 mt-1">
-                                        + ${liveBalances.nowpayments.totalPendingUsd.toFixed(2)} en attente
+                                        + ${money(liveBalances.nowpayments.totalPendingUsd).toFixed(2)} en attente
                                     </p>
                                 )}
                                 {showLiveBalances && liveBalances?.nowpayments.error && (
@@ -285,7 +298,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                             .map(b => (
                                                 <div key={b.currency} className="flex justify-between">
                                                     <span>{b.currency}</span>
-                                                    <span>{b.amount.toFixed(6)} (~${b.usdValue.toFixed(2)})</span>
+                                                    <span>{money(b.amount).toFixed(6)} (~${money(b.usdValue).toFixed(2)})</span>
                                                 </div>
                                             ))}
                                     </div>
