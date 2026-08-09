@@ -93,7 +93,16 @@ const deviceIdentity = (): [string, string, string] => {
         const parts = custom.split(',').map(p => p.trim());
         if (parts.length === 3) return [parts[0], parts[1], parts[2]];
     }
-    return ['SBC', 'SBC Ads Network', '1.0.0'];
+    // Stock Chrome-on-Ubuntu, because WhatsApp validates this during pairing:
+    // 'SBC Ads Network' as the browser name was refused outright with "Couldn't
+    // link device", which took the whole verification flow down until the env
+    // override was applied.
+    //
+    // Branding belongs in the platform slot instead — WhatsApp renders the tuple
+    // as `browser (platform)`, so 'SBC Ads Network,Chrome,1.0.0' shows as
+    // "Chrome (SBC Ads Network)" while keeping the browser name WhatsApp expects.
+    // Set that via env and confirm pairing still works before making it default.
+    return ['Ubuntu', 'Chrome', '22.04.4'];
 };
 
 const userPart = (jid?: string | null): string => (jid ?? '').split('@')[0].split(':')[0];
