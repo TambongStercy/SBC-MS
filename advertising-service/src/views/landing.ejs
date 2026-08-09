@@ -31,7 +31,11 @@
             line-height: 1.5;
             padding: 16px;
             display: flex;
-            justify-content: center;
+            /* Column, not row: with the preview banner present the body has two
+               children, and a row lays them side by side — banner stretched
+               down the left, card squeezed right. */
+            flex-direction: column;
+            align-items: center;
         }
         .card {
             background: var(--card);
@@ -66,7 +70,7 @@
         .btn-site { background: transparent; color: var(--text); border: 1px solid var(--border); }
         .btn-join { background: var(--accent); }
         .preview-banner {
-            max-width: 480px; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px;
+            width: 100%; max-width: 480px; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px;
             background: #FEF3C7; color: #92400E; font-size: 13px; text-align: center;
         }
         .player { position: relative; width: 100%; border-radius: 12px; overflow: hidden;
