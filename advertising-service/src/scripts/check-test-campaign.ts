@@ -100,13 +100,15 @@ const main = async () => {
     const unlinked = await newDiffuseur({ whatsappLid: undefined });
 
     const offered = await offerTestCampaignToNewDiffuseurs();
-    check('offered to a diffuseur who has never been measured', offered === 1, `offered ${offered}`);
+    check('offered to a diffuseur who has never been measured', offered === 2, `offered ${offered}`);
     check('not offered to someone already measured', await CampaignParticipationModel.countDocuments({
         diffuseurUserId: veteran.userId,
     }) === 0);
-    check('not offered before WhatsApp is linked', await CampaignParticipationModel.countDocuments({
-        diffuseurUserId: unlinked.userId,
-    }) === 0, 'there would be nothing to verify against');
+    check(
+        'offered even before WhatsApp is linked',
+        await CampaignParticipationModel.countDocuments({ diffuseurUserId: unlinked.userId }) === 1,
+        'linking happens during this campaign\'s verification — requiring it first is a deadlock',
+    );
 
     check('running twice does not double-offer', await offerTestCampaignToNewDiffuseurs() === 0);
 
