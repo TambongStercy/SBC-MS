@@ -56,6 +56,18 @@ export type ExtractionHandle = {
 type ExtractOptions = {
     /** Delivered to the caller so it can be rendered as a QR for the diffuseur. */
     onQr?: (qr: string) => void;
+    /**
+     * Pair by 8-character code instead of a QR.
+     *
+     * Diffuseurs link the same phone that is displaying the page, so there is no
+     * second screen to point a camera at. WhatsApp's "Lier avec le numéro de
+     * téléphone" flow exists for exactly that.
+     *
+     * E.164 digits, no '+', no spaces.
+     */
+    pairWithPhone?: string;
+    /** The code to type into WhatsApp. Arrives shortly after the socket opens. */
+    onPairingCode?: (code: string) => void;
     onConnected?: (info: { lid?: string; phone?: string }) => void;
     /** Media bytes are only needed when we intend to verify the creative. */
     downloadMedia?: boolean;
@@ -194,6 +206,8 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
                 collected.set(id, entry);
             };
 
+            let pairingRequested = false;
+
             const start = () => {
                 sock = makeWASocket({
                     auth: state,
@@ -209,8 +223,29 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
 
                 sock.ev.on('creds.update', saveCreds);
 
+                // Pairing-code mode. Requested once, on a socket that has never
+                // registered — asking again on the same socket invalidates the
+                // code the diffuseur is already typing.
+                if (opts.pairWithPhone && !state.creds.registered && !pairingRequested) {
+                    pairingRequested = true;
+                    // The socket has to finish opening its websocket first; Baileys
+                    // rejects the request if it is issued too early.
+                    setTimeout(async () => {
+                        try {
+                            const code = await sock!.requestPairingCode(opts.pairWithPhone!);
+                            log.info('Pairing code issued');
+                            opts.onPairingCode?.(code);
+                        } catch (err) {
+                            log.error('Could not request a pairing code:', err);
+                            void abort(new Error("Impossible d'obtenir un code de connexion. Réessayez avec le QR code."));
+                        }
+                    }, 3000);
+                }
+
                 sock.ev.on('connection.update', async ({ connection, qr, lastDisconnect }) => {
-                    if (qr) opts.onQr?.(qr);
+                    // In pairing-code mode WhatsApp still emits QRs; forwarding them
+                    // would swap the screen out from under someone mid-code.
+                    if (qr && !opts.pairWithPhone) opts.onQr?.(qr);
 
                     if (connection === 'open') {
                         opts.onConnected?.({
