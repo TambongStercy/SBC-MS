@@ -310,7 +310,7 @@ const STATUS_LIFETIME_MS = 24 * 60 * 60 * 1000;
  * after posting — Sterling's day 3 was captured at 2 views because he verified
  * right away, and the measured average was computed from that.
  */
-const lastPostExpired = (p: ICampaignParticipation): boolean => {
+export const lastPostExpired = (p: ICampaignParticipation): boolean => {
     const last = Math.max(...p.days.map(d => d.postedAt?.getTime() ?? 0));
     return last > 0 && Date.now() >= last + STATUS_LIFETIME_MS;
 };

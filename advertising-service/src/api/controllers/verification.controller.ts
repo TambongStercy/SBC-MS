@@ -11,7 +11,7 @@ import {
     NoCapacityError,
     activeCount,
 } from '../../services/verification-session.service';
-import { applyExtraction, bindWhatsAppIdentity } from '../../services/verification.service';
+import { applyExtraction, bindWhatsAppIdentity, lastPostExpired } from '../../services/verification.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
@@ -58,7 +58,14 @@ export const start = async (req: AuthenticatedRequest, res: Response) => {
         }
 
         const pending = participation.days.find(d => d.status !== DayStatus.VERIFIED);
-        if (!pending) throw new AppError('Toutes les journées sont déjà vérifiées.', 400);
+        // All days verified is no longer the end: the last status keeps
+        // collecting views for 24h, and re-verifying is how those views get
+        // counted before the sweep completes the participation. Only once the
+        // last status has expired is there truly nothing left to check.
+        if (!pending && lastPostExpired(participation)) {
+            throw new AppError('Toutes les journées sont déjà vérifiées.', 400);
+        }
+        const targetDay = pending ?? participation.days[participation.days.length - 1];
 
         // Two ways in. Diffuseurs link the same phone that is showing this page,
         // so pointing a camera at their own screen is not an option for most of
@@ -80,7 +87,7 @@ export const start = async (req: AuthenticatedRequest, res: Response) => {
         const session = startSession({
             diffuseurUserId: userId,
             participationId: participation._id,
-            day: pending.day,
+            day: targetDay.day,
             pairWithPhone,
             // Needed for the perceptual media check; without the bytes there is
             // nothing to compare against the campaign creative.
@@ -89,7 +96,7 @@ export const start = async (req: AuthenticatedRequest, res: Response) => {
 
         return res.status(201).json({
             success: true,
-            data: { sessionId: session.id, state: session.state, day: pending.day, method },
+            data: { sessionId: session.id, state: session.state, day: targetDay.day, method },
         });
     } catch (err) {
         return fail(res, err, 'startVerification');
