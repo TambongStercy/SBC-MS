@@ -74,8 +74,8 @@ const email = async (userId: string, subject: string, body: string, relatedData?
 export const notifyCampaignOffer = (userId: string, campaignTitle: string, expectedViews: number) =>
     email(
         userId,
-        'Nouvelle campagne disponible',
-        `Une nouvelle campagne est disponible pour vous : « ${campaignTitle} ».\n\n`
+        '📢 Nouvelle campagne disponible',
+        `✨ Une nouvelle campagne est disponible pour vous : « ${campaignTitle} ».\n\n`
         + `Elle est proposée à plusieurs diffuseurs et les premiers à accepter l'obtiennent. `
         + `Vous pourriez gagner environ ${expectedViews} vues sur 3 jours.\n\n`
         + `Connectez-vous à SBC pour l'accepter.`,
@@ -94,7 +94,7 @@ export const notifyVerificationDue = (
 ) =>
     email(
         userId,
-        'Vérifiez votre publication maintenant',
+        '⏰ Vérifiez votre publication maintenant',
         `Votre publication du jour ${day} pour « ${campaignTitle} » expire dans environ ${hoursLeft}h.\n\n`
         + `Connectez votre WhatsApp sur SBC dès maintenant pour que vos vues soient comptées. `
         + `Une fois le statut expiré, les vues de cette journée ne peuvent plus être récupérées.`,
@@ -111,7 +111,7 @@ export const notifyVerificationDue = (
 export const notifyDayOpened = (userId: string, campaignTitle: string, day: number) =>
     email(
         userId,
-        `Jour ${day} disponible`,
+        `🚀 Jour ${day} disponible`,
         `Vous pouvez maintenant publier le jour ${day} de « ${campaignTitle} ».\n\n`
         + `Publiez-le sur votre statut WhatsApp, puis vérifiez-le depuis SBC pour que vos `
         + `vues soient comptées.\n\n`
@@ -127,7 +127,7 @@ export const notifyDayOpened = (userId: string, campaignTitle: string, day: numb
 export const notifyDayDue = (userId: string, campaignTitle: string, day: number, graceRemaining: number) =>
     email(
         userId,
-        `Jour ${day} à publier`,
+        `📅 Jour ${day} à publier`,
         `Il est temps de publier le jour ${day} de « ${campaignTitle} ».\n\n`
         + (graceRemaining > 0
             ? `Il vous reste ${graceRemaining} jour(s) de report. Au-delà, vos gains sur cette campagne seront annulés.`
@@ -138,17 +138,17 @@ export const notifyDayDue = (userId: string, campaignTitle: string, day: number,
 export const notifyCampaignCompleted = (userId: string, campaignTitle: string, totalViews: number, earned: number) =>
     email(
         userId,
-        'Campagne terminée',
-        `Bravo ! Vous avez terminé les 3 jours de « ${campaignTitle} ».\n\n`
+        '🎉 Campagne terminée',
+        `🎊 Bravo ! Vous avez terminé les 3 jours de « ${campaignTitle} ».\n\n`
         + `Total : ${totalViews} vues vérifiées, ${earned} FCFA.\n\n`
-        + `Vos gains seront crédités sur votre solde publicitaire.`,
+        + `💰 Vos gains seront crédités sur votre solde publicitaire.`,
         { campaignTitle, totalViews, earned },
     );
 
 export const notifyCampaignForfeited = (userId: string, campaignTitle: string) =>
     email(
         userId,
-        'Campagne non terminée',
+        '😞 Campagne non terminée',
         `Votre campagne « ${campaignTitle} » n'a pas été terminée dans les délais et vos gains ont été annulés.\n\n`
         + `Pour vos prochaines campagnes, pensez à publier chaque jour et à vérifier votre statut avant qu'il n'expire.`,
         { campaignTitle },
@@ -158,8 +158,8 @@ export const notifyCampaignForfeited = (userId: string, campaignTitle: string) =
 export const notifyTestCampaignCompleted = (userId: string, measuredAverageViews: number) =>
     email(
         userId,
-        'Félicitations, votre profil diffuseur est validé',
-        `Vous avez terminé votre campagne test.\n\n`
+        '🏆 Félicitations, votre profil diffuseur est validé',
+        `🎉 Vous avez terminé votre campagne test.\n\n`
         + `Votre moyenne vérifiée est de ${measuredAverageViews} vues par publication. `
         + `Elle sera utilisée pour vous proposer des campagnes adaptées à votre audience.`,
         { measuredAverageViews },
@@ -168,8 +168,8 @@ export const notifyTestCampaignCompleted = (userId: string, measuredAverageViews
 export const notifyReferralUnlocked = (userId: string, rate: number) =>
     email(
         userId,
-        'Commission parrainage débloquée',
-        `Vous avez atteint 100 campagnes terminées.\n\n`
+        '💎 Commission parrainage débloquée',
+        `🌟 Vous avez atteint 100 campagnes terminées.\n\n`
         + `Vous gagnez désormais ${Math.round(rate * 100)}% sur les campagnes lancées par les annonceurs que vous avez invités. `
         + `Continuez à faire des campagnes pour conserver cet avantage.`,
         { rate },
@@ -178,7 +178,7 @@ export const notifyReferralUnlocked = (userId: string, rate: number) =>
 export const notifyReferralSuspended = (userId: string) =>
     email(
         userId,
-        'Commission parrainage suspendue',
+        '⚠️ Commission parrainage suspendue',
         `Votre commission parrainage est suspendue : aucune campagne terminée ce mois-ci alors que des campagnes vous ont été proposées.\n\n`
         + `Terminez une campagne pour la réactiver. Vous n'avez pas besoin de recommencer les 100 campagnes.`,
     );
@@ -191,8 +191,8 @@ export const notifyCampaignApproved = (userId: string, campaignTitle: string) =>
 
     return email(
         userId,
-        'Votre campagne est validée',
-        `Bonne nouvelle : votre campagne « ${campaignTitle} » a été validée par notre équipe.\n\n`
+        '✅ Votre campagne est validée',
+        `🚀 Bonne nouvelle : votre campagne « ${campaignTitle} » a été validée par notre équipe.\n\n`
         + `Il ne reste qu'une étape — le paiement. Rendez-vous sur votre espace annonceur `
         + `et cliquez sur « Payer et lancer » :\n\n${dashboardUrl}\n\n`
         + `Dès le paiement confirmé, votre campagne sera proposée aux diffuseurs.`,
@@ -210,7 +210,7 @@ export const notifyCampaignApproved = (userId: string, campaignTitle: string) =>
 export const notifyCampaignRejected = (userId: string, campaignTitle: string, reason: string) =>
     email(
         userId,
-        'Votre campagne n\'a pas été validée',
+        '❌ Votre campagne n\'a pas été validée',
         `Votre campagne « ${campaignTitle} » n'a pas été validée.\n\n`
         + `Motif : ${reason}\n\n`
         + `Vous pouvez la modifier et la soumettre à nouveau depuis votre espace annonceur :\n\n`
@@ -226,7 +226,7 @@ export const notifyCampaignRejected = (userId: string, campaignTitle: string, re
 export const notifyAdvertiserCampaignComplete = (userId: string, campaignTitle: string, uniqueViews: number) =>
     email(
         userId,
-        'Votre campagne est terminée',
+        '🎯 Votre campagne est terminée',
         `Votre campagne « ${campaignTitle} » a atteint son objectif : ${uniqueViews} vues uniques vérifiées.\n\n`
         + `Consultez votre tableau de bord pour le détail par diffuseur.`,
         { campaignTitle, uniqueViews },
