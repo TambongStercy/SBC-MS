@@ -1,4 +1,4 @@
-import { IDayProof, ICampaignParticipation } from '../database/models/campaign-participation.model';
+import { IDayProof, ICampaignParticipation, DayStatus } from '../database/models/campaign-participation.model';
 import config from '../config';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -58,9 +58,21 @@ export const openNextDay = (participation: ICampaignParticipation, postedDay: nu
     next.dueAt = new Date(opens.getTime() + DAY_MS);
 };
 
-/** The day the diffuseur owes next, if any. */
-export const currentDay = (participation: ICampaignParticipation): IDayProof | undefined =>
+/** The next day still owed a post. Drives posting and the forfeit clock. */
+export const nextUnpostedDay = (participation: ICampaignParticipation): IDayProof | undefined =>
     participation.days.find(d => !d.postedAt);
+
+/**
+ * The day the diffuseur is currently on — including one already posted but not
+ * yet verified.
+ *
+ * This used to be "first day with no postedAt", which meant a day disappeared
+ * from the schedule the instant it was marked posted. The screen then offered
+ * the *next* day to post instead of asking for verification, so the verify step
+ * was unreachable and three days could be posted back to back.
+ */
+export const currentDay = (participation: ICampaignParticipation): IDayProof | undefined =>
+    participation.days.find(d => d.status !== DayStatus.VERIFIED);
 
 /**
  * Whether this participation can no longer be saved.
@@ -68,7 +80,9 @@ export const currentDay = (participation: ICampaignParticipation): IDayProof | u
  * Either they never posted day 1 in time, or the full window has run out.
  */
 export const isBeyondRecovery = (participation: ICampaignParticipation, at: Date): boolean => {
-    const pending = currentDay(participation);
+    // Deliberately the unposted day: someone who has posted everything and is
+    // waiting on verification has not run out of anything.
+    const pending = nextUnpostedDay(participation);
     if (!pending) return false;
 
     const dayOnePosted = participation.days.find(d => d.day === 1)?.postedAt;
@@ -82,7 +96,7 @@ export const isBeyondRecovery = (participation: ICampaignParticipation, at: Date
 
 /** Shown to the diffuseur so they know exactly where they stand. */
 export const scheduleSummary = (participation: ICampaignParticipation, at = new Date()) => {
-    const pending = currentDay(participation);
+    const pending = nextUnpostedDay(participation);
     const dayOnePosted = participation.days.find(d => d.day === 1)?.postedAt;
 
     // Before day 1 the clock that matters is the 24h acceptance deadline; after it,
@@ -92,10 +106,30 @@ export const scheduleSummary = (participation: ICampaignParticipation, at = new 
         ? new Date(participation.acceptedAt.getTime() + config.campaign.durationDays * DAY_MS)
         : undefined;
 
+    const awaiting = participation.days.find(d => d.status === DayStatus.POSTED);
+
     return {
-        currentDay: pending?.day,
+        // The whole day, not just its number. The screen has to know whether it
+        // is waiting to be posted or waiting to be verified, and an integer
+        // cannot say that.
+        currentDay: pending
+            ? { day: pending.day, status: pending.status, windowOpensAt: pending.windowOpensAt }
+            : undefined,
+        daysCompleted: participation.days.filter(d => d.status === DayStatus.VERIFIED).length,
+        /** Posted, waiting on the diffuseur to link WhatsApp so views can be read. */
+        awaitingVerification: awaiting ? { day: awaiting.day, postedAt: awaiting.postedAt } : undefined,
         windowOpensAt: pending?.windowOpensAt,
-        canPostNow: Boolean(pending?.windowOpensAt && at >= pending.windowOpensAt),
+        // A day with no window has not been opened yet, so it cannot be posted.
+        // Treating an absent window as "no restriction" is what let three days go
+        // out in thirteen seconds.
+        canPostNow: Boolean(
+            pending
+            && pending.status === DayStatus.PENDING
+            && pending.windowOpensAt
+            && at >= pending.windowOpensAt,
+        ),
+        completionDeadline: participation.completionDeadline,
+        day1Deadline: participation.day1Deadline,
         deadline,
         hoursRemaining: deadline
             ? Math.max(0, Math.round((deadline.getTime() - at.getTime()) / HOUR_MS))
