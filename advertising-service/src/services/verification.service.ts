@@ -222,10 +222,16 @@ export const applyExtraction = async (
         consumedThisRun.add(match.statusMessageId);
 
         const earned = Math.round(match.viewCount * day.ratePerView * 100) / 100;
+        // A re-verification refreshes the count, nothing else. Re-assigning
+        // postedAt from the match is a no-op in real time (the status's
+        // timestamp never changes) but it rewrites history the simulation
+        // tools deliberately shifted — one "Revérifier" on day 1 was enough
+        // to snap every later day's window back to real time.
+        const firstVerification = day.status !== DayStatus.VERIFIED;
 
         day.status = DayStatus.VERIFIED;
         day.statusMessageId = match.statusMessageId;
-        day.postedAt = match.postedAt ?? undefined;
+        if (firstVerification) day.postedAt = match.postedAt ?? undefined;
         day.verifiedAt = new Date();
         day.captionCaptured = match.caption;
         day.trackingLinkPresent = true;
@@ -266,7 +272,10 @@ export const applyExtraction = async (
         day.deliveredCount = match.deliveredCount;
         day.earnedAmount = earned;
 
-        openNextDay(participation, day.day);
+        // Same reasoning: the next window was opened when this day was first
+        // verified; recomputing it on a re-check moves goalposts that later
+        // days may already be standing on.
+        if (firstVerification) openNextDay(participation, day.day);
 
         verdicts.push({
             day: day.day,

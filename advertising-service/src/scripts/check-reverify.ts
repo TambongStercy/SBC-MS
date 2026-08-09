@@ -97,6 +97,33 @@ const main = async () => {
     );
     check('and picks up the newer view count', again[0]?.viewCount === 17, `${again[0]?.viewCount}`);
 
+    // --- A re-check refreshes the count and nothing else ---
+    // The simulation tools shift timestamps to fast-forward a campaign; a
+    // re-verification that re-derives postedAt and the next window from the
+    // status's real timestamp silently undoes that shift (bitten on preprod
+    // 2026-08-09: one "Vérifier" snapped day 2's window back to real time).
+    fresh = (await CampaignParticipationModel.findById(participation._id))!;
+    const shiftedPosted = new Date(postedAt.getTime() - 18 * 60 * 60 * 1000);
+    const shiftedWindow = new Date(postedAt.getTime() - 2 * 60 * 60 * 1000);
+    fresh.days[0].postedAt = shiftedPosted; // day 1 is VERIFIED at this point
+    fresh.days[1].windowOpensAt = shiftedWindow;
+    await fresh.save();
+
+    await applyExtraction(participation._id, extraction('STATUS-1', 18, postedAt));
+    fresh = (await CampaignParticipationModel.findById(participation._id))!;
+    check(
+        're-verifying a verified day keeps its (possibly shifted) postedAt',
+        fresh.days[0].postedAt!.getTime() === shiftedPosted.getTime(),
+        `postedAt moved to ${fresh.days[0].postedAt?.toISOString()}`,
+    );
+    check(
+        "and does not snap the next day's window back to real time",
+        fresh.days[1].windowOpensAt!.getTime() === shiftedWindow.getTime(),
+        `window moved to ${fresh.days[1].windowOpensAt?.toISOString()}`,
+    );
+    check('while the count still refreshed upward', fresh.days[0].viewCount === 18,
+        `${fresh.days[0].viewCount}`);
+
     // --- One status cannot back two different days ---
     fresh = (await CampaignParticipationModel.findById(participation._id))!;
     fresh.days[0].status = DayStatus.POSTED;
