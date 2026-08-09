@@ -146,15 +146,28 @@ export const notifyReferralSuspended = (userId: string) =>
         + `Terminez une campagne pour la réactiver. Vous n'avez pas besoin de recommencer les 100 campagnes.`,
     );
 
-export const notifyCampaignApproved = (userId: string, campaignTitle: string) =>
-    email(
+export const notifyCampaignApproved = (userId: string, campaignTitle: string) => {
+    // Straight to the annonceur dashboard, where the "Payer et lancer" button is.
+    // An approval that does not say where to pay leaves the annonceur hunting for
+    // it, and the campaign sits unpaid.
+    const dashboardUrl = `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/annonceur`;
+
+    return email(
         userId,
         'Votre campagne est validée',
-        `Votre campagne « ${campaignTitle} » a été validée par notre équipe.\n\n`
-        + `Vous pouvez maintenant procéder au paiement pour la lancer. `
-        + `Dès le paiement confirmé, elle sera proposée aux diffuseurs.`,
-        { campaignTitle },
+        `Bonne nouvelle : votre campagne « ${campaignTitle} » a été validée par notre équipe.\n\n`
+        + `Il ne reste qu'une étape — le paiement. Rendez-vous sur votre espace annonceur `
+        + `et cliquez sur « Payer et lancer » :\n\n${dashboardUrl}\n\n`
+        + `Dès le paiement confirmé, votre campagne sera proposée aux diffuseurs.`,
+        {
+            campaignTitle,
+            // The notification service turns these into the button when the email
+            // is rendered as HTML.
+            ctaLabel: 'Payer et lancer ma campagne',
+            ctaUrl: dashboardUrl,
+        },
     );
+};
 
 /** The reason is the whole point of this mail: without it nothing can be corrected. */
 export const notifyCampaignRejected = (userId: string, campaignTitle: string, reason: string) =>
@@ -163,8 +176,14 @@ export const notifyCampaignRejected = (userId: string, campaignTitle: string, re
         'Votre campagne n\'a pas été validée',
         `Votre campagne « ${campaignTitle} » n'a pas été validée.\n\n`
         + `Motif : ${reason}\n\n`
-        + `Vous pouvez la modifier et la soumettre à nouveau depuis votre tableau de bord annonceur.`,
-        { campaignTitle, reason },
+        + `Vous pouvez la modifier et la soumettre à nouveau depuis votre espace annonceur :\n\n`
+        + `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/annonceur`,
+        {
+            campaignTitle,
+            reason,
+            ctaLabel: 'Modifier ma campagne',
+            ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/annonceur`,
+        },
     );
 
 export const notifyAdvertiserCampaignComplete = (userId: string, campaignTitle: string, uniqueViews: number) =>

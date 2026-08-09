@@ -32,6 +32,11 @@ const ownedCampaign = async (req: AuthenticatedRequest) => {
     const campaign = await CampaignModel.findOne({
         _id: req.params.id,
         advertiserUserId: currentUserId(req),
+        // The test campaign belongs to SBC and is managed in the admin panel.
+        // It is stored against the admin's user id, so without this it would
+        // appear among that admin's own campaigns — and its view counts are not
+        // an annonceur-facing number.
+        isTestCampaign: { $ne: true },
     });
     if (!campaign) throw new AppError('Campagne introuvable.', 404);
     return campaign;
@@ -118,7 +123,10 @@ export const listMine = async (req: AuthenticatedRequest, res: Response) => {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(50, Number(req.query.limit) || 20);
 
-        const filter: Record<string, unknown> = { advertiserUserId: userId };
+        const filter: Record<string, unknown> = {
+            advertiserUserId: userId,
+            isTestCampaign: { $ne: true },
+        };
         if (req.query.status) filter.status = req.query.status;
 
         const [items, total] = await Promise.all([

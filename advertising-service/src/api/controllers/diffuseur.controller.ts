@@ -116,6 +116,15 @@ export const getMyProfile = async (req: AuthenticatedRequest, res: Response) => 
                 effectiveAverageViews: profile.hasCompletedTestCampaign && profile.measuredAverageViews != null
                     ? profile.measuredAverageViews
                     : (profile.declaredAverageViews ?? 0),
+                // Where the diffuseur stands. Until the test campaign is done
+                // their audience is only what they claimed, and they receive no
+                // paid work — so the UI has to say so plainly rather than leaving
+                // them wondering why nothing ever arrives.
+                verification: {
+                    verified: profile.hasCompletedTestCampaign,
+                    whatsappLinked: Boolean(profile.whatsappLid),
+                    label: profile.hasCompletedTestCampaign ? 'Diffuseur vérifié' : 'En cours de vérification',
+                },
                 referral: {
                     tier: profile.referralTier,
                     campaignsCompleted: profile.campaignsCompleted,
