@@ -9,6 +9,8 @@ export interface IUserProfile {
     name?: string;
     email?: string;
     phoneNumber?: string;
+    /** Cloud Storage id or Drive id; the admin panel resolves it to a URL. */
+    avatar?: string;
     country?: string;
     /** Doubles as the diffuseur's affiliate code on their tracking links. */
     referralCode?: string;

@@ -17,6 +17,7 @@ import {
     offerTestCampaignToNewDiffuseurs,
 } from '../../services/test-campaign.service';
 import { getUserProfiles } from '../../services/clients/user.service.client';
+import { previewSignature } from './public.controller';
 import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/clients/notification.service.client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
@@ -92,6 +93,10 @@ export const listForReview = async (req: AuthenticatedRequest, res: Response) =>
                 return {
                     ...c.toObject(),
                     landingPageUrl: `${config.publicBaseUrl.replace(/\/$/, '')}/a/${c.landingPageSlug}`,
+                    // Signed, so an admin can open a campaign that is not live yet
+                    // — which is every campaign in this queue.
+                    previewUrl: `${config.publicBaseUrl.replace(/\/$/, '')}/a/${c.landingPageSlug}`
+                        + `?preview=${previewSignature(c.landingPageSlug)}`,
                     progress: campaignProgress(c),
                     advertiser: profileById.get(String(c.advertiserUserId)) ?? null,
                     priorApprovedCampaigns: priorApprovals,
