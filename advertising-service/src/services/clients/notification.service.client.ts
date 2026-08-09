@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../../config';
 import logger from '../../utils/logger';
+import { getUserProfile } from './user.service.client';
 
 const log = logger.getLogger('NotificationServiceClient');
 
@@ -51,13 +52,23 @@ const send = async (payload: InternalNotificationPayload): Promise<boolean> => {
     }
 };
 
-const email = (userId: string, subject: string, body: string, relatedData?: Record<string, unknown>) =>
-    send({
+const email = async (userId: string, subject: string, body: string, relatedData?: Record<string, unknown>) => {
+    // notification-service refuses an email without its address (400): it does
+    // not resolve userId → email itself. Fetching it here is what every other
+    // consumer does — and skipping it meant no advertising mail ever sent.
+    const profile = await getUserProfile(userId).catch(() => null);
+    if (!profile?.email) {
+        log.warn(`No email address for user ${userId}; notification "${subject}" not sent`);
+        return false;
+    }
+    return send({
         userId,
         type: 'system',
         channel: 'email',
+        recipient: profile.email,
         data: { subject, body, relatedData },
     });
+};
 
 /** French throughout: the diffuseur audience is Cameroon and francophone Africa. */
 export const notifyCampaignOffer = (userId: string, campaignTitle: string, expectedViews: number) =>
