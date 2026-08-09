@@ -1,5 +1,9 @@
 # SBC Ads Network — implementation plan and handover
 
+Companion to `ADVERTISING-FEATURE-SPEC.md` (business rules) and
+`ADVERTISING-LESSONS.md` (**read this before touching the code** — every bug that
+reached preprod and why it was invisible until someone used the screen).
+
 Companion to `ADVERTISING-FEATURE-SPEC.md`, which holds the business rules. This
 one holds **where the work stands and what to do next**. Read the spec first.
 
