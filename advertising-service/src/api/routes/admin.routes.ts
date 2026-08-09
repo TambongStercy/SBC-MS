@@ -7,6 +7,10 @@ import {
     getAnalytics,
     getCampaignPerformance,
     listDiffuseurs,
+    getSimulationState,
+    runSimulatePayment,
+    runShiftClock,
+    runSimulateVerification,
     getTestCampaignConfig,
     saveTestCampaign,
     removeTestCampaign,
@@ -23,6 +27,13 @@ router.use(authenticate, authorizeAdmin);
 router.get('/analytics', getAnalytics);
 router.get('/campaigns', listForReview);
 router.get('/diffuseurs', listDiffuseurs);
+
+// Preprod testing tools. simulation.service refuses these outright when
+// NODE_ENV is production or SIMULATION_ENABLED is not 'true'.
+router.get('/simulation', getSimulationState);
+router.post('/simulation/campaigns/:id/pay', runSimulatePayment);
+router.post('/simulation/participations/:id/shift', runShiftClock);
+router.post('/simulation/participations/:id/verify', runSimulateVerification);
 
 // The test campaign: SBC's own, used to measure a new diffuseur's real audience
 // before they are trusted with work an annonceur paid for.
