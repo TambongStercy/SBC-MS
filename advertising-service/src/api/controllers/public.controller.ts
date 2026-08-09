@@ -70,7 +70,12 @@ export const renderLandingPage = async (req: Request, res: Response) => {
             // The tracking link doubles as the diffuseur's affiliate link, so a
             // visitor who joins SBC through it is credited to them. Only shown on
             // a diffuseur's link — /a/:slug has nobody to credit.
-            hasSignup: Boolean(trackingCode),
+            // The test campaign sells nothing — its page is the recruitment
+            // pitch, so the signup button is the whole point rather than a
+            // footer extra, and it shows even without a tracking code.
+            isTestCampaign: Boolean(campaign.isTestCampaign),
+            landingVideoUrl: campaign.landingVideoFileId ? mediaUrl(campaign.landingVideoFileId) : null,
+            hasSignup: Boolean(trackingCode) || Boolean(campaign.isTestCampaign),
             signupUrl: `${actionBase}/signup`,
         });
     } catch (err) {
@@ -117,7 +122,12 @@ export const handleAction = async (req: Request, res: Response) => {
         // carrying the diffuseur's referral code, so it resolves its target from
         // the diffuseur rather than from the campaign.
         if (req.params.action === 'signup') {
-            if (!resolved.diffuseurUserId) return res.status(404).render('not-found');
+            // Untracked signups are allowed on the test campaign: it is SBC's own
+            // recruitment page, so there is simply nobody to credit rather than
+            // an attribution that went missing.
+            if (!resolved.diffuseurUserId && !resolved.campaign.isTestCampaign) {
+                return res.status(404).render('not-found');
+            }
 
             await recordClick({
                 req,
@@ -128,7 +138,9 @@ export const handleAction = async (req: Request, res: Response) => {
 
             // A missing referral code costs the diffuseur the credit but must not
             // cost the visitor the signup.
-            const profile = await getUserProfile(resolved.diffuseurUserId).catch(() => null);
+            const profile = resolved.diffuseurUserId
+                ? await getUserProfile(resolved.diffuseurUserId).catch(() => null)
+                : null;
             const signupUrl = new URL('/signup', config.appBaseUrl);
             if (profile?.referralCode) signupUrl.searchParams.set('affiliationCode', profile.referralCode);
 

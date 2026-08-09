@@ -10,6 +10,12 @@ import {
     campaignProgress,
 } from '../../services/campaign.service';
 import { overview, monthlySeries, inFlight } from '../../services/analytics.service';
+import {
+    getTestCampaign,
+    upsertTestCampaign,
+    retireTestCampaign,
+    offerTestCampaignToNewDiffuseurs,
+} from '../../services/test-campaign.service';
 import { getUserProfiles } from '../../services/clients/user.service.client';
 import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/clients/notification.service.client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -199,6 +205,69 @@ export const listDiffuseurs = async (req: AuthenticatedRequest, res: Response) =
         });
     } catch (err) {
         return fail(res, err, 'listDiffuseurs');
+    }
+};
+
+/**
+ * The test campaign an admin has configured, with how many diffuseurs it has
+ * measured so far. Answers 200 with data: null when there is none — an empty
+ * editor is a normal state, not an error.
+ */
+export const getTestCampaignConfig = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await getTestCampaign();
+        if (!campaign) return res.json({ success: true, data: null });
+
+        const [offered, inProgress, completed] = await Promise.all([
+            CampaignParticipationModel.countDocuments({ campaignId: campaign._id, status: 'offered' }),
+            CampaignParticipationModel.countDocuments({ campaignId: campaign._id, status: 'in_progress' }),
+            CampaignParticipationModel.countDocuments({ campaignId: campaign._id, status: 'completed' }),
+        ]);
+
+        return res.json({
+            success: true,
+            data: {
+                ...campaign.toObject(),
+                landingPageUrl: `${config.publicBaseUrl.replace(/\/$/, '')}/a/${campaign.landingPageSlug}`,
+                stats: { offered, inProgress, measured: completed },
+            },
+        });
+    } catch (err) {
+        return fail(res, err, 'getTestCampaignConfig');
+    }
+};
+
+/** Creates the test campaign, or edits the live one in place. */
+export const saveTestCampaign = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await upsertTestCampaign(adminUserId(req), req.body);
+        // Push it to anyone waiting on one straight away, rather than making the
+        // admin wait for the next scheduler tick to see it take effect.
+        const offered = await offerTestCampaignToNewDiffuseurs().catch(() => 0);
+
+        return res.json({
+            success: true,
+            data: {
+                ...campaign.toObject(),
+                landingPageUrl: `${config.publicBaseUrl.replace(/\/$/, '')}/a/${campaign.landingPageSlug}`,
+                offeredNow: offered,
+            },
+        });
+    } catch (err) {
+        return fail(res, err, 'saveTestCampaign');
+    }
+};
+
+/**
+ * Retires it. New diffuseurs then go straight to paid campaigns on their
+ * declared figure, so this is a deliberate loosening, not a delete.
+ */
+export const removeTestCampaign = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const retired = await retireTestCampaign();
+        return res.json({ success: true, data: { retired } });
+    } catch (err) {
+        return fail(res, err, 'removeTestCampaign');
     }
 };
 

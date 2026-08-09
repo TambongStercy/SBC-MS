@@ -179,6 +179,49 @@ export const rejectAdsCampaign = async (campaignId: string, reason: string) => {
     return data.data;
 };
 
+export interface TestCampaign {
+    _id: string;
+    title: string;
+    description?: string;
+    mediaFileId: string;
+    mediaType: 'image' | 'video';
+    suggestedCaption?: string;
+    landingVideoFileId?: string;
+    contactWhatsapp?: string;
+    contactPhone?: string;
+    websiteUrl?: string;
+    landingPageUrl?: string;
+    stats?: { offered: number; inProgress: number; measured: number };
+}
+
+/** Answers `null` when no test campaign is configured — an empty editor, not an error. */
+export const getTestCampaign = async (): Promise<TestCampaign | null> => {
+    const { data } = await apiClient.get('/advertising/admin/test-campaign');
+    return data.data ?? null;
+};
+
+export const saveTestCampaign = async (body: Partial<TestCampaign>): Promise<TestCampaign> => {
+    const { data } = await apiClient.put('/advertising/admin/test-campaign', body);
+    return data.data;
+};
+
+export const retireTestCampaign = async () => {
+    const { data } = await apiClient.delete('/advertising/admin/test-campaign');
+    return data.data as { retired: boolean };
+};
+
+/** Generic upload; returns the fileId the campaign stores. */
+export const uploadAdsFile = async (file: File): Promise<string> => {
+    const form = new FormData();
+    form.append('file', file);
+    const { data } = await apiClient.post('/settings/files/upload', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const fileId = data?.data?.fileId;
+    if (!fileId) throw new Error("Le fichier n'a pas pu être envoyé.");
+    return fileId;
+};
+
 export const getDiffuseurLeaderboard = async (params: {
     page?: number;
     limit?: number;

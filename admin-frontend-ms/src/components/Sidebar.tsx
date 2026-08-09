@@ -29,7 +29,8 @@ import {
   TrendingUp,
   Heart,
   Megaphone,
-  ShieldCheck
+  ShieldCheck,
+  FlaskConical
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -153,6 +154,12 @@ const SIDEBAR_GROUPS = [
         icon: Trophy,
         color: "#10b981",
         path: "/ads-network/diffuseurs",
+      },
+      {
+        name: "Campagne test",
+        icon: FlaskConical,
+        color: "#06b6d4",
+        path: "/ads-network/test-campaign",
       },
     ]
   },

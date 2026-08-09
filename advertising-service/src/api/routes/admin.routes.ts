@@ -7,6 +7,9 @@ import {
     getAnalytics,
     getCampaignPerformance,
     listDiffuseurs,
+    getTestCampaignConfig,
+    saveTestCampaign,
+    removeTestCampaign,
 } from '../controllers/admin.controller';
 
 /**
@@ -20,6 +23,12 @@ router.use(authenticate, authorizeAdmin);
 router.get('/analytics', getAnalytics);
 router.get('/campaigns', listForReview);
 router.get('/diffuseurs', listDiffuseurs);
+
+// The test campaign: SBC's own, used to measure a new diffuseur's real audience
+// before they are trusted with work an annonceur paid for.
+router.get('/test-campaign', getTestCampaignConfig);
+router.put('/test-campaign', saveTestCampaign);
+router.delete('/test-campaign', removeTestCampaign);
 router.get('/campaigns/:id/performance', getCampaignPerformance);
 router.post('/campaigns/:id/approve', approve);
 router.post('/campaigns/:id/reject', reject);
