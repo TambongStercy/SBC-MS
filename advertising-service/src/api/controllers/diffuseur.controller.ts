@@ -267,6 +267,57 @@ export const markPosted = async (req: AuthenticatedRequest, res: Response) => {
     }
 };
 
+/**
+ * Undo for a premature « J'ai publié ».
+ *
+ * A misclick left the day stuck in verification mode with no way back from the
+ * platform: verification finds nothing (nothing was posted) and the posting
+ * button never returns. Allowed only while the day has never actually been
+ * verified — a day with a matched status is history, not a misclick.
+ */
+export const unmarkPosted = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = currentUserId(req);
+        const participation = await CampaignParticipationModel.findOne({
+            _id: req.params.id,
+            diffuseurUserId: userId,
+        });
+        if (!participation) throw new AppError('Participation introuvable.', 404);
+        if (participation.status !== ParticipationStatus.IN_PROGRESS) {
+            throw new AppError("Cette campagne n'est pas en cours.", 400);
+        }
+
+        const posted = participation.days.find(d => d.status === DayStatus.POSTED);
+        if (!posted) throw new AppError('Aucune publication à annuler.', 400);
+        if (posted.statusMessageId) {
+            // A verification already matched a real status to this day.
+            throw new AppError('Cette journée a déjà été vérifiée et ne peut plus être annulée.', 400);
+        }
+
+        posted.status = DayStatus.PENDING;
+        posted.postedAt = undefined;
+        // The premature click also armed the next day's 24h clock — disarm it,
+        // it will be re-derived from the real post.
+        const next = participation.days.find(d => d.day === posted.day + 1);
+        if (next && next.status === DayStatus.PENDING) {
+            next.windowOpensAt = undefined;
+            next.dueAt = undefined;
+            next.dayOpenedNotifiedAt = undefined;
+        }
+        await participation.save();
+
+        return res.json({
+            success: true,
+            data: {
+                day: posted.day,
+                schedule: scheduleSummary(participation, new Date()),
+            },
+        });
+    } catch (err) {
+        return fail(res, err, 'unmarkPosted');
+    }
+};
+
 /** Campaigns offered to or accepted by this diffuseur. */
 export const listMyParticipations = async (req: AuthenticatedRequest, res: Response) => {
     try {
