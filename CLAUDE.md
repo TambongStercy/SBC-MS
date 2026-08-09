@@ -333,6 +333,18 @@ targeting (fixed 2026-08-08); `sbclove-service` avoided it with its own
 (`advertising-details`, `sbclove-details`) rather than reusing `batch-details`.
 Always read the repository's `.select()` before trusting an internal route.
 
+### notification-service internal sends: exact path AND recipient required
+
+`POST /api/notifications/internal/create` — the `/notifications` segment is
+mandatory (`/api/internal/create` 404s), and the **email channel requires
+`recipient`** (the address itself — the service does NOT resolve userId→email;
+missing it 400s). Both failures are invisible at call sites because every
+client is deliberately best-effort. Discovered 2026-08-09: every advertising
+email ever (offers, approvals, day-opened) had silently failed on both counts;
+tombola's PUSH channel skips the recipient requirement, sbclove was correct.
+When adding a notification call, test one real delivery — a 2xx-shaped silence
+proves nothing.
+
 ### Health endpoints aren't standardised
 
 | Service (prod port / preprod port) | Health path |

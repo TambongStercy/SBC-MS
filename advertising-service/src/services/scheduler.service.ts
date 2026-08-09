@@ -6,7 +6,7 @@ import CampaignParticipationModel, {
     ParticipationStatus,
 } from '../database/models/campaign-participation.model';
 import DiffuseurProfileModel, { ReferralTier } from '../database/models/diffuseur-profile.model';
-import { forfeitExpired } from './verification.service';
+import { forfeitExpired, completeMaturedParticipations } from './verification.service';
 import { sweepPendingPayouts } from './payout.service';
 import { sweepReferralCommissions } from './referral-commission.service';
 import { nextUnpostedDay, scheduleSummary } from './day-window.service';
@@ -326,6 +326,10 @@ export const runScheduledJobs = async (): Promise<void> => {
         ['announceOpenedDays', announceOpenedDays],
         ['remindDueDays', remindDueDays],
         ['sweepForfeits', sweepForfeits],
+        // A participation completes when its LAST status expires (24h after the
+        // final post), not at the final click on « Vérifier » — the last day
+        // keeps collecting views until WhatsApp kills the status.
+        ['completeMaturedParticipations', completeMaturedParticipations],
         ['sweepReferralSuspensions', sweepReferralSuspensions],
         ['sweepCompletedCampaigns', sweepCompletedCampaigns],
         // Returns credit held by campaigns whose payment page was abandoned. No
