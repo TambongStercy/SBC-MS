@@ -5,7 +5,7 @@ import CampaignParticipationModel, { ParticipationStatus, DayStatus } from '../.
 import CampaignModel from '../../database/models/campaign.model';
 import { acceptOffer } from '../../services/allocation.service';
 import { buildTrackingUrl, buildShareCaption } from '../../services/tracking.service';
-import { scheduleSummary, currentDay } from '../../services/day-window.service';
+import { scheduleSummary, nextUnpostedDay, openNextDay } from '../../services/day-window.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import { getUserProfile, IUserProfile } from '../../services/clients/user.service.client';
@@ -214,11 +214,31 @@ export const markPosted = async (req: AuthenticatedRequest, res: Response) => {
             throw new AppError("Cette campagne n'est pas en cours.", 400);
         }
 
-        const pending = currentDay(participation);
+        const pending = nextUnpostedDay(participation);
         if (!pending) throw new AppError('Toutes les journées sont déjà publiées.', 400);
 
+        // One day at a time. A day already posted has to be verified before the
+        // next opens, otherwise three days go out in the same minute and there is
+        // nothing left to verify against — which is exactly what happened.
+        const awaiting = participation.days.find(d => d.status === DayStatus.POSTED);
+        if (awaiting) {
+            throw new AppError(
+                `Vérifiez d'abord votre publication du jour ${awaiting.day} avant de publier la suivante.`,
+                400,
+            );
+        }
+
         const now = new Date();
-        if (pending.windowOpensAt && now < pending.windowOpensAt) {
+        // No window means the day has not been opened yet. Previously an absent
+        // window was read as "no restriction", which is how days 2 and 3 became
+        // postable immediately.
+        if (!pending.windowOpensAt) {
+            throw new AppError(
+                `Le jour ${pending.day} n'est pas encore ouvert. Il s'ouvre 24 h après la publication précédente.`,
+                400,
+            );
+        }
+        if (now < pending.windowOpensAt) {
             throw new AppError(
                 `Le jour ${pending.day} ne peut pas encore être publié. Réessayez après ${pending.windowOpensAt.toLocaleString('fr-FR')}.`,
                 400,
@@ -227,6 +247,11 @@ export const markPosted = async (req: AuthenticatedRequest, res: Response) => {
 
         pending.status = DayStatus.POSTED;
         pending.postedAt = now;
+        // Start the next day's 24h clock from this post, as openNextDay's own
+        // contract says. It was only ever called from verification, so a day
+        // posted but not yet verified left the following day with no window at
+        // all.
+        openNextDay(participation, pending.day);
         await participation.save();
 
         return res.json({
