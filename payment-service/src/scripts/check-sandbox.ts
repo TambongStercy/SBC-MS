@@ -85,9 +85,13 @@ const main = async () => {
     const notificationService = require('../services/clients/notification.service.client').default;
 
     const balanceCalls: Array<{ userId: string; amount: number }> = [];
+    const usdBalanceCalls: Array<{ userId: string; amount: number }> = [];
     userServiceClient.updateUserBalance = async (userId: string, amount: number) => {
         balanceCalls.push({ userId, amount });
         return true;
+    };
+    userServiceClient.updateUserUsdBalance = async (userId: string, amount: number) => {
+        usdBalanceCalls.push({ userId, amount });
     };
     userServiceClient.getUserDetails = async () => ({ email: null, name: 'Check' });
     notificationService.sendTransactionSuccessEmail = async () => true;
@@ -182,6 +186,83 @@ const main = async () => {
     await sandboxSweeper.sweep();
     check('a second sweep debits nothing', balanceCalls.filter(c => c.amount < 0).length === 0,
         `${balanceCalls.length} calls`);
+
+    // --- Hosted-checkout payins: the sandbox checkout page resolves them ---
+    const hostedIntent = await seedIntent('hang'); // interactive payins park as hang
+    await sandboxSweeper.sweep();
+    const hostedStill = await PaymentIntentModel.findById(hostedIntent._id);
+    check('a hosted-checkout payin waits for the page, not the sweeper',
+        hostedStill?.status === PaymentStatus.PENDING_PROVIDER, hostedStill?.status);
+
+    const resolved = await paymentService.resolveSandboxPayin(hostedIntent.sessionId, 'success');
+    check('the checkout page button resolves it', resolved.status === PaymentStatus.SUCCEEDED, resolved.status);
+    const resolvedAgain = await paymentService.resolveSandboxPayin(hostedIntent.sessionId, 'fail');
+    check('resolving twice keeps the first terminal state',
+        resolvedAgain.status === PaymentStatus.SUCCEEDED, resolvedAgain.status);
+
+    const realIntent = await PaymentIntentModel.create({
+        sessionId: `sbx_check_real_${n++}`,
+        userId: String(new Types.ObjectId()),
+        paymentType: 'SUBSCRIPTION',
+        amount: 2070,
+        currency: 'XAF',
+        gateway: PaymentGateway.MONEYFUSION,
+        gatewayPaymentId: 'MF-real-token',
+        status: PaymentStatus.PENDING_PROVIDER,
+    });
+    let refusedReal = false;
+    try { await paymentService.resolveSandboxPayin(realIntent.sessionId, 'success'); } catch { refusedReal = true; }
+    check('the page cannot resolve a NON-sandbox payment', refusedReal,
+        'a real provider reference must never be short-circuited');
+
+    // --- Crypto payouts: NOWPayments path, debit-on-success in USD ---
+    const cryptoOk = await TransactionModel.create({
+        transactionId: `sbx_crypto_${n++}`,
+        userId: new Types.ObjectId(),
+        type: TransactionType.WITHDRAWAL,
+        amount: 50,
+        currency: Currency.USD,
+        fee: 2,
+        status: TransactionStatus.PROCESSING,
+        description: 'sandbox check crypto withdrawal',
+        externalTransactionId: sandbox.makeSandboxRef('success'),
+        metadata: { serviceProvider: 'nowpayments', cryptoAddress: 'TXyzSandbox' },
+    });
+    const cryptoFail = await TransactionModel.create({
+        transactionId: `sbx_crypto_${n++}`,
+        userId: new Types.ObjectId(),
+        type: TransactionType.WITHDRAWAL,
+        amount: 60,
+        currency: Currency.USD,
+        fee: 2,
+        status: TransactionStatus.PROCESSING,
+        description: 'sandbox check crypto withdrawal',
+        externalTransactionId: sandbox.makeSandboxRef('fail'),
+        metadata: { serviceProvider: 'nowpayments', cryptoAddress: 'TXyzSandbox' },
+    });
+    usdBalanceCalls.length = 0;
+    await sandboxSweeper.sweep();
+    const cryptoOkAfter = await TransactionModel.findById(cryptoOk._id);
+    const cryptoFailAfter = await TransactionModel.findById(cryptoFail._id);
+    check('crypto payout success → COMPLETED', cryptoOkAfter?.status === TransactionStatus.COMPLETED, cryptoOkAfter?.status);
+    check('crypto payout failure → FAILED', cryptoFailAfter?.status === TransactionStatus.FAILED, cryptoFailAfter?.status);
+    check('crypto success debits USD balance once (amount + fee)',
+        usdBalanceCalls.length === 1 && usdBalanceCalls[0].amount === -52,
+        usdBalanceCalls.map(c => c.amount).join(', '));
+
+    const nowPaymentsService = require('../services/nowpayments.service').default;
+    const npInit = await nowPaymentsService.createPayout({
+        address: 'TXyz', currency: 'usdttrc20', amount: 50,
+        ipnCallbackUrl: 'http://localhost/unused',
+    });
+    check('NOWPayments payout initiation returns a sandbox id', sandbox.isSandboxRef(npInit.id), npInit.id);
+    let npRejected = false;
+    try {
+        await nowPaymentsService.createPayout({ address: 'TXyz', currency: 'usdttrc20', amount: 2003, ipnCallbackUrl: 'x' });
+    } catch { npRejected = true; }
+    check('crypto amount ..03 is rejected at initiation', npRejected);
+    const npStatus = await nowPaymentsService.getPayoutStatus(sandbox.makeSandboxRef('success'));
+    check('NOWPayments status check answers from the reference', npStatus.status === 'finished', npStatus.status);
 
     // --- Provider stubs answer for sandbox refs without calling out ---
     const { feexPayPayoutService } = require('../services/feexpay-payout.service');

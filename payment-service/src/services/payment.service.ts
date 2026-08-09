@@ -3249,26 +3249,41 @@ class PaymentService {
     /**
      * Sandbox replacement for a provider payin initiation (preprod only).
      *
-     * The phone number's magic ending decides the outcome (see sandbox.service).
-     * The intent is parked in PENDING_PROVIDER with a self-describing SBX-
-     * reference; the sandbox sweeper later drives it to its terminal state
-     * through addWebhookEvent + handlePaymentCompletion — the exact two calls
-     * every real provider webhook handler ends with — so subscription and
-     * campaign activation run unchanged.
+     * Two shapes, mirroring the two real flows:
+     *  - FeexPay-style request-to-pay: the phone was typed on OUR page, so its
+     *    magic ending decides the outcome and the sweeper resolves it after the
+     *    delay — no user interaction left to fake.
+     *  - Hosted-checkout (MoneyFusion, CinetPay, crypto): the user never enters
+     *    anything on our page — the provider's checkout did that job. Here the
+     *    intent parks as 'hang' and the user is redirected to OUR sandbox
+     *    checkout page, whose buttons choose the outcome. Abandoning the page
+     *    equals abandoning a real checkout: the payment just stays pending.
+     *
+     * Either way, resolution runs through addWebhookEvent +
+     * handlePaymentCompletion — the exact two calls every real provider webhook
+     * handler ends with — so subscription and campaign activation run unchanged.
      */
     private async applySandboxPayin(
         paymentIntent: IPaymentIntent,
         phone: string,
-        checkoutUrl?: string,
+        interactive: boolean,
     ): Promise<IPaymentIntent> {
-        const outcome = sandbox.payinOutcomeForPhone(phone);
-        log.warn(`SANDBOX payin for session ${paymentIntent.sessionId}: phone=${phone}, outcome=${outcome}`);
+        let outcome: sandbox.SandboxOutcome;
+        let checkoutUrl: string | undefined;
 
-        if (outcome === 'reject') {
-            throw new Error('SANDBOX: paiement refusé par l\'opérateur (numéro magique ..00).');
+        if (interactive) {
+            outcome = 'hang'; // the checkout page resolves it, not the clock
+            checkoutUrl = `${config.paymentServiceBaseUrl}/api/payments/sandbox/checkout/${paymentIntent.sessionId}`;
+        } else {
+            outcome = sandbox.payinOutcomeForPhone(phone);
+            if (outcome === 'reject') {
+                log.warn(`SANDBOX payin for session ${paymentIntent.sessionId}: phone=${phone}, rejected at initiation`);
+                throw new Error('SANDBOX: paiement refusé par l\'opérateur (numéro magique ..00).');
+            }
         }
+        log.warn(`SANDBOX payin for session ${paymentIntent.sessionId}: phone=${phone || 'n/a'}, interactive=${interactive}, outcome=${outcome}`);
 
-        const ref = sandbox.makeSandboxRef(outcome);
+        const ref = sandbox.makeSandboxRef(outcome as Exclude<sandbox.SandboxOutcome, 'reject'>);
         const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
             gatewayPaymentId: ref,
             gatewayCheckoutUrl: checkoutUrl,
@@ -3278,6 +3293,40 @@ class PaymentService {
         if (!updated) {
             throw new Error('Failed to update payment intent after sandbox initiation');
         }
+        return updated;
+    }
+
+    /**
+     * Resolves a hosted-checkout sandbox payin from the sandbox checkout page.
+     * Same completion calls as every real webhook handler.
+     */
+    public async resolveSandboxPayin(sessionId: string, outcome: 'success' | 'fail'): Promise<IPaymentIntent> {
+        if (!sandbox.isSandboxActive()) {
+            throw new AppError('Sandbox is not active.', 404);
+        }
+        const intent = await paymentIntentRepository.findBySessionId(sessionId);
+        if (!intent) {
+            throw new AppError('Payment session not found.', 404);
+        }
+        if (!sandbox.isSandboxRef(intent.gatewayPaymentId)) {
+            throw new AppError('Not a sandbox payment.', 400);
+        }
+        if (intent.status === PaymentStatus.SUCCEEDED || intent.status === PaymentStatus.FAILED) {
+            return intent; // already terminal — the page was refreshed or double-clicked
+        }
+
+        const newStatus = outcome === 'success' ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED;
+        log.warn(`SANDBOX: checkout page resolved payin ${sessionId} → ${newStatus}`);
+
+        const updated = await paymentIntentRepository.addWebhookEvent(sessionId, newStatus, {
+            sandbox: true,
+            resolvedBy: 'sandbox-checkout-page',
+            outcome,
+        });
+        if (!updated) {
+            throw new AppError('Failed to update payment intent.', 500);
+        }
+        await this.handlePaymentCompletion(updated);
         return updated;
     }
 
@@ -3337,7 +3386,8 @@ class PaymentService {
         }
 
         if (sandbox.isSandboxActive()) {
-            return this.applySandboxPayin(paymentIntent, String(phoneNumberAsInt));
+            // Request-to-pay: the phone was typed on our page — magic ending rules.
+            return this.applySandboxPayin(paymentIntent, String(phoneNumberAsInt), false);
         }
 
         // Log details before sending
@@ -3493,14 +3543,10 @@ class PaymentService {
             log.info(`Initiating MoneyFusion payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
 
             if (sandbox.isSandboxActive()) {
-                // MF's hosted checkout doesn't exist in sandbox — the magic phone
-                // is the one submitted on our payment page, and the "checkout"
-                // is our own status page.
-                return await this.applySandboxPayin(
-                    paymentIntent,
-                    paymentIntent.phoneNumber || '',
-                    `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`,
-                );
+                // MoneyFusion is hosted-checkout: the payment phone is normally
+                // entered on MF's page, which the sandbox has no equivalent of —
+                // so the sandbox checkout page plays the provider's role.
+                return await this.applySandboxPayin(paymentIntent, paymentIntent.phoneNumber || '', true);
             }
 
             // MoneyFusion's `numeroSend` is the contact phone, not the payment phone
@@ -3900,13 +3946,9 @@ class PaymentService {
                 throw new Error('Payment intent missing country code for CinetPay payment');
             }
             if (sandbox.isSandboxActive()) {
-                // No hosted checkout in sandbox — land the user straight on our
-                // own status page, which flips when the sweeper resolves the payin.
-                return this.applySandboxPayin(
-                    paymentIntent,
-                    paymentIntent.phoneNumber || '',
-                    `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`,
-                );
+                // CinetPay is hosted-checkout: our page never collects payment
+                // details, so the sandbox checkout page plays the provider's role.
+                return this.applySandboxPayin(paymentIntent, paymentIntent.phoneNumber || '', true);
             }
 
             const countryCreds = config.cinetpay.countries[countryCode];
@@ -4036,6 +4078,13 @@ class PaymentService {
     private async initiateNowPaymentsPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
         try {
             log.info(`Initiating NOWPayments crypto payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
+
+            if (sandbox.isSandboxActive()) {
+                // No real deposit address exists in sandbox, so instead of the
+                // waiting-for-deposit screen the user lands on the sandbox
+                // checkout page and picks the outcome.
+                return await this.applySandboxPayin(paymentIntent, '', true);
+            }
 
             // CRITICAL: Validate payment amount before processing
             if (!amount || amount <= 0) {

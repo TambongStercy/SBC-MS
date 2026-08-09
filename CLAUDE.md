@@ -477,11 +477,19 @@ through the provider's genuine webhook processor. Fake references are
 self-describing: `SBX-<outcome>-<dueEpochMs>-<suffix>`.
 
 Magic values:
-- **Payins** — phone ending: `..00` rejected at initiation, `..11` FAILED webhook,
-  `..22` hangs forever, anything else SUCCESS.
-- **Withdrawals** — net amount's last 2 digits: `..01` FAILED (wallet untouched),
-  `..02` hangs (tests the fix pages), `..03` rejected at initiation, anything else
-  COMPLETED (wallet debited).
+- **Payins, FeexPay countries (BJ/TG/CG)** — the phone is typed on OUR page, so
+  its ending rules: `..00` rejected at initiation, `..11` FAILED webhook, `..22`
+  hangs forever, anything else SUCCESS.
+- **Payins, hosted-checkout flows (MoneyFusion, CinetPay, crypto)** — our page
+  never collects payment details, so magic phones can't apply. The user is
+  redirected to the **sandbox checkout page**
+  (`/api/payments/sandbox/checkout/:sessionId`, 404 unless sandbox active) with
+  buttons: simulate success / simulate failure; closing the page = abandoned
+  checkout (stays pending).
+- **Withdrawals (all providers incl. crypto)** — net amount's last 2 digits:
+  `..01` FAILED (wallet untouched), `..02` hangs (tests the fix pages), `..03`
+  rejected at initiation, anything else COMPLETED (wallet debited — XAF gross
+  for MOMO, USD amount+fee for crypto).
 
 Assertions: `payment-service/src/scripts/check-sandbox.ts` (needs local Mongo).
 
