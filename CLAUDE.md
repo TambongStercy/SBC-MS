@@ -463,6 +463,28 @@ reconciler; use `$or: [{ serviceProvider: 'CinetPay' }, { 'metadata.selectedPayo
 when querying. Longer-term cleanup: set `serviceProvider` consistently on the
 CinetPay branch of `processMobileMoneyWithdrawalPayout`.
 
+### Payment sandbox (preprod only)
+
+`PAYMENT_SANDBOX_ENABLED=true` in payment-service `.env` fakes every provider call
+(payins AND withdrawals) — no real money moves. Hard-refused when
+`NODE_ENV=production` regardless of the flag. Interception is at the
+provider-client boundary (`*PayoutService.initiatePayout`, the payin initiators,
+`checkPayoutStatus`), so all sibling flows — user+OTP, admin-approved,
+admin-direct, status-checker cron, `/fix-*-withdrawals` pages — run their REAL
+code including debit-on-success. A sweeper (`jobs/sandbox-sweeper.job.ts`)
+resolves each fake payment ~15s later (`SANDBOX_COMPLETE_DELAY_MS` to change)
+through the provider's genuine webhook processor. Fake references are
+self-describing: `SBX-<outcome>-<dueEpochMs>-<suffix>`.
+
+Magic values:
+- **Payins** — phone ending: `..00` rejected at initiation, `..11` FAILED webhook,
+  `..22` hangs forever, anything else SUCCESS.
+- **Withdrawals** — net amount's last 2 digits: `..01` FAILED (wallet untouched),
+  `..02` hangs (tests the fix pages), `..03` rejected at initiation, anything else
+  COMPLETED (wallet debited).
+
+Assertions: `payment-service/src/scripts/check-sandbox.ts` (needs local Mongo).
+
 ### Provider webhook + API status quick-reference
 
 | Provider | Sends payout webhooks | Has status verify API | Recommended reconcile strategy |

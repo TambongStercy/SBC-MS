@@ -24,6 +24,7 @@ import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResu
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
 import { moneyFusionService } from './moneyfusion.service';
 import { ssoWebhookService } from './sso-webhook.service';
+import * as sandbox from './sandbox.service';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -3245,10 +3246,45 @@ class PaymentService {
         return feexpayOperators[countryCode];
     }
 
+    /**
+     * Sandbox replacement for a provider payin initiation (preprod only).
+     *
+     * The phone number's magic ending decides the outcome (see sandbox.service).
+     * The intent is parked in PENDING_PROVIDER with a self-describing SBX-
+     * reference; the sandbox sweeper later drives it to its terminal state
+     * through addWebhookEvent + handlePaymentCompletion — the exact two calls
+     * every real provider webhook handler ends with — so subscription and
+     * campaign activation run unchanged.
+     */
+    private async applySandboxPayin(
+        paymentIntent: IPaymentIntent,
+        phone: string,
+        checkoutUrl?: string,
+    ): Promise<IPaymentIntent> {
+        const outcome = sandbox.payinOutcomeForPhone(phone);
+        log.warn(`SANDBOX payin for session ${paymentIntent.sessionId}: phone=${phone}, outcome=${outcome}`);
+
+        if (outcome === 'reject') {
+            throw new Error('SANDBOX: paiement refusé par l\'opérateur (numéro magique ..00).');
+        }
+
+        const ref = sandbox.makeSandboxRef(outcome);
+        const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+            gatewayPaymentId: ref,
+            gatewayCheckoutUrl: checkoutUrl,
+            status: PaymentStatus.PENDING_PROVIDER,
+            gatewayRawResponse: { sandbox: true, outcome, reference: ref } as any,
+        });
+        if (!updated) {
+            throw new Error('Failed to update payment intent after sandbox initiation');
+        }
+        return updated;
+    }
+
     private async initiateFeexpayPayment(
         paymentIntent: IPaymentIntent,
         amount: number,
-        currency: string, // Currency determined by frontend based on country 
+        currency: string, // Currency determined by frontend based on country
         operator?: string, // Operator selected by user on frontend if applicable
         otp?: string // Added for Orange Senegal OTP
     ): Promise<IPaymentIntent> {
@@ -3298,6 +3334,10 @@ class PaymentService {
         if (phoneNumberAsInt === undefined) {
             log.error(`Could not parse FeexPay phoneNumber to integer: ${paymentIntent.phoneNumber}`);
             throw new Error('Invalid phone number format provided.');
+        }
+
+        if (sandbox.isSandboxActive()) {
+            return this.applySandboxPayin(paymentIntent, String(phoneNumberAsInt));
         }
 
         // Log details before sending
@@ -3451,6 +3491,17 @@ class PaymentService {
     private async initiateMoneyFusionPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
         try {
             log.info(`Initiating MoneyFusion payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
+
+            if (sandbox.isSandboxActive()) {
+                // MF's hosted checkout doesn't exist in sandbox — the magic phone
+                // is the one submitted on our payment page, and the "checkout"
+                // is our own status page.
+                return await this.applySandboxPayin(
+                    paymentIntent,
+                    paymentIntent.phoneNumber || '',
+                    `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`,
+                );
+            }
 
             // MoneyFusion's `numeroSend` is the contact phone, not the payment phone
             // (the payment phone is entered on MoneyFusion's hosted checkout). Use the
@@ -3848,6 +3899,16 @@ class PaymentService {
             if (!countryCode) {
                 throw new Error('Payment intent missing country code for CinetPay payment');
             }
+            if (sandbox.isSandboxActive()) {
+                // No hosted checkout in sandbox — land the user straight on our
+                // own status page, which flips when the sweeper resolves the payin.
+                return this.applySandboxPayin(
+                    paymentIntent,
+                    paymentIntent.phoneNumber || '',
+                    `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`,
+                );
+            }
+
             const countryCreds = config.cinetpay.countries[countryCode];
             if (!countryCreds) {
                 throw new Error(`No CinetPay credentials configured for country: ${countryCode}`);
@@ -5889,6 +5950,13 @@ class PaymentService {
         // If status is already final, no need to call FeexPay
         if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
             log.info(`PaymentIntent ${paymentIntent.sessionId} is already in final status: ${paymentIntent.status}. Returning current state.`);
+            return paymentIntent;
+        }
+
+        // Sandbox references have no provider behind them — the sweeper resolves
+        // them on its own schedule; report the current state without calling out.
+        if (sandbox.isSandboxRef(gatewayPaymentId)) {
+            log.info(`SANDBOX: skipping FeexPay status call for ${gatewayPaymentId}`);
             return paymentIntent;
         }
 

@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import logger from '../utils/logger';
 import config from '../config';
+import * as sandbox from './sandbox.service';
 
 const log = logger.getLogger('CinetPayPayoutService');
 
@@ -322,10 +323,37 @@ export class CinetPayPayoutService {
 
             this.validatePayoutRequest(request);
 
+            const rawMerchantTxId = request.client_transaction_id || `SBC-${request.userId}-${Date.now()}`;
+
+            // Sandbox: validation ran for real; only the transfer call is faked.
+            // The sweeper resolves it via processConfirmedPayoutWebhook, whose
+            // status verification lands on the sandbox stub in checkPayoutStatus.
+            if (sandbox.isSandboxActive()) {
+                const outcome = sandbox.payoutOutcomeForAmount(request.amount);
+                log.warn(`SANDBOX CinetPay payout for tx ${rawMerchantTxId}: amount=${request.amount}, outcome=${outcome}`);
+                if (outcome === 'reject') {
+                    return {
+                        success: false,
+                        status: 'failed',
+                        message: 'SANDBOX: payout rejeté à l\'initiation (montant magique ..03).',
+                        amount: request.amount,
+                        recipient: request.phoneNumber,
+                    };
+                }
+                return {
+                    success: true,
+                    transactionId: rawMerchantTxId.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 30),
+                    cinetpayTransactionId: sandbox.makeSandboxRef(outcome),
+                    status: 'pending',
+                    message: 'SANDBOX: payout initié — résolution automatique par le sweeper.',
+                    amount: request.amount,
+                    recipient: request.phoneNumber,
+                };
+            }
+
             const creds = this.getCountryCredentials(request.countryCode);
             const token = await this.authenticate(request.countryCode);
             const phoneE164 = this.formatPhoneNumberE164(request.phoneNumber, request.countryCode);
-            const rawMerchantTxId = request.client_transaction_id || `SBC-${request.userId}-${Date.now()}`;
 
             // merchant_transaction_id: max 30 chars, alphanumeric and hyphens only
             const truncatedMerchantTxId = rawMerchantTxId.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 30);
@@ -401,6 +429,30 @@ export class CinetPayPayoutService {
      * Check the status of a payout
      */
     async checkPayoutStatus(transactionId: string, countryCode?: string): Promise<PayoutStatus | null> {
+        // Sandbox: this is called with our internal transaction id, so the SBX-
+        // reference lives on the transaction record. Answer from the reference
+        // itself — the reconcile page and payout webhook verification then see
+        // what a real status API would say. Lazy require avoids a module cycle
+        // (repository → model only, but keep the boundary clean at load time).
+        if (sandbox.isSandboxActive()) {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const transactionRepository = require('../database/repositories/transaction.repository').default;
+            const txn = await transactionRepository.findByTransactionId(transactionId);
+            const ref = txn?.externalTransactionId;
+            if (sandbox.isSandboxRef(ref)) {
+                const status = sandbox.refStatusNow(ref);
+                return {
+                    transactionId,
+                    cinetpayTransactionId: ref,
+                    status,
+                    amount: Math.abs(txn.amount ?? 0),
+                    recipient: 'sandbox',
+                    sendingStatus: status === 'completed' ? 'confirmed' : 'pending',
+                    comment: `SANDBOX ${status}`,
+                };
+            }
+        }
+
         try {
             // We need a country code to authenticate. Try all configured countries if not specified.
             const countries = countryCode ? [countryCode] : Object.keys(config.cinetpay.countries);
