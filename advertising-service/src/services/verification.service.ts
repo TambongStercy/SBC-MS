@@ -287,10 +287,10 @@ export const applyExtraction = async (
         });
     }
 
-    recomputeTotals(participation);
+    const justCompleted = recomputeTotals(participation);
     await participation.save();
 
-    await syncCampaignCounters(participation);
+    await syncCampaignCounters(participation, justCompleted);
 
     log.info(
         `Participation ${participation._id}: ${verdicts.filter(v => v.accepted).length}/${verdicts.length} days verified`,
@@ -299,8 +299,28 @@ export const applyExtraction = async (
     return verdicts;
 };
 
-/** Day 1 views are billable "unique"; later days are free repeat reach. */
-const recomputeTotals = (p: ICampaignParticipation): void => {
+/** WhatsApp keeps a status alive — and collecting views — for 24 hours. */
+const STATUS_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * True once the last posted status has expired and can gain no more views.
+ *
+ * Completion must wait for this: ending the campaign at the moment of the final
+ * verification froze the last day's count at whatever it happened to be minutes
+ * after posting — Sterling's day 3 was captured at 2 views because he verified
+ * right away, and the measured average was computed from that.
+ */
+const lastPostExpired = (p: ICampaignParticipation): boolean => {
+    const last = Math.max(...p.days.map(d => d.postedAt?.getTime() ?? 0));
+    return last > 0 && Date.now() >= last + STATUS_LIFETIME_MS;
+};
+
+/**
+ * Day 1 views are billable "unique"; later days are free repeat reach.
+ * Returns whether this call is the one that completed the participation, so the
+ * caller records completion side effects exactly once.
+ */
+const recomputeTotals = (p: ICampaignParticipation): boolean => {
     let unique = 0;
     let repeat = 0;
     let earned = 0;
@@ -319,12 +339,14 @@ const recomputeTotals = (p: ICampaignParticipation): void => {
     p.totalEarned = Math.round(earned * 100) / 100;
 
     const allVerified = p.days.every(d => d.status === DayStatus.VERIFIED);
-    if (allVerified && p.status === ParticipationStatus.IN_PROGRESS) {
+    if (allVerified && p.status === ParticipationStatus.IN_PROGRESS && lastPostExpired(p)) {
         // Earnings are NOT credited here. Completion only makes them payable; the
         // payout engine moves money, so that stays in one place.
         p.status = ParticipationStatus.COMPLETED;
         p.completedAt = new Date();
+        return true;
     }
+    return false;
 };
 
 /**
@@ -333,7 +355,7 @@ const recomputeTotals = (p: ICampaignParticipation): void => {
  * A verification can re-run and revise a day's view count, so an $inc would drift.
  * The advertiser is billed on uniqueViewsDelivered, so drift here is a billing bug.
  */
-const syncCampaignCounters = async (p: ICampaignParticipation): Promise<void> => {
+const syncCampaignCounters = async (p: ICampaignParticipation, justCompleted: boolean): Promise<void> => {
     const totals = await CampaignParticipationModel.aggregate<{
         _id: null; unique: number; repeat: number;
     }>([
@@ -349,11 +371,40 @@ const syncCampaignCounters = async (p: ICampaignParticipation): Promise<void> =>
         { $set: { uniqueViewsDelivered: unique, repeatViewsDelivered: repeat } },
     );
 
-    if (p.status === ParticipationStatus.COMPLETED) {
+    // Only on the transition, not on status: re-verifying an already-completed
+    // participation used to call recordCompletion again, inflating
+    // campaignsCompleted and trust on every re-check.
+    if (justCompleted) {
         // Ranking owns profile stats: it also recomputes the measured average and
         // trust score, which a bare $inc here would silently skip.
         await recordCompletion(p);
     }
+};
+
+/**
+ * Completes participations whose last status has expired.
+ *
+ * Verification can only complete a participation while someone is clicking; a
+ * diffuseur who verifies day 3 and walks away would otherwise stay IN_PROGRESS
+ * forever. The scheduler calls this each tick to finish what time has finished.
+ */
+export const completeMaturedParticipations = async (): Promise<number> => {
+    const candidates = await CampaignParticipationModel.find({
+        status: ParticipationStatus.IN_PROGRESS,
+        days: { $not: { $elemMatch: { status: { $ne: DayStatus.VERIFIED } } } },
+    });
+
+    let completed = 0;
+    for (const p of candidates) {
+        const justCompleted = recomputeTotals(p);
+        if (!justCompleted) continue;
+        await p.save();
+        await syncCampaignCounters(p, true);
+        completed++;
+    }
+
+    if (completed) log.info(`Completed ${completed} matured participation(s)`);
+    return completed;
 };
 
 /**

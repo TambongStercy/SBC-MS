@@ -33,7 +33,7 @@ const check = (label: string, ok: boolean, detail = '') => {
 (mediaHash as any).hammingDistance = () => 0;
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { applyExtraction } = require('../services/verification.service');
+const { applyExtraction, completeMaturedParticipations } = require('../services/verification.service');
 
 const TRACKING = 'abc123xyz9';
 
@@ -210,6 +210,53 @@ const main = async () => {
         'a lower count never replaces a higher one',
         kept.days[0].viewCount === 17,
         `views only accumulate; got ${kept.days[0].viewCount}`,
+    );
+
+    // --- Completion waits for the last status to die, not for the last click ---
+    // The last day keeps collecting views for 24h after posting; completing at
+    // verification froze its count minutes after it went up.
+    await CampaignParticipationModel.updateOne(
+        { _id: participation._id },
+        {
+            $set: {
+                status: ParticipationStatus.IN_PROGRESS,
+                'days.0.status': DayStatus.VERIFIED,
+                'days.1.status': DayStatus.VERIFIED,
+                'days.2.status': DayStatus.VERIFIED,
+                'days.2.postedAt': new Date(), // still alive
+            },
+        },
+    );
+    await completeMaturedParticipations();
+    let matured = (await CampaignParticipationModel.findById(participation._id))!;
+    check(
+        'all-verified stays in progress while the last status is alive',
+        matured.status === ParticipationStatus.IN_PROGRESS,
+        matured.status,
+    );
+
+    await CampaignParticipationModel.updateOne(
+        { _id: participation._id },
+        {
+            $set: {
+                // Maturity is judged on the LATEST post, so every day must be old.
+                'days.0.postedAt': new Date(Date.now() - 73 * 60 * 60 * 1000),
+                'days.1.postedAt': new Date(Date.now() - 49 * 60 * 60 * 1000),
+                'days.2.postedAt': new Date(Date.now() - 25 * 60 * 60 * 1000),
+            },
+        },
+    );
+    const completedCount = await completeMaturedParticipations();
+    matured = (await CampaignParticipationModel.findById(participation._id))!;
+    check(
+        'and completes once the last status has expired',
+        completedCount === 1 && matured.status === ParticipationStatus.COMPLETED,
+        `${completedCount} completed, status ${matured.status}`,
+    );
+    check(
+        'a second sweep completes nothing again',
+        (await completeMaturedParticipations()) === 0,
+        'recordCompletion must fire exactly once',
     );
 
     await mongoose.connection.dropDatabase();
