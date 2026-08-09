@@ -21,13 +21,22 @@ export const getFileUrl = (fileId: string, baseUrl: string = '/api/settings/file
   }
   
   // Cloud Storage files - return direct CDN URL (saves bandwidth!)
-  if (fileId.includes('/') || 
-      fileId.startsWith('avatars/') || 
-      fileId.startsWith('products/') || 
-      fileId.startsWith('documents/')) {
+  //
+  // Detected by "not a Google Drive id" rather than by folder prefix. Uploads
+  // through /settings/files/upload land at the bucket root with a plain
+  // filename ("1786260910104_flyer.jpeg") — no slash, no known prefix — so a
+  // prefix-only test sent them down the Drive path and produced a broken image.
+  // On the admin host that fails silently in the worst way: nothing proxies
+  // /api there, so the URL resolves to the SPA's own index.html and the browser
+  // gets 200 text/html where it expected an image.
+  //
+  // Drive ids are opaque and extensionless; anything carrying a file extension
+  // or a path separator is Cloud Storage.
+  const looksLikeDriveId = !fileId.includes('/') && !/\.[a-z0-9]{2,5}$/i.test(fileId);
+  if (!looksLikeDriveId) {
     return `${CLOUD_STORAGE_BASE_URL}/${fileId}`;
   }
-  
+
   // Google Drive files - use proxy (legacy only)
   return `${baseUrl}/${fileId}`;
 };
