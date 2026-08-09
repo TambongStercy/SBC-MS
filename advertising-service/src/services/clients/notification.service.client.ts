@@ -79,7 +79,7 @@ export const notifyCampaignOffer = (userId: string, campaignTitle: string, expec
         + `Elle est proposée à plusieurs diffuseurs et les premiers à accepter l'obtiennent. `
         + `Vous pourriez gagner environ ${expectedViews} vues sur 3 jours.\n\n`
         + `Connectez-vous à SBC pour l'accepter.`,
-        { campaignTitle },
+        { campaignTitle, ctaLabel: 'Voir la campagne', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
 
 /**
@@ -98,7 +98,7 @@ export const notifyVerificationDue = (
         `Votre publication du jour ${day} pour « ${campaignTitle} » expire dans environ ${hoursLeft}h.\n\n`
         + `Connectez votre WhatsApp sur SBC dès maintenant pour que vos vues soient comptées. `
         + `Une fois le statut expiré, les vues de cette journée ne peuvent plus être récupérées.`,
-        { campaignTitle, day },
+        { campaignTitle, day, ctaLabel: 'Vérifier maintenant', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
 
 /**
@@ -132,7 +132,7 @@ export const notifyDayDue = (userId: string, campaignTitle: string, day: number,
         + (graceRemaining > 0
             ? `Il vous reste ${graceRemaining} jour(s) de report. Au-delà, vos gains sur cette campagne seront annulés.`
             : `Attention : vous n'avez plus de jour de report. Publiez aujourd'hui, sinon vos gains sur cette campagne seront annulés.`),
-        { campaignTitle, day, graceRemaining },
+        { campaignTitle, day, graceRemaining, ctaLabel: `Publier le jour ${day}`, ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
 
 export const notifyCampaignCompleted = (userId: string, campaignTitle: string, totalViews: number, earned: number) =>
@@ -142,7 +142,7 @@ export const notifyCampaignCompleted = (userId: string, campaignTitle: string, t
         `🎊 Bravo ! Vous avez terminé les 3 jours de « ${campaignTitle} ».\n\n`
         + `Total : ${totalViews} vues vérifiées, ${earned} FCFA.\n\n`
         + `💰 Vos gains seront crédités sur votre solde publicitaire.`,
-        { campaignTitle, totalViews, earned },
+        { campaignTitle, totalViews, earned, ctaLabel: 'Voir mes gains', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
 
 export const notifyCampaignForfeited = (userId: string, campaignTitle: string) =>
@@ -162,7 +162,7 @@ export const notifyTestCampaignCompleted = (userId: string, measuredAverageViews
         `🎉 Vous avez terminé votre campagne test.\n\n`
         + `Votre moyenne vérifiée est de ${measuredAverageViews} vues par publication. `
         + `Elle sera utilisée pour vous proposer des campagnes adaptées à votre audience.`,
-        { measuredAverageViews },
+        { measuredAverageViews, ctaLabel: 'Ouvrir mon espace diffuseur', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
 
 export const notifyReferralUnlocked = (userId: string, rate: number) =>
@@ -229,5 +229,9 @@ export const notifyAdvertiserCampaignComplete = (userId: string, campaignTitle: 
         '🎯 Votre campagne est terminée',
         `Votre campagne « ${campaignTitle} » a atteint son objectif : ${uniqueViews} vues uniques vérifiées.\n\n`
         + `Consultez votre tableau de bord pour le détail par diffuseur.`,
-        { campaignTitle, uniqueViews },
+        {
+            campaignTitle, uniqueViews,
+            ctaLabel: 'Voir les résultats',
+            ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/annonceur`,
+        },
     );
