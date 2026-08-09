@@ -111,11 +111,11 @@ Share API. The bucket sends **no `Access-Control-Allow-Origin`**, so reading the
 bytes was blocked however the URL was written. Every diffuseur silently fell
 through to the download fallback, on the screen the whole flow depends on.
 
-| use | URL |
-|---|---|
-| `<img src>` | CDN direct — no CORS needed, no bandwidth cost to us |
-| `fetch` for share | same-origin `?stream=1`, proxied through settings-service |
-| download link | same-origin `?download=1` with `Content-Disposition` |
+| use                 | URL                                                        |
+| ------------------- | ---------------------------------------------------------- |
+| `<img src>`       | CDN direct — no CORS needed, no bandwidth cost to us      |
+| `fetch` for share | same-origin`?stream=1`, proxied through settings-service |
+| download link       | same-origin`?download=1` with `Content-Disposition`    |
 
 **A redirect does not fix this.** The proxy 302'd to the CDN and CSP/CORS judge
 the *final* URL. The bytes must actually come from our origin.
@@ -142,8 +142,7 @@ and extensionless.
 Every one of these came back as "boring", "too much text", or "looks like a
 wallet, not a dashboard":
 
-- **Numbers belong in cards, not sentences.** `0 campagne(s) terminée(s) ·
-  Moyenne 75 vues (déclarée) · Confiance 50` became three stat cards. Same data,
+- **Numbers belong in cards, not sentences.** `0 campagne(s) terminée(s) · Moyenne 75 vues (déclarée) · Confiance 50` became three stat cards. Same data,
   read at a glance.
 - **State belongs in a shape.** Three lines describing campaign progress became a
   three-segment bar. Grey / amber / green — and **no fourth colour**: a blue
@@ -344,9 +343,37 @@ The test campaign is where that first link happens, so it must not require one.
 
 ## 5. What has still never run against reality
 
-- **An annonceur paying.** No real payment has been taken; activation via webhook
-  is only asserted.
-- **Payout crediting at completion** — no diffuseur has finished three days.
-- **The referral commission**, which needs 100 completed campaigns to unlock.
-- **`MAX_CONCURRENT_VERIFICATIONS = 8`** is still a guess. Measure peak RSS of one
-  verification on the real box; Sterling's ceiling is 5–10 concurrent sessions.
+Everything below is **built and asserted, but never exercised by a person**. The
+history above says what that gap is worth: nearly every bug that mattered was
+found by using a screen, not by reading code.
+
+### Blocking a real launch
+
+| # | What | Why it matters | How to test |
+|---|---|---|---|
+| 1 | **An annonceur paying** | No real payment has ever been taken. Activation-by-webhook is asserted, never observed. | Create a campaign, approve it, pay on preprod, confirm it flips to ACTIVE and issues offers |
+| 2 | **Payout crediting** | No diffuseur has completed three days, so no money has ever moved. The whole point of the feature. | Finish all three days on a paid campaign, wait for the payout sweep, check the advertising balance |
+| 3 | **Days 2 and 3 end to end** | Only day 1 has ever been posted and verified. The 24h gate, the reminder mail and the next-day window are untested against a real clock. | Verify day 1, wait for the window, post day 2 |
+| 4 | **Transfer to main balance** | The only exit from the advertising balance. Never called with real money in it. | After a payout, transfer and confirm the main balance |
+| 5 | **Prod nginx `/s/ /a/ /c/`** | Tracking links resolve to the SPA and return a 200 that looks fine. Every published status would carry a dead link. | Add the blocks at `127.0.0.1:3010`, then curl `/a/<slug>` and expect the service's 404, not HTML |
+
+### Worth doing before real diffuseurs arrive
+
+| # | What | Why |
+|---|---|---|
+| 6 | **A second diffuseur on one campaign** | Allocation, first-to-accept and the per-day cap have only ever seen one person |
+| 7 | **A campaign filling and completing** | `sweepCompletedCampaigns`, the advertiser's completion mail, the banked-credit path |
+| 8 | **Forfeit** | Accept, never post, let the 24h day-1 deadline pass: the slot should return to the pool |
+| 9 | **A rejected verification** | Post the wrong image, or drop the tracking link — the refusal path has never been seen by a user |
+| 10 | **Measure `MAX_CONCURRENT_VERIFICATIONS`** | Still a guess at 8. Measure peak RSS of one verification on the real box; Sterling's ceiling is 5-10 concurrent sessions |
+| 11 | **Two verifications at once** | The slot cap and the 503 + `Retry-After` path |
+| 12 | **The referral commission** | Needs 100 completed campaigns to unlock; only reachable by seeding data |
+| 13 | **The landing page from a real phone** | Video playback, « Je m'inscris » attribution, and the WhatsApp prefill from WhatsApp's in-app browser |
+| 14 | **The test campaign measuring someone new** | A fresh diffuseur, from enrolment to `hasCompletedTestCampaign` and a measured average |
+
+### Outside this feature
+
+| # | What |
+|---|---|
+| 15 | **OTP paste on prod** — `hotfix/otp-paste` → `main` now carries *both* commits; the first fix alone did not work on mobile |
+| 16 | **`/fix-provider-issues` returning 0** — deferred long ago, still unexplained |
