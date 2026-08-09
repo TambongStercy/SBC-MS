@@ -4,7 +4,7 @@ import logger from '../../utils/logger';
 
 const log = logger.getLogger('NotificationServiceClient');
 
-/** Matches notification-service POST /internal/create, same contract as sbclove/tombola. */
+/** Matches notification-service POST /api/notifications/internal/create. */
 interface InternalNotificationPayload {
     userId: string;
     type: string;
@@ -38,7 +38,10 @@ const client = axios.create({
  */
 const send = async (payload: InternalNotificationPayload): Promise<boolean> => {
     try {
-        const { data } = await client.post('/internal/create', payload);
+        // The route lives under the /notifications router — POSTing /internal/create
+        // at the API root 404s silently (verified on preprod 2026-08-09; every
+        // advertising email had been failing since launch because of it).
+        const { data } = await client.post('/notifications/internal/create', payload);
         if (data?.success) return true;
         log.warn('Notification service responded with failure', { userId: payload.userId });
         return false;
