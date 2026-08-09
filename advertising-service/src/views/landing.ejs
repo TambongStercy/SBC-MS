@@ -65,6 +65,7 @@
         .btn-call { background: var(--accent); }
         .btn-site { background: transparent; color: var(--text); border: 1px solid var(--border); }
         .btn-join { background: var(--accent); }
+        .landing-video { width: 100%; border-radius: 12px; margin-bottom: 14px; background: #000; }
         .join { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
         .join p { font-size: 13px; opacity: .75; margin: 0 0 10px; }
         footer { text-align: center; padding: 18px 0 4px; color: var(--muted); font-size: 0.75rem; }
@@ -82,6 +83,9 @@
         <div class="body">
             <h1><%= title %></h1>
             <% if (description) { %><p class="desc"><%= description %></p><% } %>
+            <% if (isTestCampaign && landingVideoUrl) { %>
+                <video class="landing-video" src="<%= landingVideoUrl %>" controls playsinline preload="metadata"></video>
+            <% } %>
             <div class="actions">
                 <% if (hasWhatsapp) { %>
                     <a class="btn btn-wa" href="<%= whatsappUrl %>" rel="nofollow">Contacter sur WhatsApp</a>

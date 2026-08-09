@@ -62,6 +62,24 @@ export interface ICampaign extends Document {
     /** Caption text suggested to diffuseurs. Their tracking link is appended. */
     suggestedCaption?: string;
 
+    /**
+     * The test campaign: created by an admin, not bought by an annonceur.
+     *
+     * Its purpose is measuring a new diffuseur's real audience before they are
+     * given work someone paid for. So it skips payment entirely, skips the
+     * moderation queue (the admin who creates it is the reviewer), and pays the
+     * diffuseur nothing — the reward is being ranked accurately afterwards.
+     *
+     * One at a time. Enforced by a partial unique index below.
+     */
+    isTestCampaign?: boolean;
+
+    /**
+     * Video shown on the test campaign's landing page, above « Je m'inscris ».
+     * Stored in settings-service like every other upload.
+     */
+    landingVideoFileId?: string;
+
     // --- Landing page ---
     landingPageSlug: string;
     contactWhatsapp?: string;
@@ -152,6 +170,9 @@ const CampaignSchema = new Schema<ICampaign>({
 
     suggestedCaption: { type: String, trim: true, maxlength: 700 },
 
+    isTestCampaign: { type: Boolean },
+    landingVideoFileId: { type: String },
+
     landingPageSlug: { type: String, required: true, unique: true, index: true },
     contactWhatsapp: { type: String, trim: true },
     contactPhone: { type: String, trim: true },
@@ -199,6 +220,13 @@ const CampaignSchema = new Schema<ICampaign>({
 
 // The allocation engine's hot query: active campaigns still short of target.
 CampaignSchema.index({ status: 1, createdAt: -1 });
+
+// At most one live test campaign. Partial, so ordinary campaigns — which carry
+// no isTestCampaign at all — are not forced into a single-document collection.
+CampaignSchema.index(
+    { isTestCampaign: 1 },
+    { unique: true, partialFilterExpression: { isTestCampaign: true, status: CampaignStatus.ACTIVE } },
+);
 
 const CampaignModel = mongoose.model<ICampaign>('Campaign', CampaignSchema);
 export default CampaignModel;

@@ -11,6 +11,7 @@ import { sweepPendingPayouts } from './payout.service';
 import { sweepReferralCommissions } from './referral-commission.service';
 import { currentDay, scheduleSummary } from './day-window.service';
 import { sweepStaleCreditReservations } from './credit.service';
+import { offerTestCampaignToNewDiffuseurs } from './test-campaign.service';
 import {
     notifyVerificationDue,
     notifyDayDue,
@@ -234,6 +235,9 @@ export const runScheduledJobs = async (): Promise<void> => {
         // Returns credit held by campaigns whose payment page was abandoned. No
         // callback ever arrives for those, so a timeout is the only signal.
         ['sweepStaleCreditReservations', sweepStaleCreditReservations],
+        // Before allocation: a diffuseur who links WhatsApp today should be
+        // measured before being offered anything an annonceur is paying for.
+        ['offerTestCampaignToNewDiffuseurs', offerTestCampaignToNewDiffuseurs],
         // Last: it depends on participations the earlier jobs may have just
         // completed, and a credit that fails here is simply retried next tick.
         ['sweepPendingPayouts', async () => (await sweepPendingPayouts()).credited],

@@ -37,6 +37,7 @@ import AdsNetworkDashboardPage from './pages/AdsNetworkDashboardPage';
 import AdsNetworkReviewPage from './pages/AdsNetworkReviewPage';
 import AdsNetworkCampaignsPage from './pages/AdsNetworkCampaignsPage';
 import AdsNetworkDiffuseursPage from './pages/AdsNetworkDiffuseursPage';
+import AdsNetworkTestCampaignPage from './pages/AdsNetworkTestCampaignPage';
 import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from './contexts/SocketContext';
 
@@ -111,6 +112,7 @@ function App() {
             <Route path="/ads-network/review" element={<AdsNetworkReviewPage />} />
             <Route path="/ads-network/campaigns" element={<AdsNetworkCampaignsPage />} />
             <Route path="/ads-network/diffuseurs" element={<AdsNetworkDiffuseursPage />} />
+            <Route path="/ads-network/test-campaign" element={<AdsNetworkTestCampaignPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

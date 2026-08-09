@@ -8,6 +8,7 @@ import CampaignParticipationModel, {
 import DiffuseurProfileModel, { IDiffuseurProfile } from '../database/models/diffuseur-profile.model';
 import { getUserProfiles, IUserProfile } from './clients/user.service.client';
 import { newTrackingCode } from './campaign.service';
+import { getTestCampaign } from './test-campaign.service';
 import { openParticipation } from './day-window.service';
 import { notifyCampaignOffer } from './clients/notification.service.client';
 import config from '../config';
@@ -140,8 +141,19 @@ export const allocateCampaign = async (campaignId: Types.ObjectId): Promise<Allo
         .lean();
     const excluded = new Set(alreadyOffered.map(p => String(p.diffuseurUserId)));
 
+    // While a test campaign exists, a diffuseur who has not completed it is not
+    // eligible for paid work — their audience is still self-declared, and
+    // allocating on a claim spends an annonceur's budget on a guess. With none
+    // configured the filter has to be dropped entirely, or nobody is eligible
+    // for anything.
+    const testCampaign = await getTestCampaign();
+    const eligibility: Record<string, unknown> = { isActive: true, whatsappLid: { $exists: true } };
+    if (testCampaign && !campaign.isTestCampaign) {
+        eligibility.hasCompletedTestCampaign = true;
+    }
+
     const candidates = await DiffuseurProfileModel
-        .find({ isActive: true, whatsappLid: { $exists: true } })
+        .find(eligibility)
         .sort({ measuredAverageViews: -1, declaredAverageViews: -1, trustScore: -1 })
         .limit(1000)
         .select('_id userId trustScore hasCompletedTestCampaign measuredAverageViews declaredAverageViews')
