@@ -208,11 +208,17 @@ class NotificationService {
             throw new Error('Email subject is required');
         }
 
+        // Internal callers (advertising, sbclove) send plain text with real line
+        // breaks; served as-is in an HTML email they collapse into one long line.
+        const body = notification.data.body || '';
+        const looksHtml = /<[a-z][\s\S]*>/i.test(body);
+        const html = looksHtml ? body : body.replace(/\n/g, '<br>');
+
         return emailService.sendEmail({
             to: notification.recipient,
             subject: notification.data.subject,
-            html: notification.data.body,
-            text: notification.data.body.replace(/<[^>]*>/g, ''),
+            html,
+            text: body.replace(/<[^>]*>/g, ''),
         });
     }
 
@@ -659,33 +665,22 @@ class NotificationService {
 
     /**
      * (Private) Triggers the actual sending of the notification based on its channel.
+     *
+     * Delegates to the same sendNotification the queue processor uses. This used
+     * to be a placeholder that logged "not implemented" and then marked the
+     * notification SENT — every internal email (advertising offers, approvals,
+     * day-opened) died here while reporting success. PUSH keeps the stub-mark
+     * behaviour: sendNotification throws for it, and internal callers use PUSH
+     * as an in-app record rather than a delivery.
      */
     private async triggerNotificationSending(notification: INotification): Promise<void> {
         log.info(`Triggering send for notification ${notification._id}, channel: ${notification.channel}`);
-        try {
-            let success = false;
-            if (notification.channel === DeliveryChannel.EMAIL) {
-                log.warn('Email sending logic not implemented'); success = true; // Placeholder success
-            } else if (notification.channel === DeliveryChannel.SMS) {
-                log.warn('SMS sending logic not implemented'); success = true; // Placeholder success
-            } else if (notification.channel === DeliveryChannel.PUSH) {
-                log.warn('Push notification logic not implemented'); success = true; // Placeholder success
-            } else if (notification.channel === DeliveryChannel.WHATSAPP) {
-                success = await this.sendWhatsappNotification(notification);
-            }
-
-            // Update status based on sending result VIA REPOSITORY
-            const finalStatus = success ? NotificationStatus.SENT : NotificationStatus.FAILED;
-            const updateData = { status: finalStatus, sentAt: success ? new Date() : undefined, failedAt: !success ? new Date() : undefined, errorDetails: !success ? 'Send logic failed' : undefined };
-
-            await notificationRepository.update(notification._id, updateData);
-            log.info(`Notification ${notification._id} status updated to ${finalStatus}`);
-
-        } catch (error: any) {
-            log.error(`Error triggering send for notification ${notification._id}: ${error.message}`);
-            // Update status to FAILED if an error occurs during trigger VIA REPOSITORY
-            await notificationRepository.update(notification._id, { status: NotificationStatus.FAILED, failedAt: new Date(), errorDetails: error.message });
+        if (notification.channel === DeliveryChannel.PUSH) {
+            await notificationRepository.update(notification._id, { status: NotificationStatus.SENT, sentAt: new Date() });
+            return;
         }
+        // Marks sent/failed itself, and never throws upward past its own handler.
+        await this.sendNotification(notification);
     }
 
     /**
