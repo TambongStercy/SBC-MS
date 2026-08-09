@@ -124,22 +124,30 @@
                     </div>
                 </div>
             <% } %>
-            <div class="actions">
-                <% if (hasWhatsapp) { %>
-                    <a class="btn btn-wa" href="<%= whatsappUrl %>" rel="nofollow">Contacter sur WhatsApp</a>
-                <% } %>
-                <% if (hasPhone) { %>
-                    <a class="btn btn-call" href="<%= callUrl %>" rel="nofollow">Appeler</a>
-                <% } %>
-                <% if (hasWebsite) { %>
-                    <a class="btn btn-site" href="<%= siteUrl %>" rel="nofollow">Visiter le site</a>
-                <% } %>
-            </div>
-            <% if (hasSignup) { %>
-                <div class="join">
-                    <p>Vous aussi, gagnez de l'argent en publiant des annonces sur votre statut WhatsApp.</p>
-                    <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris</a>
+            <% if (isTestCampaign) { %>
+                <%# Rufus: the test campaign sells SBC itself — one button, one
+                    action. Contact buttons belong to real advertisers. %>
+                <div class="actions">
+                    <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris maintenant</a>
                 </div>
+            <% } else { %>
+                <div class="actions">
+                    <% if (hasWhatsapp) { %>
+                        <a class="btn btn-wa" href="<%= whatsappUrl %>" rel="nofollow">Contacter sur WhatsApp</a>
+                    <% } %>
+                    <% if (hasPhone) { %>
+                        <a class="btn btn-call" href="<%= callUrl %>" rel="nofollow">Appeler</a>
+                    <% } %>
+                    <% if (hasWebsite) { %>
+                        <a class="btn btn-site" href="<%= siteUrl %>" rel="nofollow">Visiter le site</a>
+                    <% } %>
+                </div>
+                <% if (hasSignup) { %>
+                    <div class="join">
+                        <p>Vous aussi, gagnez de l'argent en publiant des annonces sur votre statut WhatsApp.</p>
+                        <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris</a>
+                    </div>
+                <% } %>
             <% } %>
             <footer>Propulsé par Sniper Business Center</footer>
         </div>
