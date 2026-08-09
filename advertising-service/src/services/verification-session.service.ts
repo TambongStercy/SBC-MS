@@ -26,6 +26,9 @@ export type VerificationSession = {
     day: number;
     state: SessionState;
     qr?: string;
+    /** 8-character code to type into WhatsApp, when pairing by phone number. */
+    pairingCode?: string;
+    method: 'qr' | 'code';
     result?: ExtractionResult;
     error?: string;
     createdAt: Date;
@@ -81,6 +84,8 @@ export const startSession = (args: {
     participationId: Types.ObjectId;
     day: number;
     downloadMedia?: boolean;
+    /** Set to pair by code instead of QR. E.164 digits, no '+'. */
+    pairWithPhone?: string;
 }): VerificationSession => {
     if (!capacityAvailable()) throw new NoCapacityError();
 
@@ -91,6 +96,7 @@ export const startSession = (args: {
         participationId: String(args.participationId),
         day: args.day,
         state: 'starting',
+        method: args.pairWithPhone ? 'code' : 'qr',
         createdAt: new Date(),
     };
     sessions.set(id, session);
@@ -98,6 +104,11 @@ export const startSession = (args: {
 
     const handle = extractOwnStatuses({
         downloadMedia: args.downloadMedia,
+        pairWithPhone: args.pairWithPhone,
+        onPairingCode: code => {
+            session.pairingCode = code;
+            session.state = 'awaiting_scan';
+        },
         onQr: qr => {
             // Baileys hands over the raw QR payload ("2@...") — not something a
             // browser can render. Convert once here rather than on every poll.
@@ -112,9 +123,10 @@ export const startSession = (args: {
         },
         onConnected: () => {
             session.state = 'reading';
-            // The QR is spent once scanned; keeping it around only risks it being
-            // shown again to a client that polls late.
+            // Both are spent once used; keeping them around only risks showing a
+            // dead code to a client that polls late.
             session.qr = undefined;
+            session.pairingCode = undefined;
         },
     });
     handles.set(id, handle);
