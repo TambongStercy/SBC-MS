@@ -147,6 +147,44 @@ const main = async () => {
         'otherwise one status could be sold to several campaigns',
     );
 
+    // --- A validated day survives a re-check that finds nothing ---
+    // Statuses expire after 24h, so re-verifying later legitimately finds no
+    // match. That must not take back a day already earned.
+    await CampaignParticipationModel.updateOne(
+        { _id: participation._id },
+        { $set: { 'days.0.status': DayStatus.VERIFIED, 'days.0.viewCount': 17 } },
+    );
+    // An extraction with no status carrying the tracking code at all — what a
+    // re-check looks like once the 24h status has expired.
+    await applyExtraction(participation._id, {
+        statuses: [{
+            statusMessageId: 'UNRELATED',
+            postedAt,
+            mediaType: 'image',
+            caption: 'une photo sans lien',
+            viewCount: 4,
+            deliveredCount: 9,
+        }],
+        lid: 'lid-1',
+        phone: '237600000000',
+    } as unknown as ExtractionResult);
+
+    const survivor = (await CampaignParticipationModel.findById(participation._id))!;
+    check(
+        'a validated day is not taken back when nothing is found',
+        survivor.days[0].status === DayStatus.VERIFIED && survivor.days[0].viewCount === 17,
+        `status ${survivor.days[0].status}, ${survivor.days[0].viewCount} views`,
+    );
+
+    // --- And a re-check reporting fewer views does not reduce it ---
+    await applyExtraction(participation._id, extraction('STATUS-1', 2, postedAt));
+    const kept = (await CampaignParticipationModel.findById(participation._id))!;
+    check(
+        'a lower count never replaces a higher one',
+        kept.days[0].viewCount === 17,
+        `views only accumulate; got ${kept.days[0].viewCount}`,
+    );
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
 

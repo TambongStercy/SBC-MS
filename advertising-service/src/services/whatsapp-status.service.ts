@@ -127,17 +127,26 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
      * logout() is a network round-trip and can hang, so it is bounded. A hung
      * logout must not keep the socket alive.
      */
+    let everConnected = false;
+
     const teardown = async (unlink: boolean) => {
         if (timer) clearTimeout(timer);
         try {
-            if (unlink && sock) {
+            // Unlink whenever this socket ever reached "connected", not only on the
+            // happy path. A cancelled or failed session used to skip logout, which
+            // left SBC sitting in the diffuseur's Linked Devices list indefinitely
+            // — visible to them, and a live session on their account we have no
+            // business keeping.
+            if ((unlink || everConnected) && sock) {
                 await Promise.race([
                     sock.logout(),
-                    new Promise(r => setTimeout(r, 5000)),
+                    new Promise(r => setTimeout(r, 10_000)),
                 ]);
+                log.info('WhatsApp device unlinked');
             }
-        } catch {
-            /* socket may already be gone; the end() below is what matters */
+        } catch (err) {
+            // Worth knowing about: a failure here means a device stays linked.
+            log.warn(`Could not unlink the WhatsApp device: ${(err as Error).message}`);
         }
         try {
             sock?.end(undefined);
@@ -282,6 +291,7 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
                     if (qr && !opts.pairWithPhone) opts.onQr?.(qr);
 
                     if (connection === 'open') {
+                        everConnected = true;
                         opts.onConnected?.({
                             lid: userPart((sock!.user as any)?.lid || state.creds.me?.lid) || undefined,
                             phone: userPart(sock!.user?.id) || undefined,

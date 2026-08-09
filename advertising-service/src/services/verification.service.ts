@@ -169,11 +169,21 @@ export const applyExtraction = async (
     const verdicts: DayVerdict[] = [];
 
     for (const day of participation.days) {
-        // Only a day the diffuseur has actually posted can be judged. Iterating
-        // every non-verified day meant days 2 and 3 — not yet open, let alone
-        // published — were checked against the statuses on the account and marked
+        // Only days the diffuseur actually posted. Days not yet open — let alone
+        // published — used to be checked against the account's statuses and marked
         // failed, which reads as being punished for not time-travelling.
-        if (day.status !== DayStatus.POSTED) continue;
+        //
+        // Already-verified days are re-checked deliberately: views keep arriving
+        // for 24h, so "Revérifier" has to be able to refresh a day it already
+        // accepted. Limiting this to POSTED made that button a no-op — it
+        // reported zero views and no verdict at all.
+        const wasPosted = day.status === DayStatus.POSTED
+            || day.status === DayStatus.VERIFIED
+            || day.status === DayStatus.FAILED;
+        if (!wasPosted) continue;
+
+        // Once the money has moved, the counts behind it are history.
+        if (participation.creditedAt && day.status === DayStatus.VERIFIED) continue;
 
         const notBefore = earliestAllowedPost(participation.days, day.day);
         const claimed = claimedFor(day.day);
@@ -185,6 +195,11 @@ export const applyExtraction = async (
         );
 
         if (!match) {
+            // A day already validated keeps its result. Statuses expire after 24h,
+            // so a later re-verification legitimately finds nothing — downgrading
+            // it here would take back a day the diffuseur had already earned.
+            if (day.status === DayStatus.VERIFIED) continue;
+
             // Distinguish "you posted too soon" from "we found nothing": the first is
             // recoverable by waiting, the second means they have to post.
             const postedTooSoon = notBefore && findMatchingStatus(
@@ -232,6 +247,21 @@ export const applyExtraction = async (
                 `campaign creative (distance ${comparison.distance})`,
             );
         }
+        // Views only ever accumulate, so a re-check that reports fewer than we
+        // already validated is looking at something else — an expired status, or
+        // a different post carrying the same link. Keep the higher figure rather
+        // than quietly reducing what a diffuseur has earned.
+        if (day.status === DayStatus.VERIFIED && match.viewCount < day.viewCount) {
+            verdicts.push({
+                day: day.day,
+                accepted: true,
+                viewCount: day.viewCount,
+                deliveredCount: day.deliveredCount,
+                earnedAmount: day.earnedAmount,
+            });
+            continue;
+        }
+
         day.viewCount = match.viewCount;
         day.deliveredCount = match.deliveredCount;
         day.earnedAmount = earned;
