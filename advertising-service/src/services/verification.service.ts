@@ -139,13 +139,32 @@ export const applyExtraction = async (
         _id: { $ne: participation._id },
     }).select('days.statusMessageId').lean();
 
-    const claimed = new Set<string>();
+    const claimedByOthers = new Set<string>();
     for (const p of claimedElsewhere) {
-        for (const d of p.days ?? []) if (d.statusMessageId) claimed.add(d.statusMessageId);
+        for (const d of p.days ?? []) if (d.statusMessageId) claimedByOthers.add(d.statusMessageId);
     }
-    for (const d of participation.days) {
-        if (d.statusMessageId) claimed.add(d.statusMessageId);
-    }
+
+    /**
+     * Statuses that are off-limits when judging `dayNumber`.
+     *
+     * Everything another participation claimed, plus everything this
+     * participation's *other* days claimed — but never the day's own previous
+     * match. Including it meant a day that had already matched a status could
+     * never match it again, so re-verifying always reported "no publication
+     * containing your tracking link was found" for a status sitting right there
+     * on the account.
+     */
+    // Statuses matched earlier in this same run. Without it two days could both
+    // match the same status, since each day now gets its own claimed set.
+    const consumedThisRun = new Set<string>();
+
+    const claimedFor = (dayNumber: number): Set<string> => {
+        const set = new Set([...claimedByOthers, ...consumedThisRun]);
+        for (const d of participation.days) {
+            if (d.day !== dayNumber && d.statusMessageId) set.add(d.statusMessageId);
+        }
+        return set;
+    };
 
     const verdicts: DayVerdict[] = [];
 
@@ -157,6 +176,7 @@ export const applyExtraction = async (
         if (day.status !== DayStatus.POSTED) continue;
 
         const notBefore = earliestAllowedPost(participation.days, day.day);
+        const claimed = claimedFor(day.day);
         const match = findMatchingStatus(
             extraction.statuses,
             participation.trackingCode,
@@ -184,7 +204,7 @@ export const applyExtraction = async (
             break;
         }
 
-        claimed.add(match.statusMessageId);
+        consumedThisRun.add(match.statusMessageId);
 
         const earned = Math.round(match.viewCount * day.ratePerView * 100) / 100;
 
