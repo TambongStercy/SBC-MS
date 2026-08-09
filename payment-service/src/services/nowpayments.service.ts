@@ -4,6 +4,7 @@ import config from '../config';
 import logger from '../utils/logger';
 import { PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
 import { Currency, TransactionStatus, TransactionType } from '../database/models/transaction.model';
+import * as sandbox from './sandbox.service';
 
 const log = logger.getLogger('NOWPaymentsService');
 
@@ -468,6 +469,24 @@ class NOWPaymentsService {
      * Create a crypto payout (mass payout)
      */
     async createPayout(request: NOWPayoutRequest): Promise<NOWPayoutResponse> {
+        // Sandbox: fake payout id in place of the API call; outcome by amount
+        // magic, resolved later by the sweeper through the real payout webhook.
+        if (sandbox.isSandboxActive()) {
+            const outcome = sandbox.payoutOutcomeForAmount(request.amount);
+            log.warn(`SANDBOX NOWPayments payout: amount=${request.amount}, outcome=${outcome}`);
+            if (outcome === 'reject') {
+                throw new Error('SANDBOX: payout crypto rejeté à l\'initiation (montant magique ..03).');
+            }
+            return {
+                id: sandbox.makeSandboxRef(outcome),
+                address: request.address,
+                currency: request.currency,
+                amount: String(request.amount),
+                batch_withdrawal_id: 'sandbox',
+                status: 'sending',
+            };
+        }
+
         if (!config.nowpayments.apiKey) {
             throw new Error('Payout API not configured. Please check NOWPAYMENTS_API_KEY');
         }
@@ -594,6 +613,18 @@ class NOWPaymentsService {
      * Get payout status
      */
     async getPayoutStatus(withdrawalId: string): Promise<NOWPayoutResponse> {
+        // Sandbox references answer for themselves — no API call.
+        if (sandbox.isSandboxRef(withdrawalId)) {
+            const status = sandbox.refStatusNow(withdrawalId);
+            return {
+                id: withdrawalId,
+                address: 'sandbox',
+                currency: 'usd',
+                amount: '0',
+                status: status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'sending',
+            };
+        }
+
         if (!config.nowpayments.apiKey) {
             throw new Error('Payout API not configured');
         }

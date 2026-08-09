@@ -8,6 +8,7 @@ import config from '../../config';
 import { AppError } from '../../utils/errors';
 import QRCode from 'qrcode';
 import { paymentIntentRepository } from '../../database/repositories/paymentIntent.repository';
+import * as sandbox from '../../services/sandbox.service';
 
 const log = logger.getLogger('PaymentController');
 
@@ -279,6 +280,62 @@ export class PaymentController {
         } catch (error: any) {
             log.error('Error creating SSO payment intent:', error);
             return res.status(500).json({ success: false, message: error.message || 'Failed to create SSO payment intent' });
+        }
+    };
+
+    /**
+     * Sandbox checkout page (preprod only) — stands in for the provider's
+     * hosted checkout on MoneyFusion / CinetPay / crypto payins. 404s outright
+     * when the sandbox is not active, so these routes do not exist in production.
+     */
+    public renderSandboxCheckout = async (req: Request, res: Response) => {
+        if (!sandbox.isSandboxActive()) {
+            return res.status(404).render('error', { message: 'Page not found.' });
+        }
+        const { sessionId } = req.params;
+        try {
+            const intent = await paymentService.getPaymentIntentDetails(sessionId);
+            if (!intent || !sandbox.isSandboxRef(intent.gatewayPaymentId)) {
+                return res.status(404).render('error', { message: 'Session de paiement sandbox introuvable.' });
+            }
+            // Already resolved (refresh after clicking) — back to the real status page.
+            if (intent.status === PaymentStatus.SUCCEEDED || intent.status === PaymentStatus.FAILED) {
+                return res.redirect(`/api/payments/page/${sessionId}`);
+            }
+            return res.render('sandbox-checkout', {
+                sessionId,
+                amount: intent.paidAmount ?? intent.amount,
+                currency: intent.paidCurrency ?? intent.currency ?? 'XAF',
+            });
+        } catch (error: any) {
+            log.error(`Error rendering sandbox checkout for ${sessionId}:`, error);
+            return res.status(500).render('error', { message: 'Erreur interne.', error: error.message });
+        }
+    };
+
+    /** Resolves a sandbox payin from the checkout page's buttons. */
+    public resolveSandboxCheckout = async (req: Request, res: Response) => {
+        if (!sandbox.isSandboxActive()) {
+            return res.status(404).json({ success: false, message: 'Not found.' });
+        }
+        const { sessionId } = req.params;
+        const { outcome } = req.body;
+        if (outcome !== 'success' && outcome !== 'fail') {
+            return res.status(400).json({ success: false, message: 'outcome must be "success" or "fail".' });
+        }
+        try {
+            const intent = await paymentService.resolveSandboxPayin(sessionId, outcome);
+            return res.status(200).json({
+                success: true,
+                data: {
+                    status: intent.status,
+                    redirectUrl: `/api/payments/page/${sessionId}`,
+                },
+            });
+        } catch (error: any) {
+            log.error(`Error resolving sandbox checkout for ${sessionId}:`, error);
+            const status = error instanceof AppError ? error.statusCode : 500;
+            return res.status(status).json({ success: false, message: error.message });
         }
     };
 

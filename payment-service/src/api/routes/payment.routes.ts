@@ -53,6 +53,10 @@ router.get('/page/:sessionId', paymentController.renderPaymentPage);
 router.get('/process/:sessionId', paymentController.renderPaymentPage);
 
 // Create a new payment intent (returns URL to custom payment page)
+// Sandbox checkout (preprod only — both handlers 404 unless the sandbox is active)
+router.get('/sandbox/checkout/:sessionId', paymentController.renderSandboxCheckout);
+router.post('/sandbox/checkout/:sessionId/resolve', paymentController.resolveSandboxCheckout);
+
 router.post('/intents', validatePaymentIntent, paymentController.createPaymentIntent);
 
 // Submit payment details and initiate provider payment

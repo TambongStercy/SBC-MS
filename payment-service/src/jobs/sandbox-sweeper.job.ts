@@ -92,7 +92,9 @@ class SandboxSweeper {
             const parsed = sandbox.parseSandboxRef(ref);
             if (!parsed || parsed.outcome === 'hang' || Date.now() < parsed.dueAt) continue;
 
-            const provider = txn.metadata?.selectedPayoutService || txn.serviceProvider;
+            const provider = txn.metadata?.selectedPayoutService
+                || txn.serviceProvider
+                || txn.metadata?.serviceProvider; // crypto payouts store it here
             log.warn(`SANDBOX: resolving ${provider} payout ${txn.transactionId} → ${parsed.outcome}`);
 
             try {
@@ -124,6 +126,15 @@ class SandboxSweeper {
                             sandbox: true,
                         },
                     );
+                } else if (String(provider).toLowerCase() === 'nowpayments') {
+                    await paymentService.handleNowPaymentsPayoutWebhook({
+                        id: ref,
+                        status: parsed.outcome === 'success' ? 'finished' : 'failed',
+                        address: txn.metadata?.cryptoAddress || 'sandbox',
+                        currency: String(txn.currency || 'usd').toLowerCase(),
+                        amount: String(Math.abs(txn.amount)),
+                        batch_withdrawal_id: 'sandbox',
+                    });
                 } else {
                     log.error(`SANDBOX: unknown payout provider "${provider}" for ${txn.transactionId} — leaving untouched`);
                 }
