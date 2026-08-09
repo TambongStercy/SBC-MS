@@ -18,6 +18,14 @@ import {
 } from '../../services/test-campaign.service';
 import { getUserProfiles } from '../../services/clients/user.service.client';
 import { previewSignature } from './public.controller';
+import {
+    assertSimulationAllowed,
+    simulatePayment,
+    shiftParticipationClock,
+    simulateVerification,
+    simulationSnapshot,
+    activeCampaignsForSimulation,
+} from '../../services/simulation.service';
 import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/clients/notification.service.client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
@@ -275,6 +283,64 @@ export const removeTestCampaign = async (req: AuthenticatedRequest, res: Respons
         return res.json({ success: true, data: { retired } });
     } catch (err) {
         return fail(res, err, 'removeTestCampaign');
+    }
+};
+
+/**
+ * Preprod testing tools. Refused outright in production, and behind the admin
+ * role on top of that.
+ */
+export const getSimulationState = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        assertSimulationAllowed();
+        const [participations, campaigns] = await Promise.all([
+            simulationSnapshot(req.query.userId as string | undefined),
+            activeCampaignsForSimulation(),
+        ]);
+        return res.json({ success: true, data: { participations, campaigns } });
+    } catch (err) {
+        return fail(res, err, 'getSimulationState');
+    }
+};
+
+/** Activates a campaign as though payment had cleared. Moderation still applies. */
+export const runSimulatePayment = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        assertSimulationAllowed();
+        const result = await simulatePayment(req.params.id);
+        log.warn(`Payment simulated for campaign ${req.params.id} by admin ${adminUserId(req)}`);
+        return res.json({ success: true, data: result });
+    } catch (err) {
+        return fail(res, err, 'simulatePayment');
+    }
+};
+
+/** Moves a participation's whole clock back, so the next day opens now. */
+export const runShiftClock = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        assertSimulationAllowed();
+        const hours = Number(req.body?.hours ?? 24);
+        const result = await shiftParticipationClock(req.params.id, hours);
+        log.warn(`Clock shifted ${hours}h for participation ${req.params.id} by admin ${adminUserId(req)}`);
+        return res.json({ success: true, data: result });
+    } catch (err) {
+        return fail(res, err, 'shiftClock');
+    }
+};
+
+/** Fills in a verified day without needing a phone and a real status. */
+export const runSimulateVerification = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        assertSimulationAllowed();
+        const result = await simulateVerification(
+            req.params.id,
+            Number(req.body?.day),
+            Number(req.body?.viewCount),
+        );
+        log.warn(`Verification simulated for participation ${req.params.id} by admin ${adminUserId(req)}`);
+        return res.json({ success: true, data: result });
+    } catch (err) {
+        return fail(res, err, 'simulateVerification');
     }
 };
 
