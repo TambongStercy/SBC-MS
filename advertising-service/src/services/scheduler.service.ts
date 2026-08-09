@@ -9,12 +9,13 @@ import DiffuseurProfileModel, { ReferralTier } from '../database/models/diffuseu
 import { forfeitExpired } from './verification.service';
 import { sweepPendingPayouts } from './payout.service';
 import { sweepReferralCommissions } from './referral-commission.service';
-import { currentDay, scheduleSummary } from './day-window.service';
+import { nextUnpostedDay, scheduleSummary } from './day-window.service';
 import { sweepStaleCreditReservations } from './credit.service';
 import { offerTestCampaignToNewDiffuseurs } from './test-campaign.service';
 import {
     notifyVerificationDue,
     notifyDayDue,
+    notifyDayOpened,
     notifyCampaignForfeited,
     notifyReferralSuspended,
     notifyAdvertiserCampaignComplete,
@@ -108,7 +109,9 @@ export const remindDueDays = async (): Promise<number> => {
 
     let sent = 0;
     for (const p of participations) {
-        const pending = currentDay(p);
+        // nextUnpostedDay, not currentDay: currentDay is the day in progress and
+        // stays on a posted-but-unverified day, which is not the one owed.
+        const pending = nextUnpostedDay(p);
         if (!pending || pending.dayReminderSentAt) continue;
         if (!pending.windowOpensAt || pending.windowOpensAt > now) continue;
         if (!pending.dueAt || pending.dueAt > soon) continue;
@@ -165,6 +168,54 @@ export const sweepForfeits = async (): Promise<number> => {
 
     log.info(`Forfeited ${count} participations, reallocated ${affectedCampaigns.size} campaigns`);
     return count;
+};
+
+/**
+ * Tells a diffuseur the moment their next day becomes postable.
+ *
+ * Days are 24h apart, so otherwise they have to keep opening the app to find
+ * out — and remindDueDays only fires 18h later, six hours before the nudge
+ * deadline, which is far too late to be the first they hear of it.
+ */
+export const announceOpenedDays = async (): Promise<number> => {
+    const now = new Date();
+
+    const participations = await CampaignParticipationModel.find({
+        status: ParticipationStatus.IN_PROGRESS,
+        days: {
+            $elemMatch: {
+                status: DayStatus.PENDING,
+                windowOpensAt: { $lte: now },
+                dayOpenedNotifiedAt: { $exists: false },
+            },
+        },
+    });
+
+    let sent = 0;
+    for (const p of participations) {
+        const pending = nextUnpostedDay(p);
+        if (!pending || pending.dayOpenedNotifiedAt) continue;
+        if (!pending.windowOpensAt || pending.windowOpensAt > now) continue;
+        // Day 1 opens at acceptance, and they have just been told about the
+        // campaign — a second mail in the same minute is noise.
+        if (pending.day === 1) {
+            pending.dayOpenedNotifiedAt = now;
+            await p.save();
+            continue;
+        }
+
+        const campaign = await CampaignModel.findById(p.campaignId).select('title').lean();
+        await notifyDayOpened(String(p.diffuseurUserId), campaign?.title ?? 'votre campagne', pending.day);
+
+        // Stamped whether or not the mail went out, so a mail outage cannot turn
+        // into a notification on every tick once it recovers.
+        pending.dayOpenedNotifiedAt = now;
+        await p.save();
+        sent++;
+    }
+
+    if (sent) log.info(`Announced ${sent} newly opened day(s)`);
+    return sent;
 };
 
 /**
@@ -234,7 +285,16 @@ export const sweepReferralSuspensions = async (): Promise<number> => {
 
 /** Closes campaigns whose unique-view target has been met. */
 export const sweepCompletedCampaigns = async (): Promise<number> => {
-    const active = await CampaignModel.find({ status: CampaignStatus.ACTIVE });
+    // The test campaign is deliberately excluded. It has no view target — the
+    // schema needs targetUniqueViews >= 1, so it carries 1 — and the first
+    // diffuseur to deliver a single view would otherwise complete it. Once it is
+    // no longer ACTIVE, getTestCampaign returns null, new diffuseurs stop being
+    // measured, and the editor happily creates a second one. It ends only when an
+    // admin retires it.
+    const active = await CampaignModel.find({
+        status: CampaignStatus.ACTIVE,
+        isTestCampaign: { $ne: true },
+    });
 
     let closed = 0;
     for (const campaign of active) {
@@ -263,6 +323,7 @@ export const sweepCompletedCampaigns = async (): Promise<number> => {
 export const runScheduledJobs = async (): Promise<void> => {
     const jobs: Array<[string, () => Promise<number>]> = [
         ['remindPendingVerifications', remindPendingVerifications],
+        ['announceOpenedDays', announceOpenedDays],
         ['remindDueDays', remindDueDays],
         ['sweepForfeits', sweepForfeits],
         ['sweepReferralSuspensions', sweepReferralSuspensions],

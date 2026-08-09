@@ -87,6 +87,29 @@ export const notifyVerificationDue = (
         { campaignTitle, day },
     );
 
+/**
+ * Sent the moment a day becomes postable.
+ *
+ * Days are 24h apart, so without this a diffuseur has to keep opening the app to
+ * find out whether their next day has opened — and a day they forget is a day
+ * nobody pays them for.
+ */
+export const notifyDayOpened = (userId: string, campaignTitle: string, day: number) =>
+    email(
+        userId,
+        `Jour ${day} disponible`,
+        `Vous pouvez maintenant publier le jour ${day} de « ${campaignTitle} ».\n\n`
+        + `Publiez-le sur votre statut WhatsApp, puis vérifiez-le depuis SBC pour que vos `
+        + `vues soient comptées.\n\n`
+        + `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur`,
+        {
+            campaignTitle,
+            day,
+            ctaLabel: 'Publier le jour ' + day,
+            ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur`,
+        },
+    );
+
 export const notifyDayDue = (userId: string, campaignTitle: string, day: number, graceRemaining: number) =>
     email(
         userId,

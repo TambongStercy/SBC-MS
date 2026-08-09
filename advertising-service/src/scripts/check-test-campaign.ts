@@ -138,6 +138,23 @@ const main = async () => {
         'otherwise enrolling leads nowhere at all',
     );
 
+    // --- It must never be completed by the view sweep ---
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { sweepCompletedCampaigns } = require('../services/scheduler.service');
+
+    const live = await getTestCampaign();
+    await CampaignModel.updateOne(
+        { _id: live!._id },
+        { $set: { uniqueViewsDelivered: 999 } },
+    );
+    await sweepCompletedCampaigns();
+
+    check(
+        'views never complete the test campaign',
+        (await getTestCampaign()) !== null,
+        'completing it silently switches off measurement for every new diffuseur',
+    );
+
     // --- Retiring ---
     check('retires', await retireTestCampaign() === true);
     check('and is then gone', await getTestCampaign() === null);

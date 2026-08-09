@@ -50,6 +50,8 @@ export interface IDayProof {
      * Reminder stamps. Set whether or not delivery succeeded, so a mail outage
      * cannot turn into a reminder on every scheduler tick once it recovers.
      */
+    /** Set when we told the diffuseur this day had become available to post. */
+    dayOpenedNotifiedAt?: Date;
     dayReminderSentAt?: Date;
     verificationReminderSentAt?: Date;
 
@@ -141,6 +143,7 @@ const DayProofSchema = new Schema<IDayProof>({
 
     windowOpensAt: { type: Date },
     dueAt: { type: Date },
+    dayOpenedNotifiedAt: { type: Date },
     dayReminderSentAt: { type: Date },
     verificationReminderSentAt: { type: Date },
 
