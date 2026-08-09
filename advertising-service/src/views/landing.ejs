@@ -65,6 +65,10 @@
         .btn-call { background: var(--accent); }
         .btn-site { background: transparent; color: var(--text); border: 1px solid var(--border); }
         .btn-join { background: var(--accent); }
+        .preview-banner {
+            max-width: 480px; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px;
+            background: #FEF3C7; color: #92400E; font-size: 13px; text-align: center;
+        }
         .landing-video { width: 100%; border-radius: 12px; margin-bottom: 14px; background: #000; }
         .join { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
         .join p { font-size: 13px; opacity: .75; margin: 0 0 10px; }
@@ -72,6 +76,9 @@
     </style>
 </head>
 <body>
+    <% if (isPreview) { %>
+        <div class="preview-banner">Aperçu — cette page n'est pas encore visible du public.</div>
+    <% } %>
     <div class="card">
         <div class="media">
             <% if (mediaType === 'video') { %>

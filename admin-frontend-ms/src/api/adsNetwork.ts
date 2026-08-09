@@ -40,6 +40,8 @@ export interface AdsCampaign {
     suggestedCaption?: string;
     landingPageSlug: string;
     landingPageUrl?: string;
+    /** Signed, so it opens even before the campaign is live. */
+    previewUrl?: string;
     contactWhatsapp?: string;
     contactPhone?: string;
     websiteUrl?: string;
@@ -73,6 +75,7 @@ export interface AdsCampaign {
         email?: string;
         phoneNumber?: string;
         country?: string;
+        avatar?: string;
     } | null;
     priorApprovedCampaigns: number;
     isFirstCampaign: boolean;
@@ -191,6 +194,8 @@ export interface TestCampaign {
     contactPhone?: string;
     websiteUrl?: string;
     landingPageUrl?: string;
+    /** Signed, so it opens even before the campaign is live. */
+    previewUrl?: string;
     stats?: { offered: number; inProgress: number; measured: number };
 }
 

@@ -41,6 +41,41 @@ const targetingSummary = (c: AdsCampaign): string => {
     return bits.length ? bits.join(' · ') : 'Aucun ciblage — proposée à tous les diffuseurs';
 };
 
+/**
+ * The annonceur's photo, or their initials.
+ *
+ * An avatar is often missing and the URL can fail, so both fall back to initials
+ * rather than to a broken image icon — the point is telling accounts apart at a
+ * glance while reviewing.
+ */
+const AnnonceurAvatar: React.FC<{ avatar?: string; name?: string }> = ({ avatar, name }) => {
+    const [failed, setFailed] = useState(false);
+    const initials = (name ?? '?')
+        .split(' ')
+        .map(part => part.trim()[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('')
+        .toUpperCase() || '?';
+
+    if (!avatar || failed) {
+        return (
+            <div className="w-11 h-11 rounded-full shrink-0 bg-gray-700 grid place-items-center text-sm font-semibold text-gray-300">
+                {initials}
+            </div>
+        );
+    }
+
+    return (
+        <img
+            src={getFileUrl(avatar)}
+            alt=""
+            onError={() => setFailed(true)}
+            className="w-11 h-11 rounded-full shrink-0 object-cover bg-gray-700"
+        />
+    );
+};
+
 const AdsNetworkReviewPage: React.FC = () => {
     const { toasts, removeToast, showSuccess, showError } = useToast();
 
@@ -181,7 +216,7 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                 />
                                             )}
                                             <a
-                                                href={c.landingPageUrl}
+                                                href={c.previewUrl ?? c.landingPageUrl}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="mt-3 inline-flex items-center gap-1 text-xs text-blue-300 hover:text-blue-200"
@@ -193,13 +228,19 @@ const AdsNetworkReviewPage: React.FC = () => {
 
                                         <div>
                                             <div className="flex items-start justify-between gap-4">
-                                                <div>
-                                                    <h3 className="text-xl font-semibold text-gray-100">{c.title}</h3>
-                                                    <p className="text-sm text-gray-400 mt-1">
-                                                        {c.advertiser?.name || 'Annonceur inconnu'}
-                                                        {c.advertiser?.phoneNumber ? ` · ${c.advertiser.phoneNumber}` : ''}
-                                                        {c.advertiser?.email ? ` · ${c.advertiser.email}` : ''}
-                                                    </p>
+                                                <div className="flex items-start gap-3 min-w-0">
+                                                    <AnnonceurAvatar
+                                                        avatar={c.advertiser?.avatar}
+                                                        name={c.advertiser?.name}
+                                                    />
+                                                    <div className="min-w-0">
+                                                        <h3 className="text-xl font-semibold text-gray-100">{c.title}</h3>
+                                                        <p className="text-sm text-gray-400 mt-1 break-words">
+                                                            {c.advertiser?.name || 'Annonceur inconnu'}
+                                                            {c.advertiser?.phoneNumber ? ` · ${c.advertiser.phoneNumber}` : ''}
+                                                            {c.advertiser?.email ? ` · ${c.advertiser.email}` : ''}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                                 {c.isFirstCampaign ? (
                                                     <span className="flex items-center gap-1 shrink-0 px-3 py-1 rounded-full text-xs bg-amber-900/40 text-amber-200 border border-amber-700">

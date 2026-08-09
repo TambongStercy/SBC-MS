@@ -29,7 +29,7 @@ const check = (label: string, ok: boolean, detail = '') => {
 
 // Imported after the stubs so the controller picks them up.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { handleAction } = require('../api/controllers/public.controller');
+const { handleAction, renderLandingPage, previewSignature } = require('../api/controllers/public.controller');
 
 /** Runs handleAction and returns where it sent the visitor, plus the status code. */
 const act = async (params: Record<string, string>) => {
@@ -120,6 +120,34 @@ const main = async () => {
     await CampaignModel.updateOne({ _id: campaign._id }, { $set: { status: CampaignStatus.DRAFT } });
     const draft = await act({ trackingCode, action: 'whatsapp' });
     check('a draft campaign 404s', draft.code === 404, `code ${draft.code}`);
+
+    // --- Admin preview of a campaign that is not live ---
+    await CampaignModel.updateOne({ _id: campaign._id }, { $set: { status: CampaignStatus.PENDING_REVIEW } });
+
+    const render = async (query: Record<string, unknown>) => {
+        let code = 200;
+        let view = '';
+        let locals: any = {};
+        const res: any = {
+            status(n: number) { code = n; return this; },
+            render(name: string, data: any) { view = name; locals = data ?? {}; return this; },
+        };
+        await renderLandingPage({ params: { slug: campaign.landingPageSlug }, query, headers: {}, ip: '1.2.3.4' } as any, res);
+        return { code, view, locals };
+    };
+
+    const unsigned = await render({});
+    check('a campaign awaiting review stays hidden', unsigned.code === 404 && unsigned.view === 'not-found');
+
+    const wrong = await render({ preview: 'f'.repeat(32) });
+    check('a wrong signature does not open it', wrong.code === 404, 'the URL must not be guessable');
+
+    const signed = await render({ preview: previewSignature(campaign.landingPageSlug) });
+    check('a signed preview opens it', signed.view === 'landing' && signed.code === 200);
+    check('and is labelled as a preview', signed.locals.isPreview === true);
+
+    const otherSlug = await render({ preview: previewSignature('some-other-slug') });
+    check('a signature for another campaign does not work', otherSlug.code === 404);
 
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

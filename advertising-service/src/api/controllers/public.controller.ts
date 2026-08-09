@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import CampaignModel, { CampaignStatus, ICampaign } from '../../database/models/campaign.model';
 import CampaignParticipationModel from '../../database/models/campaign-participation.model';
 import { ClickAction } from '../../database/models/click-event.model';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { recordClick } from '../../services/tracking.service';
 import { getUserProfile } from '../../services/clients/user.service.client';
 import config from '../../config';
@@ -16,6 +17,27 @@ const mediaUrl = (fileId: string) =>
 /** Only live campaigns are publicly visible; drafts and cancelled ones 404. */
 const isViewable = (c: ICampaign) =>
     c.status === CampaignStatus.ACTIVE || c.status === CampaignStatus.COMPLETED;
+
+/**
+ * Signature that lets an admin open a campaign's landing page before it is live.
+ *
+ * An admin has to see the page to judge it, but the page is deliberately hidden
+ * until the campaign is approved and paid. A JWT cannot ride along in a link the
+ * admin clicks, so the review queue is handed a signed URL instead: derived from
+ * the slug and SERVICE_SECRET, so it cannot be guessed and grants nothing beyond
+ * viewing that one campaign.
+ */
+export const previewSignature = (slug: string): string =>
+    createHmac('sha256', config.services.serviceSecret).update(`preview:${slug}`).digest('hex').slice(0, 32);
+
+const previewSignatureValid = (slug: string, provided: unknown): boolean => {
+    if (typeof provided !== 'string' || !provided) return false;
+    const expected = previewSignature(slug);
+    if (provided.length !== expected.length) return false;
+    // Constant-time: a length-safe compare stops the signature being recovered
+    // one character at a time.
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+};
 
 type Resolved = { campaign: ICampaign; trackingCode?: string; diffuseurUserId?: string };
 
@@ -45,14 +67,20 @@ const resolve = async (req: Request): Promise<Resolved | null> => {
 export const renderLandingPage = async (req: Request, res: Response) => {
     try {
         const resolved = await resolve(req);
-        if (!resolved || !isViewable(resolved.campaign)) {
+        if (!resolved) return res.status(404).render('not-found');
+
+        const { campaign, trackingCode } = resolved;
+        const isPreview = previewSignatureValid(campaign.landingPageSlug, req.query.preview);
+        if (!isViewable(campaign) && !isPreview) {
             return res.status(404).render('not-found');
         }
 
-        const { campaign, trackingCode } = resolved;
-
         // Fire and forget: the visitor should never wait on analytics.
-        void recordClick({ req, trackingCode, campaignId: campaign._id, action: ClickAction.VIEW });
+        // Not for previews — an admin checking the page is not a prospect, and
+        // counting them would inflate the annonceur's numbers before launch.
+        if (!isPreview) {
+            void recordClick({ req, trackingCode, campaignId: campaign._id, action: ClickAction.VIEW });
+        }
 
         const actionBase = trackingCode ? `/c/${trackingCode}` : `/c/slug/${campaign.landingPageSlug}`;
 
@@ -76,6 +104,7 @@ export const renderLandingPage = async (req: Request, res: Response) => {
             isTestCampaign: Boolean(campaign.isTestCampaign),
             landingVideoUrl: campaign.landingVideoFileId ? mediaUrl(campaign.landingVideoFileId) : null,
             hasSignup: Boolean(trackingCode) || Boolean(campaign.isTestCampaign),
+            isPreview,
             signupUrl: `${actionBase}/signup`,
         });
     } catch (err) {
