@@ -69,7 +69,22 @@
             max-width: 480px; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px;
             background: #FEF3C7; color: #92400E; font-size: 13px; text-align: center;
         }
-        .landing-video { width: 100%; border-radius: 12px; margin-bottom: 14px; background: #000; }
+        .player { position: relative; width: 100%; border-radius: 12px; overflow: hidden;
+            background: #000; margin-bottom: 14px; }
+        .player video { width: 100%; display: block; aspect-ratio: 16 / 9; object-fit: contain; }
+        .player-tap { position: absolute; inset: 0; display: flex; align-items: center;
+            justify-content: center; background: transparent; border: 0; cursor: pointer;
+            transition: opacity .25s; }
+        .player-icon { display: grid; place-items: center; width: 62px; height: 62px;
+            border-radius: 50%; background: rgba(255,255,255,.92); color: #111; font-size: 22px;
+            padding-left: 4px; }
+        .player.playing .player-tap { opacity: 0; }
+        .player.playing:hover .player-tap { opacity: 1; }
+        .player-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 12px;
+            display: flex; align-items: center; gap: 10px;
+            background: linear-gradient(to top, rgba(0,0,0,.7), transparent); }
+        .player-bar input { flex: 1; accent-color: #22c55e; height: 4px; cursor: pointer; }
+        .player-time { color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; }
         .join { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
         .join p { font-size: 13px; opacity: .75; margin: 0 0 10px; }
         footer { text-align: center; padding: 18px 0 4px; color: var(--muted); font-size: 0.75rem; }
@@ -91,7 +106,19 @@
             <h1><%= title %></h1>
             <% if (description) { %><p class="desc"><%= description %></p><% } %>
             <% if (isTestCampaign && landingVideoUrl) { %>
-                <video class="landing-video" src="<%= landingVideoUrl %>" controls playsinline preload="metadata"></video>
+                <!-- Same shape as the app's player: tap anywhere to play/pause,
+                     a green progress bar, controls that fade. The browser default
+                     looks nothing like the rest of SBC. -->
+                <div class="player" id="player">
+                    <video id="v" src="<%= landingVideoUrl %>" playsinline preload="metadata"></video>
+                    <button class="player-tap" id="tap" aria-label="Lecture">
+                        <span class="player-icon" id="icon">&#9654;</span>
+                    </button>
+                    <div class="player-bar">
+                        <input type="range" id="seek" value="0" min="0" max="100" step="0.1" aria-label="Progression">
+                        <span class="player-time" id="time">0:00</span>
+                    </div>
+                </div>
             <% } %>
             <div class="actions">
                 <% if (hasWhatsapp) { %>
@@ -113,5 +140,33 @@
             <footer>Propulsé par Sniper Business Center</footer>
         </div>
     </div>
+    <script>
+        (function () {
+            var wrap = document.getElementById('player');
+            if (!wrap) return;
+            var v = document.getElementById('v'), tap = document.getElementById('tap');
+            var icon = document.getElementById('icon'), seek = document.getElementById('seek');
+            var time = document.getElementById('time');
+
+            function fmt(t) {
+                if (!isFinite(t)) return '0:00';
+                var m = Math.floor(t / 60), s = Math.floor(t % 60);
+                return m + ':' + (s < 10 ? '0' : '') + s;
+            }
+            function toggle() { v.paused ? v.play() : v.pause(); }
+
+            tap.addEventListener('click', toggle);
+            v.addEventListener('click', toggle);
+            v.addEventListener('play', function () { wrap.classList.add('playing'); icon.innerHTML = '&#10074;&#10074;'; });
+            v.addEventListener('pause', function () { wrap.classList.remove('playing'); icon.innerHTML = '&#9654;'; });
+            v.addEventListener('timeupdate', function () {
+                if (v.duration) seek.value = String((v.currentTime / v.duration) * 100);
+                time.textContent = fmt(v.currentTime);
+            });
+            seek.addEventListener('input', function () {
+                if (v.duration) v.currentTime = (Number(seek.value) / 100) * v.duration;
+            });
+        })();
+    </script>
 </body>
 </html>
