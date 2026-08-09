@@ -78,6 +78,28 @@ type ExtractOptions = {
 const userPart = (jid?: string | null): string => (jid ?? '').split('@')[0].split(':')[0];
 
 /**
+ * Numeric value of a protobuf timestamp.
+ *
+ * Baileys hands these back as Long objects ({ low, high }) rather than numbers,
+ * and an unset one is a *present object holding zero* — truthy in a boolean test.
+ * Every count derived from these is money, so they are compared numerically.
+ */
+const epochOf = (value: unknown): number => {
+    if (value == null) return 0;
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') return Number(value) || 0;
+
+    const long = value as { toNumber?: () => number; low?: number; high?: number };
+    if (typeof long.toNumber === 'function') {
+        try { return long.toNumber(); } catch { return 0; }
+    }
+    if (typeof long.low === 'number') {
+        return long.low + (long.high ?? 0) * 4294967296;
+    }
+    return 0;
+};
+
+/**
  * Links a WhatsApp account and reads its own statuses.
  *
  * Returns a handle rather than a bare promise because the caller must surface the
@@ -185,12 +207,24 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
                     mediaType: img ? 'image' : vid ? 'video' : txt !== undefined ? 'text' : 'other',
                     caption: img?.caption ?? vid?.caption ?? txt ?? undefined,
                     mimeType: img?.mimetype ?? vid?.mimetype ?? undefined,
-                    // A view is a READ receipt. userReceipt holds every recipient and
-                    // deliveredAt is set on all of them, so counting the array gives
-                    // delivery reach (e.g. 279) rather than views (71).
-                    viewCount: receipts.filter(r => r.readTimestamp).length,
-                    deliveredCount: receipts.filter(r => r.receiptTimestamp).length,
+                    // A view is a READ receipt. userReceipt holds every recipient,
+                    // so counting the array gives delivery reach rather than views.
+                    //
+                    // The timestamps arrive as protobuf Longs — objects, and an
+                    // object is truthy even when it holds zero. A plain
+                    // `filter(r => r.readTimestamp)` therefore counted every
+                    // recipient: a status with 13 real views reported 216, exactly
+                    // matching its delivered count. Compare the numeric value.
+                    viewCount: receipts.filter(r => epochOf(r.readTimestamp) > 0).length,
+                    deliveredCount: receipts.filter(r => epochOf(r.receiptTimestamp) > 0).length,
                 };
+
+                if (receipts.length) {
+                    log.debug(
+                        `Status ${id}: ${entry.viewCount} read / ${entry.deliveredCount} delivered `
+                        + `of ${receipts.length} recipients`,
+                    );
+                }
 
                 if (opts.downloadMedia && (img || vid)) {
                     try {

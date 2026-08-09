@@ -150,7 +150,11 @@ export const applyExtraction = async (
     const verdicts: DayVerdict[] = [];
 
     for (const day of participation.days) {
-        if (day.status === DayStatus.VERIFIED) continue;
+        // Only a day the diffuseur has actually posted can be judged. Iterating
+        // every non-verified day meant days 2 and 3 — not yet open, let alone
+        // published — were checked against the statuses on the account and marked
+        // failed, which reads as being punished for not time-travelling.
+        if (day.status !== DayStatus.POSTED) continue;
 
         const notBefore = earliestAllowedPost(participation.days, day.day);
         const match = findMatchingStatus(
