@@ -208,11 +208,32 @@ class NotificationService {
             throw new Error('Email subject is required');
         }
 
-        // Internal callers (advertising, sbclove) send plain text with real line
-        // breaks; served as-is in an HTML email they collapse into one long line.
+        // Anything short of a full document goes inside the branded template.
+        // Not cosmetic: Gmail silently discards our plain-bodied mails — same
+        // sender and relay, the branded probe arrived, the plain one vanished
+        // without even reaching spam (verified 2026-08-09).
         const body = notification.data.body || '';
-        const looksHtml = /<[a-z][\s\S]*>/i.test(body);
-        const html = looksHtml ? body : body.replace(/\n/g, '<br>');
+        const isFullDocument = /<!doctype|<html/i.test(body);
+
+        let html = body;
+        if (!isFullDocument) {
+            const content = /<[a-z][\s\S]*>/i.test(body)
+                ? body
+                : `<p style="font-size: 16px; color: #333; line-height: 1.6;">${body.replace(/\n/g, '<br>')}</p>`;
+
+            // Callers may pass ctaLabel/ctaUrl in relatedData to get a button
+            // (the advertising client already sends them).
+            const related = notification.data.relatedData as Record<string, unknown> | undefined;
+            const ctaUrl = typeof related?.ctaUrl === 'string' ? related.ctaUrl : undefined;
+            const ctaLabel = typeof related?.ctaLabel === 'string' ? related.ctaLabel : 'Ouvrir SBC';
+            const cta = ctaUrl
+                ? `<div style="text-align: center; margin: 30px 0 10px;">
+                       <a href="${ctaUrl}" style="background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; display: inline-block;">${ctaLabel}</a>
+                   </div>`
+                : '';
+
+            html = emailService.createBaseTemplate(notification.data.subject, content + cta);
+        }
 
         return emailService.sendEmail({
             to: notification.recipient,

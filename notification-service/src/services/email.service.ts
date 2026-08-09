@@ -348,9 +348,14 @@ class EmailService {
     }
 
     /**
-     * Create a beautiful base email template
+     * Create a beautiful base email template.
+     *
+     * Public because it is also the deliverability fix for internal
+     * notifications: Gmail silently discards our plain-bodied mails (verified
+     * empirically 2026-08-09 — same sender, same relay, branded probe arrived,
+     * plain probe vanished without even reaching spam).
      */
-    private createBaseTemplate(title: string, content: string, footerText?: string): string {
+    public createBaseTemplate(title: string, content: string, footerText?: string): string {
         return `
         <!DOCTYPE html>
         <html lang="fr">
