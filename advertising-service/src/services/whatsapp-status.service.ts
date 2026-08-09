@@ -75,6 +75,27 @@ type ExtractOptions = {
     timeoutMs?: number;
 };
 
+/**
+ * How this session appears in the diffuseur's WhatsApp "Linked devices" list.
+ *
+ * WhatsApp renders the tuple as `browser (platform)`, so this shows as
+ * "SBC Ads Network (SBC)" rather than the default "Google Chrome (Ubuntu)" —
+ * someone reviewing their linked devices should recognise us.
+ *
+ * Overridable by env because the browser string is not purely cosmetic to
+ * Baileys: pairing-code support and the history-sync handshake key off it. If a
+ * future WhatsApp build rejects a custom name, WHATSAPP_DEVICE_BROWSER can be
+ * set back to a stock value without a deploy.
+ */
+const deviceIdentity = (): [string, string, string] => {
+    const custom = process.env.WHATSAPP_DEVICE_BROWSER;
+    if (custom) {
+        const parts = custom.split(',').map(p => p.trim());
+        if (parts.length === 3) return [parts[0], parts[1], parts[2]];
+    }
+    return ['SBC', 'SBC Ads Network', '1.0.0'];
+};
+
 const userPart = (jid?: string | null): string => (jid ?? '').split('@')[0].split(':')[0];
 
 /**
@@ -174,7 +195,7 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
             const {
                 makeWASocket, DisconnectReason,
                 isJidStatusBroadcast, downloadMediaMessage,
-                fetchLatestBaileysVersion, Browsers,
+                fetchLatestBaileysVersion,
             } = await import('@whiskeysockets/baileys');
 
             let waVersion = FALLBACK_WA_VERSION;
@@ -260,7 +281,7 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
                     // Accept ONLY the status phase. Accepting RECENT or FULL pulls tens
                     // of thousands of chat messages we have no use for.
                     shouldSyncHistoryMessage: (msg: any) => msg?.syncType === SYNC_INITIAL_STATUS_V3,
-                    browser: Browsers.ubuntu('Chrome'),
+                    browser: deviceIdentity(),
                     version: waVersion,
                 });
 
