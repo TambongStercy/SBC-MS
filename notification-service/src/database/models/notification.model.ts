@@ -37,6 +37,7 @@ export interface INotificationData {
     language?: string; // Language preference for templates (e.g., 'en_US', 'fr')
     lang?: string; // Alternative language field
     attachmentContent?: string;
+    relatedData?: Record<string, any>;
     attachmentFileName?: string;
     attachmentContentType?: string;
 }
@@ -81,6 +82,10 @@ const NotificationDataSchema = new Schema({
     attachmentContent: { type: String },
     attachmentFileName: { type: String },
     attachmentContentType: { type: String },
+    // Context from the calling service (ctaLabel/ctaUrl render as the email's
+    // button). Absent from the schema it was silently stripped on save, so the
+    // button never survived to the send step.
+    relatedData: { type: Schema.Types.Mixed },
 }, { _id: false });
 
 // Create notification schema
