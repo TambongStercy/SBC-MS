@@ -11,8 +11,18 @@ import logger from '../../utils/logger';
 const log = logger.getLogger('PublicController');
 
 /** Media is served through settings-service, which owns file storage. */
+/**
+ * Public URL for a stored file.
+ *
+ * Built from the app's public origin, NOT from services.settingsService — that
+ * one is an internal address (http://localhost:6007) and this HTML is rendered
+ * for strangers on the internet, who cannot reach it. Every image and video on
+ * every landing page was broken because of it.
+ *
+ * Encoded: uploaded filenames can contain spaces.
+ */
 const mediaUrl = (fileId: string) =>
-    `${config.services.settingsService.replace(/\/api$/, '')}/api/settings/files/${fileId}`;
+    `${config.appBaseUrl.replace(/\/$/, '')}/api/settings/files/${encodeURIComponent(fileId)}`;
 
 /** Only live campaigns are publicly visible; drafts and cancelled ones 404. */
 const isViewable = (c: ICampaign) =>
