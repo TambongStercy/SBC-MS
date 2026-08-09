@@ -94,6 +94,9 @@ interface IConfig {
     };
     selfBaseUrl: string; // Base URL of this service for webhooks
     withdrawalsEnabled: boolean; // Global withdrawal control switch
+    // Preprod payment sandbox — fake provider responses driven by magic values.
+    // Refused at runtime when nodeEnv === 'production' (see services/sandbox.service.ts).
+    sandboxEnabled: boolean;
 }
 
 // Configuration object
@@ -186,6 +189,7 @@ const config: IConfig = {
     },
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3003',
     withdrawalsEnabled: process.env.WITHDRAWALS_ENABLED === 'true', // Global withdrawal control - default false
+    sandboxEnabled: process.env.PAYMENT_SANDBOX_ENABLED === 'true', // Default off; never honored in production
 };
 
 // Validation function

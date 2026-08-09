@@ -8,6 +8,8 @@ import apiRoutes from './api/routes';
 import logger from './utils/logger';
 import { paymentProcessor } from './jobs/paymentProcessor';
 import { transactionStatusChecker } from './jobs/transaction-status-checker.job';
+import { sandboxSweeper } from './jobs/sandbox-sweeper.job';
+import { warnIfMisconfigured } from './services/sandbox.service';
 import path from 'path';
 
 // Create Express server
@@ -130,6 +132,10 @@ async function startServer() {
         // Start transaction status checker
         transactionStatusChecker.start();
 
+        // Payment sandbox (preprod only — refused outright in production)
+        warnIfMisconfigured();
+        sandboxSweeper.start();
+
         // Start Express server
         app.listen(PORT, () => {
             logger.info(`[Server] Payment service running on port ${PORT}`);
@@ -145,6 +151,9 @@ async function startServer() {
 
             // Stop transaction status checker
             transactionStatusChecker.stop();
+
+            // Stop sandbox sweeper (no-op unless the sandbox is active)
+            sandboxSweeper.stop();
 
             process.exit(0);
         };
