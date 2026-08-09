@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
-import CampaignModel, { CampaignStatus } from '../database/models/campaign.model';
-import { allocateCampaign } from './allocation.service';
+import CampaignModel, { CampaignStatus, ICampaign } from '../database/models/campaign.model';
+import { allocateCampaign, remainingViewsToCover } from './allocation.service';
 import CampaignParticipationModel, {
     DayStatus,
     ParticipationStatus,
@@ -168,6 +168,41 @@ export const sweepForfeits = async (): Promise<number> => {
 };
 
 /**
+ * Tops up every active campaign that is still short of its target.
+ *
+ * Allocation used to run only at activation and after a forfeit, so a campaign
+ * that could not be filled on day one stayed unfilled — a diffuseur who finished
+ * their test campaign an hour later was never pulled into it, however well they
+ * matched. The advertiser simply never got the views they paid for.
+ *
+ * allocateCampaign skips anyone already offered the campaign, so running this on
+ * every tick tops up rather than re-offers.
+ */
+export const sweepUnderfilledCampaigns = async (): Promise<number> => {
+    const active = await CampaignModel
+        .find({ status: CampaignStatus.ACTIVE, isTestCampaign: { $ne: true } })
+        .select('_id title targetUniqueViews')
+        .lean();
+
+    let topped = 0;
+    for (const campaign of active) {
+        try {
+            const remaining = await remainingViewsToCover(campaign as unknown as ICampaign);
+            if (remaining <= 0) continue;
+
+            const result = await allocateCampaign(campaign._id);
+            if (result.offersCreated > 0) {
+                topped++;
+                log.info(`Topped up "${campaign.title}" with ${result.offersCreated} offer(s), ${remaining} views short`);
+            }
+        } catch (err) {
+            log.error(`Top-up failed for campaign ${campaign._id}:`, err);
+        }
+    }
+    return topped;
+};
+
+/**
  * Suspends the referral commission for diffuseurs who were offered campaigns over
  * the inactivity window and completed none.
  *
@@ -238,6 +273,10 @@ export const runScheduledJobs = async (): Promise<void> => {
         // Before allocation: a diffuseur who links WhatsApp today should be
         // measured before being offered anything an annonceur is paying for.
         ['offerTestCampaignToNewDiffuseurs', offerTestCampaignToNewDiffuseurs],
+        // After the test campaign is handed out: a diffuseur measured on an
+        // earlier tick becomes eligible here, and under-filled campaigns should
+        // pick them up without waiting for someone to forfeit.
+        ['sweepUnderfilledCampaigns', sweepUnderfilledCampaigns],
         // Last: it depends on participations the earlier jobs may have just
         // completed, and a credit that fails here is simply retried next tick.
         ['sweepPendingPayouts', async () => (await sweepPendingPayouts()).credited],

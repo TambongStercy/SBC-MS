@@ -148,10 +148,14 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
     const campaign = await getTestCampaign();
     if (!campaign) return 0;
 
+    // Deliberately NOT filtered on whatsappLid. Linking WhatsApp happens during
+    // the verification of a participation, so requiring a linked account before
+    // handing out the first participation is a deadlock: no offer, so no
+    // verification, so no LID, so no offer. The test campaign is where that first
+    // link is meant to happen.
     const newcomers = await DiffuseurProfileModel.find({
         isActive: true,
         hasCompletedTestCampaign: false,
-        whatsappLid: { $exists: true },
     }).select('_id userId').limit(200).lean();
 
     if (!newcomers.length) return 0;
