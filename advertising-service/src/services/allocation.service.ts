@@ -41,7 +41,12 @@ const ageFrom = (birthDate?: string): number | undefined => {
     return Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
 };
 
-const eqi = (a?: string, b?: string) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
+// Accent-insensitive on top of case-insensitive: profiles store cities and
+// interests with inconsistent accents ("Yaoundé" vs "Yaounde"), and a
+// targeting criterion that silently misses half the matching diffuseurs is
+// worse than none.
+const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const eqi = (a?: string, b?: string) => Boolean(a && b && fold(a) === fold(b));
 const anyMatch = (want: string[] | undefined, have: string | undefined) =>
     !want?.length || want.some(w => eqi(w, have));
 const anyOverlap = (want: string[] | undefined, have: string[] | undefined) =>
