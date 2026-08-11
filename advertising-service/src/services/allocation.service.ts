@@ -84,6 +84,12 @@ const buildDays = (): IDayProof[] =>
 
 /** Views still needed, counting what accepted diffuseurs are expected to bring. */
 export const remainingViewsToCover = async (campaign: ICampaign): Promise<number> => {
+    // The test campaign is a measuring instrument, not an ad buy: its target is
+    // a placeholder and must never gate anything. Treating it as real expired
+    // every acceptance after the first diffuseur delivered a view — accepting
+    // showed « objectif déjà atteint » and the offer just vanished (Jamelle and
+    // Christian, 2026-08-10).
+    if (campaign.isTestCampaign) return Number.POSITIVE_INFINITY;
     const committed = await CampaignParticipationModel.aggregate<{ total: number }>([
         {
             $match: {
