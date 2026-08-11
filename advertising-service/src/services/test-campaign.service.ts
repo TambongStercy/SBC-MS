@@ -37,6 +37,8 @@ type TestCampaignInput = {
     contactWhatsapp?: string;
     contactPhone?: string;
     websiteUrl?: string;
+    /** Admin override: apply a creative change despite in-flight runs. */
+    force?: boolean;
 };
 
 /**
@@ -67,13 +69,23 @@ export const upsertTestCampaign = async (
             campaignId: existing._id,
             status: ParticipationStatus.IN_PROGRESS,
         });
-        if (inFlight > 0 && input.mediaFileId !== existing.mediaFileId) {
+        // Rufus's call: the admin may force the change. The cost is honest —
+        // in-flight diffuseurs posted the old creative, so their remaining
+        // verifications will compare against the new one and can flag a media
+        // mismatch (advisory + trust). The 409 without force states it.
+        if (inFlight > 0 && input.mediaFileId !== existing.mediaFileId && !input.force) {
             throw new AppError(
                 `${inFlight} diffuseur(s) publient actuellement cette campagne test. `
-                + `Vous pouvez modifier le texte et la vidéo, mais pas la créative tant qu'ils n'ont pas terminé.`,
+                + `Modifier la créative maintenant peut pénaliser leurs vérifications en cours. `
+                + `Confirmez pour forcer la modification.`,
                 409,
             );
         }
+
+        // Compared BEFORE the assign — afterwards the two are always equal, so
+        // the stale perceptual hash was never cleared and every verification
+        // against a changed creative would flag a false mismatch.
+        const creativeChanged = input.mediaFileId !== existing.mediaFileId;
 
         Object.assign(existing, {
             title: input.title.trim(),
@@ -89,7 +101,7 @@ export const upsertTestCampaign = async (
             reviewedBy: adminUserId,
             reviewedAt: new Date(),
         });
-        if (input.mediaFileId !== existing.mediaFileId) existing.mediaPerceptualHash = undefined;
+        if (creativeChanged) existing.mediaPerceptualHash = undefined;
         await existing.save();
 
         log.info(`Test campaign ${existing._id} updated by ${adminUserId}`);

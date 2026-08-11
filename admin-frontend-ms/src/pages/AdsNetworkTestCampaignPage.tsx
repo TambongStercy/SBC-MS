@@ -26,6 +26,7 @@ import {
  */
 const AdsNetworkTestCampaignPage: React.FC = () => {
     const { toasts, removeToast, showSuccess, showError } = useToast();
+    const [forcePrompt, setForcePrompt] = useState<string | null>(null);
 
     const [campaign, setCampaign] = useState<TestCampaign | null>(null);
     const [loading, setLoading] = useState(true);
@@ -89,13 +90,10 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
         }
     };
 
-    const handleSave = async () => {
-        if (!form.title.trim()) return showError('Donnez un titre à la campagne test.');
-        if (!form.mediaFileId) return showError('Ajoutez la créative que les diffuseurs publieront.');
-
+    const doSave = async (force: boolean) => {
         setSaving(true);
         try {
-            const saved = await saveTestCampaign(form);
+            const saved = await saveTestCampaign(force ? { ...form, force: true } : form);
             setCampaign(saved);
             const offered = (saved as TestCampaign & { offeredNow?: number }).offeredNow ?? 0;
             showSuccess(
@@ -104,11 +102,24 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                     : 'Campagne test enregistrée.',
             );
             await load();
-        } catch (err) {
+        } catch (err: unknown) {
+            const status = (err as { response?: { status?: number } })?.response?.status;
+            if (status === 409 && !force) {
+                // The backend refuses a creative change while diffuseurs are
+                // mid-run — Rufus can override, but through an explicit confirm.
+                setForcePrompt(apiErrorMessage(err, 'Des diffuseurs publient actuellement cette campagne.'));
+                return;
+            }
             showError(apiErrorMessage(err, "L'enregistrement a échoué."));
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleSave = async () => {
+        if (!form.title.trim()) return showError('Donnez un titre à la campagne test.');
+        if (!form.mediaFileId) return showError('Ajoutez la créative que les diffuseurs publieront.');
+        await doSave(false);
     };
 
     const handleRetire = async () => {
@@ -294,6 +305,17 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
             )}
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
+            {forcePrompt && (
+                <ConfirmationModal
+                    isOpen={true}
+                    title="Forcer la modification ?"
+                    message={`${forcePrompt}\n\nEn forçant, les vérifications en cours de ces diffuseurs pourront signaler un visuel différent (pénalité de confiance possible).`}
+                    confirmText="Forcer la modification"
+                    cancelText="Annuler"
+                    onConfirm={async () => { setForcePrompt(null); await doSave(true); }}
+                    onCancel={() => setForcePrompt(null)}
+                />
+            )}
         </div>
     );
 };
