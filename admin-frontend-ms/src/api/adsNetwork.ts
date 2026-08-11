@@ -205,7 +205,7 @@ export const getTestCampaign = async (): Promise<TestCampaign | null> => {
     return data.data ?? null;
 };
 
-export const saveTestCampaign = async (body: Partial<TestCampaign>): Promise<TestCampaign> => {
+export const saveTestCampaign = async (body: Partial<TestCampaign> & { force?: boolean }): Promise<TestCampaign> => {
     const { data } = await apiClient.put('/advertising/admin/test-campaign', body);
     return data.data;
 };
