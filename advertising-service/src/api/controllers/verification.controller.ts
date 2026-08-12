@@ -31,7 +31,11 @@ const fail = (res: Response, err: unknown, context: string) => {
         return res.status(503).json({ success: false, message: err.message });
     }
     const status = (err as AppError)?.statusCode ?? 500;
-    if (status >= 500) log.error(`${context}:`, err);
+    // Pino serializes a bare Error to {} — every 500 logged as "details: {}"
+    // and the real cause was unrecoverable from the logs. Spell it out.
+    if (status >= 500) {
+        log.error(`${context}: ${(err as Error)?.message}`, { stack: (err as Error)?.stack });
+    }
     return res.status(status).json({
         success: false,
         message: status >= 500 ? 'Une erreur est survenue.' : (err as Error).message,
