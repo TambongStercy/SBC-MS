@@ -146,7 +146,17 @@ export const retireTestCampaign = async (): Promise<boolean> => {
     existing.status = CampaignStatus.COMPLETED;
     existing.completedAt = new Date();
     await existing.save();
-    log.info(`Test campaign ${existing._id} retired`);
+
+    // Un-accepted offers die with the campaign — leaving them alive kept the
+    // retired campaign on every dashboard (« quand je clique sur retirer, ça
+    // ne retire pas » — Rufus). Runs already in progress are left to finish:
+    // someone mid-measurement keeps their measurement.
+    const expired = await CampaignParticipationModel.updateMany(
+        { campaignId: existing._id, status: ParticipationStatus.OFFERED },
+        { $set: { status: ParticipationStatus.EXPIRED } },
+    );
+
+    log.info(`Test campaign ${existing._id} retired, ${expired.modifiedCount} outstanding offer(s) expired`);
     return true;
 };
 
@@ -172,11 +182,19 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
 
     if (!newcomers.length) return 0;
 
-    // Anyone already holding an offer or a run of it must not get a second.
+    // Anyone already holding an offer or a live run of ANY test campaign must
+    // not get a second. Scoped to the current campaign only, each retire +
+    // re-create handed everyone a fresh offer while their previous test run
+    // was still on their dashboard — two test campaigns at once (Rufus).
+    const testCampaignIds = (await CampaignModel
+        .find({ isTestCampaign: true })
+        .select('_id')
+        .lean()).map(c => c._id);
     const existing = await CampaignParticipationModel
         .find({
-            campaignId: campaign._id,
+            campaignId: { $in: testCampaignIds },
             diffuseurUserId: { $in: newcomers.map(n => n.userId) },
+            status: { $in: [ParticipationStatus.OFFERED, ParticipationStatus.IN_PROGRESS] },
         })
         .select('diffuseurUserId')
         .lean();
