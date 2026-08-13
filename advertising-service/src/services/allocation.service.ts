@@ -12,6 +12,7 @@ import { getTestCampaign } from './test-campaign.service';
 import { openParticipation } from './day-window.service';
 import { notifyCampaignOffer } from './clients/notification.service.client';
 import config from '../config';
+import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('AllocationService');
@@ -289,23 +290,23 @@ export const acceptOffer = async (
         _id: participationId,
         diffuseurUserId,
     });
-    if (!participation) throw new Error('Offer not found');
+    if (!participation) throw new AppError('Offre introuvable.', 404);
     if (participation.status !== ParticipationStatus.OFFERED) {
-        throw new Error('Cette campagne n\'est plus disponible.');
+        throw new AppError('Cette campagne n\'est plus disponible.', 409);
     }
 
     const campaign = await CampaignModel.findById(participation.campaignId);
     if (!campaign || campaign.status !== CampaignStatus.ACTIVE) {
         participation.status = ParticipationStatus.EXPIRED;
         await participation.save();
-        throw new Error('Cette campagne n\'est plus active.');
+        throw new AppError('Cette campagne n\'est plus active.', 409);
     }
 
     const remaining = await remainingViewsToCover(campaign);
     if (remaining <= 0) {
         participation.status = ParticipationStatus.EXPIRED;
         await participation.save();
-        throw new Error('Cette campagne a déjà atteint son objectif.');
+        throw new AppError('Cette campagne a déjà atteint son objectif.', 409);
     }
 
     const now = new Date();
