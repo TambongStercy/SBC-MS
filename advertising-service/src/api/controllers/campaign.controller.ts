@@ -376,6 +376,15 @@ export const decideUnfilled = async (req: AuthenticatedRequest, res: Response) =
         campaign.completedAt = new Date();
         await campaign.save();
 
+        // Un-accepted offers die with the campaign. Left alive, they sat on
+        // diffuseur dashboards and accepting one hit « n'est plus active » —
+        // the offer card just vanished (Sterling, 2026-08-13; same disease the
+        // test-campaign retire had). Runs in progress finish and are paid.
+        await CampaignParticipationModel.updateMany(
+            { campaignId: campaign._id, status: 'offered' },
+            { $set: { status: 'expired' } },
+        );
+
         log.info(`Campaign ${campaign._id} banked with ${remaining} FCFA credit for advertiser ${campaign.advertiserUserId}`);
 
         return res.json({
