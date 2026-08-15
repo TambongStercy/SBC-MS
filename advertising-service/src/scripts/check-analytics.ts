@@ -117,6 +117,54 @@ const main = async () => {
     check('the current month lands in its own bucket', current?.revenue === 12000, `got ${current?.revenue}`);
     check('payouts bucket by credit date', current?.paidToDiffuseurs === 175, `got ${current?.paidToDiffuseurs}`);
 
+    // --- The test campaign is SBC's instrument, not marketplace activity ---
+    // Counted in, it inflated campaign totals, delivered views, the status
+    // breakdown, in-flight, and even the annonceur roster with SBC's own admin.
+    // It is managed on its own admin page and belongs in none of these numbers.
+    const before = await overview();
+    const beforeFlight = await inFlight();
+
+    const testCampaign = await CampaignModel.create({
+        advertiserUserId: new Types.ObjectId(),
+        title: 'Campagne test', mediaFileId: 'f', mediaType: 'image',
+        landingPageSlug: `tc${Date.now()}`,
+        amountPaid: 0, pricePerUniqueView: 0, targetUniqueViews: 1,
+        isTestCampaign: true,
+        status: CampaignStatus.ACTIVE,
+        activatedAt: now,
+        uniqueViewsDelivered: 500, repeatViewsDelivered: 300, clicksTotal: 40,
+    });
+    await CampaignParticipationModel.create({
+        campaignId: testCampaign._id,
+        diffuseurUserId: new Types.ObjectId(),
+        diffuseurProfileId: new Types.ObjectId(),
+        trackingCode: `tcp${Date.now()}`,
+        status: ParticipationStatus.IN_PROGRESS,
+        creditedAt: now,
+        totalEarned: 0,
+    });
+
+    const after = await overview();
+    const afterFlight = await inFlight();
+
+    check('the test campaign is not counted as a campaign',
+        after.campaigns.total === before.campaigns.total,
+        `${before.campaigns.total} → ${after.campaigns.total}`);
+    check('its views stay out of delivered views',
+        after.delivery.uniqueViews === before.delivery.uniqueViews
+        && after.delivery.repeatViews === before.delivery.repeatViews
+        && after.delivery.clicks === before.delivery.clicks,
+        `${before.delivery.uniqueViews}/${before.delivery.repeatViews} → ${after.delivery.uniqueViews}/${after.delivery.repeatViews}`);
+    check('its admin owner is not counted as an annonceur',
+        after.annonceurs.total === before.annonceurs.total,
+        `${before.annonceurs.total} → ${after.annonceurs.total}`);
+    check('it is absent from the status breakdown',
+        (after.campaigns.byStatus?.active ?? 0) === (before.campaigns.byStatus?.active ?? 0),
+        'byStatus counted every campaign, test ones included');
+    check('its run is absent from in-flight',
+        afterFlight.inProgress === beforeFlight.inProgress,
+        `${beforeFlight.inProgress} → ${afterFlight.inProgress}`);
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
 
