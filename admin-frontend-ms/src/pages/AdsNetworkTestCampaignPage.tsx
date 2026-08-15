@@ -140,13 +140,13 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
     return (
         <div className="flex-1 overflow-auto relative z-10">
             <Header title="SBC Ads Network — Campagne test" />
-            <main className="max-w-3xl mx-auto py-6 px-4 lg:px-8">
+            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6 grid lg:grid-cols-3 gap-5 items-start"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
-                    <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 text-sm text-blue-100">
+                    <div className="lg:col-span-2 bg-blue-900/20 border border-blue-700 rounded-lg p-4 text-sm text-blue-100">
                         <p>
                             <strong>À quoi elle sert.</strong> Un nouveau diffuseur déclare lui-même
                             son nombre de vues. La campagne test est la première qu'il publie : elle
@@ -160,22 +160,23 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                         </p>
                     </div>
 
-                    {campaign?.stats && (
-                        <div className="grid grid-cols-3 gap-3 mt-4">
-                            {[
-                                { label: 'Proposée à', value: campaign.stats.offered },
-                                { label: 'En cours', value: campaign.stats.inProgress },
-                                { label: 'Diffuseurs mesurés', value: campaign.stats.measured },
-                            ].map(s => (
-                                <div key={s.label} className="bg-gray-900/50 rounded-lg p-3 text-center">
-                                    <p className="text-2xl font-semibold text-gray-100">{s.value}</p>
-                                    <p className="text-xs text-gray-400">{s.label}</p>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <div className="space-y-3">
+                        {campaign?.stats && (
+                            <div className="grid grid-cols-3 lg:grid-cols-1 gap-2">
+                                {[
+                                    { label: 'Proposée à', value: campaign.stats.offered },
+                                    { label: 'En cours', value: campaign.stats.inProgress },
+                                    { label: 'Diffuseurs mesurés', value: campaign.stats.measured },
+                                ].map(s => (
+                                    <div key={s.label} className="bg-gray-900/50 rounded-lg px-3 py-2 flex items-baseline justify-between gap-3">
+                                        <span className="text-xs text-gray-400">{s.label}</span>
+                                        <span className="text-xl font-semibold text-gray-100">{s.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
-                    <div className="flex items-center gap-3 mt-4">
+                    <div className="flex items-center gap-3">
                         <button onClick={load} className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm">
                             <RefreshCw className="w-4 h-4" /> Rafraîchir
                         </button>
@@ -186,18 +187,19 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             </a>
                         )}
                     </div>
+                    </div>
                 </motion.div>
 
                 {loading ? (
                     <div className="p-12 flex justify-center"><Loader name="Chargement…" /></div>
                 ) : (
                     <motion.div
-                        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 space-y-5"
+                        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 grid lg:grid-cols-5 gap-x-8 gap-y-5"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                     >
                         {!campaign && (
-                            <div className="flex items-center gap-2 text-amber-200 bg-amber-900/20 border border-amber-700 rounded-lg p-3 text-sm">
+                            <div className="lg:col-span-5 flex items-center gap-2 text-amber-200 bg-amber-900/20 border border-amber-700 rounded-lg p-3 text-sm">
                                 <FlaskConical className="w-4 h-4 shrink-0" />
                                 Aucune campagne test configurée. Les nouveaux diffuseurs reçoivent
                                 donc directement des campagnes payantes, sur la base de leurs vues
@@ -205,6 +207,10 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             </div>
                         )}
 
+                        {/* Text on the left, media on the right: the creative and the
+                            video are what an admin actually judges here, and at 160px
+                            they were unreadable on the wide screens this panel runs on. */}
+                        <div className="lg:col-span-3 space-y-5">
                         <div>
                             <label className="block text-sm text-gray-300 mb-1">Titre</label>
                             <input className={field} value={form.title}
@@ -219,13 +225,19 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                                 placeholder="Texte affiché sur la page d'atterrissage." />
                         </div>
 
+                        </div>
+
+                        <div className="lg:col-span-2 space-y-6">
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">
+                            <label className="block text-sm text-gray-300 mb-2">
                                 Créative publiée par les diffuseurs
                             </label>
                             {form.mediaFileId && (
-                                <img src={getFileUrl(form.mediaFileId)} alt="Créative"
-                                    className="w-40 rounded-lg bg-black object-contain mb-2" />
+                                <a href={getFileUrl(form.mediaFileId)} target="_blank" rel="noreferrer"
+                                    title="Ouvrir en taille réelle">
+                                    <img src={getFileUrl(form.mediaFileId)} alt="Créative"
+                                        className="w-full max-h-[26rem] rounded-xl bg-black object-contain mb-3 border border-gray-700 hover:border-gray-500 transition-colors" />
+                                </a>
                             )}
                             <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
                                 <Upload className="w-4 h-4" />
@@ -245,7 +257,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             </p>
                             {form.landingVideoFileId && (
                                 <video src={getFileUrl(form.landingVideoFileId)} controls
-                                    className="w-64 rounded-lg bg-black mb-2" />
+                                    className="w-full max-h-[26rem] rounded-xl bg-black mb-3 border border-gray-700" />
                             )}
                             <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
                                 <Upload className="w-4 h-4" />
@@ -255,6 +267,9 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             </label>
                         </div>
 
+                        </div>
+
+                        <div className="lg:col-span-3 space-y-5">
                         <div>
                             <label className="block text-sm text-gray-300 mb-1">
                                 Légende proposée aux diffuseurs
@@ -287,6 +302,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                                     Retirer
                                 </button>
                             )}
+                        </div>
                         </div>
                     </motion.div>
                 )}
