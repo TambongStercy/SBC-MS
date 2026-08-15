@@ -14,9 +14,25 @@ import {
 import { applyExtraction, bindWhatsAppIdentity, lastPostExpired } from '../../services/verification.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
+import { getUserProfile } from '../../services/clients/user.service.client';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('VerificationController');
+
+/**
+ * Dialing codes for the countries the network runs in.
+ *
+ * People type their national number — Christian sent 9 digits with no country
+ * code, WhatsApp bound the pairing code to that, and their app answered
+ * « Impossible de connecter l'appareil ». Knowing the diffuseur's country lets
+ * us repair the number instead of burning a code on one that cannot work.
+ */
+const DIALING_CODES: Record<string, string> = {
+    CM: '237', CI: '225', SN: '221', BJ: '229', TG: '228', BF: '226',
+    ML: '223', NE: '227', GA: '241', CD: '243', CG: '242', GN: '224',
+    TD: '235', KE: '254', GH: '233', NG: '234',
+};
+const KNOWN_CODES = [...new Set(Object.values(DIALING_CODES))];
 
 const currentUserId = (req: AuthenticatedRequest): Types.ObjectId => {
     const id = req.user?.userId || req.user?.id;
@@ -78,20 +94,29 @@ export const start = async (req: AuthenticatedRequest, res: Response) => {
         let pairWithPhone: string | undefined;
 
         if (method === 'code') {
-            // Normalized the way people actually type it: +237…, 00237…, spaces.
-            // WhatsApp wants bare international digits, and a code requested for
-            // the wrong number fails on their side with an error we never see.
+            // Normalized the way people actually type it: +237…, 00237…, spaces,
+            // a leading 0 on the national part. WhatsApp wants bare international
+            // digits, and a code requested for the wrong number fails on their
+            // side with an error we never see.
             let digits = String(req.body?.phoneNumber ?? '').replace(/\D/g, '');
             if (digits.startsWith('00')) digits = digits.slice(2);
-            if (digits.length < 8 || digits.length > 15) {
+
+            // No country code in front? Supply the diffuseur's own. This is the
+            // single most common way the pairing failed: a national number, a
+            // code bound to it, and an error only WhatsApp could show.
+            if (!KNOWN_CODES.some(c => digits.startsWith(c))) {
+                const profile = await getUserProfile(String(userId)).catch(() => null);
+                const code = profile?.country ? DIALING_CODES[profile.country.toUpperCase()] : undefined;
+                if (code) {
+                    const national = digits.replace(/^0+/, '');
+                    log.info(`Pairing number had no country code; assuming ${code} for ${profile!.country}`);
+                    digits = `${code}${national}`;
+                }
+            }
+
+            if (digits.length < 10 || digits.length > 15) {
                 throw new AppError(
                     'Numéro invalide. Indiquez le numéro WhatsApp avec son indicatif pays, sans le « + » (ex. 237675080477).',
-                    400,
-                );
-            }
-            if (digits.startsWith('0')) {
-                throw new AppError(
-                    'Le numéro doit commencer par l\'indicatif du pays, pas par 0 (ex. 237675080477).',
                     400,
                 );
             }
