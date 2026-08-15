@@ -78,10 +78,20 @@ export const start = async (req: AuthenticatedRequest, res: Response) => {
         let pairWithPhone: string | undefined;
 
         if (method === 'code') {
-            const digits = String(req.body?.phoneNumber ?? '').replace(/\D/g, '');
-            if (digits.length < 8) {
+            // Normalized the way people actually type it: +237…, 00237…, spaces.
+            // WhatsApp wants bare international digits, and a code requested for
+            // the wrong number fails on their side with an error we never see.
+            let digits = String(req.body?.phoneNumber ?? '').replace(/\D/g, '');
+            if (digits.startsWith('00')) digits = digits.slice(2);
+            if (digits.length < 8 || digits.length > 15) {
                 throw new AppError(
-                    'Indiquez le numéro WhatsApp à connecter, avec son indicatif pays.',
+                    'Numéro invalide. Indiquez le numéro WhatsApp avec son indicatif pays, sans le « + » (ex. 237675080477).',
+                    400,
+                );
+            }
+            if (digits.startsWith('0')) {
+                throw new AppError(
+                    'Le numéro doit commencer par l\'indicatif du pays, pas par 0 (ex. 237675080477).',
                     400,
                 );
             }
