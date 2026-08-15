@@ -200,24 +200,63 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
         .lean();
     const alreadyHas = new Set(existing.map(p => String(p.diffuseurUserId)));
 
+    // Dead runs on the CURRENT campaign — forfeited, declined, expired. The
+    // (campaignId, diffuseurUserId) pair is unique, so creating a second one
+    // throws and the catch below swallowed it: giving up on the test campaign
+    // once, or declining it, locked that diffuseur out of the whole network
+    // for good, since paid work is gated on having completed it. Revive the
+    // existing document instead.
+    const revivable = await CampaignParticipationModel.find({
+        campaignId: campaign._id,
+        diffuseurUserId: { $in: newcomers.map(n => n.userId) },
+        status: {
+            $in: [
+                ParticipationStatus.FORFEITED,
+                ParticipationStatus.DECLINED,
+                ParticipationStatus.EXPIRED,
+            ],
+        },
+    });
+    const revivableFor = new Map(revivable.map(p => [String(p.diffuseurUserId), p]));
+
     let created = 0;
     for (const profile of newcomers) {
         if (alreadyHas.has(String(profile.userId))) continue;
         try {
-            await CampaignParticipationModel.create({
-                campaignId: campaign._id,
-                diffuseurUserId: profile.userId,
-                diffuseurProfileId: profile._id,
-                trackingCode: newTrackingCode(),
-                status: ParticipationStatus.OFFERED,
-                offeredAt: new Date(),
-                expectedViews: 0,
-                // Rate zero on every day. earningsFromDays multiplies views by
-                // the rate stored on the day, so this is what actually keeps the
-                // payout engine from paying for the test campaign — not a special
-                // case bolted onto the payout path.
-                days: zeroRateDays(),
-            });
+            const previous = revivableFor.get(String(profile.userId));
+            if (previous) {
+                // A clean slate on the same document: new tracking code so old
+                // clicks stay with the abandoned run, and fresh zero-rate days.
+                previous.status = ParticipationStatus.OFFERED;
+                previous.offeredAt = new Date();
+                previous.acceptedAt = undefined;
+                previous.startedAt = undefined;
+                previous.completedAt = undefined;
+                previous.day1Deadline = undefined;
+                previous.completionDeadline = undefined;
+                previous.trackingCode = newTrackingCode();
+                previous.days = zeroRateDays();
+                previous.uniqueViews = 0;
+                previous.repeatViews = 0;
+                previous.totalViews = 0;
+                previous.totalEarned = 0;
+                await previous.save();
+            } else {
+                await CampaignParticipationModel.create({
+                    campaignId: campaign._id,
+                    diffuseurUserId: profile.userId,
+                    diffuseurProfileId: profile._id,
+                    trackingCode: newTrackingCode(),
+                    status: ParticipationStatus.OFFERED,
+                    offeredAt: new Date(),
+                    expectedViews: 0,
+                    // Rate zero on every day. earningsFromDays multiplies views by
+                    // the rate stored on the day, so this is what actually keeps the
+                    // payout engine from paying for the test campaign — not a special
+                    // case bolted onto the payout path.
+                    days: zeroRateDays(),
+                });
+            }
             created++;
             void notifyCampaignOffer(String(profile.userId), campaign.title, 0);
         } catch (err) {

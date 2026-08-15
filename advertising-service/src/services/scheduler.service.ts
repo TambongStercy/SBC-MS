@@ -17,6 +17,7 @@ import {
     notifyDayDue,
     notifyDayOpened,
     notifyCampaignForfeited,
+    notifyTestCampaignForfeited,
     notifyReferralSuspended,
     notifyAdvertiserCampaignComplete,
 } from './clients/notification.service.client';
@@ -150,8 +151,12 @@ export const sweepForfeits = async (): Promise<number> => {
 
     const affectedCampaigns = new Set<string>();
     for (const p of forfeited) {
-        const campaign = await CampaignModel.findById(p.campaignId).select('title').lean();
-        await notifyCampaignForfeited(String(p.diffuseurUserId), campaign?.title ?? 'votre campagne');
+        const campaign = await CampaignModel.findById(p.campaignId).select('title isTestCampaign').lean();
+        if (campaign?.isTestCampaign) {
+            await notifyTestCampaignForfeited(String(p.diffuseurUserId));
+        } else {
+            await notifyCampaignForfeited(String(p.diffuseurUserId), campaign?.title ?? 'votre campagne');
+        }
         affectedCampaigns.add(String(p.campaignId));
     }
 

@@ -4,6 +4,7 @@ import CampaignParticipationModel, {
     ParticipationStatus,
 } from '../database/models/campaign-participation.model';
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
+import CampaignModel from '../database/models/campaign.model';
 import ClickEventModel, { ClickAction } from '../database/models/click-event.model';
 import { notifyTestCampaignCompleted } from './clients/notification.service.client';
 import logger from '../utils/logger';
@@ -96,6 +97,19 @@ export const recordCompletion = async (participation: ICampaignParticipation): P
 export const recordForfeit = async (participation: ICampaignParticipation): Promise<void> => {
     const profile = await DiffuseurProfileModel.findById(participation.diffuseurProfileId);
     if (!profile) return;
+
+    // Abandoning the test campaign costs nothing and nobody: it is unpaid, no
+    // annonceur is owed views, and it is the diffuseur's very first contact
+    // with the flow. Charging trust for it buried beginners in allocation
+    // ordering before they had ever run anything — and they are meant to get
+    // the campaign offered again and try once more.
+    const campaign = await CampaignModel.findById(participation.campaignId)
+        .select('isTestCampaign')
+        .lean();
+    if (campaign?.isTestCampaign) {
+        log.info(`Diffuseur ${profile.userId} did not finish the test campaign; no trust penalty, it will be re-offered`);
+        return;
+    }
 
     profile.campaignsAbandoned += 1;
     profile.trustScore = clampTrust((profile.trustScore ?? TRUST_START) + TRUST_ON_FORFEIT);
