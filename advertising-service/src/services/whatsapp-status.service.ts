@@ -306,7 +306,12 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
                     setTimeout(async () => {
                         try {
                             const code = await sock!.requestPairingCode(opts.pairWithPhone!);
-                            log.info('Pairing code issued');
+                            // The number matters: WhatsApp binds the code to it, and
+                            // entering that code on any OTHER account answers
+                            // « Impossible de connecter l'appareil ». Logged (masked)
+                            // because without it the failure is undiagnosable.
+                            const masked = opts.pairWithPhone!.replace(/^(\d{3})\d+(\d{2})$/, '$1…$2');
+                            log.info(`Pairing code issued for ${masked} (${opts.pairWithPhone!.length} digits)`);
                             opts.onPairingCode?.(code);
                         } catch (err) {
                             log.error('Could not request a pairing code:', err);
