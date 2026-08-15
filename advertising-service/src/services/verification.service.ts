@@ -13,6 +13,7 @@ import { openNextDay, isBeyondRecovery } from './day-window.service';
 import { recordCompletion, recordForfeit } from './ranking.service';
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import config from '../config';
+import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('VerificationService');
@@ -419,7 +420,7 @@ export const bindWhatsAppIdentity = async (
     extraction: ExtractionResult,
 ): Promise<void> => {
     if (!extraction.whatsappLid) {
-        throw new Error("Impossible d'identifier ce compte WhatsApp.");
+        throw new AppError("Impossible d'identifier ce compte WhatsApp. Réessayez la connexion.", 400);
     }
 
     const existing = await DiffuseurProfileModel.findOne({ whatsappLid: extraction.whatsappLid });
@@ -429,7 +430,14 @@ export const bindWhatsAppIdentity = async (
             `WhatsApp ${extraction.whatsappLid} already bound to ${existing.userId}, ` +
             `refused for ${diffuseurUserId}`,
         );
-        throw new Error('Ce compte WhatsApp est déjà lié à un autre compte SBC.');
+        // 409, and the message must reach the user: as a bare Error this became
+        // a 500 rendered as « La vérification a échoué », leaving them to guess
+        // that the phone they just linked belongs to another SBC account.
+        throw new AppError(
+            'Ce numéro WhatsApp est déjà lié à un autre compte SBC. '
+            + 'Connectez le WhatsApp de ce compte-ci, ou contactez le support pour le détacher.',
+            409,
+        );
     }
 
     if (!existing) {
