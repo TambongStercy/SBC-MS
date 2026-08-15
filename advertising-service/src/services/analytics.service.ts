@@ -9,6 +9,25 @@ import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
  */
 const PAID_STATUSES = [CampaignStatus.ACTIVE, CampaignStatus.COMPLETED, CampaignStatus.BANKED];
 
+/**
+ * The test campaign is SBC's own measuring instrument: nobody pays for it and
+ * nobody is paid for it. Counted here it inflated campaign totals, view counts
+ * and the annonceur roster with SBC's own admin — the admin dashboard is meant
+ * to answer "how is the marketplace doing", and the test campaign is not the
+ * marketplace. It has its own page.
+ */
+const NOT_TEST = { isTestCampaign: { $ne: true } };
+
+/**
+ * Test-campaign ids, for excluding their participations.
+ *
+ * Stated as "not one of these" rather than "one of the real ones": a
+ * participation whose campaign has been deleted is still real money that was
+ * paid out, and an inclusive list would silently drop it from the totals.
+ */
+const testCampaignIds = async () =>
+    (await CampaignModel.find({ isTestCampaign: true }).select('_id').lean()).map(c => c._id);
+
 const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
@@ -42,7 +61,7 @@ export const overview = async () => {
         sumOne<{ revenue: number; uniqueViews: number; repeatViews: number; clicks: number; count: number }>(
             CampaignModel,
             [
-                { $match: { status: { $in: PAID_STATUSES } } },
+                { $match: { status: { $in: PAID_STATUSES }, ...NOT_TEST } },
                 {
                     $group: {
                         _id: null,
@@ -56,14 +75,14 @@ export const overview = async () => {
             ],
         ),
         sumOne<{ launched: number; revenue: number }>(CampaignModel, [
-            { $match: { status: { $in: PAID_STATUSES }, activatedAt: { $gte: monthStart } } },
+            { $match: { status: { $in: PAID_STATUSES }, activatedAt: { $gte: monthStart }, ...NOT_TEST } },
             { $group: { _id: null, launched: { $sum: 1 }, revenue: { $sum: '$amountPaid' } } },
         ]),
-        CampaignModel.distinct('advertiserUserId', { status: { $in: PAID_STATUSES } }),
+        CampaignModel.distinct('advertiserUserId', { status: { $in: PAID_STATUSES }, ...NOT_TEST }),
         // An annonceur is "new" the month their first paid campaign went live, not
         // the month they created an account they may never have used.
         CampaignModel.aggregate([
-            { $match: { status: { $in: PAID_STATUSES } } },
+            { $match: { status: { $in: PAID_STATUSES }, ...NOT_TEST } },
             { $group: { _id: '$advertiserUserId', firstAt: { $min: '$activatedAt' } } },
             { $match: { firstAt: { $gte: monthStart } } },
             { $count: 'count' },
@@ -71,10 +90,11 @@ export const overview = async () => {
         DiffuseurProfileModel.countDocuments({ isActive: true }),
         DiffuseurProfileModel.countDocuments({ createdAt: { $gte: monthStart } }),
         sumOne<{ paidOut: number; completed: number }>(CampaignParticipationModel, [
-            { $match: { creditedAt: { $exists: true } } },
+            { $match: { creditedAt: { $exists: true }, campaignId: { $nin: await testCampaignIds() } } },
             { $group: { _id: null, paidOut: { $sum: '$totalEarned' }, completed: { $sum: 1 } } },
         ]),
         CampaignModel.aggregate<{ _id: CampaignStatus; count: number }>([
+            { $match: NOT_TEST },
             { $group: { _id: '$status', count: { $sum: 1 } } },
         ]),
     ]);
@@ -130,7 +150,7 @@ export const monthlySeries = async (months = 12) => {
 
     const [campaigns, diffuseurs, payouts] = await Promise.all([
         CampaignModel.aggregate<{ _id: string; launched: number; revenue: number; views: number; clicks: number }>([
-            { $match: { status: { $in: PAID_STATUSES }, activatedAt: { $gte: from } } },
+            { $match: { status: { $in: PAID_STATUSES }, activatedAt: { $gte: from }, ...NOT_TEST } },
             {
                 $group: {
                     _id: bucket,
@@ -146,7 +166,7 @@ export const monthlySeries = async (months = 12) => {
             { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, joined: { $sum: 1 } } },
         ]),
         CampaignParticipationModel.aggregate<{ _id: string; paidOut: number }>([
-            { $match: { creditedAt: { $gte: from } } },
+            { $match: { creditedAt: { $gte: from }, campaignId: { $nin: await testCampaignIds() } } },
             { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$creditedAt' } }, paidOut: { $sum: '$totalEarned' } } },
         ]),
     ]);
@@ -174,6 +194,7 @@ export const monthlySeries = async (months = 12) => {
 /** Campaigns whose diffuseurs are still mid-run. Shows an admin what is in flight. */
 export const inFlight = async () => {
     const [rows] = await CampaignParticipationModel.aggregate<{ inProgress: number; offered: number }>([
+        { $match: { campaignId: { $nin: await testCampaignIds() } } },
         {
             $group: {
                 _id: null,
