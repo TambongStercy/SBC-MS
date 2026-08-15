@@ -112,6 +112,36 @@ const main = async () => {
 
     check('running twice does not double-offer', await offerTestCampaignToNewDiffuseurs() === 0);
 
+    // --- Giving up on it costs nothing, and it comes back ---
+    // Six days is a long time for someone's first ever campaign. Abandoning the
+    // unpaid test owes no annonceur anything, so it must not brand a beginner
+    // as unreliable — and they must get another go.
+    const quitter = await CampaignParticipationModel.findOne({ diffuseurUserId: rookie.userId });
+    quitter!.status = ParticipationStatus.IN_PROGRESS;
+    quitter!.acceptedAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    quitter!.completionDeadline = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await quitter!.save();
+
+    const { forfeitExpired } = require('../services/verification.service');
+    check('an abandoned test run is forfeited after the grace window',
+        await forfeitExpired() === 1);
+
+    const rookieAfter = await DiffuseurProfileModel.findById(rookie._id);
+    check('and it costs the beginner no trust',
+        rookieAfter!.trustScore === rookie.trustScore,
+        `${rookie.trustScore} → ${rookieAfter!.trustScore}`);
+    check('nor counts as an abandoned campaign',
+        rookieAfter!.campaignsAbandoned === rookie.campaignsAbandoned,
+        `${rookieAfter!.campaignsAbandoned}`);
+
+    check('the test campaign is offered to them again',
+        await offerTestCampaignToNewDiffuseurs() === 1,
+        'otherwise a single missed week locks them out of the network for good');
+    check('and they hold exactly one live offer', await CampaignParticipationModel.countDocuments({
+        diffuseurUserId: rookie.userId,
+        status: { $in: [ParticipationStatus.OFFERED, ParticipationStatus.IN_PROGRESS] },
+    }) === 1);
+
     // --- It must never pay ---
     const participation = await CampaignParticipationModel.findOne({ diffuseurUserId: rookie.userId });
     check('every day is rated at zero', participation!.days.every(d => d.ratePerView === 0));

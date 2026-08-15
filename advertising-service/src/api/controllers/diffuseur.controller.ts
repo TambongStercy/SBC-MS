@@ -198,6 +198,19 @@ export const declineParticipation = async (req: AuthenticatedRequest, res: Respo
             throw new AppError('Cette offre ne peut plus être refusée.', 400);
         }
 
+        // Rufus's rule: the test campaign is not optional. It is the only way to
+        // be measured, and measurement is what unlocks paid work — declining it
+        // would just re-offer it forever, so the honest answer is "you can't".
+        const campaign = await CampaignModel.findById(participation.campaignId)
+            .select('isTestCampaign')
+            .lean();
+        if (campaign?.isTestCampaign) {
+            throw new AppError(
+                'La campagne test ne peut pas être refusée : elle mesure votre audience et débloque les campagnes rémunérées.',
+                400,
+            );
+        }
+
         participation.status = ParticipationStatus.DECLINED;
         await participation.save();
 
@@ -354,7 +367,7 @@ export const listMyParticipations = async (req: AuthenticatedRequest, res: Respo
         // cannot tell what they are being asked to post, let alone decide.
         const campaigns = await CampaignModel
             .find({ _id: { $in: items.map(p => p.campaignId) } })
-            .select('title description mediaFileId mediaType suggestedCaption landingPageSlug')
+            .select('title description mediaFileId mediaType suggestedCaption landingPageSlug isTestCampaign')
             .lean();
         const campaignById = new Map(campaigns.map(c => [String(c._id), c]));
 

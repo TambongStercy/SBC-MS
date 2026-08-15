@@ -145,6 +145,27 @@ export const notifyCampaignCompleted = (userId: string, campaignTitle: string, t
         { campaignTitle, totalViews, earned, ctaLabel: 'Voir mes gains', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
 
+/**
+ * The test-campaign twin of notifyCampaignForfeited.
+ *
+ * The paid message announces cancelled earnings; the test campaign has none,
+ * and the diffuseur gets it offered again — telling them their gains were
+ * cancelled would be both false and discouraging.
+ */
+export const notifyTestCampaignForfeited = (userId: string) =>
+    email(
+        userId,
+        '🔄 Campagne test à recommencer',
+        `Votre campagne test n'a pas été terminée dans les délais.\n\n`
+        + `Aucun souci : elle vous sera reproposée automatiquement, et rien n'a été retenu contre vous. `
+        + `Pensez à publier chaque jour et à vérifier votre statut avant qu'il n'expire — c'est ce qui `
+        + `mesure votre audience et débloque les campagnes rémunérées.`,
+        {
+            ctaLabel: 'Ouvrir mon espace diffuseur',
+            ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur`,
+        },
+    );
+
 export const notifyCampaignForfeited = (userId: string, campaignTitle: string) =>
     email(
         userId,
