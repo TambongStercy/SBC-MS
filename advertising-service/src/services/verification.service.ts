@@ -134,6 +134,18 @@ export const applyExtraction = async (
 
     const campaignHash = await ensureCampaignHash(campaign);
 
+    // What the account actually held. Without this, « aucune publication
+    // contenant votre lien » was unfalsifiable: a WhatsApp that returned
+    // nothing and one full of statuses without the code read identically,
+    // to us and to the diffuseur.
+    const withCode = extraction.statuses.filter(
+        st => captionHasTrackingCode(st.caption, participation.trackingCode),
+    ).length;
+    log.info(
+        `Participation ${participation._id}: extracted ${extraction.statuses.length} status(es), `
+        + `${withCode} carrying tracking code ${participation.trackingCode}`,
+    );
+
     // A status can only ever back one day, here or on any other participation.
     const claimedElsewhere = await CampaignParticipationModel.find({
         'days.statusMessageId': { $in: extraction.statuses.map(s => s.statusMessageId) },
@@ -211,7 +223,9 @@ export const applyExtraction = async (
                 accepted: false,
                 reason: postedTooSoon
                     ? `La publication du jour ${day.day} doit être faite au moins ${config.campaign.minHoursBetweenDays}h après celle du jour ${day.day - 1}.`
-                    : "Aucune publication contenant votre lien de suivi n'a été trouvée.",
+                    : extraction.statuses.length === 0
+                        ? "Aucun statut n'a été trouvé sur ce WhatsApp. Publiez la campagne, puis vérifiez avant que le statut n'expire (24 h)."
+                        : `Nous avons vu ${extraction.statuses.length} statut(s) sur votre WhatsApp, mais aucun ne contient votre lien de suivi. Republiez en collant le texte fourni sans le modifier — le lien doit rester dans la légende.`,
                 viewCount: 0,
                 deliveredCount: 0,
                 earnedAmount: 0,
