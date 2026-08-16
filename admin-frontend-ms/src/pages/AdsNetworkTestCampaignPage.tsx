@@ -75,7 +75,19 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
 
     useEffect(() => { load(); }, [load]);
 
+    // Checked before the request so a 70MB video fails in a second with a
+    // readable reason, instead of after a long upload on mobile data.
+    const MAX_UPLOAD_MB = 100;
+
     const upload = async (kind: 'media' | 'video', file: File) => {
+        const sizeMb = file.size / (1024 * 1024);
+        if (sizeMb > MAX_UPLOAD_MB) {
+            showError(
+                `Fichier trop volumineux (${sizeMb.toFixed(0)} Mo). Maximum ${MAX_UPLOAD_MB} Mo — `
+                + 'compressez la vidéo (720p suffit) et réessayez.',
+            );
+            return;
+        }
         setUploading(kind);
         try {
             const fileId = await uploadAdsFile(file);
@@ -253,7 +265,8 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             </label>
                             <p className="text-xs text-gray-500 mb-2">
                                 Affichée au-dessus du bouton « Je m'inscris » sur la page que voient
-                                les prospects.
+                                les prospects. Maximum 100 Mo — une vidéo de 1 à 2 minutes en 720p
+                                tient largement dedans.
                             </p>
                             {form.landingVideoFileId && (
                                 <video src={getFileUrl(form.landingVideoFileId)} controls

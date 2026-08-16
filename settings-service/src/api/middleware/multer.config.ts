@@ -49,7 +49,11 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
 export const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 1024 * 1024 * 50, // Increased limit to 50MB
+        // 100MB, matching nginx's client_max_body_size and Cloudflare's own
+        // hard cap. At 50MB a 1'30 phone video (~70MB) was refused with no
+        // usable message — the ceiling should be the one the network imposes,
+        // not a lower one nobody can see.
+        fileSize: 1024 * 1024 * 100,
     },
     fileFilter: fileFilter,
 }); 
