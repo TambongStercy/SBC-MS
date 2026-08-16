@@ -141,9 +141,30 @@ export const applyExtraction = async (
     const withCode = extraction.statuses.filter(
         st => captionHasTrackingCode(st.caption, participation.trackingCode),
     ).length;
+
+    // Somebody juggling several SBC accounts posts the caption they still had
+    // open — a real link, for the wrong participation. It carries a valid
+    // tracking code, so « aucune publication contenant votre lien » is
+    // technically true and completely unhelpful (Rufus, 2026-08-16). Codes are
+    // 10 characters of a fixed alphabet, so candidates can be lifted straight
+    // out of the captions and resolved.
+    const CODE_RE = /\b[23456789bcdfghjkmnpqrstvwxyz]{10}\b/g;
+    const candidates = new Set<string>();
+    for (const st of extraction.statuses) {
+        for (const m of (st.caption ?? '').toLowerCase().matchAll(CODE_RE)) candidates.add(m[0]);
+    }
+    candidates.delete(participation.trackingCode.toLowerCase());
+    const foreign = candidates.size
+        ? await CampaignParticipationModel.findOne({
+            trackingCode: { $in: [...candidates] },
+            _id: { $ne: participation._id },
+        }).select('campaignId diffuseurUserId').lean()
+        : null;
+
     log.info(
         `Participation ${participation._id}: extracted ${extraction.statuses.length} status(es), `
-        + `${withCode} carrying tracking code ${participation.trackingCode}`,
+        + `${withCode} carrying tracking code ${participation.trackingCode}`
+        + (foreign ? `; a status carries another participation's link (${foreign._id})` : ''),
     );
 
     // A status can only ever back one day, here or on any other participation.
@@ -225,7 +246,9 @@ export const applyExtraction = async (
                     ? `La publication du jour ${day.day} doit être faite au moins ${config.campaign.minHoursBetweenDays}h après celle du jour ${day.day - 1}.`
                     : extraction.statuses.length === 0
                         ? "Aucun statut n'a été trouvé sur ce WhatsApp. Publiez la campagne, puis vérifiez avant que le statut n'expire (24 h)."
-                        : `Nous avons vu ${extraction.statuses.length} statut(s) sur votre WhatsApp, mais aucun ne contient votre lien de suivi. Republiez en collant le texte fourni sans le modifier — le lien doit rester dans la légende.`,
+                        : foreign
+                            ? "Le statut publié porte le lien d'une autre campagne ou d'un autre compte SBC. Reprenez le lien depuis CETTE campagne, sur ce compte, et republiez."
+                            : `Nous avons vu ${extraction.statuses.length} statut(s) sur votre WhatsApp, mais aucun ne contient votre lien de suivi. Republiez en collant le texte fourni sans le modifier — le lien doit rester dans la légende.`,
                 viewCount: 0,
                 deliveredCount: 0,
                 earnedAmount: 0,
