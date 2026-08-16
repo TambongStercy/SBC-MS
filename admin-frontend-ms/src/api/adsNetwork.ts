@@ -216,11 +216,21 @@ export const retireTestCampaign = async () => {
 };
 
 /** Generic upload; returns the fileId the campaign stores. */
-export const uploadAdsFile = async (file: File): Promise<string> => {
+export const uploadAdsFile = async (
+    file: File,
+    onProgress?: (percent: number) => void,
+): Promise<string> => {
     const form = new FormData();
     form.append('file', file);
     const { data } = await apiClient.post('/settings/files/upload', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        // A 70MB video on mobile data runs for minutes; without a timeout of
+        // its own axios would inherit any global one, and without progress the
+        // admin has no way to tell it apart from a hang.
+        timeout: 15 * 60 * 1000,
+        onUploadProgress: (e) => {
+            if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+        },
     });
     const fileId = data?.data?.fileId;
     if (!fileId) throw new Error("Le fichier n'a pas pu être envoyé.");

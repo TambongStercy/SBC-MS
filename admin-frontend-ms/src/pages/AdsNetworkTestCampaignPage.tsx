@@ -32,6 +32,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState<'media' | 'video' | null>(null);
+    const [uploadPct, setUploadPct] = useState(0);
     const [confirmRetire, setConfirmRetire] = useState(false);
 
     const [form, setForm] = useState({
@@ -89,8 +90,9 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
             return;
         }
         setUploading(kind);
+        setUploadPct(0);
         try {
-            const fileId = await uploadAdsFile(file);
+            const fileId = await uploadAdsFile(file, setUploadPct);
             setForm(f => kind === 'media'
                 ? { ...f, mediaFileId: fileId, mediaType: file.type.startsWith('video') ? 'video' : 'image' }
                 : { ...f, landingVideoFileId: fileId });
@@ -253,7 +255,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             )}
                             <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
                                 <Upload className="w-4 h-4" />
-                                {uploading === 'media' ? 'Envoi…' : form.mediaFileId ? 'Remplacer' : 'Choisir un fichier'}
+                                {uploading === 'media' ? `Envoi… ${uploadPct}%` : form.mediaFileId ? 'Remplacer' : 'Choisir un fichier'}
                                 <input type="file" accept="image/*,video/*" className="hidden"
                                     onChange={e => e.target.files?.[0] && upload('media', e.target.files[0])} />
                             </label>
@@ -274,7 +276,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             )}
                             <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
                                 <Upload className="w-4 h-4" />
-                                {uploading === 'video' ? 'Envoi…' : form.landingVideoFileId ? 'Remplacer' : 'Choisir une vidéo'}
+                                {uploading === 'video' ? `Envoi… ${uploadPct}%` : form.landingVideoFileId ? 'Remplacer' : 'Choisir une vidéo'}
                                 <input type="file" accept="video/*" className="hidden"
                                     onChange={e => e.target.files?.[0] && upload('video', e.target.files[0])} />
                             </label>
