@@ -307,6 +307,11 @@ const server = app.listen(config.port, config.host, () => {
   log.info(`Environment: ${config.nodeEnv}`);
 });
 
+// Uploads stream through this proxy, and a large one on mobile data can run
+// for several minutes. Node's 5-minute default cut them off mid-flight.
+server.requestTimeout = 15 * 60 * 1000;
+server.headersTimeout = 16 * 60 * 1000;
+
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
   log.info('SIGTERM received, shutting down gracefully');
