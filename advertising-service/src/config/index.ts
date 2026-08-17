@@ -53,6 +53,8 @@ interface IConfig {
     };
     /** Public origin the tracking links and landing pages are served from. */
     publicBaseUrl: string;
+    /** ISO instant the network opens to non-admins. Empty = already open. */
+    launchAt: string;
     /**
      * The SBC web app. Where « Je m'inscris » on a landing page sends visitors.
      */
@@ -130,6 +132,10 @@ const config: IConfig = {
         paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
     },
     publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3010',
+    // Rufus opens the network at the end of his Tuesday presentation. Set on
+    // prod so the feature can ship days early and stay shut until then; admins
+    // pass through so it can be rehearsed on the real thing.
+    launchAt: process.env.ADS_NETWORK_LAUNCH_AT || '',
     appBaseUrl: process.env.APP_BASE_URL || 'https://sniperbuisnesscenter.com',
     // Derived from the running port, not hardcoded: preprod listens on 6010, and a
     // fixed 3010 default would have preprod's payment callbacks land on prod.
