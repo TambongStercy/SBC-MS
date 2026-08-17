@@ -66,8 +66,12 @@ jobs:
           script: |
             echo "=== Production Health Check ==="
             FAILED=0
-            for PORT in 3001 3002 3003 3004 3006 3007 3008; do
-              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+            # 3010 = advertising-service. Health paths are not standardised:
+            # some services answer /health, others /api/health, so try both
+            # before calling a service down.
+            for PORT in 3001 3002 3003 3004 3006 3007 3008 3010; do
+              if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1 \
+                 || curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
                 echo "Port $PORT: OK"
               else
                 echo "Port $PORT: FAILED"
