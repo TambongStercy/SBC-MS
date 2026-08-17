@@ -9,10 +9,18 @@ interface IFileReference {
     size?: number;
 }
 
+export type FormationSubscriptionGate = 'CLASSIQUE' | 'CIBLE';
+
 export interface IFormation {
     _id: string; // Mongoose adds _id to subdocuments
     title: string;
     link: string;
+    requiredSubscriptionType?: FormationSubscriptionGate;
+    decoration?: string;
+    // Server-computed for user-facing endpoints. Admin JWTs bypass the tier
+    // filter, so admins always receive `locked: false` — safe to ignore in
+    // the admin panel.
+    locked?: boolean;
 }
 
 export interface ISettings {
@@ -240,7 +248,7 @@ export const getFormations = async (): Promise<IFormation[]> => {
     }
 };
 
-export const addFormation = async (formationData: { title: string; link: string }): Promise<IFormation> => {
+export const addFormation = async (formationData: { title: string; link: string; requiredSubscriptionType?: FormationSubscriptionGate | ''; decoration?: string }): Promise<IFormation> => {
     try {
         const response = await apiClient.post<ApiResponse<IFormation>>('/settings/formations', formationData);
         return response.data.data;
@@ -250,7 +258,10 @@ export const addFormation = async (formationData: { title: string; link: string 
     }
 };
 
-export const updateFormation = async (formationId: string, formationData: Partial<Omit<IFormation, '_id'>>): Promise<IFormation> => {
+export const updateFormation = async (
+    formationId: string,
+    formationData: { title?: string; link?: string; requiredSubscriptionType?: FormationSubscriptionGate | ''; decoration?: string }
+): Promise<IFormation> => {
     try {
         const response = await apiClient.put<ApiResponse<IFormation>>(`/settings/formations/${formationId}`, formationData);
         return response.data.data;

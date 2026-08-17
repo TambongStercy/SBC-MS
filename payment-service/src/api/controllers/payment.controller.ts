@@ -429,21 +429,36 @@ export class PaymentController {
             const payload = req.body;
             const authHeader = req.headers.authorization;
 
-            console.log('payload: ', payload)
-
             log.info(`Received Feexpay webhook for reference: ${payload?.reference}`);
             log.info('Feexpay webhook payload:', payload);
             log.info(`Feexpay webhook auth header: ${authHeader}`);
 
-            if (!this.verifyFeexpayWebhookAuth(authHeader)) {
-                log.warn('Feexpay webhook authorization failed.');
+            // FeexPay v2 (rolled out 2026-06-30) no longer sends an Authorization
+            // header on payin webhooks. Their support (2026-07-06) confirmed our
+            // 401 rejection is why they don't retry — they consider the webhook
+            // delivered once their POST fires. Rejecting with 401 is what caused
+            // 5,790+ CinetPay-style stuck payins on our side.
+            //
+            // Auth trust model going forward:
+            //   1. If a v1-style Authorization header IS present, we still verify it
+            //      (defensive, in case FeexPay adds signed webhooks later).
+            //   2. If missing (v2 default), we accept the webhook — but the service
+            //      layer (paymentService.handleFeexpayWebhook) MUST verify the
+            //      payload against FeexPay's own status API before applying any
+            //      state change, so a spoofed webhook can't credit a user.
+            if (authHeader && !this.verifyFeexpayWebhookAuth(authHeader)) {
+                log.warn('Feexpay webhook authorization failed (header present but invalid).');
                 return res.status(401).json({
                     success: false,
                     message: 'Unauthorized'
                 });
             }
 
-            log.info('Feexpay webhook authorization successful.');
+            if (!authHeader) {
+                log.info('Feexpay v2 webhook accepted without Authorization header; will verify via FeexPay status API before applying.');
+            } else {
+                log.info('Feexpay webhook authorization successful.');
+            }
             await paymentService.handleFeexpayWebhook(payload);
             log.info(`Successfully processed Feexpay webhook for reference: ${payload?.reference}`);
 
@@ -1534,6 +1549,35 @@ export class PaymentController {
                 externalReference,
                 adminNote
             });
+
+            // ─── DUPLICATE-RECOVERY GUARD ─────────────────────────────────────
+            // If admin is about to auto-mark this as SUCCEEDED (and re-trigger commissions),
+            // first check whether the user already has a real (provider-confirmed) SUCCEEDED
+            // payment intent in the last 7 days. If yes, the admin most likely doesn't realize
+            // the original payment already went through — block to prevent double-distribution
+            // of commissions. Admin can override by sending `force: true` in the body if they
+            // are absolutely certain this is a separate payment.
+            if (autoMarkSucceeded) {
+                const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                const existingReal = await paymentIntentRepository.findRecentRealSuccessByUser(userId, sevenDaysAgo);
+
+                if (existingReal && !req.body.force) {
+                    log.warn(`Blocking duplicate recovery for user ${userId}: existing real SUCCEEDED PI ${existingReal.sessionId} created at ${existingReal.createdAt}`);
+                    res.status(409).json({
+                        success: false,
+                        message: `L'utilisateur a déjà un paiement réussi récent (session ${existingReal.sessionId}, créé le ${new Date(existingReal.createdAt).toISOString()}, montant ${existingReal.amount} ${existingReal.currency}). Vérifiez avant de procéder. Si ce nouveau paiement est réellement distinct, renvoyez la requête avec "force": true pour confirmer.`,
+                        existingPayment: {
+                            sessionId: existingReal.sessionId,
+                            amount: existingReal.amount,
+                            currency: existingReal.currency,
+                            createdAt: existingReal.createdAt,
+                            gatewayPaymentId: existingReal.gatewayPaymentId,
+                        },
+                    });
+                    return;
+                }
+            }
+            // ─── End duplicate-recovery guard ──────────────────────────────────
 
             // Fetch user information from user service including subscription info
             let userInfo = null;

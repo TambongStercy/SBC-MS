@@ -3,6 +3,7 @@ import transactionRepository, { CreateTransactionInput } from '../database/repos
 import paymentIntentRepository, { CreatePaymentIntentInput, UpdatePaymentIntentInput } from '../database/repositories/paymentIntent.repository';
 import { TransactionStatus, TransactionType, Currency, ITransaction } from '../database/models/transaction.model';
 import TransactionModel from '../database/models/transaction.model';
+import pendingPayoutWebhookModel from '../database/models/pending-payout-webhook.model';
 import { userServiceClient, UserDetails, UserDetailsWithMomo } from './clients/user.service.client';
 import { productServiceClient } from './clients/product.service.client';
 import notificationService, { DeliveryChannel } from './clients/notification.service.client';
@@ -22,7 +23,8 @@ import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
-import { moneyFusionService } from './moneyfusion.service';
+import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.service';
+import { currencyService } from './currency.service';
 import { ssoWebhookService } from './sso-webhook.service';
 import * as sandbox from './sandbox.service';
 
@@ -1682,116 +1684,14 @@ class PaymentService {
     }
 
     /**
-     * Placeholder function for currency conversion
-     * TODO: Replace with actual API call or rate table logic
+     * Delegates to the central currencyService (see services/currency.service.ts).
+     * Kept here as a thin wrapper so the many existing callers don't have to migrate
+     * all at once; new code paths should import currencyService directly. The
+     * service handles CFA-franc 1:1 pegging, in-memory rate caching, and the
+     * primary+fallback fetch against @fawazahmed0/currency-api.
      */
     private async convertCurrency(amount: number, fromCurrency: string, toCurrency: string): Promise<number> {
-        log.info(`Converting ${amount} ${fromCurrency} to ${toCurrency}`);
-        if (fromCurrency === toCurrency) {
-            return amount;
-        }
-
-        // Handle CFA Franc currencies (XAF and XOF) as equivalent with 1:1 rate
-        const cfaFrancs = ['XAF', 'XOF'];
-        if (cfaFrancs.includes(fromCurrency.toUpperCase()) && cfaFrancs.includes(toCurrency.toUpperCase())) {
-            log.info(`Converting between CFA francs (${fromCurrency} -> ${toCurrency}): Using 1:1 rate`);
-            return amount; // No conversion needed for CFA francs
-        }
-
-        // Check if we're converting TO a cryptocurrency
-        const isCryptoTarget = this.isCryptoCurrency(toCurrency);
-        log.info(`Target currency ${toCurrency} is crypto: ${isCryptoTarget}`);
-
-        const fromCurrencyLower = fromCurrency.toLowerCase();
-        const toCurrencyLower = toCurrency.toLowerCase();
-
-        const primaryUrl = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${fromCurrencyLower}.json`;
-        const fallbackUrl = `https://latest.currency-api.pages.dev/v1/currencies/${fromCurrencyLower}.json`;
-        let exchangeRate: number | undefined = undefined;
-
-        try {
-            log.debug(`Attempting to fetch exchange rates from: ${primaryUrl}`);
-            const response = await axios.get(primaryUrl, { timeout: 5000 });
-            if (response.data && response.data[fromCurrencyLower] && response.data[fromCurrencyLower][toCurrencyLower]) {
-                exchangeRate = response.data[fromCurrencyLower][toCurrencyLower];
-                log.info(`Fetched rate from primary URL: 1 ${fromCurrency} = ${exchangeRate} ${toCurrency}`);
-            } else {
-                log.warn(`Rate for ${fromCurrency} -> ${toCurrency} not found in primary response.`, response.data);
-            }
-        } catch (error: any) {
-            log.warn(`Failed to fetch from primary URL (${primaryUrl}): ${error.message}. Trying fallback.`);
-            try {
-                log.debug(`Attempting to fetch exchange rates from fallback: ${fallbackUrl}`);
-                const fallbackResponse = await axios.get(fallbackUrl, { timeout: 5000 });
-                if (fallbackResponse.data && fallbackResponse.data[fromCurrencyLower] && fallbackResponse.data[fromCurrencyLower][toCurrencyLower]) {
-                    exchangeRate = fallbackResponse.data[fromCurrencyLower][toCurrencyLower];
-                    log.info(`Fetched rate from fallback URL: 1 ${fromCurrency} = ${exchangeRate} ${toCurrency}`);
-                } else {
-                    log.warn(`Rate for ${fromCurrency} -> ${toCurrency} not found in fallback response.`, fallbackResponse.data);
-                }
-            } catch (fallbackError: any) {
-                log.error(`Failed to fetch from fallback URL (${fallbackUrl}): ${fallbackError.message}.`);
-            }
-        }
-
-        if (exchangeRate === undefined) {
-            log.warn(`Could not fetch exchange rate for ${fromCurrency} -> ${toCurrency}. Defaulting to 1:1.`);
-            // Fallback to 1:1 conversion if API fails
-            let rate = 1;
-            // For CFA francs, ensure 1:1 conversion
-            if (cfaFrancs.includes(fromCurrency.toUpperCase()) && cfaFrancs.includes(toCurrency.toUpperCase())) {
-                rate = 1;
-                log.info(`CFA franc fallback: Using 1:1 rate for ${fromCurrency} -> ${toCurrency}`);
-            }
-
-            let convertedAmount;
-            if (isCryptoTarget) {
-                // For crypto, preserve precision with 8 decimal places
-                convertedAmount = parseFloat((amount * rate).toFixed(8));
-                log.info(`Converted amount (using fallback rate, crypto): ${convertedAmount} ${toCurrency}`);
-            } else {
-                // For fiat currencies, round to whole numbers, except for USD
-                if (toCurrency.toUpperCase() === 'USD') {
-                    convertedAmount = parseFloat((amount * rate).toFixed(2));
-                    log.info(`Converted amount (using fallback rate, USD): ${convertedAmount} ${toCurrency}`);
-                } else {
-                    convertedAmount = Math.round(amount * rate);
-                    log.info(`Converted amount (using fallback rate, fiat): ${convertedAmount} ${toCurrency}`);
-                }
-            }
-            return convertedAmount;
-        }
-
-        let convertedAmount;
-        if (isCryptoTarget) {
-            // For cryptocurrency conversions, preserve decimal precision
-            // Use 8 decimal places (standard for most cryptocurrencies)
-            convertedAmount = parseFloat((amount * exchangeRate).toFixed(8));
-            log.info(`Converted amount (using API rate, crypto): ${convertedAmount} ${toCurrency}`);
-
-            // Additional validation for crypto amounts - they should be > 0 but can be very small
-            if (convertedAmount <= 0) {
-                log.error(`Crypto conversion resulted in zero or negative amount`, {
-                    originalAmount: amount,
-                    fromCurrency: fromCurrency,
-                    toCurrency: toCurrency,
-                    exchangeRate: exchangeRate,
-                    convertedAmount: convertedAmount
-                });
-                throw new Error(`Currency conversion to ${toCurrency} resulted in invalid amount: ${convertedAmount}`);
-            }
-        } else {
-            // For fiat currencies, round to whole numbers, except for USD which needs decimals for other gateways
-            if (toCurrency.toUpperCase() === 'USD') {
-                convertedAmount = parseFloat((amount * exchangeRate).toFixed(2));
-                log.info(`Converted amount (using API rate, USD): ${convertedAmount} ${toCurrency}`);
-            } else {
-                convertedAmount = Math.round(amount * exchangeRate);
-                log.info(`Converted amount (using API rate, fiat): ${convertedAmount} ${toCurrency}`);
-            }
-        }
-
-        return convertedAmount;
+        return currencyService.convert(amount, fromCurrency, toCurrency);
     }
 
     /**
@@ -1801,59 +1701,39 @@ class PaymentService {
         const { reference, status, callback_info } = payload;
         const { sessionId } = callback_info || {};
 
-        if (!reference) {
-            if (sessionId) {
-                log.warn(`Received Feexpay webhook with missing reference but with sessionId: ${sessionId}.`);
-            } else {
-                log.warn('Received Feexpay webhook with missing reference and no sessionId in callback_info. Ignoring webhook.', payload);
-                throw new Error('Webhook payload missing required reference field');
+        if (!reference && !sessionId) {
+            log.warn('Received Feexpay webhook with missing reference and no sessionId in callback_info. Ignoring webhook.', payload);
+            throw new Error('Webhook payload missing required reference field');
+        }
+
+        // Resolve to a reference we can query FeexPay's status API with. If webhook
+        // only sent sessionId, look up the intent to recover the reference.
+        let feexpayReference: string | undefined = reference;
+        if (!feexpayReference && sessionId) {
+            const bySession = await paymentIntentRepository.findBySessionId(sessionId);
+            if (!bySession) {
+                log.error(`Feexpay webhook: no intent for sessionId ${sessionId}`);
+                throw new Error('Payment intent not found for Feexpay webhook');
+            }
+            feexpayReference = bySession.gatewayPaymentId;
+            if (!feexpayReference) {
+                log.error(`Feexpay webhook: intent ${sessionId} has no gatewayPaymentId — cannot verify with FeexPay`);
+                throw new Error('PaymentIntent missing gatewayPaymentId');
             }
         }
 
-        // Find the payment intent using ONLY the reference (which is Feexpay's ID) or sessionId if provided
-        const paymentIntent = reference ? await paymentIntentRepository.findByGatewayPaymentId(reference, PaymentGateway.FEEXPAY) : await paymentIntentRepository.findBySessionId(sessionId);
+        log.info(`Feexpay webhook: verifying reference=${feexpayReference} (payload status=${status}) via FeexPay status API before applying.`);
 
-        if (!paymentIntent) {
-            // Use reference in the log message as sessionId might not be available
-            log.error(`Payment intent not found for Feexpay webhook reference: ${reference}`);
-            throw new Error('Payment intent not found for Feexpay webhook');
-        }
-
-        // Log the sessionId found from the intent for context
-        log.info(`Found PaymentIntent ${paymentIntent.sessionId} for Feexpay reference ${reference}`);
-
-        if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
-            log.warn(`Webhook received for already processed payment intent: ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
-            return;
-        }
-
-        let newStatus: PaymentStatus = paymentIntent.status;
-        if (status === 'SUCCESSFUL') {
-            newStatus = PaymentStatus.SUCCEEDED;
-        } else if (status === 'FAILED') {
-            newStatus = PaymentStatus.FAILED;
-        } else {
-            // If status is not SUCCESSFUL or FAILED, update internal status based on current state
-            // PENDING_PROVIDER -> PROCESSING, otherwise keep current (e.g., might be PROCESSING already)
-            newStatus = paymentIntent.status === PaymentStatus.PENDING_PROVIDER ? PaymentStatus.PROCESSING : paymentIntent.status;
-            log.info(`Received non-final Feexpay status: ${status}. Setting internal status to ${newStatus} for ${paymentIntent.sessionId}`);
-        }
-
-        let updatedIntent: IPaymentIntent | null = paymentIntent;
-        if (newStatus !== paymentIntent.status) {
-            // Use the sessionId from the fetched paymentIntent
-            updatedIntent = await paymentIntentRepository.addWebhookEvent(paymentIntent.sessionId, newStatus, payload);
-            log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to ${newStatus} via Feexpay webhook.`);
-            if (!updatedIntent) {
-                log.error(`Failed to update PaymentIntent ${paymentIntent.sessionId} after webhook event. Cannot proceed.`);
-                return;
-            }
-        }
-
-        // Check if status is final and updatedIntent is not null
-        if (updatedIntent && (updatedIntent.status === PaymentStatus.SUCCEEDED || updatedIntent.status === PaymentStatus.FAILED)) {
-            await this.handlePaymentCompletion(updatedIntent);
-        }
+        // Verify via FeexPay's status API. Since v2 payin webhooks no longer carry
+        // an Authorization header (FeexPay support confirmed 2026-07-06), the
+        // controller now accepts them unauthenticated. The verification here is
+        // what prevents a spoofed webhook from crediting a user: we don't trust
+        // the incoming payload's `status` field, we ask FeexPay directly.
+        //
+        // checkFeexpayTransactionStatus is idempotent, handles the intent lookup,
+        // applies the correct final status, and triggers handlePaymentCompletion
+        // when appropriate. So the whole thing collapses to this single call.
+        await this.checkFeexpayTransactionStatus(feexpayReference as string);
     }
 
     /**
@@ -2985,17 +2865,26 @@ class PaymentService {
         }
 
         // --- Construct Full Phone Number ---
+        // The frontend sometimes sends the number already in international
+        // form ("22999318173" for BJ) and sometimes strictly national
+        // ("99318173"). Old code blindly prepended the dialing code either way,
+        // producing "22922999318173" (14 digits) when the number was already
+        // international — which then broke FeexPay v2's strict length check
+        // (see prod incident 2026-07-21 for CHITOU Nawaal). Strip the leading
+        // dialing code before re-adding it so we always end up with exactly
+        // one country prefix.
         let fullPhoneNumber: string | undefined = details.phoneNumber;
         if (details.countryCode && details.phoneNumber) {
             const dialingCode = countryDialingCodes[details.countryCode];
             if (dialingCode) {
-                // Remove ALL non-digit characters from the national number part
-                const nationalNumber = details.phoneNumber.replace(/\D/g, '');
+                let nationalNumber = details.phoneNumber.replace(/\D/g, '');
+                if (nationalNumber.startsWith(dialingCode)) {
+                    nationalNumber = nationalNumber.substring(dialingCode.length);
+                }
                 fullPhoneNumber = dialingCode + nationalNumber;
-                log.info(`Constructed full phone number for ${details.countryCode}: ${fullPhoneNumber} from national: ${details.phoneNumber}`);
+                log.info(`Constructed full phone number for ${details.countryCode}: ${fullPhoneNumber} from input: ${details.phoneNumber}`);
             } else {
                 log.warn(`No dialing code found for country: ${details.countryCode}. Using phone number as is: ${details.phoneNumber}`);
-                // fullPhoneNumber remains details.phoneNumber in this case
             }
         } else {
             log.info('Phone number or country code not provided for full phone number construction.');
@@ -3187,8 +3076,13 @@ class PaymentService {
             throw new Error('Country code is required for fiat currency payments.');
         }
 
-        // CinetPay: Côte d'Ivoire only (payin + payout)
-        if (countryCode === 'CI') {
+        // CinetPay: Côte d'Ivoire only (payin + payout).
+        // CM was moved here in PR #61 but reverted in this PR — CinetPay's CM
+        // merchant account became unstable (140k+ XAF stuck in "inUse" with no
+        // settlement ETA, blocking real users). CinetPay-CM credentials remain
+        // in env so we can flip back quickly if CinetPay stabilises that account.
+        const cinetpaySupportedCountries = ['CI'];
+        if (cinetpaySupportedCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using CINETPAY.`);
             return PaymentGateway.CINETPAY;
         }
@@ -3200,18 +3094,15 @@ class PaymentService {
             return PaymentGateway.FEEXPAY;
         }
 
-        // RDC (CD) payins are temporarily suspended. Airtel Money RDC / M-Pesa Vodacom
-        // display a CDF→USD rate (~500) far below the market rate (~2810), which causes
-        // our XAF→CDF-converted amount to surface to customers as ~4.6× the real value
-        // (e.g. 2150 XAF → 8754 CDF → $17.51 USD instead of the correct ~$3.84).
-        // Withdrawals (isWithdrawal=true) still go through MoneyFusion; only payins are blocked.
-        if (!isWithdrawal && countryCode === 'CD') {
-            log.warn(`CD payin attempted while MoneyFusion-CD payins are temporarily disabled.`);
-            throw new Error('Les paiements depuis la RDC sont temporairement suspendus. Veuillez contacter le support.');
-        }
-
-        // MoneyFusion: BF, SN, CM, ML, CD, GA, NE, GN, TD
-        const moneyFusionCountries = ['BF', 'SN', 'CM', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD'];
+        // MoneyFusion: BF, SN, ML, CD, GA, NE, GN, TD, CM, CF
+        // CM restored to MoneyFusion (was here originally, briefly moved to CinetPay
+        // in PR #61, restored here per Rufus 2026-06-24).
+        // CF (Centrafrique) added 2026-07-08 per Rufus — MoneyFusion added the country
+        // on their side. MF's /v1/withdraw/methods lists only "crypto-cf" for CF, so
+        // payins work but payouts to CF via MoMo are not supported yet (WITHDRAW_MODES
+        // in moneyfusion.service.ts has no CF entry; withdraws will fail at operator
+        // lookup with a clear "not supported" error).
+        const moneyFusionCountries = ['BF', 'SN', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD', 'CM', 'CF'];
         if (moneyFusionCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using MONEYFUSION.`);
             return PaymentGateway.MONEYFUSION;
@@ -3369,48 +3260,78 @@ class PaymentService {
             throw new Error('Internal error: Phone number missing for Feexpay initiation.');
         }
 
-        // Attempt to parse phone number as integer
-        let phoneNumberAsInt: number | undefined;
-        try {
-            const cleanedPhone = paymentIntent.phoneNumber.replace(/\s+/g, '').replace('+', '');
-            if (cleanedPhone && /^[0-9]+$/.test(cleanedPhone)) {
-                phoneNumberAsInt = parseInt(cleanedPhone, 10);
-            }
-        } catch (parseError) {
-            log.error(`Error parsing FeexPay phoneNumber ${paymentIntent.phoneNumber}: ${parseError}`);
+        // FeexPay v2 requires country+operator-prefixed phones (BJ MTN wants
+        // "22901XXXXXXXX" = 13 chars). paymentIntent.phoneNumber is often the
+        // short form (country + local, no operator prefix) collected at
+        // checkout. Fetch userDetails EARLY so we can pick the richer of the
+        // two sources — the one stored at signup usually has the operator
+        // prefix while the one re-typed at checkout doesn't.
+        const _preFetchUserDetails = await userServiceClient.getUserDetails(paymentIntent.userId);
+        const intentPhoneDigits = paymentIntent.phoneNumber.replace(/\D/g, '');
+        const userPhoneDigits = String(_preFetchUserDetails?.phoneNumber || '').replace(/\D/g, '');
+        // Prefer whichever is longer AND at least 12 digits — the operator-prefixed form.
+        let cleanedPhone = intentPhoneDigits;
+        if (userPhoneDigits.length >= 12 && userPhoneDigits.length > intentPhoneDigits.length) {
+            log.info(`FeexPay: using userDetails.phoneNumber (${userPhoneDigits.length} digits) instead of paymentIntent.phoneNumber (${intentPhoneDigits.length} digits) — richer format`);
+            cleanedPhone = userPhoneDigits;
         }
 
-        if (phoneNumberAsInt === undefined) {
-            log.error(`Could not parse FeexPay phoneNumber to integer: ${paymentIntent.phoneNumber}`);
+        if (!cleanedPhone || !/^[0-9]+$/.test(cleanedPhone)) {
+            log.error(`Could not derive FeexPay phoneNumber from intent="${paymentIntent.phoneNumber}" user="${_preFetchUserDetails?.phoneNumber}"`);
             throw new Error('Invalid phone number format provided.');
         }
 
         if (sandbox.isSandboxActive()) {
             // Request-to-pay: the phone was typed on our page — magic ending rules.
-            return this.applySandboxPayin(paymentIntent, String(phoneNumberAsInt), false);
+            // cleanedPhone, not the old phoneNumberAsInt: master reworked how the
+            // FeexPay number is derived, and the magic ending reads these digits.
+            return this.applySandboxPayin(paymentIntent, cleanedPhone, false);
+        }
+
+        // FeexPay v2 BJ payin format is `229` + fixed `01` + 8-digit-local
+        // (13 chars total) regardless of operator (mtn/moov/celtiis_bj all
+        // require the same "01"). Verified 2026-07-21 against every SUCCEEDED
+        // BJ intent in prod. If we have the 11-char country+local form
+        // ("22960138681"), inject "01" so the request meets v2's strict length
+        // check.
+        if (paymentIntent.countryCode === 'BJ' && cleanedPhone.length === 11 && cleanedPhone.startsWith('229')) {
+            const local = cleanedPhone.substring(3);
+            cleanedPhone = '229' + '01' + local;
+            log.info(`FeexPay BJ: injected "01" prefix. Final phone: ${cleanedPhone}`);
         }
 
         // Log details before sending
         log.info(`Initiating FeexPay payment for sessionId: ${paymentIntent.sessionId}`);
-        log.info(`FeexPay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${phoneNumberAsInt}`);
+        log.info(`FeexPay endpoint: ${endpoint}, amount: ${amount}, currency: ${currency}, phone: ${cleanedPhone}`);
         log.info(`FeexPay config: baseUrl=${config.feexpay.baseUrl}, shopId=${config.feexpay.shopId}`);
 
-        const userDetails = await userServiceClient.getUserDetails(paymentIntent.userId);
+        const userDetails = _preFetchUserDetails;
+
+        // FeexPay v2 caps `description` at 40 chars and validates
+        // `phoneNumber` as a string of the exact operator-specific length
+        // (e.g. BJ MTN requires 13 chars starting 22901). Numeric type is
+        // rejected by their string-length check even when digits are right.
+        // Old code sent "Subscription Payment for user <ObjectId>" (54 chars)
+        // + phoneNumber as `number` — both fail v2. See CLAUDE.md 2026-07-21
+        // for the payin failure incident that caught this.
+        const shortSid = String(paymentIntent.sessionId || '').slice(-10);
+        let description = `SBC subscription ${shortSid}`.trim();
+        if (description.length > 40) description = description.slice(0, 40).trim();
 
         const requestBody: {
             shop: string;
             amount: number;
-            phoneNumber: number;
+            phoneNumber: string;
             description: string;
             firstName: string;
             lastName: string;
             callback_info: any;
-            otp?: string; // Added optional otp property
+            otp?: string;
         } = {
             shop: config.feexpay.shopId,
             amount: amount,
-            phoneNumber: phoneNumberAsInt,
-            description: `Subscription Payment for user ${paymentIntent.userId}`, // Simplified
+            phoneNumber: cleanedPhone,
+            description,
             firstName: userDetails?.name || "User",
             lastName: userDetails?.phoneNumber?.toString() || "SBC",
             callback_info: {
@@ -3422,8 +3343,6 @@ class PaymentService {
                 userCountry: userDetails?.country || "N/A",
                 userCity: userDetails?.city || "Unknown",
             },
-            // Removed currency, callback_info based on previous analysis
-            // Optional firstName, lastName could be added if user data is available
         };
 
         // Add OTP to request body if operator is orange_sn and OTP is provided
@@ -3568,11 +3487,31 @@ class PaymentService {
                 throw new Error('Aucun numéro de téléphone n\'est associé à ce compte. Veuillez ajouter un numéro à votre profil avant de payer.');
             }
 
+            // MoneyFusion declares one currency per country (see MF_PAYIN_CURRENCY in
+            // moneyfusion.service.ts). For CFA countries (XAF/XOF) this matches what
+            // we already send. For RDC (USD) and Guinée-Conakry (GNF) we must convert
+            // — otherwise MF takes our XAF figure literally and the customer is asked
+            // to pay an inflated amount in their local currency. Strict conversion so
+            // we never silently fall back to an unconverted amount on a money path.
+            let mfAmount = amount;
+            let mfCurrency = currency;
+            const countryCode = paymentIntent.countryCode;
+            const expectedMfCurrency = getMoneyFusionPayinCurrency(countryCode || '');
+
+            if (expectedMfCurrency && expectedMfCurrency.toUpperCase() !== currency.toUpperCase()) {
+                log.info(`MoneyFusion expects ${expectedMfCurrency} for country ${countryCode} — converting ${amount} ${currency}`);
+                mfAmount = await currencyService.convertStrict(amount, currency, expectedMfCurrency);
+                mfCurrency = expectedMfCurrency;
+                log.info(`Converted: ${amount} ${currency} -> ${mfAmount} ${mfCurrency} for MoneyFusion (country ${countryCode})`);
+            } else if (!expectedMfCurrency && countryCode) {
+                log.warn(`No MoneyFusion currency mapping for country ${countryCode}; sending ${amount} ${currency} as-is`);
+            }
+
             const webhookUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion`;
             const returnUrl = `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`;
 
             const result = await moneyFusionService.initiatePayment({
-                amount,
+                amount: mfAmount,
                 phoneNumber: contactPhone,
                 customerName,
                 returnUrl,
@@ -3589,6 +3528,17 @@ class PaymentService {
                 gatewayCheckoutUrl: result.checkoutUrl,
                 status: PaymentStatus.PENDING_PROVIDER,
                 gatewayRawResponse: result as any,
+                // Record what we actually sent to MF so the webhook handler can store
+                // paidCurrency without re-deriving it, and so audits can trace currency
+                // mismatches without spelunking the gateway response.
+                metadata: {
+                    ...(paymentIntent.metadata || {}),
+                    mfPayinCurrency: mfCurrency,
+                    mfPayinAmount: mfAmount,
+                    mfPayinCountry: countryCode,
+                    originalAmount: amount,
+                    originalCurrency: currency,
+                },
             };
 
             const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, updateData);
@@ -3607,6 +3557,16 @@ class PaymentService {
 
     public async handleMoneyFusionPayinWebhook(payload: any): Promise<void> {
         const { event, tokenPay, Montant, personal_Info } = payload;
+
+        // MoneyFusion delivers both payin AND payout webhooks to the same globally-
+        // configured URL in their dashboard, ignoring the per-payout webhookUrl we pass
+        // when initiating a payout. Route by event prefix so payout events reach the
+        // payout handler (which marks COMPLETED + debits the wallet).
+        if (typeof event === 'string' && event.startsWith('payout.')) {
+            log.info(`MoneyFusion webhook: routing payout event "${event}" to payout handler (tokenPay=${tokenPay})`);
+            return this.handleMoneyFusionPayoutWebhook(payload);
+        }
+
         log.info(`MoneyFusion payin webhook received: event=${event}, tokenPay=${tokenPay}`);
 
         const paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(tokenPay, PaymentGateway.MONEYFUSION);
@@ -3637,9 +3597,17 @@ class PaymentService {
             return;
         }
 
+        // MoneyFusion reports Montant in the currency MF expected for the payin
+        // country (see MF_PAYIN_CURRENCY) — USD for RDC, GNF for Guinée-Conakry,
+        // XAF/XOF elsewhere. We recorded the expected currency on the intent's
+        // metadata when initiating; use it here so paidCurrency reflects reality
+        // and downstream code can distinguish raw paidAmount from our XAF books.
+        const paidCurrency = paymentIntent.metadata?.mfPayinCurrency || paymentIntent.currency;
+
         const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
             status: newPaymentStatus,
             paidAmount: Montant,
+            paidCurrency,
             webhookHistory: [...(paymentIntent.webhookHistory || []), { timestamp: new Date(), status: newPaymentStatus, providerData: payload }],
         } as any);
 
@@ -3648,14 +3616,82 @@ class PaymentService {
         }
     }
 
+    /**
+     * Replay any payout webhooks that arrived before we finished storing
+     * tokenPay on the transaction. Called immediately after tokenPay is
+     * persisted; safe to call for any provider — it's a no-op unless a
+     * matching buffered payload exists.
+     *
+     * Idempotent: handleMoneyFusionPayoutWebhook checks
+     * transaction.status !== COMPLETED before applying the debit, so
+     * replaying + a late "real" webhook + this replay together will not
+     * double-debit.
+     */
+    public async replayBufferedPayoutWebhook(
+        provider: 'MoneyFusion' | 'CinetPay' | 'FeexPay',
+        tokenPay: string,
+    ): Promise<void> {
+        if (!tokenPay) return;
+        try {
+            const buffered = await pendingPayoutWebhookModel.findOne({ tokenPay, provider, processed: false });
+            if (!buffered) return;
+            log.info(`Replaying buffered ${provider} payout webhook for tokenPay=${tokenPay} (buffered ${((Date.now() - buffered.receivedAt.getTime()) / 1000).toFixed(2)}s ago)`);
+            try {
+                buffered.replayAttempts = (buffered.replayAttempts || 0) + 1;
+                if (provider === 'MoneyFusion') {
+                    await this.handleMoneyFusionPayoutWebhook(buffered.payload);
+                } else {
+                    // Only MF race is known in prod today. Other providers can plug in
+                    // their own handlers here as buffering is added for them.
+                    log.warn(`Buffered payout webhook replay requested for unsupported provider ${provider}; leaving as pending.`);
+                    buffered.lastReplayError = 'No replay handler wired for this provider';
+                    await buffered.save();
+                    return;
+                }
+                buffered.processed = true;
+                buffered.processedAt = new Date();
+                buffered.lastReplayError = undefined;
+                await buffered.save();
+            } catch (replayErr: any) {
+                buffered.lastReplayError = replayErr.message || String(replayErr);
+                await buffered.save().catch(() => { /* swallow — main error already logged */ });
+                log.error(`Buffered payout webhook replay failed for tokenPay=${tokenPay}: ${replayErr.message}`);
+            }
+        } catch (queryErr: any) {
+            log.error(`Failed to query pending payout webhook buffer for tokenPay=${tokenPay}: ${queryErr.message}`);
+        }
+    }
+
     public async handleMoneyFusionPayoutWebhook(payload: any): Promise<void> {
         const { event, tokenPay } = payload;
         log.info(`MoneyFusion payout webhook received: event=${event}, tokenPay=${tokenPay}`);
 
+        if (!tokenPay) {
+            log.warn(`MoneyFusion payout webhook received without tokenPay; ignoring. Payload: ${JSON.stringify(payload)}`);
+            return;
+        }
+
         // Find the transaction by the MoneyFusion token stored in externalTransactionId
         const transaction = await transactionRepository.findByExternalId(tokenPay);
         if (!transaction) {
-            log.warn(`MoneyFusion payout webhook: Transaction not found for tokenPay ${tokenPay}`);
+            // Race: MF fires the webhook basically the same instant they return
+            // tokenPay in the /withdraw response, and can arrive before our own
+            // code finishes storing tokenPay on the tx. Buffer the payload so
+            // the initiation code can replay it right after it saves tokenPay
+            // (see replayBufferedPayoutWebhook below). Return normally so MF
+            // doesn't retry-storm us — the buffer is the retry mechanism.
+            try {
+                await pendingPayoutWebhookModel.create({
+                    tokenPay,
+                    provider: 'MoneyFusion',
+                    payload,
+                    receivedAt: new Date(),
+                    processed: false,
+                });
+                log.info(`MoneyFusion payout webhook buffered for later replay: tokenPay=${tokenPay} (transaction not yet stored)`);
+            } catch (bufErr: any) {
+                log.error(`Failed to buffer MoneyFusion payout webhook for tokenPay=${tokenPay}: ${bufErr.message}`);
+            }
             return;
         }
 
@@ -3717,8 +3753,15 @@ class PaymentService {
         if (transaction.type !== TransactionType.WITHDRAWAL) {
             return { success: false, error: 'Transaction is not a withdrawal' };
         }
-        if (transaction.serviceProvider !== 'MoneyFusion') {
-            return { success: false, error: `Manual completion is only for MoneyFusion withdrawals (this is ${transaction.serviceProvider || 'unknown'})` };
+        // serviceProvider is only written by the same block that stores the MF
+        // tokenPay. When the payout response is lost that block never runs, so the
+        // field stays unset on exactly the transactions that need reconciling —
+        // which made this tool refuse the ones it exists for. Fall back to
+        // metadata.selectedPayoutService, which is written at routing time.
+        // Same shape as the CinetPay $or documented in CLAUDE.md.
+        const provider = transaction.serviceProvider || (transaction.metadata as any)?.selectedPayoutService;
+        if (provider !== 'MoneyFusion') {
+            return { success: false, error: `Manual completion is only for MoneyFusion withdrawals (this is ${provider || 'unknown'})` };
         }
         if (transaction.status === TransactionStatus.COMPLETED) {
             log.info(`Manual completion of MF withdrawal ${transactionId}: already COMPLETED, no-op`);
@@ -3779,7 +3822,10 @@ class PaymentService {
         if (transaction.type !== TransactionType.WITHDRAWAL) {
             return { success: false, error: 'Transaction is not a withdrawal' };
         }
-        if (transaction.serviceProvider !== 'MoneyFusion') {
+        // Same fallback as manualComplete: serviceProvider is unset on precisely the
+        // transactions that need reconciling.
+        const provider = transaction.serviceProvider || (transaction.metadata as any)?.selectedPayoutService;
+        if (provider !== 'MoneyFusion') {
             return { success: false, error: `Manual fail is only for MoneyFusion withdrawals (this is ${transaction.serviceProvider || 'unknown'})` };
         }
         if (transaction.status === TransactionStatus.FAILED) {
@@ -5851,11 +5897,26 @@ class PaymentService {
             throw new AppError(errorMsg, 400);
         }
 
+        // Pass the destination country so checkPayoutStatus authenticates with the
+        // correct per-country CinetPay credentials on the first try. Without this
+        // it iterates through all configured countries and throws on the first
+        // non-404 error — which is 422 when using the wrong country's OAuth
+        // token to look up a transfer that belongs to a different country's
+        // merchant account. Root cause of the "CinetPay reconciliation cron
+        // has been silently failing all CI transactions" incident of 2026-07-01.
+        const destinationCountry = transaction.metadata?.accountInfo?.countryCode;
         let verifiedPayoutStatus: CinetPayPayoutStatus | null = null; // Declare outside try block
         try {
-            // CRITICAL: Perform server-to-server validation with CinetPay's API
-            log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId})`);
-            verifiedPayoutStatus = await cinetpayPayoutService.checkPayoutStatus(internalTransactionId);
+            // CRITICAL: Perform server-to-server validation with CinetPay's API.
+            //
+            // Must use `cinetpayTransactionId` (the UUID CinetPay returned on payout creation),
+            // NOT `internalTransactionId`. CinetPay silently strips underscores from the merchant
+            // transaction ID we send (e.g. our "QvwPG-3_fD_Mb_fN" is stored on their side as
+            // "QvwPG-3fDMbfN"), so looking up by our raw merchant ID returns 404 NOT_FOUND for
+            // any merchant ID containing underscores — which causes the reconciliation job to
+            // throw 503 and leave the transaction stuck in PROCESSING forever.
+            log.info(`Verifying CinetPay Payout status for CinetPay Tx ID: ${cinetpayTransactionId} (Internal Tx ID: ${internalTransactionId}, country: ${destinationCountry || 'auto'})`);
+            verifiedPayoutStatus = await cinetpayPayoutService.checkPayoutStatus(cinetpayTransactionId, destinationCountry);
 
             if (!verifiedPayoutStatus) {
                 log.error(`CinetPay Payout Webhook: No status found from CinetPay API for Tx ID: ${cinetpayTransactionId}. Marking internal transaction ${internalTransactionId} as FAILED due to verification failure.`);
@@ -6824,6 +6885,10 @@ class PaymentService {
                         },
                     });
                     log.info(`Stored MoneyFusion tokenPay ${result.tokenPay} for transaction ${transaction.transactionId}`);
+                    // Replay any webhook that beat us to storing tokenPay (MF fires
+                    // the webhook the same instant they return the tokenPay in the
+                    // /withdraw response — see race notes in CLAUDE.md).
+                    await this.replayBufferedPayoutWebhook('MoneyFusion', result.tokenPay);
                 }
             } else {
                 // Fail loudly on unknown gateways so we don't silently no-op (cause of bug fixed here)

@@ -758,7 +758,7 @@ export class UserService {
         // Add referralCode to Pick
         updateData: Partial<Pick<IUser,
             'name' | 'region' | 'country' | 'city' | 'phoneNumber' | 'momoNumber' |
-            'momoOperator' | 'avatar' | 'avatarId' | 'sex' | 'birthDate' | 'language' |
+            'momoOperator' | 'whatsappGroupLink' | 'avatar' | 'avatarId' | 'sex' | 'birthDate' | 'language' |
             'preferenceCategories' | 'interests' | 'profession' | 'shareContactInfo' | 'notificationPreference' |
             'referralCode' // Added referralCode here
         >>
@@ -778,6 +778,7 @@ export class UserService {
         if (updateData.phoneNumber !== undefined) allowedFields.phoneNumber = updateData.phoneNumber;
         if (updateData.momoNumber !== undefined) allowedFields.momoNumber = updateData.momoNumber;
         if (updateData.momoOperator !== undefined) allowedFields.momoOperator = updateData.momoOperator;
+        if (updateData.whatsappGroupLink !== undefined) allowedFields.whatsappGroupLink = updateData.whatsappGroupLink;
         if (updateData.avatar !== undefined) allowedFields.avatar = updateData.avatar;
         if (updateData.avatarId !== undefined) allowedFields.avatarId = updateData.avatarId;
         if (updateData.sex !== undefined) allowedFields.sex = updateData.sex;

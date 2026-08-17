@@ -429,12 +429,27 @@ export class CinetPayPayoutService {
      * Check the status of a payout
      */
     async checkPayoutStatus(transactionId: string, countryCode?: string): Promise<PayoutStatus | null> {
-        // Sandbox: this is called with our internal transaction id, so the SBX-
-        // reference lives on the transaction record. Answer from the reference
-        // itself — the reconcile page and payout webhook verification then see
-        // what a real status API would say. Lazy require avoids a module cycle
-        // (repository → model only, but keep the boundary clean at load time).
+        // Sandbox: answer from the SBX- reference so the reconcile page and the
+        // payout webhook verification see what a real status API would say.
+        //
+        // Callers are not consistent about which id they pass — some send our
+        // internal transaction id, others CinetPay's own (see the correct-id
+        // hotfix) — so accept either: the reference itself, or a transaction
+        // whose externalTransactionId is one. Lazy require keeps the module
+        // boundary clean at load time.
         if (sandbox.isSandboxActive()) {
+            if (sandbox.isSandboxRef(transactionId)) {
+                const status = sandbox.refStatusNow(transactionId);
+                return {
+                    transactionId,
+                    cinetpayTransactionId: transactionId,
+                    status,
+                    amount: 0,
+                    recipient: 'sandbox',
+                    sendingStatus: status === 'completed' ? 'confirmed' : 'pending',
+                    comment: `SANDBOX ${status}`,
+                };
+            }
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             const transactionRepository = require('../database/repositories/transaction.repository').default;
             const txn = await transactionRepository.findByTransactionId(transactionId);
@@ -484,7 +499,15 @@ export class CinetPayPayoutService {
                         comment: response.data.status,
                     };
                 } catch (innerError: any) {
-                    if (innerError.response?.status === 404) {
+                    // Continue to the next configured country on both 404 (transfer
+                    // not found by CinetPay under this country's account) and 422
+                    // (CinetPay's typical response when the transfer belongs to a
+                    // different country's merchant account than the one whose
+                    // credentials we authenticated with). Previously we only
+                    // continued on 404 — a 422 caused a throw and stopped the
+                    // whole loop, leaving stuck transactions unverifiable via
+                    // the fallback country iteration.
+                    if (innerError.response?.status === 404 || innerError.response?.status === 422) {
                         continue;
                     }
                     throw innerError;

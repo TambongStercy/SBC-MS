@@ -275,7 +275,12 @@ class UserServiceClient {
 
         const url = `${this.userServiceUrl}/users/internal/${userId}/active-subscription-types`;
         try {
-            const response = await axios.get<{ success: boolean; data: { activeSubscriptionTypes: string[] } }>(url, {
+            // user-service answers { success, data: string[] } — the contract
+            // settings-service has consumed in production for months. Reading a
+            // nested activeSubscriptionTypes here silently returned [], which
+            // means "no subscription" and would have sent relance SMS to
+            // subscribers.
+            const response = await axios.get<{ success: boolean; data: string[] }>(url, {
                 headers: {
                     'Authorization': `Bearer ${this.serviceSecret}`,
                     'X-Service-Name': 'notification-service'
@@ -283,8 +288,8 @@ class UserServiceClient {
                 timeout: 5000
             });
 
-            if (response.data?.success && Array.isArray(response.data.data?.activeSubscriptionTypes)) {
-                return response.data.data.activeSubscriptionTypes;
+            if (response.data?.success && Array.isArray(response.data.data)) {
+                return response.data.data;
             }
             return [];
         } catch (error: any) {

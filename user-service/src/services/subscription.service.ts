@@ -530,6 +530,31 @@ export class SubscriptionService {
         }
         const targetSubscriptionType = planId as SubscriptionType;
 
+        // ─── COMMISSION DEDUP GUARD ─────────────────────────────────────────
+        // Determine UPFRONT whether the user already has a subscription that satisfies
+        // this payment. If so, the upcoming activateSubscription will be a no-op, and
+        // we must NOT redistribute commissions (they were already paid for the prior
+        // activation). This covers:
+        //   - admin recovery for a user whose payment had already succeeded
+        //   - real provider webhook arriving after a phantom admin recovery
+        // Both paths previously fired commissions twice. RELANCE is unaffected (it has
+        // its own activation path and no commission distribution here).
+        let satisfiedByExisting = false;
+        if (targetSubscriptionType !== SubscriptionType.RELANCE) {
+            const userObjectId = new Types.ObjectId(userId);
+            const existingCible = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CIBLE);
+            const existingClassique = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CLASSIQUE);
+            if (targetSubscriptionType === SubscriptionType.CIBLE) {
+                satisfiedByExisting = !!existingCible;
+            } else if (targetSubscriptionType === SubscriptionType.CLASSIQUE) {
+                satisfiedByExisting = !!existingClassique || !!existingCible;
+            }
+            if (satisfiedByExisting) {
+                this.log.warn(`User ${userId} already has an active subscription that satisfies a ${targetSubscriptionType} payment (paymentSession ${paymentSessionId}). Will skip commission distribution to avoid duplicates.`);
+            }
+        }
+        // ─── End commission dedup guard ─────────────────────────────────────
+
         // 2. Activate the target subscription
         let activatedSubscription: ISubscription | null = null;
         try {
@@ -550,7 +575,9 @@ export class SubscriptionService {
         }
 
         // --- 3. Distribute Commissions (Only for CIBLE or Upgrade) ---
-        if (targetSubscriptionType === SubscriptionType.CIBLE || isUpgrade || targetSubscriptionType === SubscriptionType.CLASSIQUE) {
+        if (satisfiedByExisting) {
+            this.log.warn(`Skipping commission distribution for user ${userId} (paymentSession ${paymentSessionId}): subscription was already active prior to this payment, commissions already paid for the prior activation.`);
+        } else if (targetSubscriptionType === SubscriptionType.CIBLE || isUpgrade || targetSubscriptionType === SubscriptionType.CLASSIQUE) {
             // Using .catch() here so commission failure doesn't break the main webhook acknowledgment
             this.distributeSubscriptionCommission(userId, targetSubscriptionType, isUpgrade, paymentSessionId, planName, paymentMethod, metadata)
                 .catch(commissionError => {
