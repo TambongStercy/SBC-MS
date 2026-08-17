@@ -10,6 +10,7 @@ import {
     cancelSession,
     NoCapacityError,
     activeCount,
+    queuedCount,
 } from '../../services/verification-session.service';
 import { applyExtraction, bindWhatsAppIdentity, lastPostExpired } from '../../services/verification.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -170,6 +171,9 @@ export const poll = async (req: AuthenticatedRequest, res: Response) => {
                     qr: session.qr,
                     pairingCode: session.pairingCode,
                     day: session.day,
+                    // Present only while queued, so the client can say where
+                    // they stand instead of showing an idle spinner.
+                    queuePosition: session.queuePosition,
                 },
             });
         }
@@ -220,5 +224,5 @@ export const cancel = async (req: AuthenticatedRequest, res: Response) => {
 
 /** Lets the UI warn about a queue before the diffuseur commits to scanning. */
 export const capacity = async (_req: AuthenticatedRequest, res: Response) => {
-    return res.json({ success: true, data: { active: activeCount() } });
+    return res.json({ success: true, data: { active: activeCount(), queued: queuedCount() } });
 };

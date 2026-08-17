@@ -17,7 +17,7 @@ const log = logger.getLogger('VerificationSession');
  * only invite a second instance to resume something it cannot.
  */
 
-export type SessionState = 'starting' | 'awaiting_scan' | 'reading' | 'done' | 'failed';
+export type SessionState = 'queued' | 'starting' | 'awaiting_scan' | 'reading' | 'done' | 'failed';
 
 export type VerificationSession = {
     id: string;
@@ -25,6 +25,8 @@ export type VerificationSession = {
     participationId: string;
     day: number;
     state: SessionState;
+    /** 1-based place in the waiting line while state is 'queued'. */
+    queuePosition?: number;
     qr?: string;
     /** 8-character code to type into WhatsApp, when pairing by phone number. */
     pairingCode?: string;
@@ -45,12 +47,34 @@ const SESSION_TTL_MS = 5 * 60 * 1000;
  * decodes a full status-sync blob, so this is the number the server's memory can
  * actually carry, not a politeness limit.
  */
-const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT_VERIFICATIONS || 8);
+const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT_VERIFICATIONS || 16);
+
+/**
+ * How many may wait for a socket before we start turning people away.
+ *
+ * Measured on preprod: a socket waiting to be scanned costs 5-10MB and no CPU,
+ * and most of a session's life is exactly that — the diffuseur finding their
+ * phone. So the cap protects the sync bursts, and the queue absorbs a launch
+ * night rather than answering 503 to someone who did nothing wrong.
+ */
+const MAX_QUEUED = Number(process.env.MAX_QUEUED_VERIFICATIONS || 60);
+
+/** FIFO of session ids waiting for a slot. */
+const waiting: string[] = [];
 
 let active = 0;
 
 export const activeCount = () => active;
+export const queuedCount = () => waiting.length;
 export const capacityAvailable = () => active < MAX_CONCURRENT;
+
+/** Renumbers the queue so each waiting session can be told where it stands. */
+const renumber = () => {
+    waiting.forEach((id, i) => {
+        const s = sessions.get(id);
+        if (s) s.queuePosition = i + 1;
+    });
+};
 
 const sweep = () => {
     const cutoff = Date.now() - SESSION_TTL_MS;
@@ -60,15 +84,18 @@ const sweep = () => {
             // and dropping the map entry alone would leak the slot forever.
             handles.get(id)?.cancel();
             handles.delete(id);
+            const q = waiting.indexOf(id);
+            if (q !== -1) { waiting.splice(q, 1); renumber(); }
+            pending.delete(id);
             sessions.delete(id);
         }
     }
 };
-setInterval(sweep, 60 * 1000).unref();
+setInterval(() => { sweep(); pump(); }, 60 * 1000).unref();
 
 export class NoCapacityError extends Error {
     constructor() {
-        super('Trop de vérifications en cours. Réessayez dans quelques instants.');
+        super("Beaucoup de vérifications en cours et la file d'attente est pleine. Réessayez dans quelques minutes.");
     }
 }
 
@@ -87,7 +114,7 @@ export const startSession = (args: {
     /** Set to pair by code instead of QR. E.164 digits, no '+'. */
     pairWithPhone?: string;
 }): VerificationSession => {
-    if (!capacityAvailable()) throw new NoCapacityError();
+    if (!capacityAvailable() && waiting.length >= MAX_QUEUED) throw new NoCapacityError();
 
     const id = randomUUID();
     const session: VerificationSession = {
@@ -100,6 +127,51 @@ export const startSession = (args: {
         createdAt: new Date(),
     };
     sessions.set(id, session);
+    pending.set(id, args);
+
+    if (capacityAvailable()) {
+        begin(id);
+    } else {
+        // Waiting costs the diffuseur nothing but patience, and beats being told
+        // to come back later with no idea when.
+        session.state = 'queued';
+        waiting.push(id);
+        renumber();
+        log.info(`Session ${id} queued at position ${session.queuePosition} (${active} active)`);
+    }
+
+    return session;
+};
+
+/** Arguments of sessions not yet begun, kept only until their socket opens. */
+const pending = new Map<string, {
+    diffuseurUserId: Types.ObjectId;
+    participationId: Types.ObjectId;
+    day: number;
+    downloadMedia?: boolean;
+    pairWithPhone?: string;
+}>();
+
+/** Starts the next queued session, if a slot is free. */
+const pump = () => {
+    while (capacityAvailable() && waiting.length) {
+        const id = waiting.shift()!;
+        renumber();
+        // It may have aged out or been cancelled while waiting.
+        if (sessions.get(id)?.state === 'queued') begin(id);
+        else pending.delete(id);
+    }
+};
+
+/** Opens the WhatsApp socket for a session that holds a slot. */
+const begin = (id: string): void => {
+    const session = sessions.get(id);
+    const args = pending.get(id);
+    if (!session || !args) return;
+    pending.delete(id);
+
+    session.state = 'starting';
+    session.queuePosition = undefined;
     active++;
 
     const handle = extractOwnStatuses({
@@ -142,16 +214,23 @@ export const startSession = (args: {
             log.warn(`Verification session ${id} failed: ${err.message}`);
         })
         .finally(() => {
+            // Released the moment this diffuseur's statuses are read, not when
+            // they close the sheet — the slot belongs to the socket, not the UI.
             active--;
             handles.delete(id);
+            pump();
         });
-
-    return session;
 };
 
 export const getSession = (id: string): VerificationSession | undefined => sessions.get(id);
 
 export const cancelSession = (id: string): void => {
+    const queuedAt = waiting.indexOf(id);
+    if (queuedAt !== -1) {
+        waiting.splice(queuedAt, 1);
+        renumber();
+        pending.delete(id);
+    }
     handles.get(id)?.cancel();
     handles.delete(id);
     const s = sessions.get(id);
