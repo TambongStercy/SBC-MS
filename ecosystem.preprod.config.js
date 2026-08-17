@@ -11,10 +11,11 @@ module.exports = {
         NOTIFICATION_SERVICE_URL: 'http://localhost:6002',
         PAYMENT_SERVICE_URL: 'http://localhost:6003',
         PRODUCT_SERVICE_URL: 'http://localhost:6004',
-        ADVERTISING_SERVICE_URL: 'http://localhost:6005',
+        ADVERTISING_SERVICE_URL: 'http://localhost:6010',
         TOMBOLA_SERVICE_URL: 'http://localhost:6006',
         SETTINGS_SERVICE_URL: 'http://localhost:6007',
-        CHAT_SERVICE_URL: 'http://localhost:6008'
+        CHAT_SERVICE_URL: 'http://localhost:6008',
+        SBCLOVE_SERVICE_URL: 'http://localhost:6009'
       }
     },
     {
@@ -78,6 +79,24 @@ module.exports = {
       env: {
         NODE_ENV: 'preprod',
         PORT: 6008
+      }
+    },
+    {
+      name: 'sbclove-preprod',
+      cwd: './sbclove-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'preprod',
+        PORT: 6009
+      }
+    },
+    {
+      name: 'advertising-preprod',
+      cwd: './advertising-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'preprod',
+        PORT: 6010
       }
     }
   ]

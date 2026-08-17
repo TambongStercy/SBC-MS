@@ -214,6 +214,84 @@ export class UserRepository {
     }
 
     /**
+     * Credits diffuseur earnings from a completed advertising campaign.
+     *
+     * Only ever called by advertising-service once all campaign days are verified.
+     * Credit-only by design: nothing debits advertisingBalance except the transfer
+     * to main, so there is exactly one way money leaves it.
+     */
+    async creditAdvertisingBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Credit amount must be positive');
+        }
+
+        return UserModel.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { advertisingBalance: amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Moves advertising earnings into the main balance so they can be withdrawn.
+     *
+     * This is deliberately the ONLY exit from advertisingBalance. Teaching the
+     * payout path to debit a second source would mean branching
+     * processMobileMoneyWithdrawalPayout, which is the most incident-prone code in
+     * the system — a silent no-op there once froze a real user's withdrawal.
+     * Routing through the main balance keeps the payout path untouched.
+     *
+     * The advertisingBalance >= amount precondition is part of the query, so two
+     * concurrent transfers cannot both succeed and overdraw.
+     */
+    async transferFromAdvertisingToMain(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Transfer amount must be positive');
+        }
+
+        return UserModel.findOneAndUpdate(
+            {
+                _id: userId,
+                advertisingBalance: { $gte: amount }
+            },
+            {
+                $inc: {
+                    balance: amount,
+                    advertisingBalance: -amount
+                }
+            },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Atomically credit (positive amount) or debit (negative amount) a user's
+     * sbcLiveBalance. Used by payment-service when:
+     *   - A paid-live charge completes → credit the creator's 75% share
+     *   - A creator withdraws from their SBC Live earnings → debit the amount
+     *   - An admin issues a refund → debit
+     *
+     * Returns the updated user document, or null if the user doesn't exist.
+     * For debits, fails (returns null) if the post-update balance would be
+     * negative — caller should treat null as "insufficient funds" and not retry.
+     */
+    async updateSbcLiveBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount === 0) {
+            return UserModel.findById(userId).exec();
+        }
+        const filter: Record<string, any> = { _id: userId };
+        if (amount < 0) {
+            // Guard against going negative.
+            filter.sbcLiveBalance = { $gte: Math.abs(amount) };
+        }
+        return UserModel.findOneAndUpdate(
+            filter,
+            { $inc: { sbcLiveBalance: amount } },
+            { new: true },
+        ).exec();
+    }
+
+    /**
      * Atomically transfers activation balance between two users.
      * @param fromUserId - The sender's user ID.
      * @param toUserId - The recipient's user ID.
@@ -590,6 +668,38 @@ export class UserRepository {
         })
             .select('_id name email phoneNumber avatar momoNumber momoOperator balance notificationPreference role language cryptoWalletAddress cryptoWalletCurrency') // Select fields matching the updated UserDetails interface
             .lean() // Use lean for performance as we only need plain objects
+            .exec();
+    }
+
+    /**
+     * [Internal] Returns the demographic subset consumed by the SBCLOVE module
+     * (sbclove-service). Read-only projection — the SBCLOVE profile reuses this
+     * data rather than duplicating it.
+     */
+    async findSbcloveDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name email avatar sex birthDate city country isVerified')
+            .lean()
+            .exec();
+    }
+
+    /**
+     * [Internal] Returns the projection consumed by advertising-service.
+     *
+     * Campaign targeting runs on these fields, so an omission here does not error —
+     * it silently makes every targeted campaign match nobody. `batch-details` looks
+     * close enough to reuse but carries none of them.
+     */
+    async findAdvertisingDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name email phoneNumber avatar sex birthDate city region country language interests profession referralCode')
+            .lean()
             .exec();
     }
 

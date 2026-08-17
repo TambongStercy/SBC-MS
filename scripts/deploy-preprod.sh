@@ -42,6 +42,8 @@ declare -A PM2_NAME=(
   [tombola-service]="tombola-preprod"
   [settings-service]="settings-preprod"
   [chat-service]="chat-preprod"
+  [sbclove-service]="sbclove-preprod"
+  [advertising-service]="advertising-preprod"
 )
 
 CHANGED_SERVICES=()
@@ -95,8 +97,17 @@ if [ ${#CHANGED_SERVICES[@]} -gt 0 ]; then
       bash ./build-all.sh --build "$SERVICE"
     fi
 
-    pm2 restart "${PM2_NAME[$SERVICE]}" --update-env
-    echo "$LOG_PREFIX  ${PM2_NAME[$SERVICE]} restarted"
+    # A service deployed for the first time has no PM2 app to restart. Without
+    # the fallback, pm2 restart fails, the deploy still reports success, and the
+    # service simply never runs — which is exactly what happened to
+    # advertising-preprod on its first deploy.
+    if pm2 describe "${PM2_NAME[$SERVICE]}" > /dev/null 2>&1; then
+      pm2 restart "${PM2_NAME[$SERVICE]}" --update-env
+      echo "$LOG_PREFIX  ${PM2_NAME[$SERVICE]} restarted"
+    else
+      echo "$LOG_PREFIX  ${PM2_NAME[$SERVICE]} not running — starting it for the first time"
+      pm2 start ecosystem.preprod.config.js --only "${PM2_NAME[$SERVICE]}"
+    fi
   done
 fi
 
@@ -122,7 +133,7 @@ pm2 save
 echo "$LOG_PREFIX Running health checks..."
 sleep 5
 
-PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008")
+PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008" "6009" "6010")
 FAILED=0
 
 for PORT in "${PORTS[@]}"; do

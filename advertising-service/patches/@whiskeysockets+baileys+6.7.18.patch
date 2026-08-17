@@ -1,0 +1,70 @@
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Defaults/index.js b/node_modules/@whiskeysockets/baileys/lib/Defaults/index.js
+index 5597427..ee72853 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Defaults/index.js
++++ b/node_modules/@whiskeysockets/baileys/lib/Defaults/index.js
+@@ -30,6 +30,11 @@ exports.PROCESSABLE_HISTORY_TYPES = [
+     WAProto_1.proto.Message.HistorySyncNotification.HistorySyncType.RECENT,
+     WAProto_1.proto.Message.HistorySyncNotification.HistorySyncType.FULL,
+     WAProto_1.proto.Message.HistorySyncNotification.HistorySyncType.ON_DEMAND,
++    // SBC LOCAL PATCH — upstream omits INITIAL_STATUS_V3, and chats.js ANDs this
++    // whitelist with shouldSyncHistoryMessage, so a caller cannot opt in: the blob
++    // is never downloaded. This is the third of three gates that together hide the
++    // account's own status backfill (see validate-connection.js and history.js).
++    WAProto_1.proto.Message.HistorySyncNotification.HistorySyncType.INITIAL_STATUS_V3,
+ ];
+ exports.DEFAULT_CONNECTION_CONFIG = {
+     version: baileys_version_json_1.version,
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Utils/history.js b/node_modules/@whiskeysockets/baileys/lib/Utils/history.js
+index 2ee0b78..d43388c 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Utils/history.js
++++ b/node_modules/@whiskeysockets/baileys/lib/Utils/history.js
+@@ -70,6 +70,17 @@ const processHistoryMessage = (item) => {
+                 contacts.push({ id: c.id, notify: c.pushname });
+             }
+             break;
++        // SBC LOCAL PATCH — upstream has no case for INITIAL_STATUS_V3, so the whole
++        // blob decodes to nothing and the status backfill is silently dropped. The
++        // account's own status posts live in statusV3Messages (protobuf field 3),
++        // each already a WebMessageInfo carrying its userReceipt viewer list.
++        // Requires the historySyncConfig patch in Utils/validate-connection.js —
++        // without it the server never offers this phase at all.
++        case WAProto_1.proto.HistorySync.HistorySyncType.INITIAL_STATUS_V3:
++            for (const message of item.statusV3Messages || []) {
++                messages.push(message);
++            }
++            break;
+     }
+     return {
+         chats,
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Utils/validate-connection.js b/node_modules/@whiskeysockets/baileys/lib/Utils/validate-connection.js
+index 718bce7..9219b60 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Utils/validate-connection.js
++++ b/node_modules/@whiskeysockets/baileys/lib/Utils/validate-connection.js
+@@ -73,6 +73,27 @@ const generateRegistrationNode = ({ registrationId, signedPreKey, signedIdentity
+         os: config.browser[0],
+         platformType: getPlatformType(config.browser[1]),
+         requireFullSync: config.syncFullHistory,
++        // SBC LOCAL PATCH — upstream sends no historySyncConfig at all. This is the
++        // capability negotiation that tells the server which backfill phases this
++        // companion can handle; without it the server appears to skip
++        // INITIAL_STATUS_V3, which is why HistorySync.statusV3Messages is always
++        // empty and pre-existing statuses never arrive. Values mirror WA Web.
++        historySyncConfig: {
++            fullSyncDaysLimit: 3650,
++            fullSyncSizeMbLimit: 100,
++            storageQuotaMb: 100,
++            inlineInitialPayloadInE2EeMsg: false,
++            recentSyncDaysLimit: 60,
++            supportCallLogHistory: true,
++            supportBotUserAgentChatHistory: true,
++            supportCagReactionsAndPolls: true,
++            supportBizHostedMsg: true,
++            supportRecentSyncChunkMessageCountTuning: true,
++            supportHostedGroupMsg: true,
++            supportFbidBotChatHistory: true,
++            supportAddOnHistorySyncMigration: true,
++            supportMessageAssociation: true,
++        },
+     };
+     const companionProto = WAProto_1.proto.DeviceProps.encode(companion).finish();
+     const registerPayload = {

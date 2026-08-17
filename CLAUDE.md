@@ -34,7 +34,7 @@ This is a microservices-based backend system for Sniper Business Center (SBC) wi
 - **Notification Service** (port 3002): Email, SMS, WhatsApp notifications with Redis queue
 - **Payment Service** (port 3003): Payment processing, transactions, crypto payments, withdrawals
 - **Product Service** (port 3004): Product management and flash sales
-- **Advertising Service** (port 3005): Advertisement management
+- **Advertising Service** (port 3010 / preprod 6010): WhatsApp status advertising marketplace — campaigns, landing pages, tracking links, diffuseur payouts. Spec: `docs/ADVERTISING-FEATURE-SPEC.md`
 - **Tombola Service** (port 3006): Lottery/tombola functionality
 - **Settings Service** (port 3007): Global settings and file storage (Google Drive integration)
 - **Admin Frontend** (port 3030): React/TypeScript admin dashboard with Vite
@@ -313,6 +313,38 @@ are wrong**; the actual mount overrides them. Admin frontend must call
 `/users/admin/users/...`. PR #67 fixed an instance where the admin frontend was
 on the wrong pattern.
 
+### user-service internal routes: there is no `GET /users/internal/:userId`
+
+Only the routes explicitly registered on `serviceRouter` in
+`user-service/src/api/routes/user.routes.ts` exist. A bare single-user fetch is
+**not** among them — `GET /users/internal/<id>` 404s. Use one of the POST batch
+endpoints with a single id.
+
+Worse: **`POST /internal/batch-details` returns a narrow projection** —
+`name email phoneNumber avatar momoNumber momoOperator balance notificationPreference
+role language cryptoWalletAddress cryptoWalletCurrency`. No `country`, `city`,
+`region`, `sex`, `birthDate`, `interests`, `profession`, `referralCode`. A consumer
+that needs demographics gets objects back with every such field `undefined` — no
+error, just silently empty matching. This broke advertising-service's campaign
+targeting (fixed 2026-08-08); `sbclove-service` avoided it with its own
+`POST /internal/sbclove-details` projection.
+
+**When a module needs profile fields, add its own internal projection endpoint**
+(`advertising-details`, `sbclove-details`) rather than reusing `batch-details`.
+Always read the repository's `.select()` before trusting an internal route.
+
+### notification-service internal sends: exact path AND recipient required
+
+`POST /api/notifications/internal/create` — the `/notifications` segment is
+mandatory (`/api/internal/create` 404s), and the **email channel requires
+`recipient`** (the address itself — the service does NOT resolve userId→email;
+missing it 400s). Both failures are invisible at call sites because every
+client is deliberately best-effort. Discovered 2026-08-09: every advertising
+email ever (offers, approvals, day-opened) had silently failed on both counts;
+tombola's PUSH channel skips the recipient requirement, sbclove was correct.
+When adding a notification call, test one real delivery — a 2xx-shaped silence
+proves nothing.
+
 ### Health endpoints aren't standardised
 
 | Service (prod port / preprod port) | Health path |
@@ -351,6 +383,24 @@ The interface comment at `payment-service/src/config/index.ts:78` mentions
 `https://api.cinetpay.net` ("new unified API") but the actual base URL we use
 is `https://api.cinetpay.co`. Probably interchangeable aliases — but the `.co`
 host is what's in env and what the live code talks to.
+
+### MoneyFusion payout webhooks — reality check (corrected 2026-07-01)
+
+Earlier notes in this doc claimed "MoneyFusion never sends payout webhooks".
+That was wrong. Sterling pulled MF's official docs which explicitly define
+`payout.session.completed` / `payout.session.cancelled` webhook events, and
+prod logs confirm MF has delivered payout webhooks (rare, but happens).
+
+Actual behavior:
+  - MF DOES send payout webhooks — but only when their system reaches a
+    terminal state (`completed` or `cancelled`)
+  - For many of our stuck payouts, MF's system never reaches terminal state
+    — it just hangs indefinitely on their side (neither confirmed nor
+    cancelled). No webhook fires because there's nothing to fire.
+  - Log-based sanity: prod has hundreds of payin webhooks from MF vs single
+    digits of payout webhooks. Payouts hanging is the norm, not the exception.
+  - MF has NO public status-verify API (unlike CinetPay), so we can't poll to
+    resolve hung ones — admin must verify on MF dashboard and mark manually.
 
 ### MoneyFusion payout webhooks — reality check (rewritten 2026-07-21)
 
@@ -471,6 +521,36 @@ MoneyFusion sets both. This tripped up my first filter attempt for the CinetPay
 reconciler; use `$or: [{ serviceProvider: 'CinetPay' }, { 'metadata.selectedPayoutService': 'CinetPay' }]`
 when querying. Longer-term cleanup: set `serviceProvider` consistently on the
 CinetPay branch of `processMobileMoneyWithdrawalPayout`.
+
+### Payment sandbox (preprod only)
+
+`PAYMENT_SANDBOX_ENABLED=true` in payment-service `.env` fakes every provider call
+(payins AND withdrawals) — no real money moves. Hard-refused when
+`NODE_ENV=production` regardless of the flag. Interception is at the
+provider-client boundary (`*PayoutService.initiatePayout`, the payin initiators,
+`checkPayoutStatus`), so all sibling flows — user+OTP, admin-approved,
+admin-direct, status-checker cron, `/fix-*-withdrawals` pages — run their REAL
+code including debit-on-success. A sweeper (`jobs/sandbox-sweeper.job.ts`)
+resolves each fake payment ~15s later (`SANDBOX_COMPLETE_DELAY_MS` to change)
+through the provider's genuine webhook processor. Fake references are
+self-describing: `SBX-<outcome>-<dueEpochMs>-<suffix>`.
+
+Magic values:
+- **Payins, FeexPay countries (BJ/TG/CG)** — the phone is typed on OUR page, so
+  its ending rules: `..00` rejected at initiation, `..11` FAILED webhook, `..22`
+  hangs forever, anything else SUCCESS.
+- **Payins, hosted-checkout flows (MoneyFusion, CinetPay, crypto)** — our page
+  never collects payment details, so magic phones can't apply. The user is
+  redirected to the **sandbox checkout page**
+  (`/api/payments/sandbox/checkout/:sessionId`, 404 unless sandbox active) with
+  buttons: simulate success / simulate failure; closing the page = abandoned
+  checkout (stays pending).
+- **Withdrawals (all providers incl. crypto)** — net amount's last 2 digits:
+  `..01` FAILED (wallet untouched), `..02` hangs (tests the fix pages), `..03`
+  rejected at initiation, anything else COMPLETED (wallet debited — XAF gross
+  for MOMO, USD amount+fee for crypto).
+
+Assertions: `payment-service/src/scripts/check-sandbox.ts` (needs local Mongo).
 
 ### Provider webhook + API status quick-reference
 

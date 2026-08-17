@@ -26,7 +26,11 @@ import {
   MessagesSquare,
   Rss,
   Trophy,
-  TrendingUp
+  TrendingUp,
+  Heart,
+  Megaphone,
+  ShieldCheck,
+  FlaskConical
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -64,6 +68,18 @@ const SIDEBAR_GROUPS = [
         icon: Hammer,
         color: "#f59e0b",
         path: "/fix-provider-issues",
+      },
+      {
+        name: "Fix MoneyFusion Withdrawals",
+        icon: Hammer,
+        color: "#3b82f6",
+        path: "/fix-moneyfusion-withdrawals",
+      },
+      {
+        name: "Fix CinetPay Withdrawals",
+        icon: Hammer,
+        color: "#a855f7",
+        path: "/fix-cinetpay-withdrawals",
       },
       {
         name: "Récupération de Paiement",
@@ -106,6 +122,48 @@ const SIDEBAR_GROUPS = [
         icon: Trophy,
         color: "#f59e0b",
         path: "/impact-challenges",
+      },
+      {
+        name: "SBC Love",
+        icon: Heart,
+        color: "#3b82f6",
+        path: "/sbclove",
+      },
+    ]
+  },
+  {
+    id: "ads-network",
+    name: "SBC Ads Network",
+    items: [
+      {
+        name: "Tableau de bord",
+        icon: Megaphone,
+        color: "#6366f1",
+        path: "/ads-network",
+      },
+      {
+        name: "Validation des campagnes",
+        icon: ShieldCheck,
+        color: "#f59e0b",
+        path: "/ads-network/review",
+      },
+      {
+        name: "Campagnes",
+        icon: Target,
+        color: "#a855f7",
+        path: "/ads-network/campaigns",
+      },
+      {
+        name: "Diffuseurs",
+        icon: Trophy,
+        color: "#10b981",
+        path: "/ads-network/diffuseurs",
+      },
+      {
+        name: "Campagne test",
+        icon: FlaskConical,
+        color: "#06b6d4",
+        path: "/ads-network/test-campaign",
       },
     ]
   },

@@ -65,6 +65,39 @@ server {
         proxy_connect_timeout 300s;
     }
 
+
+    # SBC Ads Network landing pages, served by advertising-service at the root.
+    #
+    # These exact URLs get pasted into diffuseurs' WhatsApp statuses:
+    #   /s/<trackingCode>        a diffuseur's tracking link
+    #   /a/<slug>                the campaign's own page
+    #   /c/<trackingCode>/<act>  click-through, records then redirects
+    # Without these blocks they fall through to the React app and the tracking
+    # link is dead in every status already published.
+    location ^~ /s/ {
+        proxy_pass http://127.0.0.1:6010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ^~ /a/ {
+        proxy_pass http://127.0.0.1:6010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ^~ /c/ {
+        proxy_pass http://127.0.0.1:6010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Preprod Web App (React)
     location / {
         try_files $uri $uri/ /index.html;

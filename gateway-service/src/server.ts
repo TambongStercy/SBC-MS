@@ -69,6 +69,16 @@ app.use('/api/partners', proxy(config.services.userServiceUrl, {
   }
 }));
 
+// SSO — OAuth-style flows for third-party apps (SBC Live etc.). Lives in user-service.
+// Missing here caused 404s on /api/sso/grant-code through the gateway after PR #60.
+app.use('/api/sso', proxy(config.services.userServiceUrl, {
+  parseReqBody: false,
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to sso (user-service)`);
+    return '/api/sso' + req.url;
+  }
+}));
+
 
 // // Admin services (for now, proxy to user service)
 // app.use('/api/admin', proxy(config.services.userServiceUrl, {
@@ -90,6 +100,15 @@ app.use('/api/activation-balance', proxy(config.services.userServiceUrl, {
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to activation-balance service (user service)`);
     return '/api/activation-balance' + req.url;
+  }
+}));
+
+// Diffuseur advertising earnings. Lives in user-service alongside the other
+// balances, not in advertising-service, so all of a user's money is in one place.
+app.use('/api/advertising-balance', proxy(config.services.userServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to advertising-balance (user service)`);
+    return '/api/advertising-balance' + req.url;
   }
 }));
 
@@ -256,6 +275,15 @@ app.use('/api/chat', proxy(config.services.chatServiceUrl, {
   }
 }));
 
+// SBCLOVE service (community matchmaking module)
+app.use('/api/sbclove', proxy(config.services.sbcloveServiceUrl, {
+  parseReqBody: false, // Allow profile photo uploads (multipart) to stream through
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to sbclove service`);
+    return '/api/sbclove' + req.url;
+  }
+}));
+
 // --- GLOBAL MIDDLEWARE ---
 // Apply body parsers AFTER proxy routes
 app.use(express.json({ limit: '200mb' }));
@@ -278,6 +306,11 @@ const server = app.listen(config.port, config.host, () => {
   log.info(`Gateway service running at http://${config.host}:${config.port}`);
   log.info(`Environment: ${config.nodeEnv}`);
 });
+
+// Uploads stream through this proxy, and a large one on mobile data can run
+// for several minutes. Node's 5-minute default cut them off mid-flight.
+server.requestTimeout = 15 * 60 * 1000;
+server.headersTimeout = 16 * 60 * 1000;
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {

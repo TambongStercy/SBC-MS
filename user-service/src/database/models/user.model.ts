@@ -87,6 +87,12 @@ export interface IUser extends Document {
     balance: number;
     usdBalance: number;
     activationBalance: number; // Dedicated balance for activating referrals' accounts (BEAC compliance)
+    // Diffuseur earnings from the WhatsApp status advertising marketplace. Kept
+    // separate from `balance` per product decision, and NOT directly withdrawable:
+    // the user transfers to `balance` first, then withdraws through the normal
+    // payout path. See docs/ADVERTISING-FEATURE-SPEC.md.
+    advertisingBalance: number;
+    sbcLiveBalance: number; // Creator earnings from SBC Live (75% of paid-live revenue after 25% SBC commission)
     // Crypto wallet information
     cryptoWalletAddress?: string;
     cryptoWalletCurrency?: string; // e.g., 'BTC', 'ETH', 'USDT'
@@ -171,6 +177,8 @@ const UserSchema = new Schema<IUser>(
         balance: { type: Number, default: 0, required: true },
         usdBalance: { type: Number, default: 0, required: true },
         activationBalance: { type: Number, default: 0, required: true }, // For sponsoring referral activations (BEAC compliance)
+        advertisingBalance: { type: Number, default: 0, required: true, min: 0 },
+        sbcLiveBalance: { type: Number, default: 0, required: true }, // Creator earnings from SBC Live (75% split after 25% SBC commission). Mongoose default handles backfill — no migration script needed.
         // Crypto wallet information
         cryptoWalletAddress: { 
             type: String, 

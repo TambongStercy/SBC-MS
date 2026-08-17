@@ -186,6 +186,75 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Credit (positive amount) or debit (negative amount) a user's sbcLiveBalance.
+     * Used by the SSO payment flow after a paid-live charge completes — the creator
+     * gets 75% credited to this dedicated wallet (separate from their main balance
+     * and activation balance).
+     *
+     * Returns true if applied, false if user-service refused the debit (insufficient
+     * funds). Throws on transport / 5xx errors so the caller can retry or alert.
+     */
+    async updateSbcLiveBalance(userId: string, amount: number): Promise<boolean> {
+        if (!this.baseUrl) {
+            log.error('Cannot update SBC Live balance: User service URL not configured.');
+            throw new AppError('User service is not configured.', 503);
+        }
+        const path = `/users/internal/${userId}/sbc-live-balance`;
+        try {
+            log.info(`Updating sbcLiveBalance for user ${userId} by ${amount}`);
+            const response = await this.request<{ success: boolean; data?: { sbcLiveBalance?: number } }>('post', path, { amount });
+            if (response?.success) {
+                log.info(`Updated sbcLiveBalance for user ${userId}. New balance: ${response.data?.sbcLiveBalance ?? 'N/A'}`);
+                return true;
+            }
+            log.warn(`updateSbcLiveBalance for user ${userId} returned non-success.`);
+            return false;
+        } catch (error: any) {
+            log.error(`Error updating sbcLiveBalance for user ${userId}: ${error.message}`);
+            if (error instanceof AppError && error.statusCode === 409) {
+                // Insufficient funds — surface as false, not a throw
+                return false;
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Fetch the webhook configuration for an SSO client. Used by the outbound
+     * webhook firing path to learn where to POST and which secret to sign with.
+     * Returns null when the client has no webhook configured or is disabled —
+     * caller should skip the webhook fire silently rather than error.
+     */
+    async getSsoClientWebhookConfig(
+        clientId: string,
+    ): Promise<{ webhookUrl: string; webhookSecret: string } | null> {
+        if (!this.baseUrl) {
+            log.error('Cannot fetch SSO client webhook config: User service URL not configured.');
+            return null;
+        }
+        const path = `/users/internal/sso-clients/${encodeURIComponent(clientId)}/webhook-config`;
+        try {
+            const response = await this.request<{ success: boolean; data?: { webhookUrl?: string | null; webhookSecret?: string | null; enabled?: boolean } }>('get', path);
+            if (!response?.success || !response.data) {
+                log.warn(`SSO webhook config lookup for client ${clientId} returned non-success`);
+                return null;
+            }
+            if (response.data.enabled === false) {
+                log.info(`SSO client ${clientId} is disabled, skipping webhook fire`);
+                return null;
+            }
+            if (!response.data.webhookUrl || !response.data.webhookSecret) {
+                log.info(`SSO client ${clientId} has no webhook configured, skipping fire`);
+                return null;
+            }
+            return { webhookUrl: response.data.webhookUrl, webhookSecret: response.data.webhookSecret };
+        } catch (error: any) {
+            log.error(`Failed to fetch SSO webhook config for client ${clientId}: ${error.message}`);
+            return null;
+        }
+    }
+
     async getBalance(userId: string): Promise<number> {
         if (!this.baseUrl) {
             log.error('Cannot get user balance: User service URL not configured.');
@@ -379,6 +448,19 @@ class UserServiceClient {
             if (error instanceof AppError) throw error;
             throw new AppError(`Failed to communicate with user service for active subscriptions.`, 503);
         }
+    }
+
+    /**
+     * Boolean check for "is this user activated?". Used by the paywall middleware
+     * on protected payment-service endpoints (withdrawals, etc.). Reuses the
+     * existing /active-subscriptions endpoint instead of adding a focused one to
+     * minimise user-service surface area. Throws on transport failure so the
+     * middleware can return 503 (SUBSCRIPTION_CHECK_UNAVAILABLE) rather than
+     * silently 403'ing a subscribed user when user-service is unreachable.
+     */
+    async hasActiveSubscription(userId: string): Promise<boolean> {
+        const subs = await this.getUserActiveSubscriptions(userId);
+        return Array.isArray(subs) && subs.length > 0;
     }
 
 

@@ -172,6 +172,42 @@ export class UserController {
     }
 
     /**
+     * Update SBC Live balance (service-to-service only).
+     * Positive amount = credit, negative = debit. Used by payment-service when
+     * a paid-live charge completes (75% creator share) or when an admin issues
+     * a refund. Returns 404 if user not found, 409 if a debit would push the
+     * balance negative.
+     * @route POST /api/users/internal/:userId/sbc-live-balance
+     */
+    async updateSbcLiveBalance(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.userId;
+            const { amount } = req.body;
+            if (amount === undefined || isNaN(Number(amount))) {
+                res.status(400).json({ success: false, message: 'Valid amount is required' });
+                return;
+            }
+            const numericAmount = Number(amount);
+            const updated = await userRepository.updateSbcLiveBalance(userId, numericAmount);
+            if (updated === null) {
+                if (numericAmount < 0) {
+                    res.status(409).json({ success: false, message: 'Insufficient SBC Live balance' });
+                } else {
+                    res.status(404).json({ success: false, message: 'User not found' });
+                }
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data: { userId, sbcLiveBalance: updated.sbcLiveBalance },
+            });
+        } catch (error: any) {
+            log.error(`Error updating SBC Live balance for user ${req.params.userId}: ${error.message}`);
+            res.status(500).json({ success: false, message: 'Error updating SBC Live balance' });
+        }
+    }
+
+    /**
      * Get user USD balance
      * @route GET /api/users/:userId/usd-balance
      */
@@ -1863,6 +1899,79 @@ export class UserController {
     }
 
     /**
+     * [Internal] Get the SBCLOVE demographic subset for one or more users.
+     * @route POST /api/users/internal/sbclove-details
+     * Body: { userIds: string[] }
+     */
+    async getSbcloveDetailsByIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds } = req.body;
+
+            if (!Array.isArray(userIds) || userIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'An array of user IDs must be provided in the request body.',
+                });
+                return;
+            }
+
+            const invalidIds = userIds.filter(id => !isValidObjectId(id));
+            if (invalidIds.length > 0) {
+                res.status(400).json({
+                    success: false,
+                    message: `Invalid user IDs found: ${invalidIds.join(', ')}`,
+                });
+                return;
+            }
+
+            const details = await this.userService.getSbcloveDetailsByIds(userIds);
+            res.status(200).json({ success: true, data: details });
+        } catch (error: any) {
+            this.log.error(`Error getting SBCLOVE user details by IDs: ${error.message}`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to retrieve SBCLOVE user details.',
+            });
+        }
+    }
+
+    /**
+     * Targeting projection for advertising-service.
+     * @route POST /api/users/internal/advertising-details
+     */
+    async getAdvertisingDetailsByIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds } = req.body;
+
+            if (!Array.isArray(userIds) || userIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'An array of user IDs must be provided in the request body.',
+                });
+                return;
+            }
+
+            const invalidIds = userIds.filter(id => !isValidObjectId(id));
+            if (invalidIds.length > 0) {
+                res.status(400).json({
+                    success: false,
+                    message: `Invalid user IDs found: ${invalidIds.join(', ')}`,
+                });
+                return;
+            }
+
+            const details = await this.userService.getAdvertisingDetailsByIds(userIds);
+            res.status(200).json({ success: true, data: details });
+        } catch (error: any) {
+            this.log.error(`Error getting advertising user details by IDs: ${error.message}`, error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to retrieve advertising user details.',
+            });
+        }
+    }
+
+    /**
      * [Internal] Get user IDs filtered by country code.
      * @route GET /api/users/internal/ids-by-country?country=CM
      */
@@ -2732,6 +2841,7 @@ export class UserController {
             });
         }
     }
+
 }
 
 // Export singleton instance

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <meta property="og:title" content="<%= title %>">
+    <% if (description) { %><meta property="og:description" content="<%= description %>"><% } %>
+    <meta property="og:image" content="<%= mediaUrl %>">
+    <style>
+        :root {
+            --bg: #0f1115;
+            --card: #191c23;
+            --text: #f2f4f8;
+            --muted: #9aa3b2;
+            --accent: #f97316;
+            --wa: #25d366;
+            --border: #262a33;
+        }
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg: #f5f6f8; --card: #ffffff; --text: #14161a;
+                --muted: #5d6673; --border: #e3e6eb;
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.5;
+            padding: 16px;
+            display: flex;
+            /* Column, not row: with the preview banner present the body has two
+               children, and a row lays them side by side — banner stretched
+               down the left, card squeezed right. */
+            flex-direction: column;
+            align-items: center;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            width: 100%;
+            max-width: 480px;
+        }
+        .media { width: 100%; display: block; background: #000; }
+        .media img, .media video { width: 100%; height: auto; display: block; max-height: 70vh; object-fit: contain; }
+        .body { padding: 20px; }
+        h1 { font-size: 1.25rem; font-weight: 650; margin-bottom: 8px; }
+        p.desc { color: var(--muted); font-size: 0.95rem; white-space: pre-wrap; margin-bottom: 20px; }
+        .actions { display: flex; flex-direction: column; gap: 10px; }
+        a.btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            color: #fff;
+            transition: opacity .15s ease;
+        }
+        a.btn:active { opacity: .75; }
+        .btn-wa { background: var(--wa); }
+        .btn-call { background: var(--accent); }
+        .btn-site { background: transparent; color: var(--text); border: 1px solid var(--border); }
+        .btn-join { background: var(--accent); }
+        .preview-banner {
+            width: 100%; max-width: 480px; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px;
+            background: #FEF3C7; color: #92400E; font-size: 13px; text-align: center;
+        }
+        .player { position: relative; width: 100%; border-radius: 12px; overflow: hidden;
+            background: #000; margin-bottom: 14px; }
+        .player video { width: 100%; display: block; aspect-ratio: 16 / 9; object-fit: contain; }
+        .player-tap { position: absolute; inset: 0; display: flex; align-items: center;
+            justify-content: center; background: transparent; border: 0; cursor: pointer;
+            transition: opacity .25s; }
+        .player-icon { display: grid; place-items: center; width: 62px; height: 62px;
+            border-radius: 50%; background: rgba(255,255,255,.92); color: #111; font-size: 22px;
+            padding-left: 4px; }
+        .player.playing .player-tap { opacity: 0; }
+        .player.playing:hover .player-tap { opacity: 1; }
+        .player-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 12px;
+            display: flex; align-items: center; gap: 10px;
+            background: linear-gradient(to top, rgba(0,0,0,.7), transparent); }
+        .player-bar input { flex: 1; accent-color: #22c55e; height: 4px; cursor: pointer; }
+        .player-time { color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; }
+        .join { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .join p { font-size: 13px; opacity: .75; margin: 0 0 10px; }
+        footer { text-align: center; padding: 18px 0 4px; color: var(--muted); font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+    <% if (isPreview) { %>
+        <div class="preview-banner">Aperçu — cette page n'est pas encore visible du public.</div>
+    <% } %>
+    <div class="card">
+        <div class="media">
+            <% if (mediaType === 'video') { %>
+                <video src="<%= mediaUrl %>" controls playsinline preload="metadata"></video>
+            <% } else { %>
+                <img src="<%= mediaUrl %>" alt="<%= title %>">
+            <% } %>
+        </div>
+        <div class="body">
+            <h1><%= title %></h1>
+            <% if (description) { %><p class="desc"><%= description %></p><% } %>
+            <% if (isTestCampaign && landingVideoUrl) { %>
+                <!-- Same shape as the app's player: tap anywhere to play/pause,
+                     a green progress bar, controls that fade. The browser default
+                     looks nothing like the rest of SBC. -->
+                <div class="player" id="player">
+                    <video id="v" src="<%= landingVideoUrl %>" playsinline preload="metadata"></video>
+                    <button class="player-tap" id="tap" aria-label="Lecture">
+                        <span class="player-icon" id="icon">&#9654;</span>
+                    </button>
+                    <div class="player-bar">
+                        <input type="range" id="seek" value="0" min="0" max="100" step="0.1" aria-label="Progression">
+                        <span class="player-time" id="time">0:00</span>
+                    </div>
+                </div>
+            <% } %>
+            <% if (isTestCampaign) { %>
+                <%# Rufus: the test campaign sells SBC itself — one button, one
+                    action. Contact buttons belong to real advertisers. %>
+                <div class="actions">
+                    <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris maintenant</a>
+                </div>
+            <% } else { %>
+                <div class="actions">
+                    <% if (hasWhatsapp) { %>
+                        <a class="btn btn-wa" href="<%= whatsappUrl %>" rel="nofollow">Contacter sur WhatsApp</a>
+                    <% } %>
+                    <% if (hasPhone) { %>
+                        <a class="btn btn-call" href="<%= callUrl %>" rel="nofollow">Appeler</a>
+                    <% } %>
+                    <% if (hasWebsite) { %>
+                        <a class="btn btn-site" href="<%= siteUrl %>" rel="nofollow">Visiter le site</a>
+                    <% } %>
+                </div>
+                <% if (hasSignup) { %>
+                    <div class="join">
+                        <p>Vous aussi, gagnez de l'argent en publiant des annonces sur votre statut WhatsApp.</p>
+                        <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris</a>
+                    </div>
+                <% } %>
+            <% } %>
+            <footer>Propulsé par Sniper Business Center</footer>
+        </div>
+    </div>
+    <script nonce="<%= cspNonce %>">
+        (function () {
+            var wrap = document.getElementById('player');
+            if (!wrap) return;
+            var v = document.getElementById('v'), tap = document.getElementById('tap');
+            var icon = document.getElementById('icon'), seek = document.getElementById('seek');
+            var time = document.getElementById('time');
+
+            function fmt(t) {
+                if (!isFinite(t)) return '0:00';
+                var m = Math.floor(t / 60), s = Math.floor(t % 60);
+                return m + ':' + (s < 10 ? '0' : '') + s;
+            }
+            function toggle() { v.paused ? v.play() : v.pause(); }
+
+            tap.addEventListener('click', toggle);
+            v.addEventListener('click', toggle);
+            v.addEventListener('play', function () { wrap.classList.add('playing'); icon.innerHTML = '&#10074;&#10074;'; });
+            v.addEventListener('pause', function () { wrap.classList.remove('playing'); icon.innerHTML = '&#9654;'; });
+            v.addEventListener('timeupdate', function () {
+                if (v.duration) seek.value = String((v.currentTime / v.duration) * 100);
+                time.textContent = fmt(v.currentTime);
+            });
+            seek.addEventListener('input', function () {
+                if (v.duration) v.currentTime = (Number(seek.value) / 100) * v.duration;
+            });
+        })();
+    </script>
+</body>
+</html>

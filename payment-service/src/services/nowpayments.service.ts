@@ -4,6 +4,7 @@ import config from '../config';
 import logger from '../utils/logger';
 import { PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
 import { Currency, TransactionStatus, TransactionType } from '../database/models/transaction.model';
+import * as sandbox from './sandbox.service';
 
 const log = logger.getLogger('NOWPaymentsService');
 
@@ -468,6 +469,24 @@ class NOWPaymentsService {
      * Create a crypto payout (mass payout)
      */
     async createPayout(request: NOWPayoutRequest): Promise<NOWPayoutResponse> {
+        // Sandbox: fake payout id in place of the API call; outcome by amount
+        // magic, resolved later by the sweeper through the real payout webhook.
+        if (sandbox.isSandboxActive()) {
+            const outcome = sandbox.payoutOutcomeForAmount(request.amount);
+            log.warn(`SANDBOX NOWPayments payout: amount=${request.amount}, outcome=${outcome}`);
+            if (outcome === 'reject') {
+                throw new Error('SANDBOX: payout crypto rejeté à l\'initiation (montant magique ..03).');
+            }
+            return {
+                id: sandbox.makeSandboxRef(outcome),
+                address: request.address,
+                currency: request.currency,
+                amount: String(request.amount),
+                batch_withdrawal_id: 'sandbox',
+                status: 'sending',
+            };
+        }
+
         if (!config.nowpayments.apiKey) {
             throw new Error('Payout API not configured. Please check NOWPAYMENTS_API_KEY');
         }
@@ -594,6 +613,18 @@ class NOWPaymentsService {
      * Get payout status
      */
     async getPayoutStatus(withdrawalId: string): Promise<NOWPayoutResponse> {
+        // Sandbox references answer for themselves — no API call.
+        if (sandbox.isSandboxRef(withdrawalId)) {
+            const status = sandbox.refStatusNow(withdrawalId);
+            return {
+                id: withdrawalId,
+                address: 'sandbox',
+                currency: 'usd',
+                amount: '0',
+                status: status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'sending',
+            };
+        }
+
         if (!config.nowpayments.apiKey) {
             throw new Error('Payout API not configured');
         }
@@ -886,7 +917,30 @@ class NOWPaymentsService {
                     )
                 ]) as any;
 
-                const balanceData = response.data;
+                // NOWPayments returns amounts as STRINGS ("12.34"), while this
+                // method's signature promises numbers. Returning the raw object
+                // satisfies the compiler and lies at runtime: downstream,
+                // `totalUsd += amount` concatenates instead of adding, so two
+                // balances of "10" and "5" produce "0105" rather than 15.
+                // Coerce at the boundary, once, so nothing past here can be a
+                // string pretending to be a number.
+                const balanceData: { [currency: string]: { amount: number; pendingAmount: number } } = {};
+                for (const [currency, raw] of Object.entries(response.data ?? {})) {
+                    const entry = raw as { amount?: unknown; pendingAmount?: unknown };
+                    const amount = Number(entry?.amount);
+                    const pendingAmount = Number(entry?.pendingAmount);
+
+                    // A NaN here would silently poison every total downstream.
+                    // Treat unparseable as zero and say so in the logs.
+                    if (Number.isNaN(amount) || Number.isNaN(pendingAmount)) {
+                        log.warn(`NOWPayments returned an unparseable balance for ${currency}`, { raw });
+                    }
+
+                    balanceData[currency] = {
+                        amount: Number.isFinite(amount) ? amount : 0,
+                        pendingAmount: Number.isFinite(pendingAmount) ? pendingAmount : 0,
+                    };
+                }
 
                 log.debug(`NOWPayments balance retrieved successfully on attempt ${attempt}`, {
                     currencies: Object.keys(balanceData)
@@ -971,11 +1025,12 @@ class NOWPaymentsService {
                     // Convert non-stablecoins to USD using estimate API
                     try {
                         const estimate = await this.getEstimatePrice(balance.amount, currency.toUpperCase(), 'USD');
-                        usdValue = estimate.estimatedAmount;
+                        // Also crosses the wire, so also coerce.
+                        usdValue = Number(estimate.estimatedAmount) || 0;
 
                         if (balance.pendingAmount > 0) {
                             const pendingEstimate = await this.getEstimatePrice(balance.pendingAmount, currency.toUpperCase(), 'USD');
-                            pendingUsdValue = pendingEstimate.estimatedAmount;
+                            pendingUsdValue = Number(pendingEstimate.estimatedAmount) || 0;
                         }
                     } catch (estimateError: any) {
                         log.warn(`Could not estimate USD value for ${currency}: ${estimateError.message}`);

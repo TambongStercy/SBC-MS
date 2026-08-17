@@ -8,6 +8,7 @@ import config from '../../config';
 import { AppError } from '../../utils/errors';
 import QRCode from 'qrcode';
 import { paymentIntentRepository } from '../../database/repositories/paymentIntent.repository';
+import * as sandbox from '../../services/sandbox.service';
 
 const log = logger.getLogger('PaymentController');
 
@@ -170,6 +171,171 @@ export class PaymentController {
         } catch (error: any) {
             log.error(`Error rendering payment page for session ${sessionId}:`, error);
             res.status(500).render('error', { message: 'An internal server error occurred.', error: error.message });
+        }
+    };
+
+    /**
+     * Create a payment intent on behalf of an SSO-authenticated user. Used by
+     * SBC Live (and future third-party apps) to charge users via SBC's payment
+     * providers. Two distinct shapes share this endpoint:
+     *
+     *   1. Paid-live access charge — { amount, beneficiaryUserId, clientReference }
+     *      On payment success the beneficiary (creator) gets 75% to their
+     *      sbcLiveBalance and SBC books 25% commission.
+     *
+     *   2. Feature subscription purchase — { amount, subscriptionType, subscriptionPlan }
+     *      (e.g. VISIBILITE_MAX at 50,000 FCFA/month). On payment success a
+     *      Subscription record is created for the buyer; 100% to SBC (no split).
+     *
+     * Both must be requested with a Bearer SSO access token carrying
+     * payments.write scope (enforced by requireSsoScope middleware). The userId
+     * who pays is derived from the token's `sub` claim — clients cannot specify
+     * a different payer.
+     *
+     * @route POST /api/payments/sso/intents
+     * @access Bearer SSO access token with payments.write scope
+     */
+    public createSsoPaymentIntent = async (req: Request, res: Response) => {
+        try {
+            const token = req.ssoToken;
+            if (!token) {
+                // Middleware should have rejected; defensive belt
+                return res.status(401).json({ success: false, message: 'SSO authentication required' });
+            }
+            const {
+                amount,
+                currency = 'XAF',
+                paymentType = 'SSO_THIRD_PARTY',
+                subscriptionType,
+                subscriptionPlan,
+                beneficiaryUserId,
+                clientReference,
+                description,
+                returnUrl,
+            } = req.body || {};
+
+            if (typeof amount !== 'number' || amount <= 0) {
+                return res.status(400).json({ success: false, message: 'amount must be a positive number' });
+            }
+            if (beneficiaryUserId && typeof beneficiaryUserId !== 'string') {
+                return res.status(400).json({ success: false, message: 'beneficiaryUserId must be a string (user ObjectId)' });
+            }
+            if (beneficiaryUserId && beneficiaryUserId === token.sub) {
+                return res.status(400).json({ success: false, message: 'beneficiaryUserId cannot equal the paying user (a user cannot pay themselves)' });
+            }
+
+            const metadata: Record<string, any> = {
+                paymentSource: 'sso_third_party',
+                ssoClientId: token.client_id,
+                ssoClientReference: clientReference || null,
+                beneficiaryUserId: beneficiaryUserId || null,
+                splitPercentageBeneficiary: beneficiaryUserId ? 75 : 0,
+                splitPercentageSbcCommission: beneficiaryUserId ? 25 : 100,
+                description: description || null,
+                returnUrl: returnUrl || null,
+                ssoSubscriptionType: subscriptionType || null,
+                ssoSubscriptionPlan: subscriptionPlan || null,
+            };
+
+            // When this SSO intent is for a feature subscription (e.g. VISIBILITE_MAX),
+            // hook into the existing user-service subscription-callback pipeline so the
+            // Subscription record is created automatically on payment success. The
+            // user-service webhook (handlePaymentWebhook) reads `planId` + `userId`
+            // from metadata and routes to activateSubscription, which dispatches to
+            // the matching activate*Subscription method based on type.
+            if (subscriptionType) {
+                if (!config.services.userServiceUrl) {
+                    return res.status(503).json({ success: false, message: 'user-service URL not configured; cannot wire subscription callback' });
+                }
+                metadata.originatingService = 'user-service';
+                metadata.callbackPath = `${config.services.userServiceUrl}/api/subscriptions/webhooks/payment-confirmation`;
+                metadata.userId = token.sub;
+                metadata.planId = subscriptionType; // validated server-side against SubscriptionType enum
+                metadata.planName = subscriptionType;
+            }
+
+            const paymentIntent = await paymentService.createPaymentIntent({
+                userId: token.sub,
+                amount,
+                currency,
+                paymentType,
+                metadata,
+            });
+
+            const checkoutUrl = `${config.paymentServiceBaseUrl}/api/payments/page/${paymentIntent.sessionId}`;
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    sessionId: paymentIntent.sessionId,
+                    paymentIntentId: paymentIntent._id?.toString(),
+                    checkoutUrl,
+                    amount,
+                    currency,
+                    splitPolicy: beneficiaryUserId
+                        ? { beneficiaryUserId, beneficiaryPercentage: 75, sbcCommissionPercentage: 25 }
+                        : { sbcCommissionPercentage: 100 },
+                },
+            });
+        } catch (error: any) {
+            log.error('Error creating SSO payment intent:', error);
+            return res.status(500).json({ success: false, message: error.message || 'Failed to create SSO payment intent' });
+        }
+    };
+
+    /**
+     * Sandbox checkout page (preprod only) — stands in for the provider's
+     * hosted checkout on MoneyFusion / CinetPay / crypto payins. 404s outright
+     * when the sandbox is not active, so these routes do not exist in production.
+     */
+    public renderSandboxCheckout = async (req: Request, res: Response) => {
+        if (!sandbox.isSandboxActive()) {
+            return res.status(404).render('error', { message: 'Page not found.' });
+        }
+        const { sessionId } = req.params;
+        try {
+            const intent = await paymentService.getPaymentIntentDetails(sessionId);
+            if (!intent || !sandbox.isSandboxRef(intent.gatewayPaymentId)) {
+                return res.status(404).render('error', { message: 'Session de paiement sandbox introuvable.' });
+            }
+            // Already resolved (refresh after clicking) — back to the real status page.
+            if (intent.status === PaymentStatus.SUCCEEDED || intent.status === PaymentStatus.FAILED) {
+                return res.redirect(`/api/payments/page/${sessionId}`);
+            }
+            return res.render('sandbox-checkout', {
+                sessionId,
+                amount: intent.paidAmount ?? intent.amount,
+                currency: intent.paidCurrency ?? intent.currency ?? 'XAF',
+            });
+        } catch (error: any) {
+            log.error(`Error rendering sandbox checkout for ${sessionId}:`, error);
+            return res.status(500).render('error', { message: 'Erreur interne.', error: error.message });
+        }
+    };
+
+    /** Resolves a sandbox payin from the checkout page's buttons. */
+    public resolveSandboxCheckout = async (req: Request, res: Response) => {
+        if (!sandbox.isSandboxActive()) {
+            return res.status(404).json({ success: false, message: 'Not found.' });
+        }
+        const { sessionId } = req.params;
+        const { outcome } = req.body;
+        if (outcome !== 'success' && outcome !== 'fail') {
+            return res.status(400).json({ success: false, message: 'outcome must be "success" or "fail".' });
+        }
+        try {
+            const intent = await paymentService.resolveSandboxPayin(sessionId, outcome);
+            return res.status(200).json({
+                success: true,
+                data: {
+                    status: intent.status,
+                    redirectUrl: `/api/payments/page/${sessionId}`,
+                },
+            });
+        } catch (error: any) {
+            log.error(`Error resolving sandbox checkout for ${sessionId}:`, error);
+            const status = error instanceof AppError ? error.statusCode : 500;
+            return res.status(status).json({ success: false, message: error.message });
         }
     };
 
@@ -1818,7 +1984,10 @@ export class PaymentController {
             }
 
             // Validate transaction type
-            const validTypes = ['activation_transfer_in', 'activation_transfer_out', 'sponsor_activation'];
+            const validTypes = [
+                'activation_transfer_in', 'activation_transfer_out', 'sponsor_activation',
+                'advertising_earnings', 'advertising_transfer_out'
+            ];
             if (!validTypes.includes(type)) {
                 return res.status(400).json({
                     success: false,

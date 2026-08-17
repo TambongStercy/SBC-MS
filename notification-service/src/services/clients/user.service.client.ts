@@ -262,6 +262,42 @@ class UserServiceClient {
      * @param userId The ID of the user
      * @returns Boolean indicating if user has active RELANCE subscription
      */
+    /**
+     * Get the list of active subscription type strings for a user
+     * (e.g. ['CLASSIQUE'], ['CIBLE'], ['CLASSIQUE','RELANCE'], or []).
+     * Used by the relance sender to gate SMS to non-subscribed users only.
+     */
+    async getActiveSubscriptionTypes(userId: string): Promise<string[]> {
+        if (!this.userServiceUrl) {
+            log.error('User Service URL not configured. Cannot check subscription types.');
+            return [];
+        }
+
+        const url = `${this.userServiceUrl}/users/internal/${userId}/active-subscription-types`;
+        try {
+            // user-service answers { success, data: string[] } — the contract
+            // settings-service has consumed in production for months. Reading a
+            // nested activeSubscriptionTypes here silently returned [], which
+            // means "no subscription" and would have sent relance SMS to
+            // subscribers.
+            const response = await axios.get<{ success: boolean; data: string[] }>(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.serviceSecret}`,
+                    'X-Service-Name': 'notification-service'
+                },
+                timeout: 5000
+            });
+
+            if (response.data?.success && Array.isArray(response.data.data)) {
+                return response.data.data;
+            }
+            return [];
+        } catch (error: any) {
+            log.error(`Error getting active subscription types for user ${userId}:`, error.response?.data || error.message);
+            return [];
+        }
+    }
+
     async hasRelanceSubscription(userId: string): Promise<boolean> {
         if (!this.userServiceUrl) {
             log.error('User Service URL not configured. Cannot check RELANCE subscription.');

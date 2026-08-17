@@ -208,11 +208,38 @@ class NotificationService {
             throw new Error('Email subject is required');
         }
 
+        // Anything short of a full document goes inside the branded template.
+        // Not cosmetic: Gmail silently discards our plain-bodied mails — same
+        // sender and relay, the branded probe arrived, the plain one vanished
+        // without even reaching spam (verified 2026-08-09).
+        const body = notification.data.body || '';
+        const isFullDocument = /<!doctype|<html/i.test(body);
+
+        let html = body;
+        if (!isFullDocument) {
+            const content = /<[a-z][\s\S]*>/i.test(body)
+                ? body
+                : `<p style="font-size: 16px; color: #333; line-height: 1.6;">${body.replace(/\n/g, '<br>')}</p>`;
+
+            // Callers may pass ctaLabel/ctaUrl in relatedData to get a button
+            // (the advertising client already sends them).
+            const related = notification.data.relatedData as Record<string, unknown> | undefined;
+            const ctaUrl = typeof related?.ctaUrl === 'string' ? related.ctaUrl : undefined;
+            const ctaLabel = typeof related?.ctaLabel === 'string' ? related.ctaLabel : 'Ouvrir SBC';
+            const cta = ctaUrl
+                ? `<div style="text-align: center; margin: 30px 0 10px;">
+                       <a href="${ctaUrl}" style="background: linear-gradient(135deg, #004d7a 0%, #006ba8 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; display: inline-block;">${ctaLabel}</a>
+                   </div>`
+                : '';
+
+            html = emailService.createBaseTemplate(notification.data.subject, content + cta);
+        }
+
         return emailService.sendEmail({
             to: notification.recipient,
             subject: notification.data.subject,
-            html: notification.data.body,
-            text: notification.data.body.replace(/<[^>]*>/g, ''),
+            html,
+            text: body.replace(/<[^>]*>/g, ''),
         });
     }
 
@@ -659,33 +686,22 @@ class NotificationService {
 
     /**
      * (Private) Triggers the actual sending of the notification based on its channel.
+     *
+     * Delegates to the same sendNotification the queue processor uses. This used
+     * to be a placeholder that logged "not implemented" and then marked the
+     * notification SENT — every internal email (advertising offers, approvals,
+     * day-opened) died here while reporting success. PUSH keeps the stub-mark
+     * behaviour: sendNotification throws for it, and internal callers use PUSH
+     * as an in-app record rather than a delivery.
      */
     private async triggerNotificationSending(notification: INotification): Promise<void> {
         log.info(`Triggering send for notification ${notification._id}, channel: ${notification.channel}`);
-        try {
-            let success = false;
-            if (notification.channel === DeliveryChannel.EMAIL) {
-                log.warn('Email sending logic not implemented'); success = true; // Placeholder success
-            } else if (notification.channel === DeliveryChannel.SMS) {
-                log.warn('SMS sending logic not implemented'); success = true; // Placeholder success
-            } else if (notification.channel === DeliveryChannel.PUSH) {
-                log.warn('Push notification logic not implemented'); success = true; // Placeholder success
-            } else if (notification.channel === DeliveryChannel.WHATSAPP) {
-                success = await this.sendWhatsappNotification(notification);
-            }
-
-            // Update status based on sending result VIA REPOSITORY
-            const finalStatus = success ? NotificationStatus.SENT : NotificationStatus.FAILED;
-            const updateData = { status: finalStatus, sentAt: success ? new Date() : undefined, failedAt: !success ? new Date() : undefined, errorDetails: !success ? 'Send logic failed' : undefined };
-
-            await notificationRepository.update(notification._id, updateData);
-            log.info(`Notification ${notification._id} status updated to ${finalStatus}`);
-
-        } catch (error: any) {
-            log.error(`Error triggering send for notification ${notification._id}: ${error.message}`);
-            // Update status to FAILED if an error occurs during trigger VIA REPOSITORY
-            await notificationRepository.update(notification._id, { status: NotificationStatus.FAILED, failedAt: new Date(), errorDetails: error.message });
+        if (notification.channel === DeliveryChannel.PUSH) {
+            await notificationRepository.update(notification._id, { status: NotificationStatus.SENT, sentAt: new Date() });
+            return;
         }
+        // Marks sent/failed itself, and never throws upward past its own handler.
+        await this.sendNotification(notification);
     }
 
     /**

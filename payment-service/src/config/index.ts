@@ -30,6 +30,12 @@ interface IConfig {
         secret: string;
         expiresIn: string;
     };
+    sso: {
+        // MUST match user-service's SSO_JWT_SECRET — payment-service verifies SSO
+        // access tokens locally (no extra HTTP hop per request). Separate from the
+        // main JWT secret so user JWTs and SSO tokens stay non-interchangeable.
+        jwtSecret: string;
+    };
     feexpay: {
         apiKey: string;
         shopId: string;
@@ -88,6 +94,9 @@ interface IConfig {
     };
     selfBaseUrl: string; // Base URL of this service for webhooks
     withdrawalsEnabled: boolean; // Global withdrawal control switch
+    // Preprod payment sandbox — fake provider responses driven by magic values.
+    // Refused at runtime when nodeEnv === 'production' (see services/sandbox.service.ts).
+    sandboxEnabled: boolean;
 }
 
 // Configuration object
@@ -106,6 +115,12 @@ const config: IConfig = {
     jwt: {
         secret: process.env.JWT_SECRET || 'default-payment-secret', // Use a specific secret
         expiresIn: process.env.JWT_EXPIRES_IN || '1h'
+    },
+
+    sso: {
+        // Must match user-service's SSO_JWT_SECRET. payment-service verifies SSO
+        // access tokens issued by user-service without a cross-service HTTP call.
+        jwtSecret: process.env.SSO_JWT_SECRET || '__REPLACE_WITH_STRONG_RANDOM_SECRET__',
     },
 
     feexpay: {
@@ -174,6 +189,7 @@ const config: IConfig = {
     },
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3003',
     withdrawalsEnabled: process.env.WITHDRAWALS_ENABLED === 'true', // Global withdrawal control - default false
+    sandboxEnabled: process.env.PAYMENT_SANDBOX_ENABLED === 'true', // Default off; never honored in production
 };
 
 // Validation function

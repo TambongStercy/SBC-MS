@@ -1,4 +1,5 @@
 import * as nodemailer from 'nodemailer';
+import axios from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
 import { Attachment } from 'nodemailer/lib/mailer';
@@ -55,10 +56,35 @@ class EmailService {
     private transporter!: nodemailer.Transporter;
     private isInitialized: boolean = false;
     private bounceHandler: BounceHandlerService;
+    private logoBuffer: Buffer | null = null;
 
     constructor() {
         this.bounceHandler = new BounceHandlerService();
         this.initializeTransporter();
+    }
+
+    /**
+     * The template logo ships INSIDE the mail as a CID attachment.
+     *
+     * Every external variant failed in Gmail: a data: URI is stripped, and the
+     * hosted URL never rendered even with "always display external images" on
+     * (verified empirically 2026-08-09; DNS auth was fine and the URL was
+     * publicly fetchable — Gmail's proxy just never showed it). Inline CID is
+     * the one form every client renders without asking the network anything.
+     */
+    private async getLogoAttachment(): Promise<nodemailer.SendMailOptions['attachments']> {
+        if (!this.logoBuffer) {
+            try {
+                const url = config.app.appLogoUrl;
+                if (!url?.startsWith('http')) return undefined;
+                const { data } = await axios.get<ArrayBuffer>(url, { responseType: 'arraybuffer', timeout: 10000 });
+                this.logoBuffer = Buffer.from(data);
+            } catch (error: any) {
+                log.warn(`Could not fetch logo for inline embedding: ${error.message}`);
+                return undefined;
+            }
+        }
+        return [{ filename: 'logo-sbc.png', content: this.logoBuffer, cid: 'sbc-logo' }];
     }
 
     /**
@@ -209,15 +235,24 @@ class EmailService {
                     'List-Unsubscribe': '<mailto:unsubscribe@sniperbuisnesscenter.com>',
                     'X-Entity-Ref-ID': `sbc-${Date.now()}`, // Unique reference for tracking
                 },
-                // Enable SendGrid tracking (open and click tracking)
-                trackingSettings: {
-                    clickTracking: {
-                        enable: true,
-                        enableText: false
-                    },
-                    openTracking: {
-                        enable: true
-                    }
+            };
+
+            // Branded templates reference the logo as cid:sbc-logo — attach it.
+            if (typeof options.html === 'string' && options.html.includes('cid:sbc-logo')) {
+                const logo = await this.getLogoAttachment();
+                if (logo) {
+                    mailOptions.attachments = [...(mailOptions.attachments ?? []), ...logo];
+                }
+            }
+
+            // Enable SendGrid tracking (open and click tracking)
+            mailOptions.trackingSettings = {
+                clickTracking: {
+                    enable: true,
+                    enableText: false
+                },
+                openTracking: {
+                    enable: true
                 }
             };
 
@@ -331,6 +366,14 @@ class EmailService {
                 }
             };
 
+            // Branded templates reference the logo as cid:sbc-logo — attach it.
+            if (typeof options.html === 'string' && options.html.includes('cid:sbc-logo')) {
+                const logo = await this.getLogoAttachment();
+                if (logo) {
+                    mailOptions.attachments = [...(mailOptions.attachments ?? []), ...logo];
+                }
+            }
+
             const info = await this.transporter.sendMail(mailOptions);
 
             log.info(`Email sent with tracking to ${options.to}`, {
@@ -348,9 +391,14 @@ class EmailService {
     }
 
     /**
-     * Create a beautiful base email template
+     * Create a beautiful base email template.
+     *
+     * Public because it is also the deliverability fix for internal
+     * notifications: Gmail silently discards our plain-bodied mails (verified
+     * empirically 2026-08-09 — same sender, same relay, branded probe arrived,
+     * plain probe vanished without even reaching spam).
      */
-    private createBaseTemplate(title: string, content: string, footerText?: string): string {
+    public createBaseTemplate(title: string, content: string, footerText?: string): string {
         return `
         <!DOCTYPE html>
         <html lang="fr">
@@ -482,14 +530,14 @@ class EmailService {
         <body style="margin: 0; padding: 0; background-color: #f5f7fa;">
             <div class="email-container">
                 <div class="header">
-                    <img src="${config.app.appLogoUrl}" alt="Sniper Business Center" style="height: 60px; width: auto; object-fit: contain; margin-bottom: 10px;" />
+                    <img src="cid:sbc-logo" alt="Sniper Business Center" style="height: 60px; width: auto; object-fit: contain; margin-bottom: 10px;" />
                     <p>Votre plateforme de confiance</p>
                 </div>
                 <div class="content">
                     ${content}
                 </div>
                 <div class="footer">
-                    <img src="${config.app.appLogoUrl}" alt="Sniper Business Center" style="height: 40px; width: auto; object-fit: contain; margin-bottom: 10px;" />
+                    <img src="cid:sbc-logo" alt="Sniper Business Center" style="height: 40px; width: auto; object-fit: contain; margin-bottom: 10px;" />
                     <p><strong>Sniper Business Center</strong></p>
                     <p>Développé par Simbtech © ${new Date().getFullYear()}</p>
                     <p>Cameroun - Yaoundé</p>

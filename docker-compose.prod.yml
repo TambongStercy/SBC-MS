@@ -30,6 +30,9 @@ x-env-vars-prod: &common-env-vars-prod
   CHAT_SERVICE_HOST: chat-service
   CHAT_SERVICE_PORT: 3008
   CHAT_SERVICE_URL: http://chat-service:3008
+  SBCLOVE_SERVICE_HOST: sbclove-service
+  SBCLOVE_SERVICE_PORT: 3009
+  SBCLOVE_SERVICE_URL: http://sbclove-service:3009
   ADMIN_FRONTEND_MS_HOST: admin-frontend-ms
   ADMIN_FRONTEND_MS_PORT: 80
   ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
@@ -68,6 +71,7 @@ services:
       - settings-service
       - notification-service
       - chat-service
+      - sbclove-service
 
   user-service:
     <<: *node-service-defaults
@@ -244,6 +248,36 @@ services:
     volumes: []
     ports:
       - "3008:3008"
+
+  sbclove-service:
+    <<: *node-service-defaults
+    build:
+      context: ./sbclove-service
+      target: production
+    container_name: sbclove_service
+    command: node dist/server.js
+    env_file:
+      - ./sbclove-service/.env
+    environment:
+      <<: *common-env-vars-prod
+      PORT: 3009
+      MONGODB_URI: "${GLOBAL_MONGO_BASE_URI_PROD}/sbc_sbclove"
+      SELF_BASE_URL: http://sbclove-service:3009
+      SBCLOVE_TIMEZONE: Africa/Douala
+      SBCLOVE_ACTIVE_WEEKDAY: 3
+      SBCLOVE_OPEN_HOUR: 18
+      SBCLOVE_CLOSE_HOUR: 21
+      SBCLOVE_MAX_INTERESTS_PER_WEEK: 5
+      SBCLOVE_AUTO_SUSPEND_THRESHOLD: 3
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3009/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes: []
+    ports:
+      - "3009:3009"
 
   admin-frontend-ms:
     restart: unless-stopped

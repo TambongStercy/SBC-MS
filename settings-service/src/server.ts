@@ -63,6 +63,16 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
         return res.status(413).json({ success: false, message: 'Payload too large' });
     }
 
+    // Multer's own size refusal. Unmapped, it surfaced as a bare 500 —
+    // an admin uploading a 70MB video saw "Failed to process file upload"
+    // and had no way to learn that a limit existed, let alone which.
+    if (err?.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({
+            success: false,
+            message: 'Fichier trop volumineux. La taille maximale est de 100 Mo — compressez la vidéo et réessayez.',
+        });
+    }
+
 
     const statusCode = err.statusCode || 500;
     res.status(statusCode).json({
@@ -75,12 +85,19 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 const PORT = config.port;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     log.info(`Settings Service started on port ${PORT} in ${config.nodeEnv} mode`);
     
     // Start storage monitoring job
     storageMonitorJob.start();
     log.info('Storage monitoring job started');
 });
+
+// A 70MB video on mobile data takes minutes to arrive. Node closes a request
+// after 5 minutes by default, which the browser reports as a bare « Network
+// Error » — the upload was working, it just outlived the server's patience.
+server.requestTimeout = 15 * 60 * 1000;
+server.headersTimeout = 16 * 60 * 1000;
+
 
 export default app; // Optional: export for testing

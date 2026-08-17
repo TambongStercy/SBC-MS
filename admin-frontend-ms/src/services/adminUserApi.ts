@@ -252,7 +252,7 @@ export const getUserDetails = async (userId: string): Promise<AdminUserData> => 
 // Note: updateData should only contain fields the backend allows updating
 export const updateUser = async (userId: string, updateData: Partial<AdminUserData>): Promise<AdminUserData> => {
     try {
-        const response = await apiClient.put(`/admin/users/${userId}`, updateData);
+        const response = await apiClient.put(`/users/admin/users/${userId}`, updateData);
         return response.data.data; // Assuming { success: true, data: {...} }
     } catch (error) {
         console.error(`Failed to update user ${userId}:`, error);
@@ -265,7 +265,7 @@ export const updateUser = async (userId: string, updateData: Partial<AdminUserDa
 
 export const blockUser = async (userId: string): Promise<void> => {
     try {
-        await apiClient.patch(`/admin/users/${userId}/block`);
+        await apiClient.patch(`/users/admin/users/${userId}/block`);
         // Assuming { success: true, message: '...' }
     } catch (error) {
         console.error(`Failed to block user ${userId}:`, error);
@@ -278,7 +278,7 @@ export const blockUser = async (userId: string): Promise<void> => {
 
 export const unblockUser = async (userId: string): Promise<void> => {
     try {
-        await apiClient.patch(`/admin/users/${userId}/unblock`);
+        await apiClient.patch(`/users/admin/users/${userId}/unblock`);
     } catch (error) {
         console.error(`Failed to unblock user ${userId}:`, error);
         if (axios.isAxiosError(error) && error.response) {
@@ -290,7 +290,7 @@ export const unblockUser = async (userId: string): Promise<void> => {
 
 export const deleteUser = async (userId: string): Promise<void> => {
     try {
-        await apiClient.delete(`/admin/users/${userId}`);
+        await apiClient.delete(`/users/admin/users/${userId}`);
     } catch (error) {
         console.error(`Failed to delete user ${userId}:`, error);
         if (axios.isAxiosError(error) && error.response) {
@@ -302,7 +302,7 @@ export const deleteUser = async (userId: string): Promise<void> => {
 
 export const restoreUser = async (userId: string): Promise<void> => {
     try {
-        await apiClient.patch(`/admin/users/${userId}/restore`);
+        await apiClient.patch(`/users/admin/users/${userId}/restore`);
     } catch (error) {
         console.error(`Failed to restore user ${userId}:`, error);
         if (axios.isAxiosError(error) && error.response) {
@@ -315,7 +315,7 @@ export const restoreUser = async (userId: string): Promise<void> => {
 export const adjustBalance = async (userId: string, payload: AdjustBalancePayload): Promise<void> => {
     try {
         // Assuming backend returns the updated user or just success
-        await apiClient.post(`/admin/users/${userId}/adjust-balance`, payload);
+        await apiClient.post(`/users/admin/users/${userId}/adjust-balance`, payload);
     } catch (error) {
         console.error(`Failed to adjust balance for user ${userId}:`, error);
         if (axios.isAxiosError(error) && error.response) {
@@ -361,7 +361,7 @@ export const adminUpdateUserSubscription = async (userId: string, subscriptionTy
     console.log(`API CALL: Update subscription for ${userId} to ${subscriptionType}`);
     try {
         // Make PATCH request to the new endpoint
-        const response = await apiClient.patch<RawStatsApiResponse<null>>(`/admin/users/${userId}/subscription`, { type: subscriptionType });
+        const response = await apiClient.patch<RawStatsApiResponse<null>>(`/users/admin/users/${userId}/subscription`, { type: subscriptionType });
 
         if (response.data && response.data.success === true) {
             console.log(`API CALL: Successfully updated subscription for ${userId}`);

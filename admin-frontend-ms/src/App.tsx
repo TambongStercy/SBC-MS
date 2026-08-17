@@ -9,6 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import ProductsManagementPage from "./pages/ProductsManagementPage";
 import TombolaManagementPage from "./pages/TombolaManagementPage";
 import TombolaDrawPage from './pages/TombolaDrawPage';
+import SbcLoveManagementPage from "./pages/SbcLoveManagementPage";
 import TransactionManagementPage from './pages/TransactionManagementPage';
 import AccountTransactionsManagementPage from './pages/AccountTransactionsManagementPage';
 import SettingsManagementPage from './pages/SettingsManagementPage';
@@ -33,6 +34,11 @@ import ChatPage from './pages/ChatPage';
 import StatusPage from './pages/StatusPage';
 import ImpactChallengePage from './pages/ImpactChallengePage';
 import ChallengeDetailsPage from './pages/ChallengeDetailsPage';
+import AdsNetworkDashboardPage from './pages/AdsNetworkDashboardPage';
+import AdsNetworkReviewPage from './pages/AdsNetworkReviewPage';
+import AdsNetworkCampaignsPage from './pages/AdsNetworkCampaignsPage';
+import AdsNetworkDiffuseursPage from './pages/AdsNetworkDiffuseursPage';
+import AdsNetworkTestCampaignPage from './pages/AdsNetworkTestCampaignPage';
 import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from './contexts/SocketContext';
 
@@ -82,6 +88,7 @@ function App() {
             <Route path="/storage" element={<StorageMonitoringPage />} />
             <Route path="/tombola" element={<TombolaManagementPage />} />
             <Route path="/tombola/draw/:monthId" element={<TombolaDrawPage />} />
+            <Route path="/sbclove" element={<SbcLoveManagementPage />} />
             <Route path="/logout" element={<Deconnexion />} />
             <Route path="/userpage/:userId" element={<UsersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
@@ -103,6 +110,11 @@ function App() {
             <Route path="/statuses" element={<StatusPage />} />
             <Route path="/impact-challenges" element={<ImpactChallengePage />} />
             <Route path="/impact-challenges/:challengeId" element={<ChallengeDetailsPage />} />
+            <Route path="/ads-network" element={<AdsNetworkDashboardPage />} />
+            <Route path="/ads-network/review" element={<AdsNetworkReviewPage />} />
+            <Route path="/ads-network/campaigns" element={<AdsNetworkCampaignsPage />} />
+            <Route path="/ads-network/diffuseurs" element={<AdsNetworkDiffuseursPage />} />
+            <Route path="/ads-network/test-campaign" element={<AdsNetworkTestCampaignPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

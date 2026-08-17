@@ -47,7 +47,7 @@ const notificationServiceClient = axios.create({
 const createInternalNotification = async (payload: InternalNotificationPayload): Promise<boolean> => {
     try {
         log.info('Sending internal notification request', { userId: payload.userId, type: payload.type });
-        const response = await notificationServiceClient.post<NotificationResponse>('/internal/create', payload);
+        const response = await notificationServiceClient.post<NotificationResponse>('/notifications/internal/create', payload);
 
         if (response.data && response.data.success) {
             log.info('Notification request sent successfully.', { userId: payload.userId, type: payload.type });

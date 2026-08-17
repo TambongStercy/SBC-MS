@@ -25,6 +25,8 @@ import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResu
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
 import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.service';
 import { currencyService } from './currency.service';
+import { ssoWebhookService } from './sso-webhook.service';
+import * as sandbox from './sandbox.service';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -2609,14 +2611,110 @@ class PaymentService {
     public async handlePaymentCompletion(paymentIntent: IPaymentIntent): Promise<void> {
         log.info(`Handling payment completion for PaymentIntent ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
         try {
-            // Notify originating service (do this regardless of commission outcome)
+            // Notify originating service (do this regardless of commission outcome).
+            // For SSO payments tied to a feature subscription (e.g. VISIBILITE_MAX),
+            // the SSO controller sets metadata.originatingService='user-service' so this
+            // path routes the success event into user-service's existing subscription
+            // webhook → activates the Subscription record.
             await this.notifyOriginatingService(paymentIntent);
 
-            // TODO: Add any other internal logic based on payment type/status here if needed
+            // SBC Live (and future SSO third-party) payment split.
+            // Runs only on SUCCEEDED status to avoid crediting creators on partial/failed
+            // payments. Idempotent guard: check splitApplied flag on metadata before
+            // executing — webhook retries from providers can re-fire this handler.
+            if (
+                paymentIntent.status === PaymentStatus.SUCCEEDED &&
+                paymentIntent.metadata?.paymentSource === 'sso_third_party' &&
+                !paymentIntent.metadata?.splitApplied
+            ) {
+                await this.applySsoSplit(paymentIntent);
+                // Re-read so the outbound webhook payload below reflects the
+                // freshly-stamped split fields (splitBeneficiaryCredit etc.).
+                const refreshed = await paymentIntentRepository.findBySessionId(paymentIntent.sessionId);
+                if (refreshed) {
+                    paymentIntent = refreshed;
+                }
+            }
+
+            // Outbound webhook to the SSO client (brother's app for SBC Live) on
+            // terminal status. Fires for both success and failure so brother can
+            // notify the end user either way. Internally guarded by
+            // lastWebhookFiredEvent so provider webhook retries don't double-deliver.
+            // Errors here MUST NOT throw — payment is already finalized; if delivery
+            // permanently fails, brother falls back to polling /status.
+            if (paymentIntent.metadata?.paymentSource === 'sso_third_party') {
+                await ssoWebhookService.firePaymentEvent(paymentIntent).catch((err: any) => {
+                    log.error(`SSO webhook firing threw for ${paymentIntent.sessionId}: ${err.message}`);
+                });
+            }
 
         } catch (error) {
             log.error(`Error during post-payment completion handling for PaymentIntent ${paymentIntent.sessionId}:`, error);
         }
+    }
+
+    /**
+     * Apply the 75/25 split for an SSO-driven payment that completed successfully.
+     * The creator (beneficiaryUserId) gets 75% credited to their sbcLiveBalance;
+     * the remaining 25% is stamped on the intent's metadata as the SBC commission
+     * for v1 reporting (no separate transfer to a commission account yet —
+     * accumulated commission tracking is a Batch 3 followup).
+     *
+     * Behaviour for the two SSO payment shapes:
+     *   - With beneficiaryUserId: split 75/25 as above.
+     *   - Without beneficiaryUserId (e.g. VISIBILITE_MAX purchase): no split,
+     *     100% conceptually belongs to SBC. We still stamp metadata so reporting
+     *     can distinguish SSO revenue from regular subscription revenue.
+     *
+     * Idempotency: writes metadata.splitApplied + metadata.splitAppliedAt on
+     * the intent. The caller checks splitApplied before invoking us — webhook
+     * retries can't double-credit.
+     */
+    private async applySsoSplit(paymentIntent: IPaymentIntent): Promise<void> {
+        const meta = paymentIntent.metadata || {};
+        const beneficiaryUserId = meta.beneficiaryUserId as string | null;
+        const grossAmount = paymentIntent.paidAmount ?? paymentIntent.amount ?? 0;
+        if (!grossAmount || grossAmount <= 0) {
+            log.warn(`SSO split: PaymentIntent ${paymentIntent.sessionId} has no usable amount, skipping`);
+            return;
+        }
+
+        let beneficiaryCredit = 0;
+        let sbcCommission = grossAmount;
+        if (beneficiaryUserId) {
+            beneficiaryCredit = Math.round(grossAmount * 0.75);
+            sbcCommission = grossAmount - beneficiaryCredit; // exact remainder, avoids 0.5-cent drift
+
+            const credited = await userServiceClient.updateSbcLiveBalance(beneficiaryUserId, beneficiaryCredit);
+            if (!credited) {
+                // user-service rejected — most likely the beneficiary userId doesn't exist.
+                // Log loud and stamp metadata so an admin can investigate; do NOT throw,
+                // the payment itself succeeded and we don't want to back-out the customer.
+                log.error(`SSO split: failed to credit beneficiary ${beneficiaryUserId} (PaymentIntent ${paymentIntent.sessionId}). Funds held pending manual reconciliation.`);
+                await paymentIntentRepository.update(String(paymentIntent._id), {
+                    metadata: {
+                        ...meta,
+                        splitApplied: false,
+                        splitFailureReason: `Failed to credit beneficiary ${beneficiaryUserId} (likely user not found). Manual reconciliation required.`,
+                        splitFailedAt: new Date(),
+                    },
+                });
+                return;
+            }
+            log.info(`SSO split: credited ${beneficiaryCredit} to beneficiary ${beneficiaryUserId} sbcLiveBalance (PaymentIntent ${paymentIntent.sessionId})`);
+        }
+
+        await paymentIntentRepository.update(String(paymentIntent._id), {
+            metadata: {
+                ...meta,
+                splitApplied: true,
+                splitAppliedAt: new Date(),
+                splitBeneficiaryCredit: beneficiaryCredit,
+                splitSbcCommission: sbcCommission,
+                splitGrossAmount: grossAmount,
+            },
+        });
+        log.info(`SSO split applied for PaymentIntent ${paymentIntent.sessionId}: beneficiary=${beneficiaryCredit}, SBC commission=${sbcCommission}, gross=${grossAmount}`);
     }
 
     /**
@@ -3039,10 +3137,94 @@ class PaymentService {
         return feexpayOperators[countryCode];
     }
 
+    /**
+     * Sandbox replacement for a provider payin initiation (preprod only).
+     *
+     * Two shapes, mirroring the two real flows:
+     *  - FeexPay-style request-to-pay: the phone was typed on OUR page, so its
+     *    magic ending decides the outcome and the sweeper resolves it after the
+     *    delay — no user interaction left to fake.
+     *  - Hosted-checkout (MoneyFusion, CinetPay, crypto): the user never enters
+     *    anything on our page — the provider's checkout did that job. Here the
+     *    intent parks as 'hang' and the user is redirected to OUR sandbox
+     *    checkout page, whose buttons choose the outcome. Abandoning the page
+     *    equals abandoning a real checkout: the payment just stays pending.
+     *
+     * Either way, resolution runs through addWebhookEvent +
+     * handlePaymentCompletion — the exact two calls every real provider webhook
+     * handler ends with — so subscription and campaign activation run unchanged.
+     */
+    private async applySandboxPayin(
+        paymentIntent: IPaymentIntent,
+        phone: string,
+        interactive: boolean,
+    ): Promise<IPaymentIntent> {
+        let outcome: sandbox.SandboxOutcome;
+        let checkoutUrl: string | undefined;
+
+        if (interactive) {
+            outcome = 'hang'; // the checkout page resolves it, not the clock
+            checkoutUrl = `${config.paymentServiceBaseUrl}/api/payments/sandbox/checkout/${paymentIntent.sessionId}`;
+        } else {
+            outcome = sandbox.payinOutcomeForPhone(phone);
+            if (outcome === 'reject') {
+                log.warn(`SANDBOX payin for session ${paymentIntent.sessionId}: phone=${phone}, rejected at initiation`);
+                throw new Error('SANDBOX: paiement refusé par l\'opérateur (numéro magique ..00).');
+            }
+        }
+        log.warn(`SANDBOX payin for session ${paymentIntent.sessionId}: phone=${phone || 'n/a'}, interactive=${interactive}, outcome=${outcome}`);
+
+        const ref = sandbox.makeSandboxRef(outcome as Exclude<sandbox.SandboxOutcome, 'reject'>);
+        const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+            gatewayPaymentId: ref,
+            gatewayCheckoutUrl: checkoutUrl,
+            status: PaymentStatus.PENDING_PROVIDER,
+            gatewayRawResponse: { sandbox: true, outcome, reference: ref } as any,
+        });
+        if (!updated) {
+            throw new Error('Failed to update payment intent after sandbox initiation');
+        }
+        return updated;
+    }
+
+    /**
+     * Resolves a hosted-checkout sandbox payin from the sandbox checkout page.
+     * Same completion calls as every real webhook handler.
+     */
+    public async resolveSandboxPayin(sessionId: string, outcome: 'success' | 'fail'): Promise<IPaymentIntent> {
+        if (!sandbox.isSandboxActive()) {
+            throw new AppError('Sandbox is not active.', 404);
+        }
+        const intent = await paymentIntentRepository.findBySessionId(sessionId);
+        if (!intent) {
+            throw new AppError('Payment session not found.', 404);
+        }
+        if (!sandbox.isSandboxRef(intent.gatewayPaymentId)) {
+            throw new AppError('Not a sandbox payment.', 400);
+        }
+        if (intent.status === PaymentStatus.SUCCEEDED || intent.status === PaymentStatus.FAILED) {
+            return intent; // already terminal — the page was refreshed or double-clicked
+        }
+
+        const newStatus = outcome === 'success' ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED;
+        log.warn(`SANDBOX: checkout page resolved payin ${sessionId} → ${newStatus}`);
+
+        const updated = await paymentIntentRepository.addWebhookEvent(sessionId, newStatus, {
+            sandbox: true,
+            resolvedBy: 'sandbox-checkout-page',
+            outcome,
+        });
+        if (!updated) {
+            throw new AppError('Failed to update payment intent.', 500);
+        }
+        await this.handlePaymentCompletion(updated);
+        return updated;
+    }
+
     private async initiateFeexpayPayment(
         paymentIntent: IPaymentIntent,
         amount: number,
-        currency: string, // Currency determined by frontend based on country 
+        currency: string, // Currency determined by frontend based on country
         operator?: string, // Operator selected by user on frontend if applicable
         otp?: string // Added for Orange Senegal OTP
     ): Promise<IPaymentIntent> {
@@ -3097,6 +3279,13 @@ class PaymentService {
         if (!cleanedPhone || !/^[0-9]+$/.test(cleanedPhone)) {
             log.error(`Could not derive FeexPay phoneNumber from intent="${paymentIntent.phoneNumber}" user="${_preFetchUserDetails?.phoneNumber}"`);
             throw new Error('Invalid phone number format provided.');
+        }
+
+        if (sandbox.isSandboxActive()) {
+            // Request-to-pay: the phone was typed on our page — magic ending rules.
+            // cleanedPhone, not the old phoneNumberAsInt: master reworked how the
+            // FeexPay number is derived, and the magic ending reads these digits.
+            return this.applySandboxPayin(paymentIntent, cleanedPhone, false);
         }
 
         // FeexPay v2 BJ payin format is `229` + fixed `01` + 8-digit-local
@@ -3271,6 +3460,13 @@ class PaymentService {
     private async initiateMoneyFusionPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
         try {
             log.info(`Initiating MoneyFusion payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
+
+            if (sandbox.isSandboxActive()) {
+                // MoneyFusion is hosted-checkout: the payment phone is normally
+                // entered on MF's page, which the sandbox has no equivalent of —
+                // so the sandbox checkout page plays the provider's role.
+                return await this.applySandboxPayin(paymentIntent, paymentIntent.phoneNumber || '', true);
+            }
 
             // MoneyFusion's `numeroSend` is the contact phone, not the payment phone
             // (the payment phone is entered on MoneyFusion's hosted checkout). Use the
@@ -3795,6 +3991,12 @@ class PaymentService {
             if (!countryCode) {
                 throw new Error('Payment intent missing country code for CinetPay payment');
             }
+            if (sandbox.isSandboxActive()) {
+                // CinetPay is hosted-checkout: our page never collects payment
+                // details, so the sandbox checkout page plays the provider's role.
+                return this.applySandboxPayin(paymentIntent, paymentIntent.phoneNumber || '', true);
+            }
+
             const countryCreds = config.cinetpay.countries[countryCode];
             if (!countryCreds) {
                 throw new Error(`No CinetPay credentials configured for country: ${countryCode}`);
@@ -3922,6 +4124,13 @@ class PaymentService {
     private async initiateNowPaymentsPayment(paymentIntent: IPaymentIntent, amount: number, currency: string): Promise<IPaymentIntent> {
         try {
             log.info(`Initiating NOWPayments crypto payment for sessionId: ${paymentIntent.sessionId}, amount: ${amount} ${currency}`);
+
+            if (sandbox.isSandboxActive()) {
+                // No real deposit address exists in sandbox, so instead of the
+                // waiting-for-deposit screen the user lands on the sandbox
+                // checkout page and picks the outcome.
+                return await this.applySandboxPayin(paymentIntent, '', true);
+            }
 
             // CRITICAL: Validate payment amount before processing
             if (!amount || amount <= 0) {
@@ -5851,6 +6060,13 @@ class PaymentService {
         // If status is already final, no need to call FeexPay
         if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
             log.info(`PaymentIntent ${paymentIntent.sessionId} is already in final status: ${paymentIntent.status}. Returning current state.`);
+            return paymentIntent;
+        }
+
+        // Sandbox references have no provider behind them — the sweeper resolves
+        // them on its own schedule; report the current state without calling out.
+        if (sandbox.isSandboxRef(gatewayPaymentId)) {
+            log.info(`SANDBOX: skipping FeexPay status call for ${gatewayPaymentId}`);
             return paymentIntent;
         }
 

@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import config from '../config';
 import { Currency } from '../database/models/transaction.model';
 import { AppError } from '../utils/errors';
+import * as sandbox from './sandbox.service';
 
 const log = logger.getLogger('FeexPayPayoutService');
 
@@ -328,6 +329,34 @@ export class FeexPayPayoutService {
                 });
             }
 
+            // Sandbox: everything above (operator mapping, min amount, phone
+            // formatting) has run for real — only the provider call is faked.
+            // The net amount's magic ending decides the outcome; the sweeper
+            // later feeds it through processFeexPayPayoutWebhook unchanged.
+            if (sandbox.isSandboxActive()) {
+                const outcome = sandbox.payoutOutcomeForAmount(request.amount);
+                log.warn(`SANDBOX FeexPay payout for tx ${request.client_transaction_id}: amount=${request.amount}, outcome=${outcome}`);
+                if (outcome === 'reject') {
+                    return {
+                        success: false,
+                        transactionId: request.client_transaction_id,
+                        status: 'failed',
+                        message: 'SANDBOX: payout rejeté à l\'initiation (montant magique ..03).',
+                        amount: request.amount,
+                        recipient: formattedPhoneNumber,
+                    };
+                }
+                return {
+                    success: true,
+                    transactionId: request.client_transaction_id,
+                    feexpayReference: sandbox.makeSandboxRef(outcome),
+                    status: 'pending',
+                    message: 'SANDBOX: payout initié — résolution automatique par le sweeper.',
+                    amount: request.amount,
+                    recipient: formattedPhoneNumber,
+                };
+            }
+
             // Validate and prepare motif (description) according to FeexPay v2 API:
             //   - min 5 characters
             //   - max 30 characters (NEW in v2 API; not enforced in v1)
@@ -469,6 +498,21 @@ export class FeexPayPayoutService {
      */
     public async checkPayoutStatus(feexpayReference: string): Promise<PayoutStatus> {
         log.info(`Checking FeexPay payout status for reference: ${feexpayReference}`);
+
+        // Sandbox references answer for themselves — outcome and due time are
+        // encoded in the reference, so the status checker and reconcile pages
+        // see exactly what a real provider status API would say.
+        if (sandbox.isSandboxRef(feexpayReference)) {
+            const status = sandbox.refStatusNow(feexpayReference);
+            return {
+                transactionId: feexpayReference,
+                feexpayReference,
+                status,
+                amount: 0,
+                recipient: 'sandbox',
+                comment: `SANDBOX ${status}`,
+            };
+        }
 
         try {
             const response = await this.apiClient.get(`/payouts/status/public/${feexpayReference}`);

@@ -98,6 +98,12 @@ class CloudStorageService {
             const file = bucket.file(fileName);
 
             await file.save(fileBuffer, {
+                // Simple upload for anything under 8MB. The default resumable
+                // session is a multi-request dance that dies on a single
+                // mid-flight ECONNRESET (bit us 2026-08-09: campaign creative
+                // upload 500'd, and the Drive fallback is quota-dead). One
+                // request, retried whole, is far more robust at these sizes.
+                resumable: fileBuffer.length >= 8 * 1024 * 1024,
                 metadata: {
                     contentType: mimeType,
                     cacheControl: 'public, max-age=31536000', // 1 year cache

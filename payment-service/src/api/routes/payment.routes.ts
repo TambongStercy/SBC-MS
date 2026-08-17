@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
 import { validatePaymentIntent, validatePaymentDetails } from '../middleware/validation';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
+import { requireSsoScope } from '../middleware/sso-auth.middleware';
 import adminController from '../controllers/admin.controller';
+import { sbcLiveRefundController } from '../controllers/sbc-live-refund.controller';
 
 const router = Router();
 const adminRouter = Router();
@@ -36,6 +38,11 @@ adminRouter.post('/create-manual-intent', paymentController.createManualPaymentI
 adminRouter.get('/search-payment-intent/:reference', paymentController.searchPaymentIntent);
 adminRouter.post('/recover-payment-intent', paymentController.recoverExistingPaymentIntent);
 
+// SBC Live refund queue — admin approves/rejects refund requests filed by SBC Live
+// (or by SBC admin directly). See SbcLiveRefundService for the policy.
+adminRouter.get('/sbc-live-refunds', sbcLiveRefundController.listRefunds);
+adminRouter.post('/sbc-live-refunds/:id/decision', sbcLiveRefundController.decideRefund);
+
 router.use('/admin', adminRouter);
 
 // --- Existing Public/General Routes --- 
@@ -46,10 +53,24 @@ router.get('/page/:sessionId', paymentController.renderPaymentPage);
 router.get('/process/:sessionId', paymentController.renderPaymentPage);
 
 // Create a new payment intent (returns URL to custom payment page)
+// Sandbox checkout (preprod only — both handlers 404 unless the sandbox is active)
+router.get('/sandbox/checkout/:sessionId', paymentController.renderSandboxCheckout);
+router.post('/sandbox/checkout/:sessionId/resolve', paymentController.resolveSandboxCheckout);
+
 router.post('/intents', validatePaymentIntent, paymentController.createPaymentIntent);
 
 // Submit payment details and initiate provider payment
 router.post('/intents/:sessionId/submit', validatePaymentDetails, paymentController.submitPaymentDetails);
+
+// SSO-driven payment intent — used by third-party apps (SBC Live) to charge users
+// via SBC's providers. Requires an SSO access token with payments.write scope.
+// See PaymentController.createSsoPaymentIntent for the two supported shapes
+// (paid-live with beneficiaryUserId, or feature subscription with subscriptionType).
+router.post('/sso/intents', requireSsoScope(['payments.write']), paymentController.createSsoPaymentIntent);
+
+// SSO refund request — third-party files a refund. SBC admin reviews via the
+// /admin/sbc-live-refunds endpoints above. Same payments.write scope.
+router.post('/sso/refund-requests', requireSsoScope(['payments.write']), sbcLiveRefundController.requestRefund);
 
 // Check payment status (useful especially for Lygos polling)
 router.get('/intents/:sessionId/status', paymentController.getPaymentStatus);

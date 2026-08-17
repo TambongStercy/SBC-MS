@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
+import * as sandbox from './sandbox.service';
 
 const log = logger.getLogger('MoneyFusionService');
 
@@ -285,6 +286,26 @@ export class MoneyFusionService {
     // --- PAYOUT ---
 
     async initiatePayout(request: MoneyFusionPayoutRequest): Promise<MoneyFusionPayoutResult> {
+        // Sandbox: fake tokenPay in place of the API call. The sweeper resolves
+        // it through handleMoneyFusionPayoutWebhook — including the 'hang'
+        // outcome, which mimics MF's habit of never reaching a terminal state
+        // (that's what the /fix-moneyfusion-withdrawals page is for).
+        if (sandbox.isSandboxActive()) {
+            const outcome = sandbox.payoutOutcomeForAmount(request.amount);
+            log.warn(`SANDBOX MoneyFusion payout: amount=${request.amount}, outcome=${outcome}`);
+            if (outcome === 'reject') {
+                return {
+                    success: false,
+                    message: 'SANDBOX: payout rejeté à l\'initiation (montant magique ..03).',
+                };
+            }
+            return {
+                success: true,
+                tokenPay: sandbox.makeSandboxRef(outcome),
+                message: 'SANDBOX: payout initié — résolution automatique par le sweeper.',
+            };
+        }
+
         if (!this.privateKey) {
             throw new Error('MoneyFusion private key not configured for payouts');
         }

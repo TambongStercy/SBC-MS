@@ -1,9 +1,16 @@
 import { Router } from 'express';
 import { activationBalanceController } from '../controllers/activation-balance.controller';
 import { authenticate } from '../middleware/auth.middleware';
+import { requireActiveSubscription } from '../middleware/requireActiveSubscription.middleware';
 import { generalLimiter } from '../middleware/rate-limit.middleware';
 
 const router = Router();
+
+// Paywall policy for activation-balance: GET endpoints stay open (an unactivated user
+// may legitimately need to see their balance / pricing before deciding to subscribe).
+// All POST endpoints (transfer / sponsor) are gated — only subscribed users move money
+// around. Note that the transfer endpoints already had a separate "pending withdrawal"
+// guard added in earlier PR; this is the subscription gate, not a replacement.
 
 /**
  * @route   GET /api/activation-balance
@@ -29,7 +36,7 @@ router.get('/pricing', authenticate as any, generalLimiter, (req, res) =>
  * @access  Private
  * @body    { amount: number }
  */
-router.post('/transfer', authenticate as any, generalLimiter, (req, res) =>
+router.post('/transfer', authenticate as any, requireActiveSubscription as any, generalLimiter, (req, res) =>
     activationBalanceController.transferToActivationBalance(req as any, res)
 );
 
@@ -39,7 +46,7 @@ router.post('/transfer', authenticate as any, generalLimiter, (req, res) =>
  * @access  Private
  * @body    { recipientId: string, amount: number }
  */
-router.post('/transfer-to-user', authenticate as any, generalLimiter, (req, res) =>
+router.post('/transfer-to-user', authenticate as any, requireActiveSubscription as any, generalLimiter, (req, res) =>
     activationBalanceController.transferActivationToUser(req as any, res)
 );
 
@@ -59,7 +66,7 @@ router.get('/referrals', authenticate as any, generalLimiter, (req, res) =>
  * @access  Private
  * @body    { beneficiaryId: string, subscriptionType: 'CLASSIQUE' | 'CIBLE' | 'UPGRADE' }
  */
-router.post('/sponsor', authenticate as any, generalLimiter, (req, res) =>
+router.post('/sponsor', authenticate as any, requireActiveSubscription as any, generalLimiter, (req, res) =>
     activationBalanceController.sponsorReferralActivation(req as any, res)
 );
 

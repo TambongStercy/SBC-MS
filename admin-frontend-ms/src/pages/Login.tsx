@@ -1,4 +1,7 @@
 import { easeInOut, motion } from "framer-motion";
+// Imported, not a "/src/..." string: that path only exists on the dev server,
+// so the logo 404'd on every deployed build (preprod AND prod).
+import logoSbc from "../assets/logo-sbc.png";
 import { useNavigate } from "react-router-dom";
 import { useState, FormEvent, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
@@ -50,7 +53,7 @@ function Login() {
             <div className="flex items-center gap-2 justify-center">
               <img
                 className="w-20 h-20 rounded-full object-cover"
-                src="/src/assets/logo-sbc.png"
+                src={logoSbc}
                 alt="Logo SBC"
               />
               <p className="text-xl font-medium">

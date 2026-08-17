@@ -158,15 +158,39 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
     try {
         log.info(`Proxy request received for file ID: ${fileId}`);
 
-        // Check if it's a Cloud Storage file (contains folder structure or is a URL)
-        if (fileId.includes('/') || fileId.startsWith('avatars/') || fileId.startsWith('products/') || fileId.startsWith('documents/') || fileId.startsWith('https://storage.googleapis.com/')) {
-            // Cloud Storage file - redirect to direct CDN URL
-            let directUrl: string;
+        // Cloud Storage, detected by shape rather than by folder prefix.
+        //
+        // Uploads via /files/upload land at the bucket root with a plain filename
+        // ("1786263530665_flyer.jpg") — no slash, no known prefix — so a
+        // prefix-only test sent them down the Drive path and 404'd.
+        const isFullCdnUrl = fileId.startsWith('https://storage.googleapis.com/');
+        const isCloudStorage = isFullCdnUrl || fileId.includes('/') || /\.[a-z0-9]{2,5}$/i.test(fileId);
 
-            if (fileId.startsWith('https://storage.googleapis.com/')) {
-                directUrl = fileId; // Already a full URL
-            } else {
-                directUrl = `https://storage.googleapis.com/sbc-file-storage/${fileId}`;
+        if (isCloudStorage) {
+            const directUrl = isFullCdnUrl
+                ? fileId
+                : `https://storage.googleapis.com/sbc-file-storage/${fileId}`;
+
+            // A redirect is cheaper and fine for <img>, but the bucket sends no
+            // Access-Control-Allow-Origin, so anything that reads the *bytes* —
+            // fetch, canvas, the Web Share API — is blocked by CORS after
+            // following it. ?stream=1 pipes the file through this origin instead,
+            // which is what the diffuseur share sheet needs to attach an image to
+            // a WhatsApp status.
+            if (req.query.stream === '1' || req.query.download === '1') {
+                log.info(`Streaming Cloud Storage file through the proxy: ${fileId}`);
+                const upstream = await axios.get(directUrl, { responseType: 'stream' });
+
+                res.setHeader('Content-Type', upstream.headers['content-type'] ?? 'application/octet-stream');
+                if (upstream.headers['content-length']) {
+                    res.setHeader('Content-Length', upstream.headers['content-length']);
+                }
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                if (req.query.download === '1') {
+                    const name = fileId.split('/').pop() ?? 'fichier';
+                    res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+                }
+                return upstream.data.pipe(res);
             }
 
             log.info(`Redirecting to Cloud Storage CDN: ${directUrl}`);
