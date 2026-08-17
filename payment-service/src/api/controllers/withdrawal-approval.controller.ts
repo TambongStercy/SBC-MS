@@ -560,9 +560,17 @@ export class WithdrawalApprovalController {
             // approved-and-routed (status PROCESSING) or pending dispatch.
             // PENDING_ADMIN_APPROVAL is excluded — those belong on the regular
             // Approvals page. COMPLETED/FAILED/REJECTED/REFUNDED are terminal.
+            // serviceProvider is written by the same block that stores the MF
+            // tokenPay, so when a payout response is lost it is never set — on
+            // exactly the transactions that most need reconciling. Filtering on it
+            // alone hid 7 of 9 genuinely stuck withdrawals, some since June.
+            // Same $or shape CLAUDE.md documents for CinetPay.
             const filter: Record<string, any> = {
                 type: TransactionType.WITHDRAWAL,
-                serviceProvider: 'MoneyFusion',
+                $or: [
+                    { serviceProvider: 'MoneyFusion' },
+                    { 'metadata.selectedPayoutService': 'MoneyFusion' },
+                ],
                 status: { $in: [TransactionStatus.PROCESSING, TransactionStatus.PENDING] },
                 deleted: false,
             };

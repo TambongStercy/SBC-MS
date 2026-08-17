@@ -118,7 +118,11 @@ if [ "$REBUILD_ADMIN" = true ]; then
   if git diff --name-only "$OLD_HEAD" "$NEW_HEAD" | grep -qE "^admin-frontend-ms/package(-lock)?\.json$" || [ "$FULL_DEPLOY" = true ]; then
     npm install
   fi
-  npm run build
+  # Explicit exit-code check — see the matching comment in deploy-prod.sh.
+  if ! npm run build; then
+    echo "$LOG_PREFIX ERROR: Admin frontend build failed. Preprod dist NOT updated."
+    exit 1
+  fi
   cd "$PREPROD_DIR"
   echo "$LOG_PREFIX Admin frontend rebuilt"
 fi
@@ -133,7 +137,10 @@ PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008" "6009" "6010")
 FAILED=0
 
 for PORT in "${PORTS[@]}"; do
-  if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+  # Services are inconsistent: user/notification/payment/product/settings
+  # expose /health; tombola/chat expose /api/health. Accept either.
+  if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1 \
+     || curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
     echo "$LOG_PREFIX  Port $PORT: OK"
   else
     echo "$LOG_PREFIX  Port $PORT: FAILED"

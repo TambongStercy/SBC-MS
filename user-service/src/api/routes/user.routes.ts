@@ -71,6 +71,10 @@ serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsB
 // NEW: Internal route to get active subscriptions for a user
 serviceRouter.get('/:userId/active-subscriptions', (req, res) => userController.getUserActiveSubscriptions(req, res));
 
+// Lightweight: just the SubscriptionType[] array. Used by settings-service
+// for subscription-gated formations.
+serviceRouter.get('/:userId/active-subscription-types', (req, res) => userController.getActiveSubscriptionTypes(req, res));
+
 // NEW: Internal route to get referral stats (for payment service)
 serviceRouter.get('/:userId/referral-stats', (req, res) => userController.getReferralStats(req, res));
 
@@ -86,7 +90,6 @@ serviceRouter.post('/find-by-momo', (req, res) => userController.findUserByMomoN
 serviceRouter.get('/:userId/unpaid-referrals', (req, res) => userController.getUnpaidReferrals(req, res));
 serviceRouter.get('/:userId/referrals-for-campaign', (req, res) => userController.getReferralsForCampaign(req, res));
 serviceRouter.get('/:userId/has-relance-subscription', (req, res) => userController.hasRelanceSubscription(req, res));
-serviceRouter.get('/:userId/active-subscription-types', (req, res) => userController.getActiveSubscriptionTypes(req, res));
 
 // Internal route to get user IDs filtered by country
 serviceRouter.get('/ids-by-country', (req, res) => userController.getUserIdsByCountry(req, res));

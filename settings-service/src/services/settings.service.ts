@@ -13,6 +13,7 @@ import { AppError, NotFoundError } from '../utils/errors'; // Import NotFoundErr
 import { Types } from 'mongoose';
 import config from '../config'; // Import config to access folder IDs
 import paymentService from './clients/payment.service.client'; // NEW: Import the new payment service client
+import userServiceClient from './clients/user.service.client';
 
 const log = logger.getLogger('SettingsService');
 
@@ -242,14 +243,49 @@ class SettingsService {
     // --- Formations Management Methods ---
 
     /**
-     * Retrieves all formations from the settings document.
+     * Retrieves ALL formations, annotating each with a computed `locked` flag
+     * based on the caller's active subscription tier. The frontend can render
+     * locked formations with a lock icon + "Upgrade to CIBLE" popup instead of
+     * hiding them entirely (Rufus's product call — visibility drives upsells).
+     *
+     * Rules:
+     *   - No requiredSubscriptionType on the formation → locked: false for everyone
+     *   - requiredSubscriptionType: 'CLASSIQUE' → unlocked for anyone with CLASSIQUE or CIBLE
+     *   - requiredSubscriptionType: 'CIBLE'     → unlocked only for CIBLE holders
+     *   - bypassSubscriptionFilter (admin/tester JWT) → locked: false on everything
+     *   - No userId (unauthenticated fallback) → gated formations are locked
      */
-    async getFormations(): Promise<IFormation[]> {
-        log.info('Fetching formations...');
+    async getFormations(options: { userId?: string; bypassSubscriptionFilter?: boolean } = {}): Promise<Array<IFormation & { locked: boolean }>> {
+        log.info('Fetching formations...', options);
         try {
             const settings = await this.repository.findSingle();
-            log.info('Formations fetched successfully.');
-            return settings?.formations || []; // Return empty array if no settings or formations
+            const all = settings?.formations || [];
+
+            let hasCible = false;
+            let hasClassique = false;
+            if (options.userId && !options.bypassSubscriptionFilter) {
+                const activeTypes = await userServiceClient.getActiveSubscriptionTypes(options.userId);
+                hasCible = activeTypes.includes('CIBLE');
+                hasClassique = activeTypes.includes('CLASSIQUE');
+            }
+
+            return all.map(f => {
+                // Subdocuments need .toObject() to spread into a plain object cleanly.
+                const raw = (f as any).toObject ? (f as any).toObject() : f;
+                let locked = false;
+                if (!options.bypassSubscriptionFilter && f.requiredSubscriptionType) {
+                    if (f.requiredSubscriptionType === 'CLASSIQUE') locked = !(hasClassique || hasCible);
+                    else if (f.requiredSubscriptionType === 'CIBLE') locked = !hasCible;
+                    else locked = true;
+                }
+                // Strip the link when locked. Without this, a non-CIBLE user could
+                // open DevTools → Network, read the raw JSON, and paste the
+                // Telegram invite URL directly — bypassing the upsell entirely.
+                if (locked) {
+                    return { ...raw, link: '', locked };
+                }
+                return { ...raw, locked };
+            });
         } catch (dbError: any) {
             log.error('Database error fetching formations:', dbError);
             throw new AppError('Failed to retrieve formations due to database issue.', 500);
@@ -258,10 +294,10 @@ class SettingsService {
 
     /**
      * Adds a new formation to the settings document.
-     * @param data The formation data (title, link).
+     * @param data The formation data (title, link, optional gate + decoration).
      * @returns The newly added formation with its _id.
      */
-    async addFormation(data: { title: string; link: string }): Promise<IFormation> {
+    async addFormation(data: { title: string; link: string; requiredSubscriptionType?: 'CLASSIQUE' | 'CIBLE'; decoration?: string }): Promise<IFormation> {
         log.info('Adding new formation...', data);
         try {
             let settings = await this.repository.findSingle();
@@ -310,6 +346,13 @@ class SettingsService {
             // Apply updates
             if (updates.title !== undefined) formation.title = updates.title;
             if (updates.link !== undefined) formation.link = updates.link;
+            if (updates.requiredSubscriptionType !== undefined) {
+                // Allow explicit clear via empty string / null
+                formation.requiredSubscriptionType = updates.requiredSubscriptionType || undefined;
+            }
+            if (updates.decoration !== undefined) {
+                formation.decoration = updates.decoration || undefined;
+            }
 
             await settings.save(); // Save the document to persist changes
             log.info(`Formation with ID ${formationId} updated successfully.`);

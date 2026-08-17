@@ -402,6 +402,53 @@ Actual behavior:
   - MF has NO public status-verify API (unlike CinetPay), so we can't poll to
     resolve hung ones — admin must verify on MF dashboard and mark manually.
 
+### MoneyFusion payout webhooks — reality check (rewritten 2026-07-21)
+
+**MoneyFusion DOES send payout webhooks reliably.** Do not repeat the earlier
+wrong assumption that they "hang" or "never fire". Verified empirically
+2026-07-21 by comparing 55+ transactions we had stuck in `processing` against
+Rufus's MF-dashboard export — every single one was `Validé` on MF's side. MF
+finished, MF sent us the webhook. **We dropped it.**
+
+Root cause: race condition between MF's async webhook and our own sync
+initiation flow.
+
+  1. We POST to MF `/api/v1/withdraw` with a `webhook_url`
+  2. MF generates a `tokenPay`, returns it in the response, AND fires the
+     `payout.session.completed` webhook at basically the same instant
+     (empirical: <50ms after our POST returns; sometimes BEFORE our POST
+     response is fully awaited by our own code)
+  3. Our webhook handler at `payment.service.ts:3392` looks up
+     `findByExternalId(tokenPay)` → returns null because our initiation flow
+     hasn't finished storing that tokenPay on the transaction yet
+  4. Handler logs "Transaction not found for tokenPay X" and returns `200`
+  5. MF sees `200`, considers the webhook delivered, never retries
+  6. Our own initiation flow completes seconds later and stores the tokenPay,
+     but the webhook is already gone. Transaction stays `processing` forever.
+
+Prod evidence (2026-07-20 18:33):
+  - `18:33:15` — webhook arrives with tokenPay `6a5e4dbfbb...7d64`, handler
+    logs "Transaction not found", returns 200
+  - `18:33:15` — our own initiation code finally logs "Stored MF tokenPay
+    6a5e4dbfbb...7d64 for tx hJGzLePYgM2xIXDO"
+
+Same pattern for every other stuck payout — MF fired, we weren't ready to
+receive it. Only 5 payout webhooks recorded across all of prod's rotated
+nginx logs (vs 2000+ payin webhooks), and every one shows this race in the
+payment-service logs.
+
+Log-based sanity: prod nginx has hundreds of MF payin webhook hits vs
+5 payout hits across all rotated logs. Payin is fine (initiation is a
+redirect flow, tokenPay lands in DB before payer even authenticates).
+Payout is the race-loser because it's an async server-side confirmation.
+
+**Do NOT investigate this as "MF is unreliable" or "MF hangs" — the fix is
+on our side.** Ideas: pending-webhook buffer keyed by tokenPay that gets
+swept after initiation stores tokenPay; return 500 on tx-not-found so MF
+retries; poll MF `/paiementNotif/{tokenPay}` after initiation (payin uses
+this pattern already at `moneyfusion.service.ts:268` — payout equivalent
+unknown but worth asking MF).
+
 Fix workflow (PR #72 + #77):
   - `/fix-moneyfusion-withdrawals` admin page lists all stuck MF withdrawals
   - Admin verifies on MF dashboard, clicks Mark Completed / Mark Failed
@@ -527,9 +574,35 @@ auto-runs as a no-op). The prod environment is at `/var/www/SBC-MS/`, preprod at
 ## Database Conventions
 
 - Each service uses its own MongoDB database
-- Development databases: `sbc_{service}_dev` (e.g., `sbc_user_dev`)
-- Models use Mongoose schemas with TypeScript interfaces
-- Repository pattern for data access
+- Mongo host on prod: `mongodb://localhost:27017` (no auth). Same host serves preprod DBs alongside prod.
+- Models use Mongoose schemas with TypeScript interfaces; repository pattern for data access
+- Development databases (local): `sbc_{service}_dev` (e.g., `sbc_user_dev`)
+
+### Actual prod / preprod DB names (empirically verified 2026-07-16, do not guess)
+
+| Service | Prod DB | Preprod DB |
+|---|---|---|
+| user | `sbc_users` (plural, no suffix) | `sbc_users_preprod` |
+| payment | `sbc_payment` (no suffix — 190k+ tx docs; `sbc_payment_prod` also exists but is EMPTY, do NOT query it) | `sbc_payment_preprod` |
+| notification | `sbc_notifications` | `sbc_notifications_preprod` |
+| product | `sbc_products` | `sbc_products_preprod` |
+| settings | `sbc_settings` | `sbc_settings_preprod` |
+| tombola | `sbc_tombola` | `sbc_tombola_preprod` |
+| chat | `sbc_chat` | `sbc_chat_preprod` |
+| sbclove | (not yet on prod) | `sbc_sbclove_preprod` |
+| advertising | `sbc_advertising` | (n/a) |
+
+Gotchas:
+- **user db is `sbc_users` (plural), not `sbc_users_prod` or `sbc_user_prod`.** Every service uses a no-suffix name on prod.
+- `sbc_payment_prod` shows up in `getDBNames()` but is EMPTY (a stale ghost). Real prod payment data lives in `sbc_payment` (no suffix). Verified 2026-07-19.
+- Guessing DB names returns null silently — always confirm with `db.getMongo().getDBNames().filter(n=>/sbc/i.test(n))` AND `db.<coll>.countDocuments({})` on a stable collection before running real queries.
+
+### User model quick-reference (`sbc_users.users`)
+
+- `role`: `'user' | 'admin' | 'withdrawal_admin' | 'tester'` (single string, not array). Enum defined in `user-service/src/database/models/user.model.ts` as `UserRole`.
+- JWT payload shape (signed in user-service): `{ userId, id, email, role }` — both `userId` and `id` are the same ObjectId string. Callers should read `req.user.userId` (canonical) with `req.user.id` as fallback.
+- Admin panel bypasses various tier gates by checking `role === 'admin' || 'tester'` in JWT — e.g. the formation subscription filter in `settings-service/src/api/controllers/settings.controller.ts`.
+- Test a subscription-gated feature as a real non-admin user. Admin accounts falsely appear to "see everything" because bypass is intentional.
 
 ## File Structure Notes
 
