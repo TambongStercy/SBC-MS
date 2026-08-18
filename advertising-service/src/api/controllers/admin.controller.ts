@@ -35,6 +35,13 @@ import logger from '../../utils/logger';
 const log = logger.getLogger('AdminController');
 
 const fail = (res: Response, err: unknown, context: string) => {
+    // A Mongoose ValidationError carries the real reason (e.g. a field over its
+    // maxlength). Without this it falls through to the generic 500 below and the
+    // admin sees "Une erreur est survenue" with no clue which field is wrong.
+    if (err instanceof Error && err.name === 'ValidationError') {
+        const first = Object.values((err as { errors?: Record<string, { message?: string }> }).errors ?? {})[0];
+        return res.status(400).json({ success: false, message: first?.message || err.message });
+    }
     const status = (err as AppError)?.statusCode ?? 500;
     if (status >= 500) log.error(`${context}:`, err);
     return res.status(status).json({

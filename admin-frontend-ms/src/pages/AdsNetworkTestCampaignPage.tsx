@@ -227,16 +227,18 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                         <div className="lg:col-span-3 space-y-5">
                         <div>
                             <label className="block text-sm text-gray-300 mb-1">Titre</label>
-                            <input className={field} value={form.title}
+                            <input className={field} value={form.title} maxLength={300}
                                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                                 placeholder="ex. Découvrez SBC" />
+                            <div className="text-xs text-gray-400 mt-1 text-right">{form.title.length}/300</div>
                         </div>
 
                         <div>
                             <label className="block text-sm text-gray-300 mb-1">Description</label>
-                            <textarea className={field} rows={2} value={form.description}
+                            <textarea className={field} rows={2} value={form.description} maxLength={2000}
                                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                                 placeholder="Texte affiché sur la page d'atterrissage." />
+                            <div className="text-xs text-gray-400 mt-1 text-right">{form.description.length}/2000</div>
                         </div>
 
                         </div>
@@ -289,9 +291,10 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             <label className="block text-sm text-gray-300 mb-1">
                                 Légende proposée aux diffuseurs
                             </label>
-                            <textarea className={field} rows={3} value={form.suggestedCaption}
+                            <textarea className={field} rows={3} value={form.suggestedCaption} maxLength={700}
                                 onChange={e => setForm(f => ({ ...f, suggestedCaption: e.target.value }))}
                                 placeholder="Le lien de suivi de chaque diffuseur y sera ajouté automatiquement." />
+                            <div className="text-xs text-gray-400 mt-1 text-right">{form.suggestedCaption.length}/700</div>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

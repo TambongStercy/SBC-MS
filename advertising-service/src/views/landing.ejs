@@ -48,7 +48,7 @@
         .media { width: 100%; display: block; background: #000; }
         .media img, .media video { width: 100%; height: auto; display: block; max-height: 70vh; object-fit: contain; }
         .body { padding: 20px; }
-        h1 { font-size: 1.25rem; font-weight: 650; margin-bottom: 8px; }
+        h1 { font-size: 1.25rem; font-weight: 650; margin-bottom: 8px; white-space: pre-wrap; }
         p.desc { color: var(--muted); font-size: 0.95rem; white-space: pre-wrap; margin-bottom: 20px; }
         .actions { display: flex; flex-direction: column; gap: 10px; }
         a.btn {
@@ -145,7 +145,7 @@
                 <% if (hasSignup) { %>
                     <div class="join">
                         <p>Vous aussi, gagnez de l'argent en publiant des annonces sur votre statut WhatsApp.</p>
-                        <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je m'inscris</a>
+                        <a class="btn btn-join" href="<%= signupUrl %>" rel="nofollow">Je veux monétiser mes vues WhatsApp</a>
                     </div>
                 <% } %>
             <% } %>

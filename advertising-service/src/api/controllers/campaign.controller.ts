@@ -43,6 +43,13 @@ const ownedCampaign = async (req: AuthenticatedRequest) => {
 };
 
 const fail = (res: Response, err: unknown, context: string) => {
+    // A Mongoose ValidationError carries the real reason (e.g. a field over its
+    // maxlength). Surface it as a 400 with that message instead of the generic
+    // 500 below, which told the annonceur nothing about which field was wrong.
+    if (err instanceof Error && err.name === 'ValidationError') {
+        const first = Object.values((err as { errors?: Record<string, { message?: string }> }).errors ?? {})[0];
+        return res.status(400).json({ success: false, message: first?.message || err.message });
+    }
     const status = (err as AppError)?.statusCode ?? 500;
     // Pino serializes a bare Error to {} — every 500 logged as "details: {}"
     // and the real cause was unrecoverable from the logs. Spell it out.

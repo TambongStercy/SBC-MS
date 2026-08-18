@@ -369,6 +369,33 @@ If a deploy gets stuck "waiting", check whether it's queued behind an older
 still-active prod deploy run. Old (pre-#73) deploys may still be in the queue
 holding the lock — cancel them to release.
 
+### Deploying a brand-new service to prod (learned shipping advertising-service, 2026-08-17)
+
+Adding a service to the deploy scripts is not enough — its first prod deploy
+fails in three separate places, each silently:
+
+1. **`scripts/deploy-prod.sh` updates itself.** The workflow runs the script,
+   and the script does the `git pull`. So the run that ships a change *to the
+   script* executes the OLD copy. Adding a service to its `PM2_NAME` map takes
+   effect on the NEXT deploy — the first one pulls the code and skips the
+   service entirely (no "Services to update" entry, no error).
+2. **`npm install` only runs when `package.json` is in the diff.** On a re-run
+   the pull is a no-op, so the script falls back to "rebuild everything" with
+   `NEEDS_INSTALL=false`. A service with no `node_modules` then fails with
+   `sh: 1: tsc: not found` and the job's own summary is the only place it shows
+   (`Failed (1): <svc>:build`) — the SSH step still exits 0 and reports success.
+   For a first deploy, run `npm install` in the service dir on the server.
+3. **`gateway-service/.env` overrides the code default.** `config` reads
+   `process.env.<SVC>_SERVICE_URL || 'http://localhost:<right port>'`, so a
+   stale/wrong var beats the correct fallback. Prod had
+   `ADVERTISING_SERVICE_URL=http://localhost:3005` — every `/api/advertising/*`
+   call returned a generic 500 while the service itself answered 200 on
+   `localhost:3010`. Check the var, then `pm2 reload gateway-service --update-env`.
+
+Fastest sanity check after any new-service deploy: `curl localhost:<port>/health`
+(direct, proves the process) AND `curl https://<domain>/api/<prefix>/...`
+(proves the gateway var + nginx). Different failures, same-looking symptom.
+
 ### CinetPay per-country accounts
 
 CinetPay's new platform (which we use, at `api.cinetpay.co` with OAuth) issues
