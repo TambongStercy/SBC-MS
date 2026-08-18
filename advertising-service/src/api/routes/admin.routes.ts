@@ -14,6 +14,7 @@ import {
     getTestCampaignConfig,
     saveTestCampaign,
     removeTestCampaign,
+    getVerificationStats,
 } from '../controllers/admin.controller';
 
 /**
@@ -25,6 +26,7 @@ const router = Router();
 router.use(authenticate, authorizeAdmin);
 
 router.get('/analytics', getAnalytics);
+router.get('/verification-stats', getVerificationStats);
 router.get('/campaigns', listForReview);
 router.get('/diffuseurs', listDiffuseurs);
 
