@@ -27,12 +27,25 @@ import {
     activeCampaignsForSimulation,
 } from '../../services/simulation.service';
 import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/clients/notification.service.client';
+import { verificationStats, activeCount, queuedCount } from '../../services/verification-session.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('AdminController');
+
+/** Live verification counters since the process started: how many linked, how
+ *  many succeeded, and the failure breakdown split by whether the socket linked. */
+export const getVerificationStats = (_req: AuthenticatedRequest, res: Response) => {
+    const s = verificationStats();
+    const linkRate = s.started ? +(s.connected / s.started * 100).toFixed(1) : 0;
+    const successRate = s.started ? +(s.succeeded / s.started * 100).toFixed(1) : 0;
+    return res.json({
+        success: true,
+        data: { ...s, active: activeCount(), queued: queuedCount(), linkRatePct: linkRate, successRatePct: successRate },
+    });
+};
 
 const fail = (res: Response, err: unknown, context: string) => {
     // A Mongoose ValidationError carries the real reason (e.g. a field over its

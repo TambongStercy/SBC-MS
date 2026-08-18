@@ -34,6 +34,9 @@ export type VerificationSession = {
     result?: ExtractionResult;
     error?: string;
     createdAt: Date;
+    /** Set when the WhatsApp socket reached "connected". Distinguishes a failure
+     *  before the link (pairing/user side) from one during the status read. */
+    connectedAt?: Date;
 };
 
 const sessions = new Map<string, VerificationSession>();
@@ -64,6 +67,30 @@ const waiting: string[] = [];
 
 let active = 0;
 
+/**
+ * Running verification tallies. There is no persistence for sessions, so this is
+ * the only way to see the real success-vs-failure rate — the success path used to
+ * log nothing at all. `connected` counts sessions whose WhatsApp socket actually
+ * linked; comparing it against `succeeded` separates "couldn't link" (pairing/user
+ * side) from "linked but the read failed" (our side). Logged as a summary every
+ * few minutes; reset only on restart.
+ */
+const stats = {
+    started: 0,
+    connected: 0,
+    succeeded: 0,
+    /** failure count keyed by "<phase>:<reason>", e.g. "after_connect:WhatsApp connection closed". */
+    failed: {} as Record<string, number>,
+};
+
+const bumpFailure = (key: string) => { stats.failed[key] = (stats.failed[key] || 0) + 1; };
+
+export const verificationStats = () => ({
+    ...stats,
+    failed: { ...stats.failed },
+    totalFailed: Object.values(stats.failed).reduce((a, b) => a + b, 0),
+});
+
 export const activeCount = () => active;
 export const queuedCount = () => waiting.length;
 export const capacityAvailable = () => active < MAX_CONCURRENT;
@@ -92,6 +119,20 @@ const sweep = () => {
     }
 };
 setInterval(() => { sweep(); pump(); }, 60 * 1000).unref();
+
+// Rolling summary so the real success/failure rate is visible without persisting
+// sessions. Only emitted when something happened since the last tick.
+let lastLoggedStarted = 0;
+setInterval(() => {
+    if (stats.started === lastLoggedStarted) return;
+    lastLoggedStarted = stats.started;
+    const totalFailed = Object.values(stats.failed).reduce((a, b) => a + b, 0);
+    log.info(
+        `Verification tally — started ${stats.started}, linked ${stats.connected}, `
+        + `succeeded ${stats.succeeded}, failed ${totalFailed} `
+        + `(${JSON.stringify(stats.failed)}); active ${active}, queued ${waiting.length}`,
+    );
+}, 5 * 60 * 1000).unref();
 
 export class NoCapacityError extends Error {
     constructor() {
@@ -195,6 +236,8 @@ const begin = (id: string): void => {
         },
         onConnected: () => {
             session.state = 'reading';
+            session.connectedAt = new Date();
+            stats.connected++;
             // Both are spent once used; keeping them around only risks showing a
             // dead code to a client that polls late.
             session.qr = undefined;
@@ -203,15 +246,29 @@ const begin = (id: string): void => {
     });
     handles.set(id, handle);
 
+    stats.started++;
+
     handle.result
         .then(result => {
             session.result = result;
             session.state = 'done';
+            stats.succeeded++;
+            const secs = ((Date.now() - session.createdAt.getTime()) / 1000).toFixed(1);
+            const n = result.statuses?.length ?? 0;
+            log.info(
+                `Verification session ${id} SUCCEEDED (day ${session.day}, ${session.method}, ${secs}s, `
+                + `${n} status(es) read)`,
+            );
         })
         .catch((err: Error) => {
             session.error = err.message;
             session.state = 'failed';
-            log.warn(`Verification session ${id} failed: ${err.message}`);
+            // Whether the socket ever linked is the key split: a failure before it
+            // is pairing/user side; after it is the status read on our side.
+            const phase = session.connectedAt ? 'after_connect' : 'before_connect';
+            bumpFailure(`${phase}:${err.message}`);
+            const secs = ((Date.now() - session.createdAt.getTime()) / 1000).toFixed(1);
+            log.warn(`Verification session ${id} FAILED [${phase}] (day ${session.day}, ${session.method}, ${secs}s): ${err.message}`);
         })
         .finally(() => {
             // Released the moment this diffuseur's statuses are read, not when
