@@ -88,10 +88,13 @@
             transition: opacity .25s; }
         .player-bar input { flex: 1; accent-color: #22c55e; height: 4px; cursor: pointer; }
         .player-time { color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; }
-        /* Standard-player behaviour: while it plays and no one is touching it, the
-           play button and bar fade out. Any pointer activity — or a pause — brings
-           them straight back. */
-        .player.hide-chrome .player-tap, .player.hide-chrome .player-bar { opacity: 0; pointer-events: none; }
+        /* Standard-player behaviour: the play button and bar vanish the moment it
+           plays. On a mouse they reappear on hover; on touch, tapping pauses and
+           brings them back. */
+        .player.playing .player-tap, .player.playing .player-bar { opacity: 0; pointer-events: none; }
+        @media (hover: hover) {
+            .player.playing:hover .player-tap, .player.playing:hover .player-bar { opacity: 1; pointer-events: auto; }
+        }
         .join { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
         .join p { font-size: 13px; opacity: .75; margin: 0 0 10px; }
         footer { text-align: center; padding: 18px 0 4px; color: var(--muted); font-size: 0.75rem; }
@@ -163,37 +166,26 @@
             var v = document.getElementById('v'), tap = document.getElementById('tap');
             var icon = document.getElementById('icon'), seek = document.getElementById('seek');
             var time = document.getElementById('time');
-            var hideTimer;
 
             function fmt(t) {
                 if (!isFinite(t)) return '0:00';
                 var m = Math.floor(t / 60), s = Math.floor(t % 60);
                 return m + ':' + (s < 10 ? '0' : '') + s;
             }
-            // Reveal the chrome, then — only if the video is playing — schedule it to
-            // fade again after a couple of idle seconds. Paused always stays visible.
-            function showChrome() {
-                wrap.classList.remove('hide-chrome');
-                clearTimeout(hideTimer);
-                if (!v.paused) hideTimer = setTimeout(function () { wrap.classList.add('hide-chrome'); }, 2500);
-            }
             function toggle() { v.paused ? v.play() : v.pause(); }
 
             tap.addEventListener('click', toggle);
             v.addEventListener('click', toggle);
-            v.addEventListener('play', function () { icon.innerHTML = '&#10074;&#10074;'; showChrome(); });
-            v.addEventListener('pause', function () { icon.innerHTML = '&#9654;'; showChrome(); });
-            v.addEventListener('ended', function () { icon.innerHTML = '&#9654;'; wrap.classList.remove('hide-chrome'); });
+            // 'playing' on the wrapper is the only thing that hides the chrome (CSS).
+            v.addEventListener('play', function () { wrap.classList.add('playing'); icon.innerHTML = '&#10074;&#10074;'; });
+            v.addEventListener('pause', function () { wrap.classList.remove('playing'); icon.innerHTML = '&#9654;'; });
+            v.addEventListener('ended', function () { wrap.classList.remove('playing'); icon.innerHTML = '&#9654;'; });
             v.addEventListener('timeupdate', function () {
                 if (v.duration) seek.value = String((v.currentTime / v.duration) * 100);
                 time.textContent = fmt(v.currentTime);
             });
             seek.addEventListener('input', function () {
                 if (v.duration) v.currentTime = (Number(seek.value) / 100) * v.duration;
-                showChrome();
-            });
-            ['mousemove', 'touchstart', 'pointerdown'].forEach(function (e) {
-                wrap.addEventListener(e, showChrome, { passive: true });
             });
         })();
     </script>
