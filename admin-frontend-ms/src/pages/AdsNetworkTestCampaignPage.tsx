@@ -93,10 +93,20 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
         setUploadPct(0);
         try {
             const fileId = await uploadAdsFile(file, setUploadPct);
-            setForm(f => kind === 'media'
-                ? { ...f, mediaFileId: fileId, mediaType: file.type.startsWith('video') ? 'video' : 'image' }
-                : { ...f, landingVideoFileId: fileId });
-            showSuccess(kind === 'media' ? 'Créative envoyée.' : 'Vidéo envoyée.');
+            const next = kind === 'media'
+                ? { ...form, mediaFileId: fileId, mediaType: (file.type.startsWith('video') ? 'video' : 'image') as 'image' | 'video' }
+                : { ...form, landingVideoFileId: fileId };
+            setForm(next);
+            // Uploading only lands the file in storage — the campaign still points at
+            // the old one until it's saved. When the campaign already exists and is
+            // otherwise valid, persist immediately so "Remplacer" actually replaces
+            // it, instead of silently keeping the previous media until someone
+            // remembers to click Enregistrer.
+            if (campaign && next.title.trim() && next.mediaFileId) {
+                await doSave(false, next, kind === 'media' ? 'Créative remplacée.' : 'Vidéo remplacée.');
+            } else {
+                showSuccess(kind === 'media' ? 'Créative envoyée — cliquez Enregistrer.' : 'Vidéo envoyée — cliquez Enregistrer.');
+            }
         } catch (err) {
             showError(apiErrorMessage(err, "L'envoi a échoué."));
         } finally {
@@ -104,16 +114,16 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
         }
     };
 
-    const doSave = async (force: boolean) => {
+    const doSave = async (force: boolean, payload: typeof form = form, successMsg?: string) => {
         setSaving(true);
         try {
-            const saved = await saveTestCampaign(force ? { ...form, force: true } : form);
+            const saved = await saveTestCampaign(force ? { ...payload, force: true } : payload);
             setCampaign(saved);
             const offered = (saved as TestCampaign & { offeredNow?: number }).offeredNow ?? 0;
             showSuccess(
                 offered > 0
-                    ? `Campagne test enregistrée et proposée à ${offered} diffuseur(s) en attente.`
-                    : 'Campagne test enregistrée.',
+                    ? `${successMsg ?? 'Campagne test enregistrée'} — proposée à ${offered} diffuseur(s) en attente.`
+                    : (successMsg ?? 'Campagne test enregistrée.'),
             );
             await load();
         } catch (err: unknown) {
