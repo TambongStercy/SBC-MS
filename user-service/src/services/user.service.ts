@@ -788,7 +788,14 @@ export class UserService {
         if (updateData.interests !== undefined) allowedFields.interests = updateData.interests;
         if (updateData.profession !== undefined) allowedFields.profession = updateData.profession;
         if (updateData.shareContactInfo !== undefined) allowedFields.shareContactInfo = updateData.shareContactInfo;
-        if (updateData.referralCode !== undefined) allowedFields.referralCode = updateData.referralCode; // Add referral code assignment
+        // Only touch the referral code when a non-empty value is sent. An empty
+        // string used to be written straight through, wiping the user's own code;
+        // and any referralCode in the payload made the whole update hinge on the
+        // validation below — so a client resending an unchanged/blank code blocked
+        // saving unrelated fields (city, sex, birthDate).
+        if (updateData.referralCode !== undefined && String(updateData.referralCode).trim() !== '') {
+            allowedFields.referralCode = updateData.referralCode;
+        }
         if (updateData.notificationPreference !== undefined) allowedFields.notificationPreference = updateData.notificationPreference;
 
         // --- Referral Code Uniqueness Check --- 
@@ -807,7 +814,18 @@ export class UserService {
             log.info(`Referral code ${codeToCheck} is available for user ${userId}.`);
             allowedFields.referralCode = codeToCheck; // Ensure the lowercase version is what gets saved
         }
-        // --- End Referral Code Check --- 
+        // --- End Referral Code Check ---
+
+        // Drop an unchanged phone number before it reaches the unique index. A
+        // client that resends the user's own phone on every profile save would
+        // otherwise hit E11000 (dup key on its own value under some driver paths)
+        // and abort the whole update — taking city/sex/birthDate down with it.
+        if (allowedFields.phoneNumber !== undefined) {
+            const current = await userRepository.findById(userId);
+            if (current && current.phoneNumber === allowedFields.phoneNumber) {
+                delete allowedFields.phoneNumber;
+            }
+        }
 
         // Skip update if no allowed fields are being modified (after potential referral code validation)
         if (Object.keys(allowedFields).length === 0) {
