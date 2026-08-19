@@ -175,30 +175,31 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
     // handing out the first participation is a deadlock: no offer, so no
     // verification, so no LID, so no offer. The test campaign is where that first
     // link is meant to happen.
-    const newcomers = await DiffuseurProfileModel.find({
-        isActive: true,
-        hasCompletedTestCampaign: false,
-    }).select('_id userId').limit(200).lean();
-
-    if (!newcomers.length) return 0;
-
-    // Anyone already holding an offer or a live run of ANY test campaign must
-    // not get a second. Scoped to the current campaign only, each retire +
-    // re-create handed everyone a fresh offer while their previous test run
-    // was still on their dashboard — two test campaigns at once (Rufus).
+    // Anyone already holding an offer or a live run of ANY test campaign must not
+    // get a second. Excluded BEFORE the limit below — this is the whole fix: the
+    // query used to take the first 200 diffuseurs and only THEN drop those already
+    // served, so once the network passed 200 diffuseurs the batch kept returning
+    // the same already-offered ones and every newcomer past the limit was never
+    // offered the test campaign at all (they saw "aucune campagne").
     const testCampaignIds = (await CampaignModel
         .find({ isTestCampaign: true })
         .select('_id')
         .lean()).map(c => c._id);
-    const existing = await CampaignParticipationModel
+    const activeHolders = (await CampaignParticipationModel
         .find({
             campaignId: { $in: testCampaignIds },
-            diffuseurUserId: { $in: newcomers.map(n => n.userId) },
             status: { $in: [ParticipationStatus.OFFERED, ParticipationStatus.IN_PROGRESS] },
         })
         .select('diffuseurUserId')
-        .lean();
-    const alreadyHas = new Set(existing.map(p => String(p.diffuseurUserId)));
+        .lean()).map(p => p.diffuseurUserId);
+
+    const newcomers = await DiffuseurProfileModel.find({
+        isActive: true,
+        hasCompletedTestCampaign: false,
+        userId: { $nin: activeHolders },
+    }).select('_id userId').limit(200).lean();
+
+    if (!newcomers.length) return 0;
 
     // Dead runs on the CURRENT campaign — forfeited, declined, expired. The
     // (campaignId, diffuseurUserId) pair is unique, so creating a second one
@@ -221,7 +222,6 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
 
     let created = 0;
     for (const profile of newcomers) {
-        if (alreadyHas.has(String(profile.userId))) continue;
         try {
             const previous = revivableFor.get(String(profile.userId));
             if (previous) {
