@@ -295,6 +295,20 @@ rounded to integer (2306.25 → MF shows 2306; 2050 → MF shows 2050). NOT
 `netAmountRequested`. Investigating Rufus's "did user receive X" — search MF
 dashboard by tokenPay or by gross integer amount, not by net.
 
+### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
+
+Most countries here treat a leading 0 on the national number as a trunk prefix to
+strip before the country code (CM `6XXXXXXXX`, no 0). **Congo-Brazzaville (+242) is
+the exception — the 0 is part of the subscriber number** (mobile `05…`/`06…`), so
+the WhatsApp/E.164 number is `+242 0X XXX XX XX` and stripping it makes WhatsApp
+fail to match the account. Confirmed by Rufus (native). The ads-network verify form
+(`SBC-WEB-UI/src/pages/AdsNetworkDiffuseur.tsx`) keeps the 0 when the dial code is
+`242` and strips it otherwise; `advertising-service` verification.controller only
+strips in its no-country-code fallback, so a `242…`-prefixed number passes through.
+If another market reports the same, add its code to the keep-zero set — don't
+blanket-strip. (`recoveryHelpers.normalizePhoneNumber` never strips; it only
+prepends the country code, so signup/profile already keep the 0.)
+
 ### Gateway proxy registration
 
 `gateway-service/src/server.ts` uses explicit `app.use('/api/<prefix>', proxy(...))`
