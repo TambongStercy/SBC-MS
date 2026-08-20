@@ -225,8 +225,12 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
         try {
             const previous = revivableFor.get(String(profile.userId));
             if (previous) {
-                // A clean slate on the same document: new tracking code so old
-                // clicks stay with the abandoned run, and fresh zero-rate days.
+                // A clean slate on the same document, but KEEP the tracking code.
+                // The code lives in a status the diffuseur may already have posted
+                // and we cannot edit — regenerating it turned their live link into a
+                // 404 (`/s/<oldcode>` no longer resolves). The test campaign has no
+                // payout, so merging any old clicks into the revived run is harmless;
+                // a permanently-resolvable link is what matters.
                 previous.status = ParticipationStatus.OFFERED;
                 previous.offeredAt = new Date();
                 previous.acceptedAt = undefined;
@@ -234,7 +238,6 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
                 previous.completedAt = undefined;
                 previous.day1Deadline = undefined;
                 previous.completionDeadline = undefined;
-                previous.trackingCode = newTrackingCode();
                 previous.days = zeroRateDays();
                 previous.uniqueViews = 0;
                 previous.repeatViews = 0;
