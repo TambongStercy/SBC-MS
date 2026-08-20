@@ -74,7 +74,8 @@ manager. Re-running the script rotates the secret.
 | Scope | Grants access to |
 |---|---|
 | `profile.read` | `GET /api/sso/userinfo` — name, email, phone, country, avatar, active subscription types, direct referral count, isActivated flag |
-| `payments.write` | _(future)_ Create payment intents on behalf of the user via the SBC payment-service |
+| `referrals.read` | `GET /api/sso/referrals/relationship` and `GET /api/sso/referrals/list` — check/enumerate the user's direct (Niveau 1) filleuls |
+| `payments.write` | Create payment intents on behalf of the user via the SBC payment-service |
 | `wallet.read` | _(future)_ Read the user's SBC wallet balance |
 
 For SBC Live's v1, **request `profile.read` and `payments.write`** — the payments
@@ -82,7 +83,7 @@ scope is needed to charge users for paid lives and the Visibilité Maximale add-
 
 ---
 
-## The four endpoints
+## The endpoints
 
 All paths below are relative to `https://sniperbuisnesscenter.com`.
 
@@ -236,6 +237,58 @@ refresh token; replace your stored one with it (rolling refresh).
 
 When the refresh token itself eventually expires (30d), the user must log in
 again via the full flow.
+
+---
+
+### 5. `GET /api/sso/referrals/relationship` — is the caller a direct filleul of X?
+
+Requires an access token with the **`referrals.read`** scope. Answers "is the
+token's owner a direct (Niveau 1) referral of `sponsorId`?" — direction is caller
+→ sponsor only. SBC Live uses this for filleul-gated and tier-waiver lives.
+
+```
+GET /api/sso/referrals/relationship?sponsorId=<24-char ObjectId>
+Authorization: Bearer <access_token>
+```
+```json
+{ "success": true, "data": {
+    "isDirectFilleul": true,
+    "depth": 1,                 // 1 if direct, null otherwise
+    "callerId": "…",
+    "sponsorId": "…"
+}}
+```
+
+### 6. `GET /api/sso/referrals/list` — the caller's own direct filleuls
+
+Requires **`referrals.read`**. Paginated list of the token owner's direct
+(level-1) filleuls. The caller is derived from the token — there is **no**
+`userId`/`sponsorId` param, so a leaked token can only enumerate its own owner's
+network. `pageSize` is capped server-side at 100.
+
+```
+GET /api/sso/referrals/list?page=1&pageSize=50
+Authorization: Bearer <access_token>
+```
+```json
+{ "success": true, "data": {
+    "total": 132, "page": 1, "pageSize": 50, "totalPages": 3, "hasMore": true,
+    "items": [
+        { "id": "…", "name": "Awa N.", "avatarUrl": "https://…", "joinedAt": "2026-05-01T…" }
+    ]
+}}
+```
+
+---
+
+## Webhooks (optional)
+
+A client may register a `webhookUrl` + `webhookSecret` (via the seed script's
+`--webhookUrl=…`). SBC's payment-service then POSTs SSO-linked payment events to
+it, signed with the secret. The secret is `select:false` and only handed to
+internal services via `GET /api/users/internal/sso-clients/:clientId/webhook-config`
+(SERVICE_SECRET gated) — see `payment-service/src/services/sso-webhook.service.ts`.
+Skip this if your app only needs login + profile.
 
 ---
 
