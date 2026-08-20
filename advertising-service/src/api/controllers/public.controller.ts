@@ -63,11 +63,20 @@ const resolve = async (req: Request): Promise<Resolved | null> => {
             .findOne({ trackingCode })
             .select('campaignId diffuseurUserId')
             .lean();
-        if (!participation) return null;
-        const campaign = await CampaignModel.findById(participation.campaignId);
-        return campaign
-            ? { campaign, trackingCode, diffuseurUserId: String(participation.diffuseurUserId) }
-            : null;
+        if (participation) {
+            const campaign = await CampaignModel.findById(participation.campaignId);
+            if (campaign) {
+                return { campaign, trackingCode, diffuseurUserId: String(participation.diffuseurUserId) };
+            }
+        }
+        // Unknown code. Earlier revives regenerated tracking codes (fixed now),
+        // which orphaned links already published in diffuseurs' WhatsApp statuses.
+        // Rather than 404 a link a viewer just tapped, fall back to the live test
+        // campaign's landing so they still see the offer and can sign up. No
+        // trackingCode is returned — we no longer know the diffuseur, so nothing is
+        // (mis)attributed.
+        const testCampaign = await CampaignModel.findOne({ isTestCampaign: true });
+        return testCampaign ? { campaign: testCampaign } : null;
     }
 
     const campaign = await CampaignModel.findOne({ landingPageSlug: slug });
