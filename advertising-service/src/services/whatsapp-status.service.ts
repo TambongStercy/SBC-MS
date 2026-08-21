@@ -204,7 +204,7 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
             const {
                 makeWASocket, DisconnectReason,
                 isJidStatusBroadcast, downloadMediaMessage,
-                fetchLatestBaileysVersion,
+                fetchLatestBaileysVersion, normalizeMessageContent,
             } = await import('@whiskeysockets/baileys');
 
             let waVersion = FALLBACK_WA_VERSION;
@@ -235,9 +235,26 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
                 const id = m.key.id;
                 if (!id || collected.has(id)) return;
 
-                const img = m.message?.imageMessage;
-                const vid = m.message?.videoMessage;
-                const txt = m.message?.extendedTextMessage?.text ?? m.message?.conversation ?? undefined;
+                // WhatsApp wraps status/history-sync content inside ephemeral /
+                // viewOnce / deviceSent envelopes. Reading m.message.imageMessage
+                // directly missed the caption (and media) on every wrapped status —
+                // it still got counted but with an empty caption, so its tracking
+                // link was never found ("6 statuts vus, aucun ne contient votre
+                // lien"). normalizeMessageContent peels the envelopes off.
+                const content = normalizeMessageContent(m.message) ?? undefined;
+                const img = content?.imageMessage;
+                const vid = content?.videoMessage;
+                const txt = content?.extendedTextMessage?.text ?? content?.conversation ?? undefined;
+
+                // Diagnostic: fires only when unwrapping recovered content the raw
+                // read would have lost — direct proof of the bug and the fix.
+                const rawHad = Boolean(
+                    m.message?.imageMessage || m.message?.videoMessage
+                    || m.message?.conversation || m.message?.extendedTextMessage,
+                );
+                if (!rawHad && (img || vid || txt !== undefined)) {
+                    log.info(`Status ${id} content was WRAPPED (raw keys: ${Object.keys(m.message ?? {}).join(',')}) — recovered via normalize`);
+                }
 
                 const receipts = m.userReceipt ?? [];
                 const entry: ExtractedStatus = {
@@ -267,8 +284,10 @@ export const extractOwnStatuses = (opts: ExtractOptions = {}): ExtractionHandle 
 
                 if (opts.downloadMedia && (img || vid)) {
                     try {
+                        // Download from the UNWRAPPED content, else a wrapped status's
+                        // media never downloads and the perceptual match silently fails.
                         entry.mediaBuffer = await downloadMediaMessage(
-                            m, 'buffer', {},
+                            { ...m, message: content }, 'buffer', {},
                             { logger: pino({ level: 'silent' }), reuploadRequest: sock!.updateMediaMessage },
                         ) as Buffer;
                     } catch (e) {
