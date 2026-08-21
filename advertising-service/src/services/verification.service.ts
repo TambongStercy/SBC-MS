@@ -209,21 +209,31 @@ export const applyExtraction = async (
         const notBefore = earliestAllowedPost(participation.days, day.day);
         const claimed = claimedFor(day.day);
         // Every day shares ONE tracking code, so days are told apart only by which
-        // status backs them. A day already VERIFIED must therefore refresh ONLY its
-        // own status (by id) — never re-match a different one. Without this, once
-        // day 1's status expired (24h), the re-verification let day 1 re-claim the
-        // newer day-2 post (the only status still carrying the code) and consume it,
-        // starving day 2: "6 statuts vus, aucun ne contient votre lien" while the
-        // day-2 post sat right there. An expired own-status simply yields no match,
-        // and the VERIFIED-day branch below keeps the day as already earned.
-        const match = (day.status === DayStatus.VERIFIED && day.statusMessageId)
-            ? extraction.statuses.find(s => s.statusMessageId === day.statusMessageId)
-            : findMatchingStatus(
+        // status backs them. A day already VERIFIED refreshes ONLY its own status
+        // (by id), never a different one — otherwise, once day 1's status expired,
+        // re-verification let day 1 re-claim the newer day-2 post and consume it,
+        // starving day 2 ("aucun ne contient votre lien" with the day-2 post right
+        // there).
+        //
+        // It must also RELEASE an owned status that actually belongs to a later
+        // day's window. An earlier buggy re-verify reassigned some verified days to
+        // a post made in the next day's window; if we keep claiming it the later day
+        // is permanently starved. Releasing it (the verified day stays earned) lets
+        // the day it truly belongs to use it.
+        let match: ExtractedStatus | undefined;
+        if (day.status === DayStatus.VERIFIED && day.statusMessageId) {
+            const own = extraction.statuses.find(s => s.statusMessageId === day.statusMessageId);
+            const nextWindow = earliestAllowedPost(participation.days, day.day + 1);
+            const belongsToLaterDay = Boolean(own?.postedAt && nextWindow && own.postedAt >= nextWindow);
+            match = belongsToLaterDay ? undefined : own;
+        } else {
+            match = findMatchingStatus(
                 extraction.statuses,
                 participation.trackingCode,
                 claimed,
                 notBefore,
             );
+        }
 
         if (!match) {
             // A day already validated keeps its result. Statuses expire after 24h,
