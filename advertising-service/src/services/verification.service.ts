@@ -208,12 +208,22 @@ export const applyExtraction = async (
 
         const notBefore = earliestAllowedPost(participation.days, day.day);
         const claimed = claimedFor(day.day);
-        const match = findMatchingStatus(
-            extraction.statuses,
-            participation.trackingCode,
-            claimed,
-            notBefore,
-        );
+        // Every day shares ONE tracking code, so days are told apart only by which
+        // status backs them. A day already VERIFIED must therefore refresh ONLY its
+        // own status (by id) — never re-match a different one. Without this, once
+        // day 1's status expired (24h), the re-verification let day 1 re-claim the
+        // newer day-2 post (the only status still carrying the code) and consume it,
+        // starving day 2: "6 statuts vus, aucun ne contient votre lien" while the
+        // day-2 post sat right there. An expired own-status simply yields no match,
+        // and the VERIFIED-day branch below keeps the day as already earned.
+        const match = (day.status === DayStatus.VERIFIED && day.statusMessageId)
+            ? extraction.statuses.find(s => s.statusMessageId === day.statusMessageId)
+            : findMatchingStatus(
+                extraction.statuses,
+                participation.trackingCode,
+                claimed,
+                notBefore,
+            );
 
         if (!match) {
             // A day already validated keeps its result. Statuses expire after 24h,
