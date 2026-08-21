@@ -225,7 +225,16 @@ export const applyExtraction = async (
             const own = extraction.statuses.find(s => s.statusMessageId === day.statusMessageId);
             const nextWindow = earliestAllowedPost(participation.days, day.day + 1);
             const belongsToLaterDay = Boolean(own?.postedAt && nextWindow && own.postedAt >= nextWindow);
-            match = belongsToLaterDay ? undefined : own;
+            if (belongsToLaterDay) {
+                // Drop the stale claim entirely, not just this run's consumption:
+                // claimedFor() reads days[].statusMessageId, so leaving it set would
+                // keep the later day blocked from the post that is really theirs. The
+                // day stays VERIFIED and earned — it just no longer owns that status.
+                day.statusMessageId = undefined;
+                match = undefined;
+            } else {
+                match = own;
+            }
         } else {
             match = findMatchingStatus(
                 extraction.statuses,
