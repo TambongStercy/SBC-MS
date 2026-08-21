@@ -250,6 +250,15 @@ export const applyExtraction = async (
         }
 
         if (!match) {
+            // TEMP DIAGNOSTIC: why did this day find no match?
+            if (day.status !== DayStatus.VERIFIED) {
+                const codeStatuses = extraction.statuses.filter(s => captionHasTrackingCode(s.caption, participation.trackingCode));
+                log.info(
+                    `  [${participation._id}] day ${day.day} NO MATCH: notBefore=${notBefore?.toISOString() ?? 'none'} `
+                    + `claimed=[${[...claimed].join(',')}] `
+                    + `codeStatuses=${codeStatuses.map(s => `${s.statusMessageId}(posted ${s.postedAt?.toISOString()},claimed=${claimed.has(s.statusMessageId)},afterNotBefore=${!notBefore || !s.postedAt || s.postedAt >= notBefore})`).join(' | ')}`,
+                );
+            }
             // A day already validated keeps its result. Statuses expire after 24h,
             // so a later re-verification legitimately finds nothing — downgrading
             // it here would take back a day the diffuseur had already earned.
