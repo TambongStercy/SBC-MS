@@ -149,9 +149,9 @@ export const applyExtraction = async (
     // extracted status so we can see whether a real day-2 post is present but
     // rejected, or genuinely absent from the sync.
     extraction.statuses.forEach((st, i) => log.info(
-        `  [${participation._id}] status[${i}] type=${st.mediaType} postedAt=${st.postedAt?.toISOString() ?? 'null'} `
+        `  [${participation._id}] status[${i}] id=${st.statusMessageId} type=${st.mediaType} postedAt=${st.postedAt?.toISOString() ?? 'null'} `
         + `hasCode=${captionHasTrackingCode(st.caption, participation.trackingCode)} `
-        + `caption=${JSON.stringify((st.caption ?? '').slice(0, 120))}`,
+        + `caption=${JSON.stringify((st.caption ?? '').slice(0, 60))}`,
     ));
 
     // A status can only ever back one day, here or on any other participation.
@@ -163,6 +163,11 @@ export const applyExtraction = async (
     const claimedByOthers = new Set<string>();
     for (const p of claimedElsewhere) {
         for (const d of p.days ?? []) if (d.statusMessageId) claimedByOthers.add(d.statusMessageId);
+    }
+    // TEMP DIAGNOSTIC: which OTHER participations already claimed any of these
+    // statuses (the claimedByOthers set that silently blocks a re-post).
+    if (claimedElsewhere.length) {
+        log.info(`  [${participation._id}] claimedByOthers ids: ${[...claimedByOthers].join(',')} (from ${claimedElsewhere.map(p => p._id).join(',')})`);
     }
 
     /**
