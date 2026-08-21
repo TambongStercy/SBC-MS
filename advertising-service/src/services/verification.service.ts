@@ -145,6 +145,14 @@ export const applyExtraction = async (
         `Participation ${participation._id}: extracted ${extraction.statuses.length} status(es), `
         + `${withCode} carrying tracking code ${participation.trackingCode}`,
     );
+    // TEMP DIAGNOSTIC (remove after the "no link" investigation): show each
+    // extracted status so we can see whether a real day-2 post is present but
+    // rejected, or genuinely absent from the sync.
+    extraction.statuses.forEach((st, i) => log.info(
+        `  [${participation._id}] status[${i}] type=${st.mediaType} postedAt=${st.postedAt?.toISOString() ?? 'null'} `
+        + `hasCode=${captionHasTrackingCode(st.caption, participation.trackingCode)} `
+        + `caption=${JSON.stringify((st.caption ?? '').slice(0, 120))}`,
+    ));
 
     // A status can only ever back one day, here or on any other participation.
     const claimedElsewhere = await CampaignParticipationModel.find({
