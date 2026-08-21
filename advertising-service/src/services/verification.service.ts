@@ -145,14 +145,6 @@ export const applyExtraction = async (
         `Participation ${participation._id}: extracted ${extraction.statuses.length} status(es), `
         + `${withCode} carrying tracking code ${participation.trackingCode}`,
     );
-    // TEMP DIAGNOSTIC (remove after the "no link" investigation): show each
-    // extracted status so we can see whether a real day-2 post is present but
-    // rejected, or genuinely absent from the sync.
-    extraction.statuses.forEach((st, i) => log.info(
-        `  [${participation._id}] status[${i}] id=${st.statusMessageId} type=${st.mediaType} postedAt=${st.postedAt?.toISOString() ?? 'null'} `
-        + `hasCode=${captionHasTrackingCode(st.caption, participation.trackingCode)} `
-        + `caption=${JSON.stringify((st.caption ?? '').slice(0, 60))}`,
-    ));
 
     // A status can only ever back one day, here or on any other participation.
     const claimedElsewhere = await CampaignParticipationModel.find({
@@ -163,11 +155,6 @@ export const applyExtraction = async (
     const claimedByOthers = new Set<string>();
     for (const p of claimedElsewhere) {
         for (const d of p.days ?? []) if (d.statusMessageId) claimedByOthers.add(d.statusMessageId);
-    }
-    // TEMP DIAGNOSTIC: which OTHER participations already claimed any of these
-    // statuses (the claimedByOthers set that silently blocks a re-post).
-    if (claimedElsewhere.length) {
-        log.info(`  [${participation._id}] claimedByOthers ids: ${[...claimedByOthers].join(',')} (from ${claimedElsewhere.map(p => p._id).join(',')})`);
     }
 
     /**
@@ -226,15 +213,23 @@ export const applyExtraction = async (
         // is permanently starved. Releasing it (the verified day stays earned) lets
         // the day it truly belongs to use it.
         let match: ExtractedStatus | undefined;
-        if (day.status === DayStatus.VERIFIED && day.statusMessageId) {
-            const own = extraction.statuses.find(s => s.statusMessageId === day.statusMessageId);
+        if (day.status === DayStatus.VERIFIED) {
+            // A VERIFIED day NEVER runs findMatchingStatus — it only ever refreshes
+            // its OWN status (by id). Letting it match by code again meant that once
+            // its own status expired (or its stored id was cleared), the day grabbed
+            // the newest code-carrying status — which is the NEXT day's post — and
+            // consumed it, starving that day ("aucun ne contient votre lien" with the
+            // valid post right there). A verified day with no live own-status simply
+            // stays earned and consumes nothing.
+            const own = day.statusMessageId
+                ? extraction.statuses.find(s => s.statusMessageId === day.statusMessageId)
+                : undefined;
             const nextWindow = earliestAllowedPost(participation.days, day.day + 1);
             const belongsToLaterDay = Boolean(own?.postedAt && nextWindow && own.postedAt >= nextWindow);
             if (belongsToLaterDay) {
-                // Drop the stale claim entirely, not just this run's consumption:
-                // claimedFor() reads days[].statusMessageId, so leaving it set would
-                // keep the later day blocked from the post that is really theirs. The
-                // day stays VERIFIED and earned — it just no longer owns that status.
+                // The owned status is really a later day's post — release it (clear
+                // the stored id too, since claimedFor() reads days[].statusMessageId)
+                // so that day can finally claim it. This day stays VERIFIED/earned.
                 day.statusMessageId = undefined;
                 match = undefined;
             } else {
@@ -250,15 +245,6 @@ export const applyExtraction = async (
         }
 
         if (!match) {
-            // TEMP DIAGNOSTIC: why did this day find no match?
-            if (day.status !== DayStatus.VERIFIED) {
-                const codeStatuses = extraction.statuses.filter(s => captionHasTrackingCode(s.caption, participation.trackingCode));
-                log.info(
-                    `  [${participation._id}] day ${day.day} NO MATCH: notBefore=${notBefore?.toISOString() ?? 'none'} `
-                    + `claimed=[${[...claimed].join(',')}] `
-                    + `codeStatuses=${codeStatuses.map(s => `${s.statusMessageId}(posted ${s.postedAt?.toISOString()},claimed=${claimed.has(s.statusMessageId)},afterNotBefore=${!notBefore || !s.postedAt || s.postedAt >= notBefore})`).join(' | ')}`,
-                );
-            }
             // A day already validated keeps its result. Statuses expire after 24h,
             // so a later re-verification legitimately finds nothing — downgrading
             // it here would take back a day the diffuseur had already earned.
