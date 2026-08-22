@@ -81,6 +81,13 @@ interface IConfig {
     campaign: {
         /** Days a diffuseur must post to complete a campaign. */
         durationDays: number;
+        /**
+         * Days for the recruitment test campaign only. Kept short (default 1) so a
+         * new diffuseur becomes available fast; real campaigns still use
+         * durationDays. Verification/completion iterate participation.days, so this
+         * is independent of durationDays and does not touch the rate array.
+         */
+        testDurationDays: number;
         /** Extra days after the run to catch up on missed days before forfeiting. */
         graceDays: number;
         /** Max concurrent campaigns per diffuseur per day (relaxed when all are busy). */
@@ -148,6 +155,7 @@ const config: IConfig = {
     },
     campaign: {
         durationDays: parseInt(process.env.CAMPAIGN_DURATION_DAYS || '3', 10),
+        testDurationDays: parseInt(process.env.TEST_CAMPAIGN_DURATION_DAYS || '1', 10),
         graceDays: parseInt(process.env.CAMPAIGN_GRACE_DAYS || '3', 10),
         maxCampaignsPerDiffuseurPerDay: parseInt(process.env.MAX_CAMPAIGNS_PER_DAY || '1', 10),
         minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '24', 10),
