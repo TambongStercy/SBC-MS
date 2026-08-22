@@ -13,7 +13,7 @@ const log = logger.getLogger('TestCampaignService');
 
 /** Day slots that can never earn anything, whatever gets verified against them. */
 const zeroRateDays = (): IDayProof[] =>
-    Array.from({ length: config.campaign.durationDays }, (_, i) => ({
+    Array.from({ length: config.campaign.testDurationDays }, (_, i) => ({
         day: i + 1,
         status: DayStatus.PENDING,
         viewCount: 0,
