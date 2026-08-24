@@ -608,7 +608,7 @@ export class FeexPayPayoutService {
      * }
      */
     public processWebhookNotification(payload: any): {
-        transactionId: string;
+        transactionId: string | null;
         feexpayReference: string;
         status: 'pending' | 'processing' | 'completed' | 'failed';
         amount: number;
@@ -626,9 +626,14 @@ export class FeexPayPayoutService {
             throw new AppError('FeexPay reference missing from webhook payload.', 400);
         }
 
+        // FeexPay's payout webhook does not reliably include callback_info (empirically
+        // absent since at least 2026-08-06, causing every payout webhook to 500 and
+        // FeexPay to retry indefinitely). The FeexPay reference is always present, and
+        // we store it as externalTransactionId at payout initiation, so the caller
+        // resolves the internal transaction by reference when callback_info is missing.
+        // Only the reference is guaranteed here; do NOT throw on a missing internal id.
         if (!internalTransactionId) {
-            log.error('Could not extract internal transaction ID from FeexPay webhook callback_info.', payload);
-            throw new AppError('Internal transaction ID missing from FeexPay webhook payload.', 400);
+            log.warn(`FeexPay payout webhook has no callback_info; caller will resolve by reference ${feexpayReference}.`);
         }
 
         log.info(`Processing FeexPay webhook: internal ID ${internalTransactionId}, FeexPay reference ${feexpayReference}, status ${payload.status}`);
