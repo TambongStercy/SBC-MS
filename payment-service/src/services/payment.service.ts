@@ -6354,11 +6354,30 @@ class PaymentService {
         const notification = feexPayPayoutService.processWebhookNotification(payload);
 
         const {
-            transactionId: internalTransactionId,
+            transactionId,
             feexpayReference,
             status: providerStatus, // This is our internal mapped status ('completed', 'failed', etc.)
             comment: providerMessage
         } = notification;
+
+        // FeexPay payout webhooks arrive without callback_info, so the internal id is
+        // usually absent. Resolve it from the FeexPay reference, which we store as
+        // externalTransactionId when the payout is initiated. Without this the webhook
+        // 500s, FeexPay retries forever, and a successful payout is never marked
+        // completed (the wallet is never debited under debit-on-success).
+        let internalTransactionId = transactionId;
+        if (!internalTransactionId && feexpayReference) {
+            const byRef = await transactionRepository.findByExternalTransactionId(feexpayReference);
+            if (byRef) {
+                internalTransactionId = byRef.transactionId;
+                log.info(`Resolved FeexPay payout webhook to tx ${internalTransactionId} by reference ${feexpayReference}.`);
+            }
+        }
+
+        if (!internalTransactionId) {
+            log.error(`FeexPay payout webhook: cannot resolve internal transaction (no callback_info; reference ${feexpayReference} not found).`);
+            throw new AppError('Internal transaction not found for FeexPay webhook.', 404);
+        }
 
         log.info(`Webhook details from service: internalTxId=${internalTransactionId}, feexpayRef=${feexpayReference}, status="${providerStatus}"`);
 
