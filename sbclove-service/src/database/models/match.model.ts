@@ -17,6 +17,11 @@ export interface IMatch extends Document {
     participants: IMatchParticipant[];
     contactUnlocked: boolean; // true once both participants chose WANTS_CONTACT
     contactUnlockedAt?: Date;
+    // Set the first time the pair opens their chat. Kept here so "how many
+    // matches turned into a conversation" is a local indexed count instead of a
+    // question every admin page load has to ask chat-service.
+    conversationId?: string;
+    chatOpenedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -42,6 +47,8 @@ const MatchSchema = new Schema<IMatch>(
         participants: { type: [MatchParticipantSchema], required: true },
         contactUnlocked: { type: Boolean, required: true, default: false },
         contactUnlockedAt: { type: Date },
+        conversationId: { type: String },
+        chatOpenedAt: { type: Date },
     },
     {
         timestamps: true,

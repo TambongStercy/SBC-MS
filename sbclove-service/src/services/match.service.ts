@@ -144,6 +144,13 @@ class MatchService {
             match.userB.toString(),
             matchId
         );
+
+        // Remember it once, on the first open. chat-service stays the source of
+        // truth for the conversation itself; this is the local record that the
+        // match became a conversation (and the admin counter reads it).
+        if (!match.conversationId) {
+            await matchRepository.setConversation(matchId, conversationId);
+        }
         return { conversationId };
     }
 

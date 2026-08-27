@@ -57,6 +57,14 @@ export class LoveProfileRepository {
         return LoveProfileModel.countDocuments(query).exec();
     }
 
+    /** Profile counts per status in a single grouped pass (admin dashboard). */
+    async countByStatus(): Promise<Record<string, number>> {
+        const rows = await LoveProfileModel.aggregate<{ _id: string; count: number }>([
+            { $group: { _id: '$status', count: { $sum: 1 } } },
+        ]).exec();
+        return Object.fromEntries(rows.map(r => [r._id, r.count]));
+    }
+
     async updateByUserId(userId: string | Types.ObjectId, data: Partial<ILoveProfile>): Promise<ILoveProfile | null> {
         return LoveProfileModel.findOneAndUpdate({ userId }, data, { new: true }).lean<ILoveProfile>().exec();
     }

@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import config from '../../config';
+import { TtlCache } from '../../utils/ttlCache';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('UserServiceClient');
@@ -16,7 +17,13 @@ export interface UserDetails {
     country?: string;
     avatar?: string;
     isVerified?: boolean;
+    createdAt?: string;    // SBC join date — shown as "Membre depuis" on a profile
 }
+
+// Hydration cache. Sized for the whole active member base of one session; the
+// TTL is what bounds staleness, the cap only bounds memory.
+const USER_CACHE_TTL_MS = 60 * 1000;
+const userCache = new TtlCache<UserDetails>(USER_CACHE_TTL_MS, 50_000);
 
 interface BatchUserDetailsResponse {
     success: boolean;
@@ -73,17 +80,36 @@ class UserServiceClient {
         if (!userIds || userIds.length === 0) {
             return [];
         }
-        log.info(`Requesting SBCLOVE user details for ${userIds.length} IDs from User Service.`);
+
+        // Demographics change about once a year; a minute of staleness is
+        // invisible. Only the ids we don't already hold go over the wire, so a
+        // popular profile is fetched once per replica per minute instead of once
+        // per viewer who scrolls past it.
+        const hits: UserDetails[] = [];
+        const misses: string[] = [];
+        for (const id of userIds) {
+            const cached = userCache.get(id);
+            if (cached) hits.push(cached);
+            else misses.push(id);
+        }
+        if (misses.length === 0) {
+            return hits;
+        }
+
+        log.debug(`SBCLOVE user details: ${hits.length} cached, ${misses.length} to fetch.`);
         try {
-            const response = await this.client.post<BatchUserDetailsResponse>('/users/internal/sbclove-details', { userIds });
+            const response = await this.client.post<BatchUserDetailsResponse>('/users/internal/sbclove-details', { userIds: misses });
             if (response.data?.success && Array.isArray(response.data.data)) {
-                return response.data.data;
+                for (const user of response.data.data) {
+                    userCache.set(user._id.toString(), user);
+                }
+                return [...hits, ...response.data.data];
             }
             log.warn('User Service sbclove-details responded with an unexpected shape.');
-            return [];
+            return hits;
         } catch (error: any) {
             log.error(`Failed SBCLOVE user fetch: ${error.message}`);
-            return [];
+            return hits;
         }
     }
 }

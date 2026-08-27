@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { moduleConfigRepository } from '../../database/repositories/module-config.repository';
 import { getWindowStatus } from '../../utils/sbcloveWindow';
+import config from '../../config';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('ModuleController');
@@ -20,6 +21,8 @@ interface StatusPayload {
     openHour: number;
     closeHour: number;
     nextOpenAt: Date | null;
+    minPhotos: number;
+    maxPhotos: number;
 }
 
 class ModuleController {
@@ -33,6 +36,11 @@ class ModuleController {
      */
     async getStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
+            // Same answer for every member, so it is cacheable by the browser
+            // as well as by this replica — that is what keeps a whole app's worth
+            // of clients from turning a 60s poll into constant traffic here.
+            res.set('Cache-Control', `public, max-age=${STATUS_TTL_MS / 1000}`);
+
             if (this.statusCache && this.statusCache.expiresAt > Date.now()) {
                 res.status(200).json({ success: true, data: this.statusCache.value });
                 return;
@@ -49,6 +57,8 @@ class ModuleController {
                 openHour: window.openHour,
                 closeHour: window.closeHour,
                 nextOpenAt: window.nextOpenAt,
+                minPhotos: config.sbclove.minPhotos,
+                maxPhotos: config.sbclove.maxPhotos,
             };
             this.statusCache = { value: payload, expiresAt: Date.now() + STATUS_TTL_MS };
             res.status(200).json({ success: true, data: payload });

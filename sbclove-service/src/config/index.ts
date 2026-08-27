@@ -58,6 +58,8 @@ interface IConfig {
         settingsService: string;
         apiGateway: string;
         chatService: string;
+        /** Public (browser-reachable) base for stored files — see settings.service.client. */
+        publicFileBaseUrl: string;
     };
     logging: {
         level: string;
@@ -73,7 +75,7 @@ interface IConfig {
         maxInterestsPerWeek: number;
         autoSuspendThreshold: number;
         autoApprove: boolean;
-        requirePhoto: boolean;
+        minPhotos: number;
         maxPhotos: number;
         descriptionMaxLength: number;
         otherIntentionMaxLength: number;
@@ -122,6 +124,8 @@ const config: IConfig = {
         settingsService: ensureApiSuffix(process.env.SETTINGS_SERVICE_URL, 'http://localhost:3007'),
         apiGateway: ensureApiSuffix(process.env.API_GATEWAY_URL, 'http://localhost:3000'),
         chatService: ensureApiSuffix(process.env.CHAT_SERVICE_URL, 'http://localhost:3008'),
+        // Same public bucket settings-service itself hands out URLs for.
+        publicFileBaseUrl: (process.env.PUBLIC_FILE_BASE_URL || 'https://storage.googleapis.com/sbc-file-storage').replace(/\/$/, ''),
     },
 
     logging: {
@@ -144,7 +148,11 @@ const config: IConfig = {
         autoApprove: (process.env.SBCLOVE_AUTO_APPROVE || 'false').toLowerCase() === 'true',
         // When false (e.g. environments without photo storage), profiles can be
         // approved without a photo. Default true keeps the production guard.
-        requirePhoto: (process.env.SBCLOVE_REQUIRE_PHOTO || 'true').toLowerCase() !== 'false',
+        // Two photos minimum, and the UI asks for a specific pair: a face shot
+        // and a full-body one. A count is all the server can enforce — no check
+        // can tell a portrait from a full body — so the pair is a UI contract
+        // and the admin's validation is what actually holds it (spec §8).
+        minPhotos: parseInt(process.env.SBCLOVE_MIN_PHOTOS || '2', 10),
         maxPhotos: parseInt(process.env.SBCLOVE_MAX_PHOTOS || '3', 10),
         descriptionMaxLength: parseInt(process.env.SBCLOVE_DESCRIPTION_MAX_LENGTH || '300', 10),
         otherIntentionMaxLength: parseInt(process.env.SBCLOVE_OTHER_INTENTION_MAX_LENGTH || '80', 10),
