@@ -21,6 +21,12 @@ router.use(adminLimiter); // Apply general admin limiter to all subsequent route
 // --- Dashboard Route ---
 router.get('/dashboard', adminController.getDashboardData as any); // GET /api/admin/dashboard
 
+// --- Leaderboard bonus (monthly, credited to the ACTIVATION balance) ---
+// Run/replay a month, or read what was paid. Both admin-only, like everything
+// below this point.
+router.post('/leaderboard-bonus/run', adminController.runLeaderboardBonus as any);
+router.get('/leaderboard-bonus', adminController.listLeaderboardBonuses as any);
+
 // --- User Management Routes ---
 router.get('/users', adminController.listUsers as any); // GET /api/admin/users
 router.get('/users/unpaid-initial', adminController.exportUnpaidInitialUsers as any); // Existing route

@@ -9,6 +9,7 @@ import config from './config';
 import apiRoutes from './api/routes/index';
 import logger from './utils/logger';
 import { vcfCacheScheduler } from './jobs/vcf-cache-scheduler';
+import { leaderboardBonusScheduler } from './jobs/leaderboard-bonus-scheduler';
 
 // Create Express server
 const app: Express = express();
@@ -85,6 +86,9 @@ async function startServer() {
         vcfCacheScheduler.start();
         logger.info('[Server] VCF cache scheduler started');
 
+        // Monthly leaderboard bonus payout (no-op unless LEADERBOARD_BONUS_ENABLED)
+        leaderboardBonusScheduler.start();
+
         // Build the first leaderboard snapshot now, so the first visitor after
         // a deploy is not the one who pays for the cold aggregation.
         // Non-blocking: boot must not wait on it, and a failure must not stop
@@ -102,6 +106,7 @@ async function startServer() {
             logger.info('[Server] Shutting down gracefully...');
             vcfCacheScheduler.stop();
             logger.info('[Server] VCF cache scheduler stopped');
+            leaderboardBonusScheduler.stop();
             process.exit(0);
         };
 

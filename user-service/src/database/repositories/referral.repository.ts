@@ -2140,6 +2140,38 @@ export class ReferralRepository {
         /** Optional ISO-2 country filter (admin view). */
         country?: string
     ): Promise<LeaderboardSnapshot> {
+        const eligible = await this.getMonthlyEligibleReferrers(monthStart, monthEnd, country);
+        return this.hydrateLeaderboard(eligible, limit);
+    }
+
+    /**
+     * Everyone who qualifies for a bonus tier this month, in one pass.
+     *
+     * The monthly bonus MUST be computed from exactly what the board ranks —
+     * same window, same "a sale is a paid filleul" definition, same exclusions —
+     * or a member could see a badge they are never paid for. Hence the shared
+     * `getMonthlyEligibleReferrers` rather than a second, drifting query.
+     */
+    async getMonthlyQualifiers(
+        minSales: number,
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart),
+    ): Promise<{ userId: string; salesCount: number }[]> {
+        const eligible = await this.getMonthlyEligibleReferrers(monthStart, monthEnd);
+        return eligible
+            .filter((e) => e.referralCount >= minSales)
+            .map((e) => ({ userId: e._id.toString(), salesCount: e.referralCount }));
+    }
+
+    /**
+     * Referrers ranked by paid direct filleuls in the window, minus deleted,
+     * blocked and unsubscribed accounts. Sorted, not hydrated.
+     */
+    private async getMonthlyEligibleReferrers(
+        monthStart: Date,
+        monthEnd: Date,
+        country?: string,
+    ): Promise<{ _id: Types.ObjectId; referralCount: number }[]> {
         // Pass 0 — who PAID this month. A CLASSIQUE/CIBLE Subscription created
         // in the window is the canonical "filleul activated" event. distinct
         // over `user` collapses the rare case of an upgrade that spawned a new
@@ -2148,7 +2180,7 @@ export class ReferralRepository {
             subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
             createdAt: { $gte: monthStart, $lt: monthEnd },
         });
-        if (paidUserIds.length === 0) return { top: [], counts: [] };
+        if (paidUserIds.length === 0) return [];
 
         // Pass 1 — group direct referrals per referrer over the paid set.
         //
@@ -2217,6 +2249,14 @@ export class ReferralRepository {
             return inCountry ? inCountry.has(id) : true;
         });
 
+        return eligible;
+    }
+
+    /** Turns the eligible list into the public board (top N + rank distribution). */
+    private async hydrateLeaderboard(
+        eligible: { _id: Types.ObjectId; referralCount: number }[],
+        limit: number,
+    ): Promise<LeaderboardSnapshot> {
         // `counts` backs "your rank" without a per-user aggregation.
         const counts = eligible.map((g) => g.referralCount);
 
