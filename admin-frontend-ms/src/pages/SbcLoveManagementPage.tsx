@@ -252,7 +252,17 @@ function ProfilesTab() {
                                             <button onClick={() => setReviewing(p)} className="px-2 py-1 text-xs bg-pink-700 hover:bg-pink-600 text-white rounded">Examiner</button>
                                             {p.status === ProfileStatus.PENDING && (
                                                 <>
-                                                    <button onClick={() => handleApprove(p)} className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">Approuver</button>
+                                                    {/* Disabled below the photo minimum, like the review modal:
+                                                        the server refuses it with a 400, so offering the click
+                                                        only buys the admin an error toast. */}
+                                                    <button
+                                                        onClick={() => handleApprove(p)}
+                                                        disabled={!p.meetsPhotoRequirement}
+                                                        title={!p.meetsPhotoRequirement ? `${p.minPhotos} photos minimum` : undefined}
+                                                        className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                        Approuver
+                                                    </button>
                                                     <button onClick={() => openReject(p)} className="px-2 py-1 text-xs bg-red-700 hover:bg-red-600 text-white rounded">Rejeter</button>
                                                 </>
                                             )}
@@ -263,7 +273,14 @@ function ProfilesTab() {
                                                 <button onClick={() => handleSuspend(p)} className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded">Réintégrer</button>
                                             )}
                                             {p.status === ProfileStatus.REJECTED && (
-                                                <button onClick={() => handleApprove(p)} className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">Approuver</button>
+                                                <button
+                                                    onClick={() => handleApprove(p)}
+                                                    disabled={!p.meetsPhotoRequirement}
+                                                    title={!p.meetsPhotoRequirement ? `${p.minPhotos} photos minimum` : undefined}
+                                                    className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    Approuver
+                                                </button>
                                             )}
                                         </div>
                                     </td>
@@ -553,8 +570,21 @@ function ReportsTab() {
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
                             {reports.map(r => (
                                 <tr key={r._id} className="hover:bg-gray-750">
-                                    <td className="px-4 py-3 text-xs text-gray-400 font-mono">{r.reporterId}</td>
-                                    <td className="px-4 py-3 text-xs text-gray-400 font-mono">{r.reportedUserId}</td>
+                                    {/* Names, not ObjectIds: a moderator has to know who
+                                        reported whom before deciding anything. */}
+                                    <td className="px-4 py-3 text-sm">
+                                        <p className="text-gray-200">{r.reporter?.displayName ?? '—'}</p>
+                                        <p className="text-xs text-gray-500">{r.reporter?.email ?? r.reporterId}</p>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                        <p className="text-gray-200">{r.reported?.displayName ?? '—'}</p>
+                                        <p className="text-xs text-gray-500">
+                                            {r.reported?.email ?? r.reportedUserId}
+                                            {typeof r.reported?.reportCount === 'number' && r.reported.reportCount > 0 && (
+                                                <span className="ml-2 text-yellow-400">{r.reported.reportCount} signalement(s)</span>
+                                            )}
+                                        </p>
+                                    </td>
                                     <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">{r.reason}</td>
                                     <td className="px-4 py-3"><span className={statusBadge(r.status)}>{r.status}</span></td>
                                     <td className="px-4 py-3 text-sm text-gray-400">{new Date(r.createdAt).toLocaleDateString('fr-FR')}</td>

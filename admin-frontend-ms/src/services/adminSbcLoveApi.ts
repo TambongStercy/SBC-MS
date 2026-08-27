@@ -66,11 +66,23 @@ export interface LoveProfile {
     updatedAt: string;
 }
 
+/** Both sides of a report, resolved server-side so the queue names people. */
+export interface ReportParty {
+    userId: string;
+    displayName: string;
+    email?: string;
+    profileId?: string;
+    profileStatus?: ProfileStatus;
+    reportCount: number;
+}
+
 export interface Report {
     _id: string;
     reporterId: string;
     reportedUserId: string;
     reportedProfileId: string;
+    reporter?: ReportParty;
+    reported?: ReportParty;
     reason: string;
     status: ReportStatus;
     reviewedBy?: string;

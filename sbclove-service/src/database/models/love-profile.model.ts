@@ -104,7 +104,9 @@ const LoveProfileSchema = new Schema<ILoveProfile>(
 // member hits it repeatedly inside the 3-hour session. This compound index
 // serves the filter AND the sort, so the deck is an index walk of `limit`
 // documents rather than a sort of every approved profile.
-LoveProfileSchema.index({ status: 1, sex: 1, createdAt: -1 });
+// `_id` closes the index over the default sort, so paging stays an index walk
+// even though the sort now carries a tiebreaker (see the repository's find()).
+LoveProfileSchema.index({ status: 1, sex: 1, createdAt: -1, _id: -1 });
 
 const LoveProfileModel = mongoose.model<ILoveProfile>('LoveProfile', LoveProfileSchema);
 

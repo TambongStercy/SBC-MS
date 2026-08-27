@@ -244,12 +244,52 @@ class AdminService {
         });
     }
 
+    /**
+     * Reports for the moderation queue, hydrated.
+     *
+     * The raw rows carry nothing but ObjectIds — an admin cannot judge "user
+     * 6848a4… reported 6a904d…". Both sides are resolved (one batch call, from
+     * the cached hydration) so the queue names the people involved.
+     */
     async listReports(status: ReportStatus | undefined, limit: number, skip: number) {
         const query = status ? { status } : {};
-        const [items, total] = await Promise.all([
+        const [reports, total] = await Promise.all([
             reportRepository.find(query, limit, skip),
             reportRepository.count(query),
         ]);
+        if (reports.length === 0) return { items: [], total };
+
+        const ids = new Set<string>();
+        for (const r of reports) {
+            ids.add(r.reporterId.toString());
+            ids.add(r.reportedUserId.toString());
+        }
+        const [users, profiles] = await Promise.all([
+            userServiceClient.getUsersByIds([...ids]),
+            loveProfileRepository.findByUserIds([...ids]),
+        ]);
+        const userMap = new Map(users.map(u => [u._id.toString(), u]));
+        const profileMap = new Map(profiles.map(p => [p.userId.toString(), p]));
+
+        const label = (userId: string) => {
+            const profile = profileMap.get(userId);
+            const user = userMap.get(userId);
+            return {
+                userId,
+                displayName: profile?.displayName || user?.name || 'Membre SBC',
+                email: user?.email,
+                profileId: profile?._id?.toString(),
+                profileStatus: profile?.status,
+                reportCount: profile?.moderation?.reportCount ?? 0,
+            };
+        };
+
+        const items = reports.map(r => ({
+            ...r,
+            reporter: label(r.reporterId.toString()),
+            reported: label(r.reportedUserId.toString()),
+        }));
+
         return { items, total };
     }
 
