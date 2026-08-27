@@ -1,4 +1,10 @@
-import { referralRepository, LeaderboardEntry } from '../database/repositories/referral.repository';
+import {
+    referralRepository,
+    LeaderboardEntry,
+    LeaderboardSnapshot,
+    startOfCurrentMonthDouala,
+    startOfNextMonthDouala,
+} from '../database/repositories/referral.repository';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('LeaderboardService');
@@ -7,8 +13,8 @@ const TTL_MS = 60 * 60 * 1000;        // the UI states "mis à jour chaque heure
 const STALE_MAX_MS = 6 * 60 * 60 * 1000;
 const TOP_N = 10;
 
-let cache: { data: LeaderboardEntry[]; at: number } | null = null;
-let inFlight: Promise<LeaderboardEntry[]> | null = null;
+let cache: { data: LeaderboardSnapshot; at: number } | null = null;
+let inFlight: Promise<LeaderboardSnapshot> | null = null;
 
 /**
  * Recompute, with single-flight.
@@ -19,7 +25,7 @@ let inFlight: Promise<LeaderboardEntry[]> | null = null;
  * means N concurrent full index scans — the cache turns into a thundering herd
  * exactly when the site is busiest. Callers now share one promise.
  */
-function refresh(): Promise<LeaderboardEntry[]> {
+function refresh(): Promise<LeaderboardSnapshot> {
   if (inFlight) return inFlight;
 
   const started = Date.now();
@@ -27,7 +33,7 @@ function refresh(): Promise<LeaderboardEntry[]> {
     .getMonthlyAffiliateLeaderboard(TOP_N)
     .then((data) => {
       cache = { data, at: Date.now() };
-      log.info(`Leaderboard recomputed: ${data.length} entries in ${Date.now() - started}ms`);
+      log.info(`Leaderboard recomputed in ${Date.now() - started}ms`);
       return data;
     })
     .finally(() => {
@@ -53,7 +59,7 @@ function refresh(): Promise<LeaderboardEntry[]> {
  * on every run, so the first rebuild after midnight on the 1st matches an empty
  * range. Nothing is materialised, so nothing needs resetting.
  */
-export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+async function getSnapshot(): Promise<LeaderboardSnapshot> {
   const age = cache ? Date.now() - cache.at : Infinity;
 
   if (cache && age < TTL_MS) return cache.data;
@@ -75,6 +81,102 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
 export function warmLeaderboard(): void {
   refresh().catch((err) => log.warn(`Leaderboard warm-up failed: ${err?.message}`));
 }
+
+/** The shared top-N board. */
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+    return (await getSnapshot()).top;
+}
+
+export interface MyRank {
+    rank: number;
+    referralCount: number;
+    /** How many referrers have a direct-referral count this month. */
+    totalRanked: number;
+    /** True when the caller already appears in the top N. */
+    inTop: boolean;
+}
+
+/**
+ * The caller's own standing.
+ *
+ * Derived from the cached count distribution rather than a per-user
+ * aggregation: re-running the group for every visitor is what would have made
+ * "your rank" too expensive to ship. Here it is one indexed countDocuments plus
+ * a scan of an in-memory number array.
+ *
+ * Ties share a rank — two people on 12 referrals are both 5th, matching how the
+ * board itself sorts.
+ */
+export async function getMyRank(userId: string, topN: number = TOP_N): Promise<MyRank> {
+    const [snapshot, referralCount] = await Promise.all([
+        getSnapshot(),
+        referralRepository.countMonthlyDirectReferrals(userId),
+    ]);
+    const rank = referralCount === 0
+        ? snapshot.counts.length + 1
+        : snapshot.counts.filter((c: number) => c > referralCount).length + 1;
+    return {
+        rank,
+        referralCount,
+        totalRanked: snapshot.counts.length,
+        inTop: rank <= topN && referralCount > 0,
+    };
+}
+
+/**
+ * Admin-only: the board for an arbitrary month, uncached.
+ *
+ * Deliberately not cached — it is an admin lookup over an arbitrary window, so
+ * caching it would mean an unbounded number of snapshots for a handful of
+ * requests.
+ */
+export async function getLeaderboardForMonth(
+    monthStart: Date,
+    limit: number = TOP_N,
+    country?: string,
+): Promise<LeaderboardEntry[]> {
+    const snapshot = await referralRepository.getMonthlyAffiliateLeaderboard(
+        limit,
+        monthStart,
+        startOfNextMonthDouala(monthStart),
+        country,
+    );
+    return snapshot.top;
+}
+
+/**
+ * Admin-only: the top N for EVERY country that has a ranked affiliate in the
+ * month, keyed by country code.
+ *
+ * Built from one snapshot rather than one query per country: the full eligible
+ * list is already computed, so the per-country boards are a grouping of it.
+ */
+export async function getLeaderboardByCountry(
+    monthStart: Date,
+    limit: number = TOP_N,
+): Promise<Record<string, LeaderboardEntry[]>> {
+    const all = await referralRepository.getMonthlyAffiliateLeaderboard(
+        // Hydrate deep enough that each country can fill its own top N.
+        // ponytail: 1000 rows covers a realistic member base; raise it if a
+        // country is ever truncated at exactly `limit`.
+        1000,
+        monthStart,
+        startOfNextMonthDouala(monthStart),
+    );
+    const byCountry: Record<string, LeaderboardEntry[]> = {};
+    for (const entry of all.top) {
+        const key = (entry.country || 'INCONNU').toUpperCase();
+        const bucket = (byCountry[key] ??= []);
+        if (bucket.length < limit) {
+            // Re-rank within the country: global ranks would read as gaps.
+            bucket.push({ ...entry, rank: bucket.length + 1 });
+        }
+    }
+    return byCountry;
+}
+
+/** Start of the current month, for callers that need the default window. */
+export { startOfCurrentMonthDouala };
 
 /** Drop the cached snapshot. Used by tests and the seed script. */
 export function invalidateLeaderboardCache(): void {

@@ -149,6 +149,8 @@ router.get('/get-referals', requireActiveSubscription as any, (req, res) => user
 // below, or Express matches this as userId === 'leaderboard' and it 404s with
 // a confusing "user not found".
 router.get('/leaderboard', requireActiveSubscription as any, (req, res) => userController.getLeaderboard(req as AuthenticatedRequest, res));
+// Admin-only past-month board. Registered above '/:userId' like its sibling.
+router.get('/admin/leaderboard', authorize([UserRole.ADMIN]) as any, (req, res) => userController.getLeaderboardForMonthAdmin(req as AuthenticatedRequest, res));
 router.get('/get-products', requireActiveSubscription as any, (req, res) => userController.getUserProducts(req as AuthenticatedRequest, res));
 router.get('/get-product', requireActiveSubscription as any, (req, res) => userController.getUserProduct(req as AuthenticatedRequest, res));
 

@@ -57,7 +57,7 @@ const PER = Number(process.argv[3] || 20);
   const times: number[] = [];
   for (let i = 0; i < 5; i++) {
     const t = Date.now();
-    const rows = await referralRepository.getMonthlyAffiliateLeaderboard(10);
+    const { top: rows } = await referralRepository.getMonthlyAffiliateLeaderboard(10);
     const ms = Date.now() - t;
     times.push(ms);
     if (i === 0) console.log(`  top3: ${rows.slice(0, 3).map(r => `${r.name}=${r.referralCount}`).join(', ')}`);

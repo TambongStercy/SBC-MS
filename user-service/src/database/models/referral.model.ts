@@ -67,9 +67,13 @@ ReferralSchema.index({ referrer: 1, referralLevel: 1, archived: 1 });
 
 // Global, month-scoped leaderboard scan ("Classement Général"). Every other
 // index here leads with `referrer`, so a { createdAt: { $gte } } query across
-// all referrers would be a COLLSCAN. Equality field first, then the range,
-// then the group key and the level the earnings sum reads.
-ReferralSchema.index({ archived: 1, createdAt: -1, referrer: 1, referralLevel: 1 });
+// all referrers would be a COLLSCAN.
+//
+// Field order follows ESR: the two EQUALITY predicates first (archived and
+// referralLevel — the board ranks direct referrals only), then the RANGE on
+// createdAt, then the group key. Putting createdAt ahead of referralLevel
+// would force the range to be walked before the level could be filtered.
+ReferralSchema.index({ archived: 1, referralLevel: 1, createdAt: -1, referrer: 1 });
 
 // Compound indexes for fast search by referrer + searchable fields
 ReferralSchema.index({ referrer: 1, referredUserName: 1 });

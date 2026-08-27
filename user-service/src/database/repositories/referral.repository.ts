@@ -107,10 +107,8 @@ export interface LeaderboardEntry {
     avatarId?: string;
     country?: string;
     city?: string;
+    /** Direct (level-1) referrals inside the month window. */
     referralCount: number;
-    level1: number;
-    level2: number;
-    level3: number;
     /** Estimated FCFA earned from this month's referrals. See LEVEL_EARNINGS_XAF. */
     earnings: number;
     rank: number;
@@ -129,11 +127,32 @@ export interface LeaderboardEntry {
 export const LEVEL_EARNINGS_XAF: Record<number, number> = { 1: 1000, 2: 500, 3: 250 };
 
 /**
+ * One aggregation produces both halves of the board.
+ *
+ * `counts` is every referrer's direct-referral total for the month, sorted
+ * descending — just the numbers, no ids. It exists so a caller's own rank can
+ * be derived in memory instead of re-running the aggregation per user, which
+ * would destroy the single shared cache. At 40k referrers it is ~320KB.
+ */
+export interface LeaderboardSnapshot {
+    top: LeaderboardEntry[];
+    counts: number[];
+}
+
+/**
  * Start of the current month in Africa/Douala (UTC+1, no DST).
  *
  * Pinned deliberately: inheriting the container's TZ would roll the board over
  * an hour early or late depending on the deploy environment.
  */
+/** Start of the month AFTER the given month start, in Africa/Douala. */
+export function startOfNextMonthDouala(monthStart: Date): Date {
+    const DOUALA_OFFSET_MS = 60 * 60 * 1000;
+    const local = new Date(monthStart.getTime() + DOUALA_OFFSET_MS);
+    const next = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 1, 0, 0, 0, 0);
+    return new Date(next - DOUALA_OFFSET_MS);
+}
+
 export function startOfCurrentMonthDouala(now: Date = new Date()): Date {
     // Shift into Douala local time, truncate to the 1st, then shift back to UTC.
     const DOUALA_OFFSET_MS = 60 * 60 * 1000;
@@ -2062,6 +2081,26 @@ export class ReferralRepository {
     }
 
     /**
+     * How many DIRECT referrals a user brought inside the month window.
+     *
+     * Served by the existing { referrer, referralLevel, archived } index, so
+     * this is a cheap per-user lookup — which is what makes deriving "your
+     * rank" affordable without re-running the board aggregation.
+     */
+    async countMonthlyDirectReferrals(
+        userId: string | Types.ObjectId,
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart)
+    ): Promise<number> {
+        return ReferralModel.countDocuments({
+            referrer: new Types.ObjectId(userId.toString()),
+            referralLevel: 1,
+            archived: { $ne: true },
+            createdAt: { $gte: monthStart, $lt: monthEnd },
+        });
+    }
+
+    /**
      * Top affiliates for the current month, counting referrals across ALL
      * levels (1 + 2 + 3).
      *
@@ -2076,106 +2115,115 @@ export class ReferralRepository {
      */
     async getMonthlyAffiliateLeaderboard(
         limit: number = 10,
-        monthStart: Date = startOfCurrentMonthDouala()
-    ): Promise<LeaderboardEntry[]> {
-        // Over-fetch: the user and subscription filters below can drop candidates.
-        const candidateLimit = Math.max(limit * 3, limit);
-
-        const pipeline: PipelineStage[] = [
-            // No $lt bound — "this month" means "since the 1st", and a one-sided
-            // range keeps the index scan one-sided too.
-            { $match: { archived: { $ne: true }, createdAt: { $gte: monthStart } } },
-            {
-                $group: {
-                    _id: '$referrer',
-                    referralCount: { $sum: 1 },
-                    level1: { $sum: { $cond: [{ $eq: ['$referralLevel', 1] }, 1, 0] } },
-                    level2: { $sum: { $cond: [{ $eq: ['$referralLevel', 2] }, 1, 0] } },
-                    level3: { $sum: { $cond: [{ $eq: ['$referralLevel', 3] }, 1, 0] } },
-                },
-            },
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart),
+        /** Optional ISO-2 country filter (admin view). */
+        country?: string
+    ): Promise<LeaderboardSnapshot> {
+        // Pass 1 — group direct referrals per referrer for the window.
+        //
+        // No $lookup here on purpose. Joining users to drop deleted/blocked
+        // accounts inside the pipeline means one indexed join per REFERRER, and
+        // at 40k referrers that measured 3.4s against 674ms without it (7.4s if
+        // the subscription join is hoisted too). The exclusions are applied
+        // below instead, against a small pre-fetched id set.
+        const grouped = await ReferralModel.aggregate<{ _id: Types.ObjectId; referralCount: number }>([
+            { $match: { archived: { $ne: true }, referralLevel: 1, createdAt: { $gte: monthStart, $lt: monthEnd } } },
+            { $group: { _id: '$referrer', referralCount: { $sum: 1 } } },
             // The _id tiebreak makes the ranking deterministic across cache
             // refreshes; without it, equal-count users shuffle every hour.
             { $sort: { referralCount: -1, _id: 1 } },
-            { $limit: candidateLimit },
-            {
-                $lookup: {
-                    from: UserModel.collection.name,
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'user',
-                    pipeline: [
-                        { $project: { name: 1, avatar: 1, avatarId: 1, country: 1, city: 1, deleted: 1, blocked: 1 } },
-                    ],
-                },
-            },
-            // No preserveNullAndEmptyArrays: a referral pointing at a user that
-            // no longer exists is garbage and should vanish.
-            { $unwind: '$user' },
-            // A soft-deleted or blocked account must never appear. Surfacing the
-            // name of someone who asked to be removed is a real leak.
-            { $match: { 'user.deleted': { $ne: true }, 'user.blocked': { $ne: true } } },
-            // The board ranks *subscribers*. Done after $limit so this is ~30
-            // lookups rather than one per referrer in the collection.
-            {
-                $lookup: {
-                    from: SubscriptionModel.collection.name,
-                    let: { uid: '$_id' },
-                    as: 'activeSub',
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: { $eq: ['$user', '$$uid'] },
-                                status: SubscriptionStatus.ACTIVE,
-                                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
-                                endDate: { $gt: new Date() },
-                            },
-                        },
-                        { $limit: 1 },
-                        { $project: { _id: 1 } },
-                    ],
-                },
-            },
-            { $match: { 'activeSub.0': { $exists: true } } },
-            {
-                $addFields: {
-                    earnings: {
-                        $add: [
-                            { $multiply: ['$level1', LEVEL_EARNINGS_XAF[1]] },
-                            { $multiply: ['$level2', LEVEL_EARNINGS_XAF[2]] },
-                            { $multiply: ['$level3', LEVEL_EARNINGS_XAF[3]] },
-                        ],
-                    },
-                },
-            },
-            { $limit: limit },
-            {
-                $project: {
-                    _id: 0,
-                    userId: { $toString: '$_id' },
-                    name: '$user.name',
-                    avatar: '$user.avatar',
-                    avatarId: '$user.avatarId',
-                    country: '$user.country',
-                    city: '$user.city',
-                    referralCount: 1,
-                    level1: 1,
-                    level2: 1,
-                    level3: 1,
-                    earnings: 1,
-                },
-            },
-        ];
-
-        // allowDiskUse: the $group fans out to one bucket per referrer, so the
-        // working set grows with the member count rather than with TOP_N.
-        // maxTimeMS: bound it — a leaderboard is never worth holding a
-        // connection open for half a minute.
-        const rows = await ReferralModel.aggregate<Omit<LeaderboardEntry, 'rank'>>(pipeline)
+        ])
             .allowDiskUse(true)
             .option({ maxTimeMS: 20_000 });
-        // Rank in JS: cheaper and clearer than $setWindowFields for 10 rows.
-        return rows.map((row, i) => ({ ...row, rank: i + 1 }));
+
+        // Pass 2 — drop removed accounts. A soft-deleted or blocked user must
+        // never be shown OR counted in someone else's rank. This set is small
+        // and the query is index-backed on `deleted`.
+        // TWO queries, not one $or. user.model.ts has a pre('find') hook that
+        // appends `deleted: { $ne: true }` unless the query carries a TOP-LEVEL
+        // `deleted: true`. Inside an $or that condition is invisible to the
+        // hook, so `$or: [{deleted:true},{blocked:true}]` silently returns only
+        // the blocked users and soft-deleted accounts leak back into the board.
+        const [deletedUsers, blockedUsers] = await Promise.all([
+            UserModel.find({ deleted: true }, { _id: 1 }).lean(),
+            UserModel.find({ blocked: true }, { _id: 1 }).lean(),
+        ]);
+        const excludedIds = new Set(
+            [...deletedUsers, ...blockedUsers].map((u) => u._id.toString())
+        );
+
+        // The board ranks *subscribers*, so non-subscribers must be excluded
+        // from `counts` too — otherwise a caller's rank counts people who are
+        // not on the board. Fetched as ONE index-backed query over active
+        // subscriptions rather than a $in against every referrer or a per-row
+        // $lookup, both of which were measured far slower.
+        const now = new Date();
+        const activeSubs = await SubscriptionModel.find(
+            {
+                status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                endDate: { $gt: now },
+            },
+            { user: 1 }
+        ).lean();
+        const subscribed = new Set(activeSubs.map((x) => x.user.toString()));
+
+        // Optional country restriction (admin). Same set-based shape as the
+        // exclusions above: one indexed query on `country`, then an in-memory
+        // filter — rather than joining users for every referrer.
+        let inCountry: Set<string> | null = null;
+        if (country) {
+            const locals = await UserModel.find(
+                { country: new RegExp(`^${country.replace(/[^A-Za-z]/g, '')}$`, 'i') },
+                { _id: 1 }
+            ).lean();
+            inCountry = new Set(locals.map((u) => u._id.toString()));
+        }
+
+        const eligible = grouped.filter((g) => {
+            const id = g._id.toString();
+            if (excludedIds.has(id) || !subscribed.has(id)) return false;
+            return inCountry ? inCountry.has(id) : true;
+        });
+
+        // `counts` backs "your rank" without a per-user aggregation.
+        const counts = eligible.map((g) => g.referralCount);
+
+        // Pass 3 — hydrate only the head of the list. `eligible` is already
+        // filtered, so exactly `limit` rows are needed.
+        const candidates = eligible.slice(0, limit);
+        if (candidates.length === 0) return { top: [], counts };
+
+        const candidateIds = candidates.map((c) => c._id);
+        const users = await UserModel.find(
+            { _id: { $in: candidateIds } },
+            { name: 1, avatar: 1, avatarId: 1, country: 1, city: 1 }
+        ).lean();
+        const userById = new Map(users.map((u) => [u._id.toString(), u]));
+
+        const top: LeaderboardEntry[] = [];
+        for (const c of candidates) {
+            if (top.length >= limit) break;
+            const id = c._id.toString();
+            const u = userById.get(id);
+            // A referral row pointing at a user that no longer exists is garbage.
+            if (!u) continue;
+            top.push({
+                userId: id,
+                name: (u as { name?: string }).name ?? '',
+                avatar: (u as { avatar?: string }).avatar,
+                avatarId: (u as { avatarId?: string }).avatarId,
+                country: (u as { country?: string }).country,
+                city: (u as { city?: string }).city,
+                referralCount: c.referralCount,
+                // Earnings track what the board counts: direct commission only.
+                earnings: c.referralCount * LEVEL_EARNINGS_XAF[1],
+                rank: top.length + 1,
+            });
+        }
+
+        return { top, counts };
     }
 }
 

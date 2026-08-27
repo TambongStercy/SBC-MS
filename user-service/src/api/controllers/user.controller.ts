@@ -16,7 +16,13 @@ import { notificationService, DeliveryChannel } from '../../services/clients/not
 import config from '../../config';
 import axios from 'axios';
 import { userRepository } from '../../database/repositories/user.repository';
-import { getLeaderboard as getLeaderboardData } from '../../services/leaderboard.service';
+import {
+    getLeaderboard as getLeaderboardData,
+    getMyRank,
+    getLeaderboardForMonth,
+    getLeaderboardByCountry,
+} from '../../services/leaderboard.service';
+import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 
 const log = logger.getLogger('UserController');
 
@@ -2853,16 +2859,66 @@ export class UserController {
      *
      * @route GET /api/users/leaderboard
      */
-    async getLeaderboard(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    async getLeaderboard(req: AuthenticatedRequest, res: Response): Promise<void> {
         try {
-            const data = await getLeaderboardData();
+            const [top, me] = await Promise.all([
+                getLeaderboardData(),
+                req.user?.userId ? getMyRank(req.user.userId) : Promise.resolve(null),
+            ]);
             res.status(200).json({
                 success: true,
-                data,
+                // `top` stays the shared cached array; `me` is the caller's own
+                // standing, derived from the same snapshot.
+                data: { top, me },
                 message: 'Leaderboard retrieved successfully'
             });
         } catch (error: any) {
             log.error("Error in getLeaderboard", error);
+            res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        }
+    }
+
+    /**
+     * Admin-only: the board for a past month.
+     *
+     *   GET /api/users/admin/leaderboard?month=YYYY-MM
+     *   GET /api/users/admin/leaderboard?month=YYYY-MM&country=CM
+     *   GET /api/users/admin/leaderboard?month=YYYY-MM&groupBy=country
+     */
+    async getLeaderboardForMonthAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const raw = String(req.query.month ?? '');
+            const m = /^(\d{4})-(\d{2})$/.exec(raw);
+            if (!m) {
+                res.status(400).json({ success: false, message: 'month must be YYYY-MM' });
+                return;
+            }
+            const year = Number(m[1]);
+            const month = Number(m[2]);
+            if (month < 1 || month > 12) {
+                res.status(400).json({ success: false, message: 'month must be between 01 and 12' });
+                return;
+            }
+            // Build the window from a mid-month instant so the Douala offset
+            // cannot tip it into a neighbouring month.
+            const monthStart = startOfCurrentMonthDouala(new Date(Date.UTC(year, month - 1, 15, 12)));
+
+            const country = typeof req.query.country === 'string' ? req.query.country.trim() : '';
+            const groupByCountry = String(req.query.groupBy ?? '') === 'country';
+
+            // Three shapes: one country's board, every country's board, or global.
+            const data = groupByCountry
+                ? await getLeaderboardByCountry(monthStart)
+                : await getLeaderboardForMonth(monthStart, 10, country || undefined);
+
+            res.status(200).json({
+                success: true,
+                data,
+                meta: { month: raw, country: country || null, groupedByCountry: groupByCountry },
+                message: 'Leaderboard retrieved successfully'
+            });
+        } catch (error: any) {
+            log.error("Error in getLeaderboardForMonthAdmin", error);
             res.status(500).json({ success: false, message: error.message || 'Internal server error' });
         }
     }
