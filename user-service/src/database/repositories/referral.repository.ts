@@ -96,6 +96,51 @@ export interface ReferralStatsResponse {
     monthlyData: MonthlyReferralData[];
 }
 
+/**
+ * One row of the monthly affiliate leaderboard ("Classement Général").
+ */
+export interface LeaderboardEntry {
+    userId: string;
+    name: string;
+    avatar?: string;
+    avatarId?: string;
+    country?: string;
+    city?: string;
+    referralCount: number;
+    level1: number;
+    level2: number;
+    level3: number;
+    /** Estimated FCFA earned from this month's referrals. See LEVEL_EARNINGS_XAF. */
+    earnings: number;
+    rank: number;
+}
+
+/**
+ * FCFA earned per referral, by level. Derived from the real constants in
+ * subscription.service.ts: the CLASSIQUE registration base is 2000 XAF and the
+ * commission rates are { level1: 0.50, level2: 0.25, level3: 0.125 }.
+ *
+ * ponytail: CLASSIQUE base only. A CIBLE referral actually pays 2500/1250/625,
+ * so this is a conservative floor and the UI labels it an estimation. Exact
+ * figures live in the payment-service ledger, which would mean a cross-service
+ * call per user — only worth it if someone disputes a number.
+ */
+export const LEVEL_EARNINGS_XAF: Record<number, number> = { 1: 1000, 2: 500, 3: 250 };
+
+/**
+ * Start of the current month in Africa/Douala (UTC+1, no DST).
+ *
+ * Pinned deliberately: inheriting the container's TZ would roll the board over
+ * an hour early or late depending on the deploy environment.
+ */
+export function startOfCurrentMonthDouala(now: Date = new Date()): Date {
+    // Shift into Douala local time, truncate to the 1st, then shift back to UTC.
+    const DOUALA_OFFSET_MS = 60 * 60 * 1000;
+    const local = new Date(now.getTime() + DOUALA_OFFSET_MS);
+    const localMonthStart = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1, 0, 0, 0, 0);
+    return new Date(localMonthStart - DOUALA_OFFSET_MS);
+}
+
 export class ReferralRepository {
 
     // Fields to select when populating user data
@@ -2013,6 +2058,123 @@ export class ReferralRepository {
             page,
             pages: Math.ceil(total / limit)
         };
+    }
+
+    /**
+     * Top affiliates for the current month, counting referrals across ALL
+     * levels (1 + 2 + 3).
+     *
+     * There is no monthly reset job and no materialised leaderboard collection:
+     * `monthStart` is recomputed on every call, so on the 1st the query simply
+     * matches an empty date range. Nothing is stored, so nothing needs
+     * resetting.
+     *
+     * Backed by the { archived, createdAt, referrer, referralLevel } index —
+     * every other index on this collection leads with `referrer`, which makes a
+     * date-scoped scan across all referrers a COLLSCAN.
+     */
+    async getMonthlyAffiliateLeaderboard(
+        limit: number = 10,
+        monthStart: Date = startOfCurrentMonthDouala()
+    ): Promise<LeaderboardEntry[]> {
+        // Over-fetch: the user and subscription filters below can drop candidates.
+        const candidateLimit = Math.max(limit * 3, limit);
+
+        const pipeline: PipelineStage[] = [
+            // No $lt bound — "this month" means "since the 1st", and a one-sided
+            // range keeps the index scan one-sided too.
+            { $match: { archived: { $ne: true }, createdAt: { $gte: monthStart } } },
+            {
+                $group: {
+                    _id: '$referrer',
+                    referralCount: { $sum: 1 },
+                    level1: { $sum: { $cond: [{ $eq: ['$referralLevel', 1] }, 1, 0] } },
+                    level2: { $sum: { $cond: [{ $eq: ['$referralLevel', 2] }, 1, 0] } },
+                    level3: { $sum: { $cond: [{ $eq: ['$referralLevel', 3] }, 1, 0] } },
+                },
+            },
+            // The _id tiebreak makes the ranking deterministic across cache
+            // refreshes; without it, equal-count users shuffle every hour.
+            { $sort: { referralCount: -1, _id: 1 } },
+            { $limit: candidateLimit },
+            {
+                $lookup: {
+                    from: UserModel.collection.name,
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'user',
+                    pipeline: [
+                        { $project: { name: 1, avatar: 1, avatarId: 1, country: 1, city: 1, deleted: 1, blocked: 1 } },
+                    ],
+                },
+            },
+            // No preserveNullAndEmptyArrays: a referral pointing at a user that
+            // no longer exists is garbage and should vanish.
+            { $unwind: '$user' },
+            // A soft-deleted or blocked account must never appear. Surfacing the
+            // name of someone who asked to be removed is a real leak.
+            { $match: { 'user.deleted': { $ne: true }, 'user.blocked': { $ne: true } } },
+            // The board ranks *subscribers*. Done after $limit so this is ~30
+            // lookups rather than one per referrer in the collection.
+            {
+                $lookup: {
+                    from: SubscriptionModel.collection.name,
+                    let: { uid: '$_id' },
+                    as: 'activeSub',
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$user', '$$uid'] },
+                                status: SubscriptionStatus.ACTIVE,
+                                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                                endDate: { $gt: new Date() },
+                            },
+                        },
+                        { $limit: 1 },
+                        { $project: { _id: 1 } },
+                    ],
+                },
+            },
+            { $match: { 'activeSub.0': { $exists: true } } },
+            {
+                $addFields: {
+                    earnings: {
+                        $add: [
+                            { $multiply: ['$level1', LEVEL_EARNINGS_XAF[1]] },
+                            { $multiply: ['$level2', LEVEL_EARNINGS_XAF[2]] },
+                            { $multiply: ['$level3', LEVEL_EARNINGS_XAF[3]] },
+                        ],
+                    },
+                },
+            },
+            { $limit: limit },
+            {
+                $project: {
+                    _id: 0,
+                    userId: { $toString: '$_id' },
+                    name: '$user.name',
+                    avatar: '$user.avatar',
+                    avatarId: '$user.avatarId',
+                    country: '$user.country',
+                    city: '$user.city',
+                    referralCount: 1,
+                    level1: 1,
+                    level2: 1,
+                    level3: 1,
+                    earnings: 1,
+                },
+            },
+        ];
+
+        // allowDiskUse: the $group fans out to one bucket per referrer, so the
+        // working set grows with the member count rather than with TOP_N.
+        // maxTimeMS: bound it — a leaderboard is never worth holding a
+        // connection open for half a minute.
+        const rows = await ReferralModel.aggregate<Omit<LeaderboardEntry, 'rank'>>(pipeline)
+            .allowDiskUse(true)
+            .option({ maxTimeMS: 20_000 });
+        // Rank in JS: cheaper and clearer than $setWindowFields for 10 rows.
+        return rows.map((row, i) => ({ ...row, rank: i + 1 }));
     }
 }
 

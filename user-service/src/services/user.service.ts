@@ -618,6 +618,12 @@ export class UserService {
         // For debugging only - remove in production
         log.info(`Generated OTP ${otpCode} for user ${user.email}, type: ${otpType}`);
 
+        // Local/dev convenience: print the OTP prominently so it can be copied from
+        // the server console when no email/SMS provider is configured.
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`\n========================= OTP =========================\n  ${user.email}  ->  ${otpCode}\n=======================================================\n`);
+        }
+
         return otpCode;
     }
 
