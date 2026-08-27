@@ -105,9 +105,14 @@ export function chatHandler(io: Server, socket: AuthenticatedSocket) {
         try {
             if (data.messageIds && data.messageIds.length > 0) {
                 await messageService.markAsRead(data.messageIds, socket.userId);
-            } else {
-                await conversationService.markAsRead(data.conversationId, socket.userId);
             }
+
+            // ALWAYS clear the conversation's unread counter, not only when the
+            // client sent no ids. The badge in the conversation list is that
+            // counter, and the client always sends the ids it just displayed —
+            // so marking the messages alone left the badge up for messages the
+            // user was literally looking at.
+            await conversationService.markAsRead(data.conversationId, socket.userId);
 
             // Notify other participants that messages were read
             io.to(`conversation:${data.conversationId}`).emit('message:read', {
