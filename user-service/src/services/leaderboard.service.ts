@@ -90,7 +90,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
 export interface MyRank {
     rank: number;
     referralCount: number;
-    /** How many referrers have a direct-referral count this month. */
+    /** How many referrers have at least one paid direct filleul this month. */
     totalRanked: number;
     /** True when the caller already appears in the top N. */
     inTop: boolean;

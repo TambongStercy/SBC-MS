@@ -107,9 +107,9 @@ export interface LeaderboardEntry {
     avatarId?: string;
     country?: string;
     city?: string;
-    /** Direct (level-1) referrals inside the month window. */
+    /** Direct (level-1) filleuls who PAID a registration subscription inside the month window. */
     referralCount: number;
-    /** Estimated FCFA earned from this month's referrals. See LEVEL_EARNINGS_XAF. */
+    /** Estimated FCFA earned from this month's paid referrals. See LEVEL_EARNINGS_XAF. */
     earnings: number;
     rank: number;
 }
@@ -2081,37 +2081,57 @@ export class ReferralRepository {
     }
 
     /**
-     * How many DIRECT referrals a user brought inside the month window.
+     * How many DIRECT filleuls of `userId` PAID a registration subscription
+     * inside the month window.
      *
-     * Served by the existing { referrer, referralLevel, archived } index, so
-     * this is a cheap per-user lookup — which is what makes deriving "your
-     * rank" affordable without re-running the board aggregation.
+     * "Paid" means a CLASSIQUE or CIBLE Subscription document whose `createdAt`
+     * falls in the window — that is the initial activation of the filleul's
+     * account, which is the sale the referrer's commission is tied to. Later
+     * renewals and feature subs (RELANCE, VISIBILITE_MAX) don't count; the
+     * board measures new paid signups, not lifetime activity.
+     *
+     * Two indexed lookups: first the referrer's own direct referrals (covered
+     * by { referrer, referralLevel, archived }), then a countDocuments over
+     * that small id set on Subscription. Cheap per-user, which is what makes
+     * deriving "your rank" affordable without re-running the board.
      */
     async countMonthlyDirectReferrals(
         userId: string | Types.ObjectId,
         monthStart: Date = startOfCurrentMonthDouala(),
         monthEnd: Date = startOfNextMonthDouala(monthStart)
     ): Promise<number> {
-        return ReferralModel.countDocuments({
-            referrer: new Types.ObjectId(userId.toString()),
-            referralLevel: 1,
-            archived: { $ne: true },
+        const directRefs = await ReferralModel.find(
+            {
+                referrer: new Types.ObjectId(userId.toString()),
+                referralLevel: 1,
+                archived: { $ne: true },
+            },
+            { referredUser: 1 }
+        ).lean();
+        if (directRefs.length === 0) return 0;
+        return SubscriptionModel.countDocuments({
+            user: { $in: directRefs.map((r) => r.referredUser) },
+            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
             createdAt: { $gte: monthStart, $lt: monthEnd },
         });
     }
 
     /**
-     * Top affiliates for the current month, counting referrals across ALL
-     * levels (1 + 2 + 3).
+     * Top affiliates for the current month, counting only DIRECT (level-1)
+     * filleuls who PAID a registration subscription (CLASSIQUE or CIBLE) inside
+     * the window. A signup with no paid activation doesn't count; nor does a
+     * paid filleul whose activation is in a different month.
      *
      * There is no monthly reset job and no materialised leaderboard collection:
-     * `monthStart` is recomputed on every call, so on the 1st the query simply
-     * matches an empty date range. Nothing is stored, so nothing needs
-     * resetting.
+     * `monthStart` is recomputed on every call, so on the 1st the paid set is
+     * simply empty. Nothing is stored, so nothing needs resetting.
      *
-     * Backed by the { archived, createdAt, referrer, referralLevel } index —
-     * every other index on this collection leads with `referrer`, which makes a
-     * date-scoped scan across all referrers a COLLSCAN.
+     * Subscription-first: we walk the month's paid registrations (small — one
+     * indexed range scan on `subscriptions.createdAt` × `subscriptionType`),
+     * then group direct referrals over that id set. Doing it the other way
+     * around (all monthly referrals, then filter by paid) scans the full
+     * referrals collection since we no longer have a { createdAt } predicate
+     * that can share an index with { archived, referralLevel }.
      */
     async getMonthlyAffiliateLeaderboard(
         limit: number = 10,
@@ -2120,7 +2140,17 @@ export class ReferralRepository {
         /** Optional ISO-2 country filter (admin view). */
         country?: string
     ): Promise<LeaderboardSnapshot> {
-        // Pass 1 — group direct referrals per referrer for the window.
+        // Pass 0 — who PAID this month. A CLASSIQUE/CIBLE Subscription created
+        // in the window is the canonical "filleul activated" event. distinct
+        // over `user` collapses the rare case of an upgrade that spawned a new
+        // sub doc for the same filleul in the same month.
+        const paidUserIds = await SubscriptionModel.distinct('user', {
+            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+            createdAt: { $gte: monthStart, $lt: monthEnd },
+        });
+        if (paidUserIds.length === 0) return { top: [], counts: [] };
+
+        // Pass 1 — group direct referrals per referrer over the paid set.
         //
         // No $lookup here on purpose. Joining users to drop deleted/blocked
         // accounts inside the pipeline means one indexed join per REFERRER, and
@@ -2128,7 +2158,7 @@ export class ReferralRepository {
         // the subscription join is hoisted too). The exclusions are applied
         // below instead, against a small pre-fetched id set.
         const grouped = await ReferralModel.aggregate<{ _id: Types.ObjectId; referralCount: number }>([
-            { $match: { archived: { $ne: true }, referralLevel: 1, createdAt: { $gte: monthStart, $lt: monthEnd } } },
+            { $match: { archived: { $ne: true }, referralLevel: 1, referredUser: { $in: paidUserIds } } },
             { $group: { _id: '$referrer', referralCount: { $sum: 1 } } },
             // The _id tiebreak makes the ranking deterministic across cache
             // refreshes; without it, equal-count users shuffle every hour.
