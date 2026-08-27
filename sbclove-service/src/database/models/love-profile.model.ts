@@ -17,6 +17,12 @@ export interface ILoveProfile extends Document {
     intention: Intention;
     otherIntentionText?: string;     // Only when intention === OTHER (spec §5)
     description: string;             // <= configured max length, content-restricted (spec §7)
+    // Denormalised copy of User.sex. Identity data lives in user-service (spec
+    // §5) and is hydrated at read time, but browsing MUST only ever propose the
+    // opposite sex — and that has to be a database filter, or a page of 20 would
+    // come back half empty after filtering in memory. Written from user-service
+    // on create and refreshed on every profile update.
+    sex?: string;
     photos: IProfilePhoto[];         // 1-3 photos (spec §4)
     status: ProfileStatus;
     moderation: {
@@ -65,6 +71,11 @@ const LoveProfileSchema = new Schema<ILoveProfile>(
             required: true,
             trim: true,
         },
+        // No index of its own: every query that filters on sex also filters on
+        // status, and the compound index below covers that pair.
+        sex: {
+            type: String,
+        },
         photos: {
             type: [ProfilePhotoSchema],
             default: [],
@@ -88,6 +99,12 @@ const LoveProfileSchema = new Schema<ILoveProfile>(
         timestamps: true, // Adds createdAt and updatedAt
     }
 );
+
+// The browse query (status + sex, newest first) is the module's hot path: every
+// member hits it repeatedly inside the 3-hour session. This compound index
+// serves the filter AND the sort, so the deck is an index walk of `limit`
+// documents rather than a sort of every approved profile.
+LoveProfileSchema.index({ status: 1, sex: 1, createdAt: -1 });
 
 const LoveProfileModel = mongoose.model<ILoveProfile>('LoveProfile', LoveProfileSchema);
 

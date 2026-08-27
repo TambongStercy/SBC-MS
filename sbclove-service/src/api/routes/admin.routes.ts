@@ -13,6 +13,10 @@ router.get('/profiles', (req, res, next) => adminController.listProfiles(req, re
 router.patch('/profiles/:id/validate', (req, res, next) => adminController.validateProfile(req, res, next));
 router.patch('/profiles/:id/suspension', (req, res, next) => adminController.setSuspension(req, res, next));
 
+// Member directory + dashboard totals
+router.get('/members', (req, res, next) => adminController.listMembers(req, res, next));
+router.get('/stats', (req, res, next) => adminController.getStats(req, res, next));
+
 // Reports management (spec §14)
 router.get('/reports', (req, res, next) => adminController.listReports(req, res, next));
 router.patch('/reports/:id', (req, res, next) => adminController.reviewReport(req, res, next));

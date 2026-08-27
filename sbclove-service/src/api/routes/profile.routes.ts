@@ -15,7 +15,10 @@ router.post('/', (req, res, next) => profileController.createProfile(req, res, n
 router.get('/me', (req, res, next) => profileController.getMyProfile(req, res, next));
 router.put('/me', (req, res, next) => profileController.updateProfile(req, res, next));
 router.post('/me/photos', photoUpload.array('photos'), (req, res, next) => profileController.uploadPhotos(req, res, next));
-router.delete('/me/photos/:fileId', (req, res, next) => profileController.deletePhoto(req, res, next));
+// ?fileId=, not a path param and not a body: stored ids are GCS object names
+// carrying a folder prefix ("sbclove/1712345_photo.jpg") — the slash cannot ride
+// in a `:fileId` param, and the gateway proxy drops bodies on DELETE.
+router.delete('/me/photos', (req, res, next) => profileController.deletePhoto(req, res, next));
 router.patch('/me/photos/order', (req, res, next) => profileController.reorderPhotos(req, res, next));
 
 // === Browsing & interactions (window-gated) ===

@@ -20,7 +20,7 @@ class AdminController {
             const { limit, skip, page } = pagination(req);
             const status = req.query.status as ProfileStatus | undefined;
             const { items, total } = await adminService.listProfiles(status, limit, skip);
-            res.status(200).json({ success: true, data: items, pagination: { total, page, limit } });
+            res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
         } catch (error) {
             this.handle(error, res, next);
         }
@@ -52,12 +52,33 @@ class AdminController {
         }
     }
 
+    /** GET /admin/members — the SBCLOVE member directory with per-member tallies. */
+    async listMembers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { limit, skip, page } = pagination(req);
+            const status = req.query.status as ProfileStatus | undefined;
+            const { items, total } = await adminService.listMembers(status, limit, skip);
+            res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
+        } catch (error) {
+            this.handle(error, res, next);
+        }
+    }
+
+    /** GET /admin/stats — dashboard totals (served from a 60s cache). */
+    async getStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            res.status(200).json({ success: true, data: await adminService.getStats() });
+        } catch (error) {
+            this.handle(error, res, next);
+        }
+    }
+
     async listReports(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
             const { limit, skip, page } = pagination(req);
             const status = req.query.status as ReportStatus | undefined;
             const { items, total } = await adminService.listReports(status, limit, skip);
-            res.status(200).json({ success: true, data: items, pagination: { total, page, limit } });
+            res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
         } catch (error) {
             this.handle(error, res, next);
         }

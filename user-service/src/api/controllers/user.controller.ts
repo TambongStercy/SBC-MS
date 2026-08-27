@@ -16,6 +16,7 @@ import { notificationService, DeliveryChannel } from '../../services/clients/not
 import config from '../../config';
 import axios from 'axios';
 import { userRepository } from '../../database/repositories/user.repository';
+import { getLeaderboard as getLeaderboardData } from '../../services/leaderboard.service';
 
 const log = logger.getLogger('UserController');
 
@@ -2842,6 +2843,29 @@ export class UserController {
         }
     }
 
+    /**
+     * Monthly affiliate leaderboard ("Classement Général").
+     *
+     * The response is identical for every caller, which is what makes the
+     * single global cache in leaderboard.service valid. Subscriber-gated at the
+     * route, matching its siblings /get-refered-users and /get-referals — it
+     * exposes other members' names and earnings.
+     *
+     * @route GET /api/users/leaderboard
+     */
+    async getLeaderboard(_req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const data = await getLeaderboardData();
+            res.status(200).json({
+                success: true,
+                data,
+                message: 'Leaderboard retrieved successfully'
+            });
+        } catch (error: any) {
+            log.error("Error in getLeaderboard", error);
+            res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        }
+    }
 }
 
 // Export singleton instance

@@ -65,6 +65,12 @@ const ReferralSchema = new Schema<IReferral>(
 // Compound index for querying referrals by referrer and level, including archived status
 ReferralSchema.index({ referrer: 1, referralLevel: 1, archived: 1 });
 
+// Global, month-scoped leaderboard scan ("Classement Général"). Every other
+// index here leads with `referrer`, so a { createdAt: { $gte } } query across
+// all referrers would be a COLLSCAN. Equality field first, then the range,
+// then the group key and the level the earnings sum reads.
+ReferralSchema.index({ archived: 1, createdAt: -1, referrer: 1, referralLevel: 1 });
+
 // Compound indexes for fast search by referrer + searchable fields
 ReferralSchema.index({ referrer: 1, referredUserName: 1 });
 ReferralSchema.index({ referrer: 1, referredUserEmail: 1 });

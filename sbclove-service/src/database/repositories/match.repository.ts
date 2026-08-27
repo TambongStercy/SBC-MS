@@ -91,6 +91,52 @@ export class MatchRepository {
      * updated doc if THIS call performed the flip, or null if it was already
      * unlocked — so concurrent mutual opt-ins send the unlock emails only once.
      */
+    /** Records the chat conversation on first open (idempotent). */
+    async setConversation(matchId: Types.ObjectId | string, conversationId: string): Promise<void> {
+        await MatchModel.updateOne(
+            { _id: matchId, conversationId: { $exists: false } },
+            { $set: { conversationId, chatOpenedAt: new Date() } }
+        ).exec();
+    }
+
+    /**
+     * Matches and started conversations per user, for a page of users.
+     *
+     * One aggregation for the whole page instead of two queries per row: an
+     * admin list of 50 members would otherwise be 100 round trips. Scoped by
+     * $in on the page's ids so it never scans the whole collection.
+     */
+    async countsByUserIds(userIds: (Types.ObjectId | string)[]): Promise<Map<string, { matches: number; conversations: number }>> {
+        const ids = userIds.map(id => (typeof id === 'string' ? new Types.ObjectId(id) : id));
+        if (ids.length === 0) return new Map();
+
+        const rows = await MatchModel.aggregate<{ _id: Types.ObjectId; matches: number; conversations: number }>([
+            { $match: { $or: [{ userA: { $in: ids } }, { userB: { $in: ids } }] } },
+            // One row per participant, so a match counts for both sides.
+            { $project: { participant: ['$userA', '$userB'], hasConversation: { $cond: [{ $ifNull: ['$conversationId', false] }, 1, 0] } } },
+            { $unwind: '$participant' },
+            { $match: { participant: { $in: ids } } },
+            { $group: { _id: '$participant', matches: { $sum: 1 }, conversations: { $sum: '$hasConversation' } } },
+        ]).exec();
+
+        return new Map(rows.map(r => [r._id.toString(), { matches: r.matches, conversations: r.conversations }]));
+    }
+
+    /** Global totals for the admin dashboard: one pass over the collection. */
+    async totals(): Promise<{ matches: number; contactUnlocked: number; conversations: number }> {
+        const [row] = await MatchModel.aggregate<{ matches: number; contactUnlocked: number; conversations: number }>([
+            {
+                $group: {
+                    _id: null,
+                    matches: { $sum: 1 },
+                    contactUnlocked: { $sum: { $cond: ['$contactUnlocked', 1, 0] } },
+                    conversations: { $sum: { $cond: [{ $ifNull: ['$conversationId', false] }, 1, 0] } },
+                },
+            },
+        ]).exec();
+        return { matches: row?.matches ?? 0, contactUnlocked: row?.contactUnlocked ?? 0, conversations: row?.conversations ?? 0 };
+    }
+
     async markContactUnlocked(matchId: Types.ObjectId | string): Promise<IMatch | null> {
         return MatchModel.findOneAndUpdate(
             { _id: matchId, contactUnlocked: false },

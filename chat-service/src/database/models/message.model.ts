@@ -27,6 +27,7 @@ export interface IMessage extends Document {
     senderId: Types.ObjectId;
     type: MessageType;
     content: string;
+    encrypted?: boolean; // content (and replyTo.content) stored AES-256-GCM at rest
     // Document fields
     documentUrl?: string;
     documentName?: string;
@@ -74,7 +75,11 @@ const MessageSchema = new Schema<IMessage>(
         content: {
             type: String,
             required: true,
-            maxlength: 5000
+            maxlength: 8000 // encrypted LOVE content is longer than the 5000-char plaintext cap
+        },
+        encrypted: {
+            type: Boolean,
+            default: false
         },
         // Document fields
         documentUrl: { type: String },

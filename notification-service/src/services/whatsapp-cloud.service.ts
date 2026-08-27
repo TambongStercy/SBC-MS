@@ -52,6 +52,10 @@ class WhatsAppCloudService extends EventEmitter {
 
     constructor() {
         super();
+        // ponytail: EventEmitter throws on an 'error' emit with no listener — this one
+        // fires from init()'s catch, which crashed the whole service on a bad/absent
+        // WhatsApp config. Log instead; state is already tracked in connectionState.
+        this.on('error', (err) => log.error('WhatsApp Cloud API service error:', err));
         this.httpClient = createWhatsAppHttpClient();
         this.phoneNumberId = config.whatsapp.phoneNumberId;
 

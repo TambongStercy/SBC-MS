@@ -1,20 +1,33 @@
 import { Types } from 'mongoose';
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
 import { blockRepository } from '../database/repositories/block.repository';
+import { interestRepository } from '../database/repositories/interest.repository';
 import { moduleConfigRepository } from '../database/repositories/module-config.repository';
 import { ILoveProfile, IProfilePhoto } from '../database/models/love-profile.model';
-import { Intention, ProfileStatus, ageBracketFromBirthDate } from '../types/sbclove.enums';
+import { Intention, ProfileStatus, ageBracketFromBirthDate, oppositeSex } from '../types/sbclove.enums';
 import { userServiceClient, UserDetails } from './clients/user.service.client';
 import { settingsServiceClient } from './clients/settings.service.client';
 import { validateProfileText } from '../utils/contentFilter';
 import { generateBlurredDerivative } from '../utils/imageProcessing';
 import { AppError } from '../utils/errors';
 import config from '../config';
+import { TtlCache } from '../utils/ttlCache';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('ProfileService');
 
 const DISPLAY_NAME_MAX_LENGTH = 50;
+
+// How many approved profiles exist for a given sex. It changes when a profile is
+// approved or suspended — never mid-swipe — and only feeds the pagination block,
+// so every viewer in the session can share one 30s-old number instead of each
+// paying for a full index scan.
+const deckCountCache = new TtlCache<number>(30 * 1000, 16);
+
+/** A random window start, so two members rarely open the same page of the deck. */
+const randomOffset = (total: number, limit: number): number =>
+    total <= limit ? 0 : Math.floor(Math.random() * (total - limit + 1));
+
 
 export interface CreateProfileInput {
     displayName?: string;
@@ -37,7 +50,11 @@ export interface PublicProfileView {
     otherIntentionText?: string;
     description: string;
     status: ProfileStatus;
-    photos: { url?: string; blurred: boolean; order: number }[];
+    memberSince?: Date;    // SBC join date, shown on the profile detail
+    // `fileId` is the id of the photo the viewer is actually served (the blurred
+    // derivative for viewers without an approved profile), so a client can act on
+    // a photo — delete, reorder — without parsing it back out of the URL.
+    photos: { fileId: string; url?: string; blurred: boolean; order: number }[];
     createdAt?: Date;
 }
 
@@ -96,6 +113,7 @@ class ProfileService {
             intention: input.intention,
             otherIntentionText: input.intention === Intention.OTHER ? input.otherIntentionText?.trim() : undefined,
             description: input.description.trim(),
+            sex: user.sex,   // denormalised for the opposite-sex browse filter
             photos: [],
             status: ProfileStatus.PENDING, // every profile starts pending (spec §7)
         });
@@ -123,8 +141,12 @@ class ProfileService {
         };
         this.validateContent(merged as any);
 
-        // Any edit re-enters the validation queue (spec §7).
+        // Any edit re-enters the validation queue (spec §7). The sex copy is
+        // refreshed here so a correction made in the SBC profile reaches the
+        // browse filter instead of pinning the member to the wrong side of it.
+        const owner = await userServiceClient.getUserById(userId);
         let updated = await loveProfileRepository.updateByUserId(userId, {
+            sex: owner?.sex,
             displayName: merged.displayName?.trim(),
             intention: merged.intention,
             otherIntentionText: merged.intention === Intention.OTHER ? merged.otherIntentionText?.trim() : undefined,
@@ -133,8 +155,7 @@ class ProfileService {
         });
         updated = await this.maybeAutoApprove(updated as ILoveProfile) ?? updated;
 
-        const user = await userServiceClient.getUserById(userId);
-        return this.present(updated as ILoveProfile, user, true);
+        return this.present(updated as ILoveProfile, owner, true);
     }
 
     /** Adds uploaded photos (already stored in settings-service) to the caller's profile. */
@@ -223,7 +244,10 @@ class ProfileService {
      * null when no change was made.
      */
     private async maybeAutoApprove(profile: ILoveProfile): Promise<ILoveProfile | null> {
-        if (!profile || profile.status !== ProfileStatus.PENDING || profile.photos.length === 0) {
+        if (!profile || profile.status !== ProfileStatus.PENDING) {
+            return null;
+        }
+        if (profile.photos.length < config.sbclove.minPhotos) {
             return null;
         }
         const cfg = await moduleConfigRepository.get();
@@ -244,18 +268,57 @@ class ProfileService {
         const viewerProfile = await loveProfileRepository.findByUserId(viewerUserId);
         const viewerCanSeeClearPhotos = !!viewerProfile && viewerProfile.status === ProfileStatus.APPROVED;
 
-        const blockedIds = await blockRepository.findRelatedUserIds(viewerUserId);
-        const excludeUserIds = [new Types.ObjectId(viewerUserId), ...blockedIds.map(id => new Types.ObjectId(id))];
+        // Hide anyone already dealt with: yourself, blocks (either direction) and
+        // anyone you already expressed interest in — including your matches, since
+        // a match cannot exist without your interest. Their card would be inert
+        // anyway: the pair is unique, so a second interest answers 409.
+        const [blockedIds, alreadyInterested] = await Promise.all([
+            blockRepository.findRelatedUserIds(viewerUserId),
+            interestRepository.findSentToUserIds(viewerUserId),
+        ]);
+        const excludeUserIds = [
+            new Types.ObjectId(viewerUserId),
+            ...blockedIds.map(id => new Types.ObjectId(id)),
+            ...alreadyInterested,
+        ];
 
-        const query = {
+        // SBCLOVE proposes the opposite sex, always (§16: serious connections).
+        // The viewer's own sex comes from their profile copy; a member browsing
+        // before creating one costs a single user-service call.
+        let viewerSex = viewerProfile?.sex;
+        if (!viewerSex) {
+            viewerSex = (await userServiceClient.getUserById(viewerUserId))?.sex;
+        }
+
+        const query: Record<string, unknown> = {
             status: ProfileStatus.APPROVED,
             userId: { $nin: excludeUserIds },
         };
 
-        const [profiles, total] = await Promise.all([
-            loveProfileRepository.find(query, limit, skip),
-            loveProfileRepository.count(query),
-        ]);
+        const opposite = oppositeSex(viewerSex);
+        if (opposite) {
+            query.sex = opposite;
+        } else {
+            // 'other' / 'prefer_not_to_say' / missing: there is no opposite to
+            // compute, so no sex filter is applied rather than an empty deck.
+            log.warn(`No opposite sex for viewer ${viewerUserId} (sex=${viewerSex ?? 'unknown'}); browsing unfiltered.`);
+        }
+
+        // The per-viewer exclusions are left out of the cached count on purpose:
+        // they differ for everyone, and `total` is a rough "how many are out
+        // there", not a promise about this viewer's deck length.
+        const total = await deckCountCache.through(`approved:${opposite ?? 'all'}`, () =>
+            loveProfileRepository.count({ status: ProfileStatus.APPROVED, ...(opposite ? { sex: opposite } : {}) }));
+
+        // Everyone's deck starts at a random offset rather than at the newest
+        // profile. Sorted newest-first, a large member base would mean every
+        // member is shown the same first page: the newest profiles collect every
+        // interest, older ones are never proposed at all, and one page of the
+        // index takes the whole session's traffic. An explicit page (skip > 0)
+        // is still honoured for anyone paging deliberately.
+        const offset = skip > 0 ? skip : randomOffset(total, limit);
+
+        const profiles = await loveProfileRepository.find(query, limit, offset);
 
         const users = await userServiceClient.getUsersByIds(profiles.map(p => p.userId.toString()));
         const userMap = new Map(users.map(u => [u._id.toString(), u]));
@@ -292,18 +355,19 @@ class ProfileService {
             otherIntentionText: profile.otherIntentionText,
             description: profile.description,
             status: profile.status,
+            memberSince: user?.createdAt ? new Date(user.createdAt) : undefined,
             photos: profile.photos
                 .slice()
                 .sort((a, b) => a.order - b.order)
                 .map(ph => {
                     if (canSeeClearPhotos) {
-                        return { url: settingsServiceClient.getFileUrl(ph.fileId), blurred: false, order: ph.order };
+                        return { fileId: ph.fileId, url: settingsServiceClient.getFileUrl(ph.fileId), blurred: false, order: ph.order };
                     }
                     // Non-approved viewer: ONLY ever serve the blurred derivative. If none
                     // exists, serve no URL at all rather than leak the clear image (spec §3, §6).
                     return ph.blurredFileId
-                        ? { url: settingsServiceClient.getFileUrl(ph.blurredFileId), blurred: true, order: ph.order }
-                        : { url: undefined, blurred: true, order: ph.order };
+                        ? { fileId: ph.blurredFileId, url: settingsServiceClient.getFileUrl(ph.blurredFileId), blurred: true, order: ph.order }
+                        : { fileId: ph.fileId, url: undefined, blurred: true, order: ph.order };
                 }),
             createdAt: profile.createdAt,
         };

@@ -4,7 +4,7 @@ import { interestQuotaRepository } from '../database/repositories/interest-quota
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
 import { blockRepository } from '../database/repositories/block.repository';
 import { matchRepository } from '../database/repositories/match.repository';
-import { ProfileStatus } from '../types/sbclove.enums';
+import { ProfileStatus, oppositeSex } from '../types/sbclove.enums';
 import { moduleConfigRepository } from '../database/repositories/module-config.repository';
 import { sbcloveNotificationService } from './notification.service';
 import { getSessionDateKey } from '../utils/sbcloveWindow';
@@ -34,6 +34,13 @@ class InterestService {
         const toUserId = target.userId.toString();
         if (toUserId === fromUserId) {
             throw new AppError('You cannot express interest in your own profile.', 400);
+        }
+
+        // SBCLOVE only ever proposes the opposite sex; browsing already filters
+        // on it, so this only catches a hand-crafted request.
+        const expected = oppositeSex(myProfile.sex);
+        if (expected && target.sex && target.sex !== expected) {
+            throw new AppError('Profile not found.', 404);
         }
 
         if (await blockRepository.exists(fromUserId, toUserId) || await blockRepository.exists(toUserId, fromUserId)) {

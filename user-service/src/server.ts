@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import connectDB from './database/connection';
+import { warmLeaderboard } from './services/leaderboard.service';
 import config from './config';
 // Import the main router
 import apiRoutes from './api/routes/index';
@@ -83,6 +84,12 @@ async function startServer() {
         // Start VCF cache scheduler
         vcfCacheScheduler.start();
         logger.info('[Server] VCF cache scheduler started');
+
+        // Build the first leaderboard snapshot now, so the first visitor after
+        // a deploy is not the one who pays for the cold aggregation.
+        // Non-blocking: boot must not wait on it, and a failure must not stop
+        // the service coming up.
+        warmLeaderboard();
 
         // Start Express server
         app.listen(PORT, () => {

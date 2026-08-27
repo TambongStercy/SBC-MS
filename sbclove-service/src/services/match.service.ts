@@ -1,10 +1,13 @@
 import { matchRepository } from '../database/repositories/match.repository';
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
 import { blockRepository } from '../database/repositories/block.repository';
+import { moduleConfigRepository } from '../database/repositories/module-config.repository';
 import { userServiceClient } from './clients/user.service.client';
+import { chatServiceClient } from './clients/chat.service.client';
 import { sbcloveNotificationService } from './notification.service';
 import { ContactChoice, ProfileStatus, ageBracketFromBirthDate } from '../types/sbclove.enums';
 import { settingsServiceClient } from './clients/settings.service.client';
+import { isWindowOpen } from '../utils/sbcloveWindow';
 import { IMatch } from '../database/models/match.model';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
@@ -116,6 +119,65 @@ class MatchService {
         }
 
         return { contactUnlocked: updated.contactUnlocked };
+    }
+
+    /**
+     * Opens (get-or-creates) the encrypted chat for a match. Requires the caller
+     * to be a participant AND the match to be contact-unlocked (double opt-in).
+     * Returns the chat-service conversationId. Called from the "Discuter" button.
+     */
+    async openMatchChat(userId: string, matchId: string): Promise<{ conversationId: string }> {
+        const match = await matchRepository.findById(matchId);
+        if (!match || !this.isParticipant(match, userId)) {
+            throw new AppError('Match not found.', 404);
+        }
+        if (!match.contactUnlocked) {
+            throw new AppError('Le contact doit être accepté des deux côtés avant de discuter.', 403);
+        }
+        // A block in either direction ends the relationship — no chat (spec §14).
+        const blockedIds = new Set(await blockRepository.findRelatedUserIds(userId));
+        if (blockedIds.has(this.otherUserId(match, userId))) {
+            throw new AppError('Match not found.', 404);
+        }
+        const conversationId = await chatServiceClient.getOrCreateLoveConversation(
+            match.userA.toString(),
+            match.userB.toString(),
+            matchId
+        );
+
+        // Remember it once, on the first open. chat-service stays the source of
+        // truth for the conversation itself; this is the local record that the
+        // match became a conversation (and the admin counter reads it).
+        if (!match.conversationId) {
+            await matchRepository.setConversation(matchId, conversationId);
+        }
+        return { conversationId };
+    }
+
+    /**
+     * Authority for chat-service's send gate: may `userId` send in the LOVE
+     * conversation for `matchId` right now? Unlocked = still contact-unlocked,
+     * participant, and not blocked. isOpen = weekly window open + module enabled.
+     */
+    async canChat(matchId: string, userId: string): Promise<{ unlocked: boolean; isOpen: boolean }> {
+        const cfg = await moduleConfigRepository.get();
+        const open = cfg.enabled && isWindowOpen(new Date(), cfg);
+
+        const match = await matchRepository.findById(matchId);
+        if (!match || !this.isParticipant(match, userId) || !match.contactUnlocked) {
+            return { unlocked: false, isOpen: open };
+        }
+        const blockedIds = new Set(await blockRepository.findRelatedUserIds(userId));
+        if (blockedIds.has(this.otherUserId(match, userId))) {
+            return { unlocked: false, isOpen: open };
+        }
+        return { unlocked: true, isOpen: open };
+    }
+
+    /** Weekly window flag alone (module enabled + open). */
+    async isChatWindowOpen(): Promise<boolean> {
+        const cfg = await moduleConfigRepository.get();
+        return cfg.enabled && isWindowOpen(new Date(), cfg);
     }
 
     private isParticipant(match: IMatch, userId: string): boolean {

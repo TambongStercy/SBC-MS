@@ -1,40 +1,37 @@
-import { Types } from 'mongoose';
 import InterestQuotaModel from '../models/interest-quota.model';
 
-export class InterestQuotaRepository {
+class InterestQuotaRepository {
 
     /**
-     * Atomically reserves one interest slot for the session if the user is under
-     * the limit. Returns true if a slot was reserved, false if the limit is
-     * already reached. Race-free: the conditional `$inc` only matches while
-     * `count < max`, so concurrent callers can never push the count past `max`.
+     * Atomically reserve one slot in the weekly quota.
+     * Returns true if the slot was acquired, false if the limit was already reached.
      */
-    async tryReserve(userId: Types.ObjectId | string, sessionDate: string, max: number): Promise<boolean> {
-        // Ensure the counter document exists (no-op if already there).
+    async tryReserve(userId: string, sessionDate: string, max: number): Promise<boolean> {
+        // Ensure a quota doc exists for this (user, session) pair.
         await InterestQuotaModel.updateOne(
             { userId, sessionDate },
             { $setOnInsert: { count: 0 } },
             { upsert: true }
         );
-        // Reserve a slot only while under the limit.
-        const reserved = await InterestQuotaModel.findOneAndUpdate(
+        // Conditionally increment only while under the limit — atomic at doc level.
+        const result = await InterestQuotaModel.updateOne(
             { userId, sessionDate, count: { $lt: max } },
-            { $inc: { count: 1 } },
-            { new: true }
-        ).lean().exec();
-        return !!reserved;
+            { $inc: { count: 1 } }
+        );
+        return result.modifiedCount > 0;
     }
 
-    /** Releases a previously reserved slot (e.g. when the interest insert fails). */
-    async release(userId: Types.ObjectId | string, sessionDate: string): Promise<void> {
+    /** Release a previously reserved slot (rollback on failed interest insert). */
+    async release(userId: string, sessionDate: string): Promise<void> {
         await InterestQuotaModel.updateOne(
             { userId, sessionDate, count: { $gt: 0 } },
             { $inc: { count: -1 } }
         );
     }
 
-    async getCount(userId: Types.ObjectId | string, sessionDate: string): Promise<number> {
-        const doc = await InterestQuotaModel.findOne({ userId, sessionDate }).lean().exec();
+    /** Current number of interests used this session. */
+    async getCount(userId: string, sessionDate: string): Promise<number> {
+        const doc = await InterestQuotaModel.findOne({ userId, sessionDate }).lean();
         return doc?.count ?? 0;
     }
 }

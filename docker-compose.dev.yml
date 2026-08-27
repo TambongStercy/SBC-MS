@@ -36,6 +36,9 @@ x-env-vars: &common-env-vars
   ADMIN_FRONTEND_MS_URL: http://admin-frontend-ms:80
   API_GATEWAY_URL: http://localhost:3000
   JWT_SECRET: sbc$$jwt$$secret
+  # Shared service-to-service secret. Pinned here (single source of truth) so all
+  # services agree — per-service .env files had drifted, breaking internal auth.
+  SERVICE_SECRET: __REPLACE_WITH_STRONG_RANDOM_SECRET__
   # Use MongoDB container
   GLOBAL_MONGO_BASE_URI: "mongodb://mongo:27017"
 
@@ -340,7 +343,7 @@ services:
     container_name: sbc_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes

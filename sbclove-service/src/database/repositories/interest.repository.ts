@@ -29,6 +29,20 @@ export class InterestRepository {
         return InterestModel.countDocuments({ fromUserId, sessionDate }).exec();
     }
 
+    /**
+     * The userIds this user has already expressed interest in. A match requires
+     * their interest, so this covers matched profiles too — one query, one rule.
+     */
+    async findSentToUserIds(fromUserId: Types.ObjectId | string): Promise<Types.ObjectId[]> {
+        const sent = await InterestModel.find({ fromUserId }).select('toUserId').lean<{ toUserId: Types.ObjectId }[]>().exec();
+        return sent.map(i => i.toUserId);
+    }
+
+    /** Every interest ever expressed (admin dashboard). */
+    async countAll(): Promise<number> {
+        return InterestModel.estimatedDocumentCount().exec();
+    }
+
     async findSentByUser(fromUserId: Types.ObjectId | string, limit = 50, skip = 0): Promise<IInterest[]> {
         return InterestModel.find({ fromUserId })
             .sort({ createdAt: -1 })

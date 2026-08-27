@@ -681,7 +681,7 @@ export class UserRepository {
             _id: { $in: userIds },
             deleted: { $ne: true }
         })
-            .select('_id name email avatar sex birthDate city country isVerified')
+            .select('_id name email avatar sex birthDate city country isVerified createdAt')
             .lean()
             .exec();
     }
