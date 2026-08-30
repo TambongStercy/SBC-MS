@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
 import { allocateCampaign, expireStaleOffers, remainingViewsToCover } from '../../services/allocation.service';
-import { activateApprovedCampaign } from '../../services/activation.service';
+import { activateApprovedCampaign, settlePaidCampaign } from '../../services/activation.service';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
 
@@ -50,12 +50,11 @@ export const handlePaymentConfirmation = async (req: Request, res: Response) => 
     }
 
     try {
-        const result = await activateApprovedCampaign(campaignId);
-        await CampaignModel.updateOne(
-            { _id: campaignId },
-            { $set: { paymentSessionId: sessionId, paidAt: new Date() } },
-        );
-        log.info(`Campaign ${campaignId} activated from payment ${sessionId}`);
+        // Pay-first: the payment settles the campaign into PAID (awaiting an
+        // admin's validation), and only activates it outright when it was already
+        // approved under the old review-then-pay order.
+        const result = await settlePaidCampaign(campaignId, sessionId);
+        log.info(`Campaign ${campaignId} settled from payment ${sessionId}: ${result.status}`);
         return res.json({ success: true, data: result });
     } catch (err) {
         return fail(res, err, 'handlePaymentConfirmation');

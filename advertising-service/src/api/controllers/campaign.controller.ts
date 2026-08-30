@@ -11,7 +11,7 @@ import {
 } from '../../services/campaign.service';
 import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../services/ranking.service';
 import { createCampaignPaymentIntent } from '../../services/clients/payment.service.client';
-import { activateApprovedCampaign } from '../../services/activation.service';
+import { settlePaidCampaign } from '../../services/activation.service';
 import { reserveCredit, releaseCredit, availableCredit } from '../../services/credit.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AppError } from '../../utils/errors';
@@ -207,18 +207,29 @@ export const submit = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 /**
- * Opens the payment session for an approved campaign.
+ * Opens the payment session.
  *
- * Refused before approval, so an annonceur cannot pay for something that would
- * then sit unusable — and cannot use payment as a way around review.
+ * Pay-first: a DRAFT (or previously refused) campaign is paid for BEFORE it is
+ * reviewed — paying is what puts it in the moderation queue. APPROVED is still
+ * accepted for campaigns left mid-flight by the old review-then-pay order.
+ *
+ * Paying never skips moderation: the money moves the campaign to PAID, and only
+ * an admin's validation activates it.
  */
+const PAYABLE_STATUSES = [
+    CampaignStatus.DRAFT,
+    CampaignStatus.REJECTED,
+    CampaignStatus.APPROVED,
+    CampaignStatus.PENDING_REVIEW,
+];
+
 export const pay = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const campaign = await ownedCampaign(req);
-        if (campaign.status !== CampaignStatus.APPROVED) {
+        if (!PAYABLE_STATUSES.includes(campaign.status)) {
             throw new AppError(
-                campaign.status === CampaignStatus.PENDING_REVIEW
-                    ? 'Votre campagne est encore en attente de validation.'
+                campaign.status === CampaignStatus.PAID
+                    ? 'Cette campagne est déjà payée et attend la validation de notre équipe.'
                     : `Une campagne au statut « ${campaign.status} » ne peut pas être payée.`,
                 400,
             );
@@ -232,11 +243,9 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
         if (due === 0) {
             // Fully covered by credit — this campaign has already been paid for, so
             // there is nothing for a payment provider to do.
-            const result = await activateApprovedCampaign(campaign._id);
-            campaign.paidAt = new Date();
-            await campaign.save();
+            const result = await settlePaidCampaign(campaign._id);
 
-            log.info(`Campaign ${campaign._id} activated entirely from ${credit} XAF of credit`);
+            log.info(`Campaign ${campaign._id} settled entirely from ${credit} XAF of credit: ${result.status}`);
             return res.json({
                 success: true,
                 data: {
@@ -244,7 +253,9 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
                     amount: 0,
                     creditApplied: credit,
                     status: result.status,
-                    message: 'Votre crédit couvre entièrement cette campagne. Elle est lancée.',
+                    message: result.status === 'active'
+                        ? 'Votre crédit couvre entièrement cette campagne. Elle est lancée.'
+                        : 'Votre crédit couvre entièrement cette campagne. Elle passe en validation.',
                 },
             });
         }

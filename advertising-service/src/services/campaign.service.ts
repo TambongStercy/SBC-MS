@@ -181,15 +181,30 @@ export const submitForReview = async (campaign: ICampaign): Promise<ICampaign> =
 };
 
 /** Admin verdict: the creative may now be paid for and go live. */
+/** Statuses an admin may pass judgement on: paid (pay-first) or the frozen legacy queue. */
+const REVIEWABLE_STATUSES = [CampaignStatus.PAID, CampaignStatus.PENDING_REVIEW];
+
+/**
+ * Admin verdict: the creative may run.
+ *
+ * Under pay-first the campaign is already paid for, so approving is what puts it
+ * live — the caller activates it straight after. A legacy PENDING_REVIEW campaign
+ * (approved before it was paid) still lands on APPROVED and waits for payment.
+ */
 export const approveCampaign = async (campaign: ICampaign, adminUserId: Types.ObjectId): Promise<ICampaign> => {
-    if (campaign.status !== CampaignStatus.PENDING_REVIEW) {
+    if (!REVIEWABLE_STATUSES.includes(campaign.status)) {
         throw new AppError(
-            `Seule une campagne en attente de validation peut être approuvée (statut actuel : ${campaign.status}).`,
+            `Seule une campagne payée en attente de validation peut être approuvée (statut actuel : ${campaign.status}).`,
             400,
         );
     }
 
-    campaign.status = CampaignStatus.APPROVED;
+    // A paid campaign is flipped live by the caller through activatePaidCampaign,
+    // which is the single guarded path to ACTIVE; the status is left as PAID here
+    // so that function still sees a payment it can act on.
+    if (campaign.status === CampaignStatus.PENDING_REVIEW) {
+        campaign.status = CampaignStatus.APPROVED;
+    }
     campaign.reviewedBy = adminUserId;
     campaign.reviewedAt = new Date();
     campaign.rejectionReason = undefined;
@@ -202,9 +217,9 @@ export const rejectCampaign = async (
     adminUserId: Types.ObjectId,
     reason: string,
 ): Promise<ICampaign> => {
-    if (campaign.status !== CampaignStatus.PENDING_REVIEW) {
+    if (!REVIEWABLE_STATUSES.includes(campaign.status)) {
         throw new AppError(
-            `Seule une campagne en attente de validation peut être refusée (statut actuel : ${campaign.status}).`,
+            `Seule une campagne payée en attente de validation peut être refusée (statut actuel : ${campaign.status}).`,
             400,
         );
     }

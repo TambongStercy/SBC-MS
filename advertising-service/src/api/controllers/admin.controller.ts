@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
 import CampaignParticipationModel from '../../database/models/campaign-participation.model';
 import { campaignClickBreakdown, getLeaderboard as leaderboard } from '../../services/ranking.service';
+import { activateApprovedCampaign as activatePaidCampaign } from '../../services/activation.service';
 import {
     approveCampaign,
     rejectCampaign,
@@ -91,7 +92,9 @@ export const listForReview = async (req: AuthenticatedRequest, res: Response) =>
             if (unknown.length) throw new AppError(`Statut inconnu : ${unknown.join(', ')}`, 400);
             filter.status = { $in: requested };
         } else {
-            filter.status = CampaignStatus.PENDING_REVIEW;
+            // Pay-first: the queue is what people have PAID for. Legacy
+            // PENDING_REVIEW campaigns are included so the old ones are not stranded.
+            filter.status = { $in: [CampaignStatus.PAID, CampaignStatus.PENDING_REVIEW] };
         }
 
         const [items, total] = await Promise.all([
@@ -371,11 +374,21 @@ export const approve = async (req: AuthenticatedRequest, res: Response) => {
 
         const approved = await approveCampaign(campaign, adminUserId(req));
         log.info(`Campaign ${approved._id} approved by ${approved.reviewedBy}`);
+
+        // Pay-first: the campaign is already paid for, so validating it IS what
+        // starts it — « quand je valide ça se met en marche » (Rufus). A legacy
+        // APPROVED-but-unpaid campaign still waits for its payment instead.
+        let status: string = approved.status;
+        if (approved.status === CampaignStatus.PAID) {
+            const result = await activatePaidCampaign(approved._id);
+            status = result.status;
+        }
+
         await notifyCampaignApproved(String(approved.advertiserUserId), approved.title);
 
         return res.json({
             success: true,
-            data: { status: approved.status, reviewedAt: approved.reviewedAt },
+            data: { status, reviewedAt: approved.reviewedAt },
         });
     } catch (err) {
         return fail(res, err, 'approveCampaign');
