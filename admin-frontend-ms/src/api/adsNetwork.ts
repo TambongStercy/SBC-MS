@@ -12,6 +12,7 @@ export type CampaignStatus =
     | 'draft'
     | 'pending_review'
     | 'approved'
+    | 'paid'
     | 'rejected'
     | 'active'
     | 'paused'
@@ -255,6 +256,7 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
     draft: 'Brouillon',
     pending_review: 'À valider',
     approved: 'Validée',
+    paid: 'Payée — à valider',
     rejected: 'Refusée',
     active: 'Active',
     paused: 'En pause',

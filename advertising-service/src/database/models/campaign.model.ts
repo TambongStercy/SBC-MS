@@ -3,10 +3,26 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export enum CampaignStatus {
     /** Created but not submitted for review. */
     DRAFT = 'draft',
-    /** Submitted; an admin must approve the creative before it can go live. */
+    /**
+     * Submitted for review WITHOUT payment. The old order (review, then pay) —
+     * kept only for campaigns already in this state when pay-first shipped.
+     * Nothing new ever reaches it.
+     */
     PENDING_REVIEW = 'pending_review',
-    /** Admin approved. Payment may now activate it. */
+    /** Admin approved but unpaid. Legacy approve-then-pay flow, likewise frozen. */
     APPROVED = 'approved',
+    /**
+     * Paid, waiting for an admin to validate the creative.
+     *
+     * Rufus: « tu peux faire que les gars payent d'abord… et quand je valide ça se
+     * met en marche, si je ne valide pas il peut faire le retrait — parce que je
+     * vois trop d'annonceurs blagueurs. » Paying is what puts a campaign in front
+     * of a human, so time is only ever spent on annonceurs who committed money.
+     *
+     * Payment alone NEVER activates: the creative still passes moderation before
+     * it goes onto thousands of personal WhatsApp statuses.
+     */
+    PAID = 'paid',
     /** Admin rejected. The annonceur edits and resubmits. */
     REJECTED = 'rejected',
     /** Paid, accepting diffuseurs, accruing views. */
