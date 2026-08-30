@@ -171,6 +171,18 @@ export class ConversationRepository {
         ).exec();
     }
 
+    /** Sets the counter to an exact value, for recomputing it from the messages. */
+    async setUnreadCount(
+        conversationId: string | Types.ObjectId,
+        userId: string,
+        count: number
+    ): Promise<void> {
+        await ConversationModel.findByIdAndUpdate(
+            conversationId,
+            { $set: { [`unreadCounts.${userId}`]: Math.max(0, count) } }
+        ).exec();
+    }
+
     /**
      * Soft delete conversation for a user
      */
