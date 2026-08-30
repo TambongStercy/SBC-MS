@@ -531,3 +531,55 @@ export const forfeitExpired = async (): Promise<number> => {
 
     return expired.length;
 };
+
+/**
+ * Verify a day from an admin-reviewed video proof instead of a WhatsApp scan.
+ *
+ * The manual (video-proof) fallback: an admin has watched the screen recording,
+ * confirmed the on-screen code matches the one we issued (so the recording is
+ * fresh), and read the view count off the video. This applies the SAME outcome
+ * as a successful auto-verification — day marked VERIFIED, earnings computed at
+ * the day's rate, next day opened, totals recomputed, completion side-effects
+ * (ranking, test-campaign flag) fired on the run that completes — so manual and
+ * auto can never diverge in how they pay. Crediting still happens in the payout
+ * sweep, exactly as for auto.
+ */
+export const markDayVerifiedManually = async (
+    participationId: string | Types.ObjectId,
+    dayNumber: number,
+    viewCount: number,
+): Promise<{ day: number; viewCount: number; earnedAmount: number; justCompleted: boolean }> => {
+    const participation = await CampaignParticipationModel.findById(participationId);
+    if (!participation) throw new AppError('Participation not found', 404);
+    if (participation.status !== ParticipationStatus.IN_PROGRESS) {
+        throw new AppError(
+            `Cette participation n'est pas en cours (statut : ${participation.status}).`,
+            400,
+        );
+    }
+
+    const day = participation.days.find(d => d.day === dayNumber);
+    if (!day) throw new AppError(`Jour ${dayNumber} introuvable pour cette participation.`, 400);
+
+    const firstVerification = day.status !== DayStatus.VERIFIED;
+    const views = Math.max(0, Math.round(viewCount));
+
+    day.status = DayStatus.VERIFIED;
+    day.viewCount = views;
+    day.deliveredCount = Math.max(day.deliveredCount ?? 0, views);
+    day.earnedAmount = Math.round(views * day.ratePerView * 100) / 100;
+    day.verifiedAt = new Date();
+    day.trackingLinkPresent = true;
+    if (firstVerification && !day.postedAt) day.postedAt = new Date();
+    if (firstVerification) openNextDay(participation, day.day);
+
+    const justCompleted = recomputeTotals(participation);
+    await participation.save();
+    await syncCampaignCounters(participation, justCompleted);
+
+    log.info(
+        `Participation ${participation._id} day ${dayNumber} verified MANUALLY: ${views} views, `
+        + `earned ${day.earnedAmount}${justCompleted ? ' (participation completed)' : ''}`,
+    );
+    return { day: dayNumber, viewCount: views, earnedAmount: day.earnedAmount, justCompleted };
+};
