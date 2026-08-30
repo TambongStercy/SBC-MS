@@ -106,7 +106,7 @@ export default function AdsNetworkManualVerifyPage() {
             </div>
 
             {loading ? (
-                <Loader />
+                <Loader name="Chargement des vérifications…" />
             ) : error ? (
                 <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
                     <AlertTriangle size={18} /> {error}
