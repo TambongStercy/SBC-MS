@@ -14,6 +14,7 @@ export type CampaignStatus =
     | 'approved'
     | 'rejected'
     | 'active'
+    | 'paused'
     | 'completed'
     | 'banked'
     | 'cancelled';
@@ -256,6 +257,7 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
     approved: 'Validée',
     rejected: 'Refusée',
     active: 'Active',
+    paused: 'En pause',
     completed: 'Terminée',
     banked: 'Créditée',
     cancelled: 'Annulée',
