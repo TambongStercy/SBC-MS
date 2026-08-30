@@ -2,7 +2,8 @@ import { Schema, Document, Types, model } from 'mongoose';
 
 export enum ConversationType {
     DIRECT = 'direct',
-    STATUS_REPLY = 'status_reply'
+    STATUS_REPLY = 'status_reply',
+    LOVE = 'love'
 }
 
 export enum ConversationAcceptanceStatus {
@@ -17,6 +18,7 @@ export interface IConversation extends Document {
     participants: Types.ObjectId[];
     type: ConversationType;
     statusId?: Types.ObjectId;
+    matchId?: Types.ObjectId; // SBC Love match this LOVE conversation belongs to
     lastMessage?: Types.ObjectId;
     lastMessageAt?: Date;
     lastMessagePreview?: string;
@@ -50,6 +52,10 @@ const ConversationSchema = new Schema<IConversation>(
         statusId: {
             type: Schema.Types.ObjectId,
             ref: 'Status',
+            sparse: true
+        },
+        matchId: {
+            type: Schema.Types.ObjectId,
             sparse: true
         },
         lastMessage: {

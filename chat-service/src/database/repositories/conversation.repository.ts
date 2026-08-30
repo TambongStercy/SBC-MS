@@ -42,6 +42,18 @@ export class ConversationRepository {
     }
 
     /**
+     * Find the LOVE conversation for a given SBC Love match
+     */
+    async findLoveConversationByMatch(
+        matchId: string | Types.ObjectId
+    ): Promise<IConversation | null> {
+        return ConversationModel.findOne({
+            type: ConversationType.LOVE,
+            matchId
+        }).exec();
+    }
+
+    /**
      * Find conversation by status reply
      */
     async findStatusReplyConversation(
@@ -168,18 +180,6 @@ export class ConversationRepository {
         await ConversationModel.findByIdAndUpdate(
             conversationId,
             { $set: { [`unreadCounts.${userId}`]: 0 } }
-        ).exec();
-    }
-
-    /** Sets the counter to an exact value, for recomputing it from the messages. */
-    async setUnreadCount(
-        conversationId: string | Types.ObjectId,
-        userId: string,
-        count: number
-    ): Promise<void> {
-        await ConversationModel.findByIdAndUpdate(
-            conversationId,
-            { $set: { [`unreadCounts.${userId}`]: Math.max(0, count) } }
         ).exec();
     }
 

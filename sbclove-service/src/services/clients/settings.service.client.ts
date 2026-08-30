@@ -66,10 +66,22 @@ class SettingsServiceClient {
     }
 
     /**
-     * Builds the public proxy URL for a stored file id (served by settings-service).
+     * Builds the browser-reachable URL for a stored file id.
+     *
+     * NOT the /settings/files proxy: `config.services.settingsService` is an
+     * internal address no client can resolve, and the id settings-service
+     * returns for these uploads is a GCS object name that carries the folder
+     * prefix ("sbclove/1712345_photo.jpg") — the slash would not survive the
+     * proxy's `:fileId` param anyway. settings-service builds the very same
+     * public-bucket URL for its own file references.
+     *
+     * ponytail: assumes the public GCS bucket, which is where every SBCLOVE
+     * photo goes. If the upload ever falls back to Drive (bare id, no slash),
+     * that id would need the /settings/files proxy behind the API gateway.
      */
     getFileUrl(fileId: string): string {
-        return `${config.services.settingsService}/settings/files/${fileId}`;
+        if (/^https?:\/\//.test(fileId)) return fileId;
+        return `${config.services.publicFileBaseUrl}/${fileId}`;
     }
 }
 

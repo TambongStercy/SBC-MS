@@ -39,11 +39,18 @@ export class LoveProfileRepository {
         return LoveProfileModel.findOne(query).lean<ILoveProfile>().exec();
     }
 
+    /**
+     * `_id` is part of the default sort, not decoration: profiles created in the
+     * same millisecond (a bulk import, a seed) tie on `createdAt`, and a tie
+     * makes skip/limit unstable — page 2 then repeats rows already shown on
+     * page 1 and drops others entirely. `_id` is unique, so it turns the order
+     * into a total one.
+     */
     async find(
         query: FilterQuery<ILoveProfile>,
         limit: number = 20,
         skip: number = 0,
-        sort: { [key: string]: SortOrder } = { createdAt: -1 }
+        sort: { [key: string]: SortOrder } = { createdAt: -1, _id: -1 }
     ): Promise<ILoveProfile[]> {
         return LoveProfileModel.find(query)
             .sort(sort)
@@ -55,6 +62,14 @@ export class LoveProfileRepository {
 
     async count(query: FilterQuery<ILoveProfile>): Promise<number> {
         return LoveProfileModel.countDocuments(query).exec();
+    }
+
+    /** Profile counts per status in a single grouped pass (admin dashboard). */
+    async countByStatus(): Promise<Record<string, number>> {
+        const rows = await LoveProfileModel.aggregate<{ _id: string; count: number }>([
+            { $group: { _id: '$status', count: { $sum: 1 } } },
+        ]).exec();
+        return Object.fromEntries(rows.map(r => [r._id, r.count]));
     }
 
     async updateByUserId(userId: string | Types.ObjectId, data: Partial<ILoveProfile>): Promise<ILoveProfile | null> {

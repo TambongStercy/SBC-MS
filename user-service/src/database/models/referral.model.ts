@@ -65,6 +65,13 @@ const ReferralSchema = new Schema<IReferral>(
 // Compound index for querying referrals by referrer and level, including archived status
 ReferralSchema.index({ referrer: 1, referralLevel: 1, archived: 1 });
 
+// Left in place for historical/admin queries that filter direct referrals by
+// creation date across all referrers. The monthly leaderboard no longer uses
+// this shape — it walks paid subscriptions first, then matches direct referrals
+// by `referredUser: { $in }` (covered by the { referredUser } index) — but
+// dropping the compound index costs a prod migration for no gain today.
+ReferralSchema.index({ archived: 1, referralLevel: 1, createdAt: -1, referrer: 1 });
+
 // Compound indexes for fast search by referrer + searchable fields
 ReferralSchema.index({ referrer: 1, referredUserName: 1 });
 ReferralSchema.index({ referrer: 1, referredUserEmail: 1 });

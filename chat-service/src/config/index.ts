@@ -35,6 +35,10 @@ interface IConfig {
         userServiceUrl: string;
         settingsServiceUrl: string;
         advertisingServiceUrl: string;
+        sbcloveServiceUrl: string;
+    };
+    love: {
+        encryptionKey: string;
     };
     cors: {
         origin: string | string[];
@@ -95,7 +99,16 @@ const config: IConfig = {
         serviceSecret: process.env.SERVICE_SECRET || '__REPLACE_WITH_STRONG_RANDOM_SECRET__',
         userServiceUrl: ensureApiSuffix(process.env.USER_SERVICE_URL, 'http://localhost:3001'),
         settingsServiceUrl: ensureApiSuffix(process.env.SETTINGS_SERVICE_URL, 'http://localhost:3007'),
-        advertisingServiceUrl: ensureApiSuffix(process.env.ADVERTISING_SERVICE_URL, 'http://localhost:3005')
+        advertisingServiceUrl: ensureApiSuffix(process.env.ADVERTISING_SERVICE_URL, 'http://localhost:3005'),
+        sbcloveServiceUrl: ensureApiSuffix(process.env.SBCLOVE_SERVICE_URL, 'http://localhost:3009')
+    },
+    love: {
+        // Falls back to SERVICE_SECRET so dev works out of the box; set a
+        // dedicated CHAT_LOVE_ENCRYPTION_KEY in prod and never rotate it
+        // without a re-encryption migration (old rows become unreadable).
+        encryptionKey: process.env.CHAT_LOVE_ENCRYPTION_KEY
+            || process.env.SERVICE_SECRET
+            || '__REPLACE_WITH_STRONG_RANDOM_SECRET__'
     },
     cors: {
         origin: corsOrigins,

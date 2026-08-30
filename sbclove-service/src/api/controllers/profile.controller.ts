@@ -67,7 +67,11 @@ class ProfileController {
 
     async deletePhoto(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
-            const view = await profileService.deletePhoto(req.user!.userId, req.params.fileId);
+            const fileId = String(req.query.fileId ?? '');
+            if (!fileId) {
+                throw new AppError('`fileId` is required.', 400);
+            }
+            const view = await profileService.deletePhoto(req.user!.userId, fileId);
             res.status(200).json({ success: true, message: 'Photo deleted.', data: view });
         } catch (error) {
             this.handle(error, res, next);

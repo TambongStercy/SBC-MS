@@ -97,6 +97,70 @@ export interface ReferralStatsResponse {
     monthlyData: MonthlyReferralData[];
 }
 
+/**
+ * One row of the monthly affiliate leaderboard ("Classement Général").
+ */
+export interface LeaderboardEntry {
+    userId: string;
+    name: string;
+    avatar?: string;
+    avatarId?: string;
+    country?: string;
+    city?: string;
+    /** Direct (level-1) filleuls who PAID a registration subscription inside the month window. */
+    referralCount: number;
+    /** Estimated FCFA earned from this month's paid referrals. See LEVEL_EARNINGS_XAF. */
+    earnings: number;
+    rank: number;
+}
+
+/**
+ * FCFA earned per referral, by level. Derived from the real constants in
+ * subscription.service.ts: the CLASSIQUE registration base is 2000 XAF and the
+ * commission rates are { level1: 0.50, level2: 0.25, level3: 0.125 }.
+ *
+ * ponytail: CLASSIQUE base only. A CIBLE referral actually pays 2500/1250/625,
+ * so this is a conservative floor and the UI labels it an estimation. Exact
+ * figures live in the payment-service ledger, which would mean a cross-service
+ * call per user — only worth it if someone disputes a number.
+ */
+export const LEVEL_EARNINGS_XAF: Record<number, number> = { 1: 1000, 2: 500, 3: 250 };
+
+/**
+ * One aggregation produces both halves of the board.
+ *
+ * `counts` is every referrer's direct-referral total for the month, sorted
+ * descending — just the numbers, no ids. It exists so a caller's own rank can
+ * be derived in memory instead of re-running the aggregation per user, which
+ * would destroy the single shared cache. At 40k referrers it is ~320KB.
+ */
+export interface LeaderboardSnapshot {
+    top: LeaderboardEntry[];
+    counts: number[];
+}
+
+/**
+ * Start of the current month in Africa/Douala (UTC+1, no DST).
+ *
+ * Pinned deliberately: inheriting the container's TZ would roll the board over
+ * an hour early or late depending on the deploy environment.
+ */
+/** Start of the month AFTER the given month start, in Africa/Douala. */
+export function startOfNextMonthDouala(monthStart: Date): Date {
+    const DOUALA_OFFSET_MS = 60 * 60 * 1000;
+    const local = new Date(monthStart.getTime() + DOUALA_OFFSET_MS);
+    const next = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 1, 0, 0, 0, 0);
+    return new Date(next - DOUALA_OFFSET_MS);
+}
+
+export function startOfCurrentMonthDouala(now: Date = new Date()): Date {
+    // Shift into Douala local time, truncate to the 1st, then shift back to UTC.
+    const DOUALA_OFFSET_MS = 60 * 60 * 1000;
+    const local = new Date(now.getTime() + DOUALA_OFFSET_MS);
+    const localMonthStart = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1, 0, 0, 0, 0);
+    return new Date(localMonthStart - DOUALA_OFFSET_MS);
+}
+
 export class ReferralRepository {
 
     // Fields to select when populating user data
@@ -2014,6 +2078,222 @@ export class ReferralRepository {
             page,
             pages: Math.ceil(total / limit)
         };
+    }
+
+    /**
+     * How many DIRECT filleuls of `userId` PAID a registration subscription
+     * inside the month window.
+     *
+     * "Paid" means a CLASSIQUE or CIBLE Subscription document whose `createdAt`
+     * falls in the window — that is the initial activation of the filleul's
+     * account, which is the sale the referrer's commission is tied to. Later
+     * renewals and feature subs (RELANCE, VISIBILITE_MAX) don't count; the
+     * board measures new paid signups, not lifetime activity.
+     *
+     * Two indexed lookups: first the referrer's own direct referrals (covered
+     * by { referrer, referralLevel, archived }), then a countDocuments over
+     * that small id set on Subscription. Cheap per-user, which is what makes
+     * deriving "your rank" affordable without re-running the board.
+     */
+    async countMonthlyDirectReferrals(
+        userId: string | Types.ObjectId,
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart)
+    ): Promise<number> {
+        const directRefs = await ReferralModel.find(
+            {
+                referrer: new Types.ObjectId(userId.toString()),
+                referralLevel: 1,
+                archived: { $ne: true },
+            },
+            { referredUser: 1 }
+        ).lean();
+        if (directRefs.length === 0) return 0;
+        return SubscriptionModel.countDocuments({
+            user: { $in: directRefs.map((r) => r.referredUser) },
+            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+            createdAt: { $gte: monthStart, $lt: monthEnd },
+        });
+    }
+
+    /**
+     * Top affiliates for the current month, counting only DIRECT (level-1)
+     * filleuls who PAID a registration subscription (CLASSIQUE or CIBLE) inside
+     * the window. A signup with no paid activation doesn't count; nor does a
+     * paid filleul whose activation is in a different month.
+     *
+     * There is no monthly reset job and no materialised leaderboard collection:
+     * `monthStart` is recomputed on every call, so on the 1st the paid set is
+     * simply empty. Nothing is stored, so nothing needs resetting.
+     *
+     * Subscription-first: we walk the month's paid registrations (small — one
+     * indexed range scan on `subscriptions.createdAt` × `subscriptionType`),
+     * then group direct referrals over that id set. Doing it the other way
+     * around (all monthly referrals, then filter by paid) scans the full
+     * referrals collection since we no longer have a { createdAt } predicate
+     * that can share an index with { archived, referralLevel }.
+     */
+    async getMonthlyAffiliateLeaderboard(
+        limit: number = 10,
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart),
+        /** Optional ISO-2 country filter (admin view). */
+        country?: string
+    ): Promise<LeaderboardSnapshot> {
+        const eligible = await this.getMonthlyEligibleReferrers(monthStart, monthEnd, country);
+        return this.hydrateLeaderboard(eligible, limit);
+    }
+
+    /**
+     * Everyone who qualifies for a bonus tier this month, in one pass.
+     *
+     * The monthly bonus MUST be computed from exactly what the board ranks —
+     * same window, same "a sale is a paid filleul" definition, same exclusions —
+     * or a member could see a badge they are never paid for. Hence the shared
+     * `getMonthlyEligibleReferrers` rather than a second, drifting query.
+     */
+    async getMonthlyQualifiers(
+        minSales: number,
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart),
+    ): Promise<{ userId: string; salesCount: number }[]> {
+        const eligible = await this.getMonthlyEligibleReferrers(monthStart, monthEnd);
+        return eligible
+            .filter((e) => e.referralCount >= minSales)
+            .map((e) => ({ userId: e._id.toString(), salesCount: e.referralCount }));
+    }
+
+    /**
+     * Referrers ranked by paid direct filleuls in the window, minus deleted,
+     * blocked and unsubscribed accounts. Sorted, not hydrated.
+     */
+    private async getMonthlyEligibleReferrers(
+        monthStart: Date,
+        monthEnd: Date,
+        country?: string,
+    ): Promise<{ _id: Types.ObjectId; referralCount: number }[]> {
+        // Pass 0 — who PAID this month. A CLASSIQUE/CIBLE Subscription created
+        // in the window is the canonical "filleul activated" event. distinct
+        // over `user` collapses the rare case of an upgrade that spawned a new
+        // sub doc for the same filleul in the same month.
+        const paidUserIds = await SubscriptionModel.distinct('user', {
+            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+            createdAt: { $gte: monthStart, $lt: monthEnd },
+        });
+        if (paidUserIds.length === 0) return [];
+
+        // Pass 1 — group direct referrals per referrer over the paid set.
+        //
+        // No $lookup here on purpose. Joining users to drop deleted/blocked
+        // accounts inside the pipeline means one indexed join per REFERRER, and
+        // at 40k referrers that measured 3.4s against 674ms without it (7.4s if
+        // the subscription join is hoisted too). The exclusions are applied
+        // below instead, against a small pre-fetched id set.
+        const grouped = await ReferralModel.aggregate<{ _id: Types.ObjectId; referralCount: number }>([
+            { $match: { archived: { $ne: true }, referralLevel: 1, referredUser: { $in: paidUserIds } } },
+            { $group: { _id: '$referrer', referralCount: { $sum: 1 } } },
+            // The _id tiebreak makes the ranking deterministic across cache
+            // refreshes; without it, equal-count users shuffle every hour.
+            { $sort: { referralCount: -1, _id: 1 } },
+        ])
+            .allowDiskUse(true)
+            .option({ maxTimeMS: 20_000 });
+
+        // Pass 2 — drop removed accounts. A soft-deleted or blocked user must
+        // never be shown OR counted in someone else's rank. This set is small
+        // and the query is index-backed on `deleted`.
+        // TWO queries, not one $or. user.model.ts has a pre('find') hook that
+        // appends `deleted: { $ne: true }` unless the query carries a TOP-LEVEL
+        // `deleted: true`. Inside an $or that condition is invisible to the
+        // hook, so `$or: [{deleted:true},{blocked:true}]` silently returns only
+        // the blocked users and soft-deleted accounts leak back into the board.
+        const [deletedUsers, blockedUsers] = await Promise.all([
+            UserModel.find({ deleted: true }, { _id: 1 }).lean(),
+            UserModel.find({ blocked: true }, { _id: 1 }).lean(),
+        ]);
+        const excludedIds = new Set(
+            [...deletedUsers, ...blockedUsers].map((u) => u._id.toString())
+        );
+
+        // The board ranks *subscribers*, so non-subscribers must be excluded
+        // from `counts` too — otherwise a caller's rank counts people who are
+        // not on the board. Fetched as ONE index-backed query over active
+        // subscriptions rather than a $in against every referrer or a per-row
+        // $lookup, both of which were measured far slower.
+        const now = new Date();
+        const activeSubs = await SubscriptionModel.find(
+            {
+                status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                endDate: { $gt: now },
+            },
+            { user: 1 }
+        ).lean();
+        const subscribed = new Set(activeSubs.map((x) => x.user.toString()));
+
+        // Optional country restriction (admin). Same set-based shape as the
+        // exclusions above: one indexed query on `country`, then an in-memory
+        // filter — rather than joining users for every referrer.
+        let inCountry: Set<string> | null = null;
+        if (country) {
+            const locals = await UserModel.find(
+                { country: new RegExp(`^${country.replace(/[^A-Za-z]/g, '')}$`, 'i') },
+                { _id: 1 }
+            ).lean();
+            inCountry = new Set(locals.map((u) => u._id.toString()));
+        }
+
+        const eligible = grouped.filter((g) => {
+            const id = g._id.toString();
+            if (excludedIds.has(id) || !subscribed.has(id)) return false;
+            return inCountry ? inCountry.has(id) : true;
+        });
+
+        return eligible;
+    }
+
+    /** Turns the eligible list into the public board (top N + rank distribution). */
+    private async hydrateLeaderboard(
+        eligible: { _id: Types.ObjectId; referralCount: number }[],
+        limit: number,
+    ): Promise<LeaderboardSnapshot> {
+        // `counts` backs "your rank" without a per-user aggregation.
+        const counts = eligible.map((g) => g.referralCount);
+
+        // Pass 3 — hydrate only the head of the list. `eligible` is already
+        // filtered, so exactly `limit` rows are needed.
+        const candidates = eligible.slice(0, limit);
+        if (candidates.length === 0) return { top: [], counts };
+
+        const candidateIds = candidates.map((c) => c._id);
+        const users = await UserModel.find(
+            { _id: { $in: candidateIds } },
+            { name: 1, avatar: 1, avatarId: 1, country: 1, city: 1 }
+        ).lean();
+        const userById = new Map(users.map((u) => [u._id.toString(), u]));
+
+        const top: LeaderboardEntry[] = [];
+        for (const c of candidates) {
+            if (top.length >= limit) break;
+            const id = c._id.toString();
+            const u = userById.get(id);
+            // A referral row pointing at a user that no longer exists is garbage.
+            if (!u) continue;
+            top.push({
+                userId: id,
+                name: (u as { name?: string }).name ?? '',
+                avatar: (u as { avatar?: string }).avatar,
+                avatarId: (u as { avatarId?: string }).avatarId,
+                country: (u as { country?: string }).country,
+                city: (u as { city?: string }).city,
+                referralCount: c.referralCount,
+                // Earnings track what the board counts: direct commission only.
+                earnings: c.referralCount * LEVEL_EARNINGS_XAF[1],
+                rank: top.length + 1,
+            });
+        }
+
+        return { top, counts };
     }
 }
 

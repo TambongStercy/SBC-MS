@@ -337,11 +337,24 @@ export class MoneyFusionService {
 
             const data = response.data;
 
+            // Log the raw body verbatim: withdrawal K-l0u2Zh3kCA9cnY came back
+            // statut:true but data.tokenPay was undefined, so we stored no MF
+            // reference and the payout could not be found on the MF dashboard. We
+            // do not know which key held the token — capture the whole response so
+            // the next one is diagnosable, and read the token from any key MF might
+            // use so the withdrawal stays searchable and auto-reconcilable.
+            log.info(`MoneyFusion payout raw response: ${JSON.stringify(data)}`);
+
             if (data.statut === true) {
-                log.info(`MoneyFusion payout initiated: tokenPay=${data.tokenPay}`);
+                const tokenPay: string | undefined =
+                    data.tokenPay ?? data.token ?? data.data?.tokenPay ?? data.data?.token ?? data.numeroTransaction;
+                if (!tokenPay) {
+                    log.warn(`MoneyFusion payout accepted (statut:true) but no token found in response: ${JSON.stringify(data)}`);
+                }
+                log.info(`MoneyFusion payout initiated: tokenPay=${tokenPay}`);
                 return {
                     success: true,
-                    tokenPay: data.tokenPay,
+                    tokenPay,
                     message: data.message || 'Withdrawal submitted',
                 };
             } else {

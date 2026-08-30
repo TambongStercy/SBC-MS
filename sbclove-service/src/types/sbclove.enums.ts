@@ -48,6 +48,17 @@ export enum ReportStatus {
 }
 
 /**
+ * The sex SBCLOVE proposes to a member: the opposite one. Only male/female have
+ * an opposite — 'other' and 'prefer_not_to_say' return null, and callers then
+ * skip the filter rather than show an empty module.
+ */
+export const oppositeSex = (sex?: string | null): string | null => {
+    if (sex === 'male') return 'female';
+    if (sex === 'female') return 'male';
+    return null;
+};
+
+/**
  * Computes the AgeBracket for a given birth date (evaluated against `now`).
  * Returns null if no birth date is available.
  */

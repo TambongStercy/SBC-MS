@@ -102,6 +102,12 @@ export interface AdminUserListFilters {
 export interface AdjustBalancePayload {
     amount: number;
     reason: string;
+    /**
+     * Which wallet to credit. 'main' is withdrawable; 'activation' funds
+     * referral activations and cannot be withdrawn — it is where rewards meant
+     * to be reinvested (the leaderboard bonus) belong. Defaults to 'main'.
+     */
+    target?: 'main' | 'activation';
 }
 
 // Interface for the user summary stats response data

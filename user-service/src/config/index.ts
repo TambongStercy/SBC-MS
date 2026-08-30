@@ -63,6 +63,27 @@ interface IConfig {
         maxTransactionsPerDay: number;
     };
     selfBaseUrl: string;
+    /**
+     * Monthly leaderboard bonus (see leaderboard-bonus.service).
+     *
+     * These thresholds and amounts are the ones members are shown in the app's
+     * reward table (ui/src/lib/leaderTiers.ts) — the two must stay in step, so
+     * change them here and there together, or not at all.
+     */
+    leaderboardBonus: {
+        enabled: boolean;
+        /** Ascending by threshold; the highest one a member reaches is paid. */
+        tiers: { key: 'leader' | 'gold' | 'elite'; minSales: number; amountXaf: number }[];
+        /** node-cron expression, evaluated in `timezone`. */
+        cron: string;
+        timezone: string;
+        /**
+         * First month the bonus is ever paid for, 'YYYY-MM'. Months before it
+         * are refused on every path — the programme starts here, and no back
+         * pay is owed for the months the feature did not exist.
+         */
+        firstPaidMonth: string;
+    };
 }
 
 const config: IConfig = {
@@ -119,7 +140,25 @@ const config: IConfig = {
         maxTransactionsPerDay: Number(process.env.MAX_WITHDRAWALS_PER_DAY) || 3
     },
 
-    selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3001'
+    selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3001',
+
+    leaderboardBonus: {
+        // Off by default: turning it on is a deliberate act, because the first
+        // run moves real money for every qualifying member.
+        enabled: (process.env.LEADERBOARD_BONUS_ENABLED || 'false').toLowerCase() === 'true',
+        tiers: [
+            { key: 'leader', minSales: Number(process.env.LEADERBOARD_TIER1_SALES) || 30, amountXaf: Number(process.env.LEADERBOARD_TIER1_XAF) || 2000 },
+            { key: 'gold', minSales: Number(process.env.LEADERBOARD_TIER2_SALES) || 120, amountXaf: Number(process.env.LEADERBOARD_TIER2_XAF) || 10000 },
+            { key: 'elite', minSales: Number(process.env.LEADERBOARD_TIER3_SALES) || 320, amountXaf: Number(process.env.LEADERBOARD_TIER3_XAF) || 50000 },
+        ],
+        // 03:00 on the 1st, Douala time: the month it pays for is closed, and
+        // the hour is quiet.
+        cron: process.env.LEADERBOARD_BONUS_CRON || '0 3 1 * *',
+        timezone: process.env.LEADERBOARD_BONUS_TZ || 'Africa/Douala',
+        // September 2026 is the first counted month, so the first payout runs
+        // on 1 October 2026 — once September has actually closed.
+        firstPaidMonth: process.env.LEADERBOARD_BONUS_FIRST_MONTH || '2026-09',
+    }
 };
 
 // Validation function for required configurations

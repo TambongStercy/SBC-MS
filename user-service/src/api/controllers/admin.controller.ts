@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import logger from '../../utils/logger';
-import { userService } from '../../services/user.service';
+import { userService, BalanceTarget } from '../../services/user.service';
 import { UserRole, IUser } from '../../database/models/user.model';
 import { PaginationOptions } from '../../types/express';
 import { ContactSearchFilters } from '../../types/contact.types'; // Assuming filters might be reused
@@ -10,9 +10,22 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware'; // Import 
 import { partnerService } from '../../services/partner.service'; // Import PartnerService
 import { subscriptionService } from '../../services/subscription.service'; // Import Subscription Service
 import { activationBalanceService } from '../../services/activation-balance.service'; // For cancelActivationTransfer
+import { leaderboardBonusService, previousMonthStart, monthKey } from '../../services/leaderboard-bonus.service';
+import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 import { AppError } from '../../utils/errors'; // Import AppError
 
 const log = logger.getLogger('AdminController');
+
+/** 'YYYY-MM' → the UTC instant that month starts in Douala. null if malformed. */
+function monthStartFromKey(key: string): Date | null {
+    const m = /^(\d{4})-(\d{2})$/.exec(key);
+    if (!m) return null;
+    const year = Number(m[1]);
+    const month = Number(m[2]);
+    if (month < 1 || month > 12) return null;
+    const DOUALA_OFFSET_MS = 60 * 60 * 1000;
+    return new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0) - DOUALA_OFFSET_MS);
+}
 
 class AdminController {
 
@@ -261,6 +274,62 @@ class AdminController {
     }
 
     /**
+     * Run (or replay) the monthly leaderboard bonus payout.
+     * @route POST /api/users/admin/leaderboard-bonus/run
+     * Body: { month?: 'YYYY-MM', dryRun?: boolean }
+     *
+     * Safe to call twice: the ledger's unique {userId, month} means a replay
+     * pays only the members a previous run missed. `dryRun` writes nothing.
+     */
+    async runLeaderboardBonus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { month, dryRun } = req.body as { month?: string; dryRun?: boolean };
+            const monthStart = month ? monthStartFromKey(month) : previousMonthStart();
+            if (!monthStart) {
+                res.status(400).json({ success: false, message: "Invalid month. Expected 'YYYY-MM'." });
+                return;
+            }
+            if (monthStart >= startOfCurrentMonthDouala()) {
+                res.status(400).json({ success: false, message: 'Refusing to pay a month that has not closed yet.' });
+                return;
+            }
+            const report = await leaderboardBonusService.payoutForMonth(monthStart, {
+                dryRun: dryRun === true,
+                triggeredBy: req.user!.userId,
+            });
+            res.status(200).json({ success: true, data: report });
+        } catch (error: any) {
+            log.error('Leaderboard bonus run failed:', error);
+            // "before the programme started" is a caller mistake, not a fault.
+            if (/starts with/.test(error?.message ?? '')) {
+                res.status(400).json({ success: false, message: error.message });
+                return;
+            }
+            next(error);
+        }
+    }
+
+    /**
+     * The bonus ledger for a month.
+     * @route GET /api/users/admin/leaderboard-bonus?month=YYYY-MM&page&limit
+     */
+    async listLeaderboardBonuses(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const month = (req.query.month as string) || monthKey(previousMonthStart());
+            const limit = Math.min(parseInt(String(req.query.limit ?? '100'), 10) || 100, 500);
+            const page = Math.max(parseInt(String(req.query.page ?? '1'), 10) || 1, 1);
+            const { items, total } = await leaderboardBonusService.listBonuses(month, limit, (page - 1) * limit);
+            res.status(200).json({
+                success: true, data: items,
+                pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+            });
+        } catch (error) {
+            log.error('Leaderboard bonus listing failed:', error);
+            next(error);
+        }
+    }
+
+    /**
      * Manually Adjust Balance (Admin)
      * @route POST /api/admin/users/:userId/adjust-balance
      */
@@ -270,7 +339,7 @@ class AdminController {
             res.status(400).json({ success: false, message: 'Invalid User ID format' });
             return;
         }
-        const { amount, reason } = req.body;
+        const { amount, reason, target } = req.body as { amount: number; reason: string; target?: BalanceTarget };
         const adminUserId = req.user?.userId;
 
         if (!adminUserId) {
@@ -278,21 +347,21 @@ class AdminController {
             return;
         }
 
-        log.info(`Admin ${adminUserId} request to adjust balance for user: ${userId} by ${amount}. Reason: ${reason}`);
+        log.info(`Admin ${adminUserId} request to adjust ${target ?? 'main'} balance for user: ${userId} by ${amount}. Reason: ${reason}`);
         try {
             // Basic validation moved to service, but keep null/type check here
             if (typeof amount !== 'number' || !reason) {
                 res.status(400).json({ success: false, message: 'Invalid input: amount (number) and reason (string) are required.' });
                 return;
             }
-            const newBalance = await userService.adminAdjustBalance(userId, amount, reason, adminUserId);
+            const newBalance = await userService.adminAdjustBalance(userId, amount, reason, adminUserId, target ?? 'main');
 
             if (newBalance === null) {
                 // Service logs warning, controller returns 404
                 res.status(404).json({ success: false, message: 'User not found' });
                 return;
             }
-            res.status(200).json({ success: true, message: 'Balance adjusted successfully', newBalance });
+            res.status(200).json({ success: true, message: 'Balance adjusted successfully', newBalance, target: target ?? 'main' });
         } catch (error: any) {
             log.error(`Error adjusting balance for user ${userId} (admin):`, error);
             res.status(error.message.includes('Invalid') || error.message.includes('required') ? 400 : 500)

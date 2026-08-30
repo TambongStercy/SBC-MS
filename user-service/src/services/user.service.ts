@@ -10,6 +10,16 @@ import { notificationService, DeliveryChannel } from './clients/notification.ser
 import logger from '../utils/logger';
 import config from '../config';
 import { dailyWithdrawalRepository } from '../database/repositories/daily-withdrawal.repository';
+
+/**
+ * Which wallet an admin adjustment lands in.
+ *
+ * 'main' is the withdrawable balance; 'activation' is the sponsoring balance
+ * (one-way by design — it funds referral activations and cannot be withdrawn).
+ * Rewards that are meant to be reinvested in the network, like the leaderboard
+ * bonus, belong on 'activation'.
+ */
+export type BalanceTarget = 'main' | 'activation';
 import SubscriptionModel, { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model';
 import UserModel from '../database/models/user.model';
 import { subscriptionService } from './subscription.service';
@@ -617,6 +627,12 @@ export class UserService {
 
         // For debugging only - remove in production
         log.info(`Generated OTP ${otpCode} for user ${user.email}, type: ${otpType}`);
+
+        // Local/dev convenience: print the OTP prominently so it can be copied from
+        // the server console when no email/SMS provider is configured.
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`\n========================= OTP =========================\n  ${user.email}  ->  ${otpCode}\n=======================================================\n`);
+        }
 
         return otpCode;
     }
@@ -2843,8 +2859,14 @@ export class UserService {
     /**
      * [Admin] Adjust user balance with an audit trail.
      */
-    async adminAdjustBalance(userId: string | Types.ObjectId, amount: number, reason: string, adminUserId: string | Types.ObjectId): Promise<number | null> {
-        log.info(`Admin ${adminUserId} adjusting balance for user ${userId}. Amount: ${amount}, Reason: ${reason}`);
+    async adminAdjustBalance(
+        userId: string | Types.ObjectId,
+        amount: number,
+        reason: string,
+        adminUserId: string | Types.ObjectId,
+        target: BalanceTarget = 'main'
+    ): Promise<number | null> {
+        log.info(`Admin ${adminUserId} adjusting ${target} balance for user ${userId}. Amount: ${amount}, Reason: ${reason}`);
 
         if (typeof amount !== 'number') {
             throw new Error('Invalid amount for balance adjustment.');
@@ -2852,31 +2874,55 @@ export class UserService {
         if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
             throw new Error('Reason is required for balance adjustment.');
         }
+        if (target !== 'main' && target !== 'activation') {
+            throw new Error("Invalid balance target: expected 'main' or 'activation'.");
+        }
 
         try {
-            // Perform the balance update
-            const updatedUser = await userRepository.updateBalance(userId, amount);
+            let updatedUser;
+            if (target === 'activation') {
+                // A debit must not be able to push the activation balance below
+                // zero: the sponsoring flow assumes it never is, and a negative
+                // one would silently hand out free activations.
+                if (amount < 0) {
+                    const current = await userRepository.findById(userId);
+                    if (!current) {
+                        log.warn(`Admin balance adjustment failed: User ${userId} not found.`);
+                        return null;
+                    }
+                    if ((current.activationBalance ?? 0) + amount < 0) {
+                        throw new Error('Insufficient activation balance for this adjustment.');
+                    }
+                }
+                updatedUser = await userRepository.updateActivationBalance(userId, amount);
+            } else {
+                updatedUser = await userRepository.updateBalance(userId, amount);
+            }
 
             if (updatedUser) {
+                const newBalance = target === 'activation' ? (updatedUser.activationBalance ?? 0) : updatedUser.balance;
                 // --- Audit Log Placeholder --- 
                 // In a real system, insert a record into an AuditLog collection/table
                 log.info(`AUDIT: Admin Balance Adjustment`, {
                     adminUserId: adminUserId.toString(),
                     targetUserId: userId.toString(),
+                    target,
                     amount: amount,
-                    newBalance: updatedUser.balance,
+                    newBalance,
                     reason: reason,
                     timestamp: new Date().toISOString()
                 });
                 // --- End Audit Log Placeholder --- 
-                return updatedUser.balance;
+                return newBalance;
             } else {
                 log.warn(`Admin balance adjustment failed: User ${userId} not found.`);
                 return null;
             }
-        } catch (error) {
+        } catch (error: any) {
             log.error(`Error adjusting balance for user ${userId} (admin ${adminUserId}):`, error);
-            throw new Error('Failed to adjust user balance.');
+            // Keep a caller-actionable message (e.g. insufficient funds) instead
+            // of flattening every failure into the same generic one.
+            throw new Error(error?.message || 'Failed to adjust user balance.');
         }
     }
 

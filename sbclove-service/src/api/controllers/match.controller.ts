@@ -34,6 +34,15 @@ class MatchController {
         }
     }
 
+    async openChat(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const result = await matchService.openMatchChat(req.user!.userId, req.params.id);
+            res.status(200).json({ success: true, data: result });
+        } catch (error) {
+            this.handle(error, res, next);
+        }
+    }
+
     async reportProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
             const result = await moderationService.reportProfile(req.user!.userId, req.params.id, req.body.reason);

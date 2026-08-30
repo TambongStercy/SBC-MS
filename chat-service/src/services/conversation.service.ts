@@ -65,6 +65,35 @@ class ConversationService {
     }
 
     /**
+     * Get or create the SBC Love conversation for a confirmed (contact-unlocked)
+     * match. Pre-ACCEPTED because the double opt-in IS the consent — the
+     * marketplace pending/3-message flow does not apply. Idempotent per matchId.
+     */
+    async getOrCreateLoveConversation(
+        userId1: string,
+        userId2: string,
+        matchId: string
+    ): Promise<IConversation> {
+        let conversation = await conversationRepository.findLoveConversationByMatch(matchId);
+
+        if (!conversation) {
+            conversation = await conversationRepository.create({
+                participants: [new Types.ObjectId(userId1), new Types.ObjectId(userId2)],
+                type: ConversationType.LOVE,
+                matchId: new Types.ObjectId(matchId),
+                acceptanceStatus: ConversationAcceptanceStatus.ACCEPTED,
+                acceptedAt: new Date(),
+                initiatorId: new Types.ObjectId(userId1),
+                unreadCounts: new Map(),
+                messageCounts: new Map()
+            });
+            log.info(`Created LOVE conversation for match ${matchId}`);
+        }
+
+        return conversation;
+    }
+
+    /**
      * Get or create a conversation for status reply
      */
     async getOrCreateStatusReplyConversation(
@@ -336,21 +365,6 @@ class ConversationService {
         await conversationRepository.resetUnreadCount(conversationId, userId);
 
         return count;
-    }
-
-    /**
-     * Recomputes the stored unread counter from the messages themselves.
-     *
-     * The conversation list reads `unreadCounts[userId]`, not message.readBy, so
-     * marking individual messages read left the badge showing forever: the client
-     * always sends explicit messageIds, which took the branch that never touched
-     * this counter. Deriving it from the messages keeps the two in step whichever
-     * way messages were read, and self-heals counters that already drifted.
-     */
-    async syncUnreadCount(conversationId: string, userId: string): Promise<number> {
-        const unread = await messageRepository.getUnreadCount(conversationId, userId);
-        await conversationRepository.setUnreadCount(conversationId, userId, unread);
-        return unread;
     }
 
     /**
