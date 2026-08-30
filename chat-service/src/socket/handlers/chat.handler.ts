@@ -105,6 +105,10 @@ export function chatHandler(io: Server, socket: AuthenticatedSocket) {
         try {
             if (data.messageIds && data.messageIds.length > 0) {
                 await messageService.markAsRead(data.messageIds, socket.userId);
+                // Marking individual messages leaves the conversation's own unread
+                // counter untouched, and that counter is what the conversation list
+                // shows — so the badge never cleared. Recompute it from the messages.
+                await conversationService.syncUnreadCount(data.conversationId, socket.userId);
             } else {
                 await conversationService.markAsRead(data.conversationId, socket.userId);
             }

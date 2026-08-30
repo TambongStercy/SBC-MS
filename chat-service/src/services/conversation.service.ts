@@ -339,6 +339,21 @@ class ConversationService {
     }
 
     /**
+     * Recomputes the stored unread counter from the messages themselves.
+     *
+     * The conversation list reads `unreadCounts[userId]`, not message.readBy, so
+     * marking individual messages read left the badge showing forever: the client
+     * always sends explicit messageIds, which took the branch that never touched
+     * this counter. Deriving it from the messages keeps the two in step whichever
+     * way messages were read, and self-heals counters that already drifted.
+     */
+    async syncUnreadCount(conversationId: string, userId: string): Promise<number> {
+        const unread = await messageRepository.getUnreadCount(conversationId, userId);
+        await conversationRepository.setUnreadCount(conversationId, userId, unread);
+        return unread;
+    }
+
+    /**
      * Delete conversation for user
      */
     async deleteForUser(conversationId: string, userId: string): Promise<void> {
