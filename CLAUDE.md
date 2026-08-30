@@ -530,6 +530,32 @@ Fix workflow (PR #72 + #77):
     `createdAt` and `payoutCompletedAt` is the only clue they were manually
     marked without webhook confirmation
 
+### MoneyFusion withdraw_mode slugs: trust the live API, not the written docs
+
+`GET https://pay.moneyfusion.net/api/v1/withdraw/methods` (no auth) returns the
+authoritative per-country payout slugs. Verified 2026-08-30 — several slugs in
+`MoneyFusion.WITHDRAW_MODES` had been guessed from their written docs and were
+wrong, each producing a 100% failure rate on prod:
+
+| Country | Was (wrong) | Actual | Prod evidence |
+|---|---|---|---|
+| TD Airtel | `airtel-money-td` | `airtel-td` | country wasn't even in operatorMaps |
+| GA Airtel | `airtel-money-ga` | `airtel-ga` | 10 failed, 0 completed |
+| CD Airtel | `airtel-money-cd` | `airtel-cd` | 8 failed, 0 completed |
+| NE (all) | `mtn-ne`, `mauritel-ne` (don't exist) | `airtel-money-ne`, `amana-ne`, `zamanicash-ne`, `moov-money-ne`, `nita-ne` | 9 failed, 0 completed |
+
+Also: the map keys must match the operator names we **store**. Niger stored
+`ORANGE_NER`/`MOOV_NER`, but the map was keyed on `AIRTEL_NER`/`MTN_NER` — so
+lookup missed entirely. Orange Niger is now **Zamani**, so `ORANGE_NER` maps to
+`zamanicash-ne`.
+
+Countries MF does NOT pay out to (their list is empty or absent): CF, GN, and
+KE/GH/RW (not in their list at all — GH withdrawals succeed via another
+provider, so don't "fix" those entries). CG is routed to FeexPay, not MF.
+
+**Before adding or changing any MF slug, curl that endpoint and match it
+literally.** A wrong slug fails every payout for that operator silently.
+
 ### MF dashboard limits — what you can and can't verify
 
 Sterling confirmed empirically 2026-06-29:

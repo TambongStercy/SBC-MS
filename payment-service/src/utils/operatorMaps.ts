@@ -22,6 +22,15 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     // Niger (NE) - Added for CinetPay support
     'ORANGE_NER': 'NE',
     'MOOV_NER': 'NE',
+    // Niger (NE) - the rest of the networks MoneyFusion pays out to. Zamani is
+    // what Orange Niger became, so ORANGE_NER above routes there.
+    'AIRTEL_NER': 'NE',
+    'AMANA_NER': 'NE',
+    'NITA_NER': 'NE',
+    'ZAMANI_NER': 'NE',
+    // Chad (TD) - MoneyFusion pays out to Airtel and Moov there.
+    'AIRTEL_TCD': 'TD',
+    'MOOV_TCD': 'TD',
     // DRC (CD)
     'VODACOM_MPESA_COD': 'CD',
     'AIRTEL_COD': 'CD',
@@ -60,6 +69,7 @@ export const countryCodeToDialingPrefix: { [countryCode: string]: string } = {
     'GA': '241', // Gabon
     'CD': '243', // DRC
     'KE': '254', // Kenya
+    'TD': '235', // Chad
     // Add other mappings from your existing countryDialingCodes or CinetPay Annexes
 };
 
@@ -117,8 +127,14 @@ export const correspondents = {
         'currencies': ['XOF']
     },
     'NE': {
-        'operators': ['ORANGE_NER', 'MOOV_NER'], // Niger
+        // Every network MoneyFusion pays out to in Niger. ORANGE_NER is kept for
+        // accounts registered before Orange Niger became Zamani.
+        'operators': ['ORANGE_NER', 'MOOV_NER', 'AIRTEL_NER', 'AMANA_NER', 'NITA_NER', 'ZAMANI_NER'],
         'currencies': ['XOF']
+    },
+    'TD': {
+        'operators': ['AIRTEL_TCD', 'MOOV_TCD'], // Chad
+        'currencies': ['XAF']
     },
     'CD': {
         'operators': ['VODACOM_MPESA_COD', 'AIRTEL_COD', 'ORANGE_COD'], // DRC
@@ -171,6 +187,13 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     // Niger (NE) - XOF
     'ORANGE_NER': 'XOF',
     'MOOV_NER': 'XOF',
+    'AIRTEL_NER': 'XOF',
+    'AMANA_NER': 'XOF',
+    'NITA_NER': 'XOF',
+    'ZAMANI_NER': 'XOF',
+    // Chad (TD) - XAF
+    'AIRTEL_TCD': 'XAF',
+    'MOOV_TCD': 'XAF',
     'VODACOM_MPESA_COD': 'CDF',
     'AIRTEL_COD': 'CDF',
     'ORANGE_COD': 'CDF',
