@@ -273,3 +273,34 @@ export const apiErrorMessage = (err: unknown, fallback: string): string => {
 
 export const formatXaf = (amount: number) =>
     `${Math.round(amount).toLocaleString('fr-FR')} FCFA`;
+
+// --- Manual (video-proof) verification ---
+
+export interface ManualVerification {
+    manualVerificationId: string;
+    participationId: string;
+    day: number;
+    code: string;
+    codeIssuedAt: string;
+    uploadedAt?: string;
+    videoUrl: string | null;
+    diffuseurName: string;
+    diffuseurPhone?: string;
+    campaignTitle: string;
+    isTestCampaign: boolean;
+}
+
+export const getManualVerifications = async (): Promise<ManualVerification[]> => {
+    const { data } = await apiClient.get('/advertising/admin/manual-verifications');
+    return data.data;
+};
+
+export const approveManualVerification = async (id: string, observedViewCount: number) => {
+    const { data } = await apiClient.post(`/advertising/admin/manual-verifications/${id}/approve`, { observedViewCount });
+    return data;
+};
+
+export const rejectManualVerification = async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/advertising/admin/manual-verifications/${id}/reject`, { reason });
+    return data;
+};
