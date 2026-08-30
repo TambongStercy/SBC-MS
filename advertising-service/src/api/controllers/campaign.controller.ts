@@ -359,6 +359,44 @@ export const cancel = async (req: AuthenticatedRequest, res: Response) => {
     }
 };
 
+/**
+ * Pauses a live campaign. It stops being offered to new diffuseurs and stops
+ * being topped up (allocation only runs on ACTIVE). Diffuseurs already in
+ * progress keep finishing and their posted links keep working; no money moves.
+ */
+export const pause = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await ownedCampaign(req);
+        if (campaign.status !== CampaignStatus.ACTIVE) {
+            throw new AppError('Seule une campagne en diffusion peut être mise en pause.', 400);
+        }
+        campaign.status = CampaignStatus.PAUSED;
+        campaign.pausedAt = new Date();
+        await campaign.save();
+        log.info(`Campaign ${campaign._id} paused by advertiser ${campaign.advertiserUserId}`);
+        return res.json({ success: true, data: { status: campaign.status } });
+    } catch (err) {
+        return fail(res, err, 'pause');
+    }
+};
+
+/** Resumes a paused campaign back to ACTIVE; allocation picks it up again. */
+export const resume = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await ownedCampaign(req);
+        if (campaign.status !== CampaignStatus.PAUSED) {
+            throw new AppError('Seule une campagne en pause peut être relancée.', 400);
+        }
+        campaign.status = CampaignStatus.ACTIVE;
+        campaign.pausedAt = undefined;
+        await campaign.save();
+        log.info(`Campaign ${campaign._id} resumed by advertiser ${campaign.advertiserUserId}`);
+        return res.json({ success: true, data: { status: campaign.status } });
+    } catch (err) {
+        return fail(res, err, 'resume');
+    }
+};
+
 export const decideUnfilled = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { decision } = req.body;
