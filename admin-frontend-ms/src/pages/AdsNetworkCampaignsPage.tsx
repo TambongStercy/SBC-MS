@@ -24,6 +24,7 @@ const STATUS_STYLES: Record<CampaignStatus, string> = {
     approved: 'bg-blue-900/40 text-blue-200',
     rejected: 'bg-red-900/40 text-red-200',
     active: 'bg-green-900/40 text-green-200',
+    paused: 'bg-orange-900/40 text-orange-200',
     completed: 'bg-purple-900/40 text-purple-200',
     banked: 'bg-yellow-900/40 text-yellow-200',
     cancelled: 'bg-gray-700 text-gray-400',
