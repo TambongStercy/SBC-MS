@@ -21,7 +21,7 @@ import mongoose from 'mongoose';
 import config from '../config';
 import CampaignModel from '../database/models/campaign.model';
 import CampaignParticipationModel, { DayStatus, ParticipationStatus } from '../database/models/campaign-participation.model';
-import { markDayVerifiedManually } from '../services/verification.service';
+import { recordCompletion } from '../services/ranking.service';
 
 const APPLY = process.argv.includes('--apply');
 
@@ -51,12 +51,21 @@ async function main() {
         if (!APPLY) { console.log(`WOULD FINISH: ${tag}`); continue; }
 
         try {
-            // Drop the stale later days, then run day 1 through the normal
-            // completion path (recompute -> COMPLETED -> ranking side-effects).
+            // Drop the stale later days, recompute totals off the single verified
+            // day, mark COMPLETED, then fire the normal completion side-effects
+            // (recordCompletion sets hasCompletedTestCampaign, measured average,
+            // trust). Self-contained so it runs on current prod without the rest
+            // of the manual-verification feature.
             p.days = [day1] as any;
+            p.uniqueViews = day1.viewCount;
+            p.repeatViews = 0;
+            p.totalViews = day1.viewCount;
+            p.totalEarned = day1.earnedAmount;
+            p.status = ParticipationStatus.COMPLETED;
+            p.completedAt = new Date();
             await p.save();
-            const res = await markDayVerifiedManually(p._id, 1, day1.viewCount);
-            console.log(`OK ${res.justCompleted ? 'COMPLETED' : 'updated (not yet matured)'}: ${tag}`);
+            await recordCompletion(p);
+            console.log(`OK COMPLETED: ${tag}`);
             done++;
         } catch (err: any) {
             console.log(`FAIL ${tag}: ${err.message}`);
