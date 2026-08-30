@@ -16,6 +16,11 @@ import {
     removeTestCampaign,
     getVerificationStats,
 } from '../controllers/admin.controller';
+import {
+    listPending as listPendingManual,
+    approve as approveManual,
+    reject as rejectManual,
+} from '../controllers/manual-verification.controller';
 
 /**
  * Admin-only. Approval here is what lets a creative reach thousands of people's
@@ -45,5 +50,10 @@ router.delete('/test-campaign', removeTestCampaign);
 router.get('/campaigns/:id/performance', getCampaignPerformance);
 router.post('/campaigns/:id/approve', approve);
 router.post('/campaigns/:id/reject', reject);
+
+// Manual (video-proof) verification review queue.
+router.get('/manual-verifications', listPendingManual);
+router.post('/manual-verifications/:id/approve', approveManual);
+router.post('/manual-verifications/:id/reject', rejectManual);
 
 export default router;

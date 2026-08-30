@@ -295,6 +295,38 @@ rounded to integer (2306.25 → MF shows 2306; 2050 → MF shows 2050). NOT
 `netAmountRequested`. Investigating Rufus's "did user receive X" — search MF
 dashboard by tokenPay or by gross integer amount, not by net.
 
+### Verification failures: suspect OUR code first, NOT WhatsApp (hard rule)
+
+**Do not blame WhatsApp, "throttling", "flaky sync", or "lossy backfill" for an
+ads-network verification failure until you have PROVEN, from logs/data, that the
+failure is at the WhatsApp boundary and not in our own logic.** This burned real
+trust: the "Jour 2 refusé — aucun ne contient votre lien" complaints were
+repeatedly (and wrongly) attributed to WhatsApp; the real cause was a code bug in
+`verification.service.ts` where an already-VERIFIED day re-ran `findMatchingStatus`
+and consumed the NEXT day's post (all days share one tracking code, so days are
+told apart only by which status backs them). Fixed in PR #201 — a verified day now
+only ever refreshes its own status by id.
+
+Discipline to follow every time:
+1. **Two different failure classes, don't conflate them.**
+   - *Link-phase* failure — the socket never reaches `connection === 'open'`
+     (`reason=408` **before** connect, hangs then closes). This one CAN be WhatsApp
+     / datacenter-IP throttling. The `verificationStats()` tally
+     (`verification-session.service.ts`) splits `before_connect` vs `after_connect`
+     precisely so you can tell.
+   - *Verification-result* failure — statuses WERE read (`extracted N status(es)`
+     logs) but a day is refused. This is **almost always our code**: check
+     `findMatchingStatus`, `captionHasTrackingCode`, the `claimedFor` set, the
+     `notBefore`/inter-day gate, the VERIFIED-day branch. Never call this "WhatsApp".
+2. **Prove it with the actual data before concluding.** Add a temporary log of the
+   real extracted statuses (id, postedAt, caption, hasCode) and the claimed set;
+   read them; only then form a hypothesis. A hypothesis that "looks obvious"
+   (message-wrapping, empty sync) has been wrong here more than once.
+3. **Confirm a test actually ran before saying "still failing".** Check the last
+   verification timestamp in the logs — an unchanged DB often just means the user
+   has not retried since the fix deployed, not that the fix failed.
+4. Err heavily toward "it's our bug." Check 50 times if that's what it takes.
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to

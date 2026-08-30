@@ -36,6 +36,7 @@ import ImpactChallengePage from './pages/ImpactChallengePage';
 import ChallengeDetailsPage from './pages/ChallengeDetailsPage';
 import AdsNetworkDashboardPage from './pages/AdsNetworkDashboardPage';
 import AdsNetworkReviewPage from './pages/AdsNetworkReviewPage';
+import AdsNetworkManualVerifyPage from './pages/AdsNetworkManualVerifyPage';
 import AdsNetworkCampaignsPage from './pages/AdsNetworkCampaignsPage';
 import AdsNetworkDiffuseursPage from './pages/AdsNetworkDiffuseursPage';
 import AdsNetworkTestCampaignPage from './pages/AdsNetworkTestCampaignPage';
@@ -112,6 +113,7 @@ function App() {
             <Route path="/impact-challenges/:challengeId" element={<ChallengeDetailsPage />} />
             <Route path="/ads-network" element={<AdsNetworkDashboardPage />} />
             <Route path="/ads-network/review" element={<AdsNetworkReviewPage />} />
+            <Route path="/ads-network/manual-verifications" element={<AdsNetworkManualVerifyPage />} />
             <Route path="/ads-network/campaigns" element={<AdsNetworkCampaignsPage />} />
             <Route path="/ads-network/diffuseurs" element={<AdsNetworkDiffuseursPage />} />
             <Route path="/ads-network/test-campaign" element={<AdsNetworkTestCampaignPage />} />

@@ -101,6 +101,13 @@ interface IConfig {
          * post creep earlier than the last and compress the campaign.
          */
         minHoursBetweenDays: number;
+        /**
+         * Manual (video-proof) verification: seconds allowed between issuing the
+         * on-screen code and the diffuseur uploading their screen recording. The
+         * code appears in the video, so a short window proves the recording was
+         * made fresh — an old video cannot carry a code that did not exist yet.
+         */
+        manualVerifyWindowSeconds: number;
     };
     referral: {
         /** Completed campaigns required to unlock the commission. */
@@ -159,6 +166,7 @@ const config: IConfig = {
         graceDays: parseInt(process.env.CAMPAIGN_GRACE_DAYS || '3', 10),
         maxCampaignsPerDiffuseurPerDay: parseInt(process.env.MAX_CAMPAIGNS_PER_DAY || '1', 10),
         minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '24', 10),
+        manualVerifyWindowSeconds: parseInt(process.env.MANUAL_VERIFY_WINDOW_SECONDS || '900', 10),
     },
     referral: {
         campaignsToUnlock: parseInt(process.env.REFERRAL_CAMPAIGNS_TO_UNLOCK || '100', 10),

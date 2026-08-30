@@ -12,6 +12,8 @@ import {
     submit,
     pay,
     cancel,
+    pause,
+    resume,
 } from '../controllers/campaign.controller';
 
 const router = Router();
@@ -28,6 +30,8 @@ router.patch('/:id', update);
 router.post('/:id/submit', submit);
 router.post('/:id/pay', pay);
 router.post('/:id/cancel', cancel);
+router.post('/:id/pause', pause);
+router.post('/:id/resume', resume);
 router.get('/:id/performance', getPerformance);
 router.post('/:id/decide', decideUnfilled);
 

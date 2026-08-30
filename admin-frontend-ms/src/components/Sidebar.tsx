@@ -30,7 +30,8 @@ import {
   Heart,
   Megaphone,
   ShieldCheck,
-  FlaskConical
+  FlaskConical,
+  Video
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -146,6 +147,12 @@ const SIDEBAR_GROUPS = [
         icon: ShieldCheck,
         color: "#f59e0b",
         path: "/ads-network/review",
+      },
+      {
+        name: "Vérifications vidéo",
+        icon: Video,
+        color: "#ef4444",
+        path: "/ads-network/manual-verifications",
       },
       {
         name: "Campagnes",

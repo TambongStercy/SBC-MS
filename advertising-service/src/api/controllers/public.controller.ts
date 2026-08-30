@@ -26,7 +26,10 @@ const mediaUrl = (fileId: string) =>
 
 /** Only live campaigns are publicly visible; drafts and cancelled ones 404. */
 const isViewable = (c: ICampaign) =>
-    c.status === CampaignStatus.ACTIVE || c.status === CampaignStatus.COMPLETED;
+    c.status === CampaignStatus.ACTIVE
+    || c.status === CampaignStatus.COMPLETED
+    // Paused: no new offers, but links diffuseurs already posted must not 404.
+    || c.status === CampaignStatus.PAUSED;
 
 /**
  * Signature that lets an admin open a campaign's landing page before it is live.

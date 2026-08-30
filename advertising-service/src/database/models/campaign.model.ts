@@ -11,6 +11,13 @@ export enum CampaignStatus {
     REJECTED = 'rejected',
     /** Paid, accepting diffuseurs, accruing views. */
     ACTIVE = 'active',
+    /**
+     * Advertiser paused a live campaign. It stops being offered to new diffuseurs
+     * and stops being topped up (allocation only runs on ACTIVE); diffuseurs
+     * already in progress keep finishing and their already-posted links keep
+     * working. Resuming returns it to ACTIVE. No money moves either way.
+     */
+    PAUSED = 'paused',
     /** Unique-view target reached. */
     COMPLETED = 'completed',
     /** Advertiser chose to bank the remaining balance instead of waiting. */
@@ -136,6 +143,7 @@ export interface ICampaign extends Document {
     paidAt?: Date;
 
     activatedAt?: Date;
+    pausedAt?: Date;
     completedAt?: Date;
     /** Set once the advertiser's referrer has been paid. Guards double payment. */
     referralCommissionPaidAt?: Date;
@@ -213,6 +221,7 @@ const CampaignSchema = new Schema<ICampaign>({
     paidAt: { type: Date },
 
     activatedAt: { type: Date },
+    pausedAt: { type: Date },
     completedAt: { type: Date },
     referralCommissionPaidAt: { type: Date },
     referralCommissionAmount: { type: Number, min: 0 },
