@@ -139,21 +139,30 @@ const WITHDRAW_MODES: Record<string, Record<string, string>> = {
         'ORANGE_MLI': 'orange-money-mali',
     },
     CG: {
-        // Docs literally specify "orange-money-mali" for Congo Brazzaville.
-        // Looks like a quirk in MoneyFusion's table — keep as-is until they
-        // confirm otherwise. Airtel-CG is NOT supported per docs.
-        'ORANGE_CG': 'orange-money-mali',
+        // CG routes to FeexPay today, so this map is only a fallback — but it
+        // should still be right. MTN is the ONLY network MoneyFusion pays out to
+        // in Congo Brazzaville (live methods list, 2026-08-30). The old
+        // 'orange-money-mali' entry came from a quirk in their written docs, was
+        // keyed on an operator name we never store, and would have sent a
+        // Congolese payout to a Malian network slug. Airtel-CG is genuinely
+        // absent from MoneyFusion, so it is left out to fail at lookup with a
+        // clear message rather than on an invalid slug.
         'MTN_CG': 'mtn-cg',
         'MTN_MOMO_COG': 'mtn-cg',
     },
     CD: {
-        // Docs only support airtel-money-cd. Mpesa-CD and Orange-CD are not
-        // available via MoneyFusion — those users will fail at lookup time.
-        'AIRTEL_COD': 'airtel-money-cd',
+        // Slugs corrected 2026-08-30: the live list is airtel-cd (not
+        // airtel-money-cd, which failed all 8 prod attempts), and Orange and
+        // M-Pesa ARE supported now, contrary to the old comment.
+        'AIRTEL_COD': 'airtel-cd',
+        'ORANGE_COD': 'orange-cd',
+        'VODACOM_MPESA_COD': 'mpesa-cd',
     },
     GA: {
-        'AIRTEL_GAB': 'airtel-money-ga',
-        'LIBERTIS_GA': 'libertis-ga',
+        // airtel-ga, not airtel-money-ga — the guessed slug failed all 10 prod
+        // attempts. Libertis is not on MoneyFusion's list at all; Moov is.
+        'AIRTEL_GAB': 'airtel-ga',
+        'MOOV_GAB': 'moov-ga',
     },
     GH: {
         'AIRTEL_GH': 'airtel-money-gh',
@@ -165,24 +174,39 @@ const WITHDRAW_MODES: Record<string, Record<string, string>> = {
         'MTN_GN': 'mtn-gn',
     },
     NE: {
-        // Docs only support airtel-money-ne, mtn-ne, mauritel-ne for Niger.
-        // Orange-NE and Moov-NE are NOT available via MoneyFusion. If a user
-        // is registered with one of those operators, withdraw will fail at
-        // lookup with a clear error.
+        // Verified 2026-08-30 against GET /api/v1/withdraw/methods, which lists
+        // exactly: airtel-money-ne, amana-ne, zamanicash-ne, moov-money-ne,
+        // nita-ne. The previous map guessed mtn-ne and mauritel-ne (neither
+        // exists) and had no entry at all for the two operators we actually
+        // store, MOOV_NER and ORANGE_NER — so every Niger payout failed: 9
+        // attempts on prod, 0 completed.
+        //
+        // Orange Niger is now Zamani, so accounts registered as ORANGE_NER pay
+        // out through zamanicash-ne.
+        'ORANGE_NER': 'zamanicash-ne',
+        'ZAMANI_NER': 'zamanicash-ne',
+        'MOOV_NER': 'moov-money-ne',
         'AIRTEL_NER': 'airtel-money-ne',
-        'MTN_NER': 'mtn-ne',
-        'MAURITEL_NER': 'mauritel-ne',
-        'AIRTEL_NE': 'airtel-money-ne',
-        'MTN_NE': 'mtn-ne',
-        'MAURITEL_NE': 'mauritel-ne',
+        'AMANA_NER': 'amana-ne',
+        'NITA_NER': 'nita-ne',
     },
     KE: {
         'MPESA_KEN': 'm-pesa-ke',
         'MPESA_KE': 'm-pesa-ke',
     },
     TD: {
-        'AIRTEL_TD': 'airtel-money-td',
+        // Chad, requested by Rufus. Slug is airtel-td, not the guessed
+        // airtel-money-td. Keys are the names we store (AIRTEL_TCD/MOOV_TCD,
+        // added to operatorMaps in the same change); the short forms are kept
+        // for anything already recorded that way.
+        'AIRTEL_TCD': 'airtel-td',
+        'MOOV_TCD': 'moov-td',
+        'AIRTEL_TD': 'airtel-td',
         'MOOV_TD': 'moov-td',
+    },
+    GW: {
+        'ORANGE_GNB': 'orange-gw',
+        'ORANGE_GW': 'orange-gw',
     },
     RW: {
         'MTN_RW': 'mtn-rw',
