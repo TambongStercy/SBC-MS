@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Video, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Video, AlertTriangle, ExternalLink } from 'lucide-react';
 import Header from '../components/common/Header';
 import Loader from '../components/common/loader';
 import ToastContainer from '../components/common/ToastContainer';
@@ -140,7 +140,26 @@ export default function AdsNetworkManualVerifyPage() {
                             </div>
 
                             {mv.videoUrl ? (
-                                <video src={mv.videoUrl} controls playsInline className="w-full rounded-xl bg-black" />
+                                <>
+                                    <video
+                                        src={mv.videoUrl}
+                                        controls
+                                        playsInline
+                                        preload="metadata"
+                                        className="w-full rounded-xl bg-black"
+                                    />
+                                    {/* Phones record screens as .mov/HEVC, which Chrome often cannot
+                                        decode. The player then shows a black box with no explanation,
+                                        so always offer a way out to a native player. */}
+                                    <a
+                                        href={mv.videoUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-2 inline-flex items-center gap-1 text-xs text-blue-400 hover:underline"
+                                    >
+                                        <ExternalLink size={12} /> La vidéo ne se lance pas ? Ouvrir dans un nouvel onglet
+                                    </a>
+                                </>
                             ) : (
                                 <div className="rounded-xl bg-gray-100 p-6 text-center text-sm text-gray-500">
                                     Vidéo indisponible
