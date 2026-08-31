@@ -8,8 +8,9 @@
  *
  * Deletes ONLY campaigns that are all of:
  *   - not the test campaign
- *   - in a status that never ran (draft / pending_review / approved / rejected /
- *     cancelled)
+ *   - never validated (draft / pending_review) — APPROVED ones were validated and
+ *     are only waiting to be paid, so they are never touched. Pass
+ *     --include-rejected / --include-cancelled to widen it.
  *   - unpaid on every signal (no paidAt, no paymentSessionId, no bankedAmount)
  *   - carrying no participations, so no diffuseur work is thrown away
  *
@@ -31,13 +32,18 @@ import CampaignParticipationModel from '../database/models/campaign-participatio
 
 const APPLY = process.argv.includes('--apply');
 
-const NEVER_RAN = [
-    CampaignStatus.DRAFT,
-    CampaignStatus.PENDING_REVIEW,
-    CampaignStatus.APPROVED,
-    CampaignStatus.REJECTED,
-    CampaignStatus.CANCELLED,
-];
+/**
+ * Never validated: no admin has passed judgement on these.
+ *
+ * APPROVED is deliberately absent — those WERE validated, they are just waiting
+ * on payment, and Rufus asked only for the ones that were neither validated nor
+ * paid. REJECTED and CANCELLED already carry a decision, so they are opt-in.
+ */
+const NEVER_VALIDATED = [CampaignStatus.DRAFT, CampaignStatus.PENDING_REVIEW];
+
+const statuses = [...NEVER_VALIDATED];
+if (process.argv.includes('--include-rejected')) statuses.push(CampaignStatus.REJECTED);
+if (process.argv.includes('--include-cancelled')) statuses.push(CampaignStatus.CANCELLED);
 
 async function main() {
     await mongoose.connect(config.mongodb.uri);
@@ -45,13 +51,14 @@ async function main() {
 
     const candidates = await CampaignModel.find({
         isTestCampaign: { $ne: true },
-        status: { $in: NEVER_RAN },
+        status: { $in: statuses },
         paidAt: { $exists: false },
         paymentSessionId: { $exists: false },
         bankedAmount: { $in: [null, 0] },
     }).sort({ createdAt: 1 });
 
-    console.log(`${candidates.length} unpaid campaign(s) that never ran.\n`);
+    console.log(`Statuses: ${statuses.join(', ')}`);
+    console.log(`${candidates.length} campaign(s) never validated and never paid.\n`);
 
     let deleted = 0, kept = 0;
 
