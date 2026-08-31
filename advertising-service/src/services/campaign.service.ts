@@ -155,29 +155,19 @@ export const updateCampaign = async (campaign: ICampaign, args: UpdateArgs): Pro
 };
 
 /**
- * Hands a campaign to the moderation queue.
+ * The old review-then-pay entry point. It no longer does anything.
  *
- * Also the resubmit path after a rejection, which is why the previous reason and
- * reviewer are cleared: a stale rejection shown next to a pending campaign reads
- * as though it had already been refused again.
+ * Under pay-first, paying is what puts a campaign in the moderation queue, so
+ * this must not be another way in — a client still calling it was quietly
+ * refilling the queue with campaigns nobody had paid for, which is the exact
+ * problem pay-first exists to solve. Kept as an explicit refusal rather than
+ * deleted, so an old app build gets a clear instruction instead of a 404.
  */
-export const submitForReview = async (campaign: ICampaign): Promise<ICampaign> => {
-    if (campaign.status === CampaignStatus.PENDING_REVIEW) {
-        throw new AppError('Cette campagne est déjà en attente de validation.', 400);
-    }
-    if (!EDITABLE_STATUSES.includes(campaign.status)) {
-        throw new AppError(
-            `Une campagne au statut « ${campaign.status} » ne peut pas être soumise à validation.`,
-            400,
-        );
-    }
-
-    campaign.status = CampaignStatus.PENDING_REVIEW;
-    campaign.submittedForReviewAt = new Date();
-    campaign.rejectionReason = undefined;
-    campaign.reviewedBy = undefined;
-    campaign.reviewedAt = undefined;
-    return campaign.save();
+export const submitForReview = async (_campaign: ICampaign): Promise<ICampaign> => {
+    throw new AppError(
+        "Payez votre campagne pour l'envoyer en validation : elle démarre dès qu'un administrateur la valide.",
+        400,
+    );
 };
 
 /** Admin verdict: the creative may now be paid for and go live. */
