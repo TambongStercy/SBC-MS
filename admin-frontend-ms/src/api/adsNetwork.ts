@@ -287,6 +287,7 @@ export interface ManualVerification {
     code: string;
     codeIssuedAt: string;
     uploadedAt?: string;
+    videoFileId: string | null;
     videoUrl: string | null;
     diffuseurName: string;
     diffuseurPhone?: string;
