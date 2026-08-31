@@ -16,9 +16,17 @@ const log = logger.getLogger('ManualVerificationService');
 // diffuseur to keep visible and for the admin to read back off the video.
 const genCode = customAlphabet('0123456789', 6);
 
-/** Public URL of the uploaded recording, for the admin to watch. */
+/**
+ * Public URL of the uploaded recording, for the admin to watch.
+ *
+ * Points straight at the storage bucket rather than at our own file endpoint:
+ * that endpoint answers with `Cross-Origin-Resource-Policy: same-origin`, and the
+ * admin panel is served from admin.sniperbuisnesscenter.com — a different origin
+ * — so the browser refused to play every video. The bucket is public and serves
+ * byte ranges, which is what a <video> element needs anyway.
+ */
 const videoUrl = (fileId: string) =>
-    `${config.appBaseUrl.replace(/\/$/, '')}/api/settings/files/${encodeURIComponent(fileId)}`;
+    fileId.startsWith('http') ? fileId : `${config.mediaCdnBaseUrl.replace(/\/$/, '')}/${fileId}`;
 
 const ownedInProgress = async (userId: Types.ObjectId, participationId: string) => {
     const participation = await CampaignParticipationModel.findById(participationId);
@@ -154,6 +162,7 @@ export const listPendingManualVerifications = async () => {
             code: i.code,
             codeIssuedAt: i.codeIssuedAt,
             uploadedAt: i.uploadedAt,
+            videoFileId: i.videoFileId ?? null,
             videoUrl: i.videoFileId ? videoUrl(i.videoFileId) : null,
             diffuseurName: p?.name ?? 'Inconnu',
             diffuseurPhone: p?.phoneNumber,

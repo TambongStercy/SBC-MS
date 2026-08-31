@@ -53,6 +53,12 @@ interface IConfig {
     };
     /** Public origin the tracking links and landing pages are served from. */
     publicBaseUrl: string;
+    /**
+     * Where uploaded media is publicly readable. Our own /api/settings/files
+     * endpoint sets Cross-Origin-Resource-Policy: same-origin, so anything served
+     * through it cannot be embedded by the admin panel on its own subdomain.
+     */
+    mediaCdnBaseUrl: string;
     /** ISO instant the network opens to non-admins. Empty = already open. */
     launchAt: string;
     /**
@@ -146,6 +152,7 @@ const config: IConfig = {
         paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
     },
     publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3010',
+    mediaCdnBaseUrl: process.env.MEDIA_CDN_BASE_URL || 'https://storage.googleapis.com/sbc-file-storage',
     // Rufus opens the network at the end of his Tuesday presentation. Set on
     // prod so the feature can ship days early and stay shut until then; admins
     // pass through so it can be rehearsed on the real thing.
