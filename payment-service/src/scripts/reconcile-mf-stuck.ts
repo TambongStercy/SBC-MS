@@ -26,6 +26,7 @@
  *   npx ts-node src/scripts/reconcile-mf-stuck.ts                 # dry run, all stuck MF
  *   npx ts-node src/scripts/reconcile-mf-stuck.ts --apply         # reconcile all stuck MF
  *   npx ts-node src/scripts/reconcile-mf-stuck.ts --apply id1 id2 # only these transactionIds
+ *   npx ts-node src/scripts/reconcile-mf-stuck.ts --apply --fail id1 # MF never got it
  */
 
 import mongoose from 'mongoose';
@@ -34,6 +35,12 @@ import config from '../config';
 import TransactionModel, { TransactionType, TransactionStatus } from '../database/models/transaction.model';
 
 const APPLY = process.argv.includes('--apply');
+/**
+ * Mark the payout FAILED instead of completed, for one MoneyFusion never
+ * received. Debit-on-success means the wallet was never touched, so failing it
+ * simply releases the user to withdraw again — no refund is owed or made.
+ */
+const FAIL = process.argv.includes('--fail');
 const ONLY_IDS = process.argv.slice(2).filter(a => !a.startsWith('--'));
 
 const WEBHOOK_URL = `http://localhost:${config.port}/api/payments/webhooks/moneyfusion/payout`;
@@ -45,7 +52,13 @@ const isMoneyFusion = (t: any): boolean =>
 async function main() {
     await mongoose.connect(config.mongodb.uri);
     console.log(`Connected. Webhook target: ${WEBHOOK_URL}`);
-    console.log(APPLY ? '*** APPLY MODE — wallets WILL be debited ***' : '--- DRY RUN (no changes) — pass --apply to execute ---');
+    console.log(
+        APPLY
+            ? (FAIL
+                ? '*** APPLY MODE — marking FAILED (no wallet movement) ***'
+                : '*** APPLY MODE — wallets WILL be debited ***')
+            : '--- DRY RUN (no changes) — pass --apply to execute ---',
+    );
 
     const query: any = {
         type: TransactionType.WITHDRAWAL,
@@ -83,19 +96,26 @@ async function main() {
                                 by: 'reconcile-mf-stuck.ts',
                                 at: new Date().toISOString(),
                                 method: 'webhook-simulation',
-                                reason: 'MF dropped payout webhook; fix page bugged; batch reconcile',
+                                reason: FAIL
+                                    ? 'MoneyFusion never received the payout; cancelled so the user can withdraw again'
+                                    : 'MF dropped payout webhook; fix page bugged; batch reconcile',
                             },
                         },
                     },
                 );
             }
 
-            await axios.post(WEBHOOK_URL, { event: 'payout.session.completed', tokenPay: token }, { timeout: 15000 });
+            await axios.post(
+                WEBHOOK_URL,
+                { event: FAIL ? 'payout.session.cancelled' : 'payout.session.completed', tokenPay: token },
+                { timeout: 15000 },
+            );
             await sleep(400); // let the handler's async debit settle before we re-read
 
             const after = await TransactionModel.findOne({ transactionId: t.transactionId }).lean();
-            if (after?.status === TransactionStatus.COMPLETED) {
-                console.log(`OK   COMPLETED + debited: ${tag}`);
+            const expected = FAIL ? TransactionStatus.FAILED : TransactionStatus.COMPLETED;
+            if (after?.status === expected) {
+                console.log(FAIL ? `OK   FAILED, wallet untouched: ${tag}` : `OK   COMPLETED + debited: ${tag}`);
                 done++;
             } else {
                 console.log(`WARN not completed (status=${after?.status}): ${tag}`);
