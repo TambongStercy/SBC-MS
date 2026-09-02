@@ -4,7 +4,8 @@ import GoogleDriveService from '../../services/googleDrive.service'; // Import D
 import cloudStorageService from '../../services/cloudStorage.service'; // Import Cloud Storage service
 import logger from '../../utils/logger';
 import { NotFoundError, AppError, BadRequestError } from '../../utils/errors'; // Assuming custom error classes
-import axios from 'axios'; // Import axios
+import axios from 'axios';
+import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 
@@ -177,6 +178,29 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
             // following it. ?stream=1 pipes the file through this origin instead,
             // which is what the diffuseur share sheet needs to attach an image to
             // a WhatsApp status.
+            // ?w=<px> returns a resized copy. A profile picture is a 1.8 MB
+            // original rendered into a 56 px circle, and a conversation list pulls
+            // a dozen of them — that is most of what made Cloud Storage egress
+            // 636 GiB in August. Served from this origin so Cloudflare caches the
+            // resized copy and repeat views cost nothing.
+            const widthParam = Number(req.query.w);
+            if (Number.isFinite(widthParam) && widthParam > 0) {
+                // Bounded: an unbounded value lets anyone ask for a huge render.
+                const width = Math.min(1024, Math.max(16, Math.round(widthParam)));
+                const upstream = await axios.get(directUrl, { responseType: 'arraybuffer' });
+                const resized = await sharp(Buffer.from(upstream.data))
+                    .rotate() // honour EXIF orientation, or phone photos come out sideways
+                    .resize({ width, withoutEnlargement: true })
+                    .webp({ quality: 65 })
+                    .toBuffer();
+
+                res.setHeader('Content-Type', 'image/webp');
+                res.setHeader('Content-Length', String(resized.length));
+                // Immutable: a given fileId+width never changes.
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                return res.send(resized);
+            }
+
             if (req.query.stream === '1' || req.query.download === '1') {
                 log.info(`Streaming Cloud Storage file through the proxy: ${fileId}`);
                 const upstream = await axios.get(directUrl, { responseType: 'stream' });
