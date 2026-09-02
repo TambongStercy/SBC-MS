@@ -261,7 +261,7 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
     active: 'Active',
     paused: 'En pause',
     completed: 'Terminée',
-    banked: 'Créditée',
+    banked: 'Clôturée — crédit rendu',
     cancelled: 'Annulée',
 };
 
