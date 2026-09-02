@@ -203,7 +203,8 @@ class StatusService {
 
                 // Batch generate signed URLs via settings-service
                 if (allPaths.length > 0) {
-                    const signedUrls = await settingsServiceClient.getSignedUrls(allPaths, 3600); // 1 hour
+                    const signedUrls = await settingsServiceClient.getSignedUrls(allPaths, 24 * 3600); // A status lives 24h; a 1h URL expired while
+                    // the feed was still on screen, which is why thumbnails broke.
 
                     // Replace GCS paths with signed URLs
                     statusesWithAuthors.forEach(status => {
@@ -296,7 +297,7 @@ class StatusService {
 
                 // Batch generate signed URLs via settings-service
                 if (allPaths.length > 0) {
-                    const signedUrls = await settingsServiceClient.getSignedUrls(allPaths, 3600); // 1 hour
+                    const signedUrls = await settingsServiceClient.getSignedUrls(allPaths, 24 * 3600); // matches the 24h status lifetime
 
                     // Replace GCS paths with signed URLs
                     statusesWithAuthors.forEach(status => {
@@ -365,10 +366,10 @@ class StatusService {
         // Generate signed URLs for private media files via settings-service
         try {
             if (statusWithAuthor.mediaUrl && statusWithAuthor.mediaUrl.startsWith('gs://')) {
-                statusWithAuthor.mediaUrl = await settingsServiceClient.getSignedUrl(statusWithAuthor.mediaUrl, 3600);
+                statusWithAuthor.mediaUrl = await settingsServiceClient.getSignedUrl(statusWithAuthor.mediaUrl, 24 * 3600);
             }
             if (statusWithAuthor.mediaThumbnailUrl && statusWithAuthor.mediaThumbnailUrl.startsWith('gs://')) {
-                statusWithAuthor.mediaThumbnailUrl = await settingsServiceClient.getSignedUrl(statusWithAuthor.mediaThumbnailUrl, 3600);
+                statusWithAuthor.mediaThumbnailUrl = await settingsServiceClient.getSignedUrl(statusWithAuthor.mediaThumbnailUrl, 24 * 3600);
             }
         } catch (error) {
             log.error('Error generating signed URL for single status:', error);
