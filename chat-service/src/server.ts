@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { createServer } from 'http';
 import connectDB from './database/connection';
+import { startStatusCleanup } from './jobs/status-cleanup.job';
 import config from './config';
 import apiRoutes from './api/routes/index';
 import { initializeSocketServer, closeSocketServer } from './socket/socket.server';
@@ -118,6 +119,10 @@ async function startServer() {
             log.info(`Socket.IO ready for connections`);
             log.info(`Environment: ${config.nodeEnv}`);
         });
+
+        // Statuses expire after 24h, but nothing ever removed the media they left
+        // in the private bucket — it had been accumulating since January.
+        startStatusCleanup();
 
         // Graceful shutdown
         const gracefulShutdown = async (signal: string) => {
