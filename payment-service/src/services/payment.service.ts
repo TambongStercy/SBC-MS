@@ -6698,6 +6698,10 @@ class PaymentService {
             // Initiate external payout based on withdrawal type
             const withdrawalType = transaction.metadata?.withdrawalType || 'mobile_money';
 
+            // Traced because an approval reported success while no payout was ever
+            // sent — no provider call, no error, nothing between these two lines.
+            log.info(`[PAYOUT-TRACE] ${transactionId}: dispatching withdrawalType=${withdrawalType}`);
+
             if (withdrawalType === 'crypto') {
                 // Process crypto withdrawal
                 await this.processCryptoWithdrawalPayout(transaction);
@@ -6706,6 +6710,7 @@ class PaymentService {
                 await this.processMobileMoneyWithdrawalPayout(transaction);
             }
 
+            log.info(`[PAYOUT-TRACE] ${transactionId}: payout call returned`);
             log.info(`Withdrawal ${transactionId} approved by admin ${adminId} and processing initiated`);
 
             return { success: true, transaction };
@@ -6799,6 +6804,7 @@ class PaymentService {
      * (Helper method extracted from existing withdrawal flow)
      */
     private async processMobileMoneyWithdrawalPayout(transaction: any): Promise<void> {
+        log.info(`[PAYOUT-TRACE] ${transaction?.transactionId}: entered processMobileMoneyWithdrawalPayout`);
         try {
             const accountInfo = transaction.metadata?.accountInfo;
             if (!accountInfo) {
@@ -6815,6 +6821,11 @@ class PaymentService {
 
             // Calculate net amount (amount - fee)
             const netAmount = transaction.amount - transaction.fee;
+
+            log.info(
+                `[PAYOUT-TRACE] ${transaction.transactionId}: gateway=${selectedGateway} `
+                + `country=${countryCode} operator=${momoOperator} net=${netAmount}`,
+            );
 
             // Initiate payout via selected gateway
             if (selectedGateway === PaymentGateway.CINETPAY) {
@@ -6915,6 +6926,13 @@ class PaymentService {
             }
 
         } catch (error: any) {
+            // Spelled out, not just passed as an object: a bare Error serializes to
+            // {} through the logger, which is how a failed payout could leave no
+            // usable trace at all.
+            log.error(
+                `[PAYOUT-TRACE] ${transaction?.transactionId}: payout threw: ${error?.message}`,
+                { stack: error?.stack, code: error?.code },
+            );
             log.error(`Error processing mobile money payout for ${transaction.transactionId}:`, error);
 
             // Check if this is a timeout error - keep in PROCESSING for webhook confirmation
