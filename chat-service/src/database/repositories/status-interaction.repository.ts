@@ -134,29 +134,34 @@ export class StatusInteractionRepository {
     async getUserInteractionsForStatuses(
         userId: string | Types.ObjectId,
         statusIds: (string | Types.ObjectId)[]
-    ): Promise<Map<string, { liked: boolean; reposted: boolean }>> {
+    ): Promise<Map<string, { liked: boolean; reposted: boolean; viewed: boolean }>> {
+        // VIEW is included: views were being recorded but never read back, so the
+        // feed could not tell the client what had already been seen and every
+        // status stayed ringed as unread however often it was opened.
         const interactions = await StatusInteractionModel.find({
             userId,
             statusId: { $in: statusIds },
-            type: { $in: [InteractionType.LIKE, InteractionType.REPOST] }
+            type: { $in: [InteractionType.LIKE, InteractionType.REPOST, InteractionType.VIEW] }
         }).exec();
 
-        const result = new Map<string, { liked: boolean; reposted: boolean }>();
+        const result = new Map<string, { liked: boolean; reposted: boolean; viewed: boolean }>();
 
         // Initialize all status IDs with false
         for (const id of statusIds) {
-            result.set(id.toString(), { liked: false, reposted: false });
+            result.set(id.toString(), { liked: false, reposted: false, viewed: false });
         }
 
         // Set actual interactions
         for (const interaction of interactions) {
             const statusKey = interaction.statusId.toString();
-            const current = result.get(statusKey) || { liked: false, reposted: false };
+            const current = result.get(statusKey) || { liked: false, reposted: false, viewed: false };
 
             if (interaction.type === InteractionType.LIKE) {
                 current.liked = true;
             } else if (interaction.type === InteractionType.REPOST) {
                 current.reposted = true;
+            } else if (interaction.type === InteractionType.VIEW) {
+                current.viewed = true;
             }
 
             result.set(statusKey, current);
