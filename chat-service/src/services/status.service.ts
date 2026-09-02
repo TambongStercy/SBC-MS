@@ -40,6 +40,8 @@ export interface StatusWithAuthor extends IStatus {
     };
     isLiked?: boolean;
     isReposted?: boolean;
+    /** Whether the requesting user has already seen it. Drives the unread ring. */
+    isViewed?: boolean;
 }
 
 class StatusService {
@@ -182,6 +184,9 @@ class StatusService {
 
             s.isLiked = interactions?.liked || false;
             s.isReposted = interactions?.reposted || false;
+            // The client rings a status as unread when this is false; without it
+            // being sent, everything looked permanently unseen.
+            s.isViewed = interactions?.viewed || false;
 
             return s;
         });
@@ -276,6 +281,9 @@ class StatusService {
 
             s.isLiked = interactions?.liked || false;
             s.isReposted = interactions?.reposted || false;
+            // The client rings a status as unread when this is false; without it
+            // being sent, everything looked permanently unseen.
+            s.isViewed = interactions?.viewed || false;
 
             return s;
         });
