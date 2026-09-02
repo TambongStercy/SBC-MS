@@ -185,6 +185,18 @@ export const allocateCampaign = async (campaignId: Types.ObjectId): Promise<Allo
         return u ? matchesTargeting(u, campaign.targeting) : false;
     });
 
+    // Targeting that matches nobody is indistinguishable, from the outside, from
+    // diffuseurs ignoring the campaign: it simply sits at zero with « aucun
+    // diffuseur n'a accepté ». Say so, with the criteria, so it is diagnosable
+    // instead of looking like disinterest.
+    if (!targeted.length) {
+        log.warn(
+            `Campaign ${campaign._id}: targeting matches NONE of the ${fresh.length} available `
+            + `diffuseurs, so no offer can be made. Targeting: ${JSON.stringify(campaign.targeting)}`,
+        );
+        return { offersCreated: 0, projectedViews: 0, remainingViews: remaining, capRelaxed: false };
+    }
+
     const busy = await busyToday();
     let eligible = targeted.filter(c => !busy.has(String(c.userId)));
 
