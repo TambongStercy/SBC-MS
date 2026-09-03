@@ -816,6 +816,7 @@ class PaymentService {
                 log.error(`Failed to send pending approval notification for ${transactionId}:`, notifError);
             }
 
+            log.info(`[WITHDRAWAL-TRACE] ${transactionId}: OTP verified -> PENDING_ADMIN_APPROVAL`);
             log.info(`Withdrawal ${transactionId} verified and set to PENDING_ADMIN_APPROVAL status`);
 
             return {
@@ -3673,6 +3674,10 @@ class PaymentService {
 
         // Find the transaction by the MoneyFusion token stored in externalTransactionId
         const transaction = await transactionRepository.findByExternalId(tokenPay);
+        log.info(
+            `[WITHDRAWAL-TRACE] MoneyFusion payout webhook event=${event} token=${tokenPay} `
+            + `matched=${transaction ? transaction.transactionId : 'NONE'}`,
+        );
         if (!transaction) {
             // Race: MF fires the webhook basically the same instant they return
             // tokenPay in the /withdraw response, and can arrive before our own
@@ -6845,6 +6850,11 @@ class PaymentService {
                     client_transaction_id: transaction.transactionId
                 });
 
+                log.info(
+                    `[WITHDRAWAL-TRACE] ${transaction.transactionId}: CinetPay replied `
+                    + `success=${result.success} ref=${result.cinetpayTransactionId ?? 'NONE'} message="${result.message}"`,
+                );
+
                 if (!result.success) {
                     throw new Error(result.message);
                 }
@@ -6872,6 +6882,12 @@ class PaymentService {
                 );
 
                 // Store the FeexPay reference in the externalTransactionId field
+                log.info(
+                    `[WITHDRAWAL-TRACE] ${transaction.transactionId}: FeexPay replied `
+                    + `success=${feexpayResult.success} ref=${feexpayResult.providerTransactionId ?? 'NONE'} `
+                    + `message="${feexpayResult.message}"`,
+                );
+
                 if (feexpayResult.success && feexpayResult.providerTransactionId) {
                     await transactionRepository.update(transaction._id, {
                         externalTransactionId: feexpayResult.providerTransactionId,
@@ -6900,6 +6916,11 @@ class PaymentService {
                     webhookUrl: `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`,
                 });
 
+                log.info(
+                    `[WITHDRAWAL-TRACE] ${transaction.transactionId}: MoneyFusion replied `
+                    + `success=${result.success} token=${result.tokenPay ?? 'NONE'} message="${result.message}"`,
+                );
+
                 if (!result.success) {
                     throw new Error(result.message || 'MoneyFusion payout failed');
                 }
@@ -6919,6 +6940,28 @@ class PaymentService {
                     // the webhook the same instant they return the tokenPay in the
                     // /withdraw response — see race notes in CLAUDE.md).
                     await this.replayBufferedPayoutWebhook('MoneyFusion', result.tokenPay);
+                } else {
+                    // MoneyFusion sometimes accepts a payout with no reference at all:
+                    //   {"statut":true,"message":"Votre retrait est en cours de vérification..."}
+                    // Their payout webhooks are keyed by tokenPay, so a payout we hold
+                    // no reference for can never be matched to a webhook and sits in
+                    // PROCESSING for ever — invisible, because this branch previously
+                    // stored nothing and said nothing. Record that MF took it, and say
+                    // so loudly.
+                    await transactionRepository.update(transaction._id, {
+                        serviceProvider: 'MoneyFusion',
+                        metadata: {
+                            ...(transaction.metadata || {}),
+                            providerAcceptedWithoutReference: true,
+                            payoutMessage: result.message,
+                            payoutAcceptedAt: new Date().toISOString(),
+                        },
+                    });
+                    log.error(
+                        `MoneyFusion accepted payout for ${transaction.transactionId} WITHOUT a reference `
+                        + `("${result.message}"). It cannot be matched to a webhook and must be reconciled `
+                        + `by hand via /fix-moneyfusion-withdrawals.`,
+                    );
                 }
             } else {
                 // Fail loudly on unknown gateways so we don't silently no-op (cause of bug fixed here)
