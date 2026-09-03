@@ -372,6 +372,21 @@ export class MoneyFusionService {
             if (data.statut === true) {
                 const tokenPay: string | undefined =
                     data.tokenPay ?? data.token ?? data.data?.tokenPay ?? data.data?.token ?? data.numeroTransaction;
+
+                // statut:true does NOT mean the payout was taken. MoneyFusion also
+                // answers statut:true to refuse one, putting the refusal in the
+                // message: "En maintenance. Veuillez utiliser un autre moyen Mobile
+                // Money pour le retrait." Treating that as success left the
+                // withdrawal sitting in PROCESSING for ever for a payout the
+                // provider had already declined. A refusal is a failure, so the
+                // user is told and can retry on another operator.
+                const message: string = data.message ?? '';
+                const refused = !tokenPay && /maintenance|indisponible|autre moyen|non disponible/i.test(message);
+                if (refused) {
+                    log.warn(`MoneyFusion refused the payout despite statut:true: ${message}`);
+                    return { success: false, message: message || 'MoneyFusion a refusé le retrait.' };
+                }
+
                 if (!tokenPay) {
                     log.warn(`MoneyFusion payout accepted (statut:true) but no token found in response: ${JSON.stringify(data)}`);
                 }
