@@ -20,6 +20,7 @@
  */
 
 import { Storage } from '@google-cloud/storage';
+import config from '../config';
 
 const BUCKETS = ['sbc-file-storage', 'sbc-status-media-private'];
 const MIB = 1024 * 1024;
@@ -131,7 +132,17 @@ const auditBucket = async (storage: Storage, name: string) => {
 };
 
 const run = async () => {
-    const storage = new Storage();
+    // Same credentials the service itself uses. Application-default credentials
+    // do not exist on the server, so a bare `new Storage()` can only reach the
+    // public bucket anonymously — which silently left the private status bucket
+    // out of the first audit entirely.
+    const storage = new Storage({
+        projectId: 'snipper-c0411',
+        credentials: {
+            client_email: config.googleDrive.clientEmail,
+            private_key: config.googleDrive.privateKey,
+        },
+    });
 
     let grand = 0;
     for (const bucket of BUCKETS) {

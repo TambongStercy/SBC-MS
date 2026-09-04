@@ -208,7 +208,12 @@ class CloudStorageService {
             await file.save(fileBuffer, {
                 metadata: {
                     contentType: mimeType,
-                    cacheControl: 'private, max-age=3600', // 1 hour cache
+                    // A status is immutable and lives 24h, so the browser can hold
+                    // it for its whole life. At 1h, a viewer who came back in the
+                    // afternoon re-downloaded the same video they had already
+                    // fetched that morning. Still private: only whoever holds a
+                    // valid signed URL can fetch it in the first place.
+                    cacheControl: 'private, max-age=86400, immutable',
                 },
                 // File is private by default (no public access)
             });
@@ -247,11 +252,26 @@ class CloudStorageService {
             const bucket = this.storage.bucket(this.privateBucketName);
             const file = bucket.file(cleanPath);
 
-            // Generate signed URL
+            // The expiry is snapped to a fixed hourly boundary rather than taken
+            // from the clock, so the SAME object yields the SAME URL for everyone
+            // who asks within that hour.
+            //
+            // A raw Date.now() puts a different timestamp in every signature, so
+            // every request produced a brand new URL for the same bytes. Browser
+            // caches are keyed on the URL, so nothing was ever a cache hit: each
+            // time a viewer opened the status feed, every image and video in it
+            // was pulled from the bucket again in full. Status media is the one
+            // thing here that no cache could ever help, which makes it the worst
+            // byte-for-byte of anything we serve.
+            //
+            // Rounded UP, so the URL is always valid for at least expiresIn.
+            const HOUR_MS = 60 * 60 * 1000;
+            const expires = Math.ceil((Date.now() + expiresIn * 1000) / HOUR_MS) * HOUR_MS;
+
             const [url] = await file.getSignedUrl({
                 version: 'v4',
                 action,
-                expires: Date.now() + (expiresIn * 1000)
+                expires,
             });
 
             log.debug(`Generated signed URL for ${cleanPath} (expires in ${expiresIn}s)`);
@@ -296,7 +316,12 @@ class CloudStorageService {
             const cleanPath = filePath.replace(`gs://${this.privateBucketName}/`, '');
 
             const bucket = this.storage.bucket(this.privateBucketName);
-            await bucket.file(cleanPath).delete();
+            // ignoreNotFound: a file that is already gone is the outcome the
+            // caller wanted. Without this, GCS throws 404, this rethrows as a
+            // generic 500, and the status-cleanup job treats it as "retry later"
+            // — so every expired status whose media had already been removed was
+            // re-attempted every hour forever and never marked deleted.
+            await bucket.file(cleanPath).delete({ ignoreNotFound: true });
             log.info(`File '${cleanPath}' deleted successfully from private bucket`);
         } catch (error: any) {
             log.error(`Error deleting file '${filePath}' from private bucket:`, error);
