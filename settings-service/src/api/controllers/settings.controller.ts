@@ -183,8 +183,15 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
             // a dozen of them — that is most of what made Cloud Storage egress
             // 636 GiB in August. Served from this origin so Cloudflare caches the
             // resized copy and repeat views cost nothing.
+            // Video cannot be resized by sharp, and asking would be worse than not
+            // asking: the whole file is pulled from the bucket — 84 MB for the
+            // largest — and then thrown away when sharp rejects it. Callers pass a
+            // width for a card thumbnail without always knowing the media type, so
+            // this is decided here rather than trusted to them.
+            const isResizable = !/\.(mp4|mov|m4v|webm|avi|mkv|pdf)$/i.test(directUrl.split('?')[0]);
+
             const widthParam = Number(req.query.w);
-            if (Number.isFinite(widthParam) && widthParam > 0) {
+            if (isResizable && Number.isFinite(widthParam) && widthParam > 0) {
                 // Bounded: an unbounded value lets anyone ask for a huge render.
                 const width = Math.min(1024, Math.max(16, Math.round(widthParam)));
                 const upstream = await axios.get(directUrl, { responseType: 'arraybuffer' });
