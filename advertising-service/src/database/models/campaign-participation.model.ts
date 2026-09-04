@@ -106,6 +106,17 @@ export interface ICampaignParticipation extends Document {
     /** Unique per (campaign, diffuseur). Doubles as their SBC affiliate link. */
     trackingCode: string;
 
+    /**
+     * Views this diffuseur was forecast to bring, frozen when the offer was made.
+     *
+     * This is what the slot reserves against the campaign target, so the campaign
+     * stops being offered around once enough forecast reach is committed — rather
+     * than being re-offered every scheduler tick until the first views land.
+     * Snapshotted rather than read back from the profile so a later re-measure
+     * cannot retroactively change what a live campaign thought it had booked.
+     */
+    expectedViews: number;
+
     offeredAt: Date;
     acceptedAt?: Date;
     startedAt?: Date;
@@ -180,6 +191,8 @@ const CampaignParticipationSchema = new Schema<ICampaignParticipation>({
     },
 
     trackingCode: { type: String, required: true, unique: true, index: true },
+
+    expectedViews: { type: Number, default: 0, min: 0 },
 
     offeredAt: { type: Date, default: Date.now },
     acceptedAt: { type: Date },

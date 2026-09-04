@@ -96,6 +96,14 @@ interface IConfig {
         testDurationDays: number;
         /** Extra days after the run to catch up on missed days before forfeiting. */
         graceDays: number;
+        /**
+         * Hours an unanswered offer holds its share of the campaign target.
+         *
+         * An offer reserves the reach it forecasts, so the campaign is not offered
+         * to anyone else while it stands. That has to expire, or one diffuseur who
+         * never opens the app would hold a slot for the life of the campaign.
+         */
+        offerTtlHours: number;
         /** Max concurrent campaigns per diffuseur per day (relaxed when all are busy). */
         maxCampaignsPerDiffuseurPerDay: number;
         /**
@@ -171,6 +179,7 @@ const config: IConfig = {
         durationDays: parseInt(process.env.CAMPAIGN_DURATION_DAYS || '3', 10),
         testDurationDays: parseInt(process.env.TEST_CAMPAIGN_DURATION_DAYS || '1', 10),
         graceDays: parseInt(process.env.CAMPAIGN_GRACE_DAYS || '3', 10),
+        offerTtlHours: parseInt(process.env.CAMPAIGN_OFFER_TTL_HOURS || '24', 10),
         maxCampaignsPerDiffuseurPerDay: parseInt(process.env.MAX_CAMPAIGNS_PER_DAY || '1', 10),
         minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '24', 10),
         manualVerifyWindowSeconds: parseInt(process.env.MANUAL_VERIFY_WINDOW_SECONDS || '900', 10),

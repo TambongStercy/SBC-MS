@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus, ICampaign } from '../database/models/campaign.model';
-import { allocateCampaign, remainingViewsToCover } from './allocation.service';
+import { allocateCampaign, expireStaleOffers, remainingViewsToCover } from './allocation.service';
 import CampaignParticipationModel, {
     DayStatus,
     ParticipationStatus,
@@ -224,6 +224,49 @@ export const announceOpenedDays = async (): Promise<number> => {
 };
 
 /**
+ * Drops offers nobody ever answered.
+ *
+ * An outstanding offer reserves the reach it forecast, so the campaign is not
+ * offered around it. Diffuseurs who never open the app would otherwise hold their
+ * share of the target for the life of the campaign, and the advertiser would be
+ * short exactly the views those people were never going to post.
+ */
+export const sweepUnansweredOffers = async (): Promise<number> => {
+    const cutoff = new Date(Date.now() - config.campaign.offerTtlHours * HOUR_MS);
+
+    // The test campaign reserves nothing, and a newcomer who takes a week to open
+    // the app should still find it waiting.
+    const testCampaigns = await CampaignModel
+        .find({ isTestCampaign: true }).select('_id').lean();
+
+    const stale = await CampaignParticipationModel.find({
+        status: ParticipationStatus.OFFERED,
+        offeredAt: { $lt: cutoff },
+        campaignId: { $nin: testCampaigns.map(c => c._id) },
+    }).select('campaignId').lean();
+
+    if (!stale.length) return 0;
+
+    await CampaignParticipationModel.updateMany(
+        { _id: { $in: stale.map(p => p._id) } },
+        { $set: { status: ParticipationStatus.EXPIRED } },
+    );
+
+    // Hand the freed reach to someone else in the same tick, rather than leaving
+    // the campaign short until the next one.
+    for (const campaignId of new Set(stale.map(p => String(p.campaignId)))) {
+        try {
+            await allocateCampaign(new Types.ObjectId(campaignId));
+        } catch (err) {
+            log.error(`Reallocation after stale offers failed for campaign ${campaignId}:`, err);
+        }
+    }
+
+    log.info(`Expired ${stale.length} unanswered offer(s)`);
+    return stale.length;
+};
+
+/**
  * Tops up every active campaign that is still short of its target.
  *
  * Allocation used to run only at activation and after a forfeit, so a campaign
@@ -244,7 +287,13 @@ export const sweepUnderfilledCampaigns = async (): Promise<number> => {
     for (const campaign of active) {
         try {
             const remaining = await remainingViewsToCover(campaign as unknown as ICampaign);
-            if (remaining <= 0) continue;
+            if (remaining <= 0) {
+                // Fully booked. If the diffuseurs who accepted already cover the
+                // target on their own, the offers still sitting unanswered are
+                // surplus and would push the campaign past what was paid for.
+                await expireStaleOffers(campaign._id);
+                continue;
+            }
 
             const result = await allocateCampaign(campaign._id);
             if (result.offersCreated > 0) {
@@ -307,6 +356,13 @@ export const sweepCompletedCampaigns = async (): Promise<number> => {
         campaign.status = CampaignStatus.COMPLETED;
         campaign.completedAt = new Date();
         await campaign.save();
+        // Nothing else stops an outstanding offer being accepted, and acceptOffer
+        // on a campaign that is no longer ACTIVE only expires it after the
+        // diffuseur has bothered to tap « Accepter ».
+        await CampaignParticipationModel.updateMany(
+            { campaignId: campaign._id, status: ParticipationStatus.OFFERED },
+            { $set: { status: ParticipationStatus.EXPIRED } },
+        );
         await notifyAdvertiserCampaignComplete(
             String(campaign.advertiserUserId),
             campaign.title,
@@ -343,6 +399,9 @@ export const runScheduledJobs = async (): Promise<void> => {
         // Before allocation: a diffuseur who links WhatsApp today should be
         // measured before being offered anything an annonceur is paying for.
         ['offerTestCampaignToNewDiffuseurs', offerTestCampaignToNewDiffuseurs],
+        // Before the top-up, so the reach held by offers nobody answered is free
+        // to be re-offered on this tick rather than the next.
+        ['sweepUnansweredOffers', sweepUnansweredOffers],
         // After the test campaign is handed out: a diffuseur measured on an
         // earlier tick becomes eligible here, and under-filled campaigns should
         // pick them up without waiting for someone to forfeit.
