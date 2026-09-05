@@ -122,6 +122,14 @@ interface IConfig {
          * made fresh — an old video cannot carry a code that did not exist yet.
          */
         manualVerifyWindowSeconds: number;
+        /**
+         * Days a reviewed verification recording is kept before deletion.
+         *
+         * Not zero by default: a refused diffuseur loses a day's earnings and may
+         * dispute it, and the recording is the only evidence either way. Set to 0
+         * to delete as soon as the decision is made.
+         */
+        manualVerifyRetentionDays: number;
     };
     referral: {
         /** Completed campaigns required to unlock the commission. */
@@ -183,6 +191,7 @@ const config: IConfig = {
         maxCampaignsPerDiffuseurPerDay: parseInt(process.env.MAX_CAMPAIGNS_PER_DAY || '1', 10),
         minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '24', 10),
         manualVerifyWindowSeconds: parseInt(process.env.MANUAL_VERIFY_WINDOW_SECONDS || '900', 10),
+        manualVerifyRetentionDays: parseInt(process.env.MANUAL_VERIFY_RETENTION_DAYS || '7', 10),
     },
     referral: {
         campaignsToUnlock: parseInt(process.env.REFERRAL_CAMPAIGNS_TO_UNLOCK || '100', 10),

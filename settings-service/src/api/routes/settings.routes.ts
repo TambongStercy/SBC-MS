@@ -16,6 +16,7 @@ import {
     internalGetSignedUrl,
     internalGetSignedUrls,
     internalDeleteFilePrivate,
+    internalDeleteFile,
     getFormations,
     addFormation,
     updateFormation,
@@ -80,6 +81,7 @@ internalRouter.post('/signed-urls', internalGetSignedUrls);
 
 // DELETE /settings/internal/file-private - Delete file from private bucket
 internalRouter.delete('/file-private', internalDeleteFilePrivate);
+internalRouter.delete('/file', internalDeleteFile);
 
 // Mount the internal router
 router.use('/internal', internalRouter);
