@@ -398,6 +398,126 @@ class SsoService {
     }
 
     /**
+     * The six numbers behind the "Mes filleuls" header: direct, indirect, total,
+     * and how many of each are paying.
+     *
+     * Reuses the same referral-stats service the SBC app itself calls, rather than
+     * counting again here. The definition of "abonné" is not obvious — an active
+     * CLASSIQUE or CIBLE, not merely a registration — and a second implementation
+     * would drift from the first the moment either changed.
+     */
+    async getReferralStatsForToken(accessToken: string): Promise<{
+        direct: number;
+        indirect: number;
+        total: number;
+        directSubscribed: number;
+        indirectSubscribed: number;
+        totalSubscribed: number;
+    }> {
+        const decoded = this.verifyToken(accessToken);
+        if (decoded.type !== 'access') throw new AppError('Token is not an access token', 400);
+        if (!decoded.scopes.includes('referrals.read')) {
+            throw new AppError('Token does not have referrals.read scope', 403);
+        }
+
+        const { getReferralStats } = await import('./referral-stats.service');
+        const stats = await getReferralStats(decoded.sub);
+
+        log.info(`SSO referral stats: caller=${decoded.sub} (client=${decoded.client_id})`);
+
+        return {
+            direct: stats.directReferrals,
+            indirect: stats.indirectReferrals,
+            total: stats.totalReferrals,
+            directSubscribed: stats.directSubscribedReferrals,
+            indirectSubscribed: stats.indirectSubscribedReferrals,
+            totalSubscribed: stats.totalSubscribedReferrals,
+        };
+    }
+
+    /**
+     * The filleuls themselves, at either level, with the detail the SBC app shows.
+     *
+     * listDirectFilleuls stays as it is — SBC Live depends on its exact shape —
+     * and this is the richer view: level 2/3 as well as level 1, plus the phone
+     * number and subscription state a "Mes filleuls" screen is built around.
+     *
+     * Delegates to the same paginated service the first-party endpoint uses, so
+     * filtering and level semantics cannot drift between the two.
+     */
+    async listFilleulsDetailed(
+        accessToken: string,
+        opts: { level: 'direct' | 'indirect'; page: number; pageSize: number; name?: string; subType?: string },
+    ): Promise<{
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+        hasMore: boolean;
+        items: Array<{
+            id: string;
+            name: string;
+            phoneNumber?: string;
+            country?: string;
+            referralLevel: number;
+            joinedAt: Date | null;
+            activeSubscriptions: string[];
+            isSubscribed: boolean;
+        }>;
+    }> {
+        const decoded = this.verifyToken(accessToken);
+        if (decoded.type !== 'access') throw new AppError('Token is not an access token', 400);
+        if (!decoded.scopes.includes('referrals.read')) {
+            throw new AppError('Token does not have referrals.read scope', 403);
+        }
+
+        const pg = Math.max(1, Math.floor(opts.page) || 1);
+        const ps = Math.min(100, Math.max(1, Math.floor(opts.pageSize) || 50));
+
+        const { userService } = await import('./user.service');
+        const result = await userService.getReferredUsersInfoPaginated(
+            decoded.sub,
+            undefined,
+            opts.name,
+            pg,
+            ps,
+            opts.subType,
+            opts.level,
+        );
+
+        const items = result.referredUsers.map((u: {
+            _id: Types.ObjectId; name: string; phoneNumber?: string; country?: string;
+            referralLevel: number; createdAt: Date; activeSubscriptions?: unknown[];
+        }) => {
+            const subs = (u.activeSubscriptions ?? []).map(String);
+            return {
+                id: u._id.toString(),
+                name: u.name || '',
+                phoneNumber: u.phoneNumber,
+                country: u.country,
+                referralLevel: u.referralLevel,
+                joinedAt: u.createdAt ?? null,
+                activeSubscriptions: subs,
+                isSubscribed: subs.length > 0,
+            };
+        });
+
+        log.info(
+            `SSO listFilleulsDetailed: caller=${decoded.sub} level=${opts.level} page=${pg} `
+            + `returned=${items.length}/${result.totalCount} (client=${decoded.client_id})`,
+        );
+
+        return {
+            total: result.totalCount,
+            page: pg,
+            pageSize: ps,
+            totalPages: result.totalPages,
+            hasMore: pg < result.totalPages,
+            items,
+        };
+    }
+
+    /**
      * Normalize a user's `avatar` field into a public, usable URL.
      *
      * Three cases the User model has accumulated:
