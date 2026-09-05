@@ -700,6 +700,41 @@ Assertions: `payment-service/src/scripts/check-sandbox.ts` (needs local Mongo).
 | CinetPay | No (empirically zero calls, unknown why) | **Yes — recommended** | Poll status API via `/fix-cinetpay-withdrawals` page |
 | NOWPayments (crypto) | Yes | Yes | Trust webhook |
 
+### Payins have a reconciler too now — and most "stuck" ones are not stuck
+
+`TransactionStatusChecker` has always covered **withdrawals**. Money coming **in**
+had nothing, so a single dropped payin webhook was permanent by construction: the
+payer was debited, the intent sat in `PENDING_PROVIDER` forever, and the app went
+on showing "Payer" to someone who had already paid. Georgi (2026-09-05, session
+`Mh2-KxbcsQif`) is the canonical case — MTN Benin confirmed the debit by SMS
+quoting our own session ref, FeexPay accepted it, and no webhook ever arrived.
+
+`PayinReconciler` (`payment-service/src/jobs/payin-reconciler.job.ts`) re-asks the
+provider every 10 min for intents 10 min to 7 days old:
+
+- **FeexPay** reuses `checkFeexpayTransactionStatus` — the same call the live
+  webhook handler makes to verify itself, so the two cannot drift apart.
+- **MoneyFusion** queries its status endpoint and replays the answer through the
+  real payin webhook handler, because completion has side effects
+  (subscriptions, campaign settlement, referral commissions) that live there.
+- **CinetPay is deliberately not covered**: it has a payout status API but no
+  payin equivalent.
+
+It only ever applies what the provider confirms; a 502 leaves the intent untouched.
+`src/scripts/reconcile-payins.ts` runs the same pass on demand, or one session by
+id (`... reconcile-payins.ts <sessionId>`) when someone is complaining right now.
+
+**Do NOT read the `PENDING_PROVIDER` count as lost money.** Measured 2026-09-05:
+of **1,236** intents the reconciler actually asked about, **2** had been paid and
+83 were confirmed failed — the rest were abandoned checkouts. The raw backlog was
+~4,000, so quoting that number as "stuck payments" overstates the real problem by
+roughly 500x. Ask the provider before reporting a figure to Rufus.
+
+Related: FeexPay's status API returned 502 for hours on 2026-09-05 during an MTN
+Mobile Money incident (`INTERNAL_PROCESSING_ERROR`). During a provider outage,
+manually settling anyone on SMS evidence risks crediting a payment the operator
+later reverses.
+
 ### Master deploys need ONE click (post-PR #73)
 
 Sterling has SSH access at the `contabo` host (configured in his `~/.ssh/config`)
