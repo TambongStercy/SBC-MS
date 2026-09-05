@@ -107,6 +107,18 @@ const PaymentIntentSchema: Schema = new Schema(
         metadata: {
             type: Schema.Types.Mixed,
         },
+
+        /**
+         * Bookkeeping for PayinReconciler, so it can rotate through everything
+         * instead of re-asking about the same newest few every cycle.
+         *
+         * `reconcileAttempts` counts only answers we actually got. A provider
+         * outage — FeexPay's status API was 502ing for hours the day this was
+         * written — must not burn a payment's attempts and back it off into a
+         * corner precisely when it most needs checking.
+         */
+        lastReconcileAt: { type: Date },
+        reconcileAttempts: { type: Number, default: 0 },
     },
     {
         timestamps: true, // Adds createdAt and updatedAt automatically
