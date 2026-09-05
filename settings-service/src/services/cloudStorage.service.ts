@@ -330,6 +330,57 @@ class CloudStorageService {
     }
 
     /**
+     * Read an object from the PUBLIC bucket using our own credentials.
+     *
+     * The bucket used to be readable anonymously, so everything simply pointed a
+     * browser (or an axios call) at storage.googleapis.com. That stopped working
+     * on 2026-09-05: the bucket's IAM still grants allUsers objectViewer, but
+     * `publicAccessPrevention` is now `inherited` from an org policy that
+     * overrides it, so every anonymous GET returns 403 — which took down every
+     * image, creative and verification video in the app at once, through the
+     * proxy as well as directly.
+     *
+     * Reading through the authenticated client is immune to that, and it is where
+     * we wanted the traffic anyway: served from our own origin, Cloudflare caches
+     * it, and repeat views cost no egress.
+     */
+    async downloadFile(fileId: string): Promise<Buffer> {
+        const [contents] = await this.storage.bucket(this.bucketName).file(this.objectPath(fileId)).download();
+        return contents;
+    }
+
+    /** Type and size, without pulling any of the bytes. */
+    async statFile(fileId: string): Promise<{ contentType?: string; size?: string }> {
+        const [metadata] = await this.storage
+            .bucket(this.bucketName).file(this.objectPath(fileId)).getMetadata();
+        return {
+            contentType: metadata.contentType,
+            size: metadata.size != null ? String(metadata.size) : undefined,
+        };
+    }
+
+    /**
+     * A read stream over the object, optionally over one byte range.
+     *
+     * The range matters for video: a <video> element seeks by asking for ranges,
+     * and a server that always returns the whole file cannot be scrubbed.
+     */
+    streamFile(fileId: string, range?: { start?: number; end?: number }): NodeJS.ReadableStream {
+        return this.storage
+            .bucket(this.bucketName)
+            .file(this.objectPath(fileId))
+            .createReadStream(range?.start !== undefined ? { start: range.start, end: range.end } : undefined);
+    }
+
+    /** `https://storage.googleapis.com/<bucket>/a/b.jpg` or `a/b.jpg` -> `a/b.jpg`. */
+    private objectPath(fileId: string): string {
+        const prefix = `https://storage.googleapis.com/${this.bucketName}/`;
+        const path = fileId.startsWith(prefix) ? fileId.slice(prefix.length) : fileId;
+        // Callers pass ids taken straight out of URLs, so %20 and friends are common.
+        return decodeURIComponent(path.split('?')[0]);
+    }
+
+    /**
      * Check if file exists in private bucket
      */
     async fileExistsPrivate(filePath: string): Promise<boolean> {

@@ -17,16 +17,24 @@ const log = logger.getLogger('ManualVerificationService');
 const genCode = customAlphabet('0123456789', 6);
 
 /**
- * Public URL of the uploaded recording, for the admin to watch.
+ * URL of the uploaded recording, for the admin to watch.
  *
- * Points straight at the storage bucket rather than at our own file endpoint:
- * that endpoint answers with `Cross-Origin-Resource-Policy: same-origin`, and the
- * admin panel is served from admin.sniperbuisnesscenter.com — a different origin
- * — so the browser refused to play every video. The bucket is public and serves
- * byte ranges, which is what a <video> element needs anyway.
+ * This pointed straight at the storage bucket, because our own file endpoint
+ * answered with `Cross-Origin-Resource-Policy: same-origin` and the admin panel
+ * is on admin.sniperbuisnesscenter.com — a different origin — so every video
+ * refused to play. The bucket was public and served byte ranges, so it worked.
+ *
+ * It stopped working on 2026-09-05: `publicAccessPrevention` is now inherited
+ * from an org policy that overrides the bucket's allUsers grant, so every
+ * anonymous GET returns 403. settings-service now serves these itself, with
+ * credentials, `Cross-Origin-Resource-Policy: cross-origin` and real Range
+ * support — so the two reasons for going direct are both answered, and this is
+ * no longer hostage to whether the bucket happens to be world-readable.
  */
 const videoUrl = (fileId: string) =>
-    fileId.startsWith('http') ? fileId : `${config.mediaCdnBaseUrl.replace(/\/$/, '')}/${fileId}`;
+    fileId.startsWith('http')
+        ? fileId
+        : `${config.appBaseUrl.replace(/\/$/, '')}/api/settings/files/${encodeURIComponent(fileId)}`;
 
 const ownedInProgress = async (userId: Types.ObjectId, participationId: string) => {
     const participation = await CampaignParticipationModel.findById(participationId);
@@ -142,7 +150,12 @@ export const getManualStatus = async (userId: Types.ObjectId, participationId: s
 export const listPendingManualVerifications = async () => {
     const items = await ManualVerificationModel
         .find({ status: ManualVerificationStatus.PENDING_REVIEW })
-        .sort({ createdAt: 1 })
+        // By upload time, not by createdAt. createdAt is when the CODE was issued,
+        // and the gap between the two is whatever the diffuseur took to record —
+        // so ordering by it puts someone who asked for a code early and uploaded
+        // late ahead of someone who has been waiting longer for a decision.
+        // Whoever sent their video first is served first (Rufus, 2026-09-05).
+        .sort({ uploadedAt: 1, createdAt: 1 })
         .lean();
 
     const [profiles, campaigns] = await Promise.all([
