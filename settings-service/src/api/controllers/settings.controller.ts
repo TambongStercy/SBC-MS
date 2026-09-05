@@ -194,8 +194,8 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
             if (isResizable && Number.isFinite(widthParam) && widthParam > 0) {
                 // Bounded: an unbounded value lets anyone ask for a huge render.
                 const width = Math.min(1024, Math.max(16, Math.round(widthParam)));
-                const upstream = await axios.get(directUrl, { responseType: 'arraybuffer' });
-                const resized = await sharp(Buffer.from(upstream.data))
+                const original = await cloudStorageService.downloadFile(directUrl);
+                const resized = await sharp(original)
                     .rotate() // honour EXIF orientation, or phone photos come out sideways
                     .resize({ width, withoutEnlargement: true })
                     .webp({ quality: 65 })
@@ -208,24 +208,75 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
                 return res.send(resized);
             }
 
-            if (req.query.stream === '1' || req.query.download === '1') {
-                log.info(`Streaming Cloud Storage file through the proxy: ${fileId}`);
-                const upstream = await axios.get(directUrl, { responseType: 'stream' });
+            // Stored files are public content by design, and the admin panel lives
+            // on admin.sniperbuisnesscenter.com — a different origin. helmet's
+            // default same-origin CORP is what made every verification video
+            // refuse to play there, and is why these URLs used to point straight
+            // at the bucket instead.
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            res.setHeader('Accept-Ranges', 'bytes');
 
-                res.setHeader('Content-Type', upstream.headers['content-type'] ?? 'application/octet-stream');
-                if (upstream.headers['content-length']) {
-                    res.setHeader('Content-Length', upstream.headers['content-length']);
-                }
-                res.setHeader('Cache-Control', 'public, max-age=86400');
-                if (req.query.download === '1') {
-                    const name = fileId.split('/').pop() ?? 'fichier';
-                    res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
-                }
-                return upstream.data.pipe(res);
+            // Everything else is streamed through this origin as well.
+            //
+            // This used to 302 to the bucket, which was cheaper and fine while the
+            // bucket was world-readable. It no longer is: publicAccessPrevention
+            // is inherited from an org policy that overrides the allUsers IAM
+            // binding, so anonymous GETs return 403 and the redirect simply sent
+            // every browser to an error (2026-09-05 — this took down every image,
+            // creative and verification video in the app at once).
+            //
+            // Serving it ourselves is also what makes Cloudflare cache it, so the
+            // second viewer onward costs no egress at all.
+            // A <video> element seeks by asking for byte ranges, and a server that
+            // answers every request with the whole file cannot be scrubbed — some
+            // browsers refuse to play it at all. Honour Range properly.
+            const meta = await cloudStorageService.statFile(directUrl);
+            const total = meta.size ? Number(meta.size) : undefined;
+            const range = req.headers.range;
+
+            res.setHeader('Content-Type', meta.contentType ?? 'application/octet-stream');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            if (req.query.download === '1') {
+                const name = fileId.split('/').pop() ?? 'fichier';
+                res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
             }
 
-            log.info(`Redirecting to Cloud Storage CDN: ${directUrl}`);
-            return res.redirect(302, directUrl);
+            let start: number | undefined;
+            let end: number | undefined;
+            if (range && total) {
+                const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+                if (m) {
+                    start = m[1] ? Number(m[1]) : undefined;
+                    end = m[2] ? Number(m[2]) : undefined;
+                    // "bytes=-500" means the LAST 500 bytes, not the first 500.
+                    if (start === undefined && end !== undefined) {
+                        start = Math.max(0, total - end);
+                        end = total - 1;
+                    } else if (start !== undefined && end === undefined) {
+                        end = total - 1;
+                    }
+                }
+            }
+
+            if (start !== undefined && end !== undefined && total) {
+                if (start >= total || end >= total || start > end) {
+                    res.setHeader('Content-Range', `bytes */${total}`);
+                    return res.status(416).end();
+                }
+                res.status(206);
+                res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+                res.setHeader('Content-Length', String(end - start + 1));
+            } else if (total) {
+                res.setHeader('Content-Length', String(total));
+            }
+
+            const stream = cloudStorageService.streamFile(directUrl, { start, end });
+            stream.on('error', (err: Error) => {
+                log.error(`Error streaming ${fileId} from Cloud Storage:`, err);
+                if (!res.headersSent) res.status(404).json({ success: false, message: 'File not found' });
+            });
+
+            return stream.pipe(res);
         }
 
         // Google Drive file - use proxy streaming (legacy support)
