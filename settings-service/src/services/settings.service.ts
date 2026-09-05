@@ -209,14 +209,32 @@ class SettingsService {
             // Import cloud storage service
             const CloudStorageService = (await import('./cloudStorage.service')).default;
 
+            // Shrink before storing. Nothing used to: raw phone photos and screen
+            // recordings went to the bucket untouched, which is how 47,955 images
+            // came to average 667 KiB and video to grow ~25 GiB a month.
+            const { compressUpload } = await import('./media-compression.service');
+            const compressed = await compressUpload(file.buffer, file.mimetype);
+
             // Create organized filename with folder prefix
             const folderPrefix = folderName ? `${folderName}/` : '';
-            const uniqueFileName = `${folderPrefix}${Date.now()}_${file.originalname}`;
+            // The extension has to follow the re-encode, or a .mov holding H.264
+            // in an MP4 container confuses both browsers and our own type checks.
+            const baseName = compressed.extension
+                ? file.originalname.replace(/\.[^.]+$/, '') + '.' + compressed.extension
+                : file.originalname;
+            const uniqueFileName = `${folderPrefix}${Date.now()}_${baseName}`;
+
+            if (compressed.compressed) {
+                log.info(
+                    `Compressed '${file.originalname}' ${(file.size / 1024).toFixed(0)} KiB -> `
+                    + `${(compressed.buffer.length / 1024).toFixed(0)} KiB before upload`,
+                );
+            }
 
             log.debug(`Uploading generic file '${file.originalname}' using hybrid storage...`);
             const uploadResult = await CloudStorageService.uploadFileHybrid(
-                file.buffer,
-                file.mimetype,
+                compressed.buffer,
+                compressed.mimeType,
                 uniqueFileName,
                 folderName
             );
@@ -227,8 +245,10 @@ class SettingsService {
                 fileId: uploadResult.fileId,
                 url: uploadResult.publicUrl,
                 fileName: file.originalname,
-                mimeType: file.mimetype,
-                size: file.size,
+                // What was STORED, not what arrived — callers use these to render
+                // and to decide how to treat the file.
+                mimeType: compressed.mimeType,
+                size: compressed.buffer.length,
             };
 
             log.info(`Returning info for generic file upload:`, fileInfo);
