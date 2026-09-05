@@ -30,6 +30,7 @@ import {
 import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/clients/notification.service.client';
 import { verificationStats, activeCount, queuedCount } from '../../services/verification-session.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { estimateReach } from '../../services/reach.service';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
 import logger from '../../utils/logger';
@@ -119,6 +120,21 @@ export const listForReview = async (req: AuthenticatedRequest, res: Response) =>
         ]);
         const profileById = new Map(profiles.map(p => [String(p._id), p]));
 
+        // What the current diffuseur pool could actually deliver for each
+        // campaign's targeting. Rufus: the admin must be able to see, before
+        // validating, that the requested views are unreachable — so they can tell
+        // the annonceur to widen their filters instead of approving a campaign
+        // that will sit at zero.
+        const reaches = await Promise.all(
+            items.map(c =>
+                estimateReach(c.targeting, c.targetUniqueViews, c._id).catch(err => {
+                    log.warn(`Could not estimate reach for ${c._id}: ${(err as Error).message}`);
+                    return null;
+                }),
+            ),
+        );
+        const reachByCampaign = new Map(items.map((c, i) => [String(c._id), reaches[i]]));
+
         return res.json({
             success: true,
             data: items.map(c => {
@@ -135,6 +151,11 @@ export const listForReview = async (req: AuthenticatedRequest, res: Response) =>
                     priorApprovedCampaigns: priorApprovals,
                     /** Review this one properly — nothing of theirs has been vetted before. */
                     isFirstCampaign: priorApprovals === 0,
+                    /**
+                     * null when the estimate failed — the admin should see "inconnu",
+                     * not a confident zero that would read as "nobody matches".
+                     */
+                    reach: reachByCampaign.get(String(c._id)) ?? null,
                 };
             }),
             pagination: { page, limit, total, pages: Math.ceil(total / limit) },
