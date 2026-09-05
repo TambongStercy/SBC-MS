@@ -40,6 +40,21 @@ const BATCH = Number(process.env.PAYIN_RECONCILE_BATCH || 40);
 /** Gap between provider calls, so we don't hammer them. */
 const SPACING_MS = Number(process.env.PAYIN_RECONCILE_SPACING_MS || 300);
 
+/**
+ * How long before asking about the same payment again, by how many times the
+ * provider has already answered "still nothing".
+ *
+ * Most PENDING_PROVIDER intents are abandoned checkouts — someone opened the
+ * page and walked away — and those never resolve. Without a backoff the job
+ * re-asks about the same recent few every single cycle and never reaches an
+ * older payment that IS recoverable. Backing off the ones that keep answering
+ * the same way is what lets the queue rotate.
+ */
+const backoffMs = (attempts: number): number =>
+    attempts < 3 ? 10 * MINUTES
+        : attempts < 10 ? 60 * MINUTES
+            : 6 * 60 * MINUTES;
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export class PayinReconciler {
@@ -84,10 +99,19 @@ export class PayinReconciler {
                 gateway: { $in: RECONCILABLE },
                 gatewayPaymentId: { $exists: true, $nin: [null, ''] },
                 createdAt: { $lte: new Date(now - MIN_AGE_MS), $gte: new Date(now - MAX_AGE_MS) },
+                $or: [
+                    { lastReconcileAt: { $exists: false } },
+                    { lastReconcileAt: null },
+                    { reconcileAttempts: { $lt: 3 }, lastReconcileAt: { $lte: new Date(now - backoffMs(0)) } },
+                    { reconcileAttempts: { $gte: 3, $lt: 10 }, lastReconcileAt: { $lte: new Date(now - backoffMs(3)) } },
+                    { reconcileAttempts: { $gte: 10 }, lastReconcileAt: { $lte: new Date(now - backoffMs(10)) } },
+                ],
             })
-                .sort({ createdAt: -1 })  // newest first: a payer waiting right now matters more than one from last week
+                // Least recently asked about first, so the queue rotates instead of
+                // the newest handful starving everything behind them.
+                .sort({ lastReconcileAt: 1, createdAt: -1 })
                 .limit(BATCH)
-                .select('sessionId gateway gatewayPaymentId status amount currency createdAt');
+                .select('sessionId gateway gatewayPaymentId status amount currency createdAt reconcileAttempts');
 
             if (!stuck.length) return result;
 
@@ -108,10 +132,16 @@ export class PayinReconciler {
                     } else {
                         result.unresolved++;
                     }
+
+                    // The provider answered, so this one has genuinely been asked.
+                    await this.stamp(intent._id, true);
                 } catch (err) {
-                    // Provider unreachable or erroring. Leave the intent alone and
-                    // try again next cycle — silence is not a failed payment.
+                    // Provider unreachable or erroring. Leave the intent's status
+                    // alone and do NOT count the attempt — an outage must not back
+                    // a real payment off exactly when it most needs checking. The
+                    // timestamp still moves so the queue keeps rotating.
                     result.unresolved++;
+                    await this.stamp(intent._id, false);
                     log.warn(`Could not reconcile ${intent.sessionId} (${intent.gateway}): ${(err as Error).message}`);
                 }
 
@@ -129,6 +159,20 @@ export class PayinReconciler {
         }
 
         return result;
+    }
+
+    /**
+     * Records that we asked. `answered` is false when the provider itself failed
+     * to respond, in which case the attempt does not count against the backoff.
+     */
+    private async stamp(id: unknown, answered: boolean): Promise<void> {
+        await PaymentIntentModel.updateOne(
+            { _id: id as never },
+            {
+                $set: { lastReconcileAt: new Date() },
+                ...(answered ? { $inc: { reconcileAttempts: 1 } } : {}),
+            },
+        );
     }
 
     /**
