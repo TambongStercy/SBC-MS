@@ -327,6 +327,46 @@ Discipline to follow every time:
    has not retried since the fix deployed, not that the fix failed.
 4. Err heavily toward "it's our bug." Check 50 times if that's what it takes.
 
+### Cloud Storage bills egress, not storage — and signed URLs defeat every cache
+
+August 2026: $79.63, of which **$64.32 was 636 GiB of download egress** and
+**$1.23 was storage**. The buckets hold ~36 GiB total. So bucket size tells you
+almost nothing; what costs money is `file size × number of distinct fetches`.
+
+Two buckets, very different failure modes:
+
+| | `sbc-file-storage` (public) | `sbc-status-media-private` |
+|---|---|---|
+| Contents | avatars (15,310 files, **947 KiB avg**), products (31,331, 522 KiB avg), campaign creatives + verification videos (up to 84 MiB) | live statuses only, ~900 KiB avg, 121 MiB total |
+| Served by | direct `storage.googleapis.com` URLs | V4 signed URLs |
+| Cacheable | yes — stable URL + 1yr `Cache-Control`, so a *returning* viewer is free | **was: never** |
+
+**The signed-URL trap (fixed 2026-09-04).** `getSignedUrl` used
+`expires: Date.now() + expiresIn*1000`, so every call produced a different
+signature and therefore a different URL for the same bytes. Caches key on the
+URL, so no browser or CDN could ever hit — every status-feed open re-downloaded
+every image and video in full. Expiry is now snapped **up to an hourly
+boundary**, so the same object yields the same URL to everyone within the hour.
+**If you add any signed-URL flow, snap the expiry the same way** or you
+reintroduce this.
+
+Other standing facts:
+- **Nothing fronts `storage.googleapis.com`** — no CDN, no shared cache. Our own
+  origin IS behind Cloudflare, so routing through `/api/settings/files/<id>` is
+  the cheap path and the direct bucket URL is the expensive one. A comment in
+  `SBCApiService.generateStreamedFileUrl` used to claim the opposite; that is why
+  the pattern spread.
+- `?w=<px>` on `/api/settings/files/:id` returns a WebP resize (sharp, bounded
+  16–1024, `immutable`). Avatars went 1.78 MB → ~2 KB. Use
+  `generateThumbnailUrl` anywhere an image is drawn smaller than uploaded;
+  `Avatar` (`SBC-WEB-UI/src/components/common/Avatar.tsx`) does it for people.
+  It refuses to resize video — sharp cannot, and trying pulls the whole file first.
+- **GCS usage logs are NOT enabled**, so per-object request counts do not exist.
+  Any claim about *which* files drove the bill is inference, not measurement —
+  say so. `settings-service/src/scripts/audit-storage-egress.ts` inventories both
+  buckets (it needs the service's own credentials; a bare `new Storage()` reaches
+  only the public bucket anonymously and silently omits the private one).
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to
