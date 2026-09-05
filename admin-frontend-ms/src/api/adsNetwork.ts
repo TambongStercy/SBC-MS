@@ -81,6 +81,18 @@ export interface AdsCampaign {
     } | null;
     priorApprovedCampaigns: number;
     isFirstCampaign: boolean;
+    /**
+     * What the current diffuseur pool could actually deliver for this targeting.
+     * null when the estimate could not be made — show "inconnu", never a zero,
+     * which would read as "nobody matches".
+     */
+    reach: {
+        eligible: number;
+        matching: number;
+        projectedUniqueViews: number;
+        targetUniqueViews?: number;
+        sufficient?: boolean;
+    } | null;
 }
 
 export interface AdsAnalytics {
