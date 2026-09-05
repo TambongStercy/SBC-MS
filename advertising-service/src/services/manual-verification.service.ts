@@ -31,10 +31,21 @@ const genCode = customAlphabet('0123456789', 6);
  * support — so the two reasons for going direct are both answered, and this is
  * no longer hostage to whether the bucket happens to be world-readable.
  */
+/**
+ * `v` busts Cloudflare entries poisoned during the 2026-09-05 storage outage.
+ *
+ * Errors were served carrying the success path's one-year immutable
+ * Cache-Control, so the edge cached 404s for byte-range requests — which is
+ * exactly how a <video> seeks. Storage recovered and the videos still would not
+ * play. A constant (not a timestamp) so the new URL caches normally; bump it only
+ * if the edge is ever poisoned again.
+ */
+const CACHE_BUSTER = 'v=2';
+
 const videoUrl = (fileId: string) =>
     fileId.startsWith('http')
         ? fileId
-        : `${config.appBaseUrl.replace(/\/$/, '')}/api/settings/files/${encodeURIComponent(fileId)}`;
+        : `${config.appBaseUrl.replace(/\/$/, '')}/api/settings/files/${encodeURIComponent(fileId)}?${CACHE_BUSTER}`;
 
 const ownedInProgress = async (userId: Types.ObjectId, participationId: string) => {
     const participation = await CampaignParticipationModel.findById(participationId);
