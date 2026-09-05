@@ -28,7 +28,28 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
     const [speed, setSpeed] = useState(1);
-    const [failed, setFailed] = useState(false);
+    // Why it failed, not just that it did. A <video> fires the same onError for a
+    // codec it cannot decode and for a server that returned 500, and claiming the
+    // first when it was the second sends the reviewer hunting for a phone-format
+    // problem that does not exist.
+    const [failure, setFailure] = useState<string | null>(null);
+
+    const diagnose = async () => {
+        try {
+            const res = await fetch(src, { method: 'GET', headers: { Range: 'bytes=0-1' } });
+            if (!res.ok) {
+                setFailure(
+                    res.status >= 500
+                        ? `Le stockage n'a pas pu renvoyer ce fichier (erreur ${res.status}). Ce n'est pas un problème de format — réessayez plus tard ou prévenez la technique.`
+                        : `Fichier introuvable ou inaccessible (erreur ${res.status}).`,
+                );
+                return;
+            }
+            setFailure('Le fichier est bien téléchargé mais le navigateur ne sait pas le décoder (format non supporté). Ouvrez-le dans un nouvel onglet.');
+        } catch {
+            setFailure("Impossible de joindre le serveur de fichiers. Vérifiez la connexion, puis réessayez.");
+        }
+    };
 
     const toggle = () => {
         const v = videoRef.current;
@@ -47,11 +68,10 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
         if (videoRef.current) videoRef.current.currentTime = value;
     };
 
-    if (failed) {
+    if (failure) {
         return (
             <div className="rounded-xl border border-gray-700 bg-gray-900/60 p-6 text-center text-sm text-gray-400">
-                Cette vidéo ne peut pas être lue ici (format non supporté par le navigateur).
-                Ouvrez-la dans un nouvel onglet.
+                {failure}
             </div>
         );
     }
@@ -67,7 +87,7 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                 onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
                 onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                 onEnded={() => setPlaying(false)}
-                onError={() => setFailed(true)}
+                onError={() => { void diagnose(); }}
                 className="w-full cursor-pointer bg-black"
             />
 
