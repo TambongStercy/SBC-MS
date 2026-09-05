@@ -6,6 +6,7 @@ import CampaignModel from '../database/models/campaign.model';
 import { markDayVerifiedManually, earliestAllowedPost } from './verification.service';
 import { currentDay } from './day-window.service';
 import { getUserProfiles } from './clients/user.service.client';
+import { deleteFile } from './clients/settings.service.client';
 import config from '../config';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
@@ -244,4 +245,50 @@ export const rejectManualVerification = async (
 
     log.info(`Admin ${adminId} rejected manual verification ${manualVerificationId}: ${trimmed}`);
     return { manualVerificationId, status: mv.status };
+};
+
+/**
+ * Delete the recordings of verifications that have already been decided.
+ *
+ * A screen recording exists to let one admin check a code and a view count once.
+ * After that it is inert, and they arrived at ~873 MiB/day once verification went
+ * live — the fastest-growing thing we store, and unlike everything else it has no
+ * second reader. Compression (~87%) slows that curve; deleting them flattens it.
+ *
+ * Not deleted at the moment of review. A diffuseur who is refused loses a day's
+ * earnings and may well dispute it, and the recording is the only evidence either
+ * way — so it survives a grace period first. Set MANUAL_VERIFY_RETENTION_DAYS=0
+ * to delete as soon as the decision is made.
+ *
+ * The record itself is kept: it still shows who was reviewed, when, and what was
+ * decided. Only the video goes.
+ */
+export const sweepReviewedVideos = async (): Promise<number> => {
+    const cutoff = new Date(Date.now() - config.campaign.manualVerifyRetentionDays * 24 * 60 * 60 * 1000);
+
+    const decided = await ManualVerificationModel.find({
+        status: { $in: [ManualVerificationStatus.APPROVED, ManualVerificationStatus.REJECTED] },
+        videoFileId: { $exists: true, $nin: [null, ''] },
+        reviewedAt: { $lte: cutoff },
+    }).select('_id videoFileId').limit(200);
+
+    if (!decided.length) return 0;
+
+    let deleted = 0;
+    for (const mv of decided) {
+        const gone = await deleteFile(mv.videoFileId as string);
+        // Leave videoFileId in place when the delete failed, so the next sweep
+        // retries it. Clearing it would strand the object with nothing pointing
+        // at it — unreachable AND permanent.
+        if (!gone) continue;
+
+        await ManualVerificationModel.updateOne(
+            { _id: mv._id },
+            { $set: { videoDeletedAt: new Date() }, $unset: { videoFileId: 1 } },
+        );
+        deleted++;
+    }
+
+    if (deleted) log.info(`Removed ${deleted} reviewed verification recording(s) from storage`);
+    return deleted;
 };

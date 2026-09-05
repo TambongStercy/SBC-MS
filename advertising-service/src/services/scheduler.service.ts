@@ -12,6 +12,7 @@ import { sweepReferralCommissions } from './referral-commission.service';
 import { nextUnpostedDay, scheduleSummary } from './day-window.service';
 import { sweepStaleCreditReservations } from './credit.service';
 import { offerTestCampaignToNewDiffuseurs } from './test-campaign.service';
+import { sweepReviewedVideos } from './manual-verification.service';
 import {
     notifyVerificationDue,
     notifyDayDue,
@@ -392,6 +393,9 @@ export const runScheduledJobs = async (): Promise<void> => {
         // keeps collecting views until WhatsApp kills the status.
         ['completeMaturedParticipations', completeMaturedParticipations],
         ['sweepReferralSuspensions', sweepReferralSuspensions],
+        // Reviewed recordings have no second reader, and were the fastest-growing
+        // thing in storage until this.
+        ['sweepReviewedVideos', sweepReviewedVideos],
         ['sweepCompletedCampaigns', sweepCompletedCampaigns],
         // Returns credit held by campaigns whose payment page was abandoned. No
         // callback ever arrives for those, so a timeout is the only signal.

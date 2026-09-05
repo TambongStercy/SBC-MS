@@ -31,3 +31,20 @@ export const downloadFile = async (fileId: string): Promise<Buffer | null> => {
         return null;
     }
 };
+
+/**
+ * Remove a stored file we own the lifecycle of.
+ *
+ * Returns whether it is gone rather than throwing: the caller is a sweep, and one
+ * unreachable file must not stop it clearing the rest. It simply comes back
+ * around next run.
+ */
+export const deleteFile = async (fileId: string): Promise<boolean> => {
+    try {
+        await client.delete('/settings/internal/file', { data: { fileId } });
+        return true;
+    } catch (err) {
+        log.warn(`Could not delete file ${fileId} via settings-service: ${(err as Error).message}`);
+        return false;
+    }
+};

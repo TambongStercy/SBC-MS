@@ -641,6 +641,33 @@ export const internalGetSignedUrls = async (req: Request, res: Response, next: N
  * DELETE /internal/file-private
  * Body: { filePath }
  */
+/**
+ * Delete an object from the PUBLIC bucket, for services that own a file's
+ * lifecycle.
+ *
+ * Manual-verification recordings are the first caller: an admin watches one once
+ * and it then sits in the bucket forever. They arrived at ~873 MiB/day once
+ * verification went live, which is the fastest-growing thing we store.
+ */
+export const internalDeleteFile = async (req: Request, res: Response, next: NextFunction) => {
+    const { fileId } = req.body;
+    if (!fileId) return next(new BadRequestError('fileId is required.'));
+
+    try {
+        await cloudStorageService.deleteFile(fileId);
+        log.info(`File deleted from public bucket: ${fileId}`);
+        res.status(200).json({ success: true, message: 'File deleted successfully.' });
+    } catch (error: any) {
+        // Already gone is the outcome the caller wanted.
+        if (error?.code === 404 || /No such object/i.test(error?.message ?? '')) {
+            log.info(`File ${fileId} was already absent from the public bucket`);
+            return res.status(200).json({ success: true, message: 'File already absent.' });
+        }
+        log.error('Error deleting file from public bucket:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to delete file', 500));
+    }
+};
+
 export const internalDeleteFilePrivate = async (req: Request, res: Response, next: NextFunction) => {
     log.info('Handling DELETE /internal/file-private request');
     const { filePath } = req.body;
