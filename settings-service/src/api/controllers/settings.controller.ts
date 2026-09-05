@@ -148,6 +148,25 @@ export const internalUploadFile = async (req: Request, res: Response, next: Next
     }
 };
 
+/**
+ * Send an error for a file request WITHOUT the caller's cache headers.
+ *
+ * The success paths below set a one-year immutable Cache-Control before the
+ * bytes start flowing, and an error that inherits it gets frozen at the CDN. That
+ * is not hypothetical: during the 2026-09-05 billing outage Cloudflare cached the
+ * resulting 404s for a year, so byte-range requests kept returning them long
+ * after storage recovered — the files were fine and the edge was serving a stale
+ * error nobody could clear without a manual purge.
+ */
+const failFile = (res: Response, status: number, message: string) => {
+    if (res.headersSent) return;
+    res.removeHeader('Cache-Control');
+    res.removeHeader('Content-Range');
+    res.removeHeader('Content-Length');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(status).json({ success: false, message });
+};
+
 // Universal file proxy - handles both Google Drive and Cloud Storage files
 export const getFileFromStorage = async (req: Request, res: Response, next: NextFunction) => {
     const { fileId } = req.params;
@@ -273,7 +292,7 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
             const stream = cloudStorageService.streamFile(directUrl, { start, end });
             stream.on('error', (err: Error) => {
                 log.error(`Error streaming ${fileId} from Cloud Storage:`, err);
-                if (!res.headersSent) res.status(404).json({ success: false, message: 'File not found' });
+                failFile(res, 404, 'File not found');
             });
 
             return stream.pipe(res);
@@ -295,12 +314,11 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
 
         stream.on('error', (error: any) => {
             log.error(`Error streaming file ${fileId} from Drive:`, error);
-            if (!res.headersSent) {
-                if (error.message === 'File not found') {
-                    return res.status(404).json({ success: false, message: 'File not found' });
-                }
-                res.status(500).json({ success: false, message: 'Error streaming file' });
-            }
+            failFile(
+                res,
+                error.message === 'File not found' ? 404 : 500,
+                error.message === 'File not found' ? 'File not found' : 'Error streaming file',
+            );
         });
 
         stream.on('end', () => {
@@ -309,10 +327,14 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
 
     } catch (error: any) {
         log.error(`Error in getFileFromStorage for file ID ${fileId}:`, error);
+        if (res.headersSent) return;
+        // Storage being unreachable is a transient condition — a delinquent
+        // billing account, a network blip — and must never be cached as though it
+        // were the file's permanent answer.
         if (error.message === 'File not found') {
-            return res.status(404).json({ success: false, message: 'File not found' });
+            return failFile(res, 404, 'File not found');
         }
-        next(new AppError('Failed to retrieve file from storage', 500));
+        failFile(res, 502, 'Failed to retrieve file from storage');
     }
 };
 
