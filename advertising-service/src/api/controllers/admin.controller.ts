@@ -31,6 +31,7 @@ import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/c
 import { verificationStats, activeCount, queuedCount } from '../../services/verification-session.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { estimateReach } from '../../services/reach.service';
+import { banDiffuseur, unbanDiffuseur } from '../../services/ranking.service';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
 import logger from '../../utils/logger';
@@ -439,5 +440,37 @@ export const reject = async (req: AuthenticatedRequest, res: Response) => {
         });
     } catch (err) {
         return fail(res, err, 'rejectCampaign');
+    }
+};
+
+/**
+ * Ban a diffuseur from further campaign work.
+ *
+ * The network is only worth anything if the proof means something, so someone
+ * forging it stops being offered paid work. A reason is required: bans are
+ * repeat-offence judgements and the record has to say what happened.
+ */
+export const banDiffuseurAccount = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = new Types.ObjectId(req.params.userId);
+        const { reason } = req.body ?? {};
+        const result = await banDiffuseur(userId, adminUserId(req), String(reason ?? ''));
+        return res.json({
+            success: true,
+            data: result,
+            message: `Diffuseur banni. ${result.offersWithdrawn} offre(s) retirée(s), ${result.participationsStopped} campagne(s) en cours arrêtée(s).`,
+        });
+    } catch (err) {
+        return fail(res, err, 'banDiffuseurAccount');
+    }
+};
+
+/** Lift a ban. The reason stays on the record. */
+export const unbanDiffuseurAccount = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        await unbanDiffuseur(new Types.ObjectId(req.params.userId));
+        return res.json({ success: true, message: 'Bannissement levé.' });
+    } catch (err) {
+        return fail(res, err, 'unbanDiffuseurAccount');
     }
 };

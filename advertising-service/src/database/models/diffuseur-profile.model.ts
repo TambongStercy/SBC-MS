@@ -49,6 +49,20 @@ export interface IDiffuseurProfile extends Document {
     lastCampaignCompletedAt?: Date;
 
     isActive: boolean;
+
+    /**
+     * Admin ban. Separate from isActive so the reason survives and so a ban is
+     * never confused with the ordinary inactivity the allocator also reads.
+     *
+     * Recorded because bans are repeat-offence judgements — Rufus banned the
+     * first account for submitting AI-generated proof "pour la deuxième fois"
+     * (2026-09-06), and without a reason on the record nobody can tell a fraud
+     * ban from a temporary deactivation six months later.
+     */
+    bannedAt?: Date;
+    bannedBy?: Types.ObjectId;
+    banReason?: string;
+
     createdAt: Date;
     updatedAt: Date;
 }
@@ -85,6 +99,10 @@ const DiffuseurProfileSchema = new Schema<IDiffuseurProfile>({
     lastCampaignCompletedAt: { type: Date },
 
     isActive: { type: Boolean, default: true, index: true },
+
+    bannedAt: { type: Date },
+    bannedBy: { type: Schema.Types.ObjectId },
+    banReason: { type: String, trim: true },
 }, { timestamps: true });
 
 // Allocation ranks eligible diffuseurs by reach then reliability.
