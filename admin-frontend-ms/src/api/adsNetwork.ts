@@ -317,7 +317,13 @@ export const approveManualVerification = async (id: string, observedViewCount: n
     return data;
 };
 
-export const rejectManualVerification = async (id: string, reason: string) => {
-    const { data } = await apiClient.post(`/advertising/admin/manual-verifications/${id}/reject`, { reason });
+/**
+ * Refuse a recording, optionally banning the diffuseur in the same action.
+ *
+ * The refusal reason doubles as the ban reason — it is the same judgement about
+ * the same recording, and asking twice only gets it typed shorter the second time.
+ */
+export const rejectManualVerification = async (id: string, reason: string, ban = false) => {
+    const { data } = await apiClient.post(`/advertising/admin/manual-verifications/${id}/reject`, { reason, ban });
     return data;
 };

@@ -7,6 +7,7 @@ import { markDayVerifiedManually, earliestAllowedPost } from './verification.ser
 import { currentDay } from './day-window.service';
 import { getUserProfiles } from './clients/user.service.client';
 import { deleteFile } from './clients/settings.service.client';
+import { banDiffuseur } from './ranking.service';
 import config from '../config';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
@@ -227,6 +228,15 @@ export const rejectManualVerification = async (
     adminId: Types.ObjectId,
     manualVerificationId: string,
     reason: string,
+    /**
+     * Ban the diffuseur from the ads network as part of the same action.
+     *
+     * The moment you know is the moment you are watching the recording — Rufus
+     * spotted an AI-generated proof for the second time and had nowhere to act on
+     * it from the review screen. Splitting "refuse" from "ban" across two screens
+     * means the second step is the one that gets skipped.
+     */
+    ban = false,
 ) => {
     const trimmed = (reason ?? '').trim();
     if (!trimmed) throw new AppError('Un motif de refus est obligatoire.', 400);
@@ -243,8 +253,19 @@ export const rejectManualVerification = async (
     mv.rejectionReason = trimmed;
     await mv.save();
 
-    log.info(`Admin ${adminId} rejected manual verification ${manualVerificationId}: ${trimmed}`);
-    return { manualVerificationId, status: mv.status };
+    let offersWithdrawn = 0;
+    if (ban) {
+        // The refusal reason IS the ban reason: they are the same judgement about
+        // the same recording, and asking for it twice would only get it typed
+        // shorter the second time.
+        ({ offersWithdrawn } = await banDiffuseur(mv.diffuseurUserId, adminId, trimmed));
+    }
+
+    log.info(
+        `Admin ${adminId} rejected manual verification ${manualVerificationId}: ${trimmed}`
+        + (ban ? ` — diffuseur ${mv.diffuseurUserId} banned` : ''),
+    );
+    return { manualVerificationId, status: mv.status, banned: ban, offersWithdrawn };
 };
 
 /**

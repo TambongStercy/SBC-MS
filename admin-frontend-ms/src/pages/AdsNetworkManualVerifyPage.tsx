@@ -34,6 +34,7 @@ export default function AdsNetworkManualVerifyPage() {
     const [rejectingId, setRejectingId] = useState<string | null>(null);
     const [rejectReason, setRejectReason] = useState('');
     const [confirmApprove, setConfirmApprove] = useState<ManualVerification | null>(null);
+    const [confirmBan, setConfirmBan] = useState<ManualVerification | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -69,7 +70,7 @@ export default function AdsNetworkManualVerifyPage() {
         }
     };
 
-    const doReject = async (mv: ManualVerification) => {
+    const doReject = async (mv: ManualVerification, ban = false) => {
         const reason = rejectReason.trim();
         if (!reason) {
             showError('Indiquez un motif de refus.');
@@ -77,13 +78,18 @@ export default function AdsNetworkManualVerifyPage() {
         }
         setActingOn(mv.manualVerificationId);
         try {
-            await rejectManualVerification(mv.manualVerificationId, reason);
-            showSuccess(`Vérification refusée. Le diffuseur peut recommencer.`);
+            await rejectManualVerification(mv.manualVerificationId, reason, ban);
+            showSuccess(
+                ban
+                    ? `Vérification refusée et ${mv.diffuseurName} banni du réseau diffuseur.`
+                    : 'Vérification refusée. Le diffuseur peut recommencer.',
+            );
             setRejectingId(null);
             setRejectReason('');
+            setConfirmBan(null);
             await fetchData();
         } catch (err) {
-            showError(apiErrorMessage(err, 'Le refus a échoué.'));
+            showError(apiErrorMessage(err, ban ? 'Le bannissement a échoué.' : 'Le refus a échoué.'));
         } finally {
             setActingOn(null);
         }
@@ -190,6 +196,18 @@ export default function AdsNetworkManualVerifyPage() {
                                             Annuler
                                         </button>
                                     </div>
+                                    {/* Banning belongs here, at the moment you are
+                                        looking at the proof. On its own screen it is
+                                        the step that gets skipped. */}
+                                    <div className="mt-2">
+                                        <button
+                                            onClick={() => setConfirmBan(mv)}
+                                            disabled={actingOn === mv.manualVerificationId}
+                                            className="w-full rounded-xl border border-red-500/60 bg-red-500/10 py-2 text-xs font-medium text-red-300 hover:bg-red-500/20"
+                                        >
+                                            Refuser et bannir ce diffuseur du réseau
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="mt-3">
@@ -225,6 +243,23 @@ export default function AdsNetworkManualVerifyPage() {
                         </motion.div>
                     ))}
                 </div>
+            )}
+
+            {confirmBan && (
+                <ConfirmationModal
+                    isOpen={!!confirmBan}
+                    title={`Bannir ${confirmBan.diffuseurName} du réseau diffuseur ?`}
+                    message={
+                        `La vérification sera refusée et ${confirmBan.diffuseurName} ne recevra plus aucune `
+                        + `campagne. Ses offres en attente sont retirées. Son compte SBC reste intact — `
+                        + `seul l'accès au réseau diffuseur est bloqué, et le bannissement peut être levé. `
+                        + `Motif enregistré : « ${rejectReason.trim()} ».`
+                    }
+                    confirmText="Refuser et bannir"
+                    cancelText="Annuler"
+                    onConfirm={() => doReject(confirmBan, true)}
+                    onCancel={() => setConfirmBan(null)}
+                />
             )}
 
             {confirmApprove && (
