@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus, ICampaign } from '../database/models/campaign.model';
 import CampaignParticipationModel, { ParticipationStatus, DayStatus, IDayProof } from '../database/models/campaign-participation.model';
+import ManualVerificationModel, { ManualVerificationStatus } from '../database/models/manual-verification.model';
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import { newLandingPageSlug, newTrackingCode } from './campaign.service';
 import { openParticipation } from './day-window.service';
@@ -244,6 +245,31 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
                 previous.totalViews = 0;
                 previous.totalEarned = 0;
                 await previous.save();
+
+                // The days this participation had are gone, so any recording still
+                // attached to them refers to something that no longer exists.
+                // Leaving them AWAITING_UPLOAD or PENDING_REVIEW put them in the
+                // admin queue pointing at an OFFERED participation, where every
+                // attempt to validate failed with "Cette participation n'est pas
+                // en cours" and no amount of retrying could work.
+                const stranded = await ManualVerificationModel.updateMany(
+                    {
+                        participationId: previous._id,
+                        status: {
+                            $in: [
+                                ManualVerificationStatus.AWAITING_UPLOAD,
+                                ManualVerificationStatus.PENDING_REVIEW,
+                            ],
+                        },
+                    },
+                    { $set: { status: ManualVerificationStatus.EXPIRED } },
+                );
+                if (stranded.modifiedCount) {
+                    log.info(
+                        `Expired ${stranded.modifiedCount} verification(s) for revived participation `
+                        + `${previous._id}: its days were reset`,
+                    );
+                }
             } else {
                 await CampaignParticipationModel.create({
                     campaignId: campaign._id,
