@@ -10,6 +10,7 @@ import CampaignParticipationModel, {
 } from '../database/models/campaign-participation.model';
 import { ExtractedStatus, ExtractionResult } from './whatsapp-status.service';
 import { openNextDay, isBeyondRecovery } from './day-window.service';
+import ManualVerificationModel, { ManualVerificationStatus } from '../database/models/manual-verification.model';
 import { recordCompletion, recordForfeit } from './ranking.service';
 import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import config from '../config';
@@ -519,7 +520,37 @@ export const forfeitExpired = async (): Promise<number> => {
         status: ParticipationStatus.IN_PROGRESS,
     });
 
-    const expired = candidates.filter(p => isBeyondRecovery(p, now));
+    // A diffuseur waiting on US is not a diffuseur who abandoned.
+    //
+    // Manual verification only marks a day VERIFIED when an admin approves the
+    // recording. Until then the day still reads as unposted, so the deadline
+    // sweep forfeited people who had done everything asked of them — uploaded
+    // their video and waited. On the test campaign the forfeit then made them
+    // eligible for revival, which reset the participation to OFFERED and wiped
+    // the days, orphaning the very recording an admin was about to review
+    // ("Cette participation n'est pas en cours (statut : offered)", Rufus
+    // 2026-09-06). 71 recordings were stranded that way.
+    //
+    // Review latency is our problem, not theirs: while a recording is queued,
+    // the clock does not run.
+    const awaitingReview = new Set(
+        (await ManualVerificationModel
+            .find({
+                participationId: { $in: candidates.map(p => p._id) },
+                status: ManualVerificationStatus.PENDING_REVIEW,
+            })
+            .select('participationId')
+            .lean()
+        ).map(mv => String(mv.participationId)),
+    );
+
+    const expired = candidates.filter(
+        p => !awaitingReview.has(String(p._id)) && isBeyondRecovery(p, now),
+    );
+
+    if (awaitingReview.size) {
+        log.info(`${awaitingReview.size} participation(s) held from forfeit: a recording is awaiting review`);
+    }
 
     for (const p of expired) {
         p.status = ParticipationStatus.FORFEITED;
