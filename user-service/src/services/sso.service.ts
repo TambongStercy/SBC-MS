@@ -36,7 +36,12 @@ export interface SsoUserInfo {
      * `directReferralCount >= 25` or `subscriptionTypes.includes('VISIBILITE_MAX')`.
      */
     subscriptionTypes: string[];
-    /** Direct (level-1) paid referral count. Drives SBC Live's capacity tier + the 25-ref creation gate. */
+    /**
+     * Direct (level-1) filleuls with an active CLASSIQUE or CIBLE subscription.
+     * Same "paid filleul" definition as `directSubscribed` on
+     * GET /api/sso/referrals/stats — the header count and the ≥25 creation gate
+     * must not disagree. Feature subs (RELANCE, VISIBILITE_MAX) do NOT count here.
+     */
     directReferralCount: number;
     /** Convenience flag — true if any active subscription. */
     isActivated: boolean;
@@ -459,9 +464,13 @@ class SsoService {
             throw new AppError('User not found', 404);
         }
         const activeSubs = await subscriptionService.getActiveSubscriptionTypes(userId);
-        const referralStats = await referralRepository.getReferralStats(userId).catch((err: any) => {
+        // Same source as GET /api/sso/referrals/stats so the SBC Live header and the
+        // ≥25 creation gate can't disagree. Counts direct filleuls with an active
+        // CLASSIQUE or CIBLE — feature subs (RELANCE, VISIBILITE_MAX) don't count here.
+        const { getReferralStats } = await import('./referral-stats.service');
+        const referralStats = await getReferralStats(userId).catch((err: any) => {
             log.warn(`SSO userinfo: referral stats failed for ${userId}: ${err.message}`);
-            return { directReferrals: 0, indirectReferrals: 0, totalReferrals: 0 } as any;
+            return { directSubscribedReferrals: 0 } as any;
         });
 
         return {
@@ -472,7 +481,7 @@ class SsoService {
             country: (user as any).country || null,
             avatarUrl: this.buildAvatarUrl((user as any).avatar),
             subscriptionTypes: Array.isArray(activeSubs) ? activeSubs.map(String) : [],
-            directReferralCount: referralStats?.directReferrals ?? 0,
+            directReferralCount: referralStats?.directSubscribedReferrals ?? 0,
             isActivated: Array.isArray(activeSubs) && activeSubs.length > 0,
             sbcLiveBalance: (user as any).sbcLiveBalance ?? 0,
         };
