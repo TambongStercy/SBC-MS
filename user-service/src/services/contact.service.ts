@@ -3,6 +3,7 @@ import { UserRepository } from '../database/repositories/user.repository';
 import { ContactSearchFilters, ContactSearchResponse } from '../types/contact.types';
 import { SubscriptionType } from '../database/models/subscription.model';
 import { generateVCFFile } from '../utils/vcf.utils';
+import { buildAvatarUrl } from '../utils/avatar.utils';
 import { SubscriptionService } from './subscription.service';
 import { UserService } from './user.service';
 
@@ -104,6 +105,7 @@ export class ContactService {
                 language: user.language,
                 profession: user.profession,
                 interests: user.interests,
+                avatarUrl: buildAvatarUrl((user as any).avatar),
                 createdAt: user.createdAt || new Date()
             })),
             totalCount: result.totalCount,

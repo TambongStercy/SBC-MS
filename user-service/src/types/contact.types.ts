@@ -53,6 +53,13 @@ export interface ContactSearchResponse {
         language?: string[]; // Keep as array? Let's make filter single, but response array
         profession?: string;
         interests?: string[];
+        /**
+         * Public URL for the member's avatar, or null if they have none. Built via
+         * `buildAvatarUrl` so absolute URLs (older GCS-backed migrations) and bare
+         * file identifiers both resolve. SBC Contacts consumes this; SBC Live
+         * consumes the same shape on `/api/sso/userinfo`.
+         */
+        avatarUrl?: string | null;
         createdAt: Date;
         // Add shareContactInfo if needed
     }>;
