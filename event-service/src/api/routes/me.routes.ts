@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as meController from '../controllers/me.controller';
-import { notImplemented } from '../controllers/placeholder.controller';
+import * as resaleController from '../controllers/resale.controller';
 
 const router = Router();
 
@@ -8,9 +8,8 @@ router.get('/tickets', meController.listMyTickets);
 router.get('/tickets/:id', meController.getMyTicket);
 router.get('/orders', meController.listMyOrders);
 
-// Resale-side: still V1 stubs (will land in a follow-up commit)
-router.post('/tickets/:id/resale', notImplemented('create resale listing'));
-router.get('/resale', notImplemented('list my resale listings'));
-router.delete('/resale/:listingId', notImplemented('cancel my resale listing'));
+router.post('/tickets/:ticketId/resale', resaleController.createListing);
+router.get('/resale', resaleController.listMyListings);
+router.delete('/resale/:listingId', resaleController.cancelListing);
 
 export default router;

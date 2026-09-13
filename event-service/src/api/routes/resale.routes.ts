@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { notImplemented } from '../controllers/placeholder.controller';
+import * as resaleController from '../controllers/resale.controller';
 
 const router = Router();
 
-// POST /api/events/resale/:listingId/buy — initiate purchase of a resale ticket
-router.post('/:listingId/buy', notImplemented('buy resale listing'));
+// POST /api/tickets/resale/:listingId/buy — initiate purchase of a resale ticket
+router.post('/:listingId/buy', resaleController.buyListing);
 
 export default router;
