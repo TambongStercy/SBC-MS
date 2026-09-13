@@ -12,4 +12,7 @@ router.post('/tickets/:ticketId/resale', resaleController.createListing);
 router.get('/resale', resaleController.listMyListings);
 router.delete('/resale/:listingId', resaleController.cancelListing);
 
+router.get('/disputes', meController.listMyDisputes);
+router.post('/disputes', meController.openDispute);
+
 export default router;

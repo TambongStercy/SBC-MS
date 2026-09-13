@@ -74,6 +74,50 @@ export class EventOrganizerBalanceService {
         return { newEventOrganizerBalance: updated.eventOrganizerBalance, transactionId };
     }
 
+    /**
+     * Debit the seller's event-organizer balance during a resale refund.
+     * Allowed to go negative — the seller may have already transferred out;
+     * the negative balance will be reconciled by future earnings or by admin
+     * action, and it naturally blocks further transfers (guarded by $gte).
+     */
+    async debit(
+        userId: string,
+        amount: number,
+        reference: string,
+        description: string,
+    ): Promise<{ newEventOrganizerBalance: number; wentNegative: boolean; transactionId: string }> {
+        if (!Number.isFinite(amount) || amount <= 0) {
+            throw new AppError('Debit amount must be a positive number', 400);
+        }
+
+        const updated = await this.userRepository.debitEventOrganizerBalance(userId, amount);
+        if (!updated) throw new AppError('User not found', 404);
+
+        const wentNegative = updated.eventOrganizerBalance < 0;
+
+        let transactionId = '';
+        try {
+            const tx = await paymentService.recordActivationTransaction({
+                userId,
+                type: 'event_organizer_transfer_out',
+                amount,
+                description,
+                metadata: {
+                    reference,
+                    kind: 'resale_refund_debit',
+                    newEventOrganizerBalance: updated.eventOrganizerBalance,
+                    wentNegative,
+                },
+            });
+            transactionId = tx.transactionId;
+        } catch (error: any) {
+            log.error(`Failed to record event-organizer debit for ${userId}: ${error.message}`);
+        }
+
+        log.info(`Debited ${amount} XAF from event-organizer balance of ${userId} (ref: ${reference}); newBalance=${updated.eventOrganizerBalance}`);
+        return { newEventOrganizerBalance: updated.eventOrganizerBalance, wentNegative, transactionId };
+    }
+
     /** Moves event-organizer earnings into the main balance, where they can be withdrawn. */
     async transferToMain(
         userId: string,

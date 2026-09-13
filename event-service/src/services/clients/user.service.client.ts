@@ -59,6 +59,41 @@ export const getEventUserDetails = async (userIds: string[]): Promise<EventUserD
  * `reference` is an idempotency key — user-service must reject a second credit
  * with the same reference to guarantee at-most-once payout.
  */
+/**
+ * Debit the seller's event-organizer balance during a resale refund.
+ * The balance may go negative (docs on user-service side).
+ */
+export const debitEventOrganizerBalance = async (args: {
+    userId: string;
+    amount: number;
+    reference: string;
+    description: string;
+}): Promise<{ newEventOrganizerBalance: number; wentNegative: boolean; transactionId: string }> => {
+    try {
+        const { data } = await client.post(
+            '/event-organizer-balance/internal/debit',
+            {
+                userId: args.userId,
+                amount: args.amount,
+                reference: args.reference,
+                description: args.description,
+            },
+        );
+        if (!data?.success) throw new AppError(data?.message || 'user-service refused debit', 502);
+        return data.data;
+    } catch (err) {
+        if (err instanceof AppError) throw err;
+        log.error(`event-organizer-balance debit failed for ${args.userId}: ${(err as Error).message}`);
+        if (axios.isAxiosError(err)) {
+            throw new AppError(
+                err.response?.data?.message || 'user-service unreachable',
+                err.response?.status || 502,
+            );
+        }
+        throw new AppError('user-service unreachable', 502);
+    }
+};
+
 export const creditEventOrganizerBalance = async (args: {
     userId: string;
     amount: number;

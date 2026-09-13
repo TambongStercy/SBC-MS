@@ -82,6 +82,26 @@ class EventOrganizerBalanceController {
             return fail(res, error, 'creditEarnings');
         }
     }
+
+    /**
+     * Debit seller earnings for a resale refund. Service-to-service only.
+     * May take the balance negative — see debit() docstring.
+     */
+    async debitEarnings(req: AuthenticatedRequest, res: Response) {
+        try {
+            const { userId, amount, reference, description } = req.body;
+            if (!userId || !reference) throw new AppError('userId and reference are required', 400);
+            const result = await eventOrganizerBalanceService.debit(
+                userId,
+                Number(amount),
+                reference,
+                description || `Débit remboursement revente (${reference})`,
+            );
+            return res.status(200).json({ success: true, data: result });
+        } catch (error) {
+            return fail(res, error, 'debitEarnings');
+        }
+    }
 }
 
 export const eventOrganizerBalanceController = new EventOrganizerBalanceController();

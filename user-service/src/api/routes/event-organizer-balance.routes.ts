@@ -32,4 +32,13 @@ router.post('/internal/credit', authenticateServiceRequest as any, (req, res) =>
     eventOrganizerBalanceController.creditEarnings(req as any, res)
 );
 
+/**
+ * @route   POST /api/event-organizer-balance/internal/debit
+ * @desc    Debit seller earnings for a resale refund (event-service only)
+ * @access  Service
+ */
+router.post('/internal/debit', authenticateServiceRequest as any, (req, res) =>
+    eventOrganizerBalanceController.debitEarnings(req as any, res)
+);
+
 export default router;
