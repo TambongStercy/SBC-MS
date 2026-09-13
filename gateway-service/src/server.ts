@@ -103,6 +103,16 @@ app.use('/api/activation-balance', proxy(config.services.userServiceUrl, {
   }
 }));
 
+// SBC Event organizer earnings. Same pattern as /api/advertising-balance —
+// held in user-service so all of a user's money is in one place; only exit
+// is transferToMain, then the standard withdrawal path.
+app.use('/api/event-organizer-balance', proxy(config.services.userServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to event-organizer-balance (user service)`);
+    return '/api/event-organizer-balance' + req.url;
+  }
+}));
+
 // Diffuseur advertising earnings. Lives in user-service alongside the other
 // balances, not in advertising-service, so all of a user's money is in one place.
 app.use('/api/advertising-balance', proxy(config.services.userServiceUrl, {

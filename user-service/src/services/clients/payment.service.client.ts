@@ -27,7 +27,8 @@ interface InternalTransactionPayload {
 interface ActivationTransactionPayload {
     userId: string;
     type: 'activation_transfer_in' | 'activation_transfer_out' | 'sponsor_activation'
-        | 'advertising_earnings' | 'advertising_transfer_out';
+        | 'advertising_earnings' | 'advertising_transfer_out'
+        | 'event_organizer_earnings' | 'event_organizer_transfer_out';
     amount: number;
     description: string;
     metadata?: Record<string, any>;

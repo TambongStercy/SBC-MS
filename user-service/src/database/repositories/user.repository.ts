@@ -265,6 +265,39 @@ export class UserRepository {
     }
 
     /**
+     * SBC Event organizer earnings. Credit-only here; the only exit is the
+     * transfer-to-main flow below — same shape as advertisingBalance, and for the
+     * same reason (keeps the withdrawal path from ever having to know about
+     * a second source of funds).
+     */
+    async creditEventOrganizerBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Credit amount must be positive');
+        }
+        return UserModel.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { eventOrganizerBalance: amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Moves event-organizer earnings into the main balance so they can be withdrawn.
+     * The precondition on eventOrganizerBalance is part of the query, so two
+     * concurrent transfers cannot both succeed and overdraw.
+     */
+    async transferEventOrganizerToMain(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Transfer amount must be positive');
+        }
+        return UserModel.findOneAndUpdate(
+            { _id: userId, eventOrganizerBalance: { $gte: amount } },
+            { $inc: { balance: amount, eventOrganizerBalance: -amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
      * Atomically credit (positive amount) or debit (negative amount) a user's
      * sbcLiveBalance. Used by payment-service when:
      *   - A paid-live charge completes → credit the creator's 75% share
@@ -699,6 +732,21 @@ export class UserRepository {
             deleted: { $ne: true }
         })
             .select('_id name email phoneNumber avatar sex birthDate city region country language interests profession referralCode')
+            .lean()
+            .exec();
+    }
+
+    /**
+     * [Internal] Returns the projection consumed by event-service for hydrating
+     * ticket holders in "Mes billets" and organizer participant lists. Kept narrow
+     * on purpose — event-service should never need demographic fields.
+     */
+    async findEventDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name email phoneNumber avatar role')
             .lean()
             .exec();
     }

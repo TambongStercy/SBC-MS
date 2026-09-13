@@ -64,11 +64,16 @@ export const creditEventOrganizerBalance = async (args: {
     amount: number;
     reference: string;
     description: string;
-}): Promise<{ newBalance: number; transactionId: string }> => {
+}): Promise<{ newEventOrganizerBalance: number; transactionId: string }> => {
     try {
         const { data } = await client.post(
-            `/users/internal/event-organizer-balance/${args.userId}/credit`,
-            { amount: args.amount, reference: args.reference, description: args.description },
+            '/event-organizer-balance/internal/credit',
+            {
+                userId: args.userId,
+                amount: args.amount,
+                reference: args.reference,
+                description: args.description,
+            },
         );
         if (!data?.success) {
             throw new AppError(data?.message || 'user-service refused credit', 502);
