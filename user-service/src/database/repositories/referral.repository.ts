@@ -139,6 +139,43 @@ export interface LeaderboardSnapshot {
     counts: number[];
 }
 
+/** One country's line in the "Classement par pays". */
+export interface CountryStanding {
+    /** ISO-3166 alpha-2, upper-case. */
+    country: string;
+    rank: number;
+    /** Sum of paid direct filleuls of every ranked affiliate living there. */
+    referralCount: number;
+    /** Ranked affiliates (subscribed, not deleted/blocked) in that country. */
+    affiliates: number;
+}
+
+export interface CountryBoard {
+    countries: CountryStanding[];
+    /** Each country's own top N, re-ranked from 1 inside the country. */
+    byCountry: Record<string, LeaderboardEntry[]>;
+}
+
+// `country` is a free-form String on the user model. Nearly every row holds an
+// ISO-2 code, but older signups stored names — both Congos among them — so they
+// are folded into their code instead of showing as separate "countries".
+const COUNTRY_ALIASES: Record<string, string> = {
+    'CONGO-BRAZZAVILLE': 'CG',
+    'CONGO BRAZZAVILLE': 'CG',
+    'CONGO-KINSHASA': 'CD',
+    'CONGO KINSHASA': 'CD',
+    'RDC': 'CD',
+    'CAMEROUN': 'CM',
+    'CAMEROON': 'CM',
+};
+
+/** Free-form country value -> ISO-2 code, or null when it cannot be placed. */
+export function normalizeCountry(raw?: string | null): string | null {
+    const v = (raw ?? '').trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(v)) return v;
+    return COUNTRY_ALIASES[v] ?? null;
+}
+
 /**
  * Start of the current month in Africa/Douala (UTC+1, no DST).
  *
@@ -2250,6 +2287,102 @@ export class ReferralRepository {
         });
 
         return eligible;
+    }
+
+    /**
+     * "Classement par pays": countries ranked by their affiliates' paid direct
+     * filleuls this month, plus each country's own top N.
+     *
+     * Built on the SAME eligible list as the global board, so a country's total
+     * is exactly the sum of what its members show there.
+     *
+     * ponytail: one `country`-only projection over every eligible referrer ($in
+     * of up to ~40k ids), run at most once an hour behind the service cache. If
+     * that ever shows up in the slow log, denormalise `country` onto referrals.
+     */
+    async getMonthlyCountryBoard(
+        limitPerCountry: number = 10,
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart),
+    ): Promise<CountryBoard> {
+        const eligible = await this.getMonthlyEligibleReferrers(monthStart, monthEnd);
+        if (eligible.length === 0) return { countries: [], byCountry: {} };
+
+        const located = await UserModel.find(
+            { _id: { $in: eligible.map((e) => e._id) } },
+            { country: 1 }
+        ).lean();
+        const countryOf = new Map(
+            located.map((u) => [u._id.toString(), normalizeCountry((u as { country?: string }).country)])
+        );
+
+        const totals = new Map<string, { referralCount: number; affiliates: number }>();
+        const heads = new Map<string, { _id: Types.ObjectId; referralCount: number }[]>();
+        // `eligible` is sorted, so the first N seen per country ARE its top N.
+        for (const e of eligible) {
+            const code = countryOf.get(e._id.toString());
+            if (!code) continue; // no usable country: stays on the global board only
+            const t = totals.get(code) ?? { referralCount: 0, affiliates: 0 };
+            t.referralCount += e.referralCount;
+            t.affiliates += 1;
+            totals.set(code, t);
+            const head = heads.get(code) ?? [];
+            if (head.length < limitPerCountry) head.push(e);
+            heads.set(code, head);
+        }
+
+        const countries: CountryStanding[] = [...totals.entries()]
+            .sort(([a, x], [b, y]) => y.referralCount - x.referralCount || y.affiliates - x.affiliates || a.localeCompare(b))
+            .map(([country, t], i) => ({ country, rank: i + 1, ...t }));
+
+        // ponytail: one small hydrate query per country (≤ ~40, ≤ N ids each),
+        // reusing hydrateLeaderboard so both boards build rows identically.
+        const boards = await Promise.all(
+            countries.map(async (c) => [c.country, (await this.hydrateLeaderboard(heads.get(c.country)!, limitPerCountry)).top] as const)
+        );
+        return { countries, byCountry: Object.fromEntries(boards) };
+    }
+
+    /**
+     * "Top de mes filleuls": for every sponsor, their DIRECT filleuls who rank this
+     * month, sorted by their own paid direct filleuls. Keyed by sponsor id.
+     *
+     * Built from the same eligible list as the other boards, plus ONE lookup of
+     * who sponsored each ranked member — so a sponsor's view needs no query of
+     * its own beyond hydrating ten names. Sponsors with 98k filleuls cost the
+     * same as sponsors with two.
+     */
+    async getMonthlySponsorIndex(
+        monthStart: Date = startOfCurrentMonthDouala(),
+        monthEnd: Date = startOfNextMonthDouala(monthStart),
+    ): Promise<Map<string, { _id: Types.ObjectId; referralCount: number }[]>> {
+        const eligible = await this.getMonthlyEligibleReferrers(monthStart, monthEnd);
+        const index = new Map<string, { _id: Types.ObjectId; referralCount: number }[]>();
+        if (eligible.length === 0) return index;
+
+        const links = await ReferralModel.find(
+            { referredUser: { $in: eligible.map((e) => e._id) }, referralLevel: 1, archived: { $ne: true } },
+            { referrer: 1, referredUser: 1 }
+        ).lean();
+        const sponsorOf = new Map(links.map((l) => [l.referredUser.toString(), l.referrer.toString()]));
+
+        // `eligible` is sorted, so each sponsor's list comes out already ranked.
+        for (const e of eligible) {
+            const sponsor = sponsorOf.get(e._id.toString());
+            if (!sponsor) continue;
+            const list = index.get(sponsor) ?? [];
+            list.push(e);
+            index.set(sponsor, list);
+        }
+        return index;
+    }
+
+    /** Public rows (names, avatars, ranks from 1) for an already-ranked slice. */
+    async hydrateTop(
+        ranked: { _id: Types.ObjectId; referralCount: number }[],
+        limit: number,
+    ): Promise<LeaderboardEntry[]> {
+        return (await this.hydrateLeaderboard(ranked, limit)).top;
     }
 
     /** Turns the eligible list into the public board (top N + rank distribution). */

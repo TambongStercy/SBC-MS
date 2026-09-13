@@ -21,6 +21,8 @@ import {
     getMyRank,
     getLeaderboardForMonth,
     getLeaderboardByCountry,
+    getCountryBoard,
+    getMyFilleulsBoard,
 } from '../../services/leaderboard.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 
@@ -2874,6 +2876,43 @@ export class UserController {
             });
         } catch (error: any) {
             log.error("Error in getLeaderboard", error);
+            res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        }
+    }
+
+    /**
+     * "Classement par pays" for the current month.
+     *
+     * @route GET /api/users/leaderboard/countries
+     * Subscriber-gated like /leaderboard: it names other members.
+     */
+    async getCountryLeaderboard(_req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const data = await getCountryBoard();
+            res.status(200).json({ success: true, data, message: 'Country leaderboard retrieved successfully' });
+        } catch (error: any) {
+            log.error("Error in getCountryLeaderboard", error);
+            res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        }
+    }
+
+    /**
+     * "Top de mes filleuls": the caller's direct filleuls ranked by their own paid
+     * direct filleuls this month.
+     *
+     * @route GET /api/users/leaderboard/filleuls
+     */
+    async getMyFilleulsLeaderboard(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication required.' });
+                return;
+            }
+            const data = await getMyFilleulsBoard(userId);
+            res.status(200).json({ success: true, data, message: 'Filleuls leaderboard retrieved successfully' });
+        } catch (error: any) {
+            log.error("Error in getMyFilleulsLeaderboard", error);
             res.status(500).json({ success: false, message: error.message || 'Internal server error' });
         }
     }

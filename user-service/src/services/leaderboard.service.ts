@@ -2,6 +2,7 @@ import {
     referralRepository,
     LeaderboardEntry,
     LeaderboardSnapshot,
+    CountryBoard,
     startOfCurrentMonthDouala,
     startOfNextMonthDouala,
 } from '../database/repositories/referral.repository';
@@ -181,4 +182,86 @@ export { startOfCurrentMonthDouala };
 /** Drop the cached snapshot. Used by tests and the seed script. */
 export function invalidateLeaderboardCache(): void {
   cache = null;
+  countryCache = null;
+  sponsorCache = null;
+}
+
+type SponsorIndex = Map<string, { _id: import('mongoose').Types.ObjectId; referralCount: number }[]>;
+let sponsorCache: { data: SponsorIndex; at: number } | null = null;
+let sponsorInFlight: Promise<SponsorIndex> | null = null;
+
+/** Hourly sponsor -> ranked direct filleuls index, same cache contract as the boards. */
+async function getSponsorIndex(): Promise<SponsorIndex> {
+  const age = sponsorCache ? Date.now() - sponsorCache.at : Infinity;
+  if (sponsorCache && age < TTL_MS) return sponsorCache.data;
+
+  if (!sponsorInFlight) {
+    const started = Date.now();
+    sponsorInFlight = referralRepository
+      .getMonthlySponsorIndex()
+      .then((data) => {
+        sponsorCache = { data, at: Date.now() };
+        log.info(`Sponsor index recomputed in ${Date.now() - started}ms (${data.size} sponsors)`);
+        return data;
+      })
+      .finally(() => {
+        sponsorInFlight = null;
+      });
+  }
+
+  if (sponsorCache && age < STALE_MAX_MS) {
+    sponsorInFlight.catch((err) => log.warn(`Background sponsor index refresh failed: ${err?.message}`));
+    return sponsorCache.data;
+  }
+  return sponsorInFlight;
+}
+
+export interface MyFilleulsBoard {
+  /** The caller's direct filleuls ranked by their own paid direct filleuls this month. */
+  top: LeaderboardEntry[];
+  /** How many of the caller's direct filleuls rank at all this month. */
+  totalRanked: number;
+}
+
+/**
+ * "Top de mes filleuls". The ranking comes from the shared hourly index; only
+ * the caller's top N names are read per request.
+ */
+export async function getMyFilleulsBoard(sponsorId: string, limit: number = TOP_N): Promise<MyFilleulsBoard> {
+  const ranked = (await getSponsorIndex()).get(sponsorId) ?? [];
+  if (ranked.length === 0) return { top: [], totalRanked: 0 };
+  return { top: await referralRepository.hydrateTop(ranked, limit), totalRanked: ranked.length };
+}
+
+let countryCache: { data: CountryBoard; at: number } | null = null;
+let countryInFlight: Promise<CountryBoard> | null = null;
+
+/**
+ * "Classement par pays" for the current month: countries ranked, plus each
+ * country's top N. Same TTL and stale-while-revalidate contract as the global
+ * board — identical for every caller, so one shared snapshot is valid.
+ */
+export async function getCountryBoard(): Promise<CountryBoard> {
+  const age = countryCache ? Date.now() - countryCache.at : Infinity;
+  if (countryCache && age < TTL_MS) return countryCache.data;
+
+  if (!countryInFlight) {
+    const started = Date.now();
+    countryInFlight = referralRepository
+      .getMonthlyCountryBoard(TOP_N)
+      .then((data) => {
+        countryCache = { data, at: Date.now() };
+        log.info(`Country leaderboard recomputed in ${Date.now() - started}ms`);
+        return data;
+      })
+      .finally(() => {
+        countryInFlight = null;
+      });
+  }
+
+  if (countryCache && age < STALE_MAX_MS) {
+    countryInFlight.catch((err) => log.warn(`Background country leaderboard refresh failed: ${err?.message}`));
+    return countryCache.data;
+  }
+  return countryInFlight;
 }
