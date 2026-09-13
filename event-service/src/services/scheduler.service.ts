@@ -1,6 +1,8 @@
 import config from '../config';
 import logger from '../utils/logger';
 import { sweepPendingPayouts } from './order.service';
+import { retryPendingRefunds } from './refund.service';
+import { sweepEventReminders } from './reminder.service';
 import Event, { EventStatus } from '../database/models/event.model';
 
 const log = logger.getLogger('Scheduler');
@@ -26,6 +28,22 @@ const tick = async () => {
         if (res.modifiedCount > 0) log.info(`Closed ${res.modifiedCount} expired events.`);
     } catch (err) {
         log.error('closeExpiredEvents tick failed:', err);
+    }
+
+    // 3. Retry PENDING/FAILED refunds where the wallet credit didn't land.
+    try {
+        const n = await retryPendingRefunds();
+        if (n > 0) log.info(`Retried ${n} pending refunds.`);
+    } catch (err) {
+        log.error('retryPendingRefunds tick failed:', err);
+    }
+
+    // 4. Pre-event reminders (spec §23) — one email per buyer, once per event.
+    try {
+        const n = await sweepEventReminders();
+        if (n > 0) log.info(`Sent reminders for ${n} events.`);
+    } catch (err) {
+        log.error('sweepEventReminders tick failed:', err);
     }
 };
 

@@ -81,8 +81,133 @@ export async function cancelAdminEvent(eventId: string, reason?: string) {
     return data.data as AdminEvent;
 }
 
-export async function refundOrder(orderId: string) {
-    const { data } = await apiClient.post(`/tickets/admin/orders/${orderId}/refund`);
+export async function refundOrder(orderId: string, reason?: string) {
+    const { data } = await apiClient.post(`/tickets/admin/orders/${orderId}/refund`, { reason });
+    return data.data;
+}
+
+// ---- orders / tickets ----
+
+export type OrderStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
+export type OrderKind = 'PRIMARY' | 'RESALE';
+
+export interface AdminOrder {
+    _id: string;
+    userId: string;
+    eventId: string;
+    kind: OrderKind;
+    status: OrderStatus;
+    subtotal: number;
+    commission: number;
+    total: number;
+    holder: { firstName: string; lastName: string; phone: string; email?: string };
+    paymentSessionId?: string;
+    paidAt?: string;
+    createdAt: string;
+}
+
+export async function listAdminOrders(params: {
+    status?: OrderStatus; kind?: OrderKind; eventId?: string; userId?: string; limit?: number; skip?: number;
+} = {}) {
+    const { data } = await apiClient.get('/tickets/admin/orders', { params });
+    return data.data as { items: AdminOrder[]; total: number };
+}
+
+export type TicketStatus = 'PENDING' | 'ISSUED' | 'CHECKED_IN' | 'CANCELLED' | 'REFUNDED' | 'EXPIRED';
+
+export interface AdminTicket {
+    _id: string;
+    serial: string;
+    orderId: string;
+    eventId: string;
+    status: TicketStatus;
+    holderName: string;
+    holderPhone: string;
+    holderEmail?: string;
+    issuedAt?: string;
+    checkedInAt?: string;
+    previousTicketId?: string;
+    createdAt: string;
+}
+
+export async function listAdminTickets(params: {
+    status?: TicketStatus; eventId?: string; serial?: string; q?: string; limit?: number; skip?: number;
+} = {}) {
+    const { data } = await apiClient.get('/tickets/admin/tickets', { params });
+    return data.data as { items: AdminTicket[]; total: number };
+}
+
+// ---- resale listings ----
+
+export type ResaleListingStatus = 'DRAFT' | 'ACTIVE' | 'SOLD' | 'CANCELLED' | 'EXPIRED' | 'SUSPENDED';
+
+export interface AdminResaleListing {
+    _id: string;
+    ticketId: string;
+    sellerUserId: string;
+    eventId: string;
+    originalPrice: number;
+    askingPrice: number;
+    status: ResaleListingStatus;
+    listedAt: string;
+    soldAt?: string;
+    cancelledAt?: string;
+}
+
+export async function listAdminResaleListings(params: {
+    status?: ResaleListingStatus; eventId?: string; limit?: number; skip?: number;
+} = {}) {
+    const { data } = await apiClient.get('/tickets/admin/resale-listings', { params });
+    return data.data as { items: AdminResaleListing[]; total: number };
+}
+
+export async function suspendResaleListing(listingId: string) {
+    const { data } = await apiClient.post(`/tickets/admin/resale-listings/${listingId}/suspend`);
+    return data.data;
+}
+
+export async function removeResaleListing(listingId: string) {
+    const { data } = await apiClient.delete(`/tickets/admin/resale-listings/${listingId}`);
+    return data.data;
+}
+
+// ---- disputes ----
+
+export type DisputeStatus = 'OPEN' | 'RESOLVED' | 'REJECTED';
+
+export interface AdminDispute {
+    _id: string;
+    kind: string;
+    complainantUserId: string;
+    resaleOrderId?: string;
+    ticketId?: string;
+    eventId?: string;
+    description: string;
+    status: DisputeStatus;
+    resolutionNote?: string;
+    resolvedAt?: string;
+    createdAt: string;
+}
+
+export async function listAdminDisputes(params: { status?: DisputeStatus; limit?: number; skip?: number } = {}) {
+    const { data } = await apiClient.get('/tickets/admin/disputes', { params });
+    return data.data as { items: AdminDispute[]; total: number };
+}
+
+export async function resolveDispute(disputeId: string, note: string, outcome: 'resolve' | 'reject' = 'resolve') {
+    const { data } = await apiClient.post(`/tickets/admin/disputes/${disputeId}/resolve`, { note, outcome });
+    return data.data as AdminDispute;
+}
+
+// ---- commission config ----
+
+export async function getEventCommissionConfig() {
+    const { data } = await apiClient.get('/tickets/admin/commission-config');
+    return data.data as { primaryPct: number; resalePct: number; defaultMaxResalePricePct: number };
+}
+
+export async function bustEventCommissionConfigCache() {
+    const { data } = await apiClient.patch('/tickets/admin/commission-config');
     return data.data;
 }
 

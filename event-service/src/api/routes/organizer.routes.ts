@@ -24,7 +24,9 @@ router.get('/events/:id/ticket-types', organizerController.listTicketTypes);
 router.post('/events/:id/ticket-types', organizerController.createTicketType);
 
 router.get('/events/:id/participants', organizerController.listParticipants);
+router.get('/events/:id/participants.csv', organizerController.exportParticipantsCsv);
 
 router.get('/dashboard', organizerController.dashboard);
+router.get('/finances', organizerController.finances);
 
 export default router;

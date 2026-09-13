@@ -2,14 +2,17 @@ import { Request, Response, NextFunction } from 'express';
 import { Types } from 'mongoose';
 import Event, { EventStatus } from '../../database/models/event.model';
 import Order, { OrderStatus } from '../../database/models/order.model';
-import Ticket, { TicketStatus } from '../../database/models/ticket.model';
+import Ticket, { TicketStatus } from '../../database/models/ticket.model'; // TicketStatus needed for dashboard aggs
 import Organizer, { OrganizerStatus } from '../../database/models/organizer.model';
 import Commission from '../../database/models/commission.model';
 import ResaleListing from '../../database/models/resale-listing.model';
 import * as organizerService from '../../services/organizer.service';
-import * as eventService from '../../services/event.service';
-import { notify } from '../../services/clients/notification.service.client';
+import * as refundService from '../../services/refund.service';
+import * as cancellationService from '../../services/cancellation.service';
 import { AppError } from '../../utils/errors';
+import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import Dispute, { DisputeStatus } from '../../database/models/dispute.model';
+import { getCommissionConfig, invalidateCommissionCache } from '../../services/clients/settings.service.client';
 
 /** Admin global stats (spec §26). */
 export const dashboard = async (_req: Request, res: Response, next: NextFunction) => {
@@ -135,67 +138,181 @@ export const suspendEvent = async (req: Request, res: Response, next: NextFuncti
 
 export const cancelEvent = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const ev = await Event.findByIdAndUpdate(
-            req.params.id,
-            { $set: { status: EventStatus.CANCELLED, cancelledAt: new Date(), cancellationReason: req.body?.reason } },
-            { new: true },
-        );
-        if (!ev) throw new AppError('Événement introuvable.', 404);
-        res.json({ success: true, data: ev });
+        const admin = (req as AuthenticatedRequest).user!;
+        const result = await cancellationService.cancelEventAndCascade({
+            eventId: req.params.id,
+            initiatedByAdminId: admin.userId,
+            reason: req.body?.reason,
+        });
+        res.json({ success: true, data: result });
     } catch (err) { next(err); }
 };
 
 /**
- * Refund an order: mark PAID→REFUNDED, invalidate every associated ticket's
- * QR (nulling qrToken means scans return INVALID), auto-cancel any ACTIVE
- * resale listings on those tickets (spec §27), and best-effort notify the buyer.
- *
- * V1 does NOT initiate a wallet refund — that requires a decision about
- * where the buyer's money goes (main balance vs mobile money), and payment-service
- * changes have real-money risk. This just closes the domain state cleanly.
+ * Refund an order — closes domain state AND credits the buyer's main balance
+ * via payment-service /internal/deposit. Idempotent on orderId; wallet-credit
+ * failure leaves the domain state closed and the Refund row FAILED for the
+ * sweeper to retry.
  */
 export const refundOrder = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const order = await Order.findById(req.params.id);
-        if (!order) throw new AppError('Commande introuvable.', 404);
-        if (order.status === OrderStatus.REFUNDED) return res.json({ success: true, data: order });
-        if (order.status !== OrderStatus.PAID) throw new AppError('Seule une commande payée peut être remboursée.', 409);
+        const admin = (req as AuthenticatedRequest).user!;
+        const result = await refundService.refundOrder({
+            orderId: req.params.id,
+            initiatedByAdminId: admin.userId,
+            reason: req.body?.reason,
+        });
+        res.json({ success: true, data: result });
+    } catch (err) { next(err); }
+};
 
-        order.status = OrderStatus.REFUNDED;
-        await order.save();
+// ---------- admin orders / tickets / marketplace / disputes / commissions ----------
 
-        const tickets = await Ticket.find({ orderId: order._id });
-        for (const t of tickets) {
-            t.status = TicketStatus.REFUNDED;
-            t.qrToken = null;
-            t.refundedAt = new Date();
-            await t.save();
+/** GET /admin/orders — paginated list, filter by status/kind/eventId */
+export const listOrders = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const filter: any = {};
+        if (req.query.status) filter.status = req.query.status;
+        if (req.query.kind) filter.kind = req.query.kind;
+        if (req.query.eventId) filter.eventId = new Types.ObjectId(String(req.query.eventId));
+        if (req.query.userId) filter.userId = new Types.ObjectId(String(req.query.userId));
+        const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
+        const skip = parseInt(String(req.query.skip || 0), 10);
+        const [items, total] = await Promise.all([
+            Order.find(filter).sort({ createdAt: -1 }).limit(limit).skip(skip).lean(),
+            Order.countDocuments(filter),
+        ]);
+        res.json({ success: true, data: { items, total } });
+    } catch (err) { next(err); }
+};
+
+/** GET /admin/tickets — search by serial/holder/event */
+export const listTickets = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const filter: any = {};
+        if (req.query.status) filter.status = req.query.status;
+        if (req.query.eventId) filter.eventId = new Types.ObjectId(String(req.query.eventId));
+        if (req.query.serial) filter.serial = String(req.query.serial).toUpperCase();
+        if (req.query.q) {
+            const q = String(req.query.q);
+            filter.$or = [
+                { holderName: { $regex: q, $options: 'i' } },
+                { holderPhone: { $regex: q, $options: 'i' } },
+                { serial: { $regex: q, $options: 'i' } },
+            ];
         }
-        // Auto-cancel any active resale listings on these tickets
-        await ResaleListing.updateMany(
-            { ticketId: { $in: tickets.map((t) => t._id) }, status: 'ACTIVE' as any },
-            { $set: { status: 'CANCELLED', cancelledAt: new Date() } },
+        const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
+        const skip = parseInt(String(req.query.skip || 0), 10);
+        const [items, total] = await Promise.all([
+            Ticket.find(filter).sort({ createdAt: -1 }).limit(limit).skip(skip).lean(),
+            Ticket.countDocuments(filter),
+        ]);
+        res.json({ success: true, data: { items, total } });
+    } catch (err) { next(err); }
+};
+
+/** GET /admin/resale-listings — marketplace moderation list */
+export const listResaleListings = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const filter: any = {};
+        if (req.query.status) filter.status = req.query.status;
+        if (req.query.eventId) filter.eventId = new Types.ObjectId(String(req.query.eventId));
+        const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
+        const skip = parseInt(String(req.query.skip || 0), 10);
+        const [items, total] = await Promise.all([
+            ResaleListing.find(filter).sort({ createdAt: -1 }).limit(limit).skip(skip).lean(),
+            ResaleListing.countDocuments(filter),
+        ]);
+        res.json({ success: true, data: { items, total } });
+    } catch (err) { next(err); }
+};
+
+/** POST /admin/resale-listings/:id/suspend — moderator removes a listing from the marketplace */
+export const suspendResaleListing = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const listing = await ResaleListing.findByIdAndUpdate(
+            req.params.id,
+            { $set: { status: 'SUSPENDED', suspendedAt: new Date() } },
+            { new: true },
         );
+        if (!listing) throw new AppError('Annonce introuvable.', 404);
+        await Ticket.updateOne(
+            { _id: listing.ticketId, resaleListingId: listing._id },
+            { $unset: { resaleListingId: '' } },
+        );
+        res.json({ success: true, data: listing });
+    } catch (err) { next(err); }
+};
 
-        const event = await Event.findById(order.eventId).lean();
-        try {
-            await notify({
-                kind: 'refund-processed',
-                userId: String(order.userId),
-                channel: 'email',
-                recipient: order.holder.email,
-                subject: `💰 Remboursement effectué — ${event?.title || ''}`,
-                body: `Votre commande a été remboursée.`,
-                data: {
-                    eventTitle: event?.title,
-                    amount: order.total,
-                    orderRef: String(order._id),
-                    name: order.holder.firstName,
-                },
-                orderId: String(order._id),
-            });
-        } catch { /* logged inside */ }
+/** DELETE /admin/resale-listings/:id — permanent removal */
+export const removeResaleListing = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const listing = await ResaleListing.findById(req.params.id);
+        if (!listing) throw new AppError('Annonce introuvable.', 404);
+        if (listing.status === 'SOLD') throw new AppError('Une annonce déjà vendue ne peut pas être supprimée.', 409);
+        listing.status = 'CANCELLED' as any;
+        listing.cancelledAt = new Date();
+        await listing.save();
+        await Ticket.updateOne(
+            { _id: listing.ticketId, resaleListingId: listing._id },
+            { $unset: { resaleListingId: '' } },
+        );
+        res.json({ success: true, data: listing });
+    } catch (err) { next(err); }
+};
 
-        res.json({ success: true, data: order });
+/** GET /admin/disputes — moderation queue */
+export const listDisputes = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const filter: any = {};
+        if (req.query.status) filter.status = req.query.status;
+        const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
+        const skip = parseInt(String(req.query.skip || 0), 10);
+        const [items, total] = await Promise.all([
+            Dispute.find(filter).sort({ createdAt: -1 }).limit(limit).skip(skip).lean(),
+            Dispute.countDocuments(filter),
+        ]);
+        res.json({ success: true, data: { items, total } });
+    } catch (err) { next(err); }
+};
+
+/** POST /admin/disputes/:id/resolve — admin decision */
+export const resolveDispute = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const admin = (req as AuthenticatedRequest).user!;
+        const { note, outcome } = req.body || {};
+        const dispute = await Dispute.findByIdAndUpdate(
+            req.params.id,
+            { $set: {
+                status: outcome === 'reject' ? DisputeStatus.REJECTED : DisputeStatus.RESOLVED,
+                resolutionNote: note,
+                resolvedByAdminId: new Types.ObjectId(admin.userId),
+                resolvedAt: new Date(),
+            } },
+            { new: true },
+        );
+        if (!dispute) throw new AppError('Litige introuvable.', 404);
+        res.json({ success: true, data: dispute });
+    } catch (err) { next(err); }
+};
+
+/** GET /admin/commission-config — current rates in effect (cache-aware) */
+export const getCommissionConfigController = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+        const cfg = await getCommissionConfig();
+        res.json({ success: true, data: cfg });
+    } catch (err) { next(err); }
+};
+
+/**
+ * PATCH /admin/commission-config — invalidates the local cache. Real updates
+ * happen in settings-service via the settings admin; this endpoint is a
+ * convenience to force event-service to reload on the next request.
+ */
+export const bustCommissionConfigCache = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+        invalidateCommissionCache();
+        const cfg = await getCommissionConfig();
+        res.json({ success: true, data: cfg, message: 'Cache invalidated. New settings will apply on next lookup.' });
     } catch (err) { next(err); }
 };

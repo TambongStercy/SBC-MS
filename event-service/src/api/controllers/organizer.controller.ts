@@ -81,7 +81,8 @@ export const suspendEvent = async (req: Request, res: Response, next: NextFuncti
 export const cancelEvent = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const org = (req as OrganizerRequest).organizer!;
-        const ev = await eventService.cancelEvent(String(org._id), req.params.id, req.body?.reason);
+        const user = (req as AuthenticatedRequest).user!;
+        const ev = await eventService.cancelEvent(String(org._id), req.params.id, req.body?.reason, user.userId);
         res.json({ success: true, data: ev });
     } catch (err) { next(err); }
 };
@@ -99,6 +100,118 @@ export const listTicketTypes = async (req: Request, res: Response, next: NextFun
         const org = (req as OrganizerRequest).organizer!;
         const list = await eventService.listTicketTypes(String(org._id), req.params.id);
         res.json({ success: true, data: list });
+    } catch (err) { next(err); }
+};
+
+/** Organizer's per-event participants as CSV (spec §17). */
+export const exportParticipantsCsv = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const org = (req as OrganizerRequest).organizer!;
+        const eventId = req.params.id;
+        const event = await Event.findOne({ _id: new Types.ObjectId(eventId), organizerId: org._id });
+        if (!event) throw new AppError('Événement introuvable.', 404);
+
+        const tickets = await Ticket.find({
+            eventId: event._id,
+            status: { $in: [TicketStatus.ISSUED, TicketStatus.CHECKED_IN] },
+        }).sort({ createdAt: -1 }).lean();
+
+        const escape = (v: unknown) => {
+            const s = String(v ?? '');
+            if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+                return `"${s.replace(/"/g, '""')}"`;
+            }
+            return s;
+        };
+        const rows = [
+            ['serial', 'holderName', 'holderPhone', 'holderEmail', 'status', 'issuedAt', 'checkedInAt'].join(','),
+            ...tickets.map((t) => [
+                escape(t.serial),
+                escape(t.holderName),
+                escape(t.holderPhone),
+                escape(t.holderEmail || ''),
+                escape(t.status),
+                escape(t.issuedAt ? new Date(t.issuedAt).toISOString() : ''),
+                escape(t.checkedInAt ? new Date(t.checkedInAt).toISOString() : ''),
+            ].join(',')),
+        ];
+        const csv = rows.join('\n');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="participants-${event.slug}.csv"`);
+        res.send(csv);
+    } catch (err) { next(err); }
+};
+
+/**
+ * GET /organizer/finances — spec §20 financial history for the organizer:
+ * gross, commission, refunded, credited (via eventOrganizerBalance credits) +
+ * per-event breakdown and recent commission events.
+ */
+export const finances = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const org = (req as OrganizerRequest).organizer!;
+        const events = await Event.find({ organizerId: org._id }).select('_id title startsAt totals status').lean();
+        const eventIds = events.map((e) => e._id);
+
+        const [paidAgg, refundedAgg, creditedAgg, resaleAgg] = await Promise.all([
+            Order.aggregate([
+                { $match: { eventId: { $in: eventIds }, status: OrderStatus.PAID } },
+                { $group: { _id: '$eventId', gross: { $sum: '$subtotal' }, commission: { $sum: '$commission' }, count: { $sum: 1 } } },
+            ]),
+            Order.aggregate([
+                { $match: { eventId: { $in: eventIds }, status: OrderStatus.REFUNDED } },
+                { $group: { _id: '$eventId', refunded: { $sum: '$total' }, count: { $sum: 1 } } },
+            ]),
+            Order.aggregate([
+                { $match: { eventId: { $in: eventIds }, status: OrderStatus.PAID, creditedAt: { $exists: true } } },
+                { $group: { _id: '$eventId', credited: { $sum: { $subtract: ['$subtotal', '$commission'] } } } },
+            ]),
+            Order.aggregate([
+                { $match: { eventId: { $in: eventIds }, status: OrderStatus.PAID, kind: 'RESALE' } },
+                { $group: { _id: '$eventId', resaleGross: { $sum: '$subtotal' }, resaleCommission: { $sum: '$commission' }, count: { $sum: 1 } } },
+            ]),
+        ]);
+        const byEvent = new Map<string, any>();
+        for (const ev of events) {
+            byEvent.set(String(ev._id), {
+                eventId: ev._id, title: ev.title, startsAt: ev.startsAt, status: ev.status,
+                gross: 0, commission: 0, net: 0, credited: 0, refunded: 0,
+                primaryOrders: 0, refundedOrders: 0,
+                resaleGross: 0, resaleCommission: 0, resaleOrders: 0,
+            });
+        }
+        for (const r of paidAgg) {
+            const row = byEvent.get(String(r._id));
+            if (row) { row.gross = r.gross; row.commission = r.commission; row.net = r.gross - r.commission; row.primaryOrders = r.count; }
+        }
+        for (const r of refundedAgg) {
+            const row = byEvent.get(String(r._id));
+            if (row) { row.refunded = r.refunded; row.refundedOrders = r.count; }
+        }
+        for (const r of creditedAgg) {
+            const row = byEvent.get(String(r._id));
+            if (row) row.credited = r.credited;
+        }
+        for (const r of resaleAgg) {
+            const row = byEvent.get(String(r._id));
+            if (row) { row.resaleGross = r.resaleGross; row.resaleCommission = r.resaleCommission; row.resaleOrders = r.count; }
+        }
+        const perEvent = Array.from(byEvent.values());
+        const totals = perEvent.reduce((acc, e) => ({
+            gross: acc.gross + e.gross,
+            commission: acc.commission + e.commission,
+            net: acc.net + e.net,
+            credited: acc.credited + e.credited,
+            refunded: acc.refunded + e.refunded,
+            primaryOrders: acc.primaryOrders + e.primaryOrders,
+            refundedOrders: acc.refundedOrders + e.refundedOrders,
+            resaleGross: acc.resaleGross + e.resaleGross,
+            resaleCommission: acc.resaleCommission + e.resaleCommission,
+            resaleOrders: acc.resaleOrders + e.resaleOrders,
+        }), { gross: 0, commission: 0, net: 0, credited: 0, refunded: 0, primaryOrders: 0, refundedOrders: 0, resaleGross: 0, resaleCommission: 0, resaleOrders: 0 });
+        // "Disponible" = credited (already in the balance) minus what's been transferred out.
+        // Transfer-out tracking lives in user-service; here we just show the total credit history.
+        res.json({ success: true, data: { totals, perEvent } });
     } catch (err) { next(err); }
 };
 

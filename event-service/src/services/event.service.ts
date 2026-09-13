@@ -117,19 +117,28 @@ export const suspendEvent = async (organizerId: string, eventId: string): Promis
     return event;
 };
 
+/**
+ * Organizer-side cancel. Delegates to the same cascade as the admin path so
+ * buyers get their money AND their notification regardless of who cancels.
+ * Uses the organizer's own userId as the initiator for audit.
+ */
 export const cancelEvent = async (
     organizerId: string,
     eventId: string,
     reason?: string,
+    initiatedByUserId?: string,
 ): Promise<IEvent> => {
     const event = await Event.findOne({ _id: new Types.ObjectId(eventId), organizerId: new Types.ObjectId(organizerId) });
     if (!event) throw new AppError('Événement introuvable.', 404);
     if (event.status === EventStatus.CANCELLED) return event;
-    event.status = EventStatus.CANCELLED;
-    event.cancelledAt = new Date();
-    event.cancellationReason = reason;
-    await event.save();
-    return event;
+
+    const { cancelEventAndCascade } = await import('./cancellation.service');
+    const result = await cancelEventAndCascade({
+        eventId: String(event._id),
+        initiatedByAdminId: initiatedByUserId || String(event.organizerId), // reuse the same field for audit
+        reason,
+    });
+    return result.event;
 };
 
 export interface EventListFilters {
