@@ -284,6 +284,18 @@ app.use('/api/sbclove', proxy(config.services.sbcloveServiceUrl, {
   }
 }));
 
+// SBC Event — ticketing platform + resale marketplace. Note the prefix is
+// /api/tickets (not /api/events) because /api/events was already taken by the
+// small settings-service community-events feature; the product brand is still
+// "SBC Event".
+app.use('/api/tickets', proxy(config.services.eventServiceUrl, {
+  parseReqBody: false, // event posters upload as multipart
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to event service`);
+    return req.originalUrl;
+  }
+}));
+
 // --- GLOBAL MIDDLEWARE ---
 // Apply body parsers AFTER proxy routes
 app.use(express.json({ limit: '200mb' }));

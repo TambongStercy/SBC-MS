@@ -80,6 +80,15 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3010
       }
+    },
+    {
+      name: 'event-service',
+      cwd: './event-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3011
+      }
     }
   ]
 };
