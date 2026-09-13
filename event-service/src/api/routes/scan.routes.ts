@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { notImplemented } from '../controllers/placeholder.controller';
+import * as scanController from '../controllers/scan.controller';
 
 const router = Router();
 
-// POST /api/events/scan — organizer scans a QR token; server validates + records CheckIn.
-router.post('/', notImplemented('scan QR'));
+// POST /api/tickets/scan — organizer scans a QR token; server validates + records CheckIn.
+router.post('/', scanController.scan);
 
 export default router;

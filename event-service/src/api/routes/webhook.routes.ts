@@ -1,9 +1,8 @@
 import { Router } from 'express';
-import { notImplemented } from '../controllers/placeholder.controller';
+import * as webhookController from '../controllers/webhook.controller';
 
 const router = Router();
 
-// payment-service posts terminal payment status here for order + resale settlement.
-router.post('/payment-confirmation', notImplemented('payment webhook'));
+router.post('/payment-confirmation', webhookController.paymentConfirmation);
 
 export default router;

@@ -1,16 +1,32 @@
 import config from '../config';
 import logger from '../utils/logger';
+import { sweepPendingPayouts } from './order.service';
+import Event, { EventStatus } from '../database/models/event.model';
 
 const log = logger.getLogger('Scheduler');
 
 let timer: NodeJS.Timeout | null = null;
 
 const tick = async () => {
-    // Placeholder for periodic sweeps:
-    //  - sweepPendingPayouts (credit organizer balances for PAID+uncredited orders)
-    //  - closeExpiredEvents (mark PUBLISHED events past endsAt as COMPLETED)
-    //  - expireStaleResaleListings
-    // Filled in with the payout/order services.
+    // 1. Credit organizer balances for PAID orders that failed on first attempt.
+    try {
+        const n = await sweepPendingPayouts();
+        if (n > 0) log.info(`Swept ${n} pending organizer payouts.`);
+    } catch (err) {
+        log.error('sweepPendingPayouts tick failed:', err);
+    }
+
+    // 2. Close events whose endsAt has passed so they stop showing in listings.
+    try {
+        const now = new Date();
+        const res = await Event.updateMany(
+            { status: EventStatus.PUBLISHED, endsAt: { $lt: now } },
+            { $set: { status: EventStatus.COMPLETED } },
+        );
+        if (res.modifiedCount > 0) log.info(`Closed ${res.modifiedCount} expired events.`);
+    } catch (err) {
+        log.error('closeExpiredEvents tick failed:', err);
+    }
 };
 
 export const startScheduler = () => {

@@ -1,26 +1,30 @@
 import { Router } from 'express';
-import { notImplemented } from '../controllers/placeholder.controller';
+import * as organizerController from '../controllers/organizer.controller';
+import { requireApprovedOrganizer } from '../middleware/organizer.middleware';
 
 const router = Router();
 
-router.post('/apply', notImplemented('organizer apply'));
-router.get('/me', notImplemented('organizer profile'));
+// Application + own status — do NOT gate on approval, or a pending user can't
+// see whether their application was accepted.
+router.post('/apply', organizerController.apply);
+router.get('/me', organizerController.getMe);
 
-router.get('/events', notImplemented('organizer list events'));
-router.post('/events', notImplemented('organizer create event'));
-router.get('/events/:id', notImplemented('organizer get event'));
-router.patch('/events/:id', notImplemented('organizer update event'));
-router.post('/events/:id/publish', notImplemented('organizer publish event'));
-router.post('/events/:id/suspend', notImplemented('organizer suspend event'));
-router.post('/events/:id/cancel', notImplemented('organizer cancel event'));
+// Approved-organizer-only from here on
+router.use(requireApprovedOrganizer);
 
-router.get('/events/:id/ticket-types', notImplemented('organizer list ticket types'));
-router.post('/events/:id/ticket-types', notImplemented('organizer create ticket type'));
-router.patch('/ticket-types/:id', notImplemented('organizer update ticket type'));
+router.get('/events', organizerController.listEvents);
+router.post('/events', organizerController.createEvent);
+router.get('/events/:id', organizerController.getEvent);
+router.patch('/events/:id', organizerController.updateEvent);
+router.post('/events/:id/publish', organizerController.publishEvent);
+router.post('/events/:id/suspend', organizerController.suspendEvent);
+router.post('/events/:id/cancel', organizerController.cancelEvent);
 
-router.get('/events/:id/participants', notImplemented('organizer participants'));
-router.get('/events/:id/participants.csv', notImplemented('organizer participants CSV'));
+router.get('/events/:id/ticket-types', organizerController.listTicketTypes);
+router.post('/events/:id/ticket-types', organizerController.createTicketType);
 
-router.get('/dashboard', notImplemented('organizer dashboard'));
+router.get('/events/:id/participants', organizerController.listParticipants);
+
+router.get('/dashboard', organizerController.dashboard);
 
 export default router;
