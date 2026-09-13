@@ -40,6 +40,9 @@ import AdsNetworkManualVerifyPage from './pages/AdsNetworkManualVerifyPage';
 import AdsNetworkCampaignsPage from './pages/AdsNetworkCampaignsPage';
 import AdsNetworkDiffuseursPage from './pages/AdsNetworkDiffuseursPage';
 import AdsNetworkTestCampaignPage from './pages/AdsNetworkTestCampaignPage';
+import EventDashboardPage from './pages/EventDashboardPage';
+import EventOrganizersPage from './pages/EventOrganizersPage';
+import EventListPage from './pages/EventListPage';
 import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from './contexts/SocketContext';
 
@@ -117,6 +120,11 @@ function App() {
             <Route path="/ads-network/campaigns" element={<AdsNetworkCampaignsPage />} />
             <Route path="/ads-network/diffuseurs" element={<AdsNetworkDiffuseursPage />} />
             <Route path="/ads-network/test-campaign" element={<AdsNetworkTestCampaignPage />} />
+
+            {/* SBC Event admin */}
+            <Route path="/event" element={<EventDashboardPage />} />
+            <Route path="/event/organizers" element={<EventOrganizersPage />} />
+            <Route path="/event/events" element={<EventListPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

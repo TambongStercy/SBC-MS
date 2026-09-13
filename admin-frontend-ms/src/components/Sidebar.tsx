@@ -175,6 +175,15 @@ const SIDEBAR_GROUPS = [
     ]
   },
   {
+    id: "event",
+    name: "SBC Event",
+    items: [
+      { name: "Tableau de bord", icon: BarChart2, color: "#3b82f6", path: "/event" },
+      { name: "Organisateurs", icon: Users, color: "#10b981", path: "/event/organizers" },
+      { name: "Événements", icon: Ticket, color: "#a855f7", path: "/event/events" },
+    ]
+  },
+  {
     id: "financial",
     name: "Financial",
     items: [
