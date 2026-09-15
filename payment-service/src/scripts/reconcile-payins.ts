@@ -17,8 +17,6 @@
 import mongoose from 'mongoose';
 import config from '../config';
 import PaymentIntentModel from '../database/models/PaymentIntent';
-import { PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
-import paymentService from '../services/payment.service';
 import { payinReconciler } from '../jobs/payin-reconciler.job';
 
 const [sessionId] = process.argv.slice(2).filter(a => !a.startsWith('--'));
@@ -39,17 +37,16 @@ const one = async (session: string) => {
         console.log('No provider reference — the provider never accepted this one, nothing to ask about.');
         return;
     }
-    if (intent.gateway !== PaymentGateway.FEEXPAY) {
-        console.log(`Only FeexPay can be reconciled one-by-one here; run a full pass for ${intent.gateway}.`);
-        return;
-    }
-
-    const after = await paymentService.checkFeexpayTransactionStatus(intent.gatewayPaymentId);
-    console.log(`FeexPay says: ${after.status}`);
+    // Same dispatch as the scheduled pass, so every reconcilable gateway works
+    // one-by-one too — this used to handle FeexPay only.
+    const verdict = await payinReconciler.reconcileIntent(intent);
+    console.log(`${intent.gateway} says: ${verdict}`);
     console.log(
-        after.status === PaymentStatus.SUCCEEDED
+        verdict === 'succeeded'
             ? 'Settled — the payment had gone through, and completion has now run.'
-            : 'Left as-is; the provider did not confirm a completed payment.',
+            : verdict === 'failed'
+                ? 'Confirmed failed by the provider; marked as such.'
+                : 'Left as-is; the provider did not confirm a completed payment.',
     );
 };
 

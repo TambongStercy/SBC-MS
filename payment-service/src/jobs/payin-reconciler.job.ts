@@ -23,8 +23,18 @@ const log = logger.getLogger('PayinReconciler');
  * — an unreachable provider is not evidence a payment failed.
  */
 
-/** Gateways whose payin status can actually be queried. */
-const RECONCILABLE = [PaymentGateway.FEEXPAY, PaymentGateway.MONEYFUSION];
+/**
+ * Gateways whose payin status can actually be queried.
+ *
+ * CinetPay was left out of the first version on the belief that it had a payout
+ * status API but no payin equivalent. That was wrong: GET /v1/payment/{token} is
+ * the very call handleCinetPayWebhook already makes to verify itself. The
+ * exclusion meant a CinetPay payment whose webhook never arrived was never
+ * re-checked at all — « Savon Noir Royal Cosmétik » (2026-09-14, session
+ * pm_CePIUng4q, Côte d'Ivoire) sat as a draft asking the annonceur to pay again
+ * while CinetPay itself answered code=100 SUCCESS.
+ */
+const RECONCILABLE = [PaymentGateway.FEEXPAY, PaymentGateway.MONEYFUSION, PaymentGateway.CINETPAY];
 
 const MINUTES = 60 * 1000;
 
@@ -120,9 +130,7 @@ export class PayinReconciler {
             for (const intent of stuck) {
                 result.checked++;
                 try {
-                    const settled = intent.gateway === PaymentGateway.FEEXPAY
-                        ? await this.reconcileFeexpay(intent.gatewayPaymentId as string)
-                        : await this.reconcileMoneyFusion(intent.gatewayPaymentId as string);
+                    const settled = await this.reconcileIntent(intent);
 
                     if (settled === 'succeeded') {
                         result.settled++;
@@ -181,6 +189,31 @@ export class PayinReconciler {
      * the answer. Reusing it means reconciliation and the live webhook cannot
      * drift apart.
      */
+    /**
+     * Ask the provider about one intent and apply whatever it confirms.
+     *
+     * Public so the on-demand script goes through exactly the same dispatch as the
+     * scheduled pass, rather than keeping its own (FeexPay-only) copy of it.
+     */
+    async reconcileIntent(intent: {
+        sessionId: string;
+        gateway: string;
+        gatewayPaymentId?: string | null;
+    }): Promise<'succeeded' | 'failed' | 'unknown'> {
+        switch (intent.gateway) {
+            case PaymentGateway.FEEXPAY:
+                return this.reconcileFeexpay(intent.gatewayPaymentId as string);
+            case PaymentGateway.MONEYFUSION:
+                return this.reconcileMoneyFusion(intent.gatewayPaymentId as string);
+            case PaymentGateway.CINETPAY:
+                return this.reconcileCinetPay(intent.sessionId);
+            default:
+                // Explicit rather than a silent 'unknown': a gateway reaching here was
+                // selected by the query but has no handler, which is a bug in this file.
+                throw new Error(`No payin reconciler for gateway '${intent.gateway}'`);
+        }
+    }
+
     private async reconcileFeexpay(reference: string): Promise<'succeeded' | 'failed' | 'unknown'> {
         const intent = await paymentService.checkFeexpayTransactionStatus(reference);
         if (intent.status === PaymentStatus.SUCCEEDED) return 'succeeded';
@@ -210,6 +243,25 @@ export class PayinReconciler {
 
         await paymentService.handleMoneyFusionPayinWebhook({ ...data, event, tokenPay });
         return event === 'payin.session.completed' ? 'succeeded' : 'failed';
+    }
+
+    /**
+     * Replays CinetPay's notification through the real handler.
+     *
+     * Safe to replay because that handler trusts nothing in the payload: it looks
+     * the intent up by our own session id, re-queries CinetPay's status API with
+     * the stored payment token, and applies only what CinetPay answers — then runs
+     * handlePaymentCompletion, which is what settles a campaign or activates a
+     * subscription. No notify_token is sent, so the token comparison (which exists
+     * to reject forged callbacks) is skipped; the status API call is the proof.
+     */
+    private async reconcileCinetPay(sessionId: string): Promise<'succeeded' | 'failed' | 'unknown'> {
+        await paymentService.handleCinetPayWebhook({ merchant_transaction_id: sessionId });
+
+        const after = await PaymentIntentModel.findOne({ sessionId }).select('status').lean();
+        if (after?.status === PaymentStatus.SUCCEEDED) return 'succeeded';
+        if (after?.status === PaymentStatus.FAILED) return 'failed';
+        return 'unknown';
     }
 }
 
