@@ -717,8 +717,13 @@ provider every 10 min for intents 10 min to 7 days old:
 - **MoneyFusion** queries its status endpoint and replays the answer through the
   real payin webhook handler, because completion has side effects
   (subscriptions, campaign settlement, referral commissions) that live there.
-- **CinetPay is deliberately not covered**: it has a payout status API but no
-  payin equivalent.
+- **CinetPay** replays `handleCinetPayWebhook({ merchant_transaction_id: sessionId })`.
+  That handler re-queries `GET /v1/payment/{token}` (OAuth, per-country creds) and
+  applies only what CinetPay answers. **An earlier version of this note said CinetPay
+  had no payin status API — that was wrong**, and the resulting exclusion left 537
+  CinetPay payins unchecked for a week, including an annonceur (session
+  `pm_CePIUng4q`, 2026-09-14) whose campaign stayed a draft while CinetPay itself
+  returned `code=100 SUCCESS`.
 
 It only ever applies what the provider confirms; a 502 leaves the intent untouched.
 `src/scripts/reconcile-payins.ts` runs the same pass on demand, or one session by
