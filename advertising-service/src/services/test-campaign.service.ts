@@ -287,7 +287,7 @@ export const offerTestCampaignToNewDiffuseurs = async (): Promise<number> => {
                 });
             }
             created++;
-            void notifyCampaignOffer(String(profile.userId), campaign.title, 0);
+            void notifyCampaignOffer(String(profile.userId), campaign.title, 0, config.campaign.testDurationDays);
         } catch (err) {
             log.warn(`Could not offer the test campaign to ${profile.userId}: ${(err as Error).message}`);
         }
