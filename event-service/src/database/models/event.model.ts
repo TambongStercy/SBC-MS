@@ -16,6 +16,7 @@ export interface IEvent extends Document {
     description: string;
     posterFileId?: string;
     category: string;
+    country?: string;
     city: string;
     venue: string;
     address: string;
@@ -51,6 +52,7 @@ const EventSchema = new Schema<IEvent>({
     description: { type: String, required: true, maxlength: 5000 },
     posterFileId: { type: String },
     category: { type: String, required: true, maxlength: 60, index: true },
+    country: { type: String, maxlength: 60, index: true }, // ISO-2 or French name; used by the public filter (spec §3 uses "ville" but organizers span multiple countries)
     city: { type: String, required: true, maxlength: 80, index: true },
     venue: { type: String, required: true, maxlength: 160 },
     address: { type: String, required: true, maxlength: 300 },

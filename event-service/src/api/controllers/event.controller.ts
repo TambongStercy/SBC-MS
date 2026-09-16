@@ -8,15 +8,17 @@ const parseInt10 = (s: any, fallback: number) => {
 
 export const listPublicEvents = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { q, city, category, dateFrom, dateTo, priceMin, priceMax, limit, skip } = req.query;
+        const { q, city, country, category, dateFrom, dateTo, priceMin, priceMax, includePast, limit, skip } = req.query;
         const result = await eventService.listPublicEvents({
             q: q as string | undefined,
             city: city as string | undefined,
+            country: country as string | undefined,
             category: category as string | undefined,
             dateFrom: dateFrom ? new Date(String(dateFrom)) : undefined,
             dateTo: dateTo ? new Date(String(dateTo)) : undefined,
             priceMin: priceMin ? parseFloat(String(priceMin)) : undefined,
             priceMax: priceMax ? parseFloat(String(priceMax)) : undefined,
+            includePast: String(includePast || '') === 'true',
             limit: parseInt10(limit, 20),
             skip: parseInt10(skip, 0),
         });

@@ -43,6 +43,7 @@ export const createEvent = async (organizerId: string, payload: Partial<IEvent>)
         description: payload.description.trim(),
         posterFileId: payload.posterFileId,
         category: payload.category?.trim() || 'autre',
+        country: payload.country?.trim() || undefined,
         city: payload.city?.trim() || '',
         venue: payload.venue?.trim() || '',
         address: payload.address?.trim() || '',
@@ -144,11 +145,14 @@ export const cancelEvent = async (
 export interface EventListFilters {
     q?: string;
     city?: string;
+    country?: string;
     category?: string;
     dateFrom?: Date;
     dateTo?: Date;
     priceMin?: number;
     priceMax?: number;
+    /** true → return events whose endsAt is already in the past. Sorted newest-first. */
+    includePast?: boolean;
     limit?: number;
     skip?: number;
 }
@@ -164,19 +168,32 @@ export const listPublicEvents = async (filters: EventListFilters) => {
     // over yet) still show — a user creating an event for tonight expects it
     // to appear right away, not only until the moment the clock ticks past
     // its start time.
-    if (filters.dateFrom) {
+    if (filters.includePast) {
+        // Past-events view: everything already ended, newest-completed first.
+        filter.endsAt = { $lt: now };
+    } else if (filters.dateFrom) {
         filter.startsAt = { $gte: filters.dateFrom };
     } else {
         filter.endsAt = { $gte: now };
     }
     if (filters.dateTo) filter.startsAt = { ...(filter.startsAt || {}), $lte: filters.dateTo };
     if (filters.city) filter.city = filters.city;
+    if (filters.country) filter.country = filters.country;
     if (filters.category) filter.category = filters.category;
-    if (filters.q?.trim()) filter.$text = { $search: filters.q.trim() };
+    if (filters.q?.trim()) {
+        // Prefer text index when available; fall back to a case-insensitive
+        // contains match on title so short/partial queries (that never win a
+        // text-index score above threshold) still surface something.
+        const q = filters.q.trim();
+        filter.$or = [
+            { $text: { $search: q } } as any,
+            { title: { $regex: q, $options: 'i' } },
+        ];
+    }
 
     const [items, total] = await Promise.all([
         Event.find(filter)
-            .sort({ startsAt: 1 })
+            .sort(filters.includePast ? { endsAt: -1 } : { startsAt: 1 })
             .limit(Math.min(filters.limit ?? 20, 100))
             .skip(filters.skip ?? 0)
             .lean(),
