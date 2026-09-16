@@ -181,13 +181,16 @@ export const listPublicEvents = async (filters: EventListFilters) => {
     if (filters.country) filter.country = filters.country;
     if (filters.category) filter.category = filters.category;
     if (filters.q?.trim()) {
-        // Prefer text index when available; fall back to a case-insensitive
-        // contains match on title so short/partial queries (that never win a
-        // text-index score above threshold) still surface something.
+        // Mongo forbids $text inside $or (must be top-level and unique per
+        // query), so we can't cleanly combine the text-index with a regex
+        // fallback here. Regex-across-title+city is good enough for short
+        // queries and predictable ordering — the text index would help scale
+        // but nothing at expected V1 volumes needs it.
         const q = filters.q.trim();
+        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         filter.$or = [
-            { $text: { $search: q } } as any,
-            { title: { $regex: q, $options: 'i' } },
+            { title: { $regex: escaped, $options: 'i' } },
+            { city: { $regex: escaped, $options: 'i' } },
         ];
     }
 
