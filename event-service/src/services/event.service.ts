@@ -157,9 +157,19 @@ export const listPublicEvents = async (filters: EventListFilters) => {
     const now = new Date();
     const filter: any = {
         status: EventStatus.PUBLISHED,
-        startsAt: { $gte: filters.dateFrom ?? now },
     };
-    if (filters.dateTo) filter.startsAt.$lte = filters.dateTo;
+    // Default is "still relevant" (not yet ended). If the caller passed an
+    // explicit dateFrom, they're asking "starting after date X" so honor that.
+    // Otherwise use endsAt >= now so ongoing events (already started but not
+    // over yet) still show — a user creating an event for tonight expects it
+    // to appear right away, not only until the moment the clock ticks past
+    // its start time.
+    if (filters.dateFrom) {
+        filter.startsAt = { $gte: filters.dateFrom };
+    } else {
+        filter.endsAt = { $gte: now };
+    }
+    if (filters.dateTo) filter.startsAt = { ...(filter.startsAt || {}), $lte: filters.dateTo };
     if (filters.city) filter.city = filters.city;
     if (filters.category) filter.category = filters.category;
     if (filters.q?.trim()) filter.$text = { $search: filters.q.trim() };
