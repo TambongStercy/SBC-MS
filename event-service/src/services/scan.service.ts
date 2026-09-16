@@ -1,4 +1,4 @@
-import mongoose, { Types } from 'mongoose';
+import { Types } from 'mongoose';
 import Ticket, { TicketStatus } from '../database/models/ticket.model';
 import Event, { EventStatus } from '../database/models/event.model';
 import CheckIn from '../database/models/checkin.model';
@@ -78,43 +78,23 @@ export const scanQr = async (args: {
             return { outcome: 'INVALID', message: 'Billet non valide.' };
     }
 
-    // Atomically mark checked-in AND create the CheckIn row. Both live in one txn
-    // so the unique{ticketId} index on CheckIn is the last line of defence against
-    // a duplicate scan slipping through.
-    const session = await mongoose.startSession();
+    // Two-write flow without a transaction (prod Mongo is standalone; txns need
+    // a replica set). The unique{ticketId} index on CheckIn is the primary
+    // guard against double check-in — we insert the CheckIn FIRST, and only if
+    // that succeeds do we flip the ticket. E11000 on CheckIn = already scanned.
+    const now = new Date();
+    let checkedInAt: Date;
     try {
-        let committedCheckIn: Date | null = null;
-        await session.withTransaction(async () => {
-            const updated = await Ticket.findOneAndUpdate(
-                { _id: ticket._id, status: TicketStatus.ISSUED },
-                { $set: { status: TicketStatus.CHECKED_IN, checkedInAt: new Date() } },
-                { new: true, session },
-            );
-            if (!updated) {
-                // Someone scanned it between our read and the update.
-                throw new AppError('__ALREADY_USED__', 409);
-            }
-            await CheckIn.create([{
-                ticketId: ticket._id,
-                eventId: ticket.eventId,
-                scannedByUserId: new Types.ObjectId(args.scannedByUserId),
-                deviceInfo: args.deviceInfo,
-                scannedAt: updated.checkedInAt!,
-            }], { session });
-            committedCheckIn = updated.checkedInAt!;
+        await CheckIn.create({
+            ticketId: ticket._id,
+            eventId: ticket.eventId,
+            scannedByUserId: new Types.ObjectId(args.scannedByUserId),
+            deviceInfo: args.deviceInfo,
+            scannedAt: now,
         });
-
-        // Best-effort: increment event denorm counter outside the txn
-        Event.updateOne({ _id: ticket.eventId }, { $inc: { 'totals.checkedIn': 1 } }).catch(() => undefined);
-
-        return {
-            outcome: 'VALID',
-            message: 'Entrée validée.',
-            ticket: { serial: ticket.serial, holderName: ticket.holderName, ticketTypeId: String(ticket.ticketTypeId) },
-            checkedInAt: committedCheckIn ?? new Date(),
-        };
+        checkedInAt = now;
     } catch (err: any) {
-        if (err?.message === '__ALREADY_USED__') {
+        if (err?.code === 11000) {
             const fresh = await Ticket.findById(ticket._id).lean();
             return {
                 outcome: 'ALREADY_USED',
@@ -124,7 +104,36 @@ export const scanQr = async (args: {
             };
         }
         throw err;
-    } finally {
-        await session.endSession();
     }
+
+    // Now flip the ticket. Guard on status: if it was refunded/cancelled between
+    // our earlier read and now, roll back the CheckIn we just wrote so future
+    // scans still hit the ALREADY_USED path with the correct latest status.
+    const updated = await Ticket.findOneAndUpdate(
+        { _id: ticket._id, status: TicketStatus.ISSUED },
+        { $set: { status: TicketStatus.CHECKED_IN, checkedInAt } },
+        { new: true },
+    );
+    if (!updated) {
+        // Ticket status changed under us — undo the CheckIn.
+        await CheckIn.deleteOne({ ticketId: ticket._id, scannedAt: checkedInAt }).catch(() => undefined);
+        const fresh = await Ticket.findById(ticket._id).lean();
+        const outcome: ScanOutcome = fresh?.status === TicketStatus.CANCELLED ? 'CANCELLED'
+            : fresh?.status === TicketStatus.REFUNDED ? 'REFUNDED'
+            : 'INVALID';
+        const message = outcome === 'CANCELLED' ? 'Billet annulé — accès refusé.'
+            : outcome === 'REFUNDED' ? 'Billet remboursé — accès refusé.'
+            : 'Billet non valide.';
+        return { outcome, message };
+    }
+
+    // Best-effort: increment event denorm counter.
+    Event.updateOne({ _id: ticket.eventId }, { $inc: { 'totals.checkedIn': 1 } }).catch(() => undefined);
+
+    return {
+        outcome: 'VALID',
+        message: 'Entrée validée.',
+        ticket: { serial: ticket.serial, holderName: ticket.holderName, ticketTypeId: String(ticket.ticketTypeId) },
+        checkedInAt,
+    };
 };

@@ -1,4 +1,4 @@
-import mongoose, { Types } from 'mongoose';
+import { Types } from 'mongoose';
 import Ticket, { TicketStatus } from '../database/models/ticket.model';
 import Event, { EventStatus } from '../database/models/event.model';
 import TicketType from '../database/models/ticket-type.model';
@@ -298,68 +298,68 @@ export const settleResaleFromWebhook = async (payload: {
     const event = await Event.findById(listing.eventId);
     if (!event) throw new AppError('Event vanished', 500);
 
-    // All the state-changing writes in one transaction so a partial failure
-    // never leaves the seller and buyer both holding "valid" tickets or the
-    // buyer holding nothing after paying.
+    // Sequential writes (prod Mongo is standalone; txns need a replica set).
+    // Ordering matters: invalidate the old ticket FIRST so the buyer never
+    // holds a valid new ticket while the seller still has a valid old one.
+    // A retry-safe idempotency check earlier (resaleOrder.status === PAID)
+    // means the webhook can safely re-fire and we skip the whole block.
     let newTicketId: Types.ObjectId | null = null;
-    const session = await mongoose.startSession();
+
+    // 1. Old ticket invalidated (guard on ISSUED so a concurrent scan/refund
+    //    doesn't get clobbered).
+    await Ticket.updateOne(
+        { _id: oldTicket._id, status: TicketStatus.ISSUED },
+        {
+            $set: { status: TicketStatus.CANCELLED, qrToken: null, cancelledAt: new Date() },
+            $unset: { resaleListingId: '' },
+        },
+    );
+
+    // 2. New ticket minted for the buyer
+    const newTicket = await Ticket.create({
+        orderId: resaleOrder.orderId,
+        eventId: oldTicket.eventId,
+        ticketTypeId: oldTicket.ticketTypeId,
+        ownerUserId: resaleOrder.buyerUserId,
+        serial: generateTicketSerial(),
+        qrToken: generateQrToken(),
+        status: TicketStatus.ISSUED,
+        holderName: order ? `${order.holder.firstName} ${order.holder.lastName}` : oldTicket.holderName,
+        holderPhone: order ? order.holder.phone : oldTicket.holderPhone,
+        holderEmail: order ? order.holder.email : oldTicket.holderEmail,
+        previousTicketId: oldTicket._id,
+        issuedAt: new Date(),
+    });
+    newTicketId = newTicket._id;
+
+    // 3. Listing SOLD, resale order PAID
+    listing.status = ResaleListingStatus.SOLD;
+    listing.soldAt = new Date();
+    await listing.save();
+
+    resaleOrder.status = ResaleOrderStatus.PAID;
+    resaleOrder.newTicketId = newTicket._id;
+    resaleOrder.settledAt = new Date();
+    await resaleOrder.save();
+
+    if (order) {
+        order.status = OrderStatus.PAID;
+        order.paidAt = new Date();
+        await order.save();
+    }
+
+    // 4. Audit trail (best-effort — failure here doesn't roll back the transfer)
     try {
-        await session.withTransaction(async () => {
-            // 1. Old ticket invalidated
-            await Ticket.updateOne(
-                { _id: oldTicket._id, status: TicketStatus.ISSUED },
-                {
-                    $set: { status: TicketStatus.CANCELLED, qrToken: null, cancelledAt: new Date() },
-                    $unset: { resaleListingId: '' },
-                },
-                { session },
-            );
-
-            // 2. New ticket minted for the buyer
-            const [newTicket] = await Ticket.create([{
-                orderId: resaleOrder.orderId,
-                eventId: oldTicket.eventId,
-                ticketTypeId: oldTicket.ticketTypeId,
-                ownerUserId: resaleOrder.buyerUserId,
-                serial: generateTicketSerial(),
-                qrToken: generateQrToken(),
-                status: TicketStatus.ISSUED,
-                holderName: order ? `${order.holder.firstName} ${order.holder.lastName}` : oldTicket.holderName,
-                holderPhone: order ? order.holder.phone : oldTicket.holderPhone,
-                holderEmail: order ? order.holder.email : oldTicket.holderEmail,
-                previousTicketId: oldTicket._id,
-                issuedAt: new Date(),
-            }], { session });
-            newTicketId = newTicket._id;
-
-            // 3. Listing SOLD, resale order PAID
-            listing.status = ResaleListingStatus.SOLD;
-            listing.soldAt = new Date();
-            await listing.save({ session });
-
-            resaleOrder.status = ResaleOrderStatus.PAID;
-            resaleOrder.newTicketId = newTicket._id;
-            resaleOrder.settledAt = new Date();
-            await resaleOrder.save({ session });
-
-            if (order) {
-                order.status = OrderStatus.PAID;
-                order.paidAt = new Date();
-                await order.save({ session });
-            }
-
-            // 4. Audit trail
-            await TicketTransfer.create([{
-                fromTicketId: oldTicket._id,
-                toTicketId: newTicket._id,
-                fromUserId: oldTicket.ownerUserId,
-                toUserId: resaleOrder.buyerUserId,
-                viaResaleOrderId: resaleOrder._id,
-                at: new Date(),
-            }], { session });
+        await TicketTransfer.create({
+            fromTicketId: oldTicket._id,
+            toTicketId: newTicket._id,
+            fromUserId: oldTicket.ownerUserId,
+            toUserId: resaleOrder.buyerUserId,
+            viaResaleOrderId: resaleOrder._id,
+            at: new Date(),
         });
-    } finally {
-        await session.endSession();
+    } catch (err) {
+        log.warn(`TicketTransfer audit write failed for resale ${resaleOrder._id}: ${(err as Error).message}`);
     }
 
     // Commission row (audit, non-transactional so a bad write can't crash the sale)
