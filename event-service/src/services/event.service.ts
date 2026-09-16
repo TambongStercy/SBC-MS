@@ -42,6 +42,7 @@ export const createEvent = async (organizerId: string, payload: Partial<IEvent>)
         title: payload.title.trim(),
         description: payload.description.trim(),
         posterFileId: payload.posterFileId,
+        videoFileId: payload.videoFileId,
         category: payload.category?.trim() || 'autre',
         country: payload.country?.trim() || undefined,
         city: payload.city?.trim() || '',

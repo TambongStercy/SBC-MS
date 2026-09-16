@@ -19,10 +19,14 @@ const fmtDate = (d: Date) => {
 
 const posterFileUrl = (fileId?: string): string => {
     if (!fileId) return '';
-    // Route through settings-service /files with a thumbnail-friendly width so
-    // WhatsApp/FB fetch a small preview instead of the full-resolution asset —
-    // the "hourly-boundary signed URL snap" pattern keeps this cache-friendly.
     return `${config.appBaseUrl.replace(/\/$/, '')}/api/settings/files/${fileId}?w=800`;
+};
+
+const videoFileUrl = (fileId?: string): string => {
+    if (!fileId) return '';
+    // No ?w= for video — settings-service resize only handles images (returns
+    // the original bytes for videos anyway).
+    return `${config.appBaseUrl.replace(/\/$/, '')}/api/settings/files/${fileId}`;
 };
 
 /**
@@ -46,6 +50,7 @@ export const eventLanding = async (req: Request, res: Response) => {
             descriptionPreview,
             startsAtFormatted: fmtDate(new Date(event.startsAt)),
             posterUrl: posterFileUrl(event.posterFileId),
+            videoUrl: videoFileUrl(event.videoFileId),
             priceFrom: cheapest?.price ?? null,
             appUrl: `${config.appBaseUrl.replace(/\/$/, '')}/events/${encodeURIComponent(event.slug)}`,
             canonicalUrl: `${config.appBaseUrl.replace(/\/$/, '')}/e/${encodeURIComponent(event.slug)}`,

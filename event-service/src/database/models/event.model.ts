@@ -15,6 +15,8 @@ export interface IEvent extends Document {
     title: string;
     description: string;
     posterFileId?: string;
+    /** Optional promo video (up to 30 MB — enforced client-side by the organizer form). */
+    videoFileId?: string;
     category: string;
     country?: string;
     city: string;
@@ -51,6 +53,7 @@ const EventSchema = new Schema<IEvent>({
     title: { type: String, required: true, maxlength: 200 },
     description: { type: String, required: true, maxlength: 5000 },
     posterFileId: { type: String },
+    videoFileId: { type: String },
     category: { type: String, required: true, maxlength: 60, index: true },
     country: { type: String, maxlength: 60, index: true }, // ISO-2 or French name; used by the public filter (spec §3 uses "ville" but organizers span multiple countries)
     city: { type: String, required: true, maxlength: 80, index: true },
