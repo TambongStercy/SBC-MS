@@ -167,6 +167,33 @@ export const remainingViewsToCover = async (
     return Math.max(0, campaign.targetUniqueViews - committed);
 };
 
+/**
+ * Of these diffuseurs, which have ever been offered a PAID campaign.
+ *
+ * The test campaign is excluded deliberately: everyone eligible has completed it,
+ * so counting it would make the whole pool "experienced" and leave nobody to
+ * prioritise. What matters is whether they have ever been given real work.
+ *
+ * Any participation counts, not just accepted ones — someone who was offered a
+ * campaign and ignored it has had their turn, and should not keep jumping the
+ * queue ahead of someone who has never been asked.
+ */
+const alreadyHadPaidCampaign = async (userIds: Types.ObjectId[]): Promise<Set<string>> => {
+    if (!userIds.length) return new Set();
+
+    const testCampaigns = await CampaignModel
+        .find({ isTestCampaign: true })
+        .select('_id')
+        .lean();
+
+    const seen = await CampaignParticipationModel.distinct('diffuseurUserId', {
+        diffuseurUserId: { $in: userIds },
+        campaignId: { $nin: testCampaigns.map(c => c._id) },
+    });
+
+    return new Set(seen.map(String));
+};
+
 /** Diffuseurs already holding a campaign today, who are capped out. */
 const busyToday = async (): Promise<Set<string>> => {
     const startOfDay = new Date();
@@ -270,45 +297,80 @@ export const allocateCampaign = async (campaignId: Types.ObjectId): Promise<Allo
         eligible = targeted;
     }
 
-    // Best reach first, so the target is covered by as few diffuseurs as possible.
-    eligible.sort((a, b) => expectedViews(b) - expectedViews(a) || b.trustScore - a.trustScore);
-
-    // Big diffuseurs carry the bulk, then the tail is fitted to what is actually
-    // left. Taking them in pure descending order overshot badly at the end: with
-    // 200 views still needed, the next 1000-view diffuseur was taken anyway, and
-    // an annonceur who bought 2000 unique views received 3000. Generous, but they
-    // paid for 2000 and the extra comes out of SBC's margin.
+    // Newcomers first.
     //
-    // At each step: the largest diffuseur who still fits inside the shortfall;
-    // and if nobody fits, the smallest who overshoots — so the campaign always
-    // completes, by the narrowest margin available.
+    // Sorting purely by reach meant the same big accounts won every campaign:
+    // measured 2026-09-17, the top diffuseurs had 11 and 12 paid offers while 32
+    // eligible diffuseurs had never been offered a single one. Christian finished
+    // his test campaign and waited a week for nothing while five campaigns went
+    // out (Rufus, 2026-09-17). A diffuseur who is never offered work has no reason
+    // to stay, and the pool stops growing.
+    //
+    // So the pool is filled from people who have never had a paid campaign, and
+    // only what they cannot cover goes to those who have.
+    const experienced = await alreadyHadPaidCampaign(eligible.map(c => c.userId));
+    const newcomers = eligible.filter(c => !experienced.has(String(c.userId)));
+    const veterans = eligible.filter(c => experienced.has(String(c.userId)));
+
     const offers: Array<Record<string, unknown>> = [];
     const taken = new Set<string>();
     let projected = 0;
 
-    while (projected < remaining) {
-        const stillNeeded = remaining - projected;
-        const available = eligible.filter(c => !taken.has(String(c._id)));
-        if (!available.length) break;
+    /**
+     * Takes diffuseurs from one pool until the shortfall is covered.
+     *
+     * Big diffuseurs carry the bulk, then the tail is fitted to what is actually
+     * left. Taking them in pure descending order overshot badly at the end: with
+     * 200 views still needed, the next 1000-view diffuseur was taken anyway, and
+     * an annonceur who bought 2000 unique views received 3000. Generous, but they
+     * paid for 2000 and the extra comes out of SBC's margin.
+     *
+     * At each step: the largest diffuseur who still fits inside the shortfall;
+     * and if nobody fits, the smallest who overshoots — so the campaign always
+     * completes, by the narrowest margin available.
+     */
+    const fillFrom = (pool: CandidateDiffuseur[]): void => {
+        // Best reach first, so the target is covered by as few diffuseurs as possible.
+        const sorted = [...pool].sort(
+            (a, b) => expectedViews(b) - expectedViews(a) || b.trustScore - a.trustScore,
+        );
 
-        const fits = available.filter(c => Math.max(1, expectedViews(c)) <= stillNeeded);
-        const pick = fits.length
-            ? fits[0]                                  // already descending: the largest that fits
-            : available[available.length - 1];         // nobody fits: the smallest overshoot
+        while (projected < remaining) {
+            const stillNeeded = remaining - projected;
+            const available = sorted.filter(c => !taken.has(String(c._id)));
+            if (!available.length) break;
 
-        const forecast = Math.max(1, expectedViews(pick));
-        taken.add(String(pick._id));
-        offers.push({
-            campaignId: campaign._id,
-            diffuseurUserId: pick.userId,
-            diffuseurProfileId: pick._id,
-            status: ParticipationStatus.OFFERED,
-            trackingCode: newTrackingCode(),
-            offeredAt: new Date(),
-            expectedViews: forecast,
-            days: buildDays(),
-        });
-        projected += forecast;
+            const fits = available.filter(c => Math.max(1, expectedViews(c)) <= stillNeeded);
+            const pick = fits.length
+                ? fits[0]                                  // already descending: the largest that fits
+                : available[available.length - 1];         // nobody fits: the smallest overshoot
+
+            const forecast = Math.max(1, expectedViews(pick));
+            taken.add(String(pick._id));
+            offers.push({
+                campaignId: campaign._id,
+                diffuseurUserId: pick.userId,
+                diffuseurProfileId: pick._id,
+                status: ParticipationStatus.OFFERED,
+                trackingCode: newTrackingCode(),
+                offeredAt: new Date(),
+                expectedViews: forecast,
+                days: buildDays(),
+            });
+            projected += forecast;
+        }
+    };
+
+    fillFrom(newcomers);
+    // Only the shortfall newcomers could not cover — « si parmi les nouveaux il
+    // n'y a pas les critères correspondants, le système part chercher ailleurs ».
+    fillFrom(veterans);
+
+    if (newcomers.length) {
+        log.info(
+            `Campaign ${campaign._id}: ${newcomers.length} newcomer(s) available, `
+            + `${offers.length} offer(s) made in total`,
+        );
     }
 
     if (!offers.length) {
