@@ -553,6 +553,90 @@ _Équipe SBC_`,
       ),
       plainText: `Bonjour {{name}},\nNous souhaitons vous informer d'une maintenance programmée de notre système.\nDate: {{date}}\nHeure: {{startTime}} à {{endTime}} (UTC)\nPendant cette période, nos services pourraient être temporairement indisponibles.\nNous nous excusons pour tout désagrément.\nÉquipe SBC`
     },
+
+    // ---- SBC Event templates -----------------------------------------------
+    // Kept intentionally compact; the visual chrome comes from createBeautifulTemplate.
+
+    'event-ticket-purchased': {
+      subject: '🎫 Vos billets SBC Event — {{eventTitle}}',
+      body: createBeautifulTemplate(
+        'Billet confirmé',
+        `<p style="font-size:16px;">Bonjour <strong>{{name}}</strong>,</p>
+         <p style="font-size:16px;">Votre paiement pour <strong>{{eventTitle}}</strong> a été confirmé. Voici votre billet :</p>
+         <div class="code-box">
+           <p style="margin:0;font-size:14px;color:#6b7280;">Numéro de billet</p>
+           <div class="code">{{ticketSerial}}</div>
+           <p style="margin:12px 0 0 0;font-size:14px;color:#6b7280;">{{ticketType}} · {{quantity}} place(s)</p>
+         </div>
+         <p style="font-size:16px;">Date : <strong>{{eventDate}}</strong><br/>Lieu : <strong>{{eventVenue}}</strong></p>
+         <p style="font-size:14px;color:#64748b;">Retrouvez votre QR Code dans « Mes billets » sur l'application SBC.</p>`,
+        'À très bientôt à votre événement.'
+      ),
+      plainText: `🎫 SBC Event\nBonjour {{name}},\nVotre billet pour {{eventTitle}} est confirmé.\nNuméro: {{ticketSerial}} — {{ticketType}} x{{quantity}}\nDate: {{eventDate}}\nLieu: {{eventVenue}}\nRetrouvez votre QR dans « Mes billets ».`
+    },
+
+    'event-reminder': {
+      subject: '⏰ Rappel — {{eventTitle}} approche',
+      body: createBeautifulTemplate(
+        'Rappel d\'événement',
+        `<p style="font-size:16px;">Bonjour <strong>{{name}}</strong>,</p>
+         <p style="font-size:16px;"><strong>{{eventTitle}}</strong> a lieu {{whenPhrase}} à <strong>{{eventVenue}}</strong>.</p>
+         <p style="font-size:14px;color:#64748b;">Pensez à préparer votre billet numérique — ouvrez « Mes billets » à l'entrée pour présenter votre QR Code.</p>`,
+        'Bonne soirée avec SBC Event.'
+      ),
+      plainText: `Rappel: {{eventTitle}} {{whenPhrase}}, lieu {{eventVenue}}. Préparez votre QR dans « Mes billets ».`
+    },
+
+    'event-cancelled': {
+      subject: '⚠️ Événement annulé — {{eventTitle}}',
+      body: createBeautifulTemplate(
+        'Événement annulé',
+        `<p style="font-size:16px;">Bonjour <strong>{{name}}</strong>,</p>
+         <p style="font-size:16px;">L'événement <strong>{{eventTitle}}</strong> prévu le {{eventDate}} a été annulé par l'organisateur.</p>
+         <p style="font-size:14px;color:#64748b;">Un remboursement de vos billets sera traité par l'équipe SBC. Vous recevrez une notification dès qu'il aura été effectué.</p>
+         <p style="font-size:14px;color:#64748b;">Motif : {{reason}}</p>`,
+        'Nous vous prions de nous excuser pour la gêne occasionnée.'
+      ),
+      plainText: `Bonjour {{name}}, l'événement {{eventTitle}} ({{eventDate}}) est annulé. Un remboursement suivra. Motif: {{reason}}`
+    },
+
+    'refund-processed': {
+      subject: '💰 Remboursement effectué — {{eventTitle}}',
+      body: createBeautifulTemplate(
+        'Remboursement effectué',
+        `<p style="font-size:16px;">Bonjour <strong>{{name}}</strong>,</p>
+         <p style="font-size:16px;">Nous avons traité un remboursement de <strong>{{amount}} XAF</strong> pour votre billet de <strong>{{eventTitle}}</strong>.</p>
+         <p style="font-size:14px;color:#64748b;">Le QR Code du billet remboursé est désormais invalide et ne peut plus être utilisé à l'entrée.</p>
+         <p style="font-size:14px;color:#64748b;">Référence : {{orderRef}}</p>`,
+        'Merci pour votre confiance.'
+      ),
+      plainText: `Remboursement de {{amount}} XAF pour {{eventTitle}} traité. Le billet est désormais invalide. Réf: {{orderRef}}`
+    },
+
+    'resale-sold': {
+      subject: '🎉 Votre billet a été revendu — {{eventTitle}}',
+      body: createBeautifulTemplate(
+        'Billet revendu',
+        `<p style="font-size:16px;">Bonjour <strong>{{name}}</strong>,</p>
+         <p style="font-size:16px;">Bonne nouvelle : votre billet pour <strong>{{eventTitle}}</strong> a trouvé un acquéreur au prix de <strong>{{askingPrice}} XAF</strong>.</p>
+         <p style="font-size:14px;color:#64748b;">Le montant net de <strong>{{netAmount}} XAF</strong> a été crédité sur votre solde organisateur SBC Event. Vous pouvez le transférer vers votre solde principal pour le retirer.</p>`,
+        'Merci d\'utiliser la marketplace de revente SBC.'
+      ),
+      plainText: `Votre billet {{eventTitle}} a été revendu à {{askingPrice}} XAF. Net crédité: {{netAmount}} XAF sur votre solde organisateur.`
+    },
+
+    'resale-cancelled': {
+      subject: 'Annonce de revente retirée — {{eventTitle}}',
+      body: createBeautifulTemplate(
+        'Annonce retirée',
+        `<p style="font-size:16px;">Bonjour <strong>{{name}}</strong>,</p>
+         <p style="font-size:16px;">Votre annonce de revente pour <strong>{{eventTitle}}</strong> a été {{action}}.</p>
+         <p style="font-size:14px;color:#64748b;">Motif : {{reason}}</p>
+         <p style="font-size:14px;color:#64748b;">Votre billet reste valide pour l'événement tant qu'il n'a pas été revendu.</p>`,
+        'Vous pouvez toujours republier votre billet depuis « Mes billets ».'
+      ),
+      plainText: `Votre annonce de revente pour {{eventTitle}} a été {{action}}. Motif: {{reason}}. Le billet reste valide.`
+    },
   },
 
   // Marketing Templates

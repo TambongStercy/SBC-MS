@@ -12,6 +12,7 @@ module.exports = {
         PAYMENT_SERVICE_URL: 'http://localhost:6003',
         PRODUCT_SERVICE_URL: 'http://localhost:6004',
         ADVERTISING_SERVICE_URL: 'http://localhost:6010',
+        EVENT_SERVICE_URL: 'http://localhost:6011',
         TOMBOLA_SERVICE_URL: 'http://localhost:6006',
         SETTINGS_SERVICE_URL: 'http://localhost:6007',
         CHAT_SERVICE_URL: 'http://localhost:6008',
@@ -97,6 +98,15 @@ module.exports = {
       env: {
         NODE_ENV: 'preprod',
         PORT: 6010
+      }
+    },
+    {
+      name: 'event-preprod',
+      cwd: './event-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'preprod',
+        PORT: 6011
       }
     }
   ]

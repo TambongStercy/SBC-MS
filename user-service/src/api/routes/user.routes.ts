@@ -65,6 +65,9 @@ serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDe
 // Campaign targeting runs on these fields; batch-details carries none of them.
 serviceRouter.post('/advertising-details', (req, res) => userController.getAdvertisingDetailsByIds(req, res));
 
+// Internal route to get the SBC Event ticket-holder subset (event-service).
+serviceRouter.post('/event-details', (req, res) => userController.getEventDetailsByIds(req, res));
+
 // Internal route to search user IDs by name/email/phone
 serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsBySearchTerm(req, res, next));
 

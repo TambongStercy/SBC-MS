@@ -1908,6 +1908,34 @@ export class UserController {
     }
 
     /**
+     * [Internal] Get the SBC Event ticket-holder projection for one or more users.
+     * @route POST /api/users/internal/event-details
+     * Body: { userIds: string[] }
+     */
+    async getEventDetailsByIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds } = req.body;
+
+            if (!Array.isArray(userIds) || userIds.length === 0) {
+                res.status(400).json({ success: false, message: 'An array of user IDs must be provided.' });
+                return;
+            }
+
+            const invalidIds = userIds.filter(id => !isValidObjectId(id));
+            if (invalidIds.length > 0) {
+                res.status(400).json({ success: false, message: `Invalid user IDs found: ${invalidIds.join(', ')}` });
+                return;
+            }
+
+            const details = await this.userService.getEventDetailsByIds(userIds);
+            res.status(200).json({ success: true, data: details });
+        } catch (error: any) {
+            this.log.error(`Error getting event user details by IDs: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to retrieve event user details.' });
+        }
+    }
+
+    /**
      * [Internal] Get the SBCLOVE demographic subset for one or more users.
      * @route POST /api/users/internal/sbclove-details
      * Body: { userIds: string[] }

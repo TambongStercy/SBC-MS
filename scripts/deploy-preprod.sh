@@ -44,6 +44,7 @@ declare -A PM2_NAME=(
   [chat-service]="chat-preprod"
   [sbclove-service]="sbclove-preprod"
   [advertising-service]="advertising-preprod"
+  [event-service]="event-preprod"
 )
 
 CHANGED_SERVICES=()

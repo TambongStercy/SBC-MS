@@ -175,6 +175,18 @@ const SIDEBAR_GROUPS = [
     ]
   },
   {
+    id: "event",
+    name: "SBC Event",
+    items: [
+      { name: "Tableau de bord", icon: BarChart2, color: "#3b82f6", path: "/event" },
+      { name: "Organisateurs", icon: Users, color: "#10b981", path: "/event/organizers" },
+      { name: "Événements", icon: Ticket, color: "#a855f7", path: "/event/events" },
+      { name: "Commandes", icon: Receipt, color: "#f59e0b", path: "/event/orders" },
+      { name: "Marketplace revente", icon: TrendingUp, color: "#8b5cf6", path: "/event/listings" },
+      { name: "Litiges", icon: MessageSquare, color: "#ef4444", path: "/event/disputes" },
+    ]
+  },
+  {
     id: "financial",
     name: "Financial",
     items: [

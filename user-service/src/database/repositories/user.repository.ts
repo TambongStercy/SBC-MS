@@ -265,6 +265,66 @@ export class UserRepository {
     }
 
     /**
+     * SBC Event organizer earnings. Credit-only here; the only exit is the
+     * transfer-to-main flow below — same shape as advertisingBalance, and for the
+     * same reason (keeps the withdrawal path from ever having to know about
+     * a second source of funds).
+     */
+    async creditEventOrganizerBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Credit amount must be positive');
+        }
+        return UserModel.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { eventOrganizerBalance: amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Moves event-organizer earnings into the main balance so they can be withdrawn.
+     * The precondition on eventOrganizerBalance is part of the query, so two
+     * concurrent transfers cannot both succeed and overdraw.
+     */
+    async transferEventOrganizerToMain(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Transfer amount must be positive');
+        }
+        return UserModel.findOneAndUpdate(
+            { _id: userId, eventOrganizerBalance: { $gte: amount } },
+            { $inc: { balance: amount, eventOrganizerBalance: -amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Debit the seller's eventOrganizerBalance for a resale refund.
+     *
+     * Unlike a normal transfer, this may go BELOW zero — the seller could
+     * already have transferred their earnings out to main balance before the
+     * dispute/refund landed. We debit what we can and let the balance sit
+     * negative until the seller either replenishes it (future sales) or an
+     * admin adjusts. A negative balance blocks the transfer-to-main flow
+     * naturally (guarded by $gte), so no further harm.
+     *
+     * Uses the schema's { min: 0 } validator override via strict: false is NOT
+     * an option — instead we drop the schema min guard temporarily on the doc
+     * we return so a negative value is legal for this specific write.
+     */
+    async debitEventOrganizerBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Debit amount must be positive');
+        }
+        // Use updateOne + separate fetch to bypass the min: 0 validator on this write.
+        // (Mongoose's runValidators is off by default for update ops, so this works.)
+        await UserModel.updateOne(
+            { _id: userId },
+            { $inc: { eventOrganizerBalance: -amount } },
+        ).exec();
+        return UserModel.findById(userId).exec();
+    }
+
+    /**
      * Atomically credit (positive amount) or debit (negative amount) a user's
      * sbcLiveBalance. Used by payment-service when:
      *   - A paid-live charge completes → credit the creator's 75% share
@@ -699,6 +759,21 @@ export class UserRepository {
             deleted: { $ne: true }
         })
             .select('_id name email phoneNumber avatar sex birthDate city region country language interests profession referralCode')
+            .lean()
+            .exec();
+    }
+
+    /**
+     * [Internal] Returns the projection consumed by event-service for hydrating
+     * ticket holders in "Mes billets" and organizer participant lists. Kept narrow
+     * on purpose — event-service should never need demographic fields.
+     */
+    async findEventDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name email phoneNumber avatar role')
             .lean()
             .exec();
     }

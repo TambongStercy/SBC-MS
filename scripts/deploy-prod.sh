@@ -43,6 +43,7 @@ declare -A PM2_NAME=(
   [settings-service]="settings-service"
   [chat-service]="chat-service"
   [advertising-service]="advertising-service"
+  [event-service]="event-service"
 )
 
 CHANGED_SERVICES=()
