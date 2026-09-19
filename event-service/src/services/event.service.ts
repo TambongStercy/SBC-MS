@@ -1,7 +1,8 @@
 import { Types } from 'mongoose';
 import slugify from 'slugify';
 import Event, { IEvent, EventStatus } from '../database/models/event.model';
-import TicketType, { ITicketType, TicketTypeStatus } from '../database/models/ticket-type.model';
+import Organizer from '../database/models/organizer.model';
+import TicketType, { ITicketType, TicketTypeStatus, saleWindowState } from '../database/models/ticket-type.model';
 import Ticket, { TicketStatus } from '../database/models/ticket.model';
 import { generateEventSlugSuffix } from '../utils/serial';
 import { AppError } from '../utils/errors';
@@ -158,7 +159,15 @@ export interface EventListFilters {
     skip?: number;
 }
 
-export const listPublicEvents = async (filters: EventListFilters) => {
+/** A public event card: the stored document plus the two fields the feed needs (§3). */
+export interface PublicEventListItem extends Record<string, any> {
+    priceFrom: number | null;
+    ticketsSold: number;
+}
+
+export const listPublicEvents = async (
+    filters: EventListFilters,
+): Promise<{ items: PublicEventListItem[]; total: number }> => {
     const now = new Date();
     const filter: any = {
         status: EventStatus.PUBLISHED,
@@ -204,38 +213,66 @@ export const listPublicEvents = async (filters: EventListFilters) => {
         Event.countDocuments(filter),
     ]);
 
-    // Price filter is post-hoc — cheapest ticket type per event
-    if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
-        const withPrice = await Promise.all(items.map(async (ev) => {
-            const cheapest = await TicketType.findOne({ eventId: ev._id, status: TicketTypeStatus.ACTIVE })
-                .sort({ price: 1 }).lean();
-            return { ...ev, priceFrom: cheapest?.price ?? null };
-        }));
-        return {
-            items: withPrice.filter((ev) => {
-                if (!ev.priceFrom && ev.priceFrom !== 0) return true;
-                if (filters.priceMin !== undefined && ev.priceFrom < filters.priceMin) return false;
-                if (filters.priceMax !== undefined && ev.priceFrom > filters.priceMax) return false;
-                return true;
-            }),
-            total,
-        };
+    // "à partir de" is part of every card (§3), so priceFrom is attached ALWAYS —
+    // it used to be computed only when a price filter was present, which left the
+    // normal feed with no price at all. One grouped query for the whole page,
+    // not one per event. ticketsSold rides along so the feed can rank popularity.
+    const cheapestByEvent = new Map<string, number>();
+    if (items.length) {
+        const rows = await TicketType.aggregate<{ _id: Types.ObjectId; price: number }>([
+            { $match: { eventId: { $in: items.map((ev) => ev._id) }, status: TicketTypeStatus.ACTIVE } },
+            { $group: { _id: '$eventId', price: { $min: '$price' } } },
+        ]);
+        for (const row of rows) cheapestByEvent.set(String(row._id), row.price);
     }
 
-    return { items, total };
+    const enriched = items.map((ev) => ({
+        ...ev,
+        priceFrom: cheapestByEvent.has(String(ev._id)) ? cheapestByEvent.get(String(ev._id))! : null,
+        ticketsSold: (ev as any).totals?.ticketsSold ?? 0,
+    }));
+
+    if (filters.priceMin === undefined && filters.priceMax === undefined) {
+        return { items: enriched, total };
+    }
+
+    return {
+        items: enriched.filter((ev) => {
+            // An event with no active ticket type has no price to judge — keep it.
+            if (ev.priceFrom === null) return true;
+            if (filters.priceMin !== undefined && ev.priceFrom < filters.priceMin) return false;
+            if (filters.priceMax !== undefined && ev.priceFrom > filters.priceMax) return false;
+            return true;
+        }),
+        total,
+    };
 };
 
 export const getPublicEventBySlug = async (slug: string): Promise<{ event: any; ticketTypes: any[] }> => {
     const event = await Event.findOne({ slug, status: { $in: [EventStatus.PUBLISHED, EventStatus.SUSPENDED, EventStatus.COMPLETED] } }).lean();
     if (!event) throw new AppError('Événement introuvable.', 404);
+    // §4 lists the organizer among the detail fields — a buyer decides partly on
+    // who is running the event. Only the public identity, never contact details.
+    const organizer = await Organizer.findById(event.organizerId)
+        .select('displayName logoFileId')
+        .lean();
     const ticketTypes = await TicketType.find({ eventId: event._id, status: TicketTypeStatus.ACTIVE })
         .sort({ price: 1 }).lean();
+    const now = new Date();
     return {
-        event,
-        ticketTypes: ticketTypes.map((t) => ({
-            ...t,
-            available: Math.max(0, (t.quantityTotal ?? 0) - (t.quantitySold ?? 0)),
-        })),
+        event: { ...event, organizer: organizer ? { displayName: organizer.displayName, logoFileId: (organizer as any).logoFileId } : undefined },
+        ticketTypes: ticketTypes.map((t) => {
+            // Out-of-window types stay in the list, greyed out by the UI: hiding
+            // them would leave a buyer wondering where the VIP ticket went, and
+            // `saleWindow` tells them when it opens / when it closed (spec §6/§7).
+            const window = saleWindowState(t, now);
+            return {
+                ...t,
+                available: Math.max(0, (t.quantityTotal ?? 0) - (t.quantitySold ?? 0)),
+                onSale: window === null,
+                saleWindow: window,
+            };
+        }),
     };
 };
 

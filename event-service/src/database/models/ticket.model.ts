@@ -41,7 +41,11 @@ const TicketSchema = new Schema<ITicket>({
     ownerUserId: { type: Schema.Types.ObjectId, required: true, index: true },
     serial: { type: String, required: true, unique: true },
     // sparse+unique so nulled-out (invalidated) tickets don't collide.
-    qrToken: { type: String, default: null, unique: true, sparse: true },
+    // Uniqueness is declared as a PARTIAL index below, not here: `sparse` only
+    // skips documents where the field is ABSENT, and an invalidated ticket
+    // stores an explicit null — so the second refunded/resold ticket collided
+    // on { qrToken: null } and settlement threw (buyer paid, got nothing).
+    qrToken: { type: String, default: null },
     status: { type: String, enum: Object.values(TicketStatus), default: TicketStatus.PENDING, index: true },
     holderName: { type: String, required: true, maxlength: 160 },
     holderPhone: { type: String, required: true, maxlength: 24 },
@@ -55,6 +59,11 @@ const TicketSchema = new Schema<ITicket>({
 }, { timestamps: true });
 
 TicketSchema.index({ ownerUserId: 1, status: 1 });
+// Unique only over real tokens; invalidated tickets (qrToken=null) are excluded.
+TicketSchema.index(
+    { qrToken: 1 },
+    { unique: true, name: 'qrToken_unique_str', partialFilterExpression: { qrToken: { $type: 'string' } } },
+);
 TicketSchema.index({ eventId: 1, status: 1 });
 
 export default mongoose.model<ITicket>('Ticket', TicketSchema);

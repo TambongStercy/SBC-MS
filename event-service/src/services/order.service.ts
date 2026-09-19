@@ -1,7 +1,7 @@
 import { Types, ClientSession } from 'mongoose';
 import mongoose from 'mongoose';
 import Event, { EventStatus } from '../database/models/event.model';
-import TicketType, { TicketTypeStatus } from '../database/models/ticket-type.model';
+import TicketType, { TicketTypeStatus, saleWindowState } from '../database/models/ticket-type.model';
 import Order, { IOrder, OrderKind, OrderStatus } from '../database/models/order.model';
 import Ticket, { TicketStatus } from '../database/models/ticket.model';
 import Commission, { CommissionKind } from '../database/models/commission.model';
@@ -10,7 +10,7 @@ import { generateQrToken, renderQrDataUrl } from './qr.service';
 import { getCommissionConfig } from './clients/settings.service.client';
 import { creditEventOrganizerBalance } from './clients/user.service.client';
 import { createPrimaryOrderPaymentIntent } from './clients/payment.service.client';
-import { notify } from './clients/notification.service.client';
+import { notifyUser } from './clients/notification.service.client';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
@@ -27,6 +27,16 @@ export interface CreateOrderInput {
         email?: string;
     };
 }
+
+const frDateTime = (d: Date) => d.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' });
+
+/**
+ * Sale-window refusal (spec §6/§7). The shared AppError carries no code field
+ * and utils/errors.ts isn't ours to widen, so the code rides along as an extra
+ * property — the French message stays the user-facing text either way.
+ */
+const saleWindowError = (message: string, code: 'SALES_NOT_OPEN' | 'SALES_CLOSED') =>
+    Object.assign(new AppError(message, 409), { code });
 
 /**
  * Creates a PENDING order + opens a payment session. No seats are reserved yet —
@@ -48,11 +58,27 @@ export const createPrimaryOrder = async (input: CreateOrderInput) => {
     const ttDocs = await TicketType.find({ _id: { $in: ttIds }, eventId: event._id });
     const ttById = new Map(ttDocs.map((t) => [String(t._id), t]));
 
+    const now = new Date();
     let subtotal = 0;
     for (const item of input.items) {
         const tt = ttById.get(item.ticketTypeId);
         if (!tt) throw new AppError('Type de billet inconnu.', 400);
         if (tt.status !== TicketTypeStatus.ACTIVE) throw new AppError(`Le billet « ${tt.name} » n'est plus en vente.`, 409);
+        // Sale window (spec §6/§7). Checked at order creation only: refusing at
+        // settlement would mean taking the buyer's money and then saying no.
+        const window = saleWindowState(tt, now);
+        if (window === 'SALES_NOT_OPEN') {
+            throw saleWindowError(
+                `La vente du billet « ${tt.name} » ouvre le ${frDateTime(tt.salesStart!)}.`,
+                'SALES_NOT_OPEN',
+            );
+        }
+        if (window === 'SALES_CLOSED') {
+            throw saleWindowError(
+                `La vente du billet « ${tt.name} » est terminée depuis le ${frDateTime(tt.salesEnd!)}.`,
+                'SALES_CLOSED',
+            );
+        }
         if (item.quantity < 1 || item.quantity > tt.maxPerOrder) {
             throw new AppError(`Vous ne pouvez commander qu'entre 1 et ${tt.maxPerOrder} billets de type « ${tt.name} ».`, 400);
         }
@@ -112,9 +138,14 @@ export const settleFromWebhook = async (payload: {
     const { sessionId, status, metadata } = payload;
     if (!sessionId) throw new AppError('sessionId is required', 400);
 
-    const order = await Order.findOne({ paymentSessionId: sessionId });
+    // PRIMARY only. A resale purchase writes BOTH a top-level Order(kind=RESALE)
+    // and a ResaleOrder against the same session; without this filter the primary
+    // path claimed that session, answered "handled", and the resale settlement —
+    // which transfers the ticket, issues the new QR and credits the seller —
+    // never ran. The buyer paid and received nothing.
+    const order = await Order.findOne({ paymentSessionId: sessionId, kind: OrderKind.PRIMARY });
     if (!order) {
-        // Could be a resale order — handled elsewhere. Return silently so
+        // Could be a resale order — handled by resale.service. Return silently so
         // payment-service records delivery (avoids retry storms).
         log.warn(`No primary order found for session ${sessionId}`);
         return { handled: false };
@@ -233,11 +264,14 @@ export const settleFromWebhook = async (payload: {
 
     // Best-effort buyer notification (never let this rollback settlement)
     try {
-        await notify({
+        await notifyUser({
             kind: 'event-ticket-purchased',
             userId: String(order.userId),
-            channel: 'email',
-            recipient: order.holder.email,
+            // Time-critical for the buyer: push + email + SMS. The holder block
+            // always carries a phone and often an email — no user-service hop.
+            channels: ['push', 'email', 'sms'],
+            email: order.holder.email,
+            phone: order.holder.phone,
             subject: `🎫 Vos billets SBC Event — ${event.title}`,
             body: `Votre paiement pour ${event.title} est confirmé.`,
             data: {
