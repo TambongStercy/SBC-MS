@@ -5,7 +5,7 @@ import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } 
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
-import { generateSecureOTP, getOtpExpiration } from '../utils/otp.utils';
+import { generateSecureOTP, getOtpExpiration, otpMatches } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import config from '../config';
@@ -669,7 +669,7 @@ export class UserService {
         let newToken: string | undefined = undefined;
 
         const matchingOtp = otps.find(otp => {
-            return otp.code === providedCode && otp.expiration > now;
+            return otpMatches(otp.code, providedCode) && otp.expiration > now;
         });
 
         if (matchingOtp) {
@@ -725,7 +725,7 @@ export class UserService {
         }
 
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired password reset OTP provided for email: ${email}`);
@@ -1584,7 +1584,7 @@ export class UserService {
 
             // Find matching OTP in user's OTPs
             const matchingOTP = user.otps.find((otp: any) =>
-                otp.code === code && otp.expiration > new Date()
+                otpMatches(otp.code, code) && otp.expiration > new Date()
             );
 
             if (!matchingOTP) {
@@ -3915,7 +3915,7 @@ export class UserService {
             }
         } else if (otpCode) {
             // 3. Fallback to validating the OTP if no passwordResetToken is provided
-            const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+            const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
             if (matchingOtp) {
                 log.info(`OTP validated successfully for user ${user.email}.`);
                 validationSuccess = true;
@@ -3974,7 +3974,7 @@ export class UserService {
 
         // 2. Validate the OTP stored against the *current* user
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired email change OTP for user: ${userId}`);
@@ -4087,7 +4087,7 @@ export class UserService {
 
         // 2. Validate the OTP stored against the *current* user
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired phone change OTP for user: ${userId}`);
