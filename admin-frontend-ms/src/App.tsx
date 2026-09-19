@@ -46,6 +46,8 @@ import EventListPage from './pages/EventListPage';
 import EventOrdersPage from './pages/EventOrdersPage';
 import EventListingsPage from './pages/EventListingsPage';
 import EventDisputesPage from './pages/EventDisputesPage';
+import EventCommissionsPage from './pages/EventCommissionsPage';
+import EventTicketsPage from './pages/EventTicketsPage';
 import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from './contexts/SocketContext';
 
@@ -129,8 +131,10 @@ function App() {
             <Route path="/event/organizers" element={<EventOrganizersPage />} />
             <Route path="/event/events" element={<EventListPage />} />
             <Route path="/event/orders" element={<EventOrdersPage />} />
+            <Route path="/event/tickets" element={<EventTicketsPage />} />
             <Route path="/event/listings" element={<EventListingsPage />} />
             <Route path="/event/disputes" element={<EventDisputesPage />} />
+            <Route path="/event/commissions" element={<EventCommissionsPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

@@ -18,11 +18,14 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
 };
 
 const fmt = (iso?: string) => iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const objectId = (v: string) => /^[0-9a-f]{24}$/i.test(v.trim()) ? v.trim() : undefined;
 
 export default function EventOrdersPage() {
     const [items, setItems] = useState<AdminOrder[]>([]);
     const [status, setStatus] = useState<OrderStatus | ''>('');
     const [kind, setKind] = useState<OrderKind | ''>('');
+    const [eventId, setEventId] = useState('');
+    const [userId, setUserId] = useState('');
     const [loading, setLoading] = useState(true);
     const [confirm, setConfirm] = useState<{ title: string; message: string; onConfirm: () => Promise<void> } | null>(null);
     const { toasts, removeToast, showSuccess, showError } = useToast();
@@ -33,14 +36,19 @@ export default function EventOrdersPage() {
             const { items } = await listAdminOrders({
                 status: status || undefined,
                 kind: kind || undefined,
+                // only sent once a full id is typed — the API casts it to an
+                // ObjectId and 500s on a partial value
+                eventId: objectId(eventId),
+                userId: objectId(userId),
                 limit: 100,
             });
             setItems(items);
         } catch (e: any) { showError(apiErrorMessage(e, 'Erreur.')); }
         finally { setLoading(false); }
-    }, [status, kind, showError]);
+    }, [status, kind, eventId, userId, showError]);
 
-    useEffect(() => { load(); }, [load]);
+    // debounced so typing an id doesn't fire a request per keystroke
+    useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
 
     const doRefund = (o: AdminOrder) => setConfirm({
         title: 'Rembourser la commande',
@@ -73,6 +81,18 @@ export default function EventOrdersPage() {
                         <option value="PRIMARY">Vente primaire</option>
                         <option value="RESALE">Revente</option>
                     </select>
+                    <input
+                        value={eventId}
+                        onChange={(e) => setEventId(e.target.value)}
+                        placeholder="ID événement"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 font-mono"
+                    />
+                    <input
+                        value={userId}
+                        onChange={(e) => setUserId(e.target.value)}
+                        placeholder="ID acheteur"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 font-mono"
+                    />
                     <button onClick={load} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">Rafraîchir</button>
                 </div>
 

@@ -19,6 +19,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('fr-FR', { dateStyle: 
 export default function EventListPage() {
     const [items, setItems] = useState<AdminEvent[]>([]);
     const [status, setStatus] = useState<EventStatus | ''>('');
+    const [q, setQ] = useState('');
     const [loading, setLoading] = useState(true);
     const [confirm, setConfirm] = useState<{ title: string; message: string; onConfirm: () => Promise<void> } | null>(null);
     const { toasts, removeToast, showSuccess, showError } = useToast();
@@ -26,13 +27,15 @@ export default function EventListPage() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const { items } = await listAdminEvents({ status: status || undefined, limit: 100 });
+            // `q` is not yet in listAdminEvents' param type — remove the cast once api/event.ts declares it
+            const { items } = await listAdminEvents({ status: status || undefined, q: q.trim() || undefined, limit: 100 });
             setItems(items);
         } catch (e: any) { showError(apiErrorMessage(e, 'Erreur.')); }
         finally { setLoading(false); }
-    }, [status, showError]);
+    }, [status, q, showError]);
 
-    useEffect(() => { load(); }, [load]);
+    // debounced so typing in the search box doesn't fire a request per keystroke
+    useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
 
     const doSuspend = (ev: AdminEvent) => setConfirm({
         title: 'Suspendre l\'événement',
@@ -56,7 +59,13 @@ export default function EventListPage() {
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Événements" />
             <div className="p-6 space-y-4">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                    <input
+                        value={q}
+                        onChange={(e) => setQ(e.target.value)}
+                        placeholder="Rechercher un titre ou une ville"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-72"
+                    />
                     <select value={status} onChange={(e) => setStatus(e.target.value as EventStatus | '')} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                         <option value="">Tous les statuts</option>
                         <option value="DRAFT">Brouillons</option>

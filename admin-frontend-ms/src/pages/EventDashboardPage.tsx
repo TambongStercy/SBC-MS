@@ -9,8 +9,12 @@ interface Dashboard {
     tickets: { issued: number; checkedIn: number; refunded: number; cancelled: number; total: number };
     orders: { paidCount: number; gross: number };
     commissions: { primary: { total: number; count: number }; resale: { total: number; count: number } };
-    resale: { active: number; sold: number; cancelled: number };
+    // added by a later backend version — absent on older deployments
+    refunds?: { count: number; amount: number };
+    resale: { active: number; sold: number; cancelled: number; volume?: number };
 }
+
+const xaf = (n?: number) => typeof n === 'number' ? `${n.toLocaleString('fr-FR')} XAF` : '—';
 
 const StatCard = ({ label, value, sub }: { label: string; value: string | number; sub?: string }) => (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -53,6 +57,14 @@ export default function EventDashboardPage() {
                             <StatCard label="Commissions primaires" value={`${data.commissions.primary.total.toLocaleString('fr-FR')} XAF`} sub={`${data.commissions.primary.count} règlements`} />
                             <StatCard label="Commissions revente" value={`${data.commissions.resale.total.toLocaleString('fr-FR')} XAF`} sub={`${data.commissions.resale.count} règlements`} />
                             <StatCard label="Marketplace revente" value={data.resale.active} sub={`${data.resale.sold} revendus · ${data.resale.cancelled} annulés`} />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <StatCard
+                                label="Remboursements"
+                                value={data.refunds ? data.refunds.count : '—'}
+                                sub={`Montant: ${xaf(data.refunds?.amount)}`}
+                            />
+                            <StatCard label="Volume des reventes" value={xaf(data.resale.volume)} sub={`${data.resale.sold} billets revendus`} />
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <StatCard label="Événements suspendus" value={data.events.suspended} />

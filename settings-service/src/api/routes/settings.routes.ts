@@ -26,7 +26,10 @@ import {
     getGatewayBalances,
     updateGatewayBalances,
     getGatewayBalanceHistory,
-    calculateAppRevenue
+    calculateAppRevenue,
+    // SBC Event commissions
+    getEventCommissions,
+    updateEventCommissions
 } from '../controllers/settings.controller';
 import { upload } from '../middleware/multer.config'; // Import the configured Multer instance
 import authenticate from '../middleware/auth.middleware'; // Standard auth for settings management
@@ -61,6 +64,17 @@ router.get('/', getSettings);
 // POST /settings/files/upload - Upload a generic file (potentially for direct admin use? keep for now)
 // Uses the standard user/admin authentication
 router.post('/files/upload', upload.single('file'), uploadGenericFile);
+
+// GET /settings/event-commissions - SBC Event commission rates.
+// Two kinds of caller: event-service (service secret, on every ticket sale)
+// and the admin panel (user JWT). Registered before the blanket `authenticate`
+// below so the service-secret branch is reachable.
+const serviceOrUserAuth = (req: Request, res: Response, next: NextFunction) => {
+    const token = (req.headers.authorization || '').split(' ')[1];
+    if (token && token === config.services.serviceSecret) return next();
+    return authenticate(req, res, next);
+};
+router.get('/event-commissions', serviceOrUserAuth, getEventCommissions);
 
 // --- Internal Service Routes ---
 // Prefix with /internal and use service-specific authentication
@@ -124,5 +138,9 @@ router.get('/gateway-balances', getGatewayBalances);
 router.put('/gateway-balances', updateGatewayBalances);
 router.get('/gateway-balances/history', getGatewayBalanceHistory);
 router.post('/gateway-balances/calculate-revenue', calculateAppRevenue);
+
+// --- SBC Event Commission Routes ---
+// PUT is admin-only (role checked in the controller); GET is registered above.
+router.put('/event-commissions', updateEventCommissions);
 
 export default router; 

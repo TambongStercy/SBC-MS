@@ -3,7 +3,7 @@ import settingsService from '../../services/settings.service'; // Import the ins
 import GoogleDriveService from '../../services/googleDrive.service'; // Import Drive service
 import cloudStorageService from '../../services/cloudStorage.service'; // Import Cloud Storage service
 import logger from '../../utils/logger';
-import { NotFoundError, AppError, BadRequestError } from '../../utils/errors'; // Assuming custom error classes
+import { NotFoundError, AppError, BadRequestError, ForbiddenError } from '../../utils/errors'; // Assuming custom error classes
 import axios from 'axios';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -812,3 +812,61 @@ export const calculateAppRevenue = async (req: Request, res: Response, next: Nex
     }
 };
 
+
+// ============================================
+// SBC Event Commission Controllers
+// ============================================
+
+/**
+ * Get the SBC Event commission rates.
+ * GET /settings/event-commissions
+ * Readable by authenticated services (event-service reads it on every sale)
+ * and by admins in the panel.
+ */
+export const getEventCommissions = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling GET /settings/event-commissions request');
+    try {
+        const data = await settingsService.getEventCommissions();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        log.error('Error fetching event commissions:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to fetch event commissions', 500));
+    }
+};
+
+// Range check shared by the three values. Rates are money paths: a typo here
+// silently over- or under-charges every organizer, so reject rather than clamp.
+const requireInRange = (label: string, value: unknown, min: number, max: number): number => {
+    const n = typeof value === 'number' ? value : NaN;
+    if (!Number.isFinite(n) || n < min || n > max) {
+        throw new BadRequestError(`${label} must be a number between ${min} and ${max}.`);
+    }
+    return n;
+};
+
+/**
+ * Update the SBC Event commission rates (admin only).
+ * PUT /settings/event-commissions
+ * Body: { primaryPct, resalePct, defaultMaxResalePricePct }
+ */
+export const updateEventCommissions = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling PUT /settings/event-commissions request');
+
+    if (!isAdminCaller(req)) {
+        return next(new ForbiddenError('Admin access required.'));
+    }
+
+    try {
+        const payload = {
+            primaryPct: requireInRange('primaryPct', req.body?.primaryPct, 0, 0.5),
+            resalePct: requireInRange('resalePct', req.body?.resalePct, 0, 0.5),
+            defaultMaxResalePricePct: requireInRange('defaultMaxResalePricePct', req.body?.defaultMaxResalePricePct, 100, 300),
+        };
+
+        const data = await settingsService.updateEventCommissions(payload);
+        res.status(200).json({ success: true, data, message: 'Event commissions updated successfully' });
+    } catch (error) {
+        log.error('Error updating event commissions:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to update event commissions', 500));
+    }
+};

@@ -61,7 +61,7 @@ export async function suspendOrganizer(organizerId: string, reason?: string) {
     return data.data as AdminOrganizer;
 }
 
-export async function listAdminEvents(params: { status?: EventStatus; organizerId?: string; limit?: number; skip?: number } = {}) {
+export async function listAdminEvents(params: { status?: EventStatus; organizerId?: string; limit?: number; skip?: number; q?: string } = {}) {
     const { data } = await apiClient.get('/tickets/admin/events', { params });
     return data.data as { items: AdminEvent[]; total: number };
 }
@@ -116,6 +116,7 @@ export async function listAdminOrders(params: {
 export type TicketStatus = 'PENDING' | 'ISSUED' | 'CHECKED_IN' | 'CANCELLED' | 'REFUNDED' | 'EXPIRED';
 
 export interface AdminTicket {
+    ticketTypeId?: string;
     _id: string;
     serial: string;
     orderId: string;
@@ -200,6 +201,27 @@ export async function resolveDispute(disputeId: string, note: string, outcome: '
 }
 
 // ---- commission config ----
+
+export interface EventCommissionConfig {
+    primaryPct: number;
+    resalePct: number;
+    defaultMaxResalePricePct: number;
+}
+
+/**
+ * Source of truth for the rates: settings-service, through the gateway.
+ * event-service only caches a copy for 60s, so read/write here and then call
+ * bustEventCommissionConfigCache() to make the change take effect immediately.
+ */
+export async function getEventCommissionSettings() {
+    const { data } = await apiClient.get('/settings/event-commissions');
+    return data.data as EventCommissionConfig;
+}
+
+export async function updateEventCommissionSettings(payload: EventCommissionConfig) {
+    const { data } = await apiClient.put('/settings/event-commissions', payload);
+    return data.data as EventCommissionConfig;
+}
 
 export async function getEventCommissionConfig() {
     const { data } = await apiClient.get('/tickets/admin/commission-config');

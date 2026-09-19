@@ -3,7 +3,8 @@ import SettingsRepository from '../database/repositories/settings.repository';
 import {
     ISettings,
     IFileReference,
-    IFormation
+    IFormation,
+    IEventCommissions
 } from '../database/models/settings.model';
 import GoogleDriveService from './googleDrive.service'; // Import Google Drive Service
 // Remove S3 related imports if they exist
@@ -16,6 +17,14 @@ import paymentService from './clients/payment.service.client'; // NEW: Import th
 import userServiceClient from './clients/user.service.client';
 
 const log = logger.getLogger('SettingsService');
+
+// Used when the settings document predates the field. Must stay in sync with
+// event-service's env fallbacks (PRIMARY_COMMISSION_PCT / RESALE_COMMISSION_PCT).
+export const EVENT_COMMISSION_DEFAULTS: IEventCommissions = {
+    primaryPct: 0.05,
+    resalePct: 0.10,
+    defaultMaxResalePricePct: 120,
+};
 
 // Interface for the response of the generic upload
 interface UploadedFileInfo {
@@ -473,6 +482,42 @@ class SettingsService {
         } catch (uploadError: any) {
             log.error(`Failed to upload file to Cloud Storage: ${uploadError.message}`, uploadError);
             throw new AppError('Failed to upload file to storage.', 500);
+        }
+    }
+
+    // --- SBC Event commissions ---
+
+    /**
+     * Current SBC Event commission rates. Never throws for "not configured" —
+     * event-service calls this on every ticket sale, so an unset/absent
+     * settings document must still yield usable rates.
+     */
+    async getEventCommissions(): Promise<IEventCommissions> {
+        const settings = await this.repository.findSingle();
+        const c = settings?.eventCommissions;
+        return {
+            primaryPct: c?.primaryPct ?? EVENT_COMMISSION_DEFAULTS.primaryPct,
+            resalePct: c?.resalePct ?? EVENT_COMMISSION_DEFAULTS.resalePct,
+            defaultMaxResalePricePct: c?.defaultMaxResalePricePct ?? EVENT_COMMISSION_DEFAULTS.defaultMaxResalePricePct,
+        };
+    }
+
+    /**
+     * Replaces the three SBC Event commission values. Range-checked by the
+     * caller (controller) and again by the schema's min/max.
+     */
+    async updateEventCommissions(data: IEventCommissions): Promise<IEventCommissions> {
+        log.info('Updating SBC Event commissions...', data);
+        try {
+            const settings = await this.repository.upsert({ eventCommissions: data });
+            return {
+                primaryPct: settings.eventCommissions!.primaryPct,
+                resalePct: settings.eventCommissions!.resalePct,
+                defaultMaxResalePricePct: settings.eventCommissions!.defaultMaxResalePricePct,
+            };
+        } catch (error: any) {
+            log.error('Error updating SBC Event commissions:', error);
+            throw new AppError('Failed to update event commissions.', 500);
         }
     }
 }

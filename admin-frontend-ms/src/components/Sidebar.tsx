@@ -31,7 +31,8 @@ import {
   Megaphone,
   ShieldCheck,
   FlaskConical,
-  Video
+  Video,
+  Percent
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -182,8 +183,10 @@ const SIDEBAR_GROUPS = [
       { name: "Organisateurs", icon: Users, color: "#10b981", path: "/event/organizers" },
       { name: "Événements", icon: Ticket, color: "#a855f7", path: "/event/events" },
       { name: "Commandes", icon: Receipt, color: "#f59e0b", path: "/event/orders" },
+      { name: "Billets", icon: Ticket, color: "#6366f1", path: "/event/tickets" },
       { name: "Marketplace revente", icon: TrendingUp, color: "#8b5cf6", path: "/event/listings" },
       { name: "Litiges", icon: MessageSquare, color: "#ef4444", path: "/event/disputes" },
+      { name: "Commissions", icon: Percent, color: "#0ea5e9", path: "/event/commissions" },
     ]
   },
   {
