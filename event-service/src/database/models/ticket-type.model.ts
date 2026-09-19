@@ -41,4 +41,19 @@ const TicketTypeSchema = new Schema<ITicketType>({
 
 TicketTypeSchema.index({ eventId: 1, status: 1 });
 
+/**
+ * Sale-window verdict (spec §6/§7). Lives next to the fields so the purchase
+ * guard (order.service) and the public listing flag (event.service) can never
+ * drift apart. Absent bounds mean "no limit" — most organizers set neither.
+ * Returns the error code to refuse with, or null when sales are open.
+ */
+export const saleWindowState = (
+    tt: { salesStart?: Date | null; salesEnd?: Date | null },
+    now: Date = new Date(),
+): 'SALES_NOT_OPEN' | 'SALES_CLOSED' | null => {
+    if (tt.salesStart && now < tt.salesStart) return 'SALES_NOT_OPEN';
+    if (tt.salesEnd && now > tt.salesEnd) return 'SALES_CLOSED';
+    return null;
+};
+
 export default mongoose.model<ITicketType>('TicketType', TicketTypeSchema);

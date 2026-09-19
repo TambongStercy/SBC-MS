@@ -21,6 +21,8 @@ export interface IResaleListing extends Document {
     soldAt?: Date;
     cancelledAt?: Date;
     suspendedAt?: Date;
+    /** Stamped by the scheduler sweep when the event is over (spec §30). */
+    expiredAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -36,6 +38,7 @@ const ResaleListingSchema = new Schema<IResaleListing>({
     soldAt: { type: Date },
     cancelledAt: { type: Date },
     suspendedAt: { type: Date },
+    expiredAt: { type: Date },
 }, { timestamps: true });
 
 // Enforces spec §27: a given ticket may only appear in one ACTIVE listing at a time.

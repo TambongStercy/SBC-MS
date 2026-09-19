@@ -57,6 +57,8 @@ interface IConfig {
         defaultMaxResalePricePct: number;
     };
     minWithdrawalAmount: number;
+    /** Channels event notifications may use (spec §23). Trim to kill SMS costs. */
+    notifyChannels: string[];
     scheduler: {
         enabled: boolean;
         intervalMs: number;
@@ -104,6 +106,8 @@ const config: IConfig = {
         defaultMaxResalePricePct: parseFloat(process.env.DEFAULT_MAX_RESALE_PRICE_PCT || '120'),
     },
     minWithdrawalAmount: parseInt(process.env.MIN_WITHDRAWAL_AMOUNT || '2000', 10),
+    notifyChannels: (process.env.EVENT_NOTIFY_CHANNELS || 'push,email,sms')
+        .split(',').map((c) => c.trim().toLowerCase()).filter(Boolean),
     scheduler: {
         enabled: (process.env.SCHEDULER_ENABLED || 'true') !== 'false',
         intervalMs: parseInt(process.env.SCHEDULER_INTERVAL_MS || '300000', 10),

@@ -1,34 +1,73 @@
 import { Request, Response, NextFunction } from 'express';
 import { Types } from 'mongoose';
 import Event, { EventStatus } from '../../database/models/event.model';
-import Order, { OrderStatus } from '../../database/models/order.model';
+import Order, { OrderStatus, OrderKind } from '../../database/models/order.model';
 import Ticket, { TicketStatus } from '../../database/models/ticket.model'; // TicketStatus needed for dashboard aggs
 import Organizer, { OrganizerStatus } from '../../database/models/organizer.model';
 import Commission from '../../database/models/commission.model';
 import ResaleListing from '../../database/models/resale-listing.model';
+import Refund, { RefundStatus } from '../../database/models/refund.model';
 import * as organizerService from '../../services/organizer.service';
 import * as refundService from '../../services/refund.service';
 import * as cancellationService from '../../services/cancellation.service';
+import { notifyUser, Channel } from '../../services/clients/notification.service.client';
+import { getEventUserDetails } from '../../services/clients/user.service.client';
 import { AppError } from '../../utils/errors';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import Dispute, { DisputeStatus } from '../../database/models/dispute.model';
 import { getCommissionConfig, invalidateCommissionCache } from '../../services/clients/settings.service.client';
+import logger from '../../utils/logger';
+
+const log = logger.getLogger('AdminController');
+
+/**
+ * Moderation notice (spec §23). The moderated row never carries the recipient's
+ * coordinates, so resolve them from user-service — the lookup also gives the
+ * first name the templates use. Push + email by default: a moderation decision
+ * needs the written reason, it isn't worth an SMS. Best-effort from end to end:
+ * a suspension, a removal or a dispute ruling must never fail because
+ * notification plumbing is down.
+ */
+const notifyUserByLookup = async (
+    userId: Types.ObjectId | string,
+    args: { kind: string; subject: string; body: string; data?: Record<string, unknown>; eventId?: string; channels?: Channel[] },
+) => {
+    try {
+        const [profile] = await getEventUserDetails([String(userId)]);
+        await notifyUser({
+            kind: args.kind,
+            userId: String(userId),
+            channels: args.channels || ['push', 'email'],
+            email: profile?.email,
+            phone: profile?.phoneNumber,
+            subject: args.subject,
+            body: args.body,
+            data: { name: profile?.name?.split(' ')[0] || '', ...args.data },
+            eventId: args.eventId,
+        });
+    } catch (err) {
+        log.warn(`${args.kind}: notification for user ${userId} failed: ${(err as Error).message}`);
+    }
+};
 
 /** Admin global stats (spec §26). */
 export const dashboard = async (_req: Request, res: Response, next: NextFunction) => {
     try {
-        const [organizerAgg, eventAgg, orderAgg, ticketAgg, commissionAgg, resaleAgg] = await Promise.all([
+        const [organizerAgg, eventAgg, orderAgg, ticketAgg, commissionAgg, resaleAgg, refundAgg] = await Promise.all([
             Organizer.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
             Event.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
+            // Grouped by kind so primary ticketing and marketplace volume can be
+            // told apart (spec §26) — the legacy `orders.*` keys stay the sum of both.
             Order.aggregate([
                 { $match: { status: OrderStatus.PAID } },
-                { $group: { _id: null, gross: { $sum: '$subtotal' }, orderCount: { $sum: 1 } } },
+                { $group: { _id: '$kind', gross: { $sum: '$subtotal' }, volume: { $sum: '$total' }, orderCount: { $sum: 1 } } },
             ]),
             Ticket.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
             Commission.aggregate([
                 { $group: { _id: '$kind', total: { $sum: '$amount' }, n: { $sum: 1 } } },
             ]),
             ResaleListing.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
+            Refund.aggregate([{ $group: { _id: '$status', total: { $sum: '$amount' }, n: { $sum: 1 } } }]),
         ]);
 
         const orgCounts = Object.fromEntries(organizerAgg.map((r: any) => [r._id, r.n]));
@@ -36,6 +75,10 @@ export const dashboard = async (_req: Request, res: Response, next: NextFunction
         const ticketCounts = Object.fromEntries(ticketAgg.map((r: any) => [r._id, r.n]));
         const commissionCounts = Object.fromEntries(commissionAgg.map((r: any) => [r._id, { total: r.total, count: r.n }]));
         const resaleCounts = Object.fromEntries(resaleAgg.map((r: any) => [r._id, r.n]));
+        const refundCounts = Object.fromEntries(refundAgg.map((r: any) => [r._id, { total: r.total, count: r.n }]));
+        const ordersByKind = Object.fromEntries(orderAgg.map((r: any) => [r._id, r]));
+        const primaryOrders = ordersByKind[OrderKind.PRIMARY] || { gross: 0, volume: 0, orderCount: 0 };
+        const resaleOrders = ordersByKind[OrderKind.RESALE] || { gross: 0, volume: 0, orderCount: 0 };
 
         res.json({
             success: true,
@@ -62,10 +105,14 @@ export const dashboard = async (_req: Request, res: Response, next: NextFunction
                     total: Object.values(ticketCounts).reduce((s: number, n: any) => s + n, 0),
                 },
                 orders: {
-                    paidCount: orderAgg[0]?.orderCount || 0,
-                    gross: orderAgg[0]?.gross || 0,
+                    // Unchanged meaning: every PAID order, primary + resale.
+                    paidCount: primaryOrders.orderCount + resaleOrders.orderCount,
+                    gross: primaryOrders.gross + resaleOrders.gross,
+                    primaryCount: primaryOrders.orderCount,
+                    primaryGross: primaryOrders.gross,
                 },
                 commissions: {
+                    // `resale` is the marketplace take; `primary` is the ticketing take.
                     primary: commissionCounts.PRIMARY || { total: 0, count: 0 },
                     resale: commissionCounts.RESALE || { total: 0, count: 0 },
                 },
@@ -73,6 +120,18 @@ export const dashboard = async (_req: Request, res: Response, next: NextFunction
                     active: resaleCounts.ACTIVE || 0,
                     sold: resaleCounts.SOLD || 0,
                     cancelled: resaleCounts.CANCELLED || 0,
+                    expired: resaleCounts.EXPIRED || 0,
+                    suspended: resaleCounts.SUSPENDED || 0,
+                    // Money that actually changed hands on the marketplace, in XAF —
+                    // listing counts say nothing about volume (spec §26).
+                    salesCount: resaleOrders.orderCount,
+                    salesVolume: resaleOrders.volume,
+                },
+                refunds: {
+                    count: refundCounts[RefundStatus.COMPLETED]?.count || 0,
+                    total: refundCounts[RefundStatus.COMPLETED]?.total || 0,
+                    pending: refundCounts[RefundStatus.PENDING]?.count || 0,
+                    failed: refundCounts[RefundStatus.FAILED]?.count || 0,
                 },
             },
         });
@@ -110,6 +169,15 @@ export const listEvents = async (req: Request, res: Response, next: NextFunction
         const filter: any = {};
         if (req.query.status) filter.status = req.query.status;
         if (req.query.organizerId) filter.organizerId = new Types.ObjectId(String(req.query.organizerId));
+        if (req.query.q) {
+            // Free-text over title + city (spec §25), same shape as listTickets.
+            // Escaped so an admin pasting a title with a "(" doesn't 500 the list.
+            const q = String(req.query.q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            filter.$or = [
+                { title: { $regex: q, $options: 'i' } },
+                { city: { $regex: q, $options: 'i' } },
+            ];
+        }
         const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
         const skip = parseInt(String(req.query.skip || 0), 10);
         const [items, total] = await Promise.all([
@@ -240,6 +308,19 @@ export const suspendResaleListing = async (req: Request, res: Response, next: Ne
             { _id: listing.ticketId, resaleListingId: listing._id },
             { $unset: { resaleListingId: '' } },
         );
+        // The seller's ticket just vanished from the marketplace — tell them why.
+        const event = await Event.findById(listing.eventId).select('title').lean();
+        await notifyUserByLookup(listing.sellerUserId, {
+            kind: 'resale-listing-suspended',
+            subject: `⛔ Votre annonce de revente a été suspendue — ${event?.title || 'SBC Event'}`,
+            body: `Votre annonce de revente a été retirée du marché par la modération.`,
+            data: {
+                eventTitle: event?.title || '',
+                askingPrice: listing.askingPrice,
+                reason: req.body?.reason || 'non précisé',
+            },
+            eventId: String(listing.eventId),
+        });
         res.json({ success: true, data: listing });
     } catch (err) { next(err); }
 };
@@ -257,6 +338,18 @@ export const removeResaleListing = async (req: Request, res: Response, next: Nex
             { _id: listing.ticketId, resaleListingId: listing._id },
             { $unset: { resaleListingId: '' } },
         );
+        const event = await Event.findById(listing.eventId).select('title').lean();
+        await notifyUserByLookup(listing.sellerUserId, {
+            kind: 'resale-listing-removed',
+            subject: `⛔ Votre annonce de revente a été refusée — ${event?.title || 'SBC Event'}`,
+            body: `Votre annonce de revente a été supprimée par la modération. Votre billet reste valable.`,
+            data: {
+                eventTitle: event?.title || '',
+                askingPrice: listing.askingPrice,
+                reason: req.body?.reason || 'non précisé',
+            },
+            eventId: String(listing.eventId),
+        });
         res.json({ success: true, data: listing });
     } catch (err) { next(err); }
 };
@@ -292,6 +385,24 @@ export const resolveDispute = async (req: Request, res: Response, next: NextFunc
             { new: true },
         );
         if (!dispute) throw new AppError('Litige introuvable.', 404);
+
+        // The complainant opened this and has been waiting — tell them the
+        // ruling and the admin's note (spec §23).
+        const rejected = dispute.status === DisputeStatus.REJECTED;
+        await notifyUserByLookup(dispute.complainantUserId, {
+            kind: 'dispute-resolved',
+            subject: rejected ? '📄 Votre litige a été clôturé' : '✅ Votre litige a été résolu',
+            body: rejected
+                ? `Après examen, votre litige n'a pas été retenu.`
+                : `Votre litige a été traité par notre équipe.`,
+            data: {
+                outcome: rejected ? 'rejected' : 'resolved',
+                status: dispute.status,
+                note: dispute.resolutionNote || 'Aucune note.',
+                disputeKind: dispute.kind,
+            },
+            eventId: dispute.eventId ? String(dispute.eventId) : undefined,
+        });
         res.json({ success: true, data: dispute });
     } catch (err) { next(err); }
 };

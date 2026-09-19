@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import Event, { EventStatus } from '../database/models/event.model';
 import Order, { OrderStatus, OrderKind } from '../database/models/order.model';
-import { notify } from './clients/notification.service.client';
+import { notifyUser } from './clients/notification.service.client';
 import { getEventUserDetails } from './clients/user.service.client';
 import logger from '../utils/logger';
 
@@ -45,18 +45,19 @@ export const sweepEventReminders = async (): Promise<number> => {
                 kind: OrderKind.PRIMARY,
             }).select('userId holder').lean();
 
-            const emailByUser = new Map<string, { email: string; firstName: string }>();
+            const contactByUser = new Map<string, { email?: string; phone?: string; firstName: string }>();
             for (const o of orders) {
-                if (o.holder?.email) {
-                    emailByUser.set(String(o.userId), { email: o.holder.email, firstName: o.holder.firstName });
+                const id = String(o.userId);
+                if (!contactByUser.has(id) && (o.holder?.email || o.holder?.phone)) {
+                    contactByUser.set(id, { email: o.holder.email, phone: o.holder.phone, firstName: o.holder.firstName });
                 }
             }
-            const missing = paidUserIds.map((id) => String(id)).filter((id) => !emailByUser.has(id));
+            const missing = paidUserIds.map((id) => String(id)).filter((id) => !contactByUser.has(id));
             if (missing.length > 0) {
                 try {
                     const profiles = await getEventUserDetails(missing);
                     for (const p of profiles) {
-                        if (p.email) emailByUser.set(String(p._id), { email: p.email, firstName: p.name?.split(' ')[0] || '' });
+                        contactByUser.set(String(p._id), { email: p.email, phone: p.phoneNumber, firstName: p.name?.split(' ')[0] || '' });
                     }
                 } catch (err) {
                     log.warn(`reminder: event-details lookup failed for ${event._id}: ${(err as Error).message}`);
@@ -66,13 +67,15 @@ export const sweepEventReminders = async (): Promise<number> => {
             const hours = Math.round((event.startsAt.getTime() - now.getTime()) / (3600 * 1000));
             const whenPhrase = hours <= 1 ? "dans moins d'une heure" : `dans ${hours} heure${hours > 1 ? 's' : ''}`;
 
-            for (const [userId, { email, firstName }] of emailByUser.entries()) {
+            for (const [userId, { email, phone, firstName }] of contactByUser.entries()) {
                 try {
-                    await notify({
+                    // Reminder is a nudge, not a document: push + SMS only (spec §23).
+                    await notifyUser({
                         kind: 'event-reminder',
                         userId,
-                        channel: 'email',
-                        recipient: email,
+                        channels: ['push', 'sms'],
+                        email,
+                        phone,
                         subject: `⏰ Rappel — ${event.title} approche`,
                         body: `L'événement approche.`,
                         data: {

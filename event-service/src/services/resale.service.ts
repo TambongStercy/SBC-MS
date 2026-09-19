@@ -10,9 +10,9 @@ import Order, { OrderKind, OrderStatus } from '../database/models/order.model';
 import { generateTicketSerial } from '../utils/serial';
 import { generateQrToken } from './qr.service';
 import { getCommissionConfig } from './clients/settings.service.client';
-import { creditEventOrganizerBalance } from './clients/user.service.client';
+import { creditEventOrganizerBalance, getEventUserDetails } from './clients/user.service.client';
 import { createResaleOrderPaymentIntent } from './clients/payment.service.client';
-import { notify } from './clients/notification.service.client';
+import { notifyUser } from './clients/notification.service.client';
 import { AppError } from '../utils/errors';
 import config from '../config';
 import logger from '../utils/logger';
@@ -397,17 +397,28 @@ export const settleResaleFromWebhook = async (payload: {
         }
     }
 
-    // Best-effort notification to the seller
+    // Best-effort notification to the seller (spec §23). Nothing on the listing
+    // carries the seller's coordinates (they bought the ticket, they never checked
+    // out as a holder here) — the lookup also gives us the first name for the
+    // template, so we do it here rather than letting notifyUser repeat it.
+    let sellerProfile: { email?: string; phoneNumber?: string; name?: string } | undefined;
     try {
-        await notify({
+        [sellerProfile] = await getEventUserDetails([String(listing.sellerUserId)]);
+    } catch (err) {
+        log.warn(`resale-sold: seller lookup failed for ${listing.sellerUserId}: ${(err as Error).message}`);
+    }
+    try {
+        // Time-critical for the seller: push + email + SMS.
+        await notifyUser({
             kind: 'resale-sold',
             userId: String(listing.sellerUserId),
-            channel: 'email',
-            recipient: undefined, // not carried; email fetched by userId when notifs service supports it — for now best-effort
+            channels: ['push', 'email', 'sms'],
+            email: sellerProfile?.email,
+            phone: sellerProfile?.phoneNumber,
             subject: `🎉 Votre billet a été revendu — ${event.title}`,
             body: `Votre billet a trouvé un acquéreur.`,
             data: {
-                name: '', // seller name not on-hand; template renders "Bonjour" fine
+                name: sellerProfile?.name?.split(' ')[0] || '',
                 eventTitle: event.title,
                 askingPrice: listing.askingPrice,
                 netAmount: sellerNet,

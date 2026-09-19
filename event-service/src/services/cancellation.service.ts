@@ -4,7 +4,7 @@ import Order, { OrderStatus, OrderKind } from '../database/models/order.model';
 import Ticket, { TicketStatus } from '../database/models/ticket.model';
 import ResaleListing, { ResaleListingStatus } from '../database/models/resale-listing.model';
 import { refundAllOrdersForEvent } from './refund.service';
-import { notify } from './clients/notification.service.client';
+import { notifyUser } from './clients/notification.service.client';
 import { getEventUserDetails } from './clients/user.service.client';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
@@ -79,21 +79,22 @@ export const cancelEventAndCascade = async (args: {
         status: { $in: [OrderStatus.PAID, OrderStatus.REFUNDED] },
         kind: OrderKind.PRIMARY,
     }).select('userId holder').lean();
-    const emailByUserId = new Map<string, string>();
+    const contactByUserId = new Map<string, { email?: string; phone?: string }>();
     for (const o of orders) {
-        if (o.holder?.email && !emailByUserId.has(String(o.userId))) {
-            emailByUserId.set(String(o.userId), o.holder.email);
+        const id = String(o.userId);
+        if (!contactByUserId.has(id) && (o.holder?.email || o.holder?.phone)) {
+            contactByUserId.set(id, { email: o.holder.email, phone: o.holder.phone });
         }
     }
-    // Fill gaps from user-service (batch)
+    // Fill gaps from user-service (batch — one call, not one per buyer)
     const missingIds = paidUserIds
         .map((id) => String(id))
-        .filter((id) => !emailByUserId.has(id));
+        .filter((id) => !contactByUserId.has(id));
     if (missingIds.length > 0) {
         try {
             const profiles = await getEventUserDetails(missingIds);
             for (const p of profiles) {
-                if (p.email) emailByUserId.set(String(p._id), p.email);
+                contactByUserId.set(String(p._id), { email: p.email, phone: p.phoneNumber });
             }
         } catch (err) {
             log.warn(`event-details lookup for cancellation notifications failed: ${(err as Error).message}`);
@@ -101,13 +102,15 @@ export const cancelEventAndCascade = async (args: {
     }
 
     let notified = 0;
-    for (const [userId, email] of emailByUserId.entries()) {
+    for (const [userId, contact] of contactByUserId.entries()) {
         try {
-            const ok = await notify({
+            // Access moment: push + email + SMS, each independent.
+            const sent = await notifyUser({
                 kind: 'event-cancelled',
                 userId,
-                channel: 'email',
-                recipient: email,
+                channels: ['push', 'email', 'sms'],
+                email: contact.email,
+                phone: contact.phone,
                 subject: `⚠️ Événement annulé — ${event.title}`,
                 body: `L'événement a été annulé.`,
                 data: {
@@ -118,7 +121,7 @@ export const cancelEventAndCascade = async (args: {
                 },
                 eventId: String(event._id),
             });
-            if (ok) notified++;
+            if (sent > 0) notified++;
         } catch { /* audit-logged inside notify */ }
     }
 

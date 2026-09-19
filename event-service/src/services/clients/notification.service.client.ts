@@ -3,8 +3,11 @@ import config from '../../config';
 import logger from '../../utils/logger';
 import NotificationLog from '../../database/models/notification-log.model';
 import { Types } from 'mongoose';
+import { getEventUserDetails } from './user.service.client';
 
 const log = logger.getLogger('NotificationServiceClient');
+
+export type Channel = 'email' | 'sms' | 'push' | 'whatsapp';
 
 const client = axios.create({
     baseURL: config.services.notificationService,
@@ -27,7 +30,7 @@ const client = axios.create({
 export const notify = async (args: {
     kind: string;
     userId?: string;
-    channel: 'email' | 'sms' | 'push' | 'whatsapp';
+    channel: Channel;
     recipient?: string;
     subject?: string;
     body: string;
@@ -86,4 +89,88 @@ const logAttempt = async (
     } catch (err) {
         log.warn(`NotificationLog write failed: ${(err as Error).message}`);
     }
+};
+
+/**
+ * Pure fan-out decision: which of the requested channels actually get an attempt,
+ * and with which recipient string. No I/O — the runnable check in
+ * `src/scripts/check-notify-channels.ts` asserts this table.
+ *
+ * Rules (from notification-service's own contract):
+ *  - a deployment can switch channels off entirely (EVENT_NOTIFY_CHANNELS)
+ *  - email needs an address, sms/whatsapp need a phone — without one, skip
+ *  - `recipient` is `required: true` on notification-service's schema for EVERY
+ *    channel (the controller waives it for push but the model doesn't, so a push
+ *    without one 500s). Push therefore carries any known coordinate as a label;
+ *    what identifies the target is `userId`.
+ */
+export const planChannels = (args: {
+    channels: Channel[];
+    email?: string;
+    phone?: string;
+    userId?: string;
+    /** Defaults to the deployment's EVENT_NOTIFY_CHANNELS. */
+    enabled?: string[];
+}): { channel: Channel; recipient: string }[] => {
+    const enabled = args.enabled ?? config.notifyChannels;
+    const plan: { channel: Channel; recipient: string }[] = [];
+    for (const channel of args.channels) {
+        if (!enabled.includes(channel) || plan.some((p) => p.channel === channel)) continue;
+        const recipient =
+            channel === 'email' ? args.email
+                : channel === 'sms' || channel === 'whatsapp' ? args.phone
+                    : args.userId && (args.email || args.phone || args.userId);
+        if (!recipient) continue;
+        plan.push({ channel, recipient });
+    }
+    return plan;
+};
+
+/**
+ * Multi-channel best-effort send (spec §23: push + SMS + email). Every channel is
+ * attempted independently — a dead SMS provider must not cost the buyer their
+ * email — and NOTHING here throws into a payment/settlement path.
+ *
+ * Coordinates already in hand (order.holder) win; user-service is only consulted
+ * when a requested channel has no coordinate. One NotificationLog row per
+ * attempted channel, as before.
+ */
+export const notifyUser = async (args: {
+    kind: string;
+    userId?: string;
+    email?: string;
+    phone?: string;
+    channels: Channel[];
+    subject?: string;
+    body: string;
+    data?: Record<string, unknown>;
+    orderId?: string;
+    ticketId?: string;
+    eventId?: string;
+}): Promise<number> => {
+    let { email, phone } = args;
+    const wanted = args.channels.filter((c) => config.notifyChannels.includes(c));
+    const needsLookup =
+        (wanted.includes('email') && !email) ||
+        ((wanted.includes('sms') || wanted.includes('whatsapp')) && !phone);
+    if (needsLookup && args.userId) {
+        try {
+            const [profile] = await getEventUserDetails([args.userId]);
+            email = email || profile?.email;
+            phone = phone || profile?.phoneNumber;
+        } catch (err) {
+            log.warn(`${args.kind}: profile lookup failed for ${args.userId}: ${(err as Error).message}`);
+        }
+    }
+
+    const plan = planChannels({ channels: args.channels, email, phone, userId: args.userId });
+    if (plan.length === 0) {
+        log.warn(`${args.kind}: no usable channel for user ${args.userId} (wanted ${args.channels.join(',')})`);
+        return 0;
+    }
+
+    const results = await Promise.allSettled(
+        plan.map(({ channel, recipient }) => notify({ ...args, channel, recipient })),
+    );
+    return results.filter((r) => r.status === 'fulfilled' && r.value).length;
 };

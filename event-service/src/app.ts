@@ -80,6 +80,9 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     res.status(statusCode).json({
         success: false,
         message,
+        // Error codes (SALES_NOT_OPEN, ...) travel to the client; the French
+        // message is for humans, the code is for the UI's branching.
+        ...((err as any).code && { code: (err as any).code }),
         ...(config.nodeEnv !== 'production' && { stack: err.stack }),
     });
 });

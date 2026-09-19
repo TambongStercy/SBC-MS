@@ -5,8 +5,8 @@ import ResaleListing, { ResaleListingStatus } from '../database/models/resale-li
 import Refund, { RefundStatus } from '../database/models/refund.model';
 import Event from '../database/models/event.model';
 import { creditBuyerBalance } from './clients/payment.service.client';
-import { notify } from './clients/notification.service.client';
-import { getEventUserDetails, debitEventOrganizerBalance } from './clients/user.service.client';
+import { notifyUser } from './clients/notification.service.client';
+import { debitEventOrganizerBalance } from './clients/user.service.client';
 import ResaleOrder, { ResaleOrderStatus } from '../database/models/resale-order.model';
 import { getCommissionConfig } from './clients/settings.service.client';
 import { AppError } from '../utils/errors';
@@ -121,30 +121,25 @@ export const refundOrder = async (args: {
     // Best-effort buyer notification
     try {
         const event = await Event.findById(order.eventId).lean();
-        // Resolve email (order.holder.email may be missing since it's optional)
-        let email = order.holder.email;
-        if (!email) {
-            const [profile] = await getEventUserDetails([String(order.userId)]);
-            email = profile?.email;
-        }
-        if (email) {
-            await notify({
-                kind: 'refund-processed',
-                userId: String(order.userId),
-                channel: 'email',
-                recipient: email,
-                subject: `💰 Remboursement effectué — ${event?.title || ''}`,
-                body: `Votre commande a été remboursée.`,
-                data: {
-                    eventTitle: event?.title,
-                    amount: order.total,
-                    orderRef: String(order._id),
-                    name: order.holder.firstName,
-                },
-                orderId: String(order._id),
-                eventId: String(order.eventId),
-            });
-        }
+        // Money moment: push + email + SMS. holder.email is optional — notifyUser
+        // falls back to user-service only for the coordinate it's missing.
+        await notifyUser({
+            kind: 'refund-processed',
+            userId: String(order.userId),
+            channels: ['push', 'email', 'sms'],
+            email: order.holder.email,
+            phone: order.holder.phone,
+            subject: `💰 Remboursement effectué — ${event?.title || ''}`,
+            body: `Votre commande a été remboursée.`,
+            data: {
+                eventTitle: event?.title,
+                amount: order.total,
+                orderRef: String(order._id),
+                name: order.holder.firstName,
+            },
+            orderId: String(order._id),
+            eventId: String(order.eventId),
+        });
     } catch { /* logged inside notify */ }
 
     return { order, refunded: true };
@@ -264,29 +259,23 @@ const refundResaleOrderInternal = async (
     // Step 4: best-effort buyer notification.
     try {
         const event = await Event.findById(order.eventId).lean();
-        let email = order.holder.email;
-        if (!email) {
-            const [profile] = await getEventUserDetails([String(order.userId)]);
-            email = profile?.email;
-        }
-        if (email) {
-            await notify({
-                kind: 'refund-processed',
-                userId: String(order.userId),
-                channel: 'email',
-                recipient: email,
-                subject: `💰 Remboursement effectué — ${event?.title || ''}`,
-                body: `Votre commande de revente a été remboursée.`,
-                data: {
-                    eventTitle: event?.title,
-                    amount: order.total,
-                    orderRef: String(order._id),
-                    name: order.holder.firstName,
-                },
-                orderId: String(order._id),
-                eventId: String(order.eventId),
-            });
-        }
+        await notifyUser({
+            kind: 'refund-processed',
+            userId: String(order.userId),
+            channels: ['push', 'email', 'sms'],
+            email: order.holder.email,
+            phone: order.holder.phone,
+            subject: `💰 Remboursement effectué — ${event?.title || ''}`,
+            body: `Votre commande de revente a été remboursée.`,
+            data: {
+                eventTitle: event?.title,
+                amount: order.total,
+                orderRef: String(order._id),
+                name: order.holder.firstName,
+            },
+            orderId: String(order._id),
+            eventId: String(order.eventId),
+        });
     } catch { /* logged */ }
 
     return { order, refunded: true };
