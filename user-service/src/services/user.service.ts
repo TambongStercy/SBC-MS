@@ -321,20 +321,7 @@ export class UserService {
         // --- Trigger OTP Generation --- 
         try {
             const otp = await this.generateAndStoreOtp(newUser._id, 'otps'); // Use general OTP type
-            // Get delivery info based on user's notification preference
-            const deliveryInfo = this.getOtpDeliveryInfo(newUser);
-
-            // this notification service communicates with the notification microservice
-            await notificationService.sendOtp({
-                userId: newUser._id.toString(),
-                recipient: deliveryInfo.recipient,
-                channel: deliveryInfo.channel,
-                code: otp,
-                expireMinutes: 10,
-                isRegistration: true,
-                userName: newUser.name,
-                language: newUser.language?.[0] || 'fr'
-            });
+            await this.sendAccountAccessOtp(newUser, otp, { isRegistration: true });
         } catch (otpError) {
             log.error(`Failed to generate OTP during registration for ${newUser.email}`, otpError);
             // If OTP fails, maybe roll back user creation or mark them as needing verification?
@@ -502,21 +489,7 @@ export class UserService {
         // --- Trigger OTP Generation --- 
         try {
             const otp = await this.generateAndStoreOtp(user._id, 'otps'); // Use general OTP type
-            // Get delivery info based on user's notification preference
-            const deliveryInfo = this.getOtpDeliveryInfo(user);
-
-            // Send OTP to user
-            await notificationService.sendOtp({
-                userId: user._id.toString(),
-                recipient: deliveryInfo.recipient,
-                channel: deliveryInfo.channel,
-                code: otp,
-                expireMinutes: 10,
-                isRegistration: false,
-                userName: user.name,
-                language: user.language?.[0] || 'fr'
-            });
-
+            await this.sendAccountAccessOtp(user, otp);
 
         } catch (otpError) {
             log.error(`Failed to generate OTP during login for ${user.email}`, otpError);
@@ -3690,23 +3663,13 @@ export class UserService {
                 // Generate and store a new general-purpose OTP
                 const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
 
-                // Get delivery info based on user's preference and optional override
-                const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
-
-                // Send OTP via notification service
-                await notificationService.sendOtp({
-                    userId: user._id.toString(),
-                    recipient: deliveryInfo.recipient,
-                    channel: deliveryInfo.channel,
-                    code: otpCode,
-                    expireMinutes: 10, // Standard expiration
-                    isRegistration: purpose === 'register', // Set based on purpose
-                    purpose: purpose, // Pass the purpose directly
-                    userName: user.name,
-                    language: user.language?.[0] || 'fr'
+                await this.sendAccountAccessOtp(user, otpCode, {
+                    isRegistration: purpose === 'register',
+                    purpose,
+                    channelOverride,
                 });
 
-                log.info(`Resent OTP successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
+                log.info(`Resent OTP successfully for identifier: ${identifier}`);
 
             } catch (error) {
                 log.error(`Failed to resend OTP for identifier ${identifier}:`, error);
@@ -3739,50 +3702,9 @@ export class UserService {
             try {
                 const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
 
-                // Get delivery info based on user's preference and optional override
-                const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
+                await this.sendAccountAccessOtp(user, otpCode, { purpose, channelOverride });
 
-                // First attempt with the preferred or overridden channel
-                let success = await notificationService.sendOtp({
-                    userId: user._id.toString(),
-                    recipient: deliveryInfo.recipient,
-                    channel: deliveryInfo.channel,
-                    code: otpCode,
-                    expireMinutes: 10,
-                    isRegistration: false,
-                    purpose: purpose,
-                    userName: user.name,
-                    language: user.language?.[0] || 'fr'
-                });
-
-                // If WhatsApp was attempted but failed, and user has email, fall back to email
-                if (!success && deliveryInfo.channel === DeliveryChannel.WHATSAPP && user.email) {
-                    log.info(`WhatsApp OTP delivery failed for user ${user._id}, falling back to email: ${user.email}`);
-
-                    success = await notificationService.sendOtp({
-                        userId: user._id.toString(),
-                        recipient: user.email,
-                        channel: DeliveryChannel.EMAIL,
-                        code: otpCode,
-                        expireMinutes: 10,
-                        isRegistration: false,
-                        purpose: purpose,
-                        userName: user.name,
-                        language: user.language?.[0] || 'fr'
-                    });
-
-                    if (success) {
-                        log.info(`Password reset OTP sent successfully via fallback email for user: ${user._id}`);
-                    } else {
-                        log.error(`Both WhatsApp and email fallback failed for password reset OTP for user: ${user._id}`);
-                        throw new Error('Failed to send OTP via both WhatsApp and email');
-                    }
-                } else if (success) {
-                    log.info(`Password reset OTP sent successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
-                } else {
-                    log.error(`Failed to send password reset OTP for identifier ${identifier} via ${deliveryInfo.channel}`);
-                    throw new Error(`Failed to send OTP via ${deliveryInfo.channel}`);
-                }
+                log.info(`Password reset OTP sent successfully for identifier: ${identifier}`);
             } catch (error) {
                 log.error(`Failed to send password reset OTP for identifier ${identifier}:`, error);
                 throw error;
@@ -3818,6 +3740,56 @@ export class UserService {
                     channel: DeliveryChannel.EMAIL,
                     recipient: user.email
                 };
+        }
+    }
+
+    /**
+     * Sends a sign-in OTP on the user's preferred channel, mirroring it to their
+     * email whenever that channel is WhatsApp.
+     *
+     * The mirror exists because a WhatsApp failure is invisible to us:
+     * `notificationService.sendOtp` resolves as soon as notification-service
+     * queues the job, so its `true` means "accepted", not "delivered", and any
+     * fallback keyed on that value can never fire. Measured on prod
+     * 2026-09-19 — 822 people asked for their code over WhatsApp in 24h and
+     * 1526 sends all failed with `(#132001) Template name does not exist in
+     * the translation`, unnoticed since at least 12 September. Nobody got
+     * locked out of their own account for a broken Meta template again.
+     *
+     * Only for reaching the account's owner. OTPs that prove control of a NEW
+     * address or phone must never be mirrored anywhere else.
+     */
+    private async sendAccountAccessOtp(
+        user: IUser,
+        code: string,
+        extras: { isRegistration?: boolean; purpose?: string; channelOverride?: 'email' | 'whatsapp' } = {}
+    ): Promise<void> {
+        const { channelOverride, ...payloadExtras } = extras;
+        const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
+
+        const base = {
+            userId: user._id.toString(),
+            code,
+            expireMinutes: 10,
+            isRegistration: false,
+            userName: user.name,
+            language: user.language?.[0] || 'fr',
+            ...payloadExtras,
+        };
+
+        await notificationService.sendOtp({
+            ...base,
+            recipient: deliveryInfo.recipient,
+            channel: deliveryInfo.channel,
+        });
+
+        if (deliveryInfo.channel === DeliveryChannel.WHATSAPP && user.email) {
+            log.info(`Mirroring WhatsApp OTP to email for user ${user._id}`);
+            await notificationService.sendOtp({
+                ...base,
+                recipient: user.email,
+                channel: DeliveryChannel.EMAIL,
+            });
         }
     }
 
