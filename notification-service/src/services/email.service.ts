@@ -119,6 +119,19 @@ class EmailService {
                         tls: {
                             rejectUnauthorized: false, // Allow self-signed certs (common with iRedMail)
                         },
+                        // Reuse a few long-lived connections instead of opening one per
+                        // message. Without this, every send (queue workers, direct sends,
+                        // the pending-notification sweeper) dialled its own socket, and hung
+                        // ones lingered for nodemailer's 10-minute default socket timeout.
+                        // On 2026-09-21 that reached 28 concurrent connections and
+                        // mail.sbcprecom.com answered `421 4.7.0 too many connections from
+                        // 207.180.242.122`, failing thousands of emails an hour.
+                        pool: true,
+                        maxConnections: 3,
+                        maxMessages: 100,
+                        connectionTimeout: 15000,
+                        greetingTimeout: 15000,
+                        socketTimeout: 30000,
                     } as nodemailer.TransportOptions;
                 }
 
