@@ -431,6 +431,50 @@ tombola's PUSH channel skips the recipient requirement, sbclove was correct.
 When adding a notification call, test one real delivery — a 2xx-shaped silence
 proves nothing.
 
+### OTP delivery: what the codes look like, and what "sent" means
+
+Investigated 2026-09-19 after Rufus reported "les mails OTP dérangent". Two
+independent faults, neither visible from success logs.
+
+**1. The compare was case-sensitive and the keyboard isn't.** `generateSecureOTP`
+returns six mixed-case characters (`Fj9EYB`) and the verify screen is six
+separate single-character `<input>`s, so a phone keyboard capitalises each box.
+Classifying one day of refusals against the codes actually generated for those
+same users:
+
+| bucket | share |
+|---|---|
+| case-only mismatch | **20.8%** |
+| exact code, refused (expired / already used) | 20.2% |
+| digits only typed (user expected a numeric code) | 11.3% |
+| one character off | 5.3% |
+| no match at all | 41.7% |
+
+Fixed by `otpMatches()` in `user-service/src/utils/otp.utils.ts` — **use it for
+every OTP comparison**, there were six hand-rolled `otp.code === provided` sites.
+The alphabet excludes `0` and `1`, so folding case removes the `l`/`I`, `o`/`O`
+confusion rather than creating any, and `strictLimiter` bounds brute force.
+`src/scripts/check-otp-matching.ts` asserts this with real refused pairs.
+
+**2. `notificationService.sendOtp` returning `true` means QUEUED, not
+delivered.** notification-service answers 200 as soon as the job is on the
+queue; the actual send fails later, in the worker. Any fallback keyed on that
+return value is dead code — the WhatsApp→email fallback in
+`requestPasswordResetOtp` never once fired. That is how WhatsApp OTP stayed
+100% broken since at least 12 September (`(#132001) Template name does not
+exist in the translation`, for both `connexionfr`/fr and `connexion`/en_US)
+while 822 people a day asked for a code over WhatsApp and got nothing.
+
+`sendAccountAccessOtp` now mirrors any WhatsApp OTP to the user's email for
+the four account-access paths (register, login, resend, password reset),
+without depending on an outcome we can't observe. **The two proof-of-control
+OTPs — new email, new phone — must never be mirrored**, or they stop proving
+anything.
+
+To check OTP health quickly, compare these two counts in user-service logs:
+`OTP validation failed` vs `validated successfully`. A ~50/50 split is the
+symptom that started this.
+
 ### Health endpoints aren't standardised
 
 | Service (prod port / preprod port) | Health path |
