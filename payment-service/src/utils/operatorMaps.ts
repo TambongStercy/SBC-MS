@@ -35,6 +35,13 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     'VODACOM_MPESA_COD': 'CD',
     'AIRTEL_COD': 'CD',
     'ORANGE_COD': 'CD',
+    // Ghana (GH) - MoneyFusion added payouts there (live methods list, 2026-09-23).
+    // VODAFONE_GHA is kept because it is what the app has always offered; Vodafone
+    // Ghana is now Telecel, and both names route to the same network.
+    'MTN_MOMO_GHA': 'GH',
+    'VODAFONE_GHA': 'GH',
+    'TELECEL_GHA': 'GH',
+    'AIRTEL_GHA': 'GH',
     // Kenya (KE)
     'MPESA_KEN': 'KE',
     // Nigeria (NG)
@@ -70,6 +77,7 @@ export const countryCodeToDialingPrefix: { [countryCode: string]: string } = {
     'CD': '243', // DRC
     'KE': '254', // Kenya
     'TD': '235', // Chad
+    'GH': '233', // Ghana
     // Add other mappings from your existing countryDialingCodes or CinetPay Annexes
 };
 
@@ -198,6 +206,11 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     'AIRTEL_COD': 'CDF',
     'ORANGE_COD': 'CDF',
     'MPESA_KEN': 'KES',
+    // Ghana (GH) - GHS, so withdrawals convert against the live rate like RDC/Guinée
+    'MTN_MOMO_GHA': 'GHS',
+    'VODAFONE_GHA': 'GHS',
+    'TELECEL_GHA': 'GHS',
+    'AIRTEL_GHA': 'GHS',
     'MTN_MOMO_NGA': 'NGN',
     'AIRTEL_NGA': 'NGN',
     'FREE_SEN': 'XOF',
