@@ -8,7 +8,7 @@ import { PaginationOptions } from '../../types/express';
 import { ContactSearchFilters, UserSex } from '../../types/contact.types';
 import { isValidObjectId, Types } from 'mongoose';
 import { NextFunction, Request as ExpressRequest } from 'express';
-import { AppError } from '../../utils/errors';
+import { AppError, OtpThrottledError } from '../../utils/errors';
 import { normalizePhoneNumber } from '../../utils/phone.utils';
 import { UserRole } from '../../database/models/user.model';
 import { authorize } from '../middleware/rbac.middleware';
@@ -25,6 +25,15 @@ import {
     getMyFilleulsBoard,
 } from '../../services/leaderboard.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
+
+/**
+ * A refused code send. The wait goes in the body for the app's countdown and in
+ * Retry-After for anything else reading the response.
+ */
+const sendOtpThrottled = (res: Response, error: OtpThrottledError): void => {
+    res.setHeader('Retry-After', String(error.retryAfterSeconds));
+    res.status(429).json({ success: false, message: error.message, retryAfterSeconds: error.retryAfterSeconds });
+};
 
 const log = logger.getLogger('UserController');
 
@@ -2198,6 +2207,10 @@ export class UserController {
             });
 
         } catch (error: any) {
+            if (error instanceof OtpThrottledError) {
+                sendOtpThrottled(res, error);
+                return;
+            }
             // Catch potential unexpected errors from the service layer
             this.log.error(`Unexpected error during OTP resend for identifier ${req.body?.identifier || req.body?.email}:`, error);
             // Still send a generic message, but log the internal error
@@ -2244,6 +2257,10 @@ export class UserController {
                 message: `If your account is registered, a password reset OTP has been sent${channelMessage}.`
             });
         } catch (error) {
+            if (error instanceof OtpThrottledError) {
+                sendOtpThrottled(res, error);
+                return;
+            }
             next(error);
         }
     }

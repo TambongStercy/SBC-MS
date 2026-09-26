@@ -76,6 +76,8 @@ export interface IUser extends Document {
     deletionReason?: string;
     contactsOtps: Types.DocumentArray<IOtp>;
     otps: Types.DocumentArray<IOtp>;
+    /** When sign-in codes were last sent, newest last, capped to OTP_SEND_MAX_IN_WINDOW. */
+    otpSendLog?: Date[];
     ipAddress?: string;
     ipCity?: string;
     ipRegion?: string;
@@ -170,6 +172,7 @@ const UserSchema = new Schema<IUser>(
         deletionReason: { type: String },
         contactsOtps: [otpSchema],
         otps: [otpSchema],
+        otpSendLog: { type: [Date], default: undefined },
         ipAddress: { type: String },
         ipCity: { type: String, index: true },
         ipRegion: { type: String },
