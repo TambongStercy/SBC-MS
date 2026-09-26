@@ -21,3 +21,19 @@ export class AppError extends Error {
 // You can add more specific error classes here if needed, e.g.:
 // export class AuthenticationError extends AppError { ... }
 // export class ValidationError extends AppError { ... } 
+/**
+ * Refusal to send another sign-in code yet. Carries the wait so the app can show
+ * a countdown instead of letting the user tap "Renvoyer" into a wall.
+ */
+export class OtpThrottledError extends AppError {
+    public retryAfterSeconds: number;
+
+    constructor(retryAfterSeconds: number) {
+        super(
+            `Un code vous a déjà été envoyé. Vérifiez votre boîte mail (et les spams), ou réessayez dans ${retryAfterSeconds} s.`,
+            429,
+        );
+        this.retryAfterSeconds = retryAfterSeconds;
+        Object.setPrototypeOf(this, OtpThrottledError.prototype);
+    }
+}

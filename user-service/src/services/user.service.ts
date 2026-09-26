@@ -5,7 +5,7 @@ import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } 
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
-import { generateSecureOTP, getOtpExpiration, otpMatches } from '../utils/otp.utils';
+import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import config from '../config';
@@ -32,7 +32,7 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError } from '../utils/errors';
+import { AppError, OtpThrottledError } from '../utils/errors';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes } from '../utils/phone.utils';
 import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
 
@@ -320,8 +320,7 @@ export class UserService {
 
         // --- Trigger OTP Generation --- 
         try {
-            const otp = await this.generateAndStoreOtp(newUser._id, 'otps'); // Use general OTP type
-            await this.sendAccountAccessOtp(newUser, otp, { isRegistration: true });
+            await this.issueAccountAccessOtp(newUser, { isRegistration: true });
         } catch (otpError) {
             log.error(`Failed to generate OTP during registration for ${newUser.email}`, otpError);
             // If OTP fails, maybe roll back user creation or mark them as needing verification?
@@ -428,7 +427,7 @@ export class UserService {
         passwordAttempt?: string,
         ipAddress?: string
         // No longer returns token directly
-    ): Promise<{ message: string; userId: string }> {
+    ): Promise<{ message: string; userId: string; otpSent: boolean; otpRetryAfterSeconds: number }> {
         // Validate input parameters
         if ((!email && !phoneNumber) || !passwordAttempt) { 
             throw new Error('Email or phone number and password are required'); 
@@ -486,22 +485,26 @@ export class UserService {
         // Update IP Address (async)
         if (ipAddress && ipAddress !== user.ipAddress) { /* ... IP update logic ... */ }
 
-        // --- Trigger OTP Generation --- 
+        // --- Trigger OTP Generation ---
+        // A throttled login is NOT refused: the password was right and the user was
+        // sent a code moments ago, so they still go to the code screen — with the
+        // wait, so the app can count it down.
+        let issued: { sent: boolean; retryAfterSeconds: number };
         try {
-            const otp = await this.generateAndStoreOtp(user._id, 'otps'); // Use general OTP type
-            await this.sendAccountAccessOtp(user, otp);
-
+            issued = await this.issueAccountAccessOtp(user);
         } catch (otpError) {
             log.error(`Failed to generate OTP during login for ${user.email}`, otpError);
             throw new Error('Login failed: Could not send OTP verification code.');
         }
-        // --- End OTP Generation --- 
+        // --- End OTP Generation ---
 
         // Don't generate/store JWT here.
         // Return message and userId for the verification step.
         return {
             message: 'Password verified. Please enter the OTP sent to complete login.',
-            userId: user._id.toString()
+            userId: user._id.toString(),
+            otpSent: issued.sent,
+            otpRetryAfterSeconds: issued.retryAfterSeconds,
         };
     }
 
@@ -569,6 +572,7 @@ export class UserService {
         delete userObject.password;
         delete userObject.otps;
         delete userObject.contactsOtps;
+        delete (userObject as any).otpSendLog;
         delete userObject.token;
         // Ensure all fields of IUser are present if using spread operator (might need explicit mapping for safety)
         return userObject as Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'>;
@@ -2710,6 +2714,7 @@ export class UserService {
             delete userObject.password;
             delete userObject.otps;
             delete userObject.contactsOtps;
+            delete (userObject as any).otpSendLog;
             delete userObject.token;
 
             // Add subscription types to the returned object
@@ -3659,23 +3664,22 @@ export class UserService {
         // IMPORTANT: Do not confirm if the user exists to prevent enumeration attacks.
         // If user exists, proceed with OTP generation and sending.
         if (user && !user.blocked && !user.deleted) { // Only send if user is active
+            let issued: { sent: boolean; retryAfterSeconds: number } | undefined;
             try {
-                // Generate and store a new general-purpose OTP
-                const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
-
-                await this.sendAccountAccessOtp(user, otpCode, {
+                issued = await this.issueAccountAccessOtp(user, {
                     isRegistration: purpose === 'register',
                     purpose,
                     channelOverride,
                 });
-
-                log.info(`Resent OTP successfully for identifier: ${identifier}`);
-
+                if (issued.sent) log.info(`Resent OTP successfully for identifier: ${identifier}`);
             } catch (error) {
                 log.error(`Failed to resend OTP for identifier ${identifier}:`, error);
                 // Log the error but don't throw it back to the controller to avoid revealing info.
                 // The controller will return a generic success message regardless.
             }
+            // Outside the try: this one must reach the user, or the app cannot show
+            // how long to wait and they go on tapping.
+            if (issued && !issued.sent) throw new OtpThrottledError(issued.retryAfterSeconds);
         } else {
             log.warn(`OTP resend requested for non-existent or inactive user: ${identifier}. No action taken.`);
             // No error thrown, just log internally.
@@ -3700,9 +3704,8 @@ export class UserService {
         // IMPORTANT: Do not confirm if the user exists.
         if (user && !user.blocked && !user.deleted) {
             try {
-                const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
-
-                await this.sendAccountAccessOtp(user, otpCode, { purpose, channelOverride });
+                const issued = await this.issueAccountAccessOtp(user, { purpose, channelOverride });
+                if (!issued.sent) throw new OtpThrottledError(issued.retryAfterSeconds);
 
                 log.info(`Password reset OTP sent successfully for identifier: ${identifier}`);
             } catch (error) {
@@ -3762,7 +3765,7 @@ export class UserService {
     private async sendAccountAccessOtp(
         user: IUser,
         code: string,
-        extras: { isRegistration?: boolean; purpose?: string; channelOverride?: 'email' | 'whatsapp' } = {}
+        extras: { isRegistration?: boolean; purpose?: string; channelOverride?: 'email' | 'whatsapp'; expireMinutes?: number } = {}
     ): Promise<void> {
         const { channelOverride, ...payloadExtras } = extras;
         const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
@@ -3791,6 +3794,52 @@ export class UserService {
                 channel: DeliveryChannel.EMAIL,
             });
         }
+    }
+
+    /**
+     * Issues a sign-in code, unless this account was sent one too recently.
+     *
+     * Every "Renvoyer" tap used to mint a new code and a new email, with no
+     * per-account limit — see OTP_SEND_* in otp.utils for what that cost. Now a
+     * send is claimed atomically against the account's recent sends, and a code
+     * that is still comfortably valid is sent again rather than replaced, so a
+     * late email and a fresh one carry the same code.
+     *
+     * Returns `sent: false` with the wait when refused; the caller decides whether
+     * that is an error (an explicit resend) or not (a login — the user already
+     * holds a code from moments ago and should still reach the code screen).
+     */
+    private async issueAccountAccessOtp(
+        user: IUser,
+        extras: { isRegistration?: boolean; purpose?: string; channelOverride?: 'email' | 'whatsapp' } = {}
+    ): Promise<{ sent: boolean; retryAfterSeconds: number }> {
+        const now = new Date();
+
+        if (!(await userRepository.reserveOtpSend(user._id, now))) {
+            const fresh = await userRepository.findById(user._id);
+            const { retryAfterSeconds } = otpSendDecision(fresh?.otpSendLog, now);
+            log.info(`OTP send throttled for user ${user._id}; retry in ${retryAfterSeconds}s`);
+            // A race can leave the claim refused while the rule now allows it —
+            // report at least a second rather than a zero that invites a retry loop.
+            return { sent: false, retryAfterSeconds: Math.max(retryAfterSeconds, 1) };
+        }
+
+        const reusable = (user.otps || [])
+            .filter(o => new Date(o.expiration).getTime() - now.getTime() >= OTP_REUSE_MIN_REMAINING_MS)
+            .sort((a, b) => new Date(b.expiration).getTime() - new Date(a.expiration).getTime())[0];
+
+        let code: string;
+        let expireMinutes = 10;
+        if (reusable) {
+            code = reusable.code;
+            expireMinutes = Math.floor((new Date(reusable.expiration).getTime() - now.getTime()) / 60000);
+            log.info(`Resending still-valid OTP for user ${user._id} (${expireMinutes} min left)`);
+        } else {
+            code = await this.generateAndStoreOtp(user._id, 'otps');
+        }
+
+        await this.sendAccountAccessOtp(user, code, { ...extras, expireMinutes });
+        return { sent: true, retryAfterSeconds: Math.ceil(OTP_SEND_COOLDOWN_MS / 1000) };
     }
 
     /**

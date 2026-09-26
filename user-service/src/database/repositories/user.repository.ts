@@ -3,6 +3,7 @@ import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType 
 import mongoose, { Types, FilterQuery } from 'mongoose';
 import { ContactSearchFilters, ContactSearchResponse } from '../../types/contact.types';
 import log from '../../utils/logger';
+import { OTP_SEND_COOLDOWN_MS, OTP_SEND_WINDOW_MS, OTP_SEND_MAX_IN_WINDOW } from '../../utils/otp.utils';
 
 // Interface for specific user details needed by other services
 export interface UserDetails {
@@ -462,6 +463,42 @@ export class UserRepository {
     async addOtp(userId: string | Types.ObjectId, otpType: 'otps' | 'contactsOtps', otpData: IOtpData): Promise<IUser | null> {
         const update = { $push: { [otpType]: otpData } };
         return UserModel.findByIdAndUpdate(userId, update, { new: true }).exec();
+    }
+
+    /**
+     * Claims the right to send this user a sign-in code, or refuses.
+     *
+     * Check and record happen in one update, so two taps landing together cannot
+     * both pass — the second sees the first's timestamp. Returns true when the
+     * send was claimed. The rule is `otpSendDecision` in otp.utils; keep them in step.
+     */
+    async reserveOtpSend(userId: string | Types.ObjectId, now: Date = new Date()): Promise<boolean> {
+        const sends = { $ifNull: ['$otpSendLog', []] };
+        const claimed = await UserModel.findOneAndUpdate(
+            {
+                _id: userId,
+                $expr: {
+                    $and: [
+                        // Nothing sent within the cooldown. $max of an empty array is
+                        // null, which sorts before any date, so a first send passes.
+                        // $lte, not $lt: allowed again at exactly 60s, which is the
+                        // moment otpSendDecision tells the user to try.
+                        { $lte: [{ $max: sends }, new Date(now.getTime() - OTP_SEND_COOLDOWN_MS)] },
+                        // Fewer than the cap inside the rolling window.
+                        {
+                            $lt: [
+                                { $size: { $filter: { input: sends, cond: { $gt: ['$$this', new Date(now.getTime() - OTP_SEND_WINDOW_MS)] } } } },
+                                OTP_SEND_MAX_IN_WINDOW,
+                            ],
+                        },
+                    ],
+                },
+            },
+            // Keep only as many as the window rule can ever look at.
+            { $push: { otpSendLog: { $each: [now], $slice: -OTP_SEND_MAX_IN_WINDOW } } },
+            { new: false, projection: { _id: 1 } },
+        ).exec();
+        return claimed !== null;
     }
 
     /**

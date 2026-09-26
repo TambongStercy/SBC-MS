@@ -475,6 +475,21 @@ To check OTP health quickly, compare these two counts in user-service logs:
 `OTP validation failed` vs `validated successfully`. A ~50/50 split is the
 symptom that started this.
 
+**3. Our own resend storm was choking the mail server (2026-09-26).** 62,165 OTP
+emails in six days to 13,553 people; 56% sent while that person's previous code
+was still valid; one address got 100 over three days. "Renvoyer" had no cooldown
+and every limit was per IP, so late mail → more taps → more mail → later mail.
+Sign-in codes now go through `issueAccountAccessOtp`: **per account, 1 send per
+60s and 5 per rolling 20 min**, claimed atomically (`reserveOtpSend`), and a code
+with ≥3 min left is resent rather than replaced. The window is 20 min, not an
+hour, on purpose — the mail server is unstable and a genuine user may need
+several tries (Sterling's call). Throttled resend/reset → 429 with
+`retryAfterSeconds`; a throttled **login still succeeds** and lands on the code
+screen, because they were sent a code moments ago. The app counts the wait down.
+`src/scripts/check-otp-throttle.ts` asserts it — run it under **Node 20** (prod's
+version): on Node 25 `jsonwebtoken`'s `buffer-equal-constant-time` crashes on
+load because `SlowBuffer` was removed.
+
 ### Health endpoints aren't standardised
 
 | Service (prod port / preprod port) | Health path |
