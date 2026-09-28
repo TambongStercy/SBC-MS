@@ -112,6 +112,28 @@ class UserServiceClient {
             return hits;
         }
     }
+
+    /**
+     * Admin search: which of `userIds` (the SBCLOVE members) match `term` on
+     * name, email, phone or city. Sent in chunks — user-service parses JSON
+     * bodies with express's 100 kB default, about 3,800 ids. Throws on failure:
+     * a silently partial result would read as "nobody matches".
+     */
+    async searchMemberIds(userIds: string[], term: string): Promise<string[]> {
+        const CHUNK = 2000;
+        const chunks: string[][] = [];
+        for (let i = 0; i < userIds.length; i += CHUNK) chunks.push(userIds.slice(i, i + CHUNK));
+        const results = await Promise.all(chunks.map(async (ids) => {
+            const response = await this.client.post<{ success: boolean; data: { userIds: string[] } }>(
+                '/users/internal/sbclove-search', { userIds: ids, q: term },
+            );
+            if (!response.data?.success || !Array.isArray(response.data.data?.userIds)) {
+                throw new Error('User Service sbclove-search responded with an unexpected shape.');
+            }
+            return response.data.data.userIds;
+        }));
+        return results.flat();
+    }
 }
 
 export const userServiceClient = new UserServiceClient();

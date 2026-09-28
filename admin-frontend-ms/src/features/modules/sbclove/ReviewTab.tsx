@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, SkipForward } from 'lucide-react';
 import { listProfiles, validateProfile, ProfileStatus, type LoveProfile } from '../../../services/adminSbcLoveApi';
-import { Badge, Button, Card, ConfirmSheet, EmptyState, ErrorState, KeyValue, ListSkeleton, MemberLink, notify } from '../../../ui';
+import { Badge, Button, Card, ConfirmSheet, EmptyState, ErrorState, KeyValue, ListSkeleton, MemberLink, SearchInput, notify } from '../../../ui';
 import { formatDate, timeAgo } from '../../../lib/format';
+import { useDebounced } from '../../../lib/hooks';
 import { countryName } from '../../../lib/labels';
 import { INTENTION, PHOTO_SLOTS, sexLabel } from './shared';
 
@@ -60,11 +61,28 @@ export function ProfileFacts({ p }: { p: LoveProfile }) {
 
 /**
  * New and edited profiles, one at a time, oldest first. Every edit by the member
- * sends the profile back here, so this queue never really ends.
+ * sends the profile back here, so this queue never really ends. A search narrows
+ * the queue to matching profiles — server-side, across every pending profile,
+ * not just the batch on screen — so a member who asks can be found directly.
  */
 export function ReviewTab() {
+    const [search, setSearch] = useState('');
+    const term = useDebounced(search.trim());
+    return (
+        <div className="space-y-3">
+            <SearchInput value={search} onChange={setSearch} placeholder="Chercher : pseudo, nom, e-mail, téléphone, ville" />
+            <ReviewQueue key={term} term={term} />
+        </div>
+    );
+}
+
+function ReviewQueue({ term }: { term: string }) {
     const qc = useQueryClient();
-    const q = useQuery({ queryKey: ['sbclove', 'pending'], queryFn: () => listProfiles({ status: ProfileStatus.PENDING, limit: 100 }), refetchInterval: 60_000 });
+    const q = useQuery({
+        queryKey: ['sbclove', 'pending', term],
+        queryFn: () => listProfiles({ status: ProfileStatus.PENDING, limit: 100, search: term || undefined }),
+        refetchInterval: 60_000,
+    });
     const [decided, setDecided] = useState<Set<string>>(new Set());
     const [skipped, setSkipped] = useState<Set<string>>(new Set());
     const [sheet, setSheet] = useState<'approve' | 'reject' | null>(null);
@@ -82,7 +100,9 @@ export function ReviewTab() {
     if (q.isLoading) return <ListSkeleton rows={3} />;
     if (q.isError) return <ErrorState onRetry={() => q.refetch()} />;
     if (!current) return (
-        <Card><EmptyState icon={<CheckCircle2 size={26} className="text-success" />} title="Aucun profil à valider">Les nouveaux profils et les profils modifiés arrivent ici.</EmptyState></Card>
+        term
+            ? <Card><EmptyState title="Aucun profil à valider ne correspond">Vérifie l’orthographe, ou cherche dans l’onglet Profils (tous les statuts).</EmptyState></Card>
+            : <Card><EmptyState icon={<CheckCircle2 size={26} className="text-success" />} title="Aucun profil à valider">Les nouveaux profils et les profils modifiés arrivent ici.</EmptyState></Card>
     );
     const name = current.displayName || current.memberName || 'ce profil';
     const total = q.data?.pagination.total ?? pending.length;

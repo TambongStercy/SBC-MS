@@ -2017,6 +2017,30 @@ export class UserController {
     }
 
     /**
+     * SBCLOVE admin search over its own members.
+     * @route POST /api/users/internal/sbclove-search  { userIds: string[], q: string }
+     */
+    async searchSbcloveMemberIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds, q } = req.body;
+            const term = typeof q === 'string' ? q.trim().slice(0, 100) : '';
+            if (!Array.isArray(userIds) || !term) {
+                res.status(400).json({ success: false, message: '`userIds` (array) and `q` (string) are required.' });
+                return;
+            }
+            if (userIds.some(id => !isValidObjectId(id))) {
+                res.status(400).json({ success: false, message: 'Invalid user IDs in `userIds`.' });
+                return;
+            }
+            const ids = userIds.length ? await this.userService.searchSbcloveMemberIds(userIds, term) : [];
+            res.status(200).json({ success: true, data: { userIds: ids } });
+        } catch (error: any) {
+            this.log.error(`Error searching SBCLOVE members: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to search SBCLOVE members.' });
+        }
+    }
+
+    /**
      * Targeting projection for advertising-service.
      * @route POST /api/users/internal/advertising-details
      */

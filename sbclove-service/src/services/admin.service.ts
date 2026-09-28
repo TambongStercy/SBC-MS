@@ -1,4 +1,5 @@
-import { Types } from 'mongoose';
+import { FilterQuery, Types } from 'mongoose';
+import { ILoveProfile } from '../database/models/love-profile.model';
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
 import { userServiceClient } from './clients/user.service.client';
 import { profileService, PublicProfileView } from './profile.service';
@@ -76,8 +77,40 @@ class AdminService {
      * the SBC member behind it. A queue of display names and dates cannot be
      * validated at all — which is what this used to be.
      */
-    async listProfiles(status: ProfileStatus | undefined, limit: number, skip: number): Promise<{ items: AdminProfileView[]; total: number }> {
-        const query = status ? { status } : {};
+    /**
+     * The profile filter for the admin lists. A search covers every profile in
+     * the status, not just the page on screen: the pseudo is matched here, and
+     * name / email / phone / city — which live in user-service — are matched
+     * there, scoped to this module's members. A pasted profile or user id also
+     * finds its profile.
+     */
+    private async profileQuery(status: ProfileStatus | undefined, search?: string): Promise<FilterQuery<ILoveProfile>> {
+        const query: FilterQuery<ILoveProfile> = status ? { status } : {};
+        const term = search?.trim().slice(0, 100);
+        if (!term) return query;
+
+        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const or: FilterQuery<ILoveProfile>[] = [{ displayName: { $regex: escaped, $options: 'i' } }];
+        if (/^[a-f\d]{24}$/i.test(term)) {
+            or.push({ _id: new Types.ObjectId(term) }, { userId: new Types.ObjectId(term) });
+        }
+
+        const memberIds = await loveProfileRepository.distinctUserIds(query);
+        if (memberIds.length) {
+            let matched: string[];
+            try {
+                matched = await userServiceClient.searchMemberIds(memberIds, term);
+            } catch (error: any) {
+                log.error(`SBCLOVE admin search: user-service lookup failed: ${error.message}`);
+                throw new AppError('La recherche est momentanément indisponible. Réessayez.', 503);
+            }
+            if (matched.length) or.push({ userId: { $in: matched.map(id => new Types.ObjectId(id)) } });
+        }
+        return { ...query, $or: or };
+    }
+
+    async listProfiles(status: ProfileStatus | undefined, limit: number, skip: number, search?: string): Promise<{ items: AdminProfileView[]; total: number }> {
+        const query = await this.profileQuery(status, search);
         const [profiles, total] = await Promise.all([
             loveProfileRepository.find(query, limit, skip),
             loveProfileRepository.count(query),
@@ -171,8 +204,8 @@ class AdminService {
      * profiles, ONE aggregation for the whole page's match/conversation counts,
      * and one (cached) batch hydration. No per-row queries.
      */
-    async listMembers(status: ProfileStatus | undefined, limit: number, skip: number): Promise<{ items: AdminMemberRow[]; total: number }> {
-        const query = status ? { status } : {};
+    async listMembers(status: ProfileStatus | undefined, limit: number, skip: number, search?: string): Promise<{ items: AdminMemberRow[]; total: number }> {
+        const query = await this.profileQuery(status, search);
         const [profiles, total] = await Promise.all([
             loveProfileRepository.find(query, limit, skip),
             loveProfileRepository.count(query),
