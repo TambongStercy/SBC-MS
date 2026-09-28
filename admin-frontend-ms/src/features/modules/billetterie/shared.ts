@@ -3,7 +3,7 @@ import { listAdminEvents, type AdminEvent } from '../../../api/event';
 import type { Tone } from '../../../ui';
 
 export const ORGANIZER_STATUS: Record<string, [string, Tone]> = { PENDING: ['En attente', 'warning'], APPROVED: ['Approuvé', 'success'], SUSPENDED: ['Suspendu', 'danger'] };
-export const EVENT_STATUS: Record<string, [string, Tone]> = { DRAFT: ['Brouillon', 'neutral'], PUBLISHED: ['En vente', 'success'], SUSPENDED: ['Suspendu', 'danger'], CANCELLED: ['Annulé', 'neutral'], COMPLETED: ['Passé', 'primary'] };
+export const EVENT_STATUS: Record<string, [string, Tone]> = { DRAFT: ['Brouillon', 'neutral'], PENDING_REVIEW: ['À valider', 'warning'], REJECTED: ['Refusé', 'danger'], PUBLISHED: ['En vente', 'success'], SUSPENDED: ['Suspendu', 'danger'], CANCELLED: ['Annulé', 'neutral'], COMPLETED: ['Passé', 'primary'] };
 export const ORDER_STATUS: Record<string, [string, Tone]> = { PENDING: ['Pas payée', 'neutral'], PAID: ['Payée', 'success'], FAILED: ['Échouée', 'danger'], CANCELLED: ['Annulée', 'neutral'], REFUNDED: ['Remboursée', 'accent'] };
 export const ORDER_KIND: Record<string, [string, Tone]> = { PRIMARY: ['Vente', 'primary'], RESALE: ['Revente', 'accent'] };
 export const TICKET_STATUS: Record<string, [string, Tone]> = { PENDING: ['En attente', 'neutral'], ISSUED: ['Valable', 'success'], CHECKED_IN: ['Entré', 'primary'], CANCELLED: ['Annulé', 'neutral'], REFUNDED: ['Remboursé', 'accent'], EXPIRED: ['Expiré', 'neutral'] };
@@ -13,6 +13,10 @@ export const DISPUTE_KIND: Record<string, string> = {
     RESALE_INVALID_TICKET: 'Billet de revente invalide', RESALE_NOT_RECEIVED: 'Billet de revente pas reçu',
     EVENT_NOT_AS_ADVERTISED: 'Événement pas comme annoncé', OTHER: 'Autre',
 };
+
+/** Where an event takes place: a venue, or the WhatsApp link of a webinaire. */
+export const eventPlace = (e: { category?: string; venue?: string; city?: string }) =>
+    e.category === 'webinaire' ? 'Webinaire WhatsApp' : [e.venue, e.city].filter(Boolean).join(' · ');
 
 /** Events by id, for showing titles instead of ids (the 200 most recent). */
 export function useEventIndex() {

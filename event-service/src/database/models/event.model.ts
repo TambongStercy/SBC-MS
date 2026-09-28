@@ -2,11 +2,20 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export enum EventStatus {
     DRAFT = 'DRAFT',
+    /** Submitted by the organizer, waiting for an admin to accept or refuse it. */
+    PENDING_REVIEW = 'PENDING_REVIEW',
+    /** Refused by an admin — the organizer can edit it and submit it again. */
+    REJECTED = 'REJECTED',
     PUBLISHED = 'PUBLISHED',
     SUSPENDED = 'SUSPENDED',
     CANCELLED = 'CANCELLED',
     COMPLETED = 'COMPLETED',
 }
+
+/** Online event: no venue, buyers get the organizer's WhatsApp link instead of a place. */
+export const WEBINAR_CATEGORY = 'webinaire';
+/** What "venue"/"city"/"address" read for a webinar — shown in notices and reminders too. */
+export const WEBINAR_VENUE = 'En ligne — lien WhatsApp sur votre billet';
 
 export interface IEvent extends Document {
     _id: Types.ObjectId;
@@ -25,6 +34,12 @@ export interface IEvent extends Document {
     startsAt: Date;
     endsAt: Date;
     status: EventStatus;
+    /**
+     * Webinar only: WhatsApp group / chat / channel link. Paid content —
+     * `select: false` so it never rides along on a public query; only the
+     * organizer, admins and holders of a valid ticket get it, explicitly.
+     */
+    accessLink?: string;
     /** Whether users can resell tickets bought for this event (spec §28). */
     resaleEnabled: boolean;
     /** Cap on resale price expressed as percent of original (e.g. 120 = 1.2×). null = use module default. */
@@ -41,6 +56,9 @@ export interface IEvent extends Document {
         checkedIn: number;
     };
     publishedAt?: Date;
+    submittedAt?: Date;
+    reviewedAt?: Date;
+    rejectionReason?: string;
     cancelledAt?: Date;
     cancellationReason?: string;
     createdAt: Date;
@@ -62,6 +80,7 @@ const EventSchema = new Schema<IEvent>({
     startsAt: { type: Date, required: true, index: true },
     endsAt: { type: Date, required: true },
     status: { type: String, enum: Object.values(EventStatus), default: EventStatus.DRAFT, index: true },
+    accessLink: { type: String, maxlength: 500, select: false },
     resaleEnabled: { type: Boolean, default: true },
     maxResalePricePct: { type: Number, default: null },
     shareUrls: {
@@ -76,6 +95,9 @@ const EventSchema = new Schema<IEvent>({
         checkedIn: { type: Number, default: 0 },
     },
     publishedAt: { type: Date },
+    submittedAt: { type: Date },
+    reviewedAt: { type: Date },
+    rejectionReason: { type: String, maxlength: 500 },
     cancelledAt: { type: Date },
     cancellationReason: { type: String, maxlength: 500 },
 }, { timestamps: true });

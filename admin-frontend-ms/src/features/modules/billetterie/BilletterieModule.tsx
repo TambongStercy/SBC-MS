@@ -12,7 +12,7 @@ import { SettingsTab } from './SettingsTab';
 
 type Dash = {
     organizers: { pending: number; approved: number; suspended: number; total: number };
-    events: { draft: number; published: number; suspended: number; cancelled: number; completed: number; total: number };
+    events: { draft: number; pendingReview?: number; rejected?: number; published: number; suspended: number; cancelled: number; completed: number; total: number };
     tickets: { issued: number; checkedIn: number; refunded: number; total: number };
     orders: { paidCount: number; gross: number };
     commissions: { primary: { total: number; count: number }; resale: { total: number; count: number } };
@@ -29,7 +29,8 @@ function Overview({ go }: { go: (tab: string) => void }) {
         <div className="space-y-5">
             <section>
                 <SectionTitle>À traiter</SectionTitle>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                    <button type="button" className="text-left" onClick={() => go('evenements')}><Stat label="Événements à valider" value={formatNumber(d?.events.pendingReview ?? 0)} loading={L} tone={d?.events.pendingReview ? 'warning' : undefined} hint={d?.events.rejected ? `${d.events.rejected} refusés en attente de correction` : undefined} /></button>
                     <button type="button" className="text-left" onClick={() => go('organisateurs')}><Stat label="Organisateurs en attente" value={formatNumber(d?.organizers.pending)} loading={L} tone={d?.organizers.pending ? 'warning' : undefined} /></button>
                     <Stat label="Remboursements en échec" value={formatNumber(d?.refunds.failed)} loading={L} tone={d?.refunds.failed ? 'danger' : undefined} hint={d?.refunds.pending ? `${d.refunds.pending} en cours · retentés automatiquement` : 'retentés automatiquement'} />
                 </div>

@@ -7,10 +7,11 @@ router.get('/dashboard', adminController.dashboard);
 
 router.get('/organizers', adminController.listOrganizers);
 router.post('/organizers/:id/approve', adminController.approveOrganizer);
-router.post('/organizers/:id/suspend', adminController.suspendOrganizer);
 
 router.get('/events', adminController.listEvents);
 router.get('/events/:id', adminController.getEvent);
+router.post('/events/:id/approve', adminController.approveEvent);
+router.post('/events/:id/reject', adminController.rejectEvent);
 router.post('/events/:id/suspend', adminController.suspendEvent);
 router.post('/events/:id/cancel', adminController.cancelEvent);
 

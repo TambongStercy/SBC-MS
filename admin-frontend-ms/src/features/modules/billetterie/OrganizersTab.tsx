@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { approveOrganizer, listOrganizers, suspendOrganizer, type AdminOrganizer, type OrganizerStatus } from '../../../api/event';
+import { approveOrganizer, listOrganizers, type AdminOrganizer, type OrganizerStatus } from '../../../api/event';
 import { Button, ConfirmSheet, DataList, EmptyState, KeyValue, MemberLink, Pagination, Select, Sheet, StatusBadge, notify, type Column } from '../../../ui';
 import { formatDate, formatMoney, formatNumber, formatPhone } from '../../../lib/format';
 import { ORGANIZER_STATUS } from './shared';
 
 const PAGE = 20;
 
-/** Organisers: approve newcomers, suspend when needed. Opens on "En attente" when some wait. */
+/**
+ * Organisers: approve newcomers. Opens on "En attente" when some wait.
+ * There is no organiser suspension: SBC accepts or refuses each event
+ * instead (Événements → « À valider »), so one bad event never blocks an
+ * organiser's other events.
+ */
 export function OrganizersTab() {
     const qc = useQueryClient();
     const pending = useQuery({ queryKey: ['events', 'organizers', 'PENDING', 'count'], queryFn: () => listOrganizers({ status: 'PENDING', limit: 1 }) });
@@ -15,7 +20,7 @@ export function OrganizersTab() {
     useEffect(() => { if (status === null && pending.data) setStatus(pending.data.total ? 'PENDING' : ''); }, [pending.data, status]);
     const [page, setPage] = useState(1);
     const [open, setOpen] = useState<AdminOrganizer | null>(null);
-    const [action, setAction] = useState<'approve' | 'suspend' | null>(null);
+    const [action, setAction] = useState<'approve' | null>(null);
     const q = useQuery({
         queryKey: ['events', 'organizers', status, page], enabled: status !== null,
         queryFn: () => listOrganizers({ status: status || undefined, limit: PAGE, skip: (page - 1) * PAGE }), placeholderData: keepPreviousData,
@@ -44,12 +49,9 @@ export function OrganizersTab() {
             {q.data && <Pagination page={page} totalPages={Math.max(1, Math.ceil(q.data.total / PAGE))} total={q.data.total} onChange={setPage} />}
             {open && (
                 <Sheet open onClose={() => setOpen(null)} title={open.displayName}
-                    footer={(
-                        <div className="grid grid-cols-2 gap-2">
-                            {open.status !== 'SUSPENDED' ? <Button variant="danger-soft" onClick={() => setAction('suspend')}>Suspendre…</Button> : <span />}
-                            {open.status !== 'APPROVED' ? <Button variant="success" onClick={() => setAction('approve')}>{open.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'}</Button> : <span />}
-                        </div>
-                    )}>
+                    footer={open.status !== 'APPROVED'
+                        ? <Button variant="success" full onClick={() => setAction('approve')}>{open.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'}</Button>
+                        : undefined}>
                     <div className="space-y-4">
                         <StatusBadge status={open.status} labels={ORGANIZER_STATUS} />
                         <MemberLink id={open.userId} name={open.displayName} phone={open.contactPhone} sub="Compte membre" />
@@ -65,12 +67,8 @@ export function OrganizersTab() {
             {open && (
                 <>
                     <ConfirmSheet open={action === 'approve'} onClose={() => setAction(null)} tone="success" title={`${open.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'} ${open.displayName} ?`}
-                        message={<p>Il aura accès à son espace organisateur pour créer et vendre ses événements.</p>} confirmLabel={open.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'}
+                        message={<p>Il aura accès à son espace organisateur pour créer ses événements. Chacun sera soumis à la validation de SBC avant d’être mis en vente.</p>} confirmLabel={open.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'}
                         onConfirm={async () => { await approveOrganizer(open._id); notify.success('Organisateur approuvé.'); setOpen(null); refresh(); }} />
-                    <ConfirmSheet open={action === 'suspend'} onClose={() => setAction(null)} tone="danger" title={`Suspendre ${open.displayName} ?`}
-                        message={<p>Il perd l’accès à son espace organisateur. Ses événements déjà publiés restent en ligne : suspends-les un par un si besoin.</p>}
-                        reason={{ label: 'Motif', suggestions: ['Événement frauduleux', 'Informations fausses', 'Plaintes répétées'], minLength: 5 }}
-                        confirmLabel="Suspendre" onConfirm={async (reason) => { await suspendOrganizer(open._id, reason); notify.success('Organisateur suspendu.'); setOpen(null); refresh(); }} />
                 </>
             )}
         </div>
