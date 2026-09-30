@@ -83,26 +83,115 @@ const buildDays = (): IDayProof[] =>
         earnedAmount: 0,
     }));
 
-/** Views still needed, counting what accepted diffuseurs are expected to bring. */
-export const remainingViewsToCover = async (campaign: ICampaign): Promise<number> => {
+/** A day 1 that can no longer change the unique-view count it contributed. */
+const dayOneSettled = (days: IDayProof[]): boolean => {
+    const day1 = days.find(d => d.day === 1);
+    return Boolean(day1 && day1.status !== DayStatus.PENDING && day1.status !== DayStatus.POSTED);
+};
+
+/**
+ * Views still needed, counting reach already booked as well as reach delivered.
+ *
+ * Booked, not just delivered: a diffuseur who accepts today posts within 24h and
+ * is only verified after that, so a delivered-only count reads zero for a full day
+ * after the campaign is fully staffed. sweepUnderfilledCampaigns runs every tick,
+ * saw the target untouched every time, and handed the campaign to a fresh batch of
+ * diffuseurs on each pass — an annonceur who bought 2000 unique views was billed
+ * 2517 on day 1 alone, with more diffuseurs still posting (Rufus, 2026-09-04).
+ *
+ * Pass `excludeParticipationId` when deciding whether one specific offer may still
+ * be accepted: its own reservation must not be what makes it look too late. Pass
+ * `acceptedOnly` to ask the different question "is this campaign finished?", where
+ * an offer nobody has taken up yet delivers nothing and must count for nothing.
+ */
+export const remainingViewsToCover = async (
+    campaign: ICampaign,
+    { excludeParticipationId, acceptedOnly = false }: {
+        excludeParticipationId?: Types.ObjectId;
+        acceptedOnly?: boolean;
+    } = {},
+): Promise<number> => {
     // The test campaign is a measuring instrument, not an ad buy: its target is
     // a placeholder and must never gate anything. Treating it as real expired
     // every acceptance after the first diffuseur delivered a view — accepting
     // showed « objectif déjà atteint » and the offer just vanished (Jamelle and
     // Christian, 2026-08-10).
     if (campaign.isTestCampaign) return Number.POSITIVE_INFINITY;
-    const committed = await CampaignParticipationModel.aggregate<{ total: number }>([
-        {
-            $match: {
-                campaignId: campaign._id,
-                status: { $in: [ParticipationStatus.IN_PROGRESS, ParticipationStatus.COMPLETED] },
-            },
-        },
-        { $group: { _id: null, total: { $sum: '$uniqueViews' } } },
-    ]);
 
-    const delivered = committed[0]?.total ?? 0;
-    return Math.max(0, campaign.targetUniqueViews - delivered);
+    const counted = [ParticipationStatus.IN_PROGRESS, ParticipationStatus.COMPLETED];
+    if (!acceptedOnly) counted.push(ParticipationStatus.OFFERED);
+
+    const live = await CampaignParticipationModel.find({
+        campaignId: campaign._id,
+        status: { $in: counted },
+        ...(excludeParticipationId ? { _id: { $ne: excludeParticipationId } } : {}),
+    }).select('status uniqueViews expectedViews diffuseurProfileId offeredAt days').lean();
+
+    // Participations offered before the reservation field existed carry no
+    // forecast, and would reserve nothing at all — exactly the bug this fixes.
+    // Their profile is still the best estimate available.
+    const missing = live.filter(p => p.status !== ParticipationStatus.COMPLETED && !p.expectedViews);
+    const forecastByProfile = new Map<string, number>();
+    if (missing.length) {
+        const profiles = await DiffuseurProfileModel
+            .find({ _id: { $in: missing.map(p => p.diffuseurProfileId) } })
+            .select('_id hasCompletedTestCampaign measuredAverageViews declaredAverageViews')
+            .lean<CandidateDiffuseur[]>();
+        for (const p of profiles) forecastByProfile.set(String(p._id), expectedViews(p));
+    }
+
+    const staleBefore = Date.now() - config.campaign.offerTtlHours * 60 * 60 * 1000;
+
+    let committed = 0;
+    for (const p of live) {
+        if (p.status === ParticipationStatus.COMPLETED) {
+            committed += p.uniqueViews;
+            continue;
+        }
+
+        const forecast = p.expectedViews || forecastByProfile.get(String(p.diffuseurProfileId)) || 0;
+
+        if (p.status === ParticipationStatus.OFFERED) {
+            // An offer nobody ever answered stops holding a slot, so the campaign
+            // can be handed to someone who will actually post it.
+            if (p.offeredAt.getTime() > staleBefore) committed += forecast;
+            continue;
+        }
+
+        // In progress: once day 1 is verified, missed or failed, what they brought
+        // is final. Before that, their forecast is all we have — and if they have
+        // already beaten it, the larger number is the honest reservation.
+        committed += dayOneSettled(p.days) ? p.uniqueViews : Math.max(p.uniqueViews, forecast);
+    }
+
+    return Math.max(0, campaign.targetUniqueViews - committed);
+};
+
+/**
+ * Of these diffuseurs, which have ever been offered a PAID campaign.
+ *
+ * The test campaign is excluded deliberately: everyone eligible has completed it,
+ * so counting it would make the whole pool "experienced" and leave nobody to
+ * prioritise. What matters is whether they have ever been given real work.
+ *
+ * Any participation counts, not just accepted ones — someone who was offered a
+ * campaign and ignored it has had their turn, and should not keep jumping the
+ * queue ahead of someone who has never been asked.
+ */
+const alreadyHadPaidCampaign = async (userIds: Types.ObjectId[]): Promise<Set<string>> => {
+    if (!userIds.length) return new Set();
+
+    const testCampaigns = await CampaignModel
+        .find({ isTestCampaign: true })
+        .select('_id')
+        .lean();
+
+    const seen = await CampaignParticipationModel.distinct('diffuseurUserId', {
+        diffuseurUserId: { $in: userIds },
+        campaignId: { $nin: testCampaigns.map(c => c._id) },
+    });
+
+    return new Set(seen.map(String));
 };
 
 /** Diffuseurs already holding a campaign today, who are capped out. */
@@ -129,10 +218,10 @@ export type AllocationResult = {
 /**
  * Offers a campaign to matching diffuseurs.
  *
- * Deliberately offers in excess of the target rather than exactly enough: an offer
- * is not an acceptance, most will be ignored, and under-offering stalls the
- * campaign. Over-delivery is bounded because acceptance stops once the target is
- * covered (see acceptOffer).
+ * Offers exactly enough forecast reach to cover what is still uncovered, and each
+ * offer holds its share until it is accepted, declined, or goes stale. A campaign
+ * with every slot booked therefore stops being offered rather than being topped up
+ * again on the next tick — see remainingViewsToCover.
  */
 export const allocateCampaign = async (campaignId: Types.ObjectId): Promise<AllocationResult> => {
     const campaign = await CampaignModel.findById(campaignId);
@@ -208,43 +297,80 @@ export const allocateCampaign = async (campaignId: Types.ObjectId): Promise<Allo
         eligible = targeted;
     }
 
-    // Best reach first, so the target is covered by as few diffuseurs as possible.
-    eligible.sort((a, b) => expectedViews(b) - expectedViews(a) || b.trustScore - a.trustScore);
-
-    // Big diffuseurs carry the bulk, then the tail is fitted to what is actually
-    // left. Taking them in pure descending order overshot badly at the end: with
-    // 200 views still needed, the next 1000-view diffuseur was taken anyway, and
-    // an annonceur who bought 2000 unique views received 3000. Generous, but they
-    // paid for 2000 and the extra comes out of SBC's margin.
+    // Newcomers first.
     //
-    // At each step: the largest diffuseur who still fits inside the shortfall;
-    // and if nobody fits, the smallest who overshoots — so the campaign always
-    // completes, by the narrowest margin available.
+    // Sorting purely by reach meant the same big accounts won every campaign:
+    // measured 2026-09-17, the top diffuseurs had 11 and 12 paid offers while 32
+    // eligible diffuseurs had never been offered a single one. Christian finished
+    // his test campaign and waited a week for nothing while five campaigns went
+    // out (Rufus, 2026-09-17). A diffuseur who is never offered work has no reason
+    // to stay, and the pool stops growing.
+    //
+    // So the pool is filled from people who have never had a paid campaign, and
+    // only what they cannot cover goes to those who have.
+    const experienced = await alreadyHadPaidCampaign(eligible.map(c => c.userId));
+    const newcomers = eligible.filter(c => !experienced.has(String(c.userId)));
+    const veterans = eligible.filter(c => experienced.has(String(c.userId)));
+
     const offers: Array<Record<string, unknown>> = [];
     const taken = new Set<string>();
     let projected = 0;
 
-    while (projected < remaining) {
-        const stillNeeded = remaining - projected;
-        const available = eligible.filter(c => !taken.has(String(c._id)));
-        if (!available.length) break;
+    /**
+     * Takes diffuseurs from one pool until the shortfall is covered.
+     *
+     * Big diffuseurs carry the bulk, then the tail is fitted to what is actually
+     * left. Taking them in pure descending order overshot badly at the end: with
+     * 200 views still needed, the next 1000-view diffuseur was taken anyway, and
+     * an annonceur who bought 2000 unique views received 3000. Generous, but they
+     * paid for 2000 and the extra comes out of SBC's margin.
+     *
+     * At each step: the largest diffuseur who still fits inside the shortfall;
+     * and if nobody fits, the smallest who overshoots — so the campaign always
+     * completes, by the narrowest margin available.
+     */
+    const fillFrom = (pool: CandidateDiffuseur[]): void => {
+        // Best reach first, so the target is covered by as few diffuseurs as possible.
+        const sorted = [...pool].sort(
+            (a, b) => expectedViews(b) - expectedViews(a) || b.trustScore - a.trustScore,
+        );
 
-        const fits = available.filter(c => Math.max(1, expectedViews(c)) <= stillNeeded);
-        const pick = fits.length
-            ? fits[0]                                  // already descending: the largest that fits
-            : available[available.length - 1];         // nobody fits: the smallest overshoot
+        while (projected < remaining) {
+            const stillNeeded = remaining - projected;
+            const available = sorted.filter(c => !taken.has(String(c._id)));
+            if (!available.length) break;
 
-        taken.add(String(pick._id));
-        offers.push({
-            campaignId: campaign._id,
-            diffuseurUserId: pick.userId,
-            diffuseurProfileId: pick._id,
-            status: ParticipationStatus.OFFERED,
-            trackingCode: newTrackingCode(),
-            offeredAt: new Date(),
-            days: buildDays(),
-        });
-        projected += Math.max(1, expectedViews(pick));
+            const fits = available.filter(c => Math.max(1, expectedViews(c)) <= stillNeeded);
+            const pick = fits.length
+                ? fits[0]                                  // already descending: the largest that fits
+                : available[available.length - 1];         // nobody fits: the smallest overshoot
+
+            const forecast = Math.max(1, expectedViews(pick));
+            taken.add(String(pick._id));
+            offers.push({
+                campaignId: campaign._id,
+                diffuseurUserId: pick.userId,
+                diffuseurProfileId: pick._id,
+                status: ParticipationStatus.OFFERED,
+                trackingCode: newTrackingCode(),
+                offeredAt: new Date(),
+                expectedViews: forecast,
+                days: buildDays(),
+            });
+            projected += forecast;
+        }
+    };
+
+    fillFrom(newcomers);
+    // Only the shortfall newcomers could not cover — « si parmi les nouveaux il
+    // n'y a pas les critères correspondants, le système part chercher ailleurs ».
+    fillFrom(veterans);
+
+    if (newcomers.length) {
+        log.info(
+            `Campaign ${campaign._id}: ${newcomers.length} newcomer(s) available, `
+            + `${offers.length} offer(s) made in total`,
+        );
     }
 
     if (!offers.length) {
@@ -314,7 +440,16 @@ export const acceptOffer = async (
         throw new AppError('Cette campagne n\'est plus active.', 409);
     }
 
-    const remaining = await remainingViewsToCover(campaign);
+    // acceptedOnly, and excluding this participation. Reservations exist to stop
+    // the campaign being offered to MORE people; they must not turn round and
+    // refuse the people it was already offered to. Someone holding a genuine offer
+    // is turned away only once the diffuseurs who accepted already cover the
+    // target — including, on the other side, their own reservation, which would
+    // otherwise make whoever completed the staffing reject themselves.
+    const remaining = await remainingViewsToCover(campaign, {
+        acceptedOnly: true,
+        excludeParticipationId: participation._id,
+    });
     if (remaining <= 0) {
         participation.status = ParticipationStatus.EXPIRED;
         await participation.save();
@@ -334,12 +469,18 @@ export const acceptOffer = async (
     return participation;
 };
 
-/** Withdraws outstanding offers once the target is covered. */
+/**
+ * Withdraws outstanding offers once accepted diffuseurs alone cover the target.
+ *
+ * acceptedOnly, or this expires precisely the offers whose own reservations made
+ * the campaign look covered, freeing the capacity that then gets re-offered next
+ * tick — churning the campaign around the diffuseur pool forever.
+ */
 export const expireStaleOffers = async (campaignId: Types.ObjectId): Promise<number> => {
     const campaign = await CampaignModel.findById(campaignId);
     if (!campaign) return 0;
 
-    const remaining = await remainingViewsToCover(campaign);
+    const remaining = await remainingViewsToCover(campaign, { acceptedOnly: true });
     if (remaining > 0) return 0;
 
     const result = await CampaignParticipationModel.updateMany(

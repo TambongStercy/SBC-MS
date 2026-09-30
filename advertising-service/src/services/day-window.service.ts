@@ -38,8 +38,11 @@ export const openParticipation = (participation: ICampaignParticipation, accepte
         first.dueAt = new Date(acceptedAt.getTime() + DAY_MS);
     }
     participation.day1Deadline = new Date(acceptedAt.getTime() + DAY_MS);
+    // The participation's OWN length, not the paid-campaign config. The test
+    // campaign is 1 day, and reading durationDays here gave it a 3-day completion
+    // deadline — so its end date was two days later than the campaign itself.
     participation.completionDeadline = new Date(
-        acceptedAt.getTime() + (config.campaign.durationDays + config.campaign.graceDays) * DAY_MS,
+        acceptedAt.getTime() + (participation.days.length + config.campaign.graceDays) * DAY_MS,
     );
 };
 
@@ -102,8 +105,10 @@ export const scheduleSummary = (participation: ICampaignParticipation, at = new 
     // Before day 1 the clock that matters is the 24h acceptance deadline; after it,
     // the campaign completion deadline.
     const deadline = dayOnePosted ? participation.completionDeadline : participation.day1Deadline;
+    // Same reason as openParticipation: a 1-day test campaign only entered its
+    // grace period after three days under the config value.
     const normalEnd = participation.acceptedAt
-        ? new Date(participation.acceptedAt.getTime() + config.campaign.durationDays * DAY_MS)
+        ? new Date(participation.acceptedAt.getTime() + participation.days.length * DAY_MS)
         : undefined;
 
     const awaiting = participation.days.find(d => d.status === DayStatus.POSTED);
@@ -116,6 +121,12 @@ export const scheduleSummary = (participation: ICampaignParticipation, at = new 
             ? { day: pending.day, status: pending.status, windowOpensAt: pending.windowOpensAt }
             : undefined,
         daysCompleted: participation.days.filter(d => d.status === DayStatus.VERIFIED).length,
+        /**
+         * How many days this participation has. The app hardcoded 3 — progress
+         * bar, « Jour X sur 3 » — which is why a 1-day test campaign still read as
+         * a 3-day one to everyone taking it.
+         */
+        totalDays: participation.days.length,
         /** Posted, waiting on the diffuseur to link WhatsApp so views can be read. */
         awaitingVerification: awaiting ? { day: awaiting.day, postedAt: awaiting.postedAt } : undefined,
         windowOpensAt: pending?.windowOpensAt,
@@ -134,7 +145,7 @@ export const scheduleSummary = (participation: ICampaignParticipation, at = new 
         hoursRemaining: deadline
             ? Math.max(0, Math.round((deadline.getTime() - at.getTime()) / HOUR_MS))
             : undefined,
-        /** True once past the normal 3 days and running on grace. */
+        /** True once past this participation's normal length and running on grace. */
         inGracePeriod: Boolean(normalEnd && at > normalEnd),
         graceDaysTotal: config.campaign.graceDays,
         beyondRecovery: isBeyondRecovery(participation, at),

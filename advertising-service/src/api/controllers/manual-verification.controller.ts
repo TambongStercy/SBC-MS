@@ -84,7 +84,12 @@ export const approve = async (req: AuthenticatedRequest, res: Response) => {
 
 export const reject = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const data = await rejectManualVerification(currentUserId(req), req.params.id, req.body?.reason);
+        const data = await rejectManualVerification(
+            currentUserId(req),
+            req.params.id,
+            req.body?.reason,
+            req.body?.ban === true,
+        );
         return res.json({ success: true, data });
     } catch (err) {
         return fail(res, err, 'rejectManualVerification');

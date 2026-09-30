@@ -327,6 +327,46 @@ Discipline to follow every time:
    has not retried since the fix deployed, not that the fix failed.
 4. Err heavily toward "it's our bug." Check 50 times if that's what it takes.
 
+### Cloud Storage bills egress, not storage — and signed URLs defeat every cache
+
+August 2026: $79.63, of which **$64.32 was 636 GiB of download egress** and
+**$1.23 was storage**. The buckets hold ~36 GiB total. So bucket size tells you
+almost nothing; what costs money is `file size × number of distinct fetches`.
+
+Two buckets, very different failure modes:
+
+| | `sbc-file-storage` (public) | `sbc-status-media-private` |
+|---|---|---|
+| Contents | avatars (15,310 files, **947 KiB avg**), products (31,331, 522 KiB avg), campaign creatives + verification videos (up to 84 MiB) | live statuses only, ~900 KiB avg, 121 MiB total |
+| Served by | direct `storage.googleapis.com` URLs | V4 signed URLs |
+| Cacheable | yes — stable URL + 1yr `Cache-Control`, so a *returning* viewer is free | **was: never** |
+
+**The signed-URL trap (fixed 2026-09-04).** `getSignedUrl` used
+`expires: Date.now() + expiresIn*1000`, so every call produced a different
+signature and therefore a different URL for the same bytes. Caches key on the
+URL, so no browser or CDN could ever hit — every status-feed open re-downloaded
+every image and video in full. Expiry is now snapped **up to an hourly
+boundary**, so the same object yields the same URL to everyone within the hour.
+**If you add any signed-URL flow, snap the expiry the same way** or you
+reintroduce this.
+
+Other standing facts:
+- **Nothing fronts `storage.googleapis.com`** — no CDN, no shared cache. Our own
+  origin IS behind Cloudflare, so routing through `/api/settings/files/<id>` is
+  the cheap path and the direct bucket URL is the expensive one. A comment in
+  `SBCApiService.generateStreamedFileUrl` used to claim the opposite; that is why
+  the pattern spread.
+- `?w=<px>` on `/api/settings/files/:id` returns a WebP resize (sharp, bounded
+  16–1024, `immutable`). Avatars went 1.78 MB → ~2 KB. Use
+  `generateThumbnailUrl` anywhere an image is drawn smaller than uploaded;
+  `Avatar` (`SBC-WEB-UI/src/components/common/Avatar.tsx`) does it for people.
+  It refuses to resize video — sharp cannot, and trying pulls the whole file first.
+- **GCS usage logs are NOT enabled**, so per-object request counts do not exist.
+  Any claim about *which* files drove the bill is inference, not measurement —
+  say so. `settings-service/src/scripts/audit-storage-egress.ts` inventories both
+  buckets (it needs the service's own credentials; a bare `new Storage()` reaches
+  only the public bucket anonymously and silently omits the private one).
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to
@@ -390,6 +430,118 @@ email ever (offers, approvals, day-opened) had silently failed on both counts;
 tombola's PUSH channel skips the recipient requirement, sbclove was correct.
 When adding a notification call, test one real delivery — a 2xx-shaped silence
 proves nothing.
+
+### OTP delivery: what the codes look like, and what "sent" means
+
+Investigated 2026-09-19 after Rufus reported "les mails OTP dérangent". Two
+independent faults, neither visible from success logs.
+
+**1. The compare was case-sensitive and the keyboard isn't.** `generateSecureOTP`
+returns six mixed-case characters (`Fj9EYB`) and the verify screen is six
+separate single-character `<input>`s, so a phone keyboard capitalises each box.
+Classifying one day of refusals against the codes actually generated for those
+same users:
+
+| bucket | share |
+|---|---|
+| case-only mismatch | **20.8%** |
+| exact code, refused (expired / already used) | 20.2% |
+| digits only typed (user expected a numeric code) | 11.3% |
+| one character off | 5.3% |
+| no match at all | 41.7% |
+
+Fixed by `otpMatches()` in `user-service/src/utils/otp.utils.ts` — **use it for
+every OTP comparison**, there were six hand-rolled `otp.code === provided` sites.
+The alphabet excludes `0` and `1`, so folding case removes the `l`/`I`, `o`/`O`
+confusion rather than creating any, and `strictLimiter` bounds brute force.
+`src/scripts/check-otp-matching.ts` asserts this with real refused pairs.
+
+**2. `notificationService.sendOtp` returning `true` means QUEUED, not
+delivered.** notification-service answers 200 as soon as the job is on the
+queue; the actual send fails later, in the worker. Any fallback keyed on that
+return value is dead code — the WhatsApp→email fallback in
+`requestPasswordResetOtp` never once fired. That is how WhatsApp OTP stayed
+100% broken since at least 12 September (`(#132001) Template name does not
+exist in the translation`, for both `connexionfr`/fr and `connexion`/en_US)
+while 822 people a day asked for a code over WhatsApp and got nothing.
+
+`sendAccountAccessOtp` now mirrors any WhatsApp OTP to the user's email for
+the four account-access paths (register, login, resend, password reset),
+without depending on an outcome we can't observe. **The two proof-of-control
+OTPs — new email, new phone — must never be mirrored**, or they stop proving
+anything.
+
+To check OTP health quickly, compare these two counts in user-service logs:
+`OTP validation failed` vs `validated successfully`. A ~50/50 split is the
+symptom that started this.
+
+**3. Our own resend storm was choking the mail server (2026-09-26).** 62,165 OTP
+emails in six days to 13,553 people; 56% sent while that person's previous code
+was still valid; one address got 100 over three days. "Renvoyer" had no cooldown
+and every limit was per IP, so late mail → more taps → more mail → later mail.
+Sign-in codes now go through `issueAccountAccessOtp`: **per account, 1 send per
+60s and 5 per rolling 20 min**, claimed atomically (`reserveOtpSend`), and a code
+with ≥3 min left is resent rather than replaced. The window is 20 min, not an
+hour, on purpose — the mail server is unstable and a genuine user may need
+several tries (Sterling's call). Throttled resend/reset → 429 with
+`retryAfterSeconds`; a throttled **login still succeeds** and lands on the code
+screen, because they were sent a code moments ago. The app counts the wait down.
+`src/scripts/check-otp-throttle.ts` asserts it — run it under **Node 20** (prod's
+version): on Node 25 `jsonwebtoken`'s `buffer-equal-constant-time` crashes on
+load because `SlowBuffer` was removed.
+
+### Relance (notification-service): the two products and what broke
+
+Two different things share the name. Keep them apart in code, UI and talk:
+- **Relance des nouveaux** (targets with `campaignId: null`, "default"): a new
+  filleul who registered and hasn't paid is enrolled ~15 min after signup and
+  gets one message a day for 7 days, until they pay (exit `paid`) or day 7 ends.
+  Enrollment only looks at referrals from the **last 2 hours** — by design, it
+  is for newcomers.
+- **Campagnes de relance** (`campaignId` set): the parrain picks filters and
+  pushes his *older* filleuls through the same 7 days. Used 4 times ever (one
+  user, March 2026) before the redesign.
+
+Credits (`emailBalance`/`smsBalance` on RelanceConfig) are what relance runs on.
+The retired monthly RELANCE subscription must not gate anything any more.
+
+**What was broken until 2026-09-30** (fixed; tests in `src/tests/relance-*.test.ts`):
+- **No pack was ever credited.** `creditPack` read `userId` from metadata that
+  the purchase never set → 400 on every callback. 31 paid packs (29 customers +
+  Rufus twice, ~93k FCFA, May → Sept) left everyone on 0 credits, so the sender
+  skipped every parrain ("has no credits … skipping") and relance went silent
+  from early May. It had delivered 738 messages in April–May.
+- **`/api/relance/internal/credit-pack` was public and unauthenticated** — the
+  gateway proxies `/api/relance/*` verbatim. Now service-secret only.
+  `/internal/exit-user` takes the service secret or an admin login.
+- **All 23 `/api/relance/admin/*` routes accepted any logged-in user** (all
+  filleuls' contact details readable, email/SMS templates rewritable). Now
+  `requireAdmin`. JWT roles are lowercase `'admin'` — a check against `'ADMIN'`
+  refuses real admins.
+- **Credits were written back from memory** (`config.save()`) and lost any
+  purchase that landed mid-run; emails went out with 0 email credit if the
+  parrain had SMS credit. Now `reserveRelanceCredit` takes one credit atomically
+  before each send and `refundRelanceCredit` returns it on failure. Never add a
+  `config.save()` back to the sender.
+- `maxMessagesPerDay` was editable but never enforced and `lastResetDate` was
+  never updated; both work now (UTC days). It protects the mail server, which
+  also carries OTPs.
+- Paused campaigns kept sending; a J0 with no credit skipped the welcome email
+  for good; a filleul who had paid via activation balance kept getting "pay
+  now" emails (only SMS checked). All fixed.
+
+**Data facts that mislead:** `relancemessages` holds the admin's **7 day
+templates**, not sent messages — sends live in `relancetargets.messagesDelivered`.
+Relance pack payments are PaymentIntents whose `metadata.callbackPath` contains
+`relance/internal/credit-pack`; their `userId` is a **string**, while
+`sbc_users.users._id` is an ObjectId — wrap it in `ObjectId()` to join.
+`RelancePackCredit` (unique `sessionId`) is the record that a payment was credited.
+
+Scripts (dry run by default, `--apply` to act):
+`close-relance-backlog.ts` (closes relance-des-nouveaux targets enrolled over
+30 days ago with exitReason `expired`) and `credit-unpaid-relance-packs.ts`.
+**Close the backlog before crediting**, or the first run after crediting sends
+day 1 to everyone waiting, however old.
 
 ### Health endpoints aren't standardised
 
@@ -659,6 +811,46 @@ Assertions: `payment-service/src/scripts/check-sandbox.ts` (needs local Mongo).
 | MoneyFusion | Only on terminal state (many payouts hang) | No | Admin verifies on MF dashboard + `/fix-moneyfusion-withdrawals` page |
 | CinetPay | No (empirically zero calls, unknown why) | **Yes — recommended** | Poll status API via `/fix-cinetpay-withdrawals` page |
 | NOWPayments (crypto) | Yes | Yes | Trust webhook |
+
+### Payins have a reconciler too now — and most "stuck" ones are not stuck
+
+`TransactionStatusChecker` has always covered **withdrawals**. Money coming **in**
+had nothing, so a single dropped payin webhook was permanent by construction: the
+payer was debited, the intent sat in `PENDING_PROVIDER` forever, and the app went
+on showing "Payer" to someone who had already paid. Georgi (2026-09-05, session
+`Mh2-KxbcsQif`) is the canonical case — MTN Benin confirmed the debit by SMS
+quoting our own session ref, FeexPay accepted it, and no webhook ever arrived.
+
+`PayinReconciler` (`payment-service/src/jobs/payin-reconciler.job.ts`) re-asks the
+provider every 10 min for intents 10 min to 7 days old:
+
+- **FeexPay** reuses `checkFeexpayTransactionStatus` — the same call the live
+  webhook handler makes to verify itself, so the two cannot drift apart.
+- **MoneyFusion** queries its status endpoint and replays the answer through the
+  real payin webhook handler, because completion has side effects
+  (subscriptions, campaign settlement, referral commissions) that live there.
+- **CinetPay** replays `handleCinetPayWebhook({ merchant_transaction_id: sessionId })`.
+  That handler re-queries `GET /v1/payment/{token}` (OAuth, per-country creds) and
+  applies only what CinetPay answers. **An earlier version of this note said CinetPay
+  had no payin status API — that was wrong**, and the resulting exclusion left 537
+  CinetPay payins unchecked for a week, including an annonceur (session
+  `pm_CePIUng4q`, 2026-09-14) whose campaign stayed a draft while CinetPay itself
+  returned `code=100 SUCCESS`.
+
+It only ever applies what the provider confirms; a 502 leaves the intent untouched.
+`src/scripts/reconcile-payins.ts` runs the same pass on demand, or one session by
+id (`... reconcile-payins.ts <sessionId>`) when someone is complaining right now.
+
+**Do NOT read the `PENDING_PROVIDER` count as lost money.** Measured 2026-09-05:
+of **1,236** intents the reconciler actually asked about, **2** had been paid and
+83 were confirmed failed — the rest were abandoned checkouts. The raw backlog was
+~4,000, so quoting that number as "stuck payments" overstates the real problem by
+roughly 500x. Ask the provider before reporting a figure to Rufus.
+
+Related: FeexPay's status API returned 502 for hours on 2026-09-05 during an MTN
+Mobile Money incident (`INTERNAL_PROCESSING_ERROR`). During a provider outage,
+manually settling anyone on SMS evidence risks crediting a payment the operator
+later reverses.
 
 ### Master deploys need ONE click (post-PR #73)
 

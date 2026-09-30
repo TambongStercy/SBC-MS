@@ -271,6 +271,35 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                     <div className="text-gray-500 text-xs">Ciblage</div>
                                                     <div className="text-gray-100">{targetingSummary(c)}</div>
                                                 </div>
+                                                {/* Whether this targeting can actually deliver what was
+                                                    bought. Rufus: an admin must see the shortfall BEFORE
+                                                    approving, so they can tell the annonceur to widen it
+                                                    instead of validating a campaign that will sit at zero. */}
+                                                <div className="col-span-2">
+                                                    <div className="text-gray-500 text-xs">Audience disponible</div>
+                                                    {c.reach === null ? (
+                                                        <div className="text-gray-400">Inconnue — l'estimation a échoué</div>
+                                                    ) : c.reach.matching === 0 ? (
+                                                        <div className="rounded-md bg-red-500/10 border border-red-500/40 px-2 py-1.5 text-red-300">
+                                                            Aucun diffuseur ne correspond à ce ciblage. La campagne ne
+                                                            pourra être proposée à personne — demandez à l'annonceur
+                                                            d'élargir ses critères avant de valider.
+                                                        </div>
+                                                    ) : c.reach.sufficient === false ? (
+                                                        <div className="rounded-md bg-amber-500/10 border border-amber-500/40 px-2 py-1.5 text-amber-300">
+                                                            {c.reach.matching} diffuseur(s), soit environ{' '}
+                                                            {c.reach.projectedUniqueViews.toLocaleString('fr-FR')} vues —
+                                                            insuffisant pour les {c.targetUniqueViews.toLocaleString('fr-FR')}{' '}
+                                                            vues achetées. Demandez-lui d'élargir le ciblage.
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-green-300">
+                                                            {c.reach.matching} diffuseur(s), soit environ{' '}
+                                                            {c.reach.projectedUniqueViews.toLocaleString('fr-FR')} vues
+                                                            disponibles.
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 <div className="col-span-2">
                                                     <div className="text-gray-500 text-xs">Contact affiché aux prospects</div>
                                                     <div className="text-gray-100">

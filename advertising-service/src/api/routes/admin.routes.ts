@@ -7,6 +7,8 @@ import {
     getAnalytics,
     getCampaignPerformance,
     listDiffuseurs,
+    banDiffuseurAccount,
+    unbanDiffuseurAccount,
     getSimulationState,
     runSimulatePayment,
     runShiftClock,
@@ -34,6 +36,10 @@ router.get('/analytics', getAnalytics);
 router.get('/verification-stats', getVerificationStats);
 router.get('/campaigns', listForReview);
 router.get('/diffuseurs', listDiffuseurs);
+// Ban is by userId, not profile id: everything else about a diffuseur is keyed
+// on the user, and offers to withdraw are found that way.
+router.post('/diffuseurs/:userId/ban', banDiffuseurAccount);
+router.post('/diffuseurs/:userId/unban', unbanDiffuseurAccount);
 
 // Preprod testing tools. simulation.service refuses these outright when
 // NODE_ENV is production or SIMULATION_ENABLED is not 'true'.

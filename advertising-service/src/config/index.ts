@@ -96,6 +96,14 @@ interface IConfig {
         testDurationDays: number;
         /** Extra days after the run to catch up on missed days before forfeiting. */
         graceDays: number;
+        /**
+         * Hours an unanswered offer holds its share of the campaign target.
+         *
+         * An offer reserves the reach it forecasts, so the campaign is not offered
+         * to anyone else while it stands. That has to expire, or one diffuseur who
+         * never opens the app would hold a slot for the life of the campaign.
+         */
+        offerTtlHours: number;
         /** Max concurrent campaigns per diffuseur per day (relaxed when all are busy). */
         maxCampaignsPerDiffuseurPerDay: number;
         /**
@@ -114,6 +122,14 @@ interface IConfig {
          * made fresh — an old video cannot carry a code that did not exist yet.
          */
         manualVerifyWindowSeconds: number;
+        /**
+         * Days a reviewed verification recording is kept before deletion.
+         *
+         * Not zero by default: a refused diffuseur loses a day's earnings and may
+         * dispute it, and the recording is the only evidence either way. Set to 0
+         * to delete as soon as the decision is made.
+         */
+        manualVerifyRetentionDays: number;
     };
     referral: {
         /** Completed campaigns required to unlock the commission. */
@@ -171,9 +187,11 @@ const config: IConfig = {
         durationDays: parseInt(process.env.CAMPAIGN_DURATION_DAYS || '3', 10),
         testDurationDays: parseInt(process.env.TEST_CAMPAIGN_DURATION_DAYS || '1', 10),
         graceDays: parseInt(process.env.CAMPAIGN_GRACE_DAYS || '3', 10),
+        offerTtlHours: parseInt(process.env.CAMPAIGN_OFFER_TTL_HOURS || '24', 10),
         maxCampaignsPerDiffuseurPerDay: parseInt(process.env.MAX_CAMPAIGNS_PER_DAY || '1', 10),
         minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '24', 10),
         manualVerifyWindowSeconds: parseInt(process.env.MANUAL_VERIFY_WINDOW_SECONDS || '900', 10),
+        manualVerifyRetentionDays: parseInt(process.env.MANUAL_VERIFY_RETENTION_DAYS || '7', 10),
     },
     referral: {
         campaignsToUnlock: parseInt(process.env.REFERRAL_CAMPAIGNS_TO_UNLOCK || '100', 10),

@@ -36,6 +36,7 @@ interface IConfig {
         settingsServiceUrl: string;
         chatServiceUrl: string;
         sbcloveServiceUrl: string;
+        eventServiceUrl: string;
     };
 }
 
@@ -66,7 +67,9 @@ const config: IConfig = {
         advertisingServiceUrl: process.env.ADVERTISING_SERVICE_URL || 'http://localhost:3010',
         settingsServiceUrl: process.env.SETTINGS_SERVICE_URL || 'http://localhost:3007',
         chatServiceUrl: process.env.CHAT_SERVICE_URL || 'http://localhost:3008',
-        sbcloveServiceUrl: process.env.SBCLOVE_SERVICE_URL || 'http://localhost:3009'
+        sbcloveServiceUrl: process.env.SBCLOVE_SERVICE_URL || 'http://localhost:3009',
+        // SBC Event / ticketing marketplace. Prod 3011, preprod 6011.
+        eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3011'
     }
 };
 

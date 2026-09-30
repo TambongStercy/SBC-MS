@@ -81,6 +81,18 @@ export interface AdsCampaign {
     } | null;
     priorApprovedCampaigns: number;
     isFirstCampaign: boolean;
+    /**
+     * What the current diffuseur pool could actually deliver for this targeting.
+     * null when the estimate could not be made — show "inconnu", never a zero,
+     * which would read as "nobody matches".
+     */
+    reach: {
+        eligible: number;
+        matching: number;
+        projectedUniqueViews: number;
+        targetUniqueViews?: number;
+        sufficient?: boolean;
+    } | null;
 }
 
 export interface AdsAnalytics {
@@ -305,7 +317,13 @@ export const approveManualVerification = async (id: string, observedViewCount: n
     return data;
 };
 
-export const rejectManualVerification = async (id: string, reason: string) => {
-    const { data } = await apiClient.post(`/advertising/admin/manual-verifications/${id}/reject`, { reason });
+/**
+ * Refuse a recording, optionally banning the diffuseur in the same action.
+ *
+ * The refusal reason doubles as the ban reason — it is the same judgement about
+ * the same recording, and asking twice only gets it typed shorter the second time.
+ */
+export const rejectManualVerification = async (id: string, reason: string, ban = false) => {
+    const { data } = await apiClient.post(`/advertising/admin/manual-verifications/${id}/reject`, { reason, ban });
     return data;
 };

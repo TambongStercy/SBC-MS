@@ -152,6 +152,70 @@ class SsoController {
     }
 
     /**
+     * The caller's referral totals: direct, indirect, and how many of each pay.
+     *
+     * The numbers behind the "Mes filleuls" header in the SBC app.
+     *
+     * @route GET /api/sso/referrals/stats
+     * @access Bearer SSO access token with referrals.read scope
+     */
+    async referralStats(req: Request, res: Response): Promise<void> {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            res.status(401).json({ success: false, message: 'Bearer access_token required' });
+            return;
+        }
+        try {
+            const data = await ssoService.getReferralStatsForToken(authHeader.slice('Bearer '.length).trim());
+            res.status(200).json({ success: true, data });
+        } catch (error: any) {
+            const status = error instanceof AppError ? error.statusCode : 500;
+            res.status(status).json({ success: false, message: error.message });
+        }
+    }
+
+    /**
+     * The caller's filleuls at either level, with phone and subscription state.
+     *
+     * Separate from /referrals/list rather than replacing it: SBC Live depends on
+     * that endpoint's exact shape, and widening it would change what an existing
+     * client receives.
+     *
+     * @route GET /api/sso/referrals/detailed?level=direct|indirect&page=1&pageSize=50
+     * @access Bearer SSO access token with referrals.read scope
+     */
+    async referralsDetailed(req: Request, res: Response): Promise<void> {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            res.status(401).json({ success: false, message: 'Bearer access_token required' });
+            return;
+        }
+
+        const level = String(req.query.level ?? 'direct').toLowerCase();
+        if (level !== 'direct' && level !== 'indirect') {
+            res.status(400).json({ success: false, message: "level must be 'direct' or 'indirect'" });
+            return;
+        }
+
+        try {
+            const data = await ssoService.listFilleulsDetailed(
+                authHeader.slice('Bearer '.length).trim(),
+                {
+                    level,
+                    page: Number(req.query.page) || 1,
+                    pageSize: Number(req.query.pageSize) || 50,
+                    name: (req.query.name as string | undefined)?.trim() || undefined,
+                    subType: (req.query.subType as string | undefined)?.trim() || undefined,
+                },
+            );
+            res.status(200).json({ success: true, data });
+        } catch (error: any) {
+            const status = error instanceof AppError ? error.statusCode : 500;
+            res.status(status).json({ success: false, message: error.message });
+        }
+    }
+
+    /**
      * Check whether the bearer is a direct (Niveau 1) referral of sponsorId.
      * Used by SBC Live access rules for filleul-gated and tiered-waiver lives.
      *

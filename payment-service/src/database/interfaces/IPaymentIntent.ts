@@ -67,6 +67,11 @@ export interface IPaymentIntent extends Document {
 
     metadata?: Record<string, any>; // Any other relevant data
 
+    /** When PayinReconciler last asked the provider about this one. */
+    lastReconcileAt?: Date;
+    /** How many times the provider actually ANSWERED and left it unresolved. */
+    reconcileAttempts?: number;
+
     createdAt: Date;
     updatedAt: Date;
 } 

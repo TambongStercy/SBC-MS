@@ -58,14 +58,21 @@ const main = async () => {
     await mongoose.connect(DB);
 
     // --- Submission ---
+    // Pay-first: paying is what puts a campaign in the queue, so an unpaid draft
+    // is turned away rather than queued. This suite predates that and used to
+    // submit a draft straight into PENDING_REVIEW.
     const draft = await seed();
-    const submitted = await submitForReview(draft);
-    check('draft submits to pending_review', submitted.status === CampaignStatus.PENDING_REVIEW);
-    check('submission stamps submittedForReviewAt', !!submitted.submittedForReviewAt);
+    check(
+        'an unpaid draft cannot enter the queue',
+        !!await refusal(() => submitForReview(draft)),
+        'under pay-first the money is what submits it',
+    );
 
-    check('refuses a second submission', !!await refusal(() => submitForReview(submitted)));
+    const submitted = await seed({ status: CampaignStatus.PAID, paidAt: new Date(), submittedForReviewAt: new Date() });
+    check('a paid campaign sits in the queue', submitted.status === CampaignStatus.PAID);
+    check('and carries submittedForReviewAt for queue ordering', !!submitted.submittedForReviewAt);
 
-    for (const status of [CampaignStatus.APPROVED, CampaignStatus.ACTIVE, CampaignStatus.COMPLETED]) {
+    for (const status of [CampaignStatus.ACTIVE, CampaignStatus.COMPLETED]) {
         const c = await seed({ status });
         check(`refuses submission from ${status}`, !!await refusal(() => submitForReview(c)));
     }
@@ -74,12 +81,15 @@ const main = async () => {
     const admin = new Types.ObjectId();
     check('refuses approving a draft', !!await refusal(() => seed().then(c => approveCampaign(c, admin))));
 
+    // A PAID campaign deliberately stays PAID through approval: activatePaidCampaign
+    // is the single guarded path to ACTIVE and needs to still see a payment it can
+    // act on. Only the legacy PENDING_REVIEW route lands on APPROVED.
     const approved = await approveCampaign(submitted, admin);
-    check('pending_review approves', approved.status === CampaignStatus.APPROVED);
+    check('approving a paid campaign leaves it for the activation path', approved.status === CampaignStatus.PAID);
     check('approval records the reviewer', String(approved.reviewedBy) === String(admin) && !!approved.reviewedAt);
 
     // --- Rejection ---
-    const toReject = await submitForReview(await seed());
+    const toReject = await seed({ status: CampaignStatus.PAID, paidAt: new Date() });
     check(
         'refuses rejection without a reason',
         !!await refusal(() => rejectCampaign(toReject, admin, '   ')),
@@ -87,12 +97,13 @@ const main = async () => {
     );
 
     const rejected = await rejectCampaign(toReject, admin, 'Créative non conforme : contenu adulte.');
-    check('pending_review rejects', rejected.status === CampaignStatus.REJECTED);
+    check('a paid campaign rejects', rejected.status === CampaignStatus.REJECTED);
     check('rejection stores the reason', rejected.rejectionReason?.includes('contenu adulte') === true);
 
     // --- Resubmission after rejection ---
+    // It was paid for before the refusal, so it returns to the queue for free.
     const resubmitted = await submitForReview(rejected);
-    check('rejected campaign can be resubmitted', resubmitted.status === CampaignStatus.PENDING_REVIEW);
+    check('a refused campaign returns to the queue without paying again', resubmitted.status === CampaignStatus.PAID);
     check(
         'resubmission clears the stale verdict',
         !resubmitted.rejectionReason && !resubmitted.reviewedBy && !resubmitted.reviewedAt,
@@ -166,15 +177,18 @@ const main = async () => {
     const orphan = await callback({ sessionId: 's2', status: 'SUCCEEDED', metadata: {} });
     check('rejects a success carrying no campaignId', orphan.code === 400);
 
-    // The whole point of the gate: paying for an unreviewed campaign must not work.
+    // The gate still holds, but pay-first moved where it sits: paying an unreviewed
+    // campaign is now the normal way in, and it must land on PAID awaiting an
+    // admin — never straight to ACTIVE.
     const unreviewed = await seed({ status: CampaignStatus.DRAFT });
     const bypass = await callback({
         sessionId: 's3', status: 'SUCCEEDED', metadata: { campaignId: String(unreviewed._id) },
     });
+    const afterPay = await CampaignModel.findById(unreviewed._id);
     check(
-        'payment cannot activate an unreviewed campaign',
-        bypass.code === 400 && (await CampaignModel.findById(unreviewed._id))?.status === CampaignStatus.DRAFT,
-        `code ${bypass.code}`,
+        'paying an unreviewed campaign queues it rather than activating it',
+        bypass.code === 200 && afterPay?.status === CampaignStatus.PAID,
+        `code ${bypass.code}, status ${afterPay?.status}`,
     );
 
     const paid = await seed({ status: CampaignStatus.APPROVED });

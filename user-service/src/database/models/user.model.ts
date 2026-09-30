@@ -76,6 +76,8 @@ export interface IUser extends Document {
     deletionReason?: string;
     contactsOtps: Types.DocumentArray<IOtp>;
     otps: Types.DocumentArray<IOtp>;
+    /** When sign-in codes were last sent, newest last, capped to OTP_SEND_MAX_IN_WINDOW. */
+    otpSendLog?: Date[];
     ipAddress?: string;
     ipCity?: string;
     ipRegion?: string;
@@ -92,6 +94,10 @@ export interface IUser extends Document {
     // the user transfers to `balance` first, then withdraws through the normal
     // payout path. See docs/ADVERTISING-FEATURE-SPEC.md.
     advertisingBalance: number;
+    // Organizer earnings from SBC Event (ticket sales + resale). Kept separate
+    // from `balance` for accounting; only exit is the transfer-to-main flow, same
+    // pattern as advertisingBalance — the withdrawal path stays untouched.
+    eventOrganizerBalance: number;
     sbcLiveBalance: number; // Creator earnings from SBC Live (75% of paid-live revenue after 25% SBC commission)
     // Crypto wallet information
     cryptoWalletAddress?: string;
@@ -166,6 +172,7 @@ const UserSchema = new Schema<IUser>(
         deletionReason: { type: String },
         contactsOtps: [otpSchema],
         otps: [otpSchema],
+        otpSendLog: { type: [Date], default: undefined },
         ipAddress: { type: String },
         ipCity: { type: String, index: true },
         ipRegion: { type: String },
@@ -178,6 +185,7 @@ const UserSchema = new Schema<IUser>(
         usdBalance: { type: Number, default: 0, required: true },
         activationBalance: { type: Number, default: 0, required: true }, // For sponsoring referral activations (BEAC compliance)
         advertisingBalance: { type: Number, default: 0, required: true, min: 0 },
+        eventOrganizerBalance: { type: Number, default: 0, required: true, min: 0 }, // SBC Event organizer earnings. Mongoose default handles backfill.
         sbcLiveBalance: { type: Number, default: 0, required: true }, // Creator earnings from SBC Live (75% split after 25% SBC commission). Mongoose default handles backfill — no migration script needed.
         // Crypto wallet information
         cryptoWalletAddress: { 

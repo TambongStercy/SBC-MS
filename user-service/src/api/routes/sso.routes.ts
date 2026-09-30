@@ -84,4 +84,30 @@ router.get(
     (req, res) => ssoController.referralsList(req, res),
 );
 
+/**
+ * @route GET /api/sso/referrals/stats
+ * @desc  Direct / indirect / total filleuls, and how many of each hold an active
+ *        CLASSIQUE or CIBLE — the numbers in the "Mes filleuls" header.
+ * @auth  Bearer <SSO access token> with referrals.read scope
+ */
+router.get(
+    '/referrals/stats',
+    mediumLimiter,
+    (req, res) => ssoController.referralStats(req, res),
+);
+
+/**
+ * @route GET /api/sso/referrals/detailed?level=direct|indirect&page=1&pageSize=50&name=&subType=
+ * @desc  The caller's filleuls at either level, with phone number and
+ *        subscription state. Separate from /referrals/list, which SBC Live
+ *        depends on the exact shape of. Caller comes from the token, never a
+ *        parameter, so a leaked token can only enumerate its own owner's network.
+ * @auth  Bearer <SSO access token> with referrals.read scope
+ */
+router.get(
+    '/referrals/detailed',
+    mediumLimiter,
+    (req, res) => ssoController.referralsDetailed(req, res),
+);
+
 export default router;

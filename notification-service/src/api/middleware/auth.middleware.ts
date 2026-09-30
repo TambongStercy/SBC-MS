@@ -140,3 +140,30 @@ export const authenticateServiceRequest = async (
         return res.status(500).json({ success: false, message: 'Authentication error' });
     }
 }; 
+/**
+ * Admin-only. Use after `authenticate`.
+ *
+ * Until 2026-09-30 the relance `/admin/*` routes ran on `authenticate` alone, so
+ * any signed-in user could read every relance target (filleuls' names, emails,
+ * phones) and rewrite the email and SMS templates sent to them under SBC's name.
+ * The single handler that did check compared against 'ADMIN', while tokens carry
+ * 'admin', so it refused real admins too — hence the case-insensitive compare.
+ */
+export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (typeof req.user?.role === 'string' && req.user.role.toLowerCase() === 'admin') {
+        return next();
+    }
+    return res.status(403).json({ success: false, message: 'Admin access required.' });
+};
+
+/**
+ * Accepts either another SBC service (shared secret) or a signed-in admin. For
+ * internal actions that the admin panel can also trigger by hand.
+ */
+export const authenticateServiceOrAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ') && authHeader.substring(7) === config.services.serviceSecret) {
+        return next();
+    }
+    return authenticate(req, res, () => requireAdmin(req, res, next));
+};

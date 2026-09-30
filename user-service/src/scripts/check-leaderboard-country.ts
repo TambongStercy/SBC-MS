@@ -1,11 +1,17 @@
-/** Admin per-country board check. */
+/** Per-country boards (admin filters, "Classement par pays") and "Top de mes filleuls". */
 import assert from 'assert';
 import mongoose, { Types } from 'mongoose';
 import ReferralModel from '../database/models/referral.model';
 import UserModel from '../database/models/user.model';
 import SubscriptionModel, { SubscriptionStatus, SubscriptionType } from '../database/models/subscription.model';
-import { startOfCurrentMonthDouala } from '../database/repositories/referral.repository';
-import { getLeaderboardByCountry, getLeaderboardForMonth } from '../services/leaderboard.service';
+import { startOfCurrentMonthDouala, normalizeCountry } from '../database/repositories/referral.repository';
+import {
+  getLeaderboardByCountry,
+  getLeaderboardForMonth,
+  getCountryBoard,
+  getMyFilleulsBoard,
+  invalidateLeaderboardCache,
+} from '../services/leaderboard.service';
 
 const URI = process.env.CHECK_MONGO_URI || 'mongodb://127.0.0.1:27017/sbc_lb_country_check';
 
@@ -25,13 +31,19 @@ const URI = process.env.CHECK_MONGO_URI || 'mongodb://127.0.0.1:27017/sbc_lb_cou
     await SubscriptionModel.collection.insertOne({ user: _id, subscriptionType: SubscriptionType.CLASSIQUE,
       status: SubscriptionStatus.ACTIVE, startDate: inMonth, endDate: new Date(Date.now() + 30 * 864e5) } as any);
     for (let i = 0; i < n; i++) {
-      await ReferralModel.collection.insertOne({ referrer: _id, referredUser: new Types.ObjectId(),
+      const filleul = new Types.ObjectId();
+      await ReferralModel.collection.insertOne({ referrer: _id, referredUser: filleul,
         referralLevel: 1, archived: false, createdAt: inMonth } as any);
+      // Only filleuls who PAID inside the month are ranked.
+      await SubscriptionModel.collection.insertOne({ user: filleul, subscriptionType: SubscriptionType.CLASSIQUE,
+        status: SubscriptionStatus.ACTIVE, startDate: inMonth, createdAt: inMonth,
+        endDate: new Date(Date.now() + 30 * 864e5) } as any);
     }
+    return _id;
   };
-  await mk('CM-big', 'CM', 50);
+  const cmBig = await mk('CM-big', 'CM', 50);
   await mk('CM-small', 'CM', 10);
-  await mk('SN-top', 'SN', 30);
+  const snTop = await mk('SN-top', 'SN', 30);
   await mk('CI-top', 'CI', 20);
 
   const ms = startOfCurrentMonthDouala();
@@ -47,7 +59,43 @@ const URI = process.env.CHECK_MONGO_URI || 'mongodb://127.0.0.1:27017/sbc_lb_cou
   assert.deepStrictEqual(grouped.CM.map(e => e.name), ['CM-big', 'CM-small']);
   assert.deepStrictEqual(grouped.SN.map(e => e.rank), [1], 'SN top is rank 1 in its own board');
 
-  console.log('OK  admin: global board, single-country filter, and per-country grouping all correct.');
+  // --- Member "Classement par pays" ---
+  assert.strictEqual(normalizeCountry(' cm '), 'CM', 'ISO-2 is trimmed and upper-cased');
+  assert.strictEqual(normalizeCountry('Congo-Brazzaville'), 'CG', 'legacy name folds into its code');
+  assert.strictEqual(normalizeCountry('Atlantis'), null, 'unknown names are not a country');
+  assert.strictEqual(normalizeCountry(undefined), null);
+
+  await mk('CG-legacy', 'Congo-Brazzaville', 5);
+  await mk('Stateless', '', 40); // ranked globally, but belongs to no country
+
+  invalidateLeaderboardCache();
+  const board = await getCountryBoard();
+  assert.deepStrictEqual(
+    board.countries.map(c => [c.country, c.referralCount, c.affiliates, c.rank]),
+    [['CM', 60, 2, 1], ['SN', 30, 1, 2], ['CI', 20, 1, 3], ['CG', 5, 1, 4]],
+    'countries ranked by summed paid filleuls, legacy name folded, no-country excluded',
+  );
+  assert.deepStrictEqual(Object.keys(board.byCountry).sort(), ['CG', 'CI', 'CM', 'SN'], 'a top board per ranked country');
+  assert.deepStrictEqual(board.byCountry.CM.map(e => [e.name, e.rank]), [['CM-big', 1], ['CM-small', 2]], 'CM re-ranked from 1');
+  assert.deepStrictEqual(board.byCountry.CG.map(e => e.name), ['CG-legacy']);
+  assert.strictEqual(await getCountryBoard(), board, 'second call is served from the cache');
+
+  // --- "Top de mes filleuls" ---
+  // A sponsor whose direct filleuls are SN-top (30) and CM-big (50), inserted in
+  // the "wrong" order to prove the board ranks rather than echoing insert order.
+  const sponsor = new Types.ObjectId();
+  for (const filleul of [snTop, cmBig]) {
+    await ReferralModel.collection.insertOne({ referrer: sponsor, referredUser: filleul,
+      referralLevel: 1, archived: false, createdAt: inMonth } as any);
+  }
+  invalidateLeaderboardCache();
+  const mine = await getMyFilleulsBoard(sponsor.toString());
+  assert.deepStrictEqual(mine.top.map(e => [e.name, e.referralCount, e.rank]), [['CM-big', 50, 1], ['SN-top', 30, 2]], 'sponsor sees their filleuls ranked');
+  assert.strictEqual(mine.totalRanked, 2);
+  const nobody = await getMyFilleulsBoard(new Types.ObjectId().toString());
+  assert.deepStrictEqual(nobody, { top: [], totalRanked: 0 }, 'a sponsor with no ranked filleuls gets an empty board');
+
+  console.log('OK  admin filters + country board + top de mes filleuls: totals, order, aliases, exclusions, re-ranking and cache.');
   await mongoose.connection.dropDatabase();
   await mongoose.disconnect();
 })().catch(async e => { console.error('FAIL', e); await mongoose.disconnect(); process.exit(1); });

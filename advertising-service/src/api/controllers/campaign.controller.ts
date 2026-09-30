@@ -14,6 +14,7 @@ import { createCampaignPaymentIntent } from '../../services/clients/payment.serv
 import { settlePaidCampaign } from '../../services/activation.service';
 import { reserveCredit, releaseCredit, availableCredit } from '../../services/credit.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { estimateReach, describeReach } from '../../services/reach.service';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
 import logger from '../../utils/logger';
@@ -226,6 +227,20 @@ const PAYABLE_STATUSES = [
 export const pay = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const campaign = await ownedCampaign(req);
+
+        // Paid once is paid. REJECTED is a payable status — that is how an
+        // annonceur pays after fixing a refusal — but a campaign that was already
+        // paid for and THEN refused would land back on the pay button and charge
+        // them a second time for the same campaign. Status alone cannot tell those
+        // two apart; paidAt can.
+        if (campaign.paidAt) {
+            throw new AppError(
+                'Cette campagne a déjà été payée. Modifiez-la si nécessaire, puis renvoyez-la '
+                + 'en validation — aucun nouveau paiement n\'est demandé.',
+                400,
+            );
+        }
+
         if (!PAYABLE_STATUSES.includes(campaign.status)) {
             throw new AppError(
                 campaign.status === CampaignStatus.PAID
@@ -474,5 +489,34 @@ export const getLeaderboard = async (req: AuthenticatedRequest, res: Response) =
         });
     } catch (err) {
         return fail(res, err, 'getLeaderboard');
+    }
+};
+
+/**
+ * How far a given targeting actually reaches, before any money is spent.
+ *
+ * Called live as the annonceur edits their filters, so they find out that "Gabon
+ * + RDC, femmes 25-50" reaches two people while they can still change it — not
+ * after paying and waiting a day for nothing to happen.
+ */
+export const reach = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { targeting, amount, targetUniqueViews } = req.body ?? {};
+
+        // Accept either the money or the views: the form knows the budget the
+        // annonceur typed, the campaign knows the views it bought.
+        const target = typeof targetUniqueViews === 'number'
+            ? targetUniqueViews
+            : amount != null
+                ? quoteCampaign(Number(amount)).uniqueViews
+                : undefined;
+
+        const estimate = await estimateReach(targeting ?? {}, target);
+        return res.json({
+            success: true,
+            data: { ...estimate, message: describeReach(estimate) },
+        });
+    } catch (err) {
+        return fail(res, err, 'reach');
     }
 };

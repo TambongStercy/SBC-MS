@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import {
     getQuote,
+    reach,
     create,
     listMine,
     getOne,
@@ -21,6 +22,9 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/quote', getQuote);
+// Live as the annonceur edits their filters, so an unservable audience is caught
+// before payment rather than after.
+router.post('/reach', reach);
 // Before /:id so 'leaderboard' is not read as a campaign id.
 router.get('/leaderboard', getLeaderboard);
 router.post('/', create);

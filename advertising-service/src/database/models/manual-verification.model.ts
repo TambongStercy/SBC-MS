@@ -38,6 +38,14 @@ export interface IManualVerification extends Document {
     uploadedAt?: Date;
     reviewedBy?: Types.ObjectId;
     reviewedAt?: Date;
+    /**
+     * When the recording was removed from storage after review.
+     *
+     * Set instead of clearing reviewedAt so the record still proves a review
+     * happened — only the video itself goes. videoFileId is cleared alongside,
+     * which is what tells the admin UI there is nothing left to play.
+     */
+    videoDeletedAt?: Date;
     /** Views the admin read off the video; what the day is credited on. */
     observedViewCount?: number;
     rejectionReason?: string;
@@ -63,6 +71,7 @@ const ManualVerificationSchema = new Schema<IManualVerification>({
     uploadedAt: { type: Date },
     reviewedBy: { type: Schema.Types.ObjectId },
     reviewedAt: { type: Date },
+    videoDeletedAt: { type: Date },
     observedViewCount: { type: Number, min: 0 },
     rejectionReason: { type: String, trim: true, maxlength: 1000 },
 }, { timestamps: true });

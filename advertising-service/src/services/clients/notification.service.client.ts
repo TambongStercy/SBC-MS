@@ -71,13 +71,25 @@ const email = async (userId: string, subject: string, body: string, relatedData?
 };
 
 /** French throughout: the diffuseur audience is Cameroon and francophone Africa. */
-export const notifyCampaignOffer = (userId: string, campaignTitle: string, expectedViews: number) =>
+export const notifyCampaignOffer = (
+    userId: string,
+    campaignTitle: string,
+    expectedViews: number,
+    /**
+     * Days this campaign runs. Was a literal 3 in the text, so the 1-day test
+     * campaign's offer email promised three days — and, since the test campaign
+     * forecasts no views, « environ 0 vues sur 3 jours ».
+     */
+    days: number = config.campaign.durationDays,
+) =>
     email(
         userId,
         '📢 Nouvelle campagne disponible',
         `✨ Une nouvelle campagne est disponible pour vous : « ${campaignTitle} ».\n\n`
         + `Elle est proposée à plusieurs diffuseurs et les premiers à accepter l'obtiennent. `
-        + `Vous pourriez gagner environ ${expectedViews} vues sur 3 jours.\n\n`
+        + (expectedViews > 0
+            ? `Vous pourriez gagner environ ${expectedViews} vues sur ${days} jour${days > 1 ? 's' : ''}.\n\n`
+            : `Elle se publie sur ${days} jour${days > 1 ? 's' : ''}.\n\n`)
         + `Connectez-vous à SBC pour l'accepter.`,
         { campaignTitle, ctaLabel: 'Voir la campagne', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );

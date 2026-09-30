@@ -65,6 +65,9 @@ serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDe
 // Campaign targeting runs on these fields; batch-details carries none of them.
 serviceRouter.post('/advertising-details', (req, res) => userController.getAdvertisingDetailsByIds(req, res));
 
+// Internal route to get the SBC Event ticket-holder subset (event-service).
+serviceRouter.post('/event-details', (req, res) => userController.getEventDetailsByIds(req, res));
+
 // Internal route to search user IDs by name/email/phone
 serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsBySearchTerm(req, res, next));
 
@@ -149,6 +152,8 @@ router.get('/get-referals', requireActiveSubscription as any, (req, res) => user
 // below, or Express matches this as userId === 'leaderboard' and it 404s with
 // a confusing "user not found".
 router.get('/leaderboard', requireActiveSubscription as any, (req, res) => userController.getLeaderboard(req as AuthenticatedRequest, res));
+router.get('/leaderboard/countries', requireActiveSubscription as any, (req, res) => userController.getCountryLeaderboard(req as AuthenticatedRequest, res));
+router.get('/leaderboard/filleuls', requireActiveSubscription as any, (req, res) => userController.getMyFilleulsLeaderboard(req as AuthenticatedRequest, res));
 // Admin-only past-month board. Registered above '/:userId' like its sibling.
 router.get('/admin/leaderboard', authorize([UserRole.ADMIN]) as any, (req, res) => userController.getLeaderboardForMonthAdmin(req as AuthenticatedRequest, res));
 router.get('/get-products', requireActiveSubscription as any, (req, res) => userController.getUserProducts(req as AuthenticatedRequest, res));

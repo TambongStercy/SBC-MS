@@ -40,9 +40,108 @@ async function isSmsBlockedBySubscription(referralId: string): Promise<boolean> 
     }
 }
 
+/** True only when user-service positively reports a paid plan. */
+async function referralHasPaid(referralId: string): Promise<boolean> {
+    try {
+        const types = await userServiceClient.getActiveSubscriptionTypes(referralId);
+        return types.some(t => SUBSCRIPTION_TYPES_BLOCKING_SMS.includes(t));
+    } catch {
+        return false;
+    }
+}
+
 // Low-balance thresholds — trigger one notification when crossing below
 const EMAIL_LOW_BALANCE_THRESHOLD = 50;
 const SMS_LOW_BALANCE_THRESHOLD = 20;
+
+type CreditChannel = 'email' | 'sms';
+const balanceField = (channel: CreditChannel) => (channel === 'email' ? 'emailBalance' : 'smsBalance');
+const DEFAULT_MAX_PER_DAY = 500;
+
+/** True once the parrain has sent their daily email allowance. */
+export const dailyEmailCapReached = (config: any) =>
+    (config.messagesSentToday ?? 0) >= (config.maxMessagesPerDay ?? DEFAULT_MAX_PER_DAY);
+
+/**
+ * Starts a new day's email count. lastResetDate was written once at creation and
+ * never again, so messagesSentToday only ever grew; with the daily limit now
+ * enforced it would have stopped a parrain for good after one busy day.
+ * Days are counted in UTC.
+ */
+export async function resetDailyCountIfNewDay(config: any, now: Date = new Date()): Promise<void> {
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const updated: any = await RelanceConfigModel.findOneAndUpdate(
+        { _id: config._id, $or: [{ lastResetDate: { $lt: startOfToday } }, { lastResetDate: null }] },
+        { $set: { messagesSentToday: 0, lastResetDate: now } },
+        { new: true, projection: { messagesSentToday: 1, lastResetDate: 1 } },
+    ).lean();
+    if (updated) {
+        config.messagesSentToday = 0;
+        config.lastResetDate = updated.lastResetDate;
+    }
+}
+
+/**
+ * Takes one credit before a message is sent, atomically. Returns false when
+ * none is left, and the message must then not be sent.
+ *
+ * Credits used to be decremented on the in-memory config and written back
+ * whole with `config.save()` at the end of a target. A pack credited while a
+ * run was in progress (creditRelancePack does a `$inc`) was then overwritten by
+ * the stale in-memory value and lost. The regular path also sent emails without
+ * checking the email balance at all — any SMS credit got a user past the gate.
+ *
+ * The in-memory copy is kept in step so later checks in the same run and the
+ * low-balance alerts see the real figure. It is never saved back.
+ */
+export async function reserveRelanceCredit(config: any, channel: CreditChannel): Promise<boolean> {
+    const field = balanceField(channel);
+    const inc: Record<string, number> = { [field]: -1 };
+    const filter: Record<string, any> = { _id: config._id, [field]: { $gt: 0 } };
+    if (channel === 'email') {
+        inc.messagesSentToday = 1;
+        // The parrain's daily email limit ("par jour" on the page). It was stored
+        // and editable but never enforced, so crediting a parrain with thousands
+        // of waiting filleuls would have sent them all in one run — through the
+        // same mail server that carries everyone's OTPs.
+        filter.$expr = { $lt: [{ $ifNull: ['$messagesSentToday', 0] }, { $ifNull: ['$maxMessagesPerDay', DEFAULT_MAX_PER_DAY] }] };
+    }
+    const updated: any = await RelanceConfigModel.findOneAndUpdate(
+        filter,
+        { $inc: inc },
+        { new: true, projection: { emailBalance: 1, smsBalance: 1, messagesSentToday: 1 } },
+    ).lean();
+    if (!updated) {
+        // Refresh from the database so the caller can tell "out of credit" from
+        // "done for today".
+        const fresh: any = await RelanceConfigModel.findById(config._id)
+            .select('emailBalance smsBalance messagesSentToday').lean();
+        if (fresh) {
+            config[field] = fresh[field] ?? 0;
+            config.messagesSentToday = fresh.messagesSentToday ?? 0;
+        }
+        return false;
+    }
+    config[field] = updated[field];
+    config.messagesSentToday = updated.messagesSentToday;
+    return true;
+}
+
+/** Gives back a credit reserved for a message that then failed to send. */
+export async function refundRelanceCredit(config: any, channel: CreditChannel): Promise<void> {
+    const field = balanceField(channel);
+    const inc: Record<string, number> = { [field]: 1 };
+    if (channel === 'email') inc.messagesSentToday = -1;
+    const updated: any = await RelanceConfigModel.findOneAndUpdate(
+        { _id: config._id },
+        { $inc: inc },
+        { new: true, projection: { emailBalance: 1, smsBalance: 1, messagesSentToday: 1 } },
+    ).lean();
+    if (updated) {
+        config[field] = updated[field];
+        config.messagesSentToday = updated.messagesSentToday;
+    }
+}
 
 /**
  * Email Sending Configuration
@@ -58,14 +157,14 @@ const SMS_LOW_BALANCE_THRESHOLD = 20;
  * For 1,600 targets (single user): ~54 minutes
  * For 3 users with 500 targets each: ~17 minutes (parallel)
  */
-const EMAIL_DELAY_MS = 2000; // 2 seconds between emails per user
+const EMAIL_DELAY_MS = Number(process.env.RELANCE_EMAIL_DELAY_MS ?? 2000); // 2 seconds between emails per user (overridable for tests)
 const MAX_RETRIES_PER_DAY = 3; // Max send attempts per day before skipping to next day
 
 /**
  * Process a single user's targets
  * Each user runs independently with their own pacing
  */
-async function processUserTargets(
+export async function processUserTargets(
     referrerId: string,
     targets: any[],
     config: any
@@ -86,10 +185,43 @@ async function processUserTargets(
                 console.log(`${campaignLabel} Sending paused for referrer ${referrerId}, stopping all targets`);
                 break;
             }
+            // Nothing can go out for this parrain right now (no credit, or today's
+            // email limit used and no SMS available): stop here. Carrying on would
+            // only spend user-service lookups on every waiting filleul, every run.
+            const canEmail = (config.emailBalance ?? 0) > 0 && !dailyEmailCapReached(config);
+            const canSms = !!config.smsEnabled && (config.smsBalance ?? 0) > 0;
+            if (!canEmail && !canSms) {
+                console.log(`[Relance Sender] [User:${referrerId.slice(-6)}] ${dailyEmailCapReached(config) ? "today's email limit reached" : 'out of credits'}; ${targets.length - i} target(s) wait for the next run`);
+                break;
+            }
             const isDefaultTarget = !campaign;
             if (isDefaultTarget && !config.enabled) {
                 console.log(`${campaignLabel} Default relance disabled for referrer ${referrerId}, skipping default target ${target._id}`);
                 continue; // continue here since campaign targets may still need processing
+            }
+            // A campaign sends only while it is ACTIVE. Pausing used to stop new
+            // filleuls joining but let everyone already in it keep receiving messages;
+            // the target now waits where it is and resumes with the campaign.
+            if (campaign && campaign.status !== CampaignStatus.ACTIVE) {
+                console.log(`${campaignLabel} campaign is ${campaign.status}; holding target ${target._id}`);
+                continue;
+            }
+            // Relance des nouveaux exists to get a new filleul to pay. Payment is
+            // supposed to exit them (internal/exit-user), but the activation-balance
+            // path never calls it, and only the SMS branch used to check — so a
+            // filleul who had already paid could keep getting "you haven't paid"
+            // emails. Exit only on a positive answer: an unreachable user-service
+            // returns no subscriptions, and wrongly exiting an unpaid filleul would
+            // be permanent. Campaigns are left to their own filter, which may
+            // target subscribers on purpose.
+            if (isDefaultTarget && await referralHasPaid(referralId)) {
+                console.log(`${campaignLabel} filleul ${referralId} has paid; leaving relance`);
+                target.status = TargetStatus.COMPLETED;
+                target.exitReason = ExitReason.PAID;
+                target.exitedLoopAt = new Date();
+                await target.save();
+                exited++;
+                continue;
             }
 
             // CRITICAL: Check if message already sent for this day (prevent duplicates)
@@ -173,9 +305,15 @@ async function processUserTargets(
                     continue;
                 }
 
+                // Set when the welcome email was ready to go but no credit (or no
+                // allowance left today) was available. J0 used to advance regardless,
+                // so the filleul silently lost their first email for good.
+                let emailHeld = false;
+                let j0SmsSent = false;
+
                 // ─── J1 EMAIL (welcome) ───
                 const recipientEmail = referralInfo.email;
-                if (recipientEmail && config.emailBalance > 0) {
+                if (recipientEmail) {
                     const isSuppressed = await RelanceBounceSuppressionModel.exists({ email: recipientEmail.toLowerCase() });
                     if (isSuppressed) {
                         console.log(`${campaignLabel} J0: email ${recipientEmail} suppressed, exiting target`);
@@ -188,7 +326,9 @@ async function processUserTargets(
                     }
 
                     const emailTemplate = await RelanceMessageModel.findOne({ dayNumber: 1, active: true });
-                    if (emailTemplate) {
+                    const emailReserved = !!emailTemplate && await reserveRelanceCredit(config, 'email');
+                    if (emailTemplate && !emailReserved) emailHeld = true;
+                    if (emailTemplate && emailReserved) {
                         const referrerInfo = await userServiceClient.getUserDetails(referrerId);
                         const language = target.language || 'fr';
                         let messageText = language === 'en' ? emailTemplate.messageTemplate.en : emailTemplate.messageTemplate.fr;
@@ -219,10 +359,9 @@ async function processUserTargets(
                                 sendGridMessageId
                             });
                             target.lastMessageSentAt = new Date();
-                            config.emailBalance = Math.max(0, config.emailBalance - 1);
-                            config.messagesSentToday = (config.messagesSentToday || 0) + 1;
                             console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0: J1 email sent to ${recipientEmail}`);
                         } else {
+                            await refundRelanceCredit(config, 'email');
                             console.error(`${campaignLabel} J0: email send failed for ${recipientEmail}: ${sendResult.error}`);
                         }
                     }
@@ -239,14 +378,14 @@ async function processUserTargets(
                             dayNumber: 0,
                             active: true
                         });
-                        if (smsTemplate) {
+                        if (smsTemplate && await reserveRelanceCredit(config, 'sms')) {
                             const userLink = (config.smsLinks || []).find((l: any) =>
                                 l.type === 'auto' && l.dayNumber === 0
                             );
                             const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
                             const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
+                            if (!smsSent) await refundRelanceCredit(config, 'sms');
                             if (smsSent) {
-                                config.smsBalance = Math.max(0, config.smsBalance - 1);
                                 target.messagesDelivered.push({
                                     day: 0,
                                     channel: 'sms',
@@ -265,16 +404,25 @@ async function processUserTargets(
                                         ).catch(() => { });
                                     }
                                 }
+                                j0SmsSent = true;
                                 console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 SMS sent to ${phone}`);
                             }
                         }
                     }
                 }
 
-                await config.save();
+                // Nothing went out only because of credit or today's limit: keep the
+                // filleul at J0 so the welcome email still goes when there is room.
+                if (emailHeld && !j0SmsSent) {
+                    console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 held for ${referralId} — ${dailyEmailCapReached(config) ? "today's email limit reached" : 'no email credit'}`);
+                    continue;
+                }
+
+                // Credits were already taken atomically per message; no config.save()
+                // here, which is what used to overwrite a concurrent pack credit.
                 sent++;
 
-                // Always advance J0 → Day 1 (best-effort, no retry on J0)
+                // Advance J0 → Day 1 (best-effort, no retry on a provider failure)
                 target.currentDay = 1;
                 const nextDue = new Date();
                 nextDue.setHours(nextDue.getHours() + 24);
@@ -296,14 +444,14 @@ async function processUserTargets(
                         const smsTemplate = await RelanceSmsTemplateModel.findOne({
                             type: 'auto', dayNumber: 7, active: true
                         });
-                        if (smsTemplate) {
+                        if (smsTemplate && await reserveRelanceCredit(config, 'sms')) {
                             const userLink = (config.smsLinks || []).find((l: any) =>
                                 l.type === 'auto' && l.dayNumber === 7
                             );
                             const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
                             const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
+                            if (!smsSent) await refundRelanceCredit(config, 'sms');
                             if (smsSent) {
-                                config.smsBalance = Math.max(0, config.smsBalance - 1);
                                 target.messagesDelivered.push({
                                     day: 7,
                                     channel: 'sms',
@@ -317,7 +465,6 @@ async function processUserTargets(
                     }
                 }
 
-                await config.save();
                 target.status = TargetStatus.COMPLETED;
                 target.exitReason = ExitReason.COMPLETED_7_DAYS;
                 target.exitedLoopAt = new Date();
@@ -397,6 +544,13 @@ async function processUserTargets(
                 continue;
             }
 
+            // No email credit: leave the target where it is — it is picked up again
+            // on the next run once the parrain has credits. Never send unpaid.
+            if (!(await reserveRelanceCredit(config, 'email'))) {
+                console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] ${dailyEmailCapReached(config) ? "today's email limit reached" : "no email credit left"}; target ${target._id} waits`);
+                continue;
+            }
+
             // Send email (use emailDayNumber for the actual template day; for default
             // targets this is currentDay+1, for manual it equals currentDay)
             const sendResult = await emailRelanceService.sendRelanceEmail(
@@ -428,9 +582,7 @@ async function processUserTargets(
                 });
                 target.lastMessageSentAt = new Date();
 
-                // Deduct email credit
-                config.emailBalance = Math.max(0, config.emailBalance - 1);
-                config.messagesSentToday = (config.messagesSentToday || 0) + 1;
+                // The email credit was reserved before sending (reserveRelanceCredit).
 
                 // Low-balance alert (fire-and-forget)
                 if (config.emailBalance === EMAIL_LOW_BALANCE_THRESHOLD) {
@@ -457,15 +609,15 @@ async function processUserTargets(
                             dayNumber: target.currentDay,
                             active: true
                         });
-                        if (smsTemplate) {
+                        if (smsTemplate && await reserveRelanceCredit(config, 'sms')) {
                             const userLink = (config.smsLinks || []).find((l: any) =>
                                 l.type === (isDefaultTarget ? 'auto' : 'manual') &&
                                 l.dayNumber === target.currentDay
                             );
                             const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
                             const smsSent = await smsService.sendSms({ to: formatCmNumber(phone!), body: smsText });
+                            if (!smsSent) await refundRelanceCredit(config, 'sms');
                             if (smsSent) {
-                                config.smsBalance = Math.max(0, config.smsBalance - 1);
                                 target.messagesDelivered.push({
                                     day: target.currentDay,
                                     channel: 'sms',
@@ -483,8 +635,6 @@ async function processUserTargets(
                         }
                     }
                 }
-
-                await config.save();
 
                 // Update campaign stats
                 if (campaign) {
@@ -518,6 +668,7 @@ async function processUserTargets(
 
             } else {
                 console.error(`${campaignLabel} Failed to send email to ${recipientEmail}:`, sendResult.error);
+                await refundRelanceCredit(config, 'email');
 
                 target.messagesDelivered.push({
                     day: target.currentDay,
@@ -650,7 +801,9 @@ async function runMessageSendingJob() {
                     return { userId: referrerId, sent: 0, failed: 0, exited: 0 };
                 }
 
-                console.log(`[Relance Sender] [User:${referrerId.slice(-6)}] Processing ${userTargets.length} targets (email: ${config.emailBalance}, sms: ${config.smsBalance})...`);
+                await resetDailyCountIfNewDay(config);
+
+                console.log(`[Relance Sender] [User:${referrerId.slice(-6)}] Processing ${userTargets.length} targets (email: ${config.emailBalance}, sms: ${config.smsBalance}, today ${config.messagesSentToday}/${config.maxMessagesPerDay})...`);
                 const result = await processUserTargets(referrerId, userTargets, config);
                 return { userId: referrerId, ...result };
             })();

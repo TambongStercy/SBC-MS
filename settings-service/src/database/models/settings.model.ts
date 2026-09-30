@@ -25,6 +25,15 @@ export interface IFormation extends Types.Subdocument { // Use Subdocument for a
     decoration?: string;
 }
 
+// SBC Event commission rates. Spec requires these be configurable from the
+// admin, never hardcoded — event-service reads them from here and only falls
+// back to its env defaults when settings-service is unreachable.
+export interface IEventCommissions {
+    primaryPct: number;              // commission on a first-hand ticket sale (0–0.5)
+    resalePct: number;               // commission on a resale (0–0.5)
+    defaultMaxResalePricePct: number; // resale price ceiling, % of face value (100–300)
+}
+
 // Remove IEventItem interface - moved to event.model.ts
 // export interface IEventItem extends Document { ... }
 
@@ -43,6 +52,9 @@ export interface ISettings extends Document {
 
     // New Formations field
     formations: Types.DocumentArray<IFormation>; // Array of formation objects
+
+    // SBC Event commission rates (admin-configurable)
+    eventCommissions?: IEventCommissions;
 
     // Remove Events array - moved to separate EventModel
     // events: Types.DocumentArray<IEventItem>;
@@ -88,6 +100,14 @@ const SettingsSchema: Schema = new Schema(
 
         // New Formations array
         formations: [FormationSchema], // Array of FormationSchema subdocuments
+
+        // SBC Event commission rates. Nested paths (not a subdocument) so the
+        // defaults also apply to settings documents saved before this field existed.
+        eventCommissions: {
+            primaryPct: { type: Number, default: 0.05, min: 0, max: 0.5 },
+            resalePct: { type: Number, default: 0.10, min: 0, max: 0.5 },
+            defaultMaxResalePricePct: { type: Number, default: 120, min: 100, max: 300 },
+        },
     },
     {
         timestamps: true, // Automatically adds createdAt and updatedAt

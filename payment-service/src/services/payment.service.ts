@@ -1799,18 +1799,10 @@ class PaymentService {
             throw new Error(`No credentials for country ${countryCode}`);
         }
 
-        // Get auth token for status check
-        const authResponse = await axios.post(
-            `${config.cinetpay.baseUrl}/v1/oauth/login`,
-            { api_key: countryCreds.apiKey, api_password: countryCreds.apiPassword },
-            { headers: { 'Content-Type': 'application/json' }, httpsAgent: ipv4Agent }
-        );
-
-        if (authResponse.data.code !== 200) {
-            throw new Error(`CinetPay auth failed during webhook verification: ${authResponse.data.status}`);
-        }
-
-        const accessToken = authResponse.data.access_token;
+        // Cached per-country token, shared with payouts and checkout. Logging in
+        // afresh on every notification is what got us rate-limited once the
+        // reconciler began replaying a backlog through this handler.
+        const accessToken = await cinetpayPayoutService.getAccessToken(countryCode);
 
         // Check payment status via API
         const statusResponse = await axios.get(
@@ -4009,21 +4001,9 @@ class PaymentService {
 
             log.info(`CinetPay config: baseUrl=${config.cinetpay.baseUrl}, country=${countryCode}, env=${config.nodeEnv}`);
 
-            // Authenticate with CinetPay OAuth for this country
-            const authResponse = await axios.post(
-                `${config.cinetpay.baseUrl}/v1/oauth/login`,
-                {
-                    api_key: countryCreds.apiKey,
-                    api_password: countryCreds.apiPassword,
-                },
-                { headers: { 'Content-Type': 'application/json' }, httpsAgent: ipv4Agent }
-            );
-
-            if (authResponse.data.code !== 200) {
-                throw new Error(`CinetPay auth failed for ${countryCode}: ${authResponse.data.status}`);
-            }
-
-            const accessToken = authResponse.data.access_token;
+            // Cached per-country token — see getAccessToken. A checkout must not be
+            // the request that loses a rate-limit race to a background job.
+            const accessToken = await cinetpayPayoutService.getAccessToken(countryCode);
 
             // Transaction ID (max 30 chars, alphanumeric and hyphens only)
             const rawId = config.nodeEnv === 'production'

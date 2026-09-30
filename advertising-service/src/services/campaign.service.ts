@@ -102,8 +102,35 @@ export const createCampaign = async (args: CreateArgs): Promise<ICampaign> => {
     });
 };
 
-/** Statuses an annonceur may still edit: nothing has been reviewed or paid yet. */
-const EDITABLE_STATUSES = [CampaignStatus.DRAFT, CampaignStatus.REJECTED];
+/**
+ * Statuses an annonceur may still edit.
+ *
+ * PAID is here deliberately. Under pay-first the money arrives BEFORE anyone —
+ * annonceur or admin — has seen whether the campaign can actually run, and a
+ * campaign waiting for validation has not been shown to a single diffuseur yet,
+ * so there is nothing to protect by freezing it. Leaving it locked meant an
+ * annonceur who targeted an audience we do not have (Georgi, 2026-09-05: Gabon +
+ * RDC, femmes 25-50, which matches 2 of 223 diffuseurs) had paid for a campaign
+ * he could neither fix nor run.
+ */
+const EDITABLE_STATUSES = [CampaignStatus.DRAFT, CampaignStatus.REJECTED, CampaignStatus.PAID];
+
+/**
+ * Statuses where ONLY the targeting may be changed.
+ *
+ * A live or paused campaign has already been posted by diffuseurs, so its
+ * creative is frozen — verification matches posts against the campaign's media
+ * hash, and swapping it would refuse every day already published. The audience is
+ * different: allocation re-reads targeting on every pass, so widening it simply
+ * lets the next round of offers go to people who match. Rufus asked for this
+ * explicitly, for when a campaign was validated without anyone noticing its
+ * targeting could never deliver the views.
+ */
+const RETARGETABLE_STATUSES = [CampaignStatus.ACTIVE, CampaignStatus.PAUSED];
+
+/** Fields that are not the audience — refused once a campaign is live. */
+const isTargetingOnly = (args: UpdateArgs): boolean =>
+    Object.keys(args).every(k => k === 'targeting');
 
 type UpdateArgs = Partial<Omit<CreateArgs, 'advertiserUserId'>>;
 
@@ -115,9 +142,19 @@ type UpdateArgs = Partial<Omit<CreateArgs, 'advertiserUserId'>>;
  * swapped for a different one after an admin has looked at it.
  */
 export const updateCampaign = async (campaign: ICampaign, args: UpdateArgs): Promise<ICampaign> => {
-    if (!EDITABLE_STATUSES.includes(campaign.status)) {
+    const live = RETARGETABLE_STATUSES.includes(campaign.status);
+
+    if (!EDITABLE_STATUSES.includes(campaign.status) && !live) {
         throw new AppError(
-            'Cette campagne ne peut plus être modifiée. Seul un brouillon ou une campagne refusée est modifiable.',
+            'Cette campagne ne peut plus être modifiée.',
+            400,
+        );
+    }
+
+    if (live && !isTargetingOnly(args)) {
+        throw new AppError(
+            'Une campagne en diffusion ne peut plus changer de visuel ni de budget : '
+            + 'des diffuseurs l\'ont déjà publiée. Vous pouvez encore élargir le ciblage.',
             400,
         );
     }
@@ -138,6 +175,16 @@ export const updateCampaign = async (campaign: ICampaign, args: UpdateArgs): Pro
     }
 
     if (args.amount !== undefined) {
+        // The budget is what was actually charged, so it cannot be re-quoted after
+        // the fact — that would silently change how many views they own without
+        // any money moving. Everything else about a paid campaign stays editable.
+        if (campaign.paidAt) {
+            throw new AppError(
+                'Le budget d\'une campagne déjà payée ne peut pas être modifié. '
+                + 'Vous pouvez ajuster le ciblage et le visuel, ou créer une nouvelle campagne.',
+                400,
+            );
+        }
         const quote = quoteCampaign(Number(args.amount));
         campaign.amountPaid = quote.amount;
         campaign.pricePerUniqueView = quote.pricePerUniqueView;
@@ -163,7 +210,20 @@ export const updateCampaign = async (campaign: ICampaign, args: UpdateArgs): Pro
  * problem pay-first exists to solve. Kept as an explicit refusal rather than
  * deleted, so an old app build gets a clear instruction instead of a 404.
  */
-export const submitForReview = async (_campaign: ICampaign): Promise<ICampaign> => {
+export const submitForReview = async (campaign: ICampaign): Promise<ICampaign> => {
+    // Already paid — typically refused, then edited. Sending it back to the queue
+    // must not cost anything: the money was taken once and is still on the
+    // campaign. Without this the only route back into review was paying a second
+    // time for the same campaign.
+    if (campaign.paidAt) {
+        campaign.status = CampaignStatus.PAID;
+        campaign.submittedForReviewAt = new Date();
+        campaign.rejectionReason = undefined;
+        campaign.reviewedBy = undefined;
+        campaign.reviewedAt = undefined;
+        return campaign.save();
+    }
+
     throw new AppError(
         "Payez votre campagne pour l'envoyer en validation : elle démarre dès qu'un administrateur la valide.",
         400,

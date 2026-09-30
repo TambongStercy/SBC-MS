@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, requireStatusAccess } from '../middleware/auth.middleware';
 import { uploadMedia } from '../middleware/upload.middleware';
 import { statusController } from '../controllers/status.controller';
 
@@ -7,6 +7,11 @@ const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// ...and, for now, staff. Applied to the whole router rather than per route:
+// the expensive part is serving the media, and a gate that covers the feed but
+// not /user/:userId or /:id would leave the costly paths wide open.
+router.use(requireStatusAccess);
 
 // GET /api/chat/statuses - Get status feed with filters
 router.get('/', (req, res) => statusController.getStatusFeed(req, res));

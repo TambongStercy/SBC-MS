@@ -27,6 +27,10 @@
  *   npx ts-node src/scripts/reconcile-mf-stuck.ts --apply         # reconcile all stuck MF
  *   npx ts-node src/scripts/reconcile-mf-stuck.ts --apply id1 id2 # only these transactionIds
  *   npx ts-node src/scripts/reconcile-mf-stuck.ts --apply --fail id1 # MF never got it
+ *   npx ts-node src/scripts/reconcile-mf-stuck.ts --apply --reason "..." id1
+ *
+ * Pass --reason whenever the default is not what happened. A payout an admin
+ * settled by hand is NOT a provider success, and the record has to say so.
  */
 
 import mongoose from 'mongoose';
@@ -41,7 +45,24 @@ const APPLY = process.argv.includes('--apply');
  * simply releases the user to withdraw again — no refund is owed or made.
  */
 const FAIL = process.argv.includes('--fail');
-const ONLY_IDS = process.argv.slice(2).filter(a => !a.startsWith('--'));
+
+/**
+ * What actually happened, in the audit trail.
+ *
+ * The default says MF paid and we lost the webhook, which is true of the batch
+ * this was written for and false of anything else. A payout settled by hand — MF
+ * never confirmed, an admin sent the money themselves — must not be recorded as a
+ * provider success: that is precisely the row CLAUDE.md warns about, a COMPLETED
+ * withdrawal that assumed delivery without ever verifying it.
+ */
+const reasonArg = (() => {
+    const i = process.argv.indexOf('--reason');
+    return i > -1 ? process.argv[i + 1] : undefined;
+})();
+
+const ONLY_IDS = process.argv
+    .slice(2)
+    .filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--reason');
 
 const WEBHOOK_URL = `http://localhost:${config.port}/api/payments/webhooks/moneyfusion/payout`;
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -96,9 +117,13 @@ async function main() {
                                 by: 'reconcile-mf-stuck.ts',
                                 at: new Date().toISOString(),
                                 method: 'webhook-simulation',
-                                reason: FAIL
+                                reason: reasonArg ?? (FAIL
                                     ? 'MoneyFusion never received the payout; cancelled so the user can withdraw again'
-                                    : 'MF dropped payout webhook; fix page bugged; batch reconcile',
+                                    : 'MF dropped payout webhook; fix page bugged; batch reconcile'),
+                                // False unless a real provider token was reused: a
+                                // planted RECON- sentinel means nothing was ever
+                                // confirmed by MoneyFusion.
+                                providerConfirmed: false,
                             },
                         },
                     },

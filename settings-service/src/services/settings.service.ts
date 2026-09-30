@@ -3,7 +3,8 @@ import SettingsRepository from '../database/repositories/settings.repository';
 import {
     ISettings,
     IFileReference,
-    IFormation
+    IFormation,
+    IEventCommissions
 } from '../database/models/settings.model';
 import GoogleDriveService from './googleDrive.service'; // Import Google Drive Service
 // Remove S3 related imports if they exist
@@ -16,6 +17,14 @@ import paymentService from './clients/payment.service.client'; // NEW: Import th
 import userServiceClient from './clients/user.service.client';
 
 const log = logger.getLogger('SettingsService');
+
+// Used when the settings document predates the field. Must stay in sync with
+// event-service's env fallbacks (PRIMARY_COMMISSION_PCT / RESALE_COMMISSION_PCT).
+export const EVENT_COMMISSION_DEFAULTS: IEventCommissions = {
+    primaryPct: 0.05,
+    resalePct: 0.10,
+    defaultMaxResalePricePct: 120,
+};
 
 // Interface for the response of the generic upload
 interface UploadedFileInfo {
@@ -209,14 +218,32 @@ class SettingsService {
             // Import cloud storage service
             const CloudStorageService = (await import('./cloudStorage.service')).default;
 
+            // Shrink before storing. Nothing used to: raw phone photos and screen
+            // recordings went to the bucket untouched, which is how 47,955 images
+            // came to average 667 KiB and video to grow ~25 GiB a month.
+            const { compressUpload } = await import('./media-compression.service');
+            const compressed = await compressUpload(file.buffer, file.mimetype);
+
             // Create organized filename with folder prefix
             const folderPrefix = folderName ? `${folderName}/` : '';
-            const uniqueFileName = `${folderPrefix}${Date.now()}_${file.originalname}`;
+            // The extension has to follow the re-encode, or a .mov holding H.264
+            // in an MP4 container confuses both browsers and our own type checks.
+            const baseName = compressed.extension
+                ? file.originalname.replace(/\.[^.]+$/, '') + '.' + compressed.extension
+                : file.originalname;
+            const uniqueFileName = `${folderPrefix}${Date.now()}_${baseName}`;
+
+            if (compressed.compressed) {
+                log.info(
+                    `Compressed '${file.originalname}' ${(file.size / 1024).toFixed(0)} KiB -> `
+                    + `${(compressed.buffer.length / 1024).toFixed(0)} KiB before upload`,
+                );
+            }
 
             log.debug(`Uploading generic file '${file.originalname}' using hybrid storage...`);
             const uploadResult = await CloudStorageService.uploadFileHybrid(
-                file.buffer,
-                file.mimetype,
+                compressed.buffer,
+                compressed.mimeType,
                 uniqueFileName,
                 folderName
             );
@@ -227,8 +254,10 @@ class SettingsService {
                 fileId: uploadResult.fileId,
                 url: uploadResult.publicUrl,
                 fileName: file.originalname,
-                mimeType: file.mimetype,
-                size: file.size,
+                // What was STORED, not what arrived — callers use these to render
+                // and to decide how to treat the file.
+                mimeType: compressed.mimeType,
+                size: compressed.buffer.length,
             };
 
             log.info(`Returning info for generic file upload:`, fileInfo);
@@ -453,6 +482,42 @@ class SettingsService {
         } catch (uploadError: any) {
             log.error(`Failed to upload file to Cloud Storage: ${uploadError.message}`, uploadError);
             throw new AppError('Failed to upload file to storage.', 500);
+        }
+    }
+
+    // --- SBC Event commissions ---
+
+    /**
+     * Current SBC Event commission rates. Never throws for "not configured" —
+     * event-service calls this on every ticket sale, so an unset/absent
+     * settings document must still yield usable rates.
+     */
+    async getEventCommissions(): Promise<IEventCommissions> {
+        const settings = await this.repository.findSingle();
+        const c = settings?.eventCommissions;
+        return {
+            primaryPct: c?.primaryPct ?? EVENT_COMMISSION_DEFAULTS.primaryPct,
+            resalePct: c?.resalePct ?? EVENT_COMMISSION_DEFAULTS.resalePct,
+            defaultMaxResalePricePct: c?.defaultMaxResalePricePct ?? EVENT_COMMISSION_DEFAULTS.defaultMaxResalePricePct,
+        };
+    }
+
+    /**
+     * Replaces the three SBC Event commission values. Range-checked by the
+     * caller (controller) and again by the schema's min/max.
+     */
+    async updateEventCommissions(data: IEventCommissions): Promise<IEventCommissions> {
+        log.info('Updating SBC Event commissions...', data);
+        try {
+            const settings = await this.repository.upsert({ eventCommissions: data });
+            return {
+                primaryPct: settings.eventCommissions!.primaryPct,
+                resalePct: settings.eventCommissions!.resalePct,
+                defaultMaxResalePricePct: settings.eventCommissions!.defaultMaxResalePricePct,
+            };
+        } catch (error: any) {
+            log.error('Error updating SBC Event commissions:', error);
+            throw new AppError('Failed to update event commissions.', 500);
         }
     }
 }

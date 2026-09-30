@@ -174,6 +174,20 @@ export class CinetPayPayoutService {
     }
 
     /**
+     * The per-country OAuth token, from cache when it is still valid.
+     *
+     * Public because payins authenticate against the very same account with the
+     * very same call, and used to do it fresh on every checkout and every
+     * webhook. The payin reconciler replaying a backlog then meant dozens of
+     * logins in a few seconds, and CinetPay answered 429 (2026-09-15) — on the
+     * endpoint real customers' checkouts also depend on. One token per country,
+     * reused for a day, is what the payout side has always done.
+     */
+    async getAccessToken(countryCode: string): Promise<string> {
+        return this.authenticate(countryCode);
+    }
+
+    /**
      * Authenticate with CinetPay OAuth and get access token (per-country)
      */
     private async authenticate(countryCode: string): Promise<string> {

@@ -5,7 +5,7 @@ import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } 
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
-import { generateSecureOTP, getOtpExpiration } from '../utils/otp.utils';
+import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import config from '../config';
@@ -32,7 +32,7 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError } from '../utils/errors';
+import { AppError, OtpThrottledError } from '../utils/errors';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes } from '../utils/phone.utils';
 import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
 
@@ -320,21 +320,7 @@ export class UserService {
 
         // --- Trigger OTP Generation --- 
         try {
-            const otp = await this.generateAndStoreOtp(newUser._id, 'otps'); // Use general OTP type
-            // Get delivery info based on user's notification preference
-            const deliveryInfo = this.getOtpDeliveryInfo(newUser);
-
-            // this notification service communicates with the notification microservice
-            await notificationService.sendOtp({
-                userId: newUser._id.toString(),
-                recipient: deliveryInfo.recipient,
-                channel: deliveryInfo.channel,
-                code: otp,
-                expireMinutes: 10,
-                isRegistration: true,
-                userName: newUser.name,
-                language: newUser.language?.[0] || 'fr'
-            });
+            await this.issueAccountAccessOtp(newUser, { isRegistration: true });
         } catch (otpError) {
             log.error(`Failed to generate OTP during registration for ${newUser.email}`, otpError);
             // If OTP fails, maybe roll back user creation or mark them as needing verification?
@@ -441,7 +427,7 @@ export class UserService {
         passwordAttempt?: string,
         ipAddress?: string
         // No longer returns token directly
-    ): Promise<{ message: string; userId: string }> {
+    ): Promise<{ message: string; userId: string; otpSent: boolean; otpRetryAfterSeconds: number }> {
         // Validate input parameters
         if ((!email && !phoneNumber) || !passwordAttempt) { 
             throw new Error('Email or phone number and password are required'); 
@@ -499,36 +485,26 @@ export class UserService {
         // Update IP Address (async)
         if (ipAddress && ipAddress !== user.ipAddress) { /* ... IP update logic ... */ }
 
-        // --- Trigger OTP Generation --- 
+        // --- Trigger OTP Generation ---
+        // A throttled login is NOT refused: the password was right and the user was
+        // sent a code moments ago, so they still go to the code screen — with the
+        // wait, so the app can count it down.
+        let issued: { sent: boolean; retryAfterSeconds: number };
         try {
-            const otp = await this.generateAndStoreOtp(user._id, 'otps'); // Use general OTP type
-            // Get delivery info based on user's notification preference
-            const deliveryInfo = this.getOtpDeliveryInfo(user);
-
-            // Send OTP to user
-            await notificationService.sendOtp({
-                userId: user._id.toString(),
-                recipient: deliveryInfo.recipient,
-                channel: deliveryInfo.channel,
-                code: otp,
-                expireMinutes: 10,
-                isRegistration: false,
-                userName: user.name,
-                language: user.language?.[0] || 'fr'
-            });
-
-
+            issued = await this.issueAccountAccessOtp(user);
         } catch (otpError) {
             log.error(`Failed to generate OTP during login for ${user.email}`, otpError);
             throw new Error('Login failed: Could not send OTP verification code.');
         }
-        // --- End OTP Generation --- 
+        // --- End OTP Generation ---
 
         // Don't generate/store JWT here.
         // Return message and userId for the verification step.
         return {
             message: 'Password verified. Please enter the OTP sent to complete login.',
-            userId: user._id.toString()
+            userId: user._id.toString(),
+            otpSent: issued.sent,
+            otpRetryAfterSeconds: issued.retryAfterSeconds,
         };
     }
 
@@ -596,6 +572,7 @@ export class UserService {
         delete userObject.password;
         delete userObject.otps;
         delete userObject.contactsOtps;
+        delete (userObject as any).otpSendLog;
         delete userObject.token;
         // Ensure all fields of IUser are present if using spread operator (might need explicit mapping for safety)
         return userObject as Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'>;
@@ -669,7 +646,7 @@ export class UserService {
         let newToken: string | undefined = undefined;
 
         const matchingOtp = otps.find(otp => {
-            return otp.code === providedCode && otp.expiration > now;
+            return otpMatches(otp.code, providedCode) && otp.expiration > now;
         });
 
         if (matchingOtp) {
@@ -725,7 +702,7 @@ export class UserService {
         }
 
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired password reset OTP provided for email: ${email}`);
@@ -1584,7 +1561,7 @@ export class UserService {
 
             // Find matching OTP in user's OTPs
             const matchingOTP = user.otps.find((otp: any) =>
-                otp.code === code && otp.expiration > new Date()
+                otpMatches(otp.code, code) && otp.expiration > new Date()
             );
 
             if (!matchingOTP) {
@@ -2737,6 +2714,7 @@ export class UserService {
             delete userObject.password;
             delete userObject.otps;
             delete userObject.contactsOtps;
+            delete (userObject as any).otpSendLog;
             delete userObject.token;
 
             // Add subscription types to the returned object
@@ -3236,6 +3214,20 @@ export class UserService {
     }
 
     /**
+     * [Internal] Returns the projection consumed by event-service for hydrating
+     * ticket holders and organizer participant lists.
+     */
+    async getEventDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        try {
+            const objectIds = userIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
+            return await userRepository.findEventDetailsByIds(objectIds);
+        } catch (error: any) {
+            log.error(`Error fetching event user details by IDs: ${error.message}`, { userIds });
+            throw new Error('Failed to fetch event user details');
+        }
+    }
+
+    /**
      * [Internal] Finds user IDs by searching name, email, or phone number.
      * @param searchTerm - The term to search for.
      * @returns A promise resolving to an array of user ID strings.
@@ -3672,33 +3664,22 @@ export class UserService {
         // IMPORTANT: Do not confirm if the user exists to prevent enumeration attacks.
         // If user exists, proceed with OTP generation and sending.
         if (user && !user.blocked && !user.deleted) { // Only send if user is active
+            let issued: { sent: boolean; retryAfterSeconds: number } | undefined;
             try {
-                // Generate and store a new general-purpose OTP
-                const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
-
-                // Get delivery info based on user's preference and optional override
-                const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
-
-                // Send OTP via notification service
-                await notificationService.sendOtp({
-                    userId: user._id.toString(),
-                    recipient: deliveryInfo.recipient,
-                    channel: deliveryInfo.channel,
-                    code: otpCode,
-                    expireMinutes: 10, // Standard expiration
-                    isRegistration: purpose === 'register', // Set based on purpose
-                    purpose: purpose, // Pass the purpose directly
-                    userName: user.name,
-                    language: user.language?.[0] || 'fr'
+                issued = await this.issueAccountAccessOtp(user, {
+                    isRegistration: purpose === 'register',
+                    purpose,
+                    channelOverride,
                 });
-
-                log.info(`Resent OTP successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
-
+                if (issued.sent) log.info(`Resent OTP successfully for identifier: ${identifier}`);
             } catch (error) {
                 log.error(`Failed to resend OTP for identifier ${identifier}:`, error);
                 // Log the error but don't throw it back to the controller to avoid revealing info.
                 // The controller will return a generic success message regardless.
             }
+            // Outside the try: this one must reach the user, or the app cannot show
+            // how long to wait and they go on tapping.
+            if (issued && !issued.sent) throw new OtpThrottledError(issued.retryAfterSeconds);
         } else {
             log.warn(`OTP resend requested for non-existent or inactive user: ${identifier}. No action taken.`);
             // No error thrown, just log internally.
@@ -3723,52 +3704,10 @@ export class UserService {
         // IMPORTANT: Do not confirm if the user exists.
         if (user && !user.blocked && !user.deleted) {
             try {
-                const otpCode = await this.generateAndStoreOtp(user._id, 'otps');
+                const issued = await this.issueAccountAccessOtp(user, { purpose, channelOverride });
+                if (!issued.sent) throw new OtpThrottledError(issued.retryAfterSeconds);
 
-                // Get delivery info based on user's preference and optional override
-                const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
-
-                // First attempt with the preferred or overridden channel
-                let success = await notificationService.sendOtp({
-                    userId: user._id.toString(),
-                    recipient: deliveryInfo.recipient,
-                    channel: deliveryInfo.channel,
-                    code: otpCode,
-                    expireMinutes: 10,
-                    isRegistration: false,
-                    purpose: purpose,
-                    userName: user.name,
-                    language: user.language?.[0] || 'fr'
-                });
-
-                // If WhatsApp was attempted but failed, and user has email, fall back to email
-                if (!success && deliveryInfo.channel === DeliveryChannel.WHATSAPP && user.email) {
-                    log.info(`WhatsApp OTP delivery failed for user ${user._id}, falling back to email: ${user.email}`);
-
-                    success = await notificationService.sendOtp({
-                        userId: user._id.toString(),
-                        recipient: user.email,
-                        channel: DeliveryChannel.EMAIL,
-                        code: otpCode,
-                        expireMinutes: 10,
-                        isRegistration: false,
-                        purpose: purpose,
-                        userName: user.name,
-                        language: user.language?.[0] || 'fr'
-                    });
-
-                    if (success) {
-                        log.info(`Password reset OTP sent successfully via fallback email for user: ${user._id}`);
-                    } else {
-                        log.error(`Both WhatsApp and email fallback failed for password reset OTP for user: ${user._id}`);
-                        throw new Error('Failed to send OTP via both WhatsApp and email');
-                    }
-                } else if (success) {
-                    log.info(`Password reset OTP sent successfully for identifier: ${identifier} via ${deliveryInfo.channel}`);
-                } else {
-                    log.error(`Failed to send password reset OTP for identifier ${identifier} via ${deliveryInfo.channel}`);
-                    throw new Error(`Failed to send OTP via ${deliveryInfo.channel}`);
-                }
+                log.info(`Password reset OTP sent successfully for identifier: ${identifier}`);
             } catch (error) {
                 log.error(`Failed to send password reset OTP for identifier ${identifier}:`, error);
                 throw error;
@@ -3805,6 +3744,102 @@ export class UserService {
                     recipient: user.email
                 };
         }
+    }
+
+    /**
+     * Sends a sign-in OTP on the user's preferred channel, mirroring it to their
+     * email whenever that channel is WhatsApp.
+     *
+     * The mirror exists because a WhatsApp failure is invisible to us:
+     * `notificationService.sendOtp` resolves as soon as notification-service
+     * queues the job, so its `true` means "accepted", not "delivered", and any
+     * fallback keyed on that value can never fire. Measured on prod
+     * 2026-09-19 — 822 people asked for their code over WhatsApp in 24h and
+     * 1526 sends all failed with `(#132001) Template name does not exist in
+     * the translation`, unnoticed since at least 12 September. Nobody got
+     * locked out of their own account for a broken Meta template again.
+     *
+     * Only for reaching the account's owner. OTPs that prove control of a NEW
+     * address or phone must never be mirrored anywhere else.
+     */
+    private async sendAccountAccessOtp(
+        user: IUser,
+        code: string,
+        extras: { isRegistration?: boolean; purpose?: string; channelOverride?: 'email' | 'whatsapp'; expireMinutes?: number } = {}
+    ): Promise<void> {
+        const { channelOverride, ...payloadExtras } = extras;
+        const deliveryInfo = this.getOtpDeliveryInfo(user, channelOverride);
+
+        const base = {
+            userId: user._id.toString(),
+            code,
+            expireMinutes: 10,
+            isRegistration: false,
+            userName: user.name,
+            language: user.language?.[0] || 'fr',
+            ...payloadExtras,
+        };
+
+        await notificationService.sendOtp({
+            ...base,
+            recipient: deliveryInfo.recipient,
+            channel: deliveryInfo.channel,
+        });
+
+        if (deliveryInfo.channel === DeliveryChannel.WHATSAPP && user.email) {
+            log.info(`Mirroring WhatsApp OTP to email for user ${user._id}`);
+            await notificationService.sendOtp({
+                ...base,
+                recipient: user.email,
+                channel: DeliveryChannel.EMAIL,
+            });
+        }
+    }
+
+    /**
+     * Issues a sign-in code, unless this account was sent one too recently.
+     *
+     * Every "Renvoyer" tap used to mint a new code and a new email, with no
+     * per-account limit — see OTP_SEND_* in otp.utils for what that cost. Now a
+     * send is claimed atomically against the account's recent sends, and a code
+     * that is still comfortably valid is sent again rather than replaced, so a
+     * late email and a fresh one carry the same code.
+     *
+     * Returns `sent: false` with the wait when refused; the caller decides whether
+     * that is an error (an explicit resend) or not (a login — the user already
+     * holds a code from moments ago and should still reach the code screen).
+     */
+    private async issueAccountAccessOtp(
+        user: IUser,
+        extras: { isRegistration?: boolean; purpose?: string; channelOverride?: 'email' | 'whatsapp' } = {}
+    ): Promise<{ sent: boolean; retryAfterSeconds: number }> {
+        const now = new Date();
+
+        if (!(await userRepository.reserveOtpSend(user._id, now))) {
+            const fresh = await userRepository.findById(user._id);
+            const { retryAfterSeconds } = otpSendDecision(fresh?.otpSendLog, now);
+            log.info(`OTP send throttled for user ${user._id}; retry in ${retryAfterSeconds}s`);
+            // A race can leave the claim refused while the rule now allows it —
+            // report at least a second rather than a zero that invites a retry loop.
+            return { sent: false, retryAfterSeconds: Math.max(retryAfterSeconds, 1) };
+        }
+
+        const reusable = (user.otps || [])
+            .filter(o => new Date(o.expiration).getTime() - now.getTime() >= OTP_REUSE_MIN_REMAINING_MS)
+            .sort((a, b) => new Date(b.expiration).getTime() - new Date(a.expiration).getTime())[0];
+
+        let code: string;
+        let expireMinutes = 10;
+        if (reusable) {
+            code = reusable.code;
+            expireMinutes = Math.floor((new Date(reusable.expiration).getTime() - now.getTime()) / 60000);
+            log.info(`Resending still-valid OTP for user ${user._id} (${expireMinutes} min left)`);
+        } else {
+            code = await this.generateAndStoreOtp(user._id, 'otps');
+        }
+
+        await this.sendAccountAccessOtp(user, code, { ...extras, expireMinutes });
+        return { sent: true, retryAfterSeconds: Math.ceil(OTP_SEND_COOLDOWN_MS / 1000) };
     }
 
     /**
@@ -3901,7 +3936,7 @@ export class UserService {
             }
         } else if (otpCode) {
             // 3. Fallback to validating the OTP if no passwordResetToken is provided
-            const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+            const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
             if (matchingOtp) {
                 log.info(`OTP validated successfully for user ${user.email}.`);
                 validationSuccess = true;
@@ -3960,7 +3995,7 @@ export class UserService {
 
         // 2. Validate the OTP stored against the *current* user
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired email change OTP for user: ${userId}`);
@@ -4073,7 +4108,7 @@ export class UserService {
 
         // 2. Validate the OTP stored against the *current* user
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otp.code === otpCode && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired phone change OTP for user: ${userId}`);

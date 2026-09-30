@@ -8,7 +8,7 @@ import { PaginationOptions } from '../../types/express';
 import { ContactSearchFilters, UserSex } from '../../types/contact.types';
 import { isValidObjectId, Types } from 'mongoose';
 import { NextFunction, Request as ExpressRequest } from 'express';
-import { AppError } from '../../utils/errors';
+import { AppError, OtpThrottledError } from '../../utils/errors';
 import { normalizePhoneNumber } from '../../utils/phone.utils';
 import { UserRole } from '../../database/models/user.model';
 import { authorize } from '../middleware/rbac.middleware';
@@ -21,8 +21,19 @@ import {
     getMyRank,
     getLeaderboardForMonth,
     getLeaderboardByCountry,
+    getCountryBoard,
+    getMyFilleulsBoard,
 } from '../../services/leaderboard.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
+
+/**
+ * A refused code send. The wait goes in the body for the app's countdown and in
+ * Retry-After for anything else reading the response.
+ */
+const sendOtpThrottled = (res: Response, error: OtpThrottledError): void => {
+    res.setHeader('Retry-After', String(error.retryAfterSeconds));
+    res.status(429).json({ success: false, message: error.message, retryAfterSeconds: error.retryAfterSeconds });
+};
 
 const log = logger.getLogger('UserController');
 
@@ -1906,6 +1917,34 @@ export class UserController {
     }
 
     /**
+     * [Internal] Get the SBC Event ticket-holder projection for one or more users.
+     * @route POST /api/users/internal/event-details
+     * Body: { userIds: string[] }
+     */
+    async getEventDetailsByIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds } = req.body;
+
+            if (!Array.isArray(userIds) || userIds.length === 0) {
+                res.status(400).json({ success: false, message: 'An array of user IDs must be provided.' });
+                return;
+            }
+
+            const invalidIds = userIds.filter(id => !isValidObjectId(id));
+            if (invalidIds.length > 0) {
+                res.status(400).json({ success: false, message: `Invalid user IDs found: ${invalidIds.join(', ')}` });
+                return;
+            }
+
+            const details = await this.userService.getEventDetailsByIds(userIds);
+            res.status(200).json({ success: true, data: details });
+        } catch (error: any) {
+            this.log.error(`Error getting event user details by IDs: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to retrieve event user details.' });
+        }
+    }
+
+    /**
      * [Internal] Get the SBCLOVE demographic subset for one or more users.
      * @route POST /api/users/internal/sbclove-details
      * Body: { userIds: string[] }
@@ -2168,6 +2207,10 @@ export class UserController {
             });
 
         } catch (error: any) {
+            if (error instanceof OtpThrottledError) {
+                sendOtpThrottled(res, error);
+                return;
+            }
             // Catch potential unexpected errors from the service layer
             this.log.error(`Unexpected error during OTP resend for identifier ${req.body?.identifier || req.body?.email}:`, error);
             // Still send a generic message, but log the internal error
@@ -2214,6 +2257,10 @@ export class UserController {
                 message: `If your account is registered, a password reset OTP has been sent${channelMessage}.`
             });
         } catch (error) {
+            if (error instanceof OtpThrottledError) {
+                sendOtpThrottled(res, error);
+                return;
+            }
             next(error);
         }
     }
@@ -2874,6 +2921,43 @@ export class UserController {
             });
         } catch (error: any) {
             log.error("Error in getLeaderboard", error);
+            res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        }
+    }
+
+    /**
+     * "Classement par pays" for the current month.
+     *
+     * @route GET /api/users/leaderboard/countries
+     * Subscriber-gated like /leaderboard: it names other members.
+     */
+    async getCountryLeaderboard(_req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const data = await getCountryBoard();
+            res.status(200).json({ success: true, data, message: 'Country leaderboard retrieved successfully' });
+        } catch (error: any) {
+            log.error("Error in getCountryLeaderboard", error);
+            res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        }
+    }
+
+    /**
+     * "Top de mes filleuls": the caller's direct filleuls ranked by their own paid
+     * direct filleuls this month.
+     *
+     * @route GET /api/users/leaderboard/filleuls
+     */
+    async getMyFilleulsLeaderboard(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                res.status(401).json({ success: false, message: 'Authentication required.' });
+                return;
+            }
+            const data = await getMyFilleulsBoard(userId);
+            res.status(200).json({ success: true, data, message: 'Filleuls leaderboard retrieved successfully' });
+        } catch (error: any) {
+            log.error("Error in getMyFilleulsLeaderboard", error);
             res.status(500).json({ success: false, message: error.message || 'Internal server error' });
         }
     }

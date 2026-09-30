@@ -7,6 +7,7 @@ import DiffuseurProfileModel from '../database/models/diffuseur-profile.model';
 import CampaignModel from '../database/models/campaign.model';
 import ClickEventModel, { ClickAction } from '../database/models/click-event.model';
 import { notifyTestCampaignCompleted } from './clients/notification.service.client';
+import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('RankingService');
@@ -205,4 +206,74 @@ export const campaignClickBreakdown = async (campaignId: Types.ObjectId) => {
         byDiffuseur.set(key, entry);
     }
     return byDiffuseur;
+};
+
+/**
+ * Ban a diffuseur from taking any further campaign work.
+ *
+ * Rufus, banning an account for submitting AI-generated proof for the second
+ * time (2026-09-06): the diffuseur network only works if the proof means
+ * something, so someone forging it has to stop being offered paid work.
+ *
+ * Clears `isActive`, which is the flag allocation already filters on, and
+ * withdraws any offer they are sitting on so a ban cannot be outrun by
+ * accepting one on the way out.
+ *
+ * Deliberately does NOT touch money already earned or days already verified.
+ * Clawing back a credited payout is a decision with its own consequences and
+ * belongs to whoever owns the money, not to a moderation action.
+ */
+export const banDiffuseur = async (
+    userId: Types.ObjectId,
+    adminUserId: Types.ObjectId,
+    reason: string,
+): Promise<{ offersWithdrawn: number; participationsStopped: number }> => {
+    const trimmed = (reason ?? '').trim();
+    if (!trimmed) throw new AppError('Un motif de bannissement est obligatoire.', 400);
+
+    const profile = await DiffuseurProfileModel.findOne({ userId });
+    if (!profile) throw new AppError('Profil diffuseur introuvable.', 404);
+
+    profile.isActive = false;
+    profile.bannedAt = new Date();
+    profile.bannedBy = adminUserId;
+    profile.banReason = trimmed;
+    await profile.save();
+
+    const withdrawn = await CampaignParticipationModel.updateMany(
+        { diffuseurUserId: userId, status: ParticipationStatus.OFFERED },
+        { $set: { status: ParticipationStatus.EXPIRED } },
+    );
+
+    // Work already under way has to stop too. A ban that only withdrew offers
+    // would barely bite: the account banned on 2026-09-06 for forging proof was
+    // holding four IN_PROGRESS participations at the time, and could have gone on
+    // submitting recordings against every one of them.
+    //
+    // No trust penalty is recorded for these. Trust exists to rank people for
+    // future allocation, and someone banned is not being allocated to — docking
+    // them further is bookkeeping nobody reads.
+    const stopped = await CampaignParticipationModel.updateMany(
+        { diffuseurUserId: userId, status: ParticipationStatus.IN_PROGRESS },
+        { $set: { status: ParticipationStatus.FORFEITED } },
+    );
+
+    log.info(
+        `Diffuseur ${userId} banned by ${adminUserId}: ${trimmed} `
+        + `(${withdrawn.modifiedCount} offer(s) withdrawn, ${stopped.modifiedCount} in progress stopped)`,
+    );
+    return { offersWithdrawn: withdrawn.modifiedCount, participationsStopped: stopped.modifiedCount };
+};
+
+/** Lift a ban. The reason stays on the record; only the block is removed. */
+export const unbanDiffuseur = async (userId: Types.ObjectId): Promise<void> => {
+    const profile = await DiffuseurProfileModel.findOne({ userId });
+    if (!profile) throw new AppError('Profil diffuseur introuvable.', 404);
+
+    profile.isActive = true;
+    profile.bannedAt = undefined;
+    profile.bannedBy = undefined;
+    await profile.save();
+
+    log.info(`Diffuseur ${userId} unbanned`);
 };

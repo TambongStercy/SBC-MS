@@ -8,6 +8,7 @@ import adminRoutes from './admin.routes';
 import vcfCacheRoutes from './vcf-cache.routes';
 import activationBalanceRoutes from './activation-balance.routes';
 import advertisingBalanceRoutes from './advertising-balance.routes';
+import eventOrganizerBalanceRoutes from './event-organizer-balance.routes';
 import ssoRoutes from './sso.routes';
 const router = Router();
 
@@ -23,6 +24,7 @@ router.use('/withdrawals', dailyWithdrawalRoutes);
 router.use('/partners', partnerRoutes);
 router.use('/activation-balance', activationBalanceRoutes);
 router.use('/advertising-balance', advertisingBalanceRoutes);
+router.use('/event-organizer-balance', eventOrganizerBalanceRoutes);
 router.use('/sso', ssoRoutes);
 
 export default router;

@@ -103,6 +103,16 @@ app.use('/api/activation-balance', proxy(config.services.userServiceUrl, {
   }
 }));
 
+// SBC Event organizer earnings. Same pattern as /api/advertising-balance —
+// held in user-service so all of a user's money is in one place; only exit
+// is transferToMain, then the standard withdrawal path.
+app.use('/api/event-organizer-balance', proxy(config.services.userServiceUrl, {
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to event-organizer-balance (user service)`);
+    return '/api/event-organizer-balance' + req.url;
+  }
+}));
+
 // Diffuseur advertising earnings. Lives in user-service alongside the other
 // balances, not in advertising-service, so all of a user's money is in one place.
 app.use('/api/advertising-balance', proxy(config.services.userServiceUrl, {
@@ -281,6 +291,18 @@ app.use('/api/sbclove', proxy(config.services.sbcloveServiceUrl, {
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to sbclove service`);
     return '/api/sbclove' + req.url;
+  }
+}));
+
+// SBC Event — ticketing platform + resale marketplace. Note the prefix is
+// /api/tickets (not /api/events) because /api/events was already taken by the
+// small settings-service community-events feature; the product brand is still
+// "SBC Event".
+app.use('/api/tickets', proxy(config.services.eventServiceUrl, {
+  parseReqBody: false, // event posters upload as multipart
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to event service`);
+    return req.originalUrl;
   }
 }));
 

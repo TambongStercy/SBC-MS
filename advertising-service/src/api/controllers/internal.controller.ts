@@ -71,7 +71,10 @@ export const reallocateCampaign = async (req: Request, res: Response) => {
         const campaign = await CampaignModel.findById(campaignId);
         if (!campaign) throw new AppError('Campaign not found', 404);
 
-        const remaining = await remainingViewsToCover(campaign);
+        // acceptedOnly: outstanding offers hold a share of the target, and closing
+        // a campaign as COMPLETED on the strength of offers nobody has taken up
+        // would end it having delivered nothing.
+        const remaining = await remainingViewsToCover(campaign, { acceptedOnly: true });
 
         if (remaining <= 0) {
             const expired = await expireStaleOffers(campaignId);

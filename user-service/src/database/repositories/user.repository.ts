@@ -3,6 +3,7 @@ import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType 
 import mongoose, { Types, FilterQuery } from 'mongoose';
 import { ContactSearchFilters, ContactSearchResponse } from '../../types/contact.types';
 import log from '../../utils/logger';
+import { OTP_SEND_COOLDOWN_MS, OTP_SEND_WINDOW_MS, OTP_SEND_MAX_IN_WINDOW } from '../../utils/otp.utils';
 
 // Interface for specific user details needed by other services
 export interface UserDetails {
@@ -265,6 +266,66 @@ export class UserRepository {
     }
 
     /**
+     * SBC Event organizer earnings. Credit-only here; the only exit is the
+     * transfer-to-main flow below — same shape as advertisingBalance, and for the
+     * same reason (keeps the withdrawal path from ever having to know about
+     * a second source of funds).
+     */
+    async creditEventOrganizerBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Credit amount must be positive');
+        }
+        return UserModel.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { eventOrganizerBalance: amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Moves event-organizer earnings into the main balance so they can be withdrawn.
+     * The precondition on eventOrganizerBalance is part of the query, so two
+     * concurrent transfers cannot both succeed and overdraw.
+     */
+    async transferEventOrganizerToMain(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Transfer amount must be positive');
+        }
+        return UserModel.findOneAndUpdate(
+            { _id: userId, eventOrganizerBalance: { $gte: amount } },
+            { $inc: { balance: amount, eventOrganizerBalance: -amount } },
+            { new: true }
+        ).exec();
+    }
+
+    /**
+     * Debit the seller's eventOrganizerBalance for a resale refund.
+     *
+     * Unlike a normal transfer, this may go BELOW zero — the seller could
+     * already have transferred their earnings out to main balance before the
+     * dispute/refund landed. We debit what we can and let the balance sit
+     * negative until the seller either replenishes it (future sales) or an
+     * admin adjusts. A negative balance blocks the transfer-to-main flow
+     * naturally (guarded by $gte), so no further harm.
+     *
+     * Uses the schema's { min: 0 } validator override via strict: false is NOT
+     * an option — instead we drop the schema min guard temporarily on the doc
+     * we return so a negative value is legal for this specific write.
+     */
+    async debitEventOrganizerBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        if (amount <= 0) {
+            throw new Error('Debit amount must be positive');
+        }
+        // Use updateOne + separate fetch to bypass the min: 0 validator on this write.
+        // (Mongoose's runValidators is off by default for update ops, so this works.)
+        await UserModel.updateOne(
+            { _id: userId },
+            { $inc: { eventOrganizerBalance: -amount } },
+        ).exec();
+        return UserModel.findById(userId).exec();
+    }
+
+    /**
      * Atomically credit (positive amount) or debit (negative amount) a user's
      * sbcLiveBalance. Used by payment-service when:
      *   - A paid-live charge completes → credit the creator's 75% share
@@ -402,6 +463,42 @@ export class UserRepository {
     async addOtp(userId: string | Types.ObjectId, otpType: 'otps' | 'contactsOtps', otpData: IOtpData): Promise<IUser | null> {
         const update = { $push: { [otpType]: otpData } };
         return UserModel.findByIdAndUpdate(userId, update, { new: true }).exec();
+    }
+
+    /**
+     * Claims the right to send this user a sign-in code, or refuses.
+     *
+     * Check and record happen in one update, so two taps landing together cannot
+     * both pass — the second sees the first's timestamp. Returns true when the
+     * send was claimed. The rule is `otpSendDecision` in otp.utils; keep them in step.
+     */
+    async reserveOtpSend(userId: string | Types.ObjectId, now: Date = new Date()): Promise<boolean> {
+        const sends = { $ifNull: ['$otpSendLog', []] };
+        const claimed = await UserModel.findOneAndUpdate(
+            {
+                _id: userId,
+                $expr: {
+                    $and: [
+                        // Nothing sent within the cooldown. $max of an empty array is
+                        // null, which sorts before any date, so a first send passes.
+                        // $lte, not $lt: allowed again at exactly 60s, which is the
+                        // moment otpSendDecision tells the user to try.
+                        { $lte: [{ $max: sends }, new Date(now.getTime() - OTP_SEND_COOLDOWN_MS)] },
+                        // Fewer than the cap inside the rolling window.
+                        {
+                            $lt: [
+                                { $size: { $filter: { input: sends, cond: { $gt: ['$$this', new Date(now.getTime() - OTP_SEND_WINDOW_MS)] } } } },
+                                OTP_SEND_MAX_IN_WINDOW,
+                            ],
+                        },
+                    ],
+                },
+            },
+            // Keep only as many as the window rule can ever look at.
+            { $push: { otpSendLog: { $each: [now], $slice: -OTP_SEND_MAX_IN_WINDOW } } },
+            { new: false, projection: { _id: 1 } },
+        ).exec();
+        return claimed !== null;
     }
 
     /**
@@ -699,6 +796,21 @@ export class UserRepository {
             deleted: { $ne: true }
         })
             .select('_id name email phoneNumber avatar sex birthDate city region country language interests profession referralCode')
+            .lean()
+            .exec();
+    }
+
+    /**
+     * [Internal] Returns the projection consumed by event-service for hydrating
+     * ticket holders in "Mes billets" and organizer participant lists. Kept narrow
+     * on purpose — event-service should never need demographic fields.
+     */
+    async findEventDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name email phoneNumber avatar role')
             .lean()
             .exec();
     }

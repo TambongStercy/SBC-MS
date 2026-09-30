@@ -8,6 +8,7 @@ import apiRoutes from './api/routes';
 import logger from './utils/logger';
 import { paymentProcessor } from './jobs/paymentProcessor';
 import { transactionStatusChecker } from './jobs/transaction-status-checker.job';
+import { payinReconciler } from './jobs/payin-reconciler.job';
 import { sandboxSweeper } from './jobs/sandbox-sweeper.job';
 import { warnIfMisconfigured } from './services/sandbox.service';
 import path from 'path';
@@ -132,6 +133,11 @@ async function startServer() {
         // Start transaction status checker
         transactionStatusChecker.start();
 
+        // The same idea for money coming IN. transactionStatusChecker only ever
+        // looked at withdrawals, so a dropped payin webhook was permanent: the
+        // payer was debited and the app went on asking them to pay.
+        payinReconciler.start();
+
         // Payment sandbox (preprod only — refused outright in production)
         warnIfMisconfigured();
         sandboxSweeper.start();
@@ -151,6 +157,7 @@ async function startServer() {
 
             // Stop transaction status checker
             transactionStatusChecker.stop();
+            payinReconciler.stop();
 
             // Stop sandbox sweeper (no-op unless the sandbox is active)
             sandboxSweeper.stop();

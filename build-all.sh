@@ -21,6 +21,7 @@ ALL_SERVICES=(
   "chat-service"
   "sbclove-service"
   "advertising-service"
+  "event-service"
 )
 
 ROOT_DIR=$(pwd)

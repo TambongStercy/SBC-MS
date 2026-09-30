@@ -3,7 +3,7 @@ import settingsService from '../../services/settings.service'; // Import the ins
 import GoogleDriveService from '../../services/googleDrive.service'; // Import Drive service
 import cloudStorageService from '../../services/cloudStorage.service'; // Import Cloud Storage service
 import logger from '../../utils/logger';
-import { NotFoundError, AppError, BadRequestError } from '../../utils/errors'; // Assuming custom error classes
+import { NotFoundError, AppError, BadRequestError, ForbiddenError } from '../../utils/errors'; // Assuming custom error classes
 import axios from 'axios';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -148,6 +148,25 @@ export const internalUploadFile = async (req: Request, res: Response, next: Next
     }
 };
 
+/**
+ * Send an error for a file request WITHOUT the caller's cache headers.
+ *
+ * The success paths below set a one-year immutable Cache-Control before the
+ * bytes start flowing, and an error that inherits it gets frozen at the CDN. That
+ * is not hypothetical: during the 2026-09-05 billing outage Cloudflare cached the
+ * resulting 404s for a year, so byte-range requests kept returning them long
+ * after storage recovered — the files were fine and the edge was serving a stale
+ * error nobody could clear without a manual purge.
+ */
+const failFile = (res: Response, status: number, message: string) => {
+    if (res.headersSent) return;
+    res.removeHeader('Cache-Control');
+    res.removeHeader('Content-Range');
+    res.removeHeader('Content-Length');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(status).json({ success: false, message });
+};
+
 // Universal file proxy - handles both Google Drive and Cloud Storage files
 export const getFileFromStorage = async (req: Request, res: Response, next: NextFunction) => {
     const { fileId } = req.params;
@@ -183,12 +202,19 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
             // a dozen of them — that is most of what made Cloud Storage egress
             // 636 GiB in August. Served from this origin so Cloudflare caches the
             // resized copy and repeat views cost nothing.
+            // Video cannot be resized by sharp, and asking would be worse than not
+            // asking: the whole file is pulled from the bucket — 84 MB for the
+            // largest — and then thrown away when sharp rejects it. Callers pass a
+            // width for a card thumbnail without always knowing the media type, so
+            // this is decided here rather than trusted to them.
+            const isResizable = !/\.(mp4|mov|m4v|webm|avi|mkv|pdf)$/i.test(directUrl.split('?')[0]);
+
             const widthParam = Number(req.query.w);
-            if (Number.isFinite(widthParam) && widthParam > 0) {
+            if (isResizable && Number.isFinite(widthParam) && widthParam > 0) {
                 // Bounded: an unbounded value lets anyone ask for a huge render.
                 const width = Math.min(1024, Math.max(16, Math.round(widthParam)));
-                const upstream = await axios.get(directUrl, { responseType: 'arraybuffer' });
-                const resized = await sharp(Buffer.from(upstream.data))
+                const original = await cloudStorageService.downloadFile(directUrl);
+                const resized = await sharp(original)
                     .rotate() // honour EXIF orientation, or phone photos come out sideways
                     .resize({ width, withoutEnlargement: true })
                     .webp({ quality: 65 })
@@ -201,24 +227,75 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
                 return res.send(resized);
             }
 
-            if (req.query.stream === '1' || req.query.download === '1') {
-                log.info(`Streaming Cloud Storage file through the proxy: ${fileId}`);
-                const upstream = await axios.get(directUrl, { responseType: 'stream' });
+            // Stored files are public content by design, and the admin panel lives
+            // on admin.sniperbuisnesscenter.com — a different origin. helmet's
+            // default same-origin CORP is what made every verification video
+            // refuse to play there, and is why these URLs used to point straight
+            // at the bucket instead.
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            res.setHeader('Accept-Ranges', 'bytes');
 
-                res.setHeader('Content-Type', upstream.headers['content-type'] ?? 'application/octet-stream');
-                if (upstream.headers['content-length']) {
-                    res.setHeader('Content-Length', upstream.headers['content-length']);
-                }
-                res.setHeader('Cache-Control', 'public, max-age=86400');
-                if (req.query.download === '1') {
-                    const name = fileId.split('/').pop() ?? 'fichier';
-                    res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
-                }
-                return upstream.data.pipe(res);
+            // Everything else is streamed through this origin as well.
+            //
+            // This used to 302 to the bucket, which was cheaper and fine while the
+            // bucket was world-readable. It no longer is: publicAccessPrevention
+            // is inherited from an org policy that overrides the allUsers IAM
+            // binding, so anonymous GETs return 403 and the redirect simply sent
+            // every browser to an error (2026-09-05 — this took down every image,
+            // creative and verification video in the app at once).
+            //
+            // Serving it ourselves is also what makes Cloudflare cache it, so the
+            // second viewer onward costs no egress at all.
+            // A <video> element seeks by asking for byte ranges, and a server that
+            // answers every request with the whole file cannot be scrubbed — some
+            // browsers refuse to play it at all. Honour Range properly.
+            const meta = await cloudStorageService.statFile(directUrl);
+            const total = meta.size ? Number(meta.size) : undefined;
+            const range = req.headers.range;
+
+            res.setHeader('Content-Type', meta.contentType ?? 'application/octet-stream');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            if (req.query.download === '1') {
+                const name = fileId.split('/').pop() ?? 'fichier';
+                res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
             }
 
-            log.info(`Redirecting to Cloud Storage CDN: ${directUrl}`);
-            return res.redirect(302, directUrl);
+            let start: number | undefined;
+            let end: number | undefined;
+            if (range && total) {
+                const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+                if (m) {
+                    start = m[1] ? Number(m[1]) : undefined;
+                    end = m[2] ? Number(m[2]) : undefined;
+                    // "bytes=-500" means the LAST 500 bytes, not the first 500.
+                    if (start === undefined && end !== undefined) {
+                        start = Math.max(0, total - end);
+                        end = total - 1;
+                    } else if (start !== undefined && end === undefined) {
+                        end = total - 1;
+                    }
+                }
+            }
+
+            if (start !== undefined && end !== undefined && total) {
+                if (start >= total || end >= total || start > end) {
+                    res.setHeader('Content-Range', `bytes */${total}`);
+                    return res.status(416).end();
+                }
+                res.status(206);
+                res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+                res.setHeader('Content-Length', String(end - start + 1));
+            } else if (total) {
+                res.setHeader('Content-Length', String(total));
+            }
+
+            const stream = cloudStorageService.streamFile(directUrl, { start, end });
+            stream.on('error', (err: Error) => {
+                log.error(`Error streaming ${fileId} from Cloud Storage:`, err);
+                failFile(res, 404, 'File not found');
+            });
+
+            return stream.pipe(res);
         }
 
         // Google Drive file - use proxy streaming (legacy support)
@@ -237,12 +314,11 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
 
         stream.on('error', (error: any) => {
             log.error(`Error streaming file ${fileId} from Drive:`, error);
-            if (!res.headersSent) {
-                if (error.message === 'File not found') {
-                    return res.status(404).json({ success: false, message: 'File not found' });
-                }
-                res.status(500).json({ success: false, message: 'Error streaming file' });
-            }
+            failFile(
+                res,
+                error.message === 'File not found' ? 404 : 500,
+                error.message === 'File not found' ? 'File not found' : 'Error streaming file',
+            );
         });
 
         stream.on('end', () => {
@@ -251,10 +327,14 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
 
     } catch (error: any) {
         log.error(`Error in getFileFromStorage for file ID ${fileId}:`, error);
+        if (res.headersSent) return;
+        // Storage being unreachable is a transient condition — a delinquent
+        // billing account, a network blip — and must never be cached as though it
+        // were the file's permanent answer.
         if (error.message === 'File not found') {
-            return res.status(404).json({ success: false, message: 'File not found' });
+            return failFile(res, 404, 'File not found');
         }
-        next(new AppError('Failed to retrieve file from storage', 500));
+        failFile(res, 502, 'Failed to retrieve file from storage');
     }
 };
 
@@ -561,6 +641,33 @@ export const internalGetSignedUrls = async (req: Request, res: Response, next: N
  * DELETE /internal/file-private
  * Body: { filePath }
  */
+/**
+ * Delete an object from the PUBLIC bucket, for services that own a file's
+ * lifecycle.
+ *
+ * Manual-verification recordings are the first caller: an admin watches one once
+ * and it then sits in the bucket forever. They arrived at ~873 MiB/day once
+ * verification went live, which is the fastest-growing thing we store.
+ */
+export const internalDeleteFile = async (req: Request, res: Response, next: NextFunction) => {
+    const { fileId } = req.body;
+    if (!fileId) return next(new BadRequestError('fileId is required.'));
+
+    try {
+        await cloudStorageService.deleteFile(fileId);
+        log.info(`File deleted from public bucket: ${fileId}`);
+        res.status(200).json({ success: true, message: 'File deleted successfully.' });
+    } catch (error: any) {
+        // Already gone is the outcome the caller wanted.
+        if (error?.code === 404 || /No such object/i.test(error?.message ?? '')) {
+            log.info(`File ${fileId} was already absent from the public bucket`);
+            return res.status(200).json({ success: true, message: 'File already absent.' });
+        }
+        log.error('Error deleting file from public bucket:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to delete file', 500));
+    }
+};
+
 export const internalDeleteFilePrivate = async (req: Request, res: Response, next: NextFunction) => {
     log.info('Handling DELETE /internal/file-private request');
     const { filePath } = req.body;
@@ -705,3 +812,61 @@ export const calculateAppRevenue = async (req: Request, res: Response, next: Nex
     }
 };
 
+
+// ============================================
+// SBC Event Commission Controllers
+// ============================================
+
+/**
+ * Get the SBC Event commission rates.
+ * GET /settings/event-commissions
+ * Readable by authenticated services (event-service reads it on every sale)
+ * and by admins in the panel.
+ */
+export const getEventCommissions = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling GET /settings/event-commissions request');
+    try {
+        const data = await settingsService.getEventCommissions();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        log.error('Error fetching event commissions:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to fetch event commissions', 500));
+    }
+};
+
+// Range check shared by the three values. Rates are money paths: a typo here
+// silently over- or under-charges every organizer, so reject rather than clamp.
+const requireInRange = (label: string, value: unknown, min: number, max: number): number => {
+    const n = typeof value === 'number' ? value : NaN;
+    if (!Number.isFinite(n) || n < min || n > max) {
+        throw new BadRequestError(`${label} must be a number between ${min} and ${max}.`);
+    }
+    return n;
+};
+
+/**
+ * Update the SBC Event commission rates (admin only).
+ * PUT /settings/event-commissions
+ * Body: { primaryPct, resalePct, defaultMaxResalePricePct }
+ */
+export const updateEventCommissions = async (req: Request, res: Response, next: NextFunction) => {
+    log.info('Handling PUT /settings/event-commissions request');
+
+    if (!isAdminCaller(req)) {
+        return next(new ForbiddenError('Admin access required.'));
+    }
+
+    try {
+        const payload = {
+            primaryPct: requireInRange('primaryPct', req.body?.primaryPct, 0, 0.5),
+            resalePct: requireInRange('resalePct', req.body?.resalePct, 0, 0.5),
+            defaultMaxResalePricePct: requireInRange('defaultMaxResalePricePct', req.body?.defaultMaxResalePricePct, 100, 300),
+        };
+
+        const data = await settingsService.updateEventCommissions(payload);
+        res.status(200).json({ success: true, data, message: 'Event commissions updated successfully' });
+    } catch (error) {
+        log.error('Error updating event commissions:', error);
+        next(error instanceof AppError ? error : new AppError('Failed to update event commissions', 500));
+    }
+};

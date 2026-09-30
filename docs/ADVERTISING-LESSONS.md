@@ -289,6 +289,94 @@ Take the largest who **fits inside** what's left; when nobody fits, the smallest
 who overshoots — so a campaign always completes by the narrowest margin.
 Measured overshoot went from ~20% to 0%.
 
+### 2.10 "What's left to cover" must count what is BOOKED, not what is DELIVERED
+
+The fix in 2.9 got the arithmetic right for a single allocation pass and still
+over-delivered by 26%, because the *input* to that arithmetic was wrong.
+
+`remainingViewsToCover` summed views already VERIFIED. But a diffuseur accepts,
+has 24h to post, and is verified after that — so for the entire first day of a
+campaign the target reads as completely untouched. `sweepUnderfilledCampaigns`
+runs every tick, saw "2000 still needed" every single time, and staffed the
+campaign again from scratch on each pass. An annonceur who bought 2000 unique
+views was billed **2517 on day 1 alone**, with more diffuseurs still posting, and
+SBC pays every extra view out of its margin (Rufus, 2026-09-04).
+
+An offer now freezes the reach it forecast (`expectedViews` on the participation)
+and **holds it against the target** until it is accepted, declined, or goes stale
+after `CAMPAIGN_OFFER_TTL_HOURS`. In progress, the reservation is that forecast
+until day 1 settles, then it becomes what was actually delivered.
+
+Two questions were being asked through one function and had to be separated:
+
+- *who else should I offer this to* — must count outstanding offers
+- *is this campaign finished* — must NOT, or a campaign closes as COMPLETED on
+  the strength of offers nobody accepted, having delivered nothing
+
+`acceptOffer` asks the second. A reservation exists to stop the campaign going
+out to **more** people; it must never turn round and refuse the people it was
+already offered to.
+
+Reserving needs a release valve or it deadlocks: an unanswered offer holds its
+share forever. The stale-offer sweep frees it and reallocates in the same tick.
+
+### 2.11 Reserving is useless if the queue can't rotate
+
+The first version of the reservation selected newest-first with a fixed batch and
+recorded nothing about what it had already asked. Most stuck records are
+abandoned, so the same recent few were re-checked every cycle and an older,
+genuinely recoverable one behind them was never reached at all.
+
+The subtler half: a naive attempt counter makes an outage *self-defeating*. Hours
+of provider 502s would burn through every record's attempts and back them all off
+to the maximum interval — reaching peak backoff precisely when the provider
+recovers and they finally become answerable. **Count only answers you actually
+got.** A timeout moves the timestamp so the queue keeps turning, and costs the
+record nothing.
+
+### 2.12 Let people buy an audience that does not exist and they will
+
+An annonceur paid 6000 F for 2000 unique views targeting Gabon + RDC, femmes
+25-50. That matches **2 of 223 eligible diffuseurs**, worth about 62 views — a 3%
+fill rate. Nothing told him while he was choosing, nothing told the admin about to
+validate it, and once paid he could not change it.
+
+Three things were needed, and only all three together fix it:
+
+1. **At filter time** — the form estimates reach live and warns when the audience
+   cannot cover the views being bought.
+2. **At review time** — the admin queue shows the shortfall per campaign, so an
+   unservable campaign is refused with a reason instead of approved into silence.
+3. **Afterwards** — it must stay fixable. See 2.13.
+
+The estimate uses the **same eligibility and matching rules allocation itself
+uses**. An optimistic reach number is worse than none: it would promise views the
+allocator will never find. And a failed estimate must render as "unknown", never
+as zero — an admin reading "aucun diffuseur" when the truth is "we could not
+check" rejects a perfectly good campaign.
+
+### 2.13 Pay-first froze the thing people most needed to change
+
+Moving payment before validation quietly created a trap, and it took three
+separate holes to spring it:
+
+- **PAID was not editable.** The money arrives before anyone has seen whether the
+  campaign can run, so the one status that most needs fixing was the one locked.
+- **REJECTED is payable** — that is how you pay after fixing a refusal. But a
+  campaign paid for and *then* refused landed back on the pay button and would
+  have **charged twice**. Status alone cannot tell those two apart; `paidAt` can.
+- **`submitForReview` always threw** "payez votre campagne", so the only route
+  back into the queue after a refusal was that second payment.
+
+Whenever payment moves earlier in a lifecycle, walk every path that leaves the
+new paid state — not just the happy one. Each of these was individually
+defensible and together they made a paid campaign a dead end.
+
+Editing stays open through diffusion, but **targeting only**: allocation re-reads
+targeting on every pass so widening simply lets the next offers find people,
+whereas the creative is frozen because verification matches diffuseurs' posts
+against its media hash — swapping it would refuse every day already published.
+
 ### 2.10 The deadlock that made every new diffuseur invisible
 
 Offers required `whatsappLid` on the profile. WhatsApp links during the

@@ -75,6 +75,7 @@ manager. Re-running the script rotates the secret.
 |---|---|
 | `profile.read` | `GET /api/sso/userinfo` — name, email, phone, country, avatar, active subscription types, direct referral count, isActivated flag |
 | `referrals.read` | `GET /api/sso/referrals/relationship` and `GET /api/sso/referrals/list` — check/enumerate the user's direct (Niveau 1) filleuls |
+| `contacts.read` | `GET /api/contacts/sso/search` and `GET /api/contacts/sso/export` — the member's own contact list, subject to their subscription |
 | `payments.write` | Create payment intents on behalf of the user via the SBC payment-service |
 | `wallet.read` | _(future)_ Read the user's SBC wallet balance |
 
@@ -281,6 +282,58 @@ Authorization: Bearer <access_token>
 
 ---
 
+### 7. `GET /api/contacts/sso/search` — the member's contact list
+
+Requires the `contacts.read` scope **and** an active subscription on the member's
+own account.
+
+```http
+GET /api/contacts/sso/search?country=CM&profession=Enseignant&page=1&limit=50
+Authorization: Bearer <sso_access_token>
+```
+
+Same query parameters, same response shape and the same paging as the
+first-party `GET /api/contacts/search` the SBC app itself uses — it is literally
+the same controller behind the same middleware, so the two cannot drift apart.
+
+### 8. `GET /api/contacts/sso/export` — the same list as a VCF file
+
+```http
+GET /api/contacts/sso/export?country=CM
+Authorization: Bearer <sso_access_token>
+```
+
+Returns a `.vcf` attachment.
+
+#### What governs what comes back
+
+This is the part to design around, because it is not a bulk feed:
+
+- **The list is per member, not per app.** Every result is scoped to the SBC
+  member whose access token you present. There is no endpoint that returns
+  contacts without a specific member's token behind it, and there is not going
+  to be one — the contact list is the paid feature at the centre of SBC.
+- **The member's subscription decides what they see.** No active subscription
+  returns `403 SUBSCRIPTION_REQUIRED`. A CLASSIQUE member gets the basic
+  filters; the advanced filters (age, sex, profession, interests) need CIBLE.
+  Your app inherits exactly the entitlement its user has — never more.
+- **Entitlement is re-checked on every call**, not frozen into the token. A
+  member whose subscription lapses stops returning contacts immediately, and a
+  blocked or deleted account returns `401` even while its token is still valid.
+
+So "updates every time" works the way you want — poll it, and you always get the
+member's current list — but a member who stops paying stops being a source.
+
+#### Errors specific to these two
+
+| Status | `code` | Meaning |
+|---|---|---|
+| 401 | — | Missing, malformed, expired, or wrongly-signed token. Also a refresh token used where an access token is required. |
+| 403 | `INSUFFICIENT_SCOPE` | The token is valid but was not granted `contacts.read`. |
+| 403 | `SUBSCRIPTION_REQUIRED` | The member has no active subscription. |
+
+---
+
 ## Webhooks (optional)
 
 A client may register a `webhookUrl` + `webhookSecret` (via the seed script's
@@ -415,6 +468,10 @@ USER                  SBC LIVE FE      SBC FE        SBC BE      SBC LIVE BE
 ## What's NOT in v1
 
 - `POST /api/sso/revoke` to revoke tokens before their natural expiry.
+- A bulk contacts feed. `contacts.read` is deliberately per-member: it returns
+  what the authorising member is entitled to, and nothing else. Mirroring the
+  whole SBC member base into a third-party database is a different request with
+  different consequences, and is Rufus's call rather than an integration detail.
 - The `payments.write` scope is reserved but the payment-service does not yet
   enforce it. For now, brother's backend must still call payment-service with
   the user's existing SBC JWT (separate flow). Once enforcement lands in
