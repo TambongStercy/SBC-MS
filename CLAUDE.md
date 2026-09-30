@@ -490,6 +490,59 @@ screen, because they were sent a code moments ago. The app counts the wait down.
 version): on Node 25 `jsonwebtoken`'s `buffer-equal-constant-time` crashes on
 load because `SlowBuffer` was removed.
 
+### Relance (notification-service): the two products and what broke
+
+Two different things share the name. Keep them apart in code, UI and talk:
+- **Relance des nouveaux** (targets with `campaignId: null`, "default"): a new
+  filleul who registered and hasn't paid is enrolled ~15 min after signup and
+  gets one message a day for 7 days, until they pay (exit `paid`) or day 7 ends.
+  Enrollment only looks at referrals from the **last 2 hours** — by design, it
+  is for newcomers.
+- **Campagnes de relance** (`campaignId` set): the parrain picks filters and
+  pushes his *older* filleuls through the same 7 days. Used 4 times ever (one
+  user, March 2026) before the redesign.
+
+Credits (`emailBalance`/`smsBalance` on RelanceConfig) are what relance runs on.
+The retired monthly RELANCE subscription must not gate anything any more.
+
+**What was broken until 2026-09-30** (fixed; tests in `src/tests/relance-*.test.ts`):
+- **No pack was ever credited.** `creditPack` read `userId` from metadata that
+  the purchase never set → 400 on every callback. 31 paid packs (29 customers +
+  Rufus twice, ~93k FCFA, May → Sept) left everyone on 0 credits, so the sender
+  skipped every parrain ("has no credits … skipping") and relance went silent
+  from early May. It had delivered 738 messages in April–May.
+- **`/api/relance/internal/credit-pack` was public and unauthenticated** — the
+  gateway proxies `/api/relance/*` verbatim. Now service-secret only.
+  `/internal/exit-user` takes the service secret or an admin login.
+- **All 23 `/api/relance/admin/*` routes accepted any logged-in user** (all
+  filleuls' contact details readable, email/SMS templates rewritable). Now
+  `requireAdmin`. JWT roles are lowercase `'admin'` — a check against `'ADMIN'`
+  refuses real admins.
+- **Credits were written back from memory** (`config.save()`) and lost any
+  purchase that landed mid-run; emails went out with 0 email credit if the
+  parrain had SMS credit. Now `reserveRelanceCredit` takes one credit atomically
+  before each send and `refundRelanceCredit` returns it on failure. Never add a
+  `config.save()` back to the sender.
+- `maxMessagesPerDay` was editable but never enforced and `lastResetDate` was
+  never updated; both work now (UTC days). It protects the mail server, which
+  also carries OTPs.
+- Paused campaigns kept sending; a J0 with no credit skipped the welcome email
+  for good; a filleul who had paid via activation balance kept getting "pay
+  now" emails (only SMS checked). All fixed.
+
+**Data facts that mislead:** `relancemessages` holds the admin's **7 day
+templates**, not sent messages — sends live in `relancetargets.messagesDelivered`.
+Relance pack payments are PaymentIntents whose `metadata.callbackPath` contains
+`relance/internal/credit-pack`; their `userId` is a **string**, while
+`sbc_users.users._id` is an ObjectId — wrap it in `ObjectId()` to join.
+`RelancePackCredit` (unique `sessionId`) is the record that a payment was credited.
+
+Scripts (dry run by default, `--apply` to act):
+`close-relance-backlog.ts` (closes relance-des-nouveaux targets enrolled over
+30 days ago with exitReason `expired`) and `credit-unpaid-relance-packs.ts`.
+**Close the backlog before crediting**, or the first run after crediting sends
+day 1 to everyone waiting, however old.
+
 ### Health endpoints aren't standardised
 
 | Service (prod port / preprod port) | Health path |

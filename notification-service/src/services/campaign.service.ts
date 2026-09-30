@@ -29,29 +29,15 @@ class CampaignService {
         }
     ): Promise<{ success: boolean; campaign?: ICampaign; error?: string }> {
         try {
-            // Validate user has relance subscription
-            const hasRelance = await userServiceClient.hasRelanceSubscription(userId);
-            if (!hasRelance) {
-                return { success: false, error: 'User does not have active RELANCE subscription' };
-            }
-
             // Get or create user config for limits
             let config = await RelanceConfigModel.findOne({ userId });
-            if (!config) {
-                // Auto-create config with defaults for users with RELANCE subscription
-                config = await RelanceConfigModel.create({
-                    userId,
-                    enabled: true,
-                    enrollmentPaused: false,
-                    sendingPaused: false,
-                    defaultCampaignPaused: false,
-                    allowSimultaneousCampaigns: false,
-                    messagesSentToday: 0,
-                    lastResetDate: new Date(),
-                    maxMessagesPerDay: 500,
-                    maxTargetsPerCampaign: 500
-                });
-                log.info(`Auto-created RelanceConfig for user ${userId}`);
+
+            // Credits are what relance runs on. This used to demand the retired
+            // monthly RELANCE subscription, so every credit-pack buyer was refused
+            // with an English error the page showed as-is. The sender enforces the
+            // balance per message; this only stops a campaign that could never send.
+            if (!config || ((config.emailBalance ?? 0) <= 0 && (config.smsBalance ?? 0) <= 0)) {
+                return { success: false, error: "Vous n'avez plus de crédits de relance. Rechargez pour lancer une campagne." };
             }
 
             // Estimate target count based on filter
