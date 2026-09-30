@@ -11,6 +11,13 @@ import logger from '../../utils/logger';
 
 const log = logger.getLogger('RelanceCampaignController');
 
+/** A campaign is visible to its owner and to admins (case-insensitive role). */
+const canSeeCampaign = (req: Request, campaign: { userId?: unknown }): boolean => {
+    const user = (req as any).user;
+    if (typeof user?.role === 'string' && user.role.toLowerCase() === 'admin') return true;
+    return !!user?.userId && String(campaign.userId) === String(user.userId);
+};
+
 /**
  * Campaign Controller
  * Handles campaign management API endpoints
@@ -1157,10 +1164,15 @@ class RelanceCampaignController {
                 return;
             }
 
-            // Get campaign and verify ownership
+            // Owner or admin only — the comment here used to say "verify ownership"
+            // with no check behind it, so any signed-in user could read any campaign.
+            if (!mongoose.isValidObjectId(campaignId)) {
+                res.status(404).json({ success: false, message: 'Campagne introuvable' });
+                return;
+            }
             const campaign = await CampaignModel.findById(campaignId);
-            if (!campaign) {
-                res.status(404).json({ success: false, message: 'Campaign not found' });
+            if (!campaign || !canSeeCampaign(req, campaign)) {
+                res.status(404).json({ success: false, message: 'Campagne introuvable' });
                 return;
             }
 
@@ -1325,10 +1337,19 @@ class RelanceCampaignController {
             }
 
             const limitNum = Math.min(parseInt(limit as string) || 10, 50);
+            if (!mongoose.isValidObjectId(campaignId)) {
+                res.status(404).json({ success: false, message: 'Campagne introuvable' });
+                return;
+            }
             const campaignObjectId = new mongoose.Types.ObjectId(campaignId);
 
-            // Get campaign name
-            const campaign = await CampaignModel.findById(campaignId).select('name').lean();
+            // Owner or admin only. This returns the filleuls' names and emails, and
+            // used to answer for any campaign id to any signed-in user.
+            const campaign = await CampaignModel.findById(campaignId).select('name userId').lean();
+            if (!campaign || !canSeeCampaign(req, campaign)) {
+                res.status(404).json({ success: false, message: 'Campagne introuvable' });
+                return;
+            }
 
             const targets = await RelanceTargetModel.find({
                 campaignId: campaignObjectId,

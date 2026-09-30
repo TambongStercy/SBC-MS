@@ -248,3 +248,56 @@ describe('POST /api/relance/internal/exit-user', () => {
         expect([401, 403]).not.toContain(r.status);
     });
 });
+
+describe('a campaign is visible only to its owner (and admins)', () => {
+    // Imported here to keep the top of the file about crediting.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const CampaignModel = require('../database/models/relance-campaign.model').default;
+
+    const setup = async () => {
+        const ownerId = new mongoose.Types.ObjectId().toString();
+        const campaign = await CampaignModel.create({
+            userId: ownerId, name: 'Anciens filleuls', type: 'filtered', status: 'active', targetFilter: {},
+        });
+        return { ownerId, id: String(campaign._id) };
+    };
+
+    it.each(['stats', 'messages/recent'])('GET /campaigns/:id/%s answers the owner', async (what) => {
+        const { ownerId, id } = await setup();
+        const r = await call('GET', `/api/relance/campaigns/${id}/${what}`, { auth: tokenFor('user', ownerId) });
+        expect(r.status).toBe(200);
+    });
+
+    it.each(['stats', 'messages/recent'])('GET /campaigns/:id/%s hides it from another user — it used to answer anyone', async (what) => {
+        const { id } = await setup();
+        const r = await call('GET', `/api/relance/campaigns/${id}/${what}`, { auth: tokenFor('user') });
+        expect(r.status).toBe(404);
+    });
+
+    it('lets an admin look at any campaign', async () => {
+        const { id } = await setup();
+        const r = await call('GET', `/api/relance/campaigns/${id}/stats`, { auth: tokenFor('admin') });
+        expect(r.status).toBe(200);
+    });
+
+    it('answers a malformed id with "not found" rather than a crash', async () => {
+        const r = await call('GET', '/api/relance/campaigns/not-an-id/stats', { auth: tokenFor('user') });
+        expect(r.status).toBe(404);
+    });
+});
+
+describe('POST /api/relance/campaigns/message-preview', () => {
+    it('renders an email for an ordinary signed-in user', async () => {
+        const r = await call('POST', '/api/relance/campaigns/message-preview', {
+            auth: tokenFor('user'),
+            body: { dayNumber: 1, subject: 'Bonjour', messageTemplate: { fr: 'Bonjour {{name}}', en: 'Hi {{name}}' } },
+        });
+        expect(r.status).toBe(200);
+        expect(JSON.stringify(r.json)).toContain('Bonjour');
+    });
+
+    it('still needs a login', async () => {
+        const r = await call('POST', '/api/relance/campaigns/message-preview', { body: { dayNumber: 1, messageTemplate: { fr: 'x', en: 'x' } } });
+        expect(r.status).toBe(401);
+    });
+});
