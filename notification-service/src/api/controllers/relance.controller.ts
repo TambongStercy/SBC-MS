@@ -8,6 +8,7 @@ import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/mod
 import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
 import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack } from '../../config/relance-packs';
+import { creditRelancePack } from '../../services/relance-credit.service';
 import config from '../../config';
 
 const log = logger.getLogger('RelanceController');
@@ -661,6 +662,10 @@ class RelanceController {
                     currency: 'XAF',
                     paymentType,
                     metadata: {
+                        // Carried in metadata as well as at the top level: the success
+                        // callback is built from metadata, and its absence here is why no
+                        // pack was ever credited before 2026-09-30.
+                        userId,
                         packId,
                         packType: pack.type,
                         credits: pack.credits,
@@ -689,30 +694,43 @@ class RelanceController {
         }
     }
 
-    /** POST /api/relance/internal/credit-pack — called by payment-service on success */
+    /**
+     * POST /api/relance/internal/credit-pack — called by payment-service on success.
+     *
+     * Service-authenticated (see relance.routes.ts). Until 2026-09-30 it was
+     * neither: it was reachable from the internet without a token, and it read
+     * userId from metadata, which the purchase never put there — so all 31 real
+     * pack payments were refused with a 400 while anyone could have minted credits.
+     *
+     * userId is read from the top level (payment-service now sends it) with
+     * metadata as a fallback; the credit amount comes from the pack table, not
+     * the request; and each sessionId is credited at most once.
+     */
     async creditPack(req: Request, res: Response): Promise<void> {
         try {
-            const { sessionId, status, metadata } = req.body;
+            const { sessionId, status, metadata, userId } = req.body;
             if (status !== 'SUCCEEDED') {
                 res.status(200).json({ success: true, message: 'Non-success status, no credit applied' });
                 return;
             }
 
-            const { userId, packType, credits, packId } = metadata || {};
-            if (!userId || !packType || !credits) {
-                res.status(400).json({ success: false, message: 'Missing metadata fields' });
+            const result = await creditRelancePack({
+                sessionId,
+                userId: userId ?? metadata?.userId,
+                packId: metadata?.packId,
+            });
+
+            if (result.outcome === 'rejected') {
+                log.error(`Refused to credit relance pack for session ${sessionId}: ${result.reason}`);
+                res.status(400).json({ success: false, message: result.reason });
                 return;
             }
-
-            const balanceField = packType === 'email' ? 'emailBalance' : 'smsBalance';
-            await RelanceConfigModel.findOneAndUpdate(
-                { userId },
-                { $inc: { [balanceField]: credits } },
-                { upsert: true, new: true }
-            );
-
-            log.info(`Credited ${credits} ${packType} credits to user ${userId} (pack: ${packId}, session: ${sessionId})`);
-            res.status(200).json({ success: true, message: `${credits} ${packType} credits added` });
+            res.status(200).json({
+                success: true,
+                message: result.outcome === 'credited'
+                    ? `${result.credits} ${result.packType} credits added`
+                    : 'Already credited',
+            });
         } catch (error: any) {
             log.error('Error crediting pack:', error);
             res.status(500).json({ success: false, message: 'Failed to credit pack' });
@@ -813,8 +831,9 @@ class RelanceController {
     /** PUT /api/relance/admin/configs/:userId — admin can toggle smsEnabled, adjust maxMessagesPerDay */
     async adminUpdateConfig(req: AuthenticatedRequest, res: Response): Promise<void> {
         try {
-            const adminUser = req.user;
-            if (!adminUser || adminUser.role !== 'ADMIN') { res.status(403).json({ success: false, message: 'Forbidden' }); return; }
+            // Admin role is enforced by `requireAdmin` on the route. The check that used
+            // to live here compared against 'ADMIN' while tokens carry 'admin', so it
+            // turned away every real admin.
             const { userId } = req.params;
             const allowed = ['smsEnabled', 'maxMessagesPerDay', 'maxTargetsPerCampaign', 'enabled', 'sendingPaused', 'enrollmentPaused'];
             const update: Record<string, any> = {};

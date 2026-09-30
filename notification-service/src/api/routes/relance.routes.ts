@@ -2,7 +2,7 @@ import { Router } from 'express';
 import path from 'path';
 import { relanceController } from '../controllers/relance.controller';
 import { relanceCampaignController } from '../controllers/relance-campaign.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, requireAdmin, authenticateServiceRequest, authenticateServiceOrAdmin } from '../middleware/auth.middleware';
 import { uploadRelanceMedia } from '../middleware/upload.middleware';
 import campaignRoutes from './relance-campaign.routes';
 
@@ -83,7 +83,7 @@ router.use('/campaigns', authenticate, campaignRoutes);
  * @desc    Get all relance messages (Day 1-7)
  * @access  Admin
  */
-router.get('/admin/messages', authenticate, (req, res) =>
+router.get('/admin/messages', authenticate, requireAdmin, (req, res) =>
     relanceController.getAllMessages(req, res)
 );
 
@@ -92,7 +92,7 @@ router.get('/admin/messages', authenticate, (req, res) =>
  * @desc    Get specific day message
  * @access  Admin
  */
-router.get('/admin/messages/:day', authenticate, (req, res) =>
+router.get('/admin/messages/:day', authenticate, requireAdmin, (req, res) =>
     relanceController.getMessage(req, res)
 );
 
@@ -101,7 +101,7 @@ router.get('/admin/messages/:day', authenticate, (req, res) =>
  * @desc    Generate a real-time preview of the relance email template
  * @access  Admin
  */
-router.post('/admin/messages/preview', authenticate, (req, res) =>
+router.post('/admin/messages/preview', authenticate, requireAdmin, (req, res) =>
     relanceController.previewMessage(req, res)
 );
 
@@ -110,7 +110,7 @@ router.post('/admin/messages/preview', authenticate, (req, res) =>
  * @desc    Create/update relance message for a specific day
  * @access  Admin
  */
-router.post('/admin/messages', authenticate, (req, res) =>
+router.post('/admin/messages', authenticate, requireAdmin, (req, res) =>
     relanceController.upsertMessage(req, res)
 );
 
@@ -119,7 +119,7 @@ router.post('/admin/messages', authenticate, (req, res) =>
  * @desc    Deactivate relance message for a specific day
  * @access  Admin
  */
-router.delete('/admin/messages/:day', authenticate, (req, res) =>
+router.delete('/admin/messages/:day', authenticate, requireAdmin, (req, res) =>
     relanceController.deactivateMessage(req, res)
 );
 
@@ -128,7 +128,7 @@ router.delete('/admin/messages/:day', authenticate, (req, res) =>
  * @desc    Get relance statistics (users, messages sent, etc.)
  * @access  Admin
  */
-router.get('/admin/stats', authenticate, (req, res) =>
+router.get('/admin/stats', authenticate, requireAdmin, (req, res) =>
     relanceController.getStats(req, res)
 );
 
@@ -137,7 +137,7 @@ router.get('/admin/stats', authenticate, (req, res) =>
  * @desc    Get relance activity logs
  * @access  Admin
  */
-router.get('/admin/logs', authenticate, (req, res) =>
+router.get('/admin/logs', authenticate, requireAdmin, (req, res) =>
     relanceController.getLogs(req, res)
 );
 
@@ -146,7 +146,7 @@ router.get('/admin/logs', authenticate, (req, res) =>
  * @desc    Get active targets with pagination
  * @access  Admin
  */
-router.get('/admin/targets', authenticate, (req, res) =>
+router.get('/admin/targets', authenticate, requireAdmin, (req, res) =>
     relanceController.getActiveTargets(req, res)
 );
 
@@ -155,7 +155,7 @@ router.get('/admin/targets', authenticate, (req, res) =>
  * @desc    Get all active relance configs
  * @access  Admin
  */
-router.get('/admin/configs', authenticate, (req, res) =>
+router.get('/admin/configs', authenticate, requireAdmin, (req, res) =>
     relanceController.getActiveConfigs(req, res)
 );
 
@@ -164,7 +164,7 @@ router.get('/admin/configs', authenticate, (req, res) =>
  * @desc    Get all campaigns (with filters)
  * @access  Admin
  */
-router.get('/admin/campaigns', authenticate, (req, res) =>
+router.get('/admin/campaigns', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.getCampaigns(req, res)
 );
 
@@ -173,7 +173,7 @@ router.get('/admin/campaigns', authenticate, (req, res) =>
  * @desc    Get campaign statistics
  * @access  Admin
  */
-router.get('/admin/campaigns/stats', authenticate, (req, res) =>
+router.get('/admin/campaigns/stats', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.getCampaignStats(req, res)
 );
 
@@ -182,7 +182,7 @@ router.get('/admin/campaigns/stats', authenticate, (req, res) =>
  * @desc    Get campaign stats by ID (admin)
  * @access  Admin
  */
-router.get('/admin/campaigns/:id/stats', authenticate, (req, res) =>
+router.get('/admin/campaigns/:id/stats', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.getCampaignStatsById(req, res)
 );
 
@@ -191,7 +191,7 @@ router.get('/admin/campaigns/:id/stats', authenticate, (req, res) =>
  * @desc    Get recent messages for a campaign (admin)
  * @access  Admin
  */
-router.get('/admin/campaigns/:id/messages/recent', authenticate, (req, res) =>
+router.get('/admin/campaigns/:id/messages/recent', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.getCampaignRecentMessages(req, res)
 );
 
@@ -200,7 +200,7 @@ router.get('/admin/campaigns/:id/messages/recent', authenticate, (req, res) =>
  * @desc    Get campaign by ID (admin)
  * @access  Admin
  */
-router.get('/admin/campaigns/:id', authenticate, (req, res) =>
+router.get('/admin/campaigns/:id', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.getCampaignById(req, res)
 );
 
@@ -209,7 +209,7 @@ router.get('/admin/campaigns/:id', authenticate, (req, res) =>
  * @desc    Get campaign targets (admin)
  * @access  Admin
  */
-router.get('/admin/campaigns/:id/targets', authenticate, (req, res) =>
+router.get('/admin/campaigns/:id/targets', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.getCampaignTargets(req, res)
 );
 
@@ -218,7 +218,7 @@ router.get('/admin/campaigns/:id/targets', authenticate, (req, res) =>
  * @desc    Pause campaign (admin)
  * @access  Admin
  */
-router.post('/admin/campaigns/:id/pause', authenticate, (req, res) =>
+router.post('/admin/campaigns/:id/pause', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.pauseCampaign(req, res)
 );
 
@@ -227,7 +227,7 @@ router.post('/admin/campaigns/:id/pause', authenticate, (req, res) =>
  * @desc    Resume campaign (admin)
  * @access  Admin
  */
-router.post('/admin/campaigns/:id/resume', authenticate, (req, res) =>
+router.post('/admin/campaigns/:id/resume', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.resumeCampaign(req, res)
 );
 
@@ -236,7 +236,7 @@ router.post('/admin/campaigns/:id/resume', authenticate, (req, res) =>
  * @desc    Cancel campaign (admin)
  * @access  Admin
  */
-router.post('/admin/campaigns/:id/cancel', authenticate, (req, res) =>
+router.post('/admin/campaigns/:id/cancel', authenticate, requireAdmin, (req, res) =>
     relanceCampaignController.cancelCampaign(req, res)
 );
 
@@ -245,7 +245,7 @@ router.post('/admin/campaigns/:id/cancel', authenticate, (req, res) =>
  * @desc    Upload media file for relance messages (images/videos/PDFs)
  * @access  Admin
  */
-router.post('/admin/upload-media', authenticate, uploadRelanceMedia.single('file'), (req, res) =>
+router.post('/admin/upload-media', authenticate, requireAdmin, uploadRelanceMedia.single('file'), (req, res) =>
     relanceController.uploadMedia(req, res)
 );
 
@@ -327,7 +327,7 @@ router.get('/sms-templates', authenticate, (req, res) =>
  * @desc    List all predefined SMS templates
  * @access  Admin
  */
-router.get('/admin/sms-templates', authenticate, (req, res) =>
+router.get('/admin/sms-templates', authenticate, requireAdmin, (req, res) =>
     relanceController.listSmsTemplates(req, res)
 );
 
@@ -336,7 +336,7 @@ router.get('/admin/sms-templates', authenticate, (req, res) =>
  * @desc    Update a predefined SMS template
  * @access  Admin
  */
-router.put('/admin/sms-templates/:type/:day', authenticate, (req, res) =>
+router.put('/admin/sms-templates/:type/:day', authenticate, requireAdmin, (req, res) =>
     relanceController.updateSmsTemplate(req, res)
 );
 
@@ -345,7 +345,7 @@ router.put('/admin/sms-templates/:type/:day', authenticate, (req, res) =>
  * @desc    Preview a SMS template with a sample link
  * @access  Admin
  */
-router.post('/admin/sms-templates/preview', authenticate, (req, res) =>
+router.post('/admin/sms-templates/preview', authenticate, requireAdmin, (req, res) =>
     relanceController.previewSmsTemplate(req, res)
 );
 
@@ -354,7 +354,7 @@ router.post('/admin/sms-templates/preview', authenticate, (req, res) =>
  * @desc    Admin: update a user's relance config (smsEnabled, maxMessagesPerDay, etc.)
  * @access  Admin
  */
-router.put('/admin/configs/:userId', authenticate, (req, res) =>
+router.put('/admin/configs/:userId', authenticate, requireAdmin, (req, res) =>
     relanceController.adminUpdateConfig(req, res)
 );
 
@@ -365,7 +365,7 @@ router.put('/admin/configs/:userId', authenticate, (req, res) =>
  * @desc    Remove user from relance loop (when they pay)
  * @access  Internal
  */
-router.post('/internal/exit-user', (req, res) =>
+router.post('/internal/exit-user', authenticateServiceOrAdmin, (req, res) =>
     relanceController.exitUserFromLoop(req, res)
 );
 
@@ -374,7 +374,7 @@ router.post('/internal/exit-user', (req, res) =>
  * @desc    Credit user's email or SMS balance after successful pack payment
  * @access  Internal (called by payment-service)
  */
-router.post('/internal/credit-pack', (req, res) =>
+router.post('/internal/credit-pack', authenticateServiceRequest, (req, res) =>
     relanceController.creditPack(req, res)
 );
 
