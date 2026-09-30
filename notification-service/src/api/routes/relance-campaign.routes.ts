@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { relanceCampaignController } from '../controllers/relance-campaign.controller';
+import { relanceController } from '../controllers/relance.controller';
 
 const router = Router();
 
@@ -11,6 +12,11 @@ const router = Router();
 // Default relance (auto-enrollment without campaign)
 router.get('/default/stats', (req, res) => relanceCampaignController.getDefaultRelanceStats(req, res));
 router.get('/default/targets', (req, res) => relanceCampaignController.getDefaultRelanceTargets(req, res));
+
+// Render an email as the filleul would receive it, from the text being written.
+// Sample data only — it reads nothing about anyone. The campaign screen needs it;
+// until 2026-09-30 the page used the admin route, which now refuses non-admins.
+router.post('/message-preview', (req, res) => relanceController.previewMessage(req, res));
 
 // Preview filter results (with sample users)
 router.post('/preview', (req, res) => relanceCampaignController.previewFilterResults(req, res));
