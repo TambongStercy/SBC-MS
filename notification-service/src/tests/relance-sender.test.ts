@@ -176,43 +176,10 @@ describe('Relance Sender Job', () => {
         });
     });
 
-    describe('No daily limits', () => {
-        it('should NOT have maxMessagesPerDay checks in sender', () => {
-            const fs = require('fs');
-            const path = require('path');
-            const source = fs.readFileSync(
-                path.join(__dirname, '../jobs/relance-sender.job.ts'),
-                'utf8'
-            );
-
-            // Should not contain daily limit checks
-            expect(source).not.toContain('config.messagesSentToday >= config.maxMessagesPerDay');
-            expect(source).not.toContain('campaignMessagesSent >= campaignMaxMessages');
-        });
-
-        it('should NOT have messagesSentToday counter increment', () => {
-            const fs = require('fs');
-            const path = require('path');
-            const source = fs.readFileSync(
-                path.join(__dirname, '../jobs/relance-sender.job.ts'),
-                'utf8'
-            );
-
-            expect(source).not.toContain('config.messagesSentToday += 1');
-        });
-
-        it('should NOT have daily counter reset cron', () => {
-            const fs = require('fs');
-            const path = require('path');
-            const source = fs.readFileSync(
-                path.join(__dirname, '../jobs/relance-sender.job.ts'),
-                'utf8'
-            );
-
-            expect(source).not.toContain('0 0 * * *');
-            expect(source).not.toContain('messagesSentToday: 0');
-        });
-    });
+    // The "No daily limits" checks that used to live here were removed on
+    // 2026-09-30: the daily email limit is enforced again (it protects the mail
+    // server that also carries OTPs). Its behaviour is tested against a real
+    // database in relance-sending.test.ts.
 
     describe('Duplicate prevention', () => {
         it('should check for already delivered messages on current day', () => {

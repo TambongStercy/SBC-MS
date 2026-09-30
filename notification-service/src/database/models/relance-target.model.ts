@@ -17,7 +17,8 @@ export enum ExitReason {
     COMPLETED_7_DAYS = 'completed_7days',   // Finished 7-day campaign
     MANUAL = 'manual',                      // Manually removed by admin
     REFERRER_INACTIVE = 'referrer_inactive', // Referrer's subscription expired
-    EMAIL_SUPPRESSED = 'email_suppressed'   // Hard bounce — address blacklisted
+    EMAIL_SUPPRESSED = 'email_suppressed',  // Hard bounce — address blacklisted
+    EXPIRED = 'expired'                     // Enrolled too long ago to relance (backlog closed 2026-09-30)
 }
 
 /**
