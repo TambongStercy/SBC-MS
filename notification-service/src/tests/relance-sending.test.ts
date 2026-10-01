@@ -37,6 +37,15 @@ jest.mock('../services/clients/user.service.client', () => ({
     },
 }));
 
+const pushCreditsLow = jest.fn();
+const pushCreditsExhausted = jest.fn();
+const pushFilleulPaid = jest.fn();
+jest.mock('../services/relance-alerts.service', () => ({
+    pushCreditsLow: (...a: unknown[]) => pushCreditsLow(...a),
+    pushCreditsExhausted: (...a: unknown[]) => pushCreditsExhausted(...a),
+    pushFilleulPaid: (...a: unknown[]) => pushFilleulPaid(...a),
+}));
+
 process.env.RELANCE_EMAIL_DELAY_MS = '0';
 
 import mongoose from 'mongoose';
@@ -106,6 +115,7 @@ beforeEach(async () => {
     })));
     sendRelanceEmail.mockReset().mockResolvedValue({ success: true, messageId: '<m@x>' });
     sendSms.mockReset().mockResolvedValue(true);
+    [pushCreditsLow, pushCreditsExhausted, pushFilleulPaid].forEach(m => m.mockReset());
     getUserDetails.mockReset().mockImplementation(async (id: string) => ({ _id: id, name: 'Filleul', email: `${id}@example.com`, phoneNumber: '237600000000' }));
     getActiveSubscriptionTypes.mockReset().mockResolvedValue([]);
 });
@@ -307,6 +317,45 @@ describe('campaigns', () => {
         expect((await CampaignModel.findById(empty._id))!.status).toBe(CampaignStatus.COMPLETED);
         expect((await CampaignModel.findById(running._id))!.status).toBe(CampaignStatus.ACTIVE);
         expect(sendRelanceEmail).not.toHaveBeenCalled();
+    });
+});
+
+describe('telling the parrain (push)', () => {
+    it('warns when the last credit goes — on a first-day email too, which used to warn nobody', async () => {
+        await makeConfig({ emailBalance: 1 });
+        await makeTarget({ currentDay: 0 });
+
+        await run();
+
+        expect(pushCreditsExhausted).toHaveBeenCalledWith(referrerId.toString());
+    });
+
+    it('warns at the low mark on a regular day', async () => {
+        await makeConfig({ emailBalance: 51 });
+        await makeTarget({ currentDay: 2 });
+
+        await run();
+
+        expect(pushCreditsLow).toHaveBeenCalledWith(referrerId.toString(), 50);
+        expect(pushCreditsExhausted).not.toHaveBeenCalled();
+    });
+
+    it('says nothing while credits are comfortable', async () => {
+        await makeConfig({ emailBalance: 500 });
+        await makeTarget({ currentDay: 2 });
+        await run();
+        expect(pushCreditsLow).not.toHaveBeenCalled();
+        expect(pushCreditsExhausted).not.toHaveBeenCalled();
+    });
+
+    it('tells the parrain when a relanced filleul pays', async () => {
+        await makeConfig();
+        const t = await makeTarget({ currentDay: 3 });
+        getActiveSubscriptionTypes.mockResolvedValue(['CLASSIQUE']);
+
+        await run();
+
+        expect(pushFilleulPaid).toHaveBeenCalledWith(referrerId.toString(), t.referralUserId.toString());
     });
 });
 

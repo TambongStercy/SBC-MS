@@ -78,6 +78,12 @@ interface IConfig {
             password: string;
         };
     };
+    /** Web push (VAPID). Empty keys = push off. */
+    push: {
+        publicKey: string;
+        privateKey: string;
+        subject: string;
+    };
     sms: {
         twilioAccountSid: string;
         twilioAuthToken: string;
@@ -185,6 +191,12 @@ const config: IConfig = {
             user: process.env.BOUNCE_IMAP_USER || process.env.EMAIL_USER || '',
             password: process.env.BOUNCE_IMAP_PASSWORD || process.env.EMAIL_PASSWORD || '',
         },
+    },
+
+    push: {
+        publicKey: process.env.VAPID_PUBLIC_KEY || '',
+        privateKey: process.env.VAPID_PRIVATE_KEY || '',
+        subject: process.env.VAPID_SUBJECT || 'mailto:noreply@sniperbuisnesscenter.com',
     },
 
     sms: {
