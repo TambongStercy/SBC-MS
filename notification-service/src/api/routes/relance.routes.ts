@@ -29,6 +29,15 @@ router.put('/settings', authenticate, (req, res) =>
 );
 
 /**
+ * @route   GET /api/relance/default-messages
+ * @desc    The 7 SBC relance messages, read-only, for parrains to read
+ * @access  Private
+ */
+router.get('/default-messages', authenticate, (req, res) =>
+    relanceController.getDefaultMessages(req, res)
+);
+
+/**
  * @route   GET /api/relance/message-templates
  * @desc    Get user's saved message templates for pre-filling campaign forms
  * @access  Private
