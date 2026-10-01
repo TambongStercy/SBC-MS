@@ -134,6 +134,23 @@ class UserServiceClient {
     }
 
     /**
+     * The relance subset for one user, including country (which batch-details
+     * lacks). Null when user-service cannot answer.
+     */
+    async getRelanceDetails(userId: string): Promise<{ _id: string; country?: string; phoneNumber?: string } | null> {
+        try {
+            const response = await axios.post(`${this.userServiceUrl}/users/internal/relance-details`, { userIds: [userId] }, {
+                headers: { 'Authorization': `Bearer ${this.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+                timeout: 5000,
+            });
+            return response.data?.data?.[0] ?? null;
+        } catch (error: any) {
+            log.error(`Error fetching relance details for user ${userId}:`, error.response?.data || error.message);
+            return null;
+        }
+    }
+
+    /**
      * Get batch user details for multiple user IDs
      * @param userIds Array of user IDs
      * @returns Array of user detail objects

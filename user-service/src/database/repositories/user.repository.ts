@@ -801,6 +801,21 @@ export class UserRepository {
     }
 
     /**
+     * [Internal] Returns the projection consumed by relance (notification-service).
+     * SMS relance is for Cameroonian parrains only, so it needs `country`, which
+     * batch-details does not carry.
+     */
+    async findRelanceDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        return UserModel.find({
+            _id: { $in: userIds },
+            deleted: { $ne: true }
+        })
+            .select('_id name email phoneNumber country language')
+            .lean()
+            .exec();
+    }
+
+    /**
      * [Internal] Returns the projection consumed by event-service for hydrating
      * ticket holders in "Mes billets" and organizer participant lists. Kept narrow
      * on purpose — event-service should never need demographic fields.

@@ -19,6 +19,17 @@
  * Needs MongoDB at TEST_MONGODB_URI (default mongodb://127.0.0.1:27017). Uses
  * its own database and drops it.
  */
+// The outside world for pack purchases: who the buyer is, and payment-service.
+const getRelanceDetails = jest.fn();
+jest.mock('../services/clients/user.service.client', () => ({
+    userServiceClient: { getRelanceDetails: (...a: unknown[]) => getRelanceDetails(...a) },
+}));
+const axiosPost = jest.fn();
+jest.mock('axios', () => {
+    const actual = jest.requireActual('axios');
+    return { ...actual, __esModule: true, default: { ...actual.default, post: (...a: unknown[]) => axiosPost(...a) } };
+});
+
 import express from 'express';
 import http from 'http';
 import { AddressInfo } from 'net';
@@ -128,6 +139,53 @@ describe('crediting a paid pack', () => {
     it('refuses a missing or malformed userId', async () => {
         expect((await creditRelancePack({ sessionId: 'Y', packId: 'email_3k' })).outcome).toBe('rejected');
         expect((await creditRelancePack({ sessionId: 'Z', userId: 'not-an-id', packId: 'email_3k' })).outcome).toBe('rejected');
+    });
+});
+
+describe('SMS relance — Cameroon only (Rufus, 2026-10-01)', () => {
+    beforeEach(() => {
+        getRelanceDetails.mockReset();
+        axiosPost.mockReset().mockResolvedValue({ data: { data: { sessionId: 'sess_1' } } });
+    });
+
+    it('switches SMS on when an SMS pack is credited — it used to wait for an admin', async () => {
+        const userId = new mongoose.Types.ObjectId().toString();
+        await creditRelancePack({ sessionId: 'SMS1', userId, packId: 'sms_250' });
+        expect(((await RelanceConfigModel.findOne({ userId }).lean()) as any).smsEnabled).toBe(true);
+    });
+
+    it('leaves SMS as it was when an email pack is credited', async () => {
+        const userId = new mongoose.Types.ObjectId().toString();
+        await creditRelancePack({ sessionId: 'EM1', userId, packId: 'email_3k' });
+        expect(((await RelanceConfigModel.findOne({ userId }).lean()) as any).smsEnabled).toBe(false);
+    });
+
+    it('refuses to sell an SMS pack outside Cameroon, before any payment is created', async () => {
+        getRelanceDetails.mockResolvedValue({ _id: 'x', country: 'BJ' });
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'sms_250' } });
+        expect(r.status).toBe(403);
+        expect(r.json.message).toMatch(/Cameroun/);
+        expect(axiosPost).not.toHaveBeenCalled();
+    });
+
+    it.each(['CM', 'cm', 'Cameroun'])('sells an SMS pack to a parrain whose country is %s', async (country) => {
+        getRelanceDetails.mockResolvedValue({ _id: 'x', country });
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'sms_250' } });
+        expect(r.status).toBe(200);
+        expect(axiosPost).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses rather than guesses when the buyer country cannot be checked', async () => {
+        getRelanceDetails.mockResolvedValue(null);
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'sms_250' } });
+        expect(r.status).toBe(503);
+        expect(axiosPost).not.toHaveBeenCalled();
+    });
+
+    it('sells email packs everywhere, without asking who the buyer is', async () => {
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'email_3k' } });
+        expect(r.status).toBe(200);
+        expect(getRelanceDetails).not.toHaveBeenCalled();
     });
 });
 
