@@ -6,7 +6,7 @@
  * Pure — no Mongo, no network, no server.
  */
 import assert from 'assert';
-import { planChannels } from '../services/clients/notification.service.client';
+import { planChannels, pushRelatedData } from '../services/clients/notification.service.client';
 
 const ALL = ['push', 'email', 'sms'];
 const chans = (plan: { channel: string }[]) => plan.map((p) => p.channel).sort().join(',');
@@ -39,5 +39,12 @@ assert.strictEqual(chans(planChannels({ channels: ['push', 'email'], email: 'a@b
 
 // Nothing known at all → nothing attempted (and notifyUser logs a warning).
 assert.strictEqual(planChannels({ channels: ['push', 'email', 'sms'], enabled: ALL }).length, 0);
+
+// Push: which page a tap opens, and which of the user's push settings it falls under.
+assert.deepStrictEqual(pushRelatedData('event-ticket-purchased', 'o1'), { pushCategory: 'events', url: '/events/mes-billets', pushTag: 'event-ticket-purchased-o1' });
+assert.deepStrictEqual(pushRelatedData('refund-processed', 'o2').pushCategory, 'money'); // money back goes out at any hour
+assert.strictEqual(pushRelatedData('resale-sold').url, '/wallet');
+assert.strictEqual(pushRelatedData('dispute-resolved').url, '/events/mes-disputes');
+assert.deepStrictEqual(pushRelatedData('something-new'), { pushCategory: 'events', url: '/events', pushTag: 'something-new' });
 
 console.log('✅ notify fan-out table OK');
