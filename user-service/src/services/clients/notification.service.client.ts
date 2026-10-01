@@ -66,6 +66,20 @@ class NotificationService {
     }
 
     /**
+     * A push to the user's phones (notification-service /push/internal/send).
+     * Best-effort: never throws; a user without push is not an error.
+     */
+    async sendPush(payload: { userId: string; category: string; title: string; body: string; url?: string; tag?: string }): Promise<boolean> {
+        try {
+            const { data } = await this.apiClient.post('/notifications/push/internal/send', payload);
+            return !!data?.success;
+        } catch (error: any) {
+            log.warn(`Push to ${payload.userId} failed: ${error?.message ?? error}`);
+            return false;
+        }
+    }
+
+    /**
      * Send an OTP code via email or SMS for 2FA
      */
     async sendOtp(data: OtpNotificationRequest): Promise<boolean> {

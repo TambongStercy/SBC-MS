@@ -1,3 +1,4 @@
+import { pushNewFilleul } from './push-notify';
 import bcrypt from 'bcrypt';
 import { IUser, UserRole } from '../database/models/user.model';
 import { userRepository } from '../database/repositories/user.repository';
@@ -285,6 +286,7 @@ export class UserService {
         // 5. Create referral hierarchy if referrer exists
         if (referrer) {
             await this.createReferralHierarchy(referrer, newUser);
+            pushNewFilleul(referrer._id, newUser.name, newUser._id);
         }
 
         // --- Update IP Address --- 
