@@ -863,6 +863,31 @@ class RelanceController {
      * POST /api/relance/admin/messages/preview
      * Generate a preview of the relance email template
      */
+    /**
+     * GET /api/relance/default-messages — the 7 SBC messages relance sends, so a
+     * parrain can read what goes out under their name before buying credits.
+     * Raw French text; {{name}}/{{referrerName}} are filled in by the app.
+     */
+    async getDefaultMessages(_req: Request, res: Response): Promise<void> {
+        try {
+            const messages = await RelanceMessageModel.find({ active: true })
+                .sort({ dayNumber: 1 })
+                .select('dayNumber subject messageTemplate')
+                .lean();
+            res.status(200).json({
+                success: true,
+                data: messages.map(m => ({
+                    dayNumber: m.dayNumber,
+                    subject: m.subject || emailRelanceService.getSubjectForDay(m.dayNumber, '{{referrerName}}'),
+                    text: m.messageTemplate?.fr || m.messageTemplate?.en || '',
+                })),
+            });
+        } catch (error: any) {
+            log.error('Error fetching default relance messages:', error);
+            res.status(500).json({ success: false, message: 'Impossible de charger les messages.' });
+        }
+    }
+
     async previewMessage(req: Request, res: Response): Promise<void> {
         try {
             const {
