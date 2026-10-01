@@ -110,6 +110,11 @@ class NotificationServiceClient {
         }
     }
 
+    /** A push to the user's phones (notification-service /push/internal/send). Never throws. */
+    async sendPush(payload: { userId: string; category: 'money'; title: string; body: string; url?: string; tag?: string }): Promise<boolean> {
+        return this.request('post', '/notifications/push/internal/send', payload);
+    }
+
     /**
      * Calls the new endpoint in notification-service to send a commission earned email.
      */
