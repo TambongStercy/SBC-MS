@@ -9,6 +9,7 @@ import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
 import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, isCameroon } from '../../config/relance-packs';
 import { userServiceClient } from '../../services/clients/user.service.client';
+import { pushFilleulPaid } from '../../services/relance-alerts.service';
 import { creditRelancePack } from '../../services/relance-credit.service';
 import config from '../../config';
 
@@ -596,6 +597,7 @@ class RelanceController {
                 target.exitReason = ExitReason.PAID;
                 target.exitedLoopAt = new Date();
                 await target.save();
+                pushFilleulPaid(String(target.referrerUserId), String(target.referralUserId));
 
                 // Update campaign conversion counter
                 if (target.campaignId) {

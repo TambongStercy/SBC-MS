@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
 import RelanceBounceSuppressionModel from '../database/models/relance-bounce-suppression.model';
+import { pushCreditsExhausted, pushCreditsLow, pushFilleulPaid } from '../services/relance-alerts.service';
 import RelanceMessageModel from '../database/models/relance-message.model';
 import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import CampaignModel, { CampaignStatus } from '../database/models/relance-campaign.model';
@@ -94,6 +95,24 @@ export async function resetDailyCountIfNewDay(config: any, now: Date = new Date(
  * The in-memory copy is kept in step so later checks in the same run and the
  * low-balance alerts see the real figure. It is never saved back.
  */
+/**
+ * After an email credit is spent: warn the parrain at the low mark and when
+ * it runs out, by email and push. The J0 path used to send no warning at all,
+ * so a parrain whose last credit went on a welcome email was never told.
+ */
+async function alertOnEmailCredit(referrerId: string, config: any): Promise<void> {
+    const remaining = config.emailBalance;
+    if (remaining !== EMAIL_LOW_BALANCE_THRESHOLD && remaining !== 0) return;
+    if (remaining === 0) pushCreditsExhausted(referrerId);
+    else pushCreditsLow(referrerId, remaining);
+    const referrerInfo = await userServiceClient.getUserDetails(referrerId);
+    if (!referrerInfo?.email) return;
+    const sent = remaining === 0
+        ? emailService.sendCreditsExhaustedAlert(referrerInfo.email, referrerInfo.name || '', 'email')
+        : emailService.sendLowBalanceAlert(referrerInfo.email, referrerInfo.name || '', 'email', remaining);
+    sent.catch(err => console.error('[Relance Sender] Credit alert failed:', err));
+}
+
 export async function reserveRelanceCredit(config: any, channel: CreditChannel): Promise<boolean> {
     const field = balanceField(channel);
     const inc: Record<string, number> = { [field]: -1 };
@@ -220,6 +239,7 @@ export async function processUserTargets(
                 target.exitReason = ExitReason.PAID;
                 target.exitedLoopAt = new Date();
                 await target.save();
+                pushFilleulPaid(referrerId, String(referralId));
                 exited++;
                 continue;
             }
@@ -360,6 +380,7 @@ export async function processUserTargets(
                             });
                             target.lastMessageSentAt = new Date();
                             console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0: J1 email sent to ${recipientEmail}`);
+                            await alertOnEmailCredit(referrerId, config);
                         } else {
                             await refundRelanceCredit(config, 'email');
                             console.error(`${campaignLabel} J0: email send failed for ${recipientEmail}: ${sendResult.error}`);
@@ -584,20 +605,7 @@ export async function processUserTargets(
 
                 // The email credit was reserved before sending (reserveRelanceCredit).
 
-                // Low-balance alert (fire-and-forget)
-                if (config.emailBalance === EMAIL_LOW_BALANCE_THRESHOLD) {
-                    const referrerInfo = await userServiceClient.getUserDetails(referrerId);
-                    if (referrerInfo?.email) {
-                        emailService.sendLowBalanceAlert(referrerInfo.email, referrerInfo.name || '', 'email', config.emailBalance)
-                            .catch(err => console.error('[Relance Sender] Low-balance alert failed:', err));
-                    }
-                } else if (config.emailBalance === 0) {
-                    const referrerInfo = await userServiceClient.getUserDetails(referrerId);
-                    if (referrerInfo?.email) {
-                        emailService.sendCreditsExhaustedAlert(referrerInfo.email, referrerInfo.name || '', 'email')
-                            .catch(err => console.error('[Relance Sender] Credits-exhausted alert failed:', err));
-                    }
-                }
+                await alertOnEmailCredit(referrerId, config);
 
                 // SMS send (same target, same day) — CM numbers only,
                 // and only for non-subscribed referrals (no CLASSIQUE/CIBLE).
