@@ -744,7 +744,7 @@ let isJobRunning = false;
  * Main Message Sending Job
  * Groups targets by user and processes each user in parallel
  */
-async function runMessageSendingJob() {
+export async function runMessageSendingJob() {
     if (isJobRunning) {
         console.log('[Relance Sender] Previous job still running, skipping this cycle.');
         return;
@@ -766,6 +766,10 @@ async function runMessageSendingJob() {
 
         if (readyTargets.length === 0) {
             console.log('[Relance Sender] No targets ready for messages. Job completed.');
+            // Still close campaigns nobody is left in: this used to run only when
+            // some other target happened to be due, so an emptied campaign could
+            // stay "active" for months.
+            await checkAndCompleteCampaigns();
             return;
         }
 
