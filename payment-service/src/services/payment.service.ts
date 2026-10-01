@@ -1,3 +1,4 @@
+import { pushWithdrawalResult } from './withdrawal-push';
 import { Types, Aggregate } from 'mongoose';
 import transactionRepository, { CreateTransactionInput } from '../database/repositories/transaction.repository';
 import paymentIntentRepository, { CreatePaymentIntentInput, UpdatePaymentIntentInput } from '../database/repositories/paymentIntent.repository';
@@ -2348,11 +2349,13 @@ class PaymentService {
 
                     await userServiceClient.updateUserUsdBalance(transaction.userId.toString(), totalAmountToDebit);
                     log.info(`Debited ${Math.abs(totalAmountToDebit)} USD from user ${transaction.userId.toString()} for completed NOWPayments withdrawal`);
+                    pushWithdrawalResult(transaction, 'completed');
 
                 } else if (newStatus === TransactionStatus.FAILED) {
                     // For failed withdrawals, only update transaction status
                     // No balance refund needed since balance is only deducted on success
                     log.info(`NOWPayments withdrawal failed/rejected for transaction ${transaction.transactionId}. No balance changes needed.`);
+                    pushWithdrawalResult(transaction, 'failed');
                 }
             } else {
                 log.info(`Transaction ${transaction.transactionId} is not a withdrawal, skipping balance update`);
@@ -3706,6 +3709,7 @@ class PaymentService {
                 const amountToDebit = -Math.abs(transaction.amount);
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
                 log.info(`MoneyFusion payout completed: ${transaction.transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
+                pushWithdrawalResult(transaction, 'completed');
             }
         } else if (status === 'failed') {
             if (transaction.status !== TransactionStatus.FAILED) {
@@ -3788,6 +3792,7 @@ class PaymentService {
         const amountToDebit = -Math.abs(transaction.amount);
         await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
         log.info(`Admin ${adminId} manually completed MoneyFusion withdrawal ${transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
+        pushWithdrawalResult(transaction, 'completed');
 
         const updated = await transactionRepository.findByTransactionId(transactionId);
         return { success: true, transaction: updated };
@@ -3950,6 +3955,7 @@ class PaymentService {
             const amountToDebit = -Math.abs(transaction.amount);
             await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
             log.info(`Admin ${adminId} reconciled CinetPay withdrawal ${transactionId} as COMPLETED; debited ${amountToDebit} from user ${transaction.userId}`);
+            pushWithdrawalResult(transaction, 'completed');
             const updated = await transactionRepository.findByTransactionId(transactionId);
             return { success: true, action: 'completed', cinetpayStatus, transaction: updated };
         }
@@ -5972,6 +5978,7 @@ class PaymentService {
                 // Debit user's balance - allowing negative balance if insufficient
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
+                pushWithdrawalResult(transaction, 'completed');
 
             } catch (balanceError: any) {
                 // DO NOT change the transaction status to FAILED. The payout was successful.
@@ -5986,6 +5993,7 @@ class PaymentService {
             }
         } else if (finalStatus === TransactionStatus.FAILED) {
             log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
+            if (transaction.metadata?.adminAction !== true) pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
             updateMetadata.failureReason = `External payout failed: ${verifiedPayoutStatus?.comment || providerStatusMessage}`;
 
             // Send failure notification (only if it's a regular user withdrawal)
@@ -6429,6 +6437,7 @@ class PaymentService {
                 // Debit user's balance - allowing negative balance if insufficient
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
+                pushWithdrawalResult(transaction, 'completed');
 
                 const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
                 if (userDetails?.email) {
@@ -6450,6 +6459,7 @@ class PaymentService {
             }
         } else if (finalStatus === TransactionStatus.FAILED) {
             log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
+            if (transaction.metadata?.adminAction !== true) pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
             updateMetadata.failureReason = `External payout failed: ${providerMessage}`;
 
             if (transaction.metadata?.adminAction !== true) {
@@ -6511,6 +6521,7 @@ class PaymentService {
                 const amountToDebit = -Math.abs(transaction.amount);
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
                 log.info(`Transaction ${update.internalTransactionId} successfully marked as COMPLETED and debited ${amountToDebit} from user ${transaction.userId}.`);
+                pushWithdrawalResult(transaction, 'completed');
 
                 break;
 
@@ -6564,6 +6575,8 @@ class PaymentService {
             'metadata.statusDetails': `Failed at ${new Date().toISOString()}`
         });
         log.info(`Transaction ${transactionId} successfully marked as FAILED.`);
+        // Debit-on-success: a mobile-money withdrawal that failed never touched the balance.
+        pushWithdrawalResult(transaction, 'failed', { saysNotDebited: (transaction.metadata?.payoutCurrency || transaction.currency) !== 'USD' });
 
         // Notify the user about the failure
         try {
