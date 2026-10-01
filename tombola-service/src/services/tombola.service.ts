@@ -363,30 +363,19 @@ class TombolaService {
 
         log.info(`Initiating notifications for ${tombolaMonth.winners.length} winners of Tombola ${tombolaMonth.year}-${tombolaMonth.month}`);
 
-        const notificationPromises = tombolaMonth.winners.map(winner => {
-            const message = `Congratulations! You won the ${winner.prize} (Rank ${winner.rank}) in the ${tombolaMonth.year}-${String(tombolaMonth.month).padStart(2, '0')} Tombola!`;
-
-            // Send notification via notification service
-            return notificationService.createInternalNotification({
+        // This used to send type "TOMBOLA_WINNER" on channel "PUSH", which
+        // notification-service refuses (400) — no winner was ever told this way.
+        const period = `${String(tombolaMonth.month).padStart(2, '0')}/${tombolaMonth.year}`;
+        const notificationPromises = tombolaMonth.winners.map(winner =>
+            notificationService.sendPush({
                 userId: winner.userId.toString(),
-                type: 'TOMBOLA_WINNER', // Specific type for categorization
-                channel: 'PUSH', // Or 'EMAIL', 'SMS', let notification service decide preference
-                data: {
-                    title: 'You Won the Tombola!',
-                    body: message,
-                    relatedData: { // Add context
-                        tombolaMonthId: tombolaMonth._id.toString(),
-                        year: tombolaMonth.year,
-                        month: tombolaMonth.month,
-                        prize: winner.prize,
-                        rank: winner.rank,
-                    }
-                }
-            }).catch(err => { // Catch individual notification errors
-                log.error(`Failed to send notification to winner ${winner.userId} for prize ${winner.prize}:`, err);
-                // Optionally track failed notifications for retry
-            });
-        });
+                category: 'tombola',
+                title: '🎉 Tu as gagné à la tombola !',
+                body: `Félicitations : ${winner.prize} (rang ${winner.rank}) à la tombola de ${period}.`,
+                url: '/',
+                tag: `tombola-${tombolaMonth._id.toString()}`,
+            }),
+        );
 
         // Wait for all notification requests to be sent (or fail)
         await Promise.allSettled(notificationPromises);

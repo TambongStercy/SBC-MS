@@ -13,6 +13,7 @@ import { startRelanceEnrollmentJob } from './jobs/relance-enrollment.job';
 import { startRelanceSenderJob } from './jobs/relance-sender.job';
 import cron from 'node-cron';
 import { runBounceMailboxPass } from './services/bounce-mailbox.service';
+import { flushDuePushes } from './services/push.service';
 
 // Create Express server
 const app = express();
@@ -89,6 +90,9 @@ async function startServer() {
         }, 3000);
 
         logger.info('[Server] Relance cron jobs initialized');
+
+        // Pushes held through the night (quiet hours) go out from 07:00 Douala time.
+        cron.schedule('*/5 * * * *', () => { flushDuePushes().catch(err => logger.error('[Server] Push flush failed:', err)); });
 
         // Bounce reports from our own mail server feed the suppression list.
         if (config.email.bounceMailbox.enabled) {

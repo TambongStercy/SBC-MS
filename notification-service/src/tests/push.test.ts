@@ -98,7 +98,8 @@ describe('sending', () => {
         await call('POST', '/api/notifications/push/subscribe', { subscription: sub(1) });
         await call('POST', '/api/notifications/push/subscribe', { subscription: sub(2) });
 
-        expect(await sendPushToUser(userId, { title: 'T', body: 'B', url: '/relance' })).toBe(2);
+        expect(await sendPushToUser(userId, { title: 'T', body: 'B', url: '/relance' }, { category: 'money' })).toBe('sent');
+        expect(sendNotification).toHaveBeenCalledTimes(2);
         const [target, payload] = sendNotification.mock.calls[0];
         expect(target.keys).toEqual(expect.objectContaining({ p256dh: expect.any(String) }));
         expect(JSON.parse(payload)).toEqual({ title: 'T', body: 'B', url: '/relance' });
@@ -112,19 +113,19 @@ describe('sending', () => {
             return { statusCode: 201 };
         });
 
-        expect(await sendPushToUser(userId, { title: 'T', body: 'B' })).toBe(1);
+        await sendPushToUser(userId, { title: 'T', body: 'B' }, { category: 'money' });
         expect((await PushSubscriptionModel.find().lean()).map(s => s.endpoint)).toEqual([sub(2).endpoint]);
     });
 
     it('keeps a device after a passing error', async () => {
         await call('POST', '/api/notifications/push/subscribe', { subscription: sub(1) });
         sendNotification.mockRejectedValue(Object.assign(new Error('busy'), { statusCode: 503 }));
-        expect(await sendPushToUser(userId, { title: 'T', body: 'B' })).toBe(0);
+        await sendPushToUser(userId, { title: 'T', body: 'B' }, { category: 'money' });
         expect(await PushSubscriptionModel.countDocuments()).toBe(1);
     });
 
     it('does nothing for a user without a device', async () => {
-        expect(await sendPushToUser(new mongoose.Types.ObjectId().toString(), { title: 'T', body: 'B' })).toBe(0);
+        expect(await sendPushToUser(new mongoose.Types.ObjectId().toString(), { title: 'T', body: 'B' }, { category: 'money' })).toBe('no_device');
         expect(sendNotification).not.toHaveBeenCalled();
     });
 });
