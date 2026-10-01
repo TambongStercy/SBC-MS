@@ -575,6 +575,42 @@ on the home screen (iOS 16.4+), and the app says so. `public/sw.js` must stay
 registered: `cacheBuster` spares it on purpose, and unregistering it kills
 every push subscription.
 
+**Sending a push from a service:** `POST /api/notifications/push/internal/send`
+with the service secret and `{ userId | userIds, category, title, body, url?,
+tag?, icon?, renotify? }`. Every push has a **category** (`push-categories.ts`):
+money, chat, filleuls, relance, events, tombola, ads, subscription, or
+announcements.
+- Each user can turn each category off (`/notifications` in the web app).
+- **Money and chat are urgent**: they go out immediately, at high urgency.
+- Everything else sent between 22:00 and 07:00 Douala time waits in
+  `PendingPush` and goes at 07:00, keeping only the latest per `tag`.
+- `/internal/create` with `channel: 'push'` also delivers now. It takes its
+  category and url from `data.relatedData.{pushCategory, url, pushTag}`.
+- Before 2026-10-01 it marked the notification sent and delivered nothing.
+
+**Who sends what:**
+- event-service: tickets, cancellations, reminders, resales, disputes, refunds.
+- tombola: winners.
+- user-service: commissions (chained on the deposit), new filleul, Visibilité
+  Max ending in 3 days (daily job).
+- advertising-service: every email also pushes.
+- chat-service: new messages with the sender's photo.
+- relance alerts.
+- payment-service: withdrawal results (PR #289).
+- Admin announcements: `/push/admin/announce`, at most 3 a week.
+
+Chat-service needs `NOTIFICATION_SERVICE_URL` in its env: the default is prod's port 3002.
+
+**Two Cloudflare traps, both met while shipping this:**
+- **`.js` files are cached for a month.** nginx sends `expires 1M` for every `.js`
+  file, so Cloudflare served a weeks-old `/sw.js` without the push handler. The
+  app now registers `/sw.js?v=<build>`, a new URL on every deploy (`cacheBuster.ts`).
+- **Chrome's own notification-icon fetch failed through Cloudflare**, showing a
+  grey "P" instead of our icon. So the SBC icon is inlined in `sw.js`, and a
+  sender's photo is fetched by the service worker itself and inlined. Pass
+  photos as same-origin `/api/settings/files/<id>?w=128` paths (`avatarIcon` in
+  chat-service).
+
 ### Bounces from our own mail server
 
 Since mail moved off SendGrid/SES, refusals arrive as bounce emails in
