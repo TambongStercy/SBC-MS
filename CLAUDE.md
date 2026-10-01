@@ -543,6 +543,50 @@ Scripts (dry run by default, `--apply` to act):
 **Close the backlog before crediting**, or the first run after crediting sends
 day 1 to everyone waiting, however old.
 
+**Rules and mechanisms added 2026-10-01:**
+- **SMS relance is for Cameroonian parrains only** (Rufus): the purchase is
+  refused unless the buyer's `country` is CM, and crediting an SMS pack sets
+  `smsEnabled`. Country comes from `POST /users/internal/relance-details`.
+- **Campaign budget:** the preview returns `budget`. A month of relance des
+  nouveaux (new filleuls in the last 30 days × 7) stays reserved, and
+  `targetFilter.maxTargets` caps enrollment, newest first. Preview and
+  enrollment share `matchCampaignReferrals`; never fork the filter code again.
+- **One journey per filleul per campaign.** The "already enrolled?" check must
+  match any status: an active/paused-only check re-enrolled finished filleuls
+  at J1 every 15 min.
+- **Campaign completion** (`checkAndCompleteCampaigns`) now runs on idle sender
+  passes too. It used to run only when some unrelated target was due.
+- **Commissions** are `deposit` transactions in `sbc_payment.transactions`, and the
+  filleul is at **`paymentProvider.metadata.sourceUserId`** (a string), not
+  top-level `metadata`. `POST /api/internal/user/:userId/commissions-from` sums
+  them for `/api/relance/earnings`.
+
+### Web push (VAPID)
+
+`/api/notifications/push/{public-key,subscribe,unsubscribe}`. It is off until
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` are in notification-service `.env`. They
+are set on preprod (generated on the server, 2026-10-01); prod needs its own pair:
+`node -e "console.log(require('web-push').generateVAPIDKeys())"`. **Never
+rotate them casually**: every existing subscription is tied to the public key.
+Relance pushes credits low/out and a filleul paying (`relance-alerts.service`).
+
+Push works directly in Android browsers. On iPhone it works only once SBC is
+on the home screen (iOS 16.4+), and the app says so. `public/sw.js` must stay
+registered: `cacheBuster` spares it on purpose, and unregistering it kills
+every push subscription.
+
+### Bounces from our own mail server
+
+Since mail moved off SendGrid/SES, refusals arrive as bounce emails in
+`noreply@`'s inbox. `bounce-mailbox.service` reads them over IMAP every 15 min
+and suppresses only "the address is bad" statuses (5.1.x, 5.2.1, 5.4.4).
+**5.7.x means they blocked US**: never suppress on it. The suppression list
+also blocks OTP mail, so a false positive locks someone out.
+
+It is off until `BOUNCE_MAILBOX_ENABLED=true` (IMAP creds default to `EMAIL_*`).
+**Enable it on prod only.** Preprod sends from the same mailbox, so a preprod
+reader would mark prod's bounces read and record them in the preprod DB.
+
 ### Health endpoints aren't standardised
 
 | Service (prod port / preprod port) | Health path |
