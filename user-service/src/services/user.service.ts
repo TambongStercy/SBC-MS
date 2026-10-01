@@ -3185,6 +3185,17 @@ export class UserService {
         }
     }
 
+    /** [Internal] Returns the relance subset (with country) for the given user IDs. */
+    async getRelanceDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
+        try {
+            const objectIds = userIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
+            return await userRepository.findRelanceDetailsByIds(objectIds);
+        } catch (error: any) {
+            log.error(`Error fetching relance user details by IDs: ${error.message}`, { userIds });
+            throw new Error('Failed to fetch relance user details');
+        }
+    }
+
     /**
      * [Internal] Returns the SBCLOVE demographic subset for the given user IDs.
      * Used by sbclove-service to hydrate matchmaking profiles (reuse, no copy).

@@ -30,3 +30,7 @@ export function recommendPack(type: 'email' | 'sms', referralCount: number): Rel
     const needed = referralCount * 7;
     return packs.find(p => p.credits >= needed) || packs[packs.length - 1];
 }
+
+/** SMS relance is for Cameroonian parrains only. User country is stored as ISO-2, with a few legacy names. */
+export const isCameroon = (country?: string | null) =>
+    ['CM', 'CAMEROUN', 'CAMEROON'].includes((country ?? '').trim().toUpperCase());
