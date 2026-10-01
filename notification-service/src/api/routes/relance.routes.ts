@@ -29,6 +29,15 @@ router.put('/settings', authenticate, (req, res) =>
 );
 
 /**
+ * @route   GET /api/relance/earnings
+ * @desc    Relanced filleuls who paid, and the commissions that earned the parrain
+ * @access  Private
+ */
+router.get('/earnings', authenticate, (req, res) =>
+    relanceController.getEarnings(req, res)
+);
+
+/**
  * @route   GET /api/relance/default-messages
  * @desc    The 7 SBC relance messages, read-only, for parrains to read
  * @access  Private
