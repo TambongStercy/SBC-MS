@@ -67,6 +67,21 @@ const createInternalNotification = async (payload: InternalNotificationPayload):
     }
 };
 
+/**
+ * A push to the user's phone, through notification-service's push endpoint.
+ * Best-effort: never throws.
+ */
+const sendPush = async (payload: { userId: string; category: 'tombola'; title: string; body: string; url?: string; tag?: string }): Promise<boolean> => {
+    try {
+        const response = await notificationServiceClient.post<NotificationResponse>('/notifications/push/internal/send', payload);
+        return !!response.data?.success;
+    } catch (error: any) {
+        log.error(`Push to ${payload.userId} failed: ${error.message}`);
+        return false;
+    }
+};
+
 export const notificationService = {
     createInternalNotification,
+    sendPush,
 }; 
