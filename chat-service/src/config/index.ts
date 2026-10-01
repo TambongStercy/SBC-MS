@@ -36,6 +36,7 @@ interface IConfig {
         settingsServiceUrl: string;
         advertisingServiceUrl: string;
         sbcloveServiceUrl: string;
+        notificationServiceUrl: string;
     };
     love: {
         encryptionKey: string;
@@ -100,7 +101,8 @@ const config: IConfig = {
         userServiceUrl: ensureApiSuffix(process.env.USER_SERVICE_URL, 'http://localhost:3001'),
         settingsServiceUrl: ensureApiSuffix(process.env.SETTINGS_SERVICE_URL, 'http://localhost:3007'),
         advertisingServiceUrl: ensureApiSuffix(process.env.ADVERTISING_SERVICE_URL, 'http://localhost:3005'),
-        sbcloveServiceUrl: ensureApiSuffix(process.env.SBCLOVE_SERVICE_URL, 'http://localhost:3009')
+        sbcloveServiceUrl: ensureApiSuffix(process.env.SBCLOVE_SERVICE_URL, 'http://localhost:3009'),
+        notificationServiceUrl: ensureApiSuffix(process.env.NOTIFICATION_SERVICE_URL, 'http://localhost:3002')
     },
     love: {
         // Falls back to SERVICE_SECRET so dev works out of the box; set a
