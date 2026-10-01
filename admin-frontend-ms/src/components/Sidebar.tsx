@@ -12,6 +12,7 @@ import {
   Settings,
   Wallet,
   Send,
+  Bell,
   Hammer,
   HardDrive,
   LifeBuoy,
@@ -294,6 +295,12 @@ const SIDEBAR_GROUPS = [
         icon: Send,
         color: "#10b981",
         path: "/notifications",
+      },
+      {
+        name: "Push Announcements",
+        icon: Bell,
+        color: "#f59e0b",
+        path: "/notifications/push",
       },
     ]
   },
