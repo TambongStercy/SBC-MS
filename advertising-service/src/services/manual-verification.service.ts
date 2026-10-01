@@ -1,3 +1,4 @@
+import { notifyManualVerificationApproved, notifyManualVerificationRejected } from './clients/notification.service.client';
 import { Types } from 'mongoose';
 import { customAlphabet } from 'nanoid';
 import ManualVerificationModel, { ManualVerificationStatus, IManualVerification } from '../database/models/manual-verification.model';
@@ -221,6 +222,7 @@ export const approveManualVerification = async (
     await mv.save();
 
     log.info(`Admin ${adminId} approved manual verification ${manualVerificationId} (day ${mv.day}, ${result.viewCount} views)`);
+    void notifyManualVerificationApproved(String(mv.diffuseurUserId), mv.day, result.viewCount, result.earnedAmount);
     return { manualVerificationId, ...result };
 };
 
@@ -260,6 +262,8 @@ export const rejectManualVerification = async (
         // shorter the second time.
         ({ offersWithdrawn } = await banDiffuseur(mv.diffuseurUserId, adminId, trimmed));
     }
+
+    void notifyManualVerificationRejected(String(mv.diffuseurUserId), mv.day, trimmed);
 
     log.info(
         `Admin ${adminId} rejected manual verification ${manualVerificationId}: ${trimmed}`

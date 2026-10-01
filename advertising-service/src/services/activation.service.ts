@@ -1,3 +1,4 @@
+import { notifyCampaignLive } from './clients/notification.service.client';
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../database/models/campaign.model';
 import { allocateCampaign } from './allocation.service';
@@ -42,6 +43,7 @@ export const activateApprovedCampaign = async (campaignId: string | Types.Object
 
     const allocation = await allocateCampaign(campaign._id);
     log.info(`Campaign ${campaign._id} activated; ${allocation.offersCreated} offers issued`);
+    void notifyCampaignLive(String(campaign.advertiserUserId), campaign.title);
 
     return { status: campaign.status, allocation };
 };

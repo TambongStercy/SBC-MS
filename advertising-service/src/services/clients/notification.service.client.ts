@@ -52,7 +52,32 @@ const send = async (payload: InternalNotificationPayload): Promise<boolean> => {
     }
 };
 
+/**
+ * The phone side of every Ads Network notification. Best-effort, never throws.
+ * Category "ads": users can turn it off, and it waits out the night.
+ */
+const push = async (userId: string, title: string, body: string, url: string) => {
+    try {
+        await client.post('/notifications/push/internal/send', { userId, category: 'ads', title, body, url, tag: `ads-${title}` });
+    } catch (err) {
+        log.warn(`Push failed for ${userId}: ${(err as Error).message}`);
+    }
+};
+
+/** The email's first paragraph is its summary — that is the push text. */
+const summary = (body: string) => {
+    const first = body.split(/\n\s*\n/)[0].trim();
+    return first.length > 180 ? `${first.slice(0, 177)}…` : first;
+};
+
+/** The page the email's button opens, as an app path; the diffuseur space otherwise. */
+const pathOf = (ctaUrl: unknown) => {
+    try { return typeof ctaUrl === 'string' ? new URL(ctaUrl).pathname : '/ads-network/diffuseur'; } catch { return '/ads-network/diffuseur'; }
+};
+
 const email = async (userId: string, subject: string, body: string, relatedData?: Record<string, unknown>) => {
+    // Every Ads Network email also reaches the phone, even for a user without an email address.
+    void push(userId, subject, summary(body), pathOf(relatedData?.ctaUrl));
     // notification-service refuses an email without its address (400): it does
     // not resolve userId → email itself. Fetching it here is what every other
     // consumer does — and skipping it meant no advertising mail ever sent.
@@ -267,4 +292,31 @@ export const notifyAdvertiserCampaignComplete = (userId: string, campaignTitle: 
             ctaLabel: 'Voir les résultats',
             ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/annonceur`,
         },
+    );
+
+/** Under pay-first, approving a paid campaign starts it; this is the "it is live" message. */
+export const notifyCampaignLive = (userId: string, campaignTitle: string) =>
+    email(
+        userId,
+        '🚀 Votre campagne est en ligne',
+        `« ${campaignTitle} » est maintenant proposée aux diffuseurs.\n\n`
+        + `Suivez ses vues depuis votre espace annonceur.`,
+        { campaignTitle, ctaLabel: 'Suivre ma campagne', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/annonceur` },
+    );
+
+/** A video proof the team checked by hand: the diffuseur was waiting on it, with money attached. */
+export const notifyManualVerificationApproved = (userId: string, day: number, views: number, earned: number) =>
+    email(
+        userId,
+        `✅ Jour ${day} validé`,
+        `Votre preuve du jour ${day} a été validée : ${views} vues, ${earned} FCFA.`,
+        { day, views, earned, ctaLabel: 'Voir ma campagne', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
+    );
+
+export const notifyManualVerificationRejected = (userId: string, day: number, reason: string) =>
+    email(
+        userId,
+        `❌ Jour ${day} refusé`,
+        `Votre preuve du jour ${day} n'a pas été validée. Motif : ${reason}`,
+        { day, reason, ctaLabel: 'Voir ma campagne', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
