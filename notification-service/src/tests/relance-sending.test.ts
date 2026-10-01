@@ -44,7 +44,7 @@ import RelanceConfigModel from '../database/models/relance-config.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
 import RelanceMessageModel from '../database/models/relance-message.model';
 import CampaignModel, { CampaignStatus, CampaignType } from '../database/models/relance-campaign.model';
-import { processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit } from '../jobs/relance-sender.job';
+import { processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit, runMessageSendingJob } from '../jobs/relance-sender.job';
 import { closeRelanceBacklog } from '../scripts/close-relance-backlog';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_sending_test';
@@ -292,6 +292,21 @@ describe('campaigns', () => {
         await run();
 
         expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+    });
+
+    // Preprod 2026-10-01: a March campaign whose filleuls were gone stayed
+    // "active" for months, because completion was only checked on runs where
+    // some target, anywhere, was due.
+    it('closes an emptied campaign even when nobody is due a message', async () => {
+        const empty = await makeCampaign(CampaignStatus.ACTIVE);
+        const running = await makeCampaign(CampaignStatus.ACTIVE);
+        await makeTarget({ campaignId: running._id, currentDay: 2, nextMessageDue: new Date(Date.now() + DAY) });
+
+        await runMessageSendingJob();
+
+        expect((await CampaignModel.findById(empty._id))!.status).toBe(CampaignStatus.COMPLETED);
+        expect((await CampaignModel.findById(running._id))!.status).toBe(CampaignStatus.ACTIVE);
+        expect(sendRelanceEmail).not.toHaveBeenCalled();
     });
 });
 
