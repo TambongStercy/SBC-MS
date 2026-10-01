@@ -33,6 +33,9 @@ export interface TargetFilter {
     professions?: string[];
     minAge?: number;
     maxAge?: number;
+
+    // Budget: stop after this many filleuls (newest first). Unset = everyone matching.
+    maxTargets?: number;
 }
 
 export interface ICampaign extends Document {
@@ -155,7 +158,8 @@ const CampaignSchema = new Schema<ICampaign>(
             },
             professions: [String],
             minAge: Number,
-            maxAge: Number
+            maxAge: Number,
+            maxTargets: { type: Number, min: 1 }
         },
         estimatedTargetCount: Number,
         actualTargetCount: Number,

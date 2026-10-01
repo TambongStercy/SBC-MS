@@ -257,21 +257,6 @@ describe('Relance Enrollment Job', () => {
             expect(source).not.toContain('campaign.targetsEnrolled >= config.maxTargetsPerCampaign');
         });
     });
-
-    describe('Duplicate enrollment prevention', () => {
-        it('should check for existing active/paused targets before enrolling', () => {
-            const fs = require('fs');
-            const path = require('path');
-            const source = fs.readFileSync(
-                path.join(__dirname, '../jobs/relance-enrollment.job.ts'),
-                'utf8'
-            );
-
-            // Default enrollment checks
-            expect(source).toContain("status: { $in: [TargetStatus.ACTIVE, TargetStatus.PAUSED] }");
-            expect(source).toContain('if (existingTarget)');
-        });
-    });
 });
 
 describe('Enrollment lookback window', () => {

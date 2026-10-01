@@ -4,6 +4,7 @@ import RelanceTargetModel, { TargetStatus } from '../database/models/relance-tar
 import CampaignModel, { CampaignType, CampaignStatus } from '../database/models/relance-campaign.model';
 import { userServiceClient } from '../services/clients/user.service.client';
 import { campaignService } from '../services/campaign.service';
+import { matchCampaignReferrals } from '../services/relance-campaign-targets.service';
 
 /**
  * Enrollment Cron Job
@@ -109,84 +110,27 @@ export async function enrollFilteredTargets(userId: string, campaign: any, confi
             return 0;
         }
 
-        // Get referrals with date filters passed to DB level for performance
-        // This prevents fetching 20k+ referrals when only a small date range is needed
-        const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom).toISOString() : undefined;
-        const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo).toISOString() : undefined;
-        let referrals = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
-
-        // Note: Date filter already applied at DB level, no need to filter again in memory
-
-        // Filter by country
-        if (filter.countries && filter.countries.length > 0) {
-            referrals = referrals.filter((ref: any) =>
-                filter.countries.includes(ref.country)
-            );
-        }
-
-        // Filter by subscription status (paid/unpaid)
-        if (filter.subscriptionStatus && filter.subscriptionStatus !== 'all') {
-            referrals = referrals.filter((ref: any) => {
-                const hasSubscription = ref.activeSubscriptionTypes &&
-                    ref.activeSubscriptionTypes.length > 0 &&
-                    (ref.activeSubscriptionTypes.includes('CLASSIQUE') ||
-                     ref.activeSubscriptionTypes.includes('CIBLE'));
-
-                if (filter.subscriptionStatus === 'subscribed') {
-                    return hasSubscription;
-                } else { // 'non-subscribed'
-                    return !hasSubscription;
-                }
-            });
-        }
-
-        // Filter by gender
-        if (filter.gender && filter.gender !== 'all') {
-            referrals = referrals.filter((ref: any) =>
-                ref.gender === filter.gender
-            );
-        }
-
-        // Filter by profession
-        if (filter.professions && filter.professions.length > 0) {
-            referrals = referrals.filter((ref: any) =>
-                filter.professions.includes(ref.profession)
-            );
-        }
-
-        // Filter by age
-        if (filter.minAge || filter.maxAge) {
-            referrals = referrals.filter((ref: any) => {
-                if (!ref.age) return false;
-                if (filter.minAge && ref.age < filter.minAge) return false;
-                if (filter.maxAge && ref.age > filter.maxAge) return false;
-                return true;
-            });
-        }
-
-        // Exclude referrals already in active campaigns
-        if (filter.excludeCurrentTargets) {
-            const existingTargetIds = await RelanceTargetModel.distinct('referralUserId', {
-                status: { $in: [TargetStatus.ACTIVE, TargetStatus.PAUSED] }
-            });
-
-            referrals = referrals.filter((ref: any) =>
-                !existingTargetIds.some((id: any) => id.toString() === ref._id.toString())
-            );
-        }
+        const referrals = await matchCampaignReferrals(userId, filter);
 
         console.log(`[Relance Enrollment] [Filtered] Campaign ${campaign._id}: ${referrals.length} referrals match filters`);
 
+        // A budgeted campaign stops at the number the parrain chose; newest filleuls first.
+        const room = filter.maxTargets ? Math.max(0, filter.maxTargets - (campaign.targetsEnrolled ?? 0)) : Infinity;
+        if (room === 0) return 0;
+
         // Enroll filtered referrals
         for (const referral of referrals) {
+            if (enrolled >= room) break;
             try {
                 const referralId = referral._id;
 
-                // Check if already enrolled in THIS campaign
-                const existingTarget = await RelanceTargetModel.findOne({
+                // One journey per filleul per campaign. This used to look only at
+                // active/paused targets, so a filleul who had finished their 7 days
+                // was enrolled again at day 1 on the next run while the campaign
+                // was still going.
+                const existingTarget = await RelanceTargetModel.exists({
                     referralUserId: referralId,
                     campaignId: campaign._id,
-                    status: { $in: [TargetStatus.ACTIVE, TargetStatus.PAUSED] }
                 });
 
                 if (existingTarget) {

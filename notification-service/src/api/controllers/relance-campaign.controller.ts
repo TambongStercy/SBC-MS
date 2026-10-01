@@ -7,6 +7,7 @@ import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { emailRelanceService } from '../../services/email.relance.service';
+import { campaignBudget, matchCampaignReferrals, newFilleulsLast30Days } from '../../services/relance-campaign-targets.service';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('RelanceCampaignController');
@@ -50,85 +51,15 @@ class RelanceCampaignController {
                 return;
             }
 
-            // Apply filters (same logic as enrollment job)
             const filter: TargetFilter = targetFilter;
             log.info(`Preview filters: ${JSON.stringify(filter)}`);
-
-            // Get referrals for this user - pass date filters to DB level for performance
-            // This prevents fetching 20k+ referrals when only a small date range is needed
-            // Default to last 1 year if no date filter specified (performance optimization for users with many referrals)
-            const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom).toISOString() : undefined;
-            const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo).toISOString() : undefined;
-
-            let allReferrals = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
-            log.info(`Preview: fetched ${allReferrals.length} referrals for user ${userId} (dateFrom: ${dateFrom}, dateTo: ${dateTo})`);
-
-            // Note: date filter already applied at DB level, no need to filter again in memory
-
-            // Filter by country
-            if (filter.countries && filter.countries.length > 0) {
-                allReferrals = allReferrals.filter((ref: any) =>
-                    filter.countries!.includes(ref.country)
-                );
-                log.info(`Preview: after country filter: ${allReferrals.length} referrals`);
-            }
-
-            // Filter by subscription status (CLASSIQUE/CIBLE inscription payment)
-            if (filter.subscriptionStatus && filter.subscriptionStatus !== 'all') {
-                allReferrals = allReferrals.filter((ref: any) => {
-                    const hasSubscription = ref.activeSubscriptionTypes &&
-                        ref.activeSubscriptionTypes.length > 0 &&
-                        (ref.activeSubscriptionTypes.includes('CLASSIQUE') ||
-                         ref.activeSubscriptionTypes.includes('CIBLE'));
-
-                    if (filter.subscriptionStatus === 'subscribed') {
-                        return hasSubscription;
-                    } else { // 'non-subscribed'
-                        return !hasSubscription;
-                    }
-                });
-                log.info(`Preview: after subscriptionStatus (${filter.subscriptionStatus}) filter: ${allReferrals.length} referrals`);
-            }
-
-            // Filter by gender
-            if (filter.gender && filter.gender !== 'all') {
-                allReferrals = allReferrals.filter((ref: any) =>
-                    ref.gender === filter.gender
-                );
-                log.info(`Preview: after gender filter: ${allReferrals.length} referrals`);
-            }
-
-            // Filter by profession
-            if (filter.professions && filter.professions.length > 0) {
-                allReferrals = allReferrals.filter((ref: any) =>
-                    filter.professions!.includes(ref.profession)
-                );
-                log.info(`Preview: after profession filter: ${allReferrals.length} referrals`);
-            }
-
-            // Filter by age
-            if (filter.minAge || filter.maxAge) {
-                allReferrals = allReferrals.filter((ref: any) => {
-                    if (!ref.age) return false;
-                    if (filter.minAge && ref.age < filter.minAge) return false;
-                    if (filter.maxAge && ref.age > filter.maxAge) return false;
-                    return true;
-                });
-                log.info(`Preview: after age filter: ${allReferrals.length} referrals`);
-            }
-
-            // Exclude referrals already in active campaigns
-            if (filter.excludeCurrentTargets) {
-                const existingTargetIds = await RelanceTargetModel.distinct('referralUserId', {
-                    status: { $in: ['active', 'paused'] }
-                });
-                log.info(`Preview: found ${existingTargetIds.length} existing active targets to exclude`);
-
-                allReferrals = allReferrals.filter((ref: any) =>
-                    !existingTargetIds.some((id: any) => id.toString() === ref._id.toString())
-                );
-                log.info(`Preview: after excludeCurrentTargets filter: ${allReferrals.length} referrals`);
-            }
+            const [allReferrals, config, newPerMonth] = await Promise.all([
+                matchCampaignReferrals(userId, filter),
+                RelanceConfigModel.findOne({ userId }).select('emailBalance').lean(),
+                newFilleulsLast30Days(userId),
+            ]);
+            const emailBalance = config?.emailBalance ?? 0;
+            const budget = { emailBalance, ...campaignBudget(emailBalance, newPerMonth) };
 
             const totalCount = allReferrals.length;
 
@@ -155,6 +86,7 @@ class RelanceCampaignController {
                 data: {
                     totalCount,
                     sampleUsers,
+                    budget,
                     message
                 }
             });
