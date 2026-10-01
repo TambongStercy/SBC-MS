@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type BounceSource = 'sendgrid_webhook' | 'ses_webhook' | 'backfill';
+export type BounceSource = 'sendgrid_webhook' | 'ses_webhook' | 'backfill' | 'smtp_dsn';
 
 export interface IRelanceBounceSuppressionEntry extends Document {
     email: string;
@@ -30,7 +30,7 @@ const RelanceBounceSuppressionSchema = new Schema<IRelanceBounceSuppressionEntry
         },
         source: {
             type: String,
-            enum: ['sendgrid_webhook', 'ses_webhook', 'backfill'] as BounceSource[],
+            enum: ['sendgrid_webhook', 'ses_webhook', 'backfill', 'smtp_dsn'] as BounceSource[],
             required: true
         }
     },
