@@ -13,6 +13,6 @@ import { pushEnabled, sendPushToUser } from '../services/push.service';
 
 it('is off without keys, and sending quietly does nothing', async () => {
     expect(pushEnabled()).toBe(false);
-    expect(await sendPushToUser('65d2b0344a7e2b9efbf6205d', { title: 'T', body: 'B' })).toBe(0);
+    expect(await sendPushToUser('65d2b0344a7e2b9efbf6205d', { title: 'T', body: 'B' }, { category: 'money' })).toBe('off');
     expect(sendNotification).not.toHaveBeenCalled();
 });

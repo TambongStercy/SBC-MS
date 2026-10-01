@@ -1,6 +1,9 @@
 import webpush from 'web-push';
 import mongoose from 'mongoose';
 import PushSubscriptionModel from '../database/models/push-subscription.model';
+import PushPreferenceModel from '../database/models/push-preference.model';
+import PendingPushModel from '../database/models/pending-push.model';
+import { endOfQuietHours, inQuietHours, isUrgent, PushCategory } from './push-categories';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -13,6 +16,10 @@ export type PushMessage = {
     url?: string;
     /** Same tag replaces the previous notification instead of stacking. */
     tag?: string;
+    /** Picture shown with the notification (a sender's or group's photo): an app path such as /api/settings/files/<id>?w=128, or an https URL. */
+    icon?: string;
+    /** With a tag: buzz again when it replaces an earlier notification (chat). */
+    renotify?: boolean;
 };
 
 let configured: boolean | null = null;
@@ -45,33 +52,80 @@ export async function removeSubscription(userId: string, endpoint: string): Prom
     await PushSubscriptionModel.deleteOne({ endpoint, userId: new mongoose.Types.ObjectId(userId) });
 }
 
-/**
- * Sends to every device the user enabled. Best-effort: a user without push,
- * or a push service that is down, must never break the caller. Devices the
- * push service says are gone (404/410) are forgotten.
- */
-export async function sendPushToUser(userId: string, message: PushMessage): Promise<number> {
-    if (!pushEnabled()) return 0;
-    try {
-        const subs = await PushSubscriptionModel.find({ userId: new mongoose.Types.ObjectId(userId) }).lean();
-        const payload = JSON.stringify(message);
-        let delivered = 0;
-        await Promise.all(subs.map(async s => {
-            try {
-                await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, payload, { TTL: 24 * 60 * 60 });
-                delivered++;
-                await PushSubscriptionModel.updateOne({ _id: s._id }, { $set: { lastSentAt: new Date() } });
-            } catch (err: any) {
-                if (err?.statusCode === 404 || err?.statusCode === 410) {
-                    await PushSubscriptionModel.deleteOne({ _id: s._id });
-                } else {
-                    log.warn(`Push to ${userId} failed: ${err?.statusCode ?? ''} ${err?.message ?? err}`);
-                }
+/** Sends to every device of the user, now. Devices the push service says are gone (404/410) are forgotten. */
+async function deliver(userId: string, message: PushMessage, urgent: boolean): Promise<number> {
+    const subs = await PushSubscriptionModel.find({ userId: new mongoose.Types.ObjectId(userId) }).lean();
+    const payload = JSON.stringify(message);
+    let delivered = 0;
+    await Promise.all(subs.map(async s => {
+        try {
+            await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, payload, {
+                TTL: 24 * 60 * 60,
+                // Android holds back normal-urgency pushes while the phone is idle.
+                urgency: urgent ? 'high' : 'normal',
+            });
+            delivered++;
+            await PushSubscriptionModel.updateOne({ _id: s._id }, { $set: { lastSentAt: new Date() } });
+        } catch (err: any) {
+            if (err?.statusCode === 404 || err?.statusCode === 410) {
+                await PushSubscriptionModel.deleteOne({ _id: s._id });
+            } else {
+                log.warn(`Push to ${userId} failed: ${err?.statusCode ?? ''} ${err?.message ?? err}`);
             }
-        }));
-        return delivered;
+        }
+    }));
+    return delivered;
+}
+
+export type SendOutcome = 'sent' | 'deferred' | 'off' | 'no_device' | 'disabled';
+
+/**
+ * Sends a push to every device a user enabled — unless they turned this kind
+ * off, or it is night and it can wait (then it goes at 07:00 Douala time).
+ * Best-effort: never throws, so a push can never break the caller.
+ */
+export async function sendPushToUser(
+    userId: string,
+    message: PushMessage,
+    opts: { category: PushCategory; now?: Date },
+): Promise<SendOutcome> {
+    if (!pushEnabled()) return 'off';
+    try {
+        const uid = new mongoose.Types.ObjectId(userId);
+        if (!(await PushSubscriptionModel.exists({ userId: uid }))) return 'no_device';
+        if (await PushPreferenceModel.exists({ userId: uid, disabled: opts.category })) return 'disabled';
+
+        const now = opts.now ?? new Date();
+        const urgent = isUrgent(opts.category);
+        if (!urgent && inQuietHours(now)) {
+            const pending = { userId: uid, category: opts.category, tag: message.tag, message, sendAt: endOfQuietHours(now) };
+            if (message.tag) await PendingPushModel.updateOne({ userId: uid, tag: message.tag }, { $set: pending }, { upsert: true });
+            else await PendingPushModel.create(pending);
+            return 'deferred';
+        }
+        await deliver(userId, message, urgent);
+        return 'sent';
     } catch (err: any) {
         log.error(`Push to ${userId} failed: ${err?.message ?? err}`);
-        return 0;
+        return 'off';
     }
+}
+
+/** Sends the pushes held through the night once their time has come. */
+export async function flushDuePushes(now: Date = new Date()): Promise<number> {
+    if (!pushEnabled()) return 0;
+    const due = await PendingPushModel.find({ sendAt: { $lte: now } }).limit(5000).lean();
+    for (const p of due) {
+        // A kind turned off during the night stays off.
+        if (!(await PushPreferenceModel.exists({ userId: p.userId, disabled: p.category }))) {
+            await deliver(String(p.userId), p.message as PushMessage, false).catch(() => 0);
+        }
+        await PendingPushModel.deleteOne({ _id: p._id });
+    }
+    return due.length;
+}
+
+/** Everyone with at least one device. For announcements. */
+export async function usersWithDevices(): Promise<string[]> {
+    return (await PushSubscriptionModel.distinct('userId')).map(String);
 }
