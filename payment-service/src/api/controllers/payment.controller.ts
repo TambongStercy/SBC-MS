@@ -9,6 +9,8 @@ import { AppError } from '../../utils/errors';
 import QRCode from 'qrcode';
 import { paymentIntentRepository } from '../../database/repositories/paymentIntent.repository';
 import * as sandbox from '../../services/sandbox.service';
+import { MAX_SOURCE_USERS, sumCommissionsFromSources } from '../../services/commission-sum.service';
+import { Types } from 'mongoose';
 
 const log = logger.getLogger('PaymentController');
 
@@ -1140,6 +1142,28 @@ export class PaymentController {
      * @route GET /api/internal/user/:userId/has-pending-withdrawal
      * @access Internal Service Request
      */
+    /**
+     * [INTERNAL] Commissions a user earned from given filleuls (relance's "gagné grâce à la relance").
+     * @route POST /api/internal/user/:userId/commissions-from
+     * Body: { sourceUserIds: string[] }. Read-only.
+     */
+    public getCommissionsFromSources = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { userId } = req.params;
+        const { sourceUserIds } = req.body ?? {};
+        try {
+            if (!Types.ObjectId.isValid(userId) || !Array.isArray(sourceUserIds) || sourceUserIds.length > MAX_SOURCE_USERS) {
+                return res.status(400).json({ success: false, message: `userId and up to ${MAX_SOURCE_USERS} sourceUserIds are required.` });
+            }
+            if (sourceUserIds.length === 0) {
+                return res.status(200).json({ success: true, data: { XAF: 0, USD: 0, commissions: 0 } });
+            }
+            return res.status(200).json({ success: true, data: await sumCommissionsFromSources(userId, sourceUserIds) });
+        } catch (error: any) {
+            log.error(`Error summing commissions for user ${userId}:`, error);
+            next(error);
+        }
+    }
+
     public checkUserPendingWithdrawal = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         const { userId } = req.params;
         log.info(`Internal request: Check pending withdrawal for user ${userId}`);

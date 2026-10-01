@@ -64,6 +64,13 @@ router.get('/user/:userId/has-pending-transactions', (req, res, next) => payment
 router.get('/user/:userId/has-pending-withdrawal', (req, res, next) => paymentController.checkUserPendingWithdrawal(req, res, next));
 
 /**
+ * @route   POST /api/internal/user/:userId/commissions-from
+ * @desc    Sum of referral commissions the user earned from given filleuls (read-only)
+ * @access  Private (Service-to-Service)
+ */
+router.post('/user/:userId/commissions-from', (req, res, next) => paymentController.getCommissionsFromSources(req, res, next));
+
+/**
  * @route   POST /api/internal/transactions/:transactionId/mark-reconciled
  * @desc    Mark a transaction as RECONCILED with audit metadata (admin-driven reversals)
  * @access  Private (Service-to-Service)

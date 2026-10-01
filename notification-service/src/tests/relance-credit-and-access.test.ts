@@ -40,6 +40,7 @@ import relanceRoutes from '../api/routes/relance.routes';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelancePackCreditModel from '../database/models/relance-pack-credit.model';
 import RelanceMessageModel from '../database/models/relance-message.model';
+import RelanceTargetModel, { ExitReason, TargetStatus } from '../database/models/relance-target.model';
 import { creditRelancePack } from '../services/relance-credit.service';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_credit_test';
@@ -164,6 +165,55 @@ describe('GET /api/relance/default-messages — what goes out under the parrain 
 
     it('needs a signed-in user', async () => {
         expect((await call('GET', '/api/relance/default-messages')).status).toBe(401);
+    });
+});
+
+describe('GET /api/relance/earnings — what relance brought the parrain', () => {
+    const parrainId = new mongoose.Types.ObjectId().toString();
+    const exited = (exitReason: ExitReason, referrerUserId: string = parrainId) => RelanceTargetModel.create({
+        referralUserId: new mongoose.Types.ObjectId(), referrerUserId, campaignId: null,
+        currentDay: 3, status: TargetStatus.COMPLETED, exitReason, enteredLoopAt: new Date(), nextMessageDue: new Date(),
+        language: 'fr', messagesDelivered: [],
+    });
+
+    beforeEach(async () => {
+        await RelanceTargetModel.deleteMany({});
+        axiosPost.mockReset();
+    });
+
+    it('asks payment-service for the commissions from the filleuls who paid, and only them', async () => {
+        const paid = [await exited(ExitReason.PAID), await exited(ExitReason.PAID)];
+        await exited(ExitReason.COMPLETED_7_DAYS);
+        axiosPost.mockResolvedValue({ data: { data: { XAF: 3500, USD: 0, commissions: 3 } } });
+
+        const r = await call('GET', '/api/relance/earnings', { auth: tokenFor('user', parrainId) });
+
+        expect(r.json.data).toEqual({ paid: 2, earnings: { XAF: 3500, USD: 0 } });
+        const [url, body, opts] = axiosPost.mock.calls[0];
+        expect(url.endsWith(`/internal/user/${parrainId}/commissions-from`)).toBe(true);
+        expect([...body.sourceUserIds].sort()).toEqual(paid.map(t => t.referralUserId.toString()).sort());
+        expect(opts.headers.Authorization).toBe(`Bearer ${config.services.serviceSecret}`);
+    });
+
+    it('does not call payment-service when nobody has paid yet', async () => {
+        await exited(ExitReason.COMPLETED_7_DAYS);
+        const r = await call('GET', '/api/relance/earnings', { auth: tokenFor('user', parrainId) });
+        expect(r.json.data).toEqual({ paid: 0, earnings: { XAF: 0, USD: 0 } });
+        expect(axiosPost).not.toHaveBeenCalled();
+    });
+
+    it('still says how many paid when payment-service cannot answer', async () => {
+        await exited(ExitReason.PAID);
+        axiosPost.mockRejectedValue(new Error('ECONNREFUSED'));
+        const r = await call('GET', '/api/relance/earnings', { auth: tokenFor('user', parrainId) });
+        expect(r.status).toBe(200);
+        expect(r.json.data).toEqual({ paid: 1, earnings: null });
+    });
+
+    it('counts only this parrain filleuls', async () => {
+        await exited(ExitReason.PAID, new mongoose.Types.ObjectId().toString());
+        const r = await call('GET', '/api/relance/earnings', { auth: tokenFor('user', parrainId) });
+        expect(r.json.data.paid).toBe(0);
     });
 });
 
