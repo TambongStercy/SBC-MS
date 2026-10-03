@@ -4,7 +4,7 @@ import PushSubscriptionModel from '../database/models/push-subscription.model';
 import PushPreferenceModel from '../database/models/push-preference.model';
 import PendingPushModel from '../database/models/pending-push.model';
 import InboxItemModel from '../database/models/inbox-item.model';
-import { endOfQuietHours, inQuietHours, isUrgent, PushCategory } from './push-categories';
+import { defaultCta, endOfQuietHours, inQuietHours, isUrgent, PushCategory } from './push-categories';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -21,6 +21,12 @@ export type PushMessage = {
     icon?: string;
     /** With a tag: buzz again when it replaces an earlier notification (chat). */
     renotify?: boolean;
+    /**
+     * The button on the notification (it opens url). Chrome adds its own
+     * "Unsubscribe" on sites that are not installed; this is ours, beside it.
+     * Defaults to the kind's (push-categories).
+     */
+    cta?: string;
 };
 
 let configured: boolean | null = null;
@@ -108,6 +114,7 @@ export async function sendPushToUser(
     // The bell keeps every notification, whether or not it reaches a phone —
     // except chat: conversations carry their own unread counts.
     if (opts.category !== 'chat') await recordInbox(userId, message, opts.category);
+    message = { ...message, cta: message.cta ?? defaultCta(opts.category) };
     if (!pushEnabled()) return 'off';
     try {
         const uid = new mongoose.Types.ObjectId(userId);

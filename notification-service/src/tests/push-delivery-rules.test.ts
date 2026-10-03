@@ -140,6 +140,36 @@ describe('sending', () => {
     });
 });
 
+describe('the button on the notification', () => {
+    it.each([
+        ['money', 'Voir mon solde'],
+        ['filleuls', 'Voir mes filleuls'],
+        ['events', 'Voir mes billets'],
+        ['subscription', 'Renouveler'],
+        ['announcements', 'Découvrir'],
+    ] as const)('a %s push gets "%s" when the sender names no button', async (category, cta) => {
+        await device();
+        await sendPushToUser(userId, { title: 'T', body: 'B' }, { category, now: DAY });
+        expect(JSON.parse(sendNotification.mock.calls[0][1]).cta).toBe(cta);
+    });
+
+    it('keeps the button the sender chose, through the night too', async () => {
+        await device();
+        await sendPushToUser(userId, { title: 'T', body: 'B', cta: 'Recharger' }, { category: 'relance', now: NIGHT });
+        await flushDuePushes(at('2026-10-02T06:00:00Z'));
+        expect(JSON.parse(sendNotification.mock.calls[0][1]).cta).toBe('Recharger');
+    });
+
+    it('lets another service name the button, kept short', async () => {
+        await device();
+        await call('POST', '/api/notifications/push/internal/send', {
+            auth: config.services.serviceSecret,
+            body: { userId, category: 'ads', title: 'T', body: 'B', cta: 'Publier le jour 2 maintenant tout de suite svp' },
+        });
+        expect(JSON.parse(sendNotification.mock.calls[0][1]).cta).toBe('Publier le jour 2 maintenant t');
+    });
+});
+
 describe('the user\'s settings', () => {
     it('lists every kind, all on by default, and remembers what is turned off', async () => {
         const before = await call('GET', '/api/notifications/push/preferences', { auth: tokenFor(userId) });

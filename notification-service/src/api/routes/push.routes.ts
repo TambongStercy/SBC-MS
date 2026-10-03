@@ -73,6 +73,7 @@ const messageFrom = (b: any): PushMessage | null => {
         ...(typeof b.tag === 'string' ? { tag: b.tag.slice(0, 120) } : {}),
         ...(typeof b.icon === 'string' && /^(https:\/\/|\/)/.test(b.icon) ? { icon: b.icon.slice(0, 500) } : {}),
         ...(b.renotify === true ? { renotify: true } : {}),
+        ...(typeof b.cta === 'string' && b.cta.trim() ? { cta: b.cta.trim().slice(0, 30) } : {}),
     };
 };
 

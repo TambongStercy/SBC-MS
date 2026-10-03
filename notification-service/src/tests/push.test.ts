@@ -102,7 +102,8 @@ describe('sending', () => {
         expect(sendNotification).toHaveBeenCalledTimes(2);
         const [target, payload] = sendNotification.mock.calls[0];
         expect(target.keys).toEqual(expect.objectContaining({ p256dh: expect.any(String) }));
-        expect(JSON.parse(payload)).toEqual({ title: 'T', body: 'B', url: '/relance' });
+        // The kind's button comes along when the sender names none.
+        expect(JSON.parse(payload)).toEqual({ title: 'T', body: 'B', url: '/relance', cta: 'Voir mon solde' });
     });
 
     it('forgets a device the push service says is gone, and keeps the others', async () => {

@@ -704,11 +704,13 @@ class NotificationService {
         const category = isPushCategory(related.pushCategory) ? related.pushCategory : pushCategoryForType(notification.type);
         const url = typeof related.url === 'string' && related.url.startsWith('/') ? related.url : undefined;
         const tag = typeof related.pushTag === 'string' ? related.pushTag : undefined;
+        const cta = typeof related.pushCta === 'string' ? related.pushCta.slice(0, 30) : undefined;
         await sendPushToUser(String(notification.userId), {
             title: notification.data?.subject || 'SBC',
             body: notification.data?.body ?? '',
             ...(url ? { url } : {}),
             ...(tag ? { tag } : {}),
+            ...(cta ? { cta } : {}),
         }, { category });
         return true;
     }
