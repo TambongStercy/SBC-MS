@@ -581,9 +581,13 @@ tag?, icon?, renotify? }`. Every push has a **category** (`push-categories.ts`):
 money, chat, filleuls, relance, events, tombola, ads, subscription, or
 announcements.
 - Each user can turn each category off (`/notifications` in the web app).
-- **Money and chat are urgent**: they go out immediately, at high urgency.
-- Everything else sent between 22:00 and 07:00 Douala time waits in
-  `PendingPush` and goes at 07:00, keeping only the latest per `tag`.
+- **Only announcements wait for the morning** (`holdAtNight`). Sent between
+  22:00 and 07:00 Douala time, they wait in `PendingPush` and go at 07:00,
+  keeping only the latest per `tag`. The admin can override this with "send now".
+  Every other kind goes out at once, at high urgency (Sterling, 2026-10-03).
+  A personal push is about something that just happened, and some go stale
+  if held: an event reminder for "dans moins d'une heure" is useless at 07:00.
+  Don't bring back a night hold for personal kinds.
 - `/internal/create` with `channel: 'push'` also delivers now. It takes its
   category and url from `data.relatedData.{pushCategory, url, pushTag}`.
 - Before 2026-10-01 it marked the notification sent and delivered nothing.
@@ -597,7 +601,13 @@ announcements.
 - chat-service: new messages with the sender's photo.
 - relance alerts.
 - payment-service: withdrawal results (PR #289).
-- Admin announcements: `/push/admin/announce`, at most 3 a week.
+- Admin announcements: `/push/admin/announce` with an optional `filter`
+  (`countries`, `subscription`, `sex`). It is resolved through
+  user-service `POST /users/internal/filter-for-announcement`, which skips
+  deleted and blocked users. Only one announcement to EVERYONE per 24 h;
+  targeted ones are unlimited. `/push/admin/audience` gives the live count.
+  Each announcement has its own tag (`announcement-<id>`): a shared tag made the
+  night queue keep only the last one.
 
 Chat-service needs `NOTIFICATION_SERVICE_URL` in its env: the default is prod's port 3002.
 

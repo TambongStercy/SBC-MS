@@ -2,7 +2,8 @@ import { Router, Response } from 'express';
 import { authenticate, authenticateServiceRequest, AuthenticatedRequest, requireAdmin } from '../middleware/auth.middleware';
 import mongoose from 'mongoose';
 import PushPreferenceModel from '../../database/models/push-preference.model';
-import PushAnnouncementModel from '../../database/models/push-announcement.model';
+import PushAnnouncementModel, { AnnouncementFilter } from '../../database/models/push-announcement.model';
+import { userServiceClient } from '../../services/clients/user.service.client';
 import { endOfQuietHours, inQuietHours, isPushCategory, PUSH_CATEGORIES, QUIET_FROM_H, QUIET_UNTIL_H } from '../../services/push-categories';
 import logger from '../../utils/logger';
 import config from '../../config';
@@ -46,7 +47,7 @@ router.get('/preferences', authenticate, async (req: AuthenticatedRequest, res: 
     res.status(200).json({
         success: true,
         data: {
-            categories: PUSH_CATEGORIES.map(c => ({ key: c.key, label: c.label, urgent: c.urgent, enabled: !disabled.has(c.key) })),
+            categories: PUSH_CATEGORIES.map(c => ({ key: c.key, label: c.label, holdAtNight: c.holdAtNight, enabled: !disabled.has(c.key) })),
             quietHours: { from: QUIET_FROM_H, until: QUIET_UNTIL_H },
         },
     });
@@ -100,29 +101,69 @@ router.post('/internal/send', authenticateServiceRequest, async (req, res) => {
     res.status(200).json({ success: true, data: counts });
 });
 
-/** Admin announcements to everyone with push. Capped: people stop reading — or turn it off — past a few a week. */
-export const ANNOUNCEMENTS_PER_WEEK = 3;
+/**
+ * Admin announcements. Targeted ones (a filter) are not limited; one to
+ * EVERY member with push on is, because past that people stop reading — or
+ * switch "Annonces SBC" off, and then nothing reaches them.
+ */
+export const ANNOUNCEMENTS_TO_ALL_PER_DAY = 1;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A clean filter from the request; null when it asks for nothing (= everyone). */
+function filterFrom(raw: any): AnnouncementFilter | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const countries = Array.isArray(raw.countries)
+        ? [...new Set(raw.countries.filter((c: unknown) => typeof c === 'string' && /^[a-z]{2}$/i.test(c)).map((c: string) => c.toUpperCase()))] as string[]
+        : [];
+    const subscription = raw.subscription === 'subscribed' || raw.subscription === 'unsubscribed' ? raw.subscription : undefined;
+    const sex = raw.sex === 'male' || raw.sex === 'female' ? raw.sex : undefined;
+    const filter: AnnouncementFilter = { ...(countries.length ? { countries } : {}), ...(subscription ? { subscription } : {}), ...(sex ? { sex } : {}) };
+    return Object.keys(filter).length ? filter : null;
+}
+
+/** Members with push on that the filter picks; null when user-service cannot say. */
+async function audienceFor(filter: AnnouncementFilter | null): Promise<string[] | null> {
+    const withPush = await usersWithDevices();
+    if (!filter || withPush.length === 0) return withPush;
+    return userServiceClient.filterForAnnouncement(withPush, filter);
+}
+
+const toAllToday = () => PushAnnouncementModel.countDocuments({ toAll: true, createdAt: { $gte: new Date(Date.now() - DAY_MS) } });
 
 router.get('/admin/announcements', authenticate, requireAdmin, async (_req, res) => {
     const recent = await PushAnnouncementModel.find().sort({ createdAt: -1 }).limit(20).lean();
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const usedThisWeek = recent.filter(a => a.createdAt >= weekAgo).length;
-    res.status(200).json({ success: true, data: { recent, usedThisWeek, perWeek: ANNOUNCEMENTS_PER_WEEK, audience: (await usersWithDevices()).length } });
+    res.status(200).json({
+        success: true,
+        data: { recent, toAllToday: await toAllToday(), toAllPerDay: ANNOUNCEMENTS_TO_ALL_PER_DAY, audience: (await usersWithDevices()).length },
+    });
+});
+
+/** How many members a filter reaches, for the admin page while it is being set. */
+router.post('/admin/audience', authenticate, requireAdmin, async (req, res) => {
+    const audience = await audienceFor(filterFrom(req.body?.filter));
+    if (!audience) { res.status(503).json({ success: false, message: 'Impossible de compter les membres pour le moment.' }); return; }
+    res.status(200).json({ success: true, data: { count: audience.length } });
 });
 
 router.post('/admin/announce', authenticate, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     const message = messageFrom(req.body);
     if (!message) { res.status(400).json({ success: false, message: 'Titre et message requis.' }); return; }
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    if ((await PushAnnouncementModel.countDocuments({ createdAt: { $gte: weekAgo } })) >= ANNOUNCEMENTS_PER_WEEK) {
-        res.status(429).json({ success: false, message: `${ANNOUNCEMENTS_PER_WEEK} annonces maximum par semaine.` });
+    const filter = filterFrom(req.body?.filter);
+    const toAll = !filter;
+    const sendNow = req.body?.sendNow === true;
+    if (toAll && (await toAllToday()) >= ANNOUNCEMENTS_TO_ALL_PER_DAY) {
+        res.status(429).json({ success: false, message: `${ANNOUNCEMENTS_TO_ALL_PER_DAY} annonce à tous les membres maximum par 24 h. Ciblez-la avec un filtre, ou attendez.` });
         return;
     }
-    const audience = await usersWithDevices();
-    const announcement = await PushAnnouncementModel.create({ by: new mongoose.Types.ObjectId(req.user!.userId), ...message, recipients: audience.length });
-    // At night it waits for 07:00 (Douala) like every non-urgent push; say so.
+    const audience = await audienceFor(filter);
+    if (!audience) { res.status(503).json({ success: false, message: 'Impossible de trouver les membres ciblés pour le moment.' }); return; }
+    const announcement = await PushAnnouncementModel.create({
+        by: new mongoose.Types.ObjectId(req.user!.userId), ...message, recipients: audience.length,
+        ...(filter ? { filter } : {}), toAll, sendNow,
+    });
+    // At night an announcement waits for 07:00 (Douala) unless the admin chose to send it now.
     const now = new Date();
-    const heldUntil = inQuietHours(now) ? endOfQuietHours(now).toISOString() : null;
+    const heldUntil = !sendNow && inQuietHours(now) ? endOfQuietHours(now).toISOString() : null;
     res.status(202).json({ success: true, data: { recipients: audience.length, heldUntil } });
     // Sent after answering: thousands of devices take a while. Each announcement
     // has its own tag — a shared one made the night queue keep only the last
@@ -131,7 +172,7 @@ router.post('/admin/announce', authenticate, requireAdmin, async (req: Authentic
     void (async () => {
         const counts: Record<string, number> = {};
         for (const id of audience) {
-            const outcome = await sendPushToUser(id, { ...message, tag }, { category: 'announcements' });
+            const outcome = await sendPushToUser(id, { ...message, tag }, { category: 'announcements', sendNow });
             counts[outcome] = (counts[outcome] ?? 0) + 1;
         }
         log.info(`Announcement "${message.title}" to ${audience.length} user(s): ${JSON.stringify(counts)}`);
