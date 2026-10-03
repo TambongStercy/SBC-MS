@@ -69,12 +69,25 @@ class RelanceController {
                 return;
             }
 
-            const { enabled, enrollmentPaused, sendingPaused } = req.body;
+            const { enabled, enrollmentPaused, sendingPaused, smsEnabled } = req.body;
 
             const updates: any = {};
             if (typeof enabled === 'boolean') updates.enabled = enabled;
             if (typeof enrollmentPaused === 'boolean') updates.enrollmentPaused = enrollmentPaused;
             if (typeof sendingPaused === 'boolean') updates.sendingPaused = sendingPaused;
+            // The parrain turns SMS relance on or off. On is for Cameroon only (Rufus);
+            // off is always allowed.
+            if (typeof smsEnabled === 'boolean') {
+                if (smsEnabled) {
+                    const me = await userServiceClient.getRelanceDetails(userId);
+                    if (!me) { res.status(503).json({ success: false, message: 'Vérification impossible pour le moment. Réessayez.' }); return; }
+                    if (!isCameroon(me.country)) {
+                        res.status(403).json({ success: false, message: 'Les SMS de relance sont réservés aux membres du Cameroun.' });
+                        return;
+                    }
+                }
+                updates.smsEnabled = smsEnabled;
+            }
 
             const config = await RelanceConfigModel.findOneAndUpdate(
                 { userId },
@@ -865,6 +878,27 @@ class RelanceController {
      * POST /api/relance/admin/messages/preview
      * Generate a preview of the relance email template
      */
+    /**
+     * GET /api/relance/sms-messages — the SMS texts relance sends (read-only),
+     * for "Voir les messages". {{link}} is the parrain's own link at send time.
+     * "auto" = relance des nouveaux (J0–J7), "manual" = campagnes (J1–J7).
+     */
+    async getSmsMessages(_req: Request, res: Response): Promise<void> {
+        try {
+            const templates = await RelanceSmsTemplateModel.find({ active: true })
+                .sort({ type: 1, dayNumber: 1 })
+                .select('type dayNumber templateText')
+                .lean();
+            res.status(200).json({
+                success: true,
+                data: templates.map(t => ({ type: t.type, dayNumber: t.dayNumber, text: t.templateText })),
+            });
+        } catch (error: any) {
+            log.error('Error fetching relance SMS messages:', error);
+            res.status(500).json({ success: false, message: 'Impossible de charger les SMS.' });
+        }
+    }
+
     /**
      * GET /api/relance/default-messages — the 7 SBC messages relance sends, so a
      * parrain can read what goes out under their name before buying credits.

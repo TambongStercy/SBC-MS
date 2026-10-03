@@ -26,6 +26,8 @@ class CampaignService {
             runAfterCampaignId?: string;
             customMessages?: ICampaign['customMessages'];
             maxMessagesPerDay?: number;
+            /** 'both' = email + SMS (SMS still needs SMS on, credits, and a +237 number). */
+            channel?: 'email' | 'both';
         }
     ): Promise<{ success: boolean; campaign?: ICampaign; error?: string }> {
         try {
@@ -85,6 +87,7 @@ class CampaignService {
                 estimatedEndDate,
                 runAfterCampaignId: options?.runAfterCampaignId,
                 customMessages: options?.customMessages,
+                channel: options?.channel ?? 'email',
                 maxMessagesPerDay: options?.maxMessagesPerDay || config.maxMessagesPerDay,
                 createdBy: userId
             });

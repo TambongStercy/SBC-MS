@@ -52,6 +52,7 @@ import mongoose from 'mongoose';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
 import RelanceMessageModel from '../database/models/relance-message.model';
+import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import CampaignModel, { CampaignStatus, CampaignType } from '../database/models/relance-campaign.model';
 import { processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit, runMessageSendingJob } from '../jobs/relance-sender.job';
 import { closeRelanceBacklog } from '../scripts/close-relance-backlog';
@@ -356,6 +357,46 @@ describe('telling the parrain (push)', () => {
         await run();
 
         expect(pushFilleulPaid).toHaveBeenCalledWith(referrerId.toString(), t.referralUserId.toString());
+    });
+});
+
+describe('SMS for campaigns (2026-10-03)', () => {
+    const smsOn = { smsEnabled: true, smsBalance: 10 };
+    beforeEach(async () => {
+        await RelanceSmsTemplateModel.deleteMany({});
+        await RelanceSmsTemplateModel.insertMany([
+            { type: 'manual', dayNumber: 2, templateText: 'Campagne J2 {{link}}', active: true },
+            { type: 'auto', dayNumber: 2, templateText: 'Nouveaux J2 {{link}}', active: true },
+        ]);
+    });
+    const campaignWith = (channel: string) => CampaignModel.create({
+        userId: referrerId, name: 'Anciens', type: CampaignType.FILTERED, status: CampaignStatus.ACTIVE, targetFilter: {}, channel,
+    });
+
+    it('sends no SMS for a campaign created for email only — the channel used to be ignored', async () => {
+        await makeConfig(smsOn);
+        const c = await campaignWith('email');
+        await makeTarget({ campaignId: c._id, currentDay: 2 });
+        await run();
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+        expect(sendSms).not.toHaveBeenCalled();
+    });
+
+    it('sends the campaign SMS when the campaign was created with SMS', async () => {
+        await makeConfig(smsOn);
+        const c = await campaignWith('both');
+        await makeTarget({ campaignId: c._id, currentDay: 2 });
+        await run();
+        expect(sendSms).toHaveBeenCalledTimes(1);
+        expect(sendSms.mock.calls[0][0].body).toMatch(/^Campagne J2/);
+    });
+
+    it('leaves relance des nouveaux alone: SMS on means SMS sent', async () => {
+        await makeConfig(smsOn);
+        await makeTarget({ currentDay: 2 });
+        await run();
+        expect(sendSms).toHaveBeenCalledTimes(1);
+        expect(sendSms.mock.calls[0][0].body).toMatch(/^Nouveaux J2/);
     });
 });
 
