@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ConfirmationModal from '../common/ConfirmationModal';
 import {
     WithdrawalTransaction,
     formatCurrency,
@@ -29,6 +30,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
     showError
 }) => {
     const [isApproving, setIsApproving] = useState(false);
+    const [confirmApprove, setConfirmApprove] = useState(false);
     const [isRejecting, setIsRejecting] = useState(false);
     const [showRejectForm, setShowRejectForm] = useState(false);
     const [rejectionReason, setRejectionReason] = useState('');
@@ -417,7 +419,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
 
                                     <div className="flex gap-3">
                                         <button
-                                            onClick={handleApprove}
+                                            onClick={() => setConfirmApprove(true)}
                                             disabled={isApproving}
                                             className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed font-medium transition-colors"
                                         >
@@ -485,6 +487,25 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
 
                 </div>
             </div>
+            {/* Approving sends real money: say how much, to whom, before it goes. */}
+            <ConfirmationModal
+                isOpen={confirmApprove}
+                variant="success"
+                title="Valider ce retrait ?"
+                message={
+                    <div className="space-y-1 text-sm">
+                        <p><span className="text-gray-400">Membre :</span> {withdrawal.userName || withdrawal.userEmail || withdrawal.userId}</p>
+                        <p><span className="text-gray-400">Montant envoyé :</span> {formatCurrency(withdrawal.amount - withdrawal.fee, withdrawal.currency)}</p>
+                        {withdrawal.metadata?.accountInfo?.fullMomoNumber && (
+                            <p><span className="text-gray-400">Vers :</span> {withdrawal.metadata.accountInfo.fullMomoNumber} ({withdrawal.metadata.accountInfo.momoOperator})</p>
+                        )}
+                        <p className="pt-2 text-gray-400">L'argent part dès la validation.</p>
+                    </div>
+                }
+                confirmText="Valider le retrait"
+                onConfirm={async () => { await handleApprove(); setConfirmApprove(false); }}
+                onCancel={() => setConfirmApprove(false)}
+            />
         </div>
     );
 };
