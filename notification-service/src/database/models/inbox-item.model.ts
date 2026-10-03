@@ -11,6 +11,8 @@ export interface IInboxItem extends Document {
     title: string;
     body: string;
     url?: string;
+    /** The push's tag on the phone, so the app can close it when this is cleared. */
+    tag?: string;
     readAt?: Date;
     createdAt: Date;
 }
@@ -22,6 +24,7 @@ const InboxItemSchema = new Schema<IInboxItem>(
         title: { type: String, required: true },
         body: { type: String, required: true },
         url: String,
+        tag: String,
         readAt: Date,
     },
     { timestamps: { createdAt: true, updatedAt: false } },

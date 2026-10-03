@@ -30,6 +30,7 @@ import PushSubscriptionModel from '../database/models/push-subscription.model';
 import PushPreferenceModel from '../database/models/push-preference.model';
 import PendingPushModel from '../database/models/pending-push.model';
 import PushAnnouncementModel from '../database/models/push-announcement.model';
+import InboxItemModel from '../database/models/inbox-item.model';
 import { flushDuePushes, sendPushToUser } from '../services/push.service';
 import { endOfQuietHours, inQuietHours } from '../services/push-categories';
 
@@ -73,7 +74,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
     sendNotification.mockReset().mockResolvedValue({ statusCode: 201 });
-    await Promise.all([PushSubscriptionModel, PushPreferenceModel, PendingPushModel, PushAnnouncementModel].map(m => (m as any).deleteMany({})));
+    await Promise.all([PushSubscriptionModel, PushPreferenceModel, PendingPushModel, PushAnnouncementModel, InboxItemModel].map(m => (m as any).deleteMany({})));
 });
 
 describe('quiet hours (Douala time)', () => {
@@ -137,6 +138,24 @@ describe('sending', () => {
     it('does not queue anything for someone without a device', async () => {
         expect(await sendPushToUser(userId, { title: 'T', body: 'B' }, { category: 'events', now: NIGHT })).toBe('no_device');
         expect(await PendingPushModel.countDocuments()).toBe(0);
+    });
+});
+
+describe('the list and the phone stay in step', () => {
+    it('gives the push the same tag as its list entry, so clearing one can close the other', async () => {
+        await device();
+        await sendPushToUser(userId, { title: 'T', body: 'B' }, { category: 'money', now: DAY });
+        const entry = await InboxItemModel.findOne({ userId }).lean();
+        const pushed = JSON.parse(sendNotification.mock.calls[0][1]);
+        expect(entry!.tag).toBe(`n-${entry!._id}`);
+        expect(pushed.tag).toBe(entry!.tag);
+    });
+
+    it('keeps a tag the sender chose, on both', async () => {
+        await device();
+        await sendPushToUser(userId, { title: 'T', body: 'B', tag: 'withdrawal-42' }, { category: 'money', now: DAY });
+        expect((await InboxItemModel.findOne({ userId }).lean())!.tag).toBe('withdrawal-42');
+        expect(JSON.parse(sendNotification.mock.calls[0][1]).tag).toBe('withdrawal-42');
     });
 });
 
