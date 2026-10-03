@@ -3,15 +3,16 @@
  * hour; the rest wait for the morning (see push.service quiet hours).
  */
 export const PUSH_CATEGORIES = [
-    { key: 'money', label: 'Argent : commissions et retraits', urgent: true },
-    { key: 'chat', label: 'Messages', urgent: true },
-    { key: 'filleuls', label: 'Nouveaux filleuls', urgent: false },
-    { key: 'relance', label: 'Relance', urgent: false },
-    { key: 'events', label: 'Événements et billets', urgent: false },
-    { key: 'tombola', label: 'Tombola', urgent: false },
-    { key: 'ads', label: 'Ads Network', urgent: false },
-    { key: 'subscription', label: 'Abonnement', urgent: false },
-    { key: 'announcements', label: 'Annonces SBC', urgent: false },
+    // cta: the button on the notification when the sender names none.
+    { key: 'money', label: 'Argent : commissions et retraits', urgent: true, cta: 'Voir mon solde' },
+    { key: 'chat', label: 'Messages', urgent: true, cta: 'Répondre' },
+    { key: 'filleuls', label: 'Nouveaux filleuls', urgent: false, cta: 'Voir mes filleuls' },
+    { key: 'relance', label: 'Relance', urgent: false, cta: 'Ouvrir la relance' },
+    { key: 'events', label: 'Événements et billets', urgent: false, cta: 'Voir mes billets' },
+    { key: 'tombola', label: 'Tombola', urgent: false, cta: 'Voir' },
+    { key: 'ads', label: 'Ads Network', urgent: false, cta: 'Ouvrir Ads Network' },
+    { key: 'subscription', label: 'Abonnement', urgent: false, cta: 'Renouveler' },
+    { key: 'announcements', label: 'Annonces SBC', urgent: false, cta: 'Découvrir' },
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number]['key'];
@@ -20,6 +21,8 @@ export const isPushCategory = (v: unknown): v is PushCategory =>
     PUSH_CATEGORIES.some(c => c.key === v);
 
 export const isUrgent = (c: PushCategory) => PUSH_CATEGORIES.find(x => x.key === c)!.urgent;
+
+export const defaultCta = (c: PushCategory) => PUSH_CATEGORIES.find(x => x.key === c)!.cta;
 
 /**
  * No non-urgent push between 22:00 and 07:00, Douala time (UTC+1, no DST) —

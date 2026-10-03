@@ -15,6 +15,7 @@ export function pushCreditsLow(referrerId: string, remaining: number): void {
         body: `Il vous reste ${remaining} crédits. Rechargez pour que la relance continue.`,
         url: '/relance',
         tag: 'relance-credits',
+        cta: 'Recharger',
     }, { category: 'relance' }));
 }
 
@@ -24,6 +25,7 @@ export function pushCreditsExhausted(referrerId: string): void {
         body: 'Plus de crédits : vos filleuls attendent. Rechargez pour reprendre.',
         url: '/relance',
         tag: 'relance-credits',
+        cta: 'Recharger',
     }, { category: 'relance' }));
 }
 
@@ -35,6 +37,7 @@ export function pushFilleulPaid(referrerId: string, referralId: string): void {
             body: `${first || 'Un filleul relancé'} vient de payer.`,
             url: '/relance',
             tag: `relance-paid-${referralId}`,
+            cta: 'Voir',
         }, { category: 'relance' });
     });
 }
