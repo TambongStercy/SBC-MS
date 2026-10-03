@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as orderService from '../../services/order.service';
 import * as resaleService from '../../services/resale.service';
 import { getPaymentIntentState } from '../../services/clients/payment.service.client';
+import { settleVoteFromWebhook } from '../../modules/animation/services/paid-vote.service';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('WebhookController');
@@ -39,11 +40,20 @@ export const paymentConfirmation = async (req: Request, res: Response, next: Nex
             verifiedAmount = intent.amount;
         }
 
+        // Vote packs (animation module) carry their own transaction id.
+        if (metadata?.voteTransactionId) {
+            const vote = await settleVoteFromWebhook({ sessionId, status, verifiedAmount });
+            if (vote.handled) return res.json({ success: true, data: vote });
+        }
+
         const primary = await orderService.settleFromWebhook({ sessionId, status, metadata });
         if (primary.handled) return res.json({ success: true, data: primary });
 
         const resale = await resaleService.settleResaleFromWebhook({ sessionId, status, metadata });
         if (resale.handled) return res.json({ success: true, data: resale });
+
+        const vote = await settleVoteFromWebhook({ sessionId, status, verifiedAmount });
+        if (vote.handled) return res.json({ success: true, data: vote });
 
         // Unknown session — safe to return success so no retries pile up.
         res.json({ success: true, data: { handled: false, note: 'unknown session' } });

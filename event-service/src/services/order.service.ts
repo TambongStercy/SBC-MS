@@ -329,6 +329,11 @@ const settleClaimedOrder = async (order: IOrder) => {
         log.error(`Organizer credit failed for order ${order._id}: ${(err as Error).message} — sweeper will retry.`);
     }
 
+    // Animation rewards ("the 50th buyer wins…"). Never throws.
+    const { onTrigger } = await import('../modules/animation/services/reward.service');
+    const { RuleTrigger } = await import('../modules/animation/types');
+    await onTrigger({ trigger: RuleTrigger.TICKET_ORDER_PAID, eventId: String(order.eventId), userId: String(order.userId), subjectKey: `order:${order._id}` });
+
     // Best-effort buyer notification (never let this rollback settlement)
     try {
         await notifyUser({

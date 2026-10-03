@@ -185,6 +185,8 @@ export const publishEvent = async (organizerId: string, eventId: string): Promis
     if (event.status === EventStatus.SUSPENDED) {
         event.status = EventStatus.PUBLISHED;
         await event.save();
+        const { cascadeEventStatus } = await import('../modules/animation/services/challenge.service');
+        await cascadeEventStatus(event._id, 'PUBLISHED', 'Événement republié');
         return event;
     } else {
         event.status = EventStatus.PENDING_REVIEW;
@@ -233,6 +235,8 @@ export const suspendEvent = async (organizerId: string, eventId: string): Promis
     if (event.status !== EventStatus.PUBLISHED) throw new AppError('Seul un événement publié peut être suspendu.', 409);
     event.status = EventStatus.SUSPENDED;
     await event.save();
+    const { cascadeEventStatus } = await import('../modules/animation/services/challenge.service');
+    await cascadeEventStatus(event._id, 'SUSPENDED', 'Événement suspendu');
     return event;
 };
 

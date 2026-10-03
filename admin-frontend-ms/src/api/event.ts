@@ -220,6 +220,8 @@ export interface EventCommissionConfig {
     primaryPct: number;
     resalePct: number;
     defaultMaxResalePricePct: number;
+    /** Commission on paid vote packs (Animation), fraction 0–0.5. Absent on older settings-service builds. */
+    votePct?: number;
 }
 
 /**

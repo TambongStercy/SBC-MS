@@ -1,4 +1,4 @@
-import { Gift, Heart, Mail, Megaphone, ShoppingBag, Ticket, Trophy } from 'lucide-react';
+import { Gift, Heart, Mail, Megaphone, PartyPopper, ShoppingBag, Ticket, Trophy } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useQueueCounts } from '../home/queues';
 import { NavList, NavRow, Page } from '../../ui';
@@ -17,6 +17,7 @@ export default function ModulesHub() {
             <NavList>
                 <NavRow to="/modules/ads" icon={<Megaphone size={20} />} tone="accent" title="Ads Network" description="Campagnes, diffuseurs, vérifications" trailing={<Count n={count('campaigns', 'proofs')} />} />
                 <NavRow to="/modules/billetterie" icon={<Ticket size={20} />} title="Billetterie" description="Événements à valider, organisateurs, commandes, litiges" trailing={<Count n={count('events', 'organizers', 'disputes')} />} />
+                <NavRow to="/modules/animation" icon={<PartyPopper size={20} />} tone="accent" title="Animation" description="Défis et votes des événements, activités suspectes, demandes de modification" trailing={<Count n={count('animFraud', 'animChanges')} />} />
                 <NavRow to="/modules/relance" icon={<Mail size={20} />} tone="success" title="Relance" description="Relance des nouveaux, campagnes, crédits des parrains, messages" />
                 <NavRow to="/modules/sbc-love" icon={<Heart size={20} />} tone="danger" title="SBC Love" description="Profils à valider, signalements, session de la semaine" trailing={<Count n={count('love')} />} />
                 <NavRow to="/modules/tombola" icon={<Gift size={20} />} tone="warning" title="Tombola" description="Tombola du mois, billets, tirage et gagnants" />

@@ -235,6 +235,8 @@ export const suspendEvent = async (req: Request, res: Response, next: NextFuncti
     try {
         const ev = await Event.findByIdAndUpdate(req.params.id, { $set: { status: EventStatus.SUSPENDED } }, { new: true });
         if (!ev) throw new AppError('Événement introuvable.', 404);
+        const { cascadeEventStatus } = await import('../../modules/animation/services/challenge.service');
+        await cascadeEventStatus(ev._id, 'SUSPENDED', 'Événement suspendu par SBC');
         res.json({ success: true, data: ev });
     } catch (err) { next(err); }
 };

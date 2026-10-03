@@ -2017,6 +2017,36 @@ export class UserController {
     }
 
     /**
+     * SBC Event: resolve an invited team member / juror from an email or phone.
+     * Returns only what the inviter needs to recognise the person — a masked
+     * contact, never the full email or number.
+     * @route POST /api/users/internal/event-member-lookup  { contact: string }
+     */
+    async lookupEventMember(req: Request, res: Response): Promise<void> {
+        try {
+            const contact = typeof req.body?.contact === 'string' ? req.body.contact.trim().slice(0, 200) : '';
+            if (!contact) {
+                res.status(400).json({ success: false, message: '`contact` is required.' });
+                return;
+            }
+            const matches = await this.userService.findEventMemberByContact(contact);
+            if (matches.length !== 1) {
+                res.status(200).json({ success: true, data: { found: false, ambiguous: matches.length > 1 } });
+                return;
+            }
+            const u: any = matches[0];
+            const mask = (s?: string) => (s ? (s.includes('@') ? s.replace(/^(.{2}).*(@.*)$/, '$1•••$2') : `•••${s.slice(-3)}`) : undefined);
+            res.status(200).json({
+                success: true,
+                data: { found: true, userId: String(u._id), name: u.name, avatar: u.avatar, contactHint: contact.includes('@') ? mask(u.email) : mask(u.phoneNumber) },
+            });
+        } catch (error: any) {
+            this.log.error(`Error looking up event member: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to look up member.' });
+        }
+    }
+
+    /**
      * SBCLOVE admin search over its own members.
      * @route POST /api/users/internal/sbclove-search  { userIds: string[], q: string }
      */

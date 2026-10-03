@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as adminController from '../controllers/admin.controller';
+import { adminRouter as animationAdminRoutes } from '../../modules/animation/routes';
 
 const router = Router();
 
@@ -29,5 +30,8 @@ router.post('/disputes/:id/resolve', adminController.resolveDispute);
 
 router.get('/commission-config', adminController.getCommissionConfigController);
 router.patch('/commission-config', adminController.bustCommissionConfigCache);
+
+// Animation & Engagement administration (stats, fraud review, change requests, refunds, audit).
+router.use('/animation', animationAdminRoutes);
 
 export default router;

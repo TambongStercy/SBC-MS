@@ -18,6 +18,8 @@ interface CommissionConfig {
     primaryPct: number;
     resalePct: number;
     defaultMaxResalePricePct: number;
+    /** SBC's share of paid vote packs (animation module). */
+    votePct: number;
 }
 
 let cache: { at: number; value: CommissionConfig } | null = null;
@@ -37,6 +39,7 @@ export const getCommissionConfig = async (): Promise<CommissionConfig> => {
                 primaryPct: Number(data.data.primaryPct ?? config.commissions.primaryPct),
                 resalePct: Number(data.data.resalePct ?? config.commissions.resalePct),
                 defaultMaxResalePricePct: Number(data.data.defaultMaxResalePricePct ?? config.commissions.defaultMaxResalePricePct),
+                votePct: Number(data.data.votePct ?? config.animation.votePct),
             };
             cache = { at: Date.now(), value };
             return value;
@@ -44,7 +47,7 @@ export const getCommissionConfig = async (): Promise<CommissionConfig> => {
     } catch (err) {
         log.warn(`Falling back to env commissions: ${(err as Error).message}`);
     }
-    const fallback: CommissionConfig = { ...config.commissions };
+    const fallback: CommissionConfig = { ...config.commissions, votePct: config.animation.votePct };
     cache = { at: Date.now(), value: fallback };
     return fallback;
 };

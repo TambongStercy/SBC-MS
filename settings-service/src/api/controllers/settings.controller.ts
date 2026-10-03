@@ -861,6 +861,10 @@ export const updateEventCommissions = async (req: Request, res: Response, next: 
             primaryPct: requireInRange('primaryPct', req.body?.primaryPct, 0, 0.5),
             resalePct: requireInRange('resalePct', req.body?.resalePct, 0, 0.5),
             defaultMaxResalePricePct: requireInRange('defaultMaxResalePricePct', req.body?.defaultMaxResalePricePct, 100, 300),
+            // Optional: an admin page that predates paid votes keeps the current rate.
+            votePct: req.body?.votePct === undefined
+                ? (await settingsService.getEventCommissions()).votePct
+                : requireInRange('votePct', req.body.votePct, 0, 0.5),
         };
 
         const data = await settingsService.updateEventCommissions(payload);
