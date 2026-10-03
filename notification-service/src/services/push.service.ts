@@ -85,18 +85,28 @@ async function deliver(userId: string, message: PushMessage, urgent: boolean): P
 }
 
 /** Saves a notification to the member's in-app list. Never throws. */
-async function recordInbox(userId: string, message: PushMessage, category: PushCategory): Promise<void> {
+/**
+ * Saves a notification to the member's in-app list. Never throws. Returns
+ * the tag the push will carry: the sender's, or one made for this entry, so
+ * clearing it in the app can close the same notification on the phone.
+ */
+async function recordInbox(userId: string, message: PushMessage, category: PushCategory): Promise<string | undefined> {
+    const _id = new mongoose.Types.ObjectId();
+    const tag = message.tag ?? `n-${_id.toString()}`;
     try {
         await InboxItemModel.create({
+            _id,
             userId: new mongoose.Types.ObjectId(userId),
             category,
             title: message.title,
             body: message.body,
+            tag,
             ...(message.url ? { url: message.url } : {}),
         });
     } catch (err: any) {
         log.warn(`Inbox record for ${userId} failed: ${err?.message ?? err}`);
     }
+    return tag;
 }
 
 export type SendOutcome = 'sent' | 'deferred' | 'off' | 'no_device' | 'disabled';
@@ -113,8 +123,8 @@ export async function sendPushToUser(
 ): Promise<SendOutcome> {
     // The bell keeps every notification, whether or not it reaches a phone —
     // except chat: conversations carry their own unread counts.
-    if (opts.category !== 'chat') await recordInbox(userId, message, opts.category);
-    message = { ...message, cta: message.cta ?? defaultCta(opts.category) };
+    const tag = opts.category !== 'chat' ? await recordInbox(userId, message, opts.category) : message.tag;
+    message = { ...message, ...(tag ? { tag } : {}), cta: message.cta ?? defaultCta(opts.category) };
     if (!pushEnabled()) return 'off';
     try {
         const uid = new mongoose.Types.ObjectId(userId);
