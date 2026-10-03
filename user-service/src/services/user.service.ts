@@ -2077,8 +2077,11 @@ export class UserService {
         }
 
         // --- Role Check ---
-        if (user.role !== UserRole.ADMIN) {
-            log.warn(`Admin login attempt failed: User ${email} does not have ADMIN role.`);
+        // Staff roles sign in to the admin; each service still decides what a
+        // role may call (user-service admin routes stay ADMIN-only).
+        const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
+        if (!STAFF_ROLES.includes(user.role)) {
+            log.warn(`Admin login attempt failed: User ${email} has no staff role.`);
             throw new Error('Access Denied: Not an admin user');
         }
         // --- End Role Check ---

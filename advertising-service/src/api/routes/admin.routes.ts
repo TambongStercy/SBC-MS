@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, authorizeAdmin } from '../middleware/auth.middleware';
+import { authenticate, authorizeAdmin, authorizeProofReviewer } from '../middleware/auth.middleware';
 import {
     listForReview,
     approve,
@@ -30,6 +30,13 @@ import {
  */
 const router = Router();
 
+// Manual (video-proof) verification review queue. Registered before the
+// admin-only gate below so moderators can work it; a request here is
+// answered by these handlers and never reaches that gate.
+router.get('/manual-verifications', authenticate, authorizeProofReviewer, listPendingManual);
+router.post('/manual-verifications/:id/approve', authenticate, authorizeProofReviewer, approveManual);
+router.post('/manual-verifications/:id/reject', authenticate, authorizeProofReviewer, rejectManual);
+
 router.use(authenticate, authorizeAdmin);
 
 router.get('/analytics', getAnalytics);
@@ -56,10 +63,5 @@ router.delete('/test-campaign', removeTestCampaign);
 router.get('/campaigns/:id/performance', getCampaignPerformance);
 router.post('/campaigns/:id/approve', approve);
 router.post('/campaigns/:id/reject', reject);
-
-// Manual (video-proof) verification review queue.
-router.get('/manual-verifications', listPendingManual);
-router.post('/manual-verifications/:id/approve', approveManual);
-router.post('/manual-verifications/:id/reject', rejectManual);
 
 export default router;
