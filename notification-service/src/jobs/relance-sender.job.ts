@@ -609,7 +609,10 @@ export async function processUserTargets(
 
                 // SMS send (same target, same day) — CM numbers only,
                 // and only for non-subscribed referrals (no CLASSIQUE/CIBLE).
-                if (config.smsEnabled && config.smsBalance > 0) {
+                // A campaign sends SMS only if it was created with SMS (channel
+                // sms/both); the field was stored but ignored before.
+                const campaignAllowsSms = isDefaultTarget || campaign?.channel !== 'email';
+                if (config.smsEnabled && config.smsBalance > 0 && campaignAllowsSms) {
                     const phone: string | undefined = referralInfo.phoneNumber;
                     if (phone && isCmNumber(phone) && !(await isSmsBlockedBySubscription(referralId))) {
                         const smsTemplate = await RelanceSmsTemplateModel.findOne({

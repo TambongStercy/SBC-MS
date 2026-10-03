@@ -108,7 +108,7 @@ class RelanceCampaignController {
     async createCampaign(req: Request, res: Response): Promise<void> {
         try {
             const userId = (req as any).user?.userId || req.body.userId;
-            const { name, targetFilter, scheduledStartDate, runAfterCampaignId, customMessages, maxMessagesPerDay } = req.body;
+            const { name, targetFilter, scheduledStartDate, runAfterCampaignId, customMessages, maxMessagesPerDay, channel } = req.body;
 
             if (!userId) {
                 res.status(400).json({
@@ -134,7 +134,8 @@ class RelanceCampaignController {
                     scheduledStartDate: scheduledStartDate ? new Date(scheduledStartDate) : undefined,
                     runAfterCampaignId,
                     customMessages,
-                    maxMessagesPerDay
+                    maxMessagesPerDay,
+                    channel: channel === 'both' ? 'both' : 'email',
                 }
             );
 

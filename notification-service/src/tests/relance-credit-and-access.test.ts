@@ -40,6 +40,7 @@ import relanceRoutes from '../api/routes/relance.routes';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelancePackCreditModel from '../database/models/relance-pack-credit.model';
 import RelanceMessageModel from '../database/models/relance-message.model';
+import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import { creditRelancePack } from '../services/relance-credit.service';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_credit_test';
@@ -164,6 +165,47 @@ describe('GET /api/relance/default-messages — what goes out under the parrain 
 
     it('needs a signed-in user', async () => {
         expect((await call('GET', '/api/relance/default-messages')).status).toBe(401);
+    });
+});
+
+describe('SMS controls for the parrain (2026-10-03)', () => {
+    const me = new mongoose.Types.ObjectId().toString();
+    beforeEach(() => getRelanceDetails.mockReset());
+
+    it('lets a Cameroonian parrain switch SMS relance on', async () => {
+        getRelanceDetails.mockResolvedValue({ _id: me, country: 'CM' });
+        const r = await call('PUT', '/api/relance/settings', { auth: tokenFor('user', me), body: { smsEnabled: true } });
+        expect(r.status).toBe(200);
+        expect(((await RelanceConfigModel.findOne({ userId: me }).lean()) as any).smsEnabled).toBe(true);
+    });
+
+    it('refuses to switch it on outside Cameroon', async () => {
+        getRelanceDetails.mockResolvedValue({ _id: me, country: 'SN' });
+        const r = await call('PUT', '/api/relance/settings', { auth: tokenFor('user', me), body: { smsEnabled: true } });
+        expect(r.status).toBe(403);
+        expect(r.json.message).toMatch(/Cameroun/);
+    });
+
+    it('always lets anyone switch it off, without asking where they are', async () => {
+        const r = await call('PUT', '/api/relance/settings', { auth: tokenFor('user', me), body: { smsEnabled: false } });
+        expect(r.status).toBe(200);
+        expect(getRelanceDetails).not.toHaveBeenCalled();
+    });
+
+    it('lists the SMS texts, active ones, by product and day', async () => {
+        await RelanceSmsTemplateModel.deleteMany({});
+        await RelanceSmsTemplateModel.insertMany([
+            { type: 'manual', dayNumber: 1, templateText: 'Campagne J1 {{link}}', active: true },
+            { type: 'auto', dayNumber: 1, templateText: 'Nouveaux J1 {{link}}', active: true },
+            { type: 'auto', dayNumber: 0, templateText: 'Nouveaux J0 {{link}}', active: true },
+            { type: 'auto', dayNumber: 2, templateText: 'Off', active: false },
+        ]);
+        const r = await call('GET', '/api/relance/sms-messages', { auth: tokenFor('user') });
+        expect(r.json.data).toEqual([
+            { type: 'auto', dayNumber: 0, text: 'Nouveaux J0 {{link}}' },
+            { type: 'auto', dayNumber: 1, text: 'Nouveaux J1 {{link}}' },
+            { type: 'manual', dayNumber: 1, text: 'Campagne J1 {{link}}' },
+        ]);
     });
 });
 

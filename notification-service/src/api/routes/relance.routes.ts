@@ -29,6 +29,15 @@ router.put('/settings', authenticate, (req, res) =>
 );
 
 /**
+ * @route   GET /api/relance/sms-messages
+ * @desc    The SMS texts relance sends, read-only, for parrains to read
+ * @access  Private
+ */
+router.get('/sms-messages', authenticate, (req, res) =>
+    relanceController.getSmsMessages(req, res)
+);
+
+/**
  * @route   GET /api/relance/default-messages
  * @desc    The 7 SBC relance messages, read-only, for parrains to read
  * @access  Private
