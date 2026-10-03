@@ -6,6 +6,7 @@ import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/common/ToastContainer";
 
 import Dropdown from "../components/common/dropdown";
+import ConfirmationModal from "../components/common/ConfirmationModal";
 
 
 
@@ -193,8 +194,18 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     // Add a separator or group non-African countries if the list gets long
   ];
 
-  const handleSubscriptionSelect = async (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const newType = event.target.value as SubscriptionType | 'NONE';
+  // Subscription and partner pack change what the member is paid: ask before applying.
+  const [pendingChange, setPendingChange] = useState<
+    { kind: 'subscription'; value: SubscriptionType | 'NONE' } | { kind: 'pack'; value: 'silver' | 'gold' | 'none' } | null
+  >(null);
+
+  const handleSubscriptionSelect = (event: React.ChangeEvent<HTMLSelectElement>) =>
+    setPendingChange({ kind: 'subscription', value: event.target.value as SubscriptionType | 'NONE' });
+
+  const handlePartnerPackSelect = (event: React.ChangeEvent<HTMLSelectElement>) =>
+    setPendingChange({ kind: 'pack', value: event.target.value as 'silver' | 'gold' | 'none' });
+
+  const applySubscription = async (newType: SubscriptionType | 'NONE') => {
     const originalType = selectedSubscription; // Store original state for potential revert
     setSelectedSubscription(newType);
     console.log("Selected subscription:", newType);
@@ -210,9 +221,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     }
   };
 
-  // Add handler for partner pack selection
-  const handlePartnerPackSelect = async (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const newPack = event.target.value as 'silver' | 'gold' | 'none';
+  const applyPartnerPack = async (newPack: 'silver' | 'gold' | 'none') => {
     const originalPack = selectedPartnerPack; // Store original state for potential revert
     setSelectedPartnerPack(newPack);
     console.log("Selected partner pack:", newPack);
@@ -294,10 +303,10 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     try {
       // Use the correctly imported updateUser function
       await updateUser(data.id, updateData);
-      alert(`${field} updated successfully!`);
+      showSuccess('Modification enregistrée.');
     } catch (error) {
       console.error(`Failed to update ${field}:`, error);
-      alert(`Failed to update ${field}. Please try again.`);
+      showError("La modification n'a pas été enregistrée. Réessaie.");
       // Revert local state on error
       if (field === 'name') setName(data.name);
       if (field === 'phoneNumber') setPhoneNumber(String(data.phoneNumber || ''));
@@ -316,17 +325,38 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
       // Use the correctly imported updateUser function
       await updateUser(data.id, { momoOperator: selectedOperator });
       setMomoOperator(selectedOperator); // Update local state on success
-      alert(`momoOperator updated successfully!`);
+      showSuccess('Opérateur enregistré.');
     } catch (error) {
       console.error(`Failed to update momoOperator:`, error);
-      alert(`Failed to update momoOperator. Please try again.`);
+      showError("L'opérateur n'a pas été enregistré. Réessaie.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const SUB_LABEL: Record<string, string> = { CLASSIQUE: 'Classique', CIBLE: 'Ciblé', NONE: 'Aucun abonnement' };
+  const PACK_LABEL: Record<string, string> = { silver: 'Silver', gold: 'Gold', none: 'Aucun pack' };
+
   return (
     <>
+      <ConfirmationModal
+        isOpen={!!pendingChange}
+        variant="primary"
+        title={pendingChange?.kind === 'pack' ? 'Changer le pack partenaire ?' : "Changer l'abonnement ?"}
+        message={pendingChange && (
+          <p className="text-sm">
+            {data.name} passera à <b>{pendingChange.kind === 'pack' ? PACK_LABEL[pendingChange.value] : SUB_LABEL[pendingChange.value]}</b>.
+            {' '}Cela change ses droits et ce qu'il touche sur ses filleuls.
+          </p>
+        )}
+        confirmText="Appliquer"
+        onConfirm={async () => {
+          if (pendingChange?.kind === 'subscription') await applySubscription(pendingChange.value);
+          else if (pendingChange?.kind === 'pack') await applyPartnerPack(pendingChange.value);
+          setPendingChange(null);
+        }}
+        onCancel={() => setPendingChange(null)}
+      />
       <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4 sm:mb-0">
         Informations personelles
       </h2>

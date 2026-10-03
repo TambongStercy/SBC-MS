@@ -13,6 +13,7 @@ import Loader from "../components/common/loader";
 import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats, SubscriptionType, blockUser, unblockUser } from '../services/adminUserApi';
 import { PaginationOptions } from '../services/adminUserApi';
 import toast from 'react-hot-toast';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import { getAvatarUrl } from '../api/apiClient';
 
 interface UserTablePlaceholderProps {
@@ -276,6 +277,7 @@ function Users() {
   };
 
   const [blockingId, setBlockingId] = useState<string | null>(null);
+  const [confirmBlock, setConfirmBlock] = useState<AdminUserData | null>(null);
 
   // --- Action Handlers ---
   const handleViewUser = (userId: string) => {
@@ -351,7 +353,7 @@ function Users() {
           <UserTablePlaceholder
             users={users}
             onViewUser={handleViewUser}
-            onToggleBlock={handleToggleBlock}
+            onToggleBlock={setConfirmBlock}
             blockingId={blockingId}
           />
         )}
@@ -365,6 +367,17 @@ function Users() {
         )}
         <div className="text-sm text-gray-400 mt-2">Total users found: {totalCount}</div>
       </main>
+      <ConfirmationModal
+        isOpen={!!confirmBlock}
+        variant={confirmBlock?.blocked ? 'success' : 'danger'}
+        title={confirmBlock?.blocked ? `Débloquer ${confirmBlock?.name} ?` : `Bloquer ${confirmBlock?.name} ?`}
+        message={confirmBlock?.blocked
+          ? 'Le membre pourra de nouveau se connecter.'
+          : 'Le membre ne pourra plus se connecter.'}
+        confirmText={confirmBlock?.blocked ? 'Débloquer' : 'Bloquer'}
+        onConfirm={async () => { if (confirmBlock) await handleToggleBlock(confirmBlock); setConfirmBlock(null); }}
+        onCancel={() => setConfirmBlock(null)}
+      />
     </div>
   );
 }

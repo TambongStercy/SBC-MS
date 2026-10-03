@@ -1,10 +1,13 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { AdminUserData, loginAdmin, AdminLoginResponse } from '../services/adminUserApi'; // Adjust path as needed
+import { roleFromToken } from '../lib/roles';
 
 interface AuthContextType {
   isAdminAuthenticated: boolean;
   adminUser: Omit<AdminUserData, 'password' | 'otps' | 'contactsOtps' | 'token'> | null;
   token: string | null;
+  /** From the session token; the stored user only as a fallback. */
+  role: string | null;
   login: (credentials: { email: string; password: string }) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
@@ -74,7 +77,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ isAdminAuthenticated: !!token, adminUser, token, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ isAdminAuthenticated: !!token, adminUser, token, role: roleFromToken(token) ?? adminUser?.role ?? null, login, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

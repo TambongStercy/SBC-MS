@@ -200,7 +200,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Total</p>
+                                <p className="text-sm text-gray-400 font-medium">Sur cette page</p>
                                 <p className="text-2xl font-bold text-white">{summaryStats.total}</p>
                             </div>
                             <div className="text-3xl">📊</div>
@@ -210,7 +210,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Completed</p>
+                                <p className="text-sm text-gray-400 font-medium">Payés (page)</p>
                                 <p className="text-2xl font-bold text-green-500">{summaryStats.completed}</p>
                             </div>
                             <div className="text-3xl">✓</div>
@@ -220,7 +220,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Rejected</p>
+                                <p className="text-sm text-gray-400 font-medium">Refusés (page)</p>
                                 <p className="text-2xl font-bold text-red-500">{summaryStats.rejected}</p>
                             </div>
                             <div className="text-3xl">✗</div>
@@ -230,7 +230,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Failed</p>
+                                <p className="text-sm text-gray-400 font-medium">Échoués (page)</p>
                                 <p className="text-2xl font-bold text-orange-500">{summaryStats.failed}</p>
                             </div>
                             <div className="text-3xl">⚠️</div>
@@ -240,7 +240,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Total Paid (XAF)</p>
+                                <p className="text-sm text-gray-400 font-medium">Payé sur cette page (XAF)</p>
                                 <p className="text-xl font-bold text-blue-400">
                                     {formatCurrency(summaryStats.totalAmount, 'XAF' as any)}
                                 </p>
@@ -289,7 +289,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Transaction ID, user, email, phone..."
+                                placeholder="Chercher sur cette page : ID, nom, téléphone…"
                                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-2 focus:ring-indigo-500 placeholder-gray-400"
                             />
                         </div>

@@ -41,8 +41,9 @@ const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
+    // What's typed, and what's searched: the second follows the first after a pause.
+    const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
-    const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
     const [actingOn, setActingOn] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {
@@ -62,13 +63,12 @@ const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSearch(e.target.value);
-        setPage(1);
-        if (debounceTimeout) clearTimeout(debounceTimeout);
-        const t = setTimeout(() => { /* fetchData fires via dep change */ }, 400);
-        setDebounceTimeout(t);
-    };
+    useEffect(() => {
+        const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
+        return () => clearTimeout(t);
+    }, [searchInput]);
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e.target.value);
 
     const handleVerifyAndApply = async (tx: WithdrawalTransaction) => {
         setActingOn(tx.transactionId);
@@ -106,7 +106,7 @@ const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                             <input
                                 type="text"
-                                value={search}
+                                value={searchInput}
                                 onChange={handleSearchChange}
                                 placeholder="Search by name / email / phone / transactionId / recipient momo"
                                 className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"

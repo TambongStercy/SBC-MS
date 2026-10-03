@@ -26,7 +26,6 @@ import RelanceDashboardPage from './pages/RelanceDashboardPage';
 import RelanceMessagesPage from './pages/RelanceMessagesPage';
 import RelanceCampaignsPage from './pages/RelanceCampaignsPage';
 import RelanceSmsTemplatesPage from './pages/RelanceSmsTemplatesPage';
-import RelanceSmsLinksPage from './pages/RelanceSmsLinksPage';
 import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
 import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
 import UserFinancialAnalyticsPage from './pages/UserFinancialAnalyticsPage';
@@ -112,7 +111,6 @@ function App() {
             <Route path="/relance/messages" element={<RelanceMessagesPage />} />
             <Route path="/relance/campaigns" element={<RelanceCampaignsPage />} />
             <Route path="/relance/sms-templates" element={<RelanceSmsTemplatesPage />} />
-            <Route path="/relance/sms-links" element={<RelanceSmsLinksPage />} />
             <Route path="/withdrawals/approvals" element={<WithdrawalApprovalPage />} />
             <Route path="/withdrawals/history" element={<WithdrawalHistoryPage />} />
             <Route path="/user-analytics" element={<UserFinancialAnalyticsPage />} />
