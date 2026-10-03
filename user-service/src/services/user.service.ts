@@ -2571,7 +2571,7 @@ export class UserService {
     /**
      * [Admin] List users with filtering and pagination.
      */
-    async adminListUsers(filters: { status?: string; role?: string; search?: string; country?: string; profession?: string; interests?: string[] }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold', activeSubscriptionTypes?: SubscriptionType[] })[], paginationInfo: any }> {
+    async adminListUsers(filters: { status?: string; role?: string; search?: string; country?: string; profession?: string; interests?: string[]; createdFrom?: string; createdTo?: string }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold', activeSubscriptionTypes?: SubscriptionType[] })[], paginationInfo: any }> {
         log.info('Admin request to list users with filters:', { filters, pagination });
         const { page = 1, limit = 10 } = pagination;
         const skip = (page - 1) * limit;
@@ -2591,14 +2591,28 @@ export class UserService {
             query.role = filters.role as UserRole;
         }
 
-        if (filters.search) {
-            const searchRegex = new RegExp(filters.search, 'i');
-            // Only search string fields (name, email) with the regex
-            query.$or = [
-                { name: searchRegex },
-                { email: searchRegex }
-                // Remove: { phoneNumber: searchRegex } - Cannot apply Regex to Number field
-            ];
+        if (filters.search && filters.search.trim()) {
+            const term = filters.search.trim();
+            // Escaped: a "(" or "+" typed by an admin used to make an invalid
+            // regex and fail the whole request.
+            const searchRegex = new RegExp(term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
+            const or: FilterQuery<IUser>[] = [{ name: searchRegex }, { email: searchRegex }];
+            // phoneNumber is a string stored with its country code ("2376…"):
+            // match the digits typed, whatever spaces or "+" came with them.
+            const digits = term.replace(/\D/g, '');
+            if (digits.length >= 4 && /^[\d\s+().-]+$/.test(term)) or.push({ phoneNumber: { $regex: digits } });
+            if (/^[0-9a-f]{24}$/i.test(term)) or.push({ _id: new Types.ObjectId(term) });
+            query.$or = or;
+        }
+
+        // Signed up between createdFrom and createdTo (ISO dates or timestamps).
+        const from = filters.createdFrom ? new Date(filters.createdFrom) : null;
+        const to = filters.createdTo ? new Date(filters.createdTo) : null;
+        if ((from && !isNaN(from.getTime())) || (to && !isNaN(to.getTime()))) {
+            query.createdAt = {
+                ...(from && !isNaN(from.getTime()) ? { $gte: from } : {}),
+                ...(to && !isNaN(to.getTime()) ? { $lte: to } : {}),
+            };
         }
 
         // Country filter (case-insensitive exact match)

@@ -105,7 +105,7 @@ class AdminController {
     async listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request to list users');
         try {
-            const { page = 1, limit = 20, status, role, search, country, profession, interests } = req.query;
+            const { page = 1, limit = 20, status, role, search, country, profession, interests, createdFrom, createdTo } = req.query;
             const pagination: PaginationOptions = {
                 page: parseInt(page as string, 10) || 1,
                 limit: parseInt(limit as string, 10) || 10,
@@ -127,7 +127,9 @@ class AdminController {
                 search: search as string | undefined,
                 country: country as string | undefined,
                 profession: profession as string | undefined,
-                interests: interestsArray
+                interests: interestsArray,
+                createdFrom: createdFrom as string | undefined,
+                createdTo: createdTo as string | undefined,
             };
             log.debug('Filtering users with:', { filters, pagination });
 
