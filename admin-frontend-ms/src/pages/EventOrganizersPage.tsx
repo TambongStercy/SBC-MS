@@ -61,19 +61,19 @@ export default function EventOrganizersPage() {
             <Header title="SBC Event — Organisateurs" />
             <div className="p-6 space-y-4">
                 <div className="flex items-center gap-3">
-                    <select value={status} onChange={(e) => setStatus(e.target.value as OrganizerStatus | '')} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as OrganizerStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
                         <option value="">Tous les statuts</option>
                         <option value="PENDING">En attente</option>
                         <option value="APPROVED">Approuvés</option>
                         <option value="SUSPENDED">Suspendus</option>
                     </select>
-                    <button onClick={load} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">Rafraîchir</button>
+                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-white rounded-xl border border-gray-200">
+                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50">
+                            <thead className="bg-gray-900/50 text-gray-300">
                                 <tr>
                                     <th className="px-4 py-2 text-left">Nom</th>
                                     <th className="px-4 py-2 text-left">Contact</th>
@@ -84,14 +84,14 @@ export default function EventOrganizersPage() {
                             </thead>
                             <tbody>
                                 {items.length === 0 && (
-                                    <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">Aucun organisateur.</td></tr>
+                                    <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Aucun organisateur.</td></tr>
                                 )}
                                 {items.map((o) => (
-                                    <tr key={o._id} className="border-t border-gray-100">
+                                    <tr key={o._id} className="border-t border-gray-700">
                                         <td className="px-4 py-2 font-medium">{o.displayName}</td>
                                         <td className="px-4 py-2">
                                             <div className="text-xs">{o.contactEmail}</div>
-                                            <div className="text-xs text-gray-500">{o.contactPhone}</div>
+                                            <div className="text-xs text-gray-400">{o.contactPhone}</div>
                                         </td>
                                         <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[o.status]}`}>{o.status}</span></td>
                                         <td className="px-4 py-2 text-xs">{o.stats?.eventsPublished ?? 0}</td>

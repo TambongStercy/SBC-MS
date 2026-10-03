@@ -113,15 +113,15 @@ export default function EventCommissionsPage() {
             <div className="p-6 space-y-4 max-w-4xl">
                 {loading ? <Loader name="Chargement..." /> : (
                     <>
-                        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
-                            <p className="text-sm text-gray-500">
+                        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-5">
+                            <p className="text-sm text-gray-400">
                                 Ces taux s'appliquent à toutes les nouvelles ventes de billets. Les commandes déjà payées
                                 conservent le taux en vigueur au moment de l'achat.
                             </p>
 
                             {FIELDS.map((f) => (
                                 <div key={f.key}>
-                                    <label className="block text-sm font-medium text-gray-700" htmlFor={f.key}>{f.label}</label>
+                                    <label className="block text-sm font-medium text-gray-300" htmlFor={f.key}>{f.label}</label>
                                     <div className="mt-1 flex items-center gap-2">
                                         <input
                                             id={f.key}
@@ -131,16 +131,16 @@ export default function EventCommissionsPage() {
                                             max={f.max}
                                             value={form[f.key]}
                                             onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                                            className={`w-32 border rounded-lg px-3 py-2 text-sm ${errors[f.key] ? 'border-red-400' : 'border-gray-300'}`}
+                                            className={`w-32 border rounded-lg px-3 py-2 text-sm bg-gray-700 text-white ${errors[f.key] ? 'border-red-400' : 'border-gray-600'}`}
                                         />
-                                        <span className="text-sm text-gray-500">%</span>
+                                        <span className="text-sm text-gray-400">%</span>
                                     </div>
                                     <div className="text-xs text-gray-400 mt-1">{f.help}</div>
-                                    {errors[f.key] && <div className="text-xs text-red-600 mt-1">{errors[f.key]}</div>}
+                                    {errors[f.key] && <div className="text-xs text-red-400 mt-1">{errors[f.key]}</div>}
                                 </div>
                             ))}
 
-                            <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                            <div className="flex items-center gap-3 pt-2 border-t border-gray-700">
                                 <button
                                     onClick={() => setConfirmOpen(true)}
                                     disabled={!canSave}
@@ -148,35 +148,35 @@ export default function EventCommissionsPage() {
                                 >
                                     {saving ? 'Enregistrement...' : 'Enregistrer'}
                                 </button>
-                                {dirty && <span className="text-xs text-amber-600">Modifications non enregistrées.</span>}
+                                {dirty && <span className="text-xs text-amber-400">Modifications non enregistrées.</span>}
                             </div>
                         </div>
 
-                        <div className="bg-white border border-gray-200 rounded-xl p-5">
+                        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
                             <div className="flex items-center gap-2 mb-3">
-                                <span className="text-sm font-medium text-gray-700">Exemple pour un billet de</span>
+                                <span className="text-sm font-medium text-gray-300">Exemple pour un billet de</span>
                                 <input
                                     type="number"
                                     min={0}
                                     step={500}
                                     value={examplePrice}
                                     onChange={(e) => setExamplePrice(e.target.value)}
-                                    className="w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                                    className="w-32 border border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-gray-700 text-white"
                                 />
-                                <span className="text-sm text-gray-500">FCFA</span>
+                                <span className="text-sm text-gray-400">FCFA</span>
                             </div>
                             <div className="grid md:grid-cols-2 gap-4 text-sm">
-                                <div className="bg-gray-50 rounded-lg p-4 space-y-1">
-                                    <div className="font-medium text-gray-700 mb-2">Vente initiale</div>
-                                    <div className="flex justify-between"><span className="text-gray-500">Prix du billet</span><span>{fmt(example.price)} FCFA</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-500">Commission SBC ({form.primaryPct || 0} %)</span><span className="text-red-600">−{fmt(example.primaryFee)} FCFA</span></div>
-                                    <div className="flex justify-between font-semibold border-t border-gray-200 pt-1 mt-1"><span>Reversé à l'organisateur</span><span>{fmt(example.organizerNet)} FCFA</span></div>
+                                <div className="bg-gray-900/50 text-gray-300 rounded-lg p-4 space-y-1">
+                                    <div className="font-medium text-gray-300 mb-2">Vente initiale</div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Prix du billet</span><span>{fmt(example.price)} FCFA</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Commission SBC ({form.primaryPct || 0} %)</span><span className="text-red-400">−{fmt(example.primaryFee)} FCFA</span></div>
+                                    <div className="flex justify-between font-semibold border-t border-gray-700 pt-1 mt-1"><span>Reversé à l'organisateur</span><span>{fmt(example.organizerNet)} FCFA</span></div>
                                 </div>
-                                <div className="bg-gray-50 rounded-lg p-4 space-y-1">
-                                    <div className="font-medium text-gray-700 mb-2">Revente au prix maximum</div>
-                                    <div className="flex justify-between"><span className="text-gray-500">Prix de revente max ({form.defaultMaxResalePricePct || 0} %)</span><span>{fmt(example.resalePrice)} FCFA</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-500">Commission SBC ({form.resalePct || 0} %)</span><span className="text-red-600">−{fmt(example.resaleFee)} FCFA</span></div>
-                                    <div className="flex justify-between font-semibold border-t border-gray-200 pt-1 mt-1"><span>Reversé au revendeur</span><span>{fmt(example.sellerNet)} FCFA</span></div>
+                                <div className="bg-gray-900/50 text-gray-300 rounded-lg p-4 space-y-1">
+                                    <div className="font-medium text-gray-300 mb-2">Revente au prix maximum</div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Prix de revente max ({form.defaultMaxResalePricePct || 0} %)</span><span>{fmt(example.resalePrice)} FCFA</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Commission SBC ({form.resalePct || 0} %)</span><span className="text-red-400">−{fmt(example.resaleFee)} FCFA</span></div>
+                                    <div className="flex justify-between font-semibold border-t border-gray-700 pt-1 mt-1"><span>Reversé au revendeur</span><span>{fmt(example.sellerNet)} FCFA</span></div>
                                 </div>
                             </div>
                         </div>
