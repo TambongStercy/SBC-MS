@@ -5,6 +5,7 @@ import TicketType, { TicketTypeStatus, saleWindowState } from '../database/model
 import Order, { IOrder, OrderKind, OrderStatus } from '../database/models/order.model';
 import Ticket, { TicketStatus } from '../database/models/ticket.model';
 import Commission, { CommissionKind } from '../database/models/commission.model';
+import Organizer from '../database/models/organizer.model';
 import { generateTicketSerial } from '../utils/serial';
 import { generateQrToken, renderQrDataUrl } from './qr.service';
 import { getCommissionConfig } from './clients/settings.service.client';
@@ -130,6 +131,19 @@ export const createPrimaryOrder = async (input: CreateOrderInput) => {
  * Payment webhook entry point. Called by payment-service (service-to-service).
  * Idempotent: a second delivery for the same sessionId is a no-op.
  */
+/**
+ * The organizer's SBC account. `event.organizerId` is the Organizer document,
+ * not a user — crediting it directly 404'd in user-service, so no primary sale
+ * was ever paid out until this lookup existed.
+ */
+export const organizerUserIdFor = async (organizerId: Types.ObjectId | string): Promise<string | null> => {
+    const org = await Organizer.findById(organizerId).select('userId').lean();
+    return org ? String(org.userId) : null;
+};
+
+/** How long a settlement claim holds before another callback may resume it. */
+const SETTLEMENT_LEASE_MS = 10 * 60 * 1000;
+
 export const settleFromWebhook = async (payload: {
     sessionId: string;
     status: string;
@@ -157,42 +171,80 @@ export const settleFromWebhook = async (payload: {
     }
 
     if (status !== 'SUCCEEDED') {
-        order.status = OrderStatus.FAILED;
-        order.failedAt = new Date();
-        order.metadata = { ...(order.metadata || {}), providerStatus: status };
-        await order.save();
+        // Never downgrade an order another callback is settling.
+        await Order.updateOne(
+            { _id: order._id, status: { $in: [OrderStatus.PENDING, OrderStatus.FAILED] }, settlingAt: { $exists: false } },
+            { $set: { status: OrderStatus.FAILED, failedAt: new Date(), 'metadata.providerStatus': status } },
+        );
         return { handled: true, outcome: 'failed' };
     }
 
+    // Claim. payment-service callbacks, its payin reconciler and our own
+    // reconciler can all deliver the same SUCCEEDED; only the caller that
+    // flips settlingAt goes on. A claim older than the lease is a crashed
+    // settlement and may be resumed — every step below is safe to re-run.
+    const claimed = await Order.findOneAndUpdate(
+        {
+            _id: order._id,
+            status: { $nin: [OrderStatus.PAID, OrderStatus.REFUNDED] },
+            $or: [
+                { settlingAt: { $exists: false } },
+                { settlingAt: { $lt: new Date(Date.now() - SETTLEMENT_LEASE_MS) } },
+            ],
+        },
+        { $set: { settlingAt: new Date() } },
+        { new: true },
+    );
+    if (!claimed) return { handled: true, alreadyProcessed: true };
+    return settleClaimedOrder(claimed);
+};
+
+const settleClaimedOrder = async (order: IOrder) => {
     // Atomic seat allocation for each item. If any fails (sold out), roll back.
-    const allocated: Types.ObjectId[] = [];
-    for (const item of order.items) {
-        const res = await TicketType.updateOne(
-            {
-                _id: item.ticketTypeId,
-                $expr: { $lte: [{ $add: ['$quantitySold', item.quantity] }, '$quantityTotal'] },
-            },
-            { $inc: { quantitySold: item.quantity } },
-        );
-        if (res.modifiedCount !== 1) {
-            // Roll back what we did allocate
-            await Promise.all(allocated.map((_id) => TicketType.updateOne({ _id }, { $inc: { quantitySold: -item.quantity } })));
-            order.status = OrderStatus.CANCELLED;
-            order.metadata = { ...(order.metadata || {}), reason: `Sold out for ticket type ${item.ticketTypeId}` };
-            await order.save();
-            log.warn(`Sold-out race for order ${order._id} on ${item.ticketTypeId}`);
-            return { handled: true, outcome: 'sold_out', ticketTypeId: String(item.ticketTypeId) };
+    // Skipped when a crashed earlier run already took the seats.
+    if (!order.seatsAllocatedAt) {
+        const allocated: { _id: Types.ObjectId; quantity: number }[] = [];
+        for (const item of order.items) {
+            const res = await TicketType.updateOne(
+                {
+                    _id: item.ticketTypeId,
+                    $expr: { $lte: [{ $add: ['$quantitySold', item.quantity] }, '$quantityTotal'] },
+                },
+                { $inc: { quantitySold: item.quantity } },
+            );
+            if (res.modifiedCount !== 1) {
+                // Roll back what we did allocate — each by its own quantity.
+                await Promise.all(allocated.map((a) => TicketType.updateOne({ _id: a._id }, { $inc: { quantitySold: -a.quantity } })));
+                await Order.updateOne(
+                    { _id: order._id },
+                    {
+                        $set: { status: OrderStatus.CANCELLED, 'metadata.reason': `Sold out for ticket type ${item.ticketTypeId}` },
+                        $unset: { settlingAt: '' },
+                    },
+                );
+                log.warn(`Sold-out race for order ${order._id} on ${item.ticketTypeId}`);
+                return { handled: true, outcome: 'sold_out', ticketTypeId: String(item.ticketTypeId) };
+            }
+            allocated.push({ _id: item.ticketTypeId, quantity: item.quantity });
         }
-        allocated.push(item.ticketTypeId);
+        order.seatsAllocatedAt = new Date();
+        await Order.updateOne({ _id: order._id }, { $set: { seatsAllocatedAt: order.seatsAllocatedAt } });
     }
 
     // Mint tickets
     const event = await Event.findById(order.eventId);
     if (!event) throw new AppError('Event vanished', 500);
 
+    // A resumed settlement keeps the tickets a crashed run already minted and
+    // only mints what is missing, per ticket type.
+    const alreadyMinted = await Ticket.find({ orderId: order._id }).sort({ _id: 1 });
+    const mintedByType = new Map<string, number>();
+    for (const t of alreadyMinted) mintedByType.set(String(t.ticketTypeId), (mintedByType.get(String(t.ticketTypeId)) ?? 0) + 1);
+
     const ticketDocs = [];
     for (const item of order.items) {
-        for (let n = 0; n < item.quantity; n++) {
+        const missing = item.quantity - (mintedByType.get(String(item.ticketTypeId)) ?? 0);
+        for (let n = 0; n < missing; n++) {
             ticketDocs.push({
                 orderId: order._id,
                 eventId: order.eventId,
@@ -208,35 +260,46 @@ export const settleFromWebhook = async (payload: {
             });
         }
     }
-    const tickets = await Ticket.insertMany(ticketDocs);
+    const minted = ticketDocs.length ? await Ticket.insertMany(ticketDocs) : [];
+    const tickets = [...alreadyMinted, ...minted];
 
-    // Update event denorm totals (non-critical; a bad update mustn't break settlement)
-    try {
-        await Event.updateOne(
-            { _id: order.eventId },
-            {
-                $inc: {
-                    'totals.ticketsSold': tickets.length,
-                    'totals.grossRevenue': order.total,
-                    'totals.commissionRevenue': order.commission,
+    // Update event denorm totals (non-critical; a bad update mustn't break settlement).
+    // Counted once, by the run that mints the first ticket of the order.
+    if (!alreadyMinted.length) {
+        try {
+            await Event.updateOne(
+                { _id: order.eventId },
+                {
+                    $inc: {
+                        'totals.ticketsSold': tickets.length,
+                        'totals.grossRevenue': order.total,
+                        'totals.commissionRevenue': order.commission,
+                    },
                 },
-            },
-        );
-    } catch (err) {
-        log.warn(`Event denorm totals update failed for ${order.eventId}: ${(err as Error).message}`);
+            );
+        } catch (err) {
+            log.warn(`Event denorm totals update failed for ${order.eventId}: ${(err as Error).message}`);
+        }
     }
 
-    // Book the commission row (audit)
+    // Book the commission row (audit). Upsert: one row per order, however
+    // many times settlement runs.
     try {
-        await Commission.create({
-            kind: CommissionKind.PRIMARY,
-            orderId: order._id,
-            eventId: order.eventId,
-            basisAmount: order.subtotal,
-            rate: order.subtotal ? order.commission / order.subtotal : 0,
-            amount: order.commission,
-            sbcRevenueBookedAt: new Date(),
-        });
+        await Commission.updateOne(
+            { kind: CommissionKind.PRIMARY, orderId: order._id },
+            {
+                $setOnInsert: {
+                    kind: CommissionKind.PRIMARY,
+                    orderId: order._id,
+                    eventId: order.eventId,
+                    basisAmount: order.subtotal,
+                    rate: order.subtotal ? order.commission / order.subtotal : 0,
+                    amount: order.commission,
+                    sbcRevenueBookedAt: new Date(),
+                },
+            },
+            { upsert: true },
+        );
     } catch (err) {
         log.warn(`Commission row insert failed for ${order._id}: ${(err as Error).message}`);
     }
@@ -246,11 +309,15 @@ export const settleFromWebhook = async (payload: {
     await order.save();
 
     // Credit organizer balance (net of commission). Best-effort — sweeper retries.
+    // user-service dedupes on `reference`, so a retry can't pay twice.
     try {
         const orgNet = order.subtotal - order.commission;
-        if (orgNet > 0) {
+        const organizerUserId = orgNet > 0 ? await organizerUserIdFor(event.organizerId) : null;
+        if (orgNet > 0 && !organizerUserId) {
+            log.error(`Order ${order._id}: no organizer account for organizer ${event.organizerId} — sweeper will retry.`);
+        } else if (orgNet > 0 && organizerUserId) {
             await creditEventOrganizerBalance({
-                userId: String(event.organizerId),
+                userId: organizerUserId,
                 amount: orgNet,
                 reference: `event-order:${order._id}`,
                 description: `Vente billets « ${event.title} »`,
@@ -320,8 +387,13 @@ export const sweepPendingPayouts = async (): Promise<number> => {
                 await order.save();
                 continue;
             }
+            const organizerUserId = await organizerUserIdFor(event.organizerId);
+            if (!organizerUserId) {
+                log.error(`Sweeper: no organizer account for organizer ${event.organizerId} (order ${order._id})`);
+                continue;
+            }
             await creditEventOrganizerBalance({
-                userId: String(event.organizerId),
+                userId: organizerUserId,
                 amount: orgNet,
                 reference: `event-order:${order._id}`,
                 description: `Vente billets « ${event.title} » (rattrapage)`,

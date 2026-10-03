@@ -9,6 +9,8 @@ import { AppError } from '../../utils/errors';
 import QRCode from 'qrcode';
 import { paymentIntentRepository } from '../../database/repositories/paymentIntent.repository';
 import * as sandbox from '../../services/sandbox.service';
+import { checkCallbackUrl, callbackAllowlistEnforced } from '../../utils/callback-allowlist';
+import InternalDepositClaim from '../../database/models/internal-deposit-claim.model';
 
 const log = logger.getLogger('PaymentController');
 
@@ -351,6 +353,18 @@ export class PaymentController {
             // Basic check for required fields (service layer does more robust validation)
             if (!userId || !amount || !currency || !paymentType) {
                 return res.status(400).json({ success: false, message: 'Missing required fields: userId, amount, currency, paymentType' });
+            }
+
+            // The callback is sent our service secret — see utils/callback-allowlist.
+            if (typeof metadata?.callbackPath === 'string') {
+                const verdict = checkCallbackUrl(metadata.callbackPath);
+                if (!verdict.allowed) {
+                    if (callbackAllowlistEnforced()) {
+                        log.error(`Refused payment intent from ${req.header('X-Service-Name') || 'unknown service'}: callbackPath ${verdict.reason}`);
+                        return res.status(400).json({ success: false, message: 'callbackPath is not an allowed service URL' });
+                    }
+                    log.warn(`Payment intent callbackPath would be blocked by the allowlist (${verdict.reason}): ${metadata.callbackPath}`);
+                }
             }
 
             const paymentIntent = await paymentService.createPaymentIntent({
@@ -791,6 +805,40 @@ export class PaymentController {
     };
 
     /**
+     * [INTERNAL] A payment intent's authoritative state, so a service can verify
+     * a callback (status AND amount) instead of trusting its payload.
+     * @route GET /api/internal/intents/:sessionId
+     */
+    public getInternalIntent = async (req: Request, res: Response): Promise<void> => {
+        try {
+            const intent = await paymentIntentRepository.findBySessionId(req.params.sessionId);
+            if (!intent) {
+                res.status(404).json({ success: false, message: 'Payment intent not found' });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data: {
+                    sessionId: intent.sessionId,
+                    status: intent.status,
+                    amount: intent.amount,
+                    currency: intent.currency,
+                    paidAmount: intent.paidAmount,
+                    paidCurrency: intent.paidCurrency,
+                    paymentType: intent.paymentType,
+                    gateway: intent.gateway,
+                    gatewayPaymentId: intent.gatewayPaymentId,
+                    metadata: intent.metadata,
+                    updatedAt: intent.updatedAt,
+                },
+            });
+        } catch (error: any) {
+            log.error(`getInternalIntent failed for ${req.params.sessionId}: ${error.message}`);
+            res.status(500).json({ success: false, message: 'Failed to load payment intent' });
+        }
+    };
+
+    /**
      * [INTERNAL] Record an internal deposit transaction
      * @route POST /api/internal/deposit
      */
@@ -809,17 +857,50 @@ export class PaymentController {
                 res.status(400).json({ success: false, message: 'Invalid currency code' });
                 return;
             }
-            const transaction = await paymentService.processDeposit(
-                userId,
-                amount,
-                currency as Currency,
-                {
-                    provider: 'internal',
-                    transactionId: `internal_${Date.now()}`,
-                    metadata: metadata
-                },
-                description
-            );
+            // A caller-supplied reference makes the deposit exactly-once (refund
+            // retries). Without one, behaviour is unchanged.
+            const reference = typeof metadata?.reference === 'string' ? metadata.reference : undefined;
+            if (reference) {
+                try {
+                    await InternalDepositClaim.create({ reference, userId, amount, status: 'PENDING' });
+                } catch (err: any) {
+                    if (err?.code !== 11000) throw err;
+                    const claim = await InternalDepositClaim.findOne({ reference, userId }).lean();
+                    if (claim?.status === 'APPLIED') {
+                        log.info(`Internal deposit ${reference} for ${userId} already applied (${claim.transactionId}); nothing moved.`);
+                        res.status(200).json({
+                            success: true,
+                            message: 'Internal deposit already recorded',
+                            data: { transactionId: claim.transactionId, status: 'completed', alreadyApplied: true },
+                        });
+                        return;
+                    }
+                    log.warn(`Internal deposit ${reference} for ${userId} is PENDING (in progress or crashed) — refusing a second credit.`);
+                    res.status(409).json({ success: false, message: `Deposit ${reference} is pending verification` });
+                    return;
+                }
+            }
+            let transaction;
+            try {
+                transaction = await paymentService.processDeposit(
+                    userId,
+                    amount,
+                    currency as Currency,
+                    {
+                        provider: 'internal',
+                        transactionId: `internal_${Date.now()}`,
+                        metadata: metadata
+                    },
+                    description
+                );
+            } catch (depositError) {
+                // Nothing was credited: free the reference so the caller can retry.
+                if (reference) await InternalDepositClaim.deleteOne({ reference, userId, status: 'PENDING' });
+                throw depositError;
+            }
+            if (reference) {
+                await InternalDepositClaim.updateOne({ reference, userId }, { $set: { status: 'APPLIED', transactionId: transaction.transactionId } });
+            }
             res.status(201).json({
                 success: true,
                 message: 'Internal deposit recorded successfully',

@@ -7,6 +7,7 @@ import config from './config';
 import logger from './utils/logger';
 import apiRoutes from './api/routes';
 import publicRoutes from './api/routes/public.routes';
+import { clientIp } from './utils/client-ip';
 
 const log = logger.getLogger('App');
 
@@ -44,7 +45,7 @@ app.use('/static', express.static(path.join(__dirname, 'public')));
 
 app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path !== '/api/health' && req.path !== '/health') {
-        log.info(`REQ: ${req.method} ${req.originalUrl} ${req.ip}`);
+        log.info(`REQ: ${req.method} ${req.originalUrl} ${clientIp(req)}`);
     }
     res.on('finish', () => {
         if (req.path !== '/api/health' && req.path !== '/health') {
@@ -71,6 +72,11 @@ app.use((_req: Request, res: Response) => {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+    // A malformed id in the URL is "not found", not a server error.
+    if (err.name === 'CastError') {
+        res.status(404).json({ success: false, message: 'Ressource introuvable.', code: 'NOT_FOUND' });
+        return;
+    }
     log.error('Unhandled application error:', err);
     const statusCode = (err as any).statusCode || 500;
     const message = (config.nodeEnv === 'production' && statusCode === 500)
@@ -83,6 +89,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
         // Error codes (SALES_NOT_OPEN, ...) travel to the client; the French
         // message is for humans, the code is for the UI's branching.
         ...((err as any).code && { code: (err as any).code }),
+        ...((err as any).details && { details: (err as any).details }),
         ...(config.nodeEnv !== 'production' && { stack: err.stack }),
     });
 });

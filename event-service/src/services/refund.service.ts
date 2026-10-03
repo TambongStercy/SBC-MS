@@ -4,6 +4,7 @@ import Ticket, { TicketStatus } from '../database/models/ticket.model';
 import ResaleListing, { ResaleListingStatus } from '../database/models/resale-listing.model';
 import Refund, { RefundStatus } from '../database/models/refund.model';
 import Event from '../database/models/event.model';
+import Commission, { CommissionKind } from '../database/models/commission.model';
 import { creditBuyerBalance } from './clients/payment.service.client';
 import { notifyUser } from './clients/notification.service.client';
 import { debitEventOrganizerBalance } from './clients/user.service.client';
@@ -97,26 +98,10 @@ export const refundOrder = async (args: {
     }
 
     // Money movement. Failure here leaves the domain state closed AND the
-    // Refund row PENDING — a follow-up admin retry (or a sweep) can re-attempt.
-    try {
-        const tx = await creditBuyerBalance({
-            userId: String(order.userId),
-            amount: order.total,
-            description: `Remboursement commande événement (${order._id})`,
-            reference: `event-refund:${order._id}`,
-            eventId: String(order.eventId),
-        });
-        refund.status = RefundStatus.COMPLETED;
-        refund.providerRef = tx.transactionId;
-        refund.completedAt = new Date();
-        await refund.save();
-    } catch (err) {
-        log.error(`Refund wallet credit failed for order ${order._id} — Refund left PENDING:`, err);
-        refund.status = RefundStatus.FAILED;
-        await refund.save();
-        // Do NOT throw — the domain state is already closed (tickets invalid,
-        // order REFUNDED). The wallet credit needs manual retry, not rollback.
-    }
+    // Refund row FAILED — retryPendingRefunds re-attempts whatever leg is missing.
+    // Do NOT throw — the domain state is already closed (tickets invalid,
+    // order REFUNDED). The money needs a retry, not a rollback.
+    await settlePrimaryRefundMoney(order, refund);
 
     // Best-effort buyer notification
     try {
@@ -143,6 +128,64 @@ export const refundOrder = async (args: {
     } catch { /* logged inside notify */ }
 
     return { order, refunded: true };
+};
+
+/**
+ * The two money legs of a primary refund, each idempotent and recorded:
+ *  - the buyer gets the full order total back (reference event-refund:<order>);
+ *  - the organizer gives back the net they were credited for the sale
+ *    (reference event-order-refund:<order>; the balance may go negative,
+ *    as for resale refunds) and the SBC commission is marked reversed.
+ * Without the second leg a refunded sale would be paid twice: once back to
+ * the buyer, and once kept by the organizer.
+ */
+const settlePrimaryRefundMoney = async (order: any, refund: any): Promise<boolean> => {
+    try {
+        if (!refund.providerRef) {
+            const tx = await creditBuyerBalance({
+                userId: String(order.userId),
+                amount: refund.amount,
+                description: `Remboursement commande événement (${order._id})`,
+                reference: `event-refund:${order._id}`,
+                eventId: String(order.eventId),
+            });
+            refund.providerRef = tx.transactionId;
+            await refund.save();
+        }
+        if (!refund.organizerDebitedAt) {
+            const orgNet = (order.subtotal ?? 0) - (order.commission ?? 0);
+            // Never credited (credit pending, or nothing due): nothing to take back.
+            // The sweeper only credits PAID orders, so it won't credit it later.
+            if (order.creditedAt && orgNet > 0) {
+                const event = await Event.findById(order.eventId).select('organizerId title').lean();
+                const { organizerUserIdFor } = await import('./order.service');
+                const organizerUserId = event ? await organizerUserIdFor(event.organizerId) : null;
+                if (!organizerUserId) throw new Error(`no account for the organizer of event ${order.eventId}`);
+                const res = await debitEventOrganizerBalance({
+                    userId: organizerUserId,
+                    amount: orgNet,
+                    reference: `event-order-refund:${order._id}`,
+                    description: `Remboursement billets « ${event?.title ?? ''} »`,
+                });
+                if (res.wentNegative) log.warn(`Organizer ${organizerUserId} went negative on refund of order ${order._id}: ${res.newEventOrganizerBalance}`);
+            }
+            await Commission.updateOne(
+                { orderId: order._id, kind: CommissionKind.PRIMARY, reversedAt: { $exists: false } },
+                { $set: { reversedAt: new Date() } },
+            );
+            refund.organizerDebitedAt = new Date();
+            await refund.save();
+        }
+        refund.status = RefundStatus.COMPLETED;
+        refund.completedAt = new Date();
+        await refund.save();
+        return true;
+    } catch (err) {
+        log.error(`Refund money for order ${order._id} incomplete — will retry: ${(err as Error).message}`);
+        refund.status = RefundStatus.FAILED;
+        await refund.save();
+        return false;
+    }
 };
 
 /**
@@ -318,6 +361,10 @@ export const retryPendingRefunds = async (): Promise<number> => {
     for (const r of pending) {
         const order = await Order.findById(r.orderId);
         if (!order) continue;
+        if (order.kind === OrderKind.PRIMARY) {
+            if (await settlePrimaryRefundMoney(order, r)) retried++;
+            continue;
+        }
         try {
             const tx = await creditBuyerBalance({
                 userId: String(order.userId),
