@@ -17,8 +17,8 @@ interface Dashboard {
 const xaf = (n?: number) => typeof n === 'number' ? `${n.toLocaleString('fr-FR')} XAF` : '—';
 
 const StatCard = ({ label, value, sub }: { label: string; value: string | number; sub?: string }) => (
-    <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-xs text-gray-500 uppercase">{label}</div>
+    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+        <div className="text-xs text-gray-400 uppercase">{label}</div>
         <div className="text-2xl font-bold mt-1">{value}</div>
         {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
     </div>
@@ -44,7 +44,7 @@ export default function EventDashboardPage() {
             <Header title="SBC Event — Tableau de bord" />
             <div className="p-6 space-y-4">
                 {loading && <Loader name="Chargement..." />}
-                {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4">{error}</div>}
+                {error && <div className="bg-red-900/30 border border-red-800 text-red-300 rounded-xl p-4">{error}</div>}
                 {data && (
                     <>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

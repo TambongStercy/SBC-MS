@@ -64,9 +64,9 @@ export default function EventListPage() {
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
                         placeholder="Rechercher un titre ou une ville"
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-72"
+                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-72 bg-gray-700 text-white"
                     />
-                    <select value={status} onChange={(e) => setStatus(e.target.value as EventStatus | '')} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as EventStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
                         <option value="">Tous les statuts</option>
                         <option value="DRAFT">Brouillons</option>
                         <option value="PUBLISHED">Publiés</option>
@@ -74,13 +74,13 @@ export default function EventListPage() {
                         <option value="CANCELLED">Annulés</option>
                         <option value="COMPLETED">Terminés</option>
                     </select>
-                    <button onClick={load} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">Rafraîchir</button>
+                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-white rounded-xl border border-gray-200">
+                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50">
+                            <thead className="bg-gray-900/50 text-gray-300">
                                 <tr>
                                     <th className="px-4 py-2 text-left">Titre</th>
                                     <th className="px-4 py-2 text-left">Statut</th>
@@ -92,13 +92,13 @@ export default function EventListPage() {
                             </thead>
                             <tbody>
                                 {items.length === 0 && (
-                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Aucun événement.</td></tr>
+                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Aucun événement.</td></tr>
                                 )}
                                 {items.map((ev) => (
-                                    <tr key={ev._id} className="border-t border-gray-100">
+                                    <tr key={ev._id} className="border-t border-gray-700">
                                         <td className="px-4 py-2">
                                             <div className="font-medium">{ev.title}</div>
-                                            <div className="text-xs text-gray-500">{ev.slug}</div>
+                                            <div className="text-xs text-gray-400">{ev.slug}</div>
                                         </td>
                                         <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[ev.status]}`}>{ev.status}</span></td>
                                         <td className="px-4 py-2 text-xs">{fmt(ev.startsAt)}</td>
