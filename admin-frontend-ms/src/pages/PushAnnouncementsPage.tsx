@@ -51,6 +51,10 @@ const APP_PAGES: Array<{ group: string; pages: Array<{ label: string; url: strin
 ];
 const pageLabel = (url: string) => APP_PAGES.flatMap(g => g.pages).find(p => p.url === url)?.label ?? 'Accueil';
 
+/** Douala hour now (UTC+1, no DST): pushes that are not urgent wait 22:00–07:00. */
+const doualaHour = () => (new Date().getUTCHours() + 1) % 24;
+const isNightInDouala = () => { const h = doualaHour(); return h >= 22 || h < 7; };
+
 const TITLE_MAX = 120;
 const BODY_MAX = 400;
 
@@ -85,6 +89,7 @@ const PushAnnouncementsPage: React.FC = () => {
 
     const capReached = !!overview && overview.usedThisWeek >= overview.perWeek;
     const canSend = title.trim() && body.trim() && !capReached && !sending;
+    const night = isNightInDouala();
 
     const send = async () => {
         setSending(true);
@@ -92,7 +97,9 @@ const PushAnnouncementsPage: React.FC = () => {
             const { data } = await apiClient.post('/notifications/push/admin/announce', {
                 title: title.trim(), body: body.trim(), url,
             });
-            showSuccess(`Sending to ${data.data.recipients} member(s).`);
+            showSuccess(data.data.heldUntil
+                ? `Saved for ${data.data.recipients} member(s): in their notifications now, on their phones at 07:00 (Douala).`
+                : `Sending to ${data.data.recipients} member(s).`);
             setTitle(''); setBody(''); setUrl('/');
             load();
         } catch (err) {
@@ -181,8 +188,13 @@ const PushAnnouncementsPage: React.FC = () => {
                 >
                     {capReached ? 'Weekly limit reached' : 'Send to everyone'}
                 </button>
+                {night && (
+                    <p className="text-sm text-amber-300 bg-amber-900/30 rounded-md px-3 py-2">
+                        It's night in Douala: members see it in their notifications right away, but phones only buzz at 07:00.
+                    </p>
+                )}
                 <p className="text-xs text-gray-400">
-                    Members who switched off « Annonces SBC » don't receive it. Sent at night, it waits until 07:00 (Douala).
+                    Members who switched off « Annonces SBC » don't receive it.
                 </p>
             </div>
 
