@@ -3188,6 +3188,35 @@ export class UserService {
     }
 
     /** [Internal] Returns the relance subset (with country) for the given user IDs. */
+    /**
+     * [Internal] Of the given members, those an announcement filter picks:
+     * countries (ISO-2), subscription (a paid CLASSIQUE/CIBLE or not), sex.
+     * Blocked and deleted accounts never match. Used by notification-service
+     * for targeted push announcements.
+     */
+    async filterForAnnouncement(
+        userIds: string[],
+        filter: { countries?: string[]; subscription?: 'subscribed' | 'unsubscribed'; sex?: string },
+    ): Promise<string[]> {
+        const ids = userIds.filter(id => Types.ObjectId.isValid(id)).map(id => new Types.ObjectId(id));
+        const query: Record<string, unknown> = { _id: { $in: ids }, deleted: { $ne: true }, blocked: { $ne: true } };
+        if (filter.countries?.length) {
+            const codes = filter.countries.map(c => c.trim().toUpperCase());
+            query.country = { $in: [...codes, ...codes.map(c => c.toLowerCase())] };
+        }
+        if (filter.sex) query.sex = filter.sex;
+        let matched = (await UserModel.find(query).select('_id').lean()).map(u => String(u._id));
+        if (filter.subscription) {
+            const subscribed = new Set((await SubscriptionModel.distinct('user', {
+                user: { $in: matched.map(id => new Types.ObjectId(id)) },
+                status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+            })).map(String));
+            matched = matched.filter(id => (filter.subscription === 'subscribed') === subscribed.has(id));
+        }
+        return matched;
+    }
+
     async getRelanceDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {
         try {
             const objectIds = userIds.map(id => typeof id === 'string' ? new Types.ObjectId(id) : id);
