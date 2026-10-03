@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import PushSubscriptionModel from '../database/models/push-subscription.model';
 import PushPreferenceModel from '../database/models/push-preference.model';
 import PendingPushModel from '../database/models/pending-push.model';
+import InboxItemModel from '../database/models/inbox-item.model';
 import { endOfQuietHours, inQuietHours, isUrgent, PushCategory } from './push-categories';
 import config from '../config';
 import logger from '../utils/logger';
@@ -77,6 +78,21 @@ async function deliver(userId: string, message: PushMessage, urgent: boolean): P
     return delivered;
 }
 
+/** Saves a notification to the member's in-app list. Never throws. */
+async function recordInbox(userId: string, message: PushMessage, category: PushCategory): Promise<void> {
+    try {
+        await InboxItemModel.create({
+            userId: new mongoose.Types.ObjectId(userId),
+            category,
+            title: message.title,
+            body: message.body,
+            ...(message.url ? { url: message.url } : {}),
+        });
+    } catch (err: any) {
+        log.warn(`Inbox record for ${userId} failed: ${err?.message ?? err}`);
+    }
+}
+
 export type SendOutcome = 'sent' | 'deferred' | 'off' | 'no_device' | 'disabled';
 
 /**
@@ -89,6 +105,9 @@ export async function sendPushToUser(
     message: PushMessage,
     opts: { category: PushCategory; now?: Date },
 ): Promise<SendOutcome> {
+    // The bell keeps every notification, whether or not it reaches a phone —
+    // except chat: conversations carry their own unread counts.
+    if (opts.category !== 'chat') await recordInbox(userId, message, opts.category);
     if (!pushEnabled()) return 'off';
     try {
         const uid = new mongoose.Types.ObjectId(userId);
