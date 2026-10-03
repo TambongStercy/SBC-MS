@@ -3,7 +3,7 @@ import { authenticate, authenticateServiceRequest, AuthenticatedRequest, require
 import mongoose from 'mongoose';
 import PushPreferenceModel from '../../database/models/push-preference.model';
 import PushAnnouncementModel from '../../database/models/push-announcement.model';
-import { isPushCategory, PUSH_CATEGORIES, QUIET_FROM_H, QUIET_UNTIL_H } from '../../services/push-categories';
+import { endOfQuietHours, inQuietHours, isPushCategory, PUSH_CATEGORIES, QUIET_FROM_H, QUIET_UNTIL_H } from '../../services/push-categories';
 import logger from '../../utils/logger';
 import config from '../../config';
 import { PushMessage, pushEnabled, removeSubscription, saveSubscription, sendPushToUser, usersWithDevices } from '../../services/push.service';
@@ -119,12 +119,22 @@ router.post('/admin/announce', authenticate, requireAdmin, async (req: Authentic
         return;
     }
     const audience = await usersWithDevices();
-    await PushAnnouncementModel.create({ by: new mongoose.Types.ObjectId(req.user!.userId), ...message, recipients: audience.length });
-    res.status(202).json({ success: true, data: { recipients: audience.length } });
-    // Sent after answering: thousands of devices take a while.
+    const announcement = await PushAnnouncementModel.create({ by: new mongoose.Types.ObjectId(req.user!.userId), ...message, recipients: audience.length });
+    // At night it waits for 07:00 (Douala) like every non-urgent push; say so.
+    const now = new Date();
+    const heldUntil = inQuietHours(now) ? endOfQuietHours(now).toISOString() : null;
+    res.status(202).json({ success: true, data: { recipients: audience.length, heldUntil } });
+    // Sent after answering: thousands of devices take a while. Each announcement
+    // has its own tag — a shared one made the night queue keep only the last
+    // announcement of the night, dropping the others.
+    const tag = `announcement-${announcement._id.toString()}`;
     void (async () => {
-        for (const id of audience) await sendPushToUser(id, { ...message, tag: 'announcement' }, { category: 'announcements' });
-        log.info(`Announcement "${message.title}" pushed to ${audience.length} user(s)`);
+        const counts: Record<string, number> = {};
+        for (const id of audience) {
+            const outcome = await sendPushToUser(id, { ...message, tag }, { category: 'announcements' });
+            counts[outcome] = (counts[outcome] ?? 0) + 1;
+        }
+        log.info(`Announcement "${message.title}" to ${audience.length} user(s): ${JSON.stringify(counts)}`);
     })().catch(err => log.error(`Announcement push failed: ${err?.message ?? err}`));
 });
 

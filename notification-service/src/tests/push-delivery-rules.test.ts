@@ -183,7 +183,8 @@ describe('the button on the notification', () => {
         await device();
         await call('POST', '/api/notifications/push/internal/send', {
             auth: config.services.serviceSecret,
-            body: { userId, category: 'ads', title: 'T', body: 'B', cta: 'Publier le jour 2 maintenant tout de suite svp' },
+            // Urgent kind, so the result does not depend on the hour the test runs.
+            body: { userId, category: 'money', title: 'T', body: 'B', cta: 'Publier le jour 2 maintenant tout de suite svp' },
         });
         expect(JSON.parse(sendNotification.mock.calls[0][1]).cta).toBe('Publier le jour 2 maintenant t');
     });
@@ -242,6 +243,30 @@ describe('admin announcements', () => {
         const r = await announce();
         expect(r.status).toBe(202);
         expect(r.json.data.recipients).toBe(2);
+    });
+
+    // Preprod 2026-10-03: two announcements sent at 22:32 and 22:33 Douala
+    // shared one tag, so the night queue kept only the second.
+    it('keeps every announcement sent at night, and says when phones will get it', async () => {
+        jest.useFakeTimers({
+            now: NIGHT,
+            doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'hrtime', 'performance'],
+        });
+        try {
+            await device();
+            const send = (title: string) => call('POST', '/api/notifications/push/admin/announce', {
+                auth: tokenFor(admin, 'admin'), body: { title, body: 'b', url: '/formations' },
+            });
+            const first = await send('Annonce A');
+            await send('Annonce B');
+            expect(first.json.data.heldUntil).toBe('2026-10-02T06:00:00.000Z');
+
+            for (let i = 0; i < 100 && (await PendingPushModel.countDocuments()) < 2; i++) await new Promise(r => setTimeout(r, 50));
+            const queued = (await PendingPushModel.find().lean()).map(p => (p.message as any).title).sort();
+            expect(queued).toEqual(['Annonce A', 'Annonce B']);
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it('stops at three a week', async () => {
