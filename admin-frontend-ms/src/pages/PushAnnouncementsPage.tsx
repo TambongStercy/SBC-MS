@@ -7,6 +7,50 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 type Announcement = { _id: string; title: string; body: string; url?: string; recipients: number; createdAt: string };
 type Overview = { recent: Announcement[]; usedThisWeek: number; perWeek: number; audience: number };
 
+/**
+ * Pages of the member app an announcement can open, as members know them.
+ * A list rather than a text box: an admin should not have to know routes.
+ * Keep in step with SBC-WEB-UI's App.tsx when pages move.
+ */
+const APP_PAGES: Array<{ group: string; pages: Array<{ label: string; url: string }> }> = [
+    { group: 'Général', pages: [
+        { label: 'Accueil', url: '/' },
+        { label: 'Formations', url: '/formations' },
+        { label: 'SBC Shop', url: '/marketplace' },
+        { label: 'Classement', url: '/classement' },
+        { label: 'Contacts', url: '/contacts' },
+        { label: 'Messages', url: '/chat' },
+        { label: 'SBC Love', url: '/sbclove' },
+    ] },
+    { group: 'Argent', pages: [
+        { label: 'Portefeuille', url: '/wallet' },
+        { label: 'Solde d\'activation', url: '/activation-balance' },
+        { label: 'Abonnement', url: '/abonnement' },
+    ] },
+    { group: 'Parrainage', pages: [
+        { label: 'Mes filleuls', url: '/filleuls' },
+        { label: 'Espace partenaire', url: '/partenaire' },
+        { label: 'Relance', url: '/relance' },
+        { label: 'Campagnes de relance', url: '/relance/campagnes' },
+    ] },
+    { group: 'Événements', pages: [
+        { label: 'Événements', url: '/events' },
+        { label: 'Mes billets', url: '/events/mes-billets' },
+        { label: 'Revente de billets', url: '/events/revente' },
+    ] },
+    { group: 'Ads Network', pages: [
+        { label: 'Ads Network', url: '/ads-network' },
+        { label: 'Espace diffuseur', url: '/ads-network/diffuseur' },
+        { label: 'Espace annonceur', url: '/ads-network/annonceur' },
+        { label: 'Nouvelle campagne pub', url: '/ads-network/annonceur/nouvelle-campagne' },
+    ] },
+    { group: 'Compte', pages: [
+        { label: 'Profil', url: '/profile' },
+        { label: 'Notifications', url: '/notifications' },
+    ] },
+];
+const pageLabel = (url: string) => APP_PAGES.flatMap(g => g.pages).find(p => p.url === url)?.label ?? 'Accueil';
+
 const TITLE_MAX = 120;
 const BODY_MAX = 400;
 
@@ -21,7 +65,7 @@ const PushAnnouncementsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
-    const [url, setUrl] = useState('');
+    const [url, setUrl] = useState('/');
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [sending, setSending] = useState(false);
 
@@ -39,18 +83,17 @@ const PushAnnouncementsPage: React.FC = () => {
 
     useEffect(() => { load(); }, [load]);
 
-    const linkValid = url === '' || url.startsWith('/');
     const capReached = !!overview && overview.usedThisWeek >= overview.perWeek;
-    const canSend = title.trim() && body.trim() && linkValid && !capReached && !sending;
+    const canSend = title.trim() && body.trim() && !capReached && !sending;
 
     const send = async () => {
         setSending(true);
         try {
             const { data } = await apiClient.post('/notifications/push/admin/announce', {
-                title: title.trim(), body: body.trim(), ...(url ? { url } : {}),
+                title: title.trim(), body: body.trim(), url,
             });
             showSuccess(`Sending to ${data.data.recipients} member(s).`);
-            setTitle(''); setBody(''); setUrl('');
+            setTitle(''); setBody(''); setUrl('/');
             load();
         } catch (err) {
             const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -102,24 +145,30 @@ const PushAnnouncementsPage: React.FC = () => {
                     />
                 </label>
                 <label className="block">
-                    <span className="text-sm text-gray-300">Opens (app page, optional)</span>
-                    <input
+                    <span className="text-sm text-gray-300">Tapping it opens</span>
+                    <select
                         value={url}
-                        onChange={e => setUrl(e.target.value.trim())}
-                        placeholder="/formations"
-                        className={`mt-1 w-full bg-gray-700 rounded-md px-3 py-2 text-white ${linkValid ? '' : 'ring-2 ring-red-500'}`}
-                    />
-                    {!linkValid && <span className="text-xs text-red-400">Must be an app page starting with « / ».</span>}
+                        onChange={e => setUrl(e.target.value)}
+                        className="mt-1 w-full bg-gray-700 rounded-md px-3 py-2 text-white"
+                    >
+                        {APP_PAGES.map(g => (
+                            <optgroup key={g.group} label={g.group}>
+                                {g.pages.map(p => <option key={p.url} value={p.url}>{p.label}</option>)}
+                            </optgroup>
+                        ))}
+                    </select>
                 </label>
 
                 {(title || body) && (
                     <div>
                         <div className="text-sm text-gray-400 mb-1">Preview</div>
                         <div className="bg-gray-950 rounded-xl p-3 flex gap-3 items-start">
-                            <span className="w-10 h-10 rounded-full bg-blue-600 grid place-items-center text-xs font-bold shrink-0">SBC</span>
-                            <div className="min-w-0">
+                            {/* The icon members actually see on their phone. */}
+                            <img src="/sbc-app-icon.png" alt="" className="w-10 h-10 rounded-full shrink-0" />
+                            <div className="min-w-0 flex-1">
                                 <div className="font-semibold truncate">{title || 'Title'}</div>
                                 <div className="text-sm text-gray-300 line-clamp-3">{body || 'Message'}</div>
+                                <div className="mt-2 inline-block text-xs font-semibold text-blue-300">Découvrir → {pageLabel(url)}</div>
                             </div>
                         </div>
                     </div>
@@ -148,7 +197,7 @@ const PushAnnouncementsPage: React.FC = () => {
                                     <span className="text-xs text-gray-400 shrink-0">{new Date(a.createdAt).toLocaleString()}</span>
                                 </div>
                                 <div className="text-sm text-gray-300">{a.body}</div>
-                                <div className="text-xs text-gray-400 mt-1">{a.recipients} member(s){a.url ? ` · ${a.url}` : ''}</div>
+                                <div className="text-xs text-gray-400 mt-1">{a.recipients} member(s){a.url ? ` · ${pageLabel(a.url)}` : ''}</div>
                             </li>
                         ))}
                     </ul>
