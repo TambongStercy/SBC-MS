@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
-/** A non-urgent push held through the night, sent at `sendAt`. */
+/** An announcement held through the night, sent at `sendAt`. */
 export interface IPendingPush extends Document {
     userId: Types.ObjectId;
     category: string;

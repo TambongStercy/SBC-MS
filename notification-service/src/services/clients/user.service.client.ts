@@ -134,6 +134,23 @@ class UserServiceClient {
     }
 
     /**
+     * Of the given members, those a targeted announcement filter picks
+     * (countries, subscription, sex). Null when user-service cannot answer.
+     */
+    async filterForAnnouncement(userIds: string[], filter: Record<string, unknown>): Promise<string[] | null> {
+        try {
+            const response = await axios.post(`${this.userServiceUrl}/users/internal/filter-for-announcement`, { userIds, filter }, {
+                headers: { 'Authorization': `Bearer ${this.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+                timeout: 20000,
+            });
+            return Array.isArray(response.data?.data?.userIds) ? response.data.data.userIds : null;
+        } catch (error: any) {
+            log.error('Error filtering members for an announcement:', error.response?.data || error.message);
+            return null;
+        }
+    }
+
+    /**
      * The relance subset for one user, including country (which batch-details
      * lacks). Null when user-service cannot answer.
      */

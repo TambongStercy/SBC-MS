@@ -4,7 +4,7 @@ import PushSubscriptionModel from '../database/models/push-subscription.model';
 import PushPreferenceModel from '../database/models/push-preference.model';
 import PendingPushModel from '../database/models/pending-push.model';
 import InboxItemModel from '../database/models/inbox-item.model';
-import { defaultCta, endOfQuietHours, inQuietHours, isUrgent, PushCategory } from './push-categories';
+import { defaultCta, endOfQuietHours, holdsAtNight, inQuietHours, PushCategory } from './push-categories';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -119,7 +119,12 @@ export type SendOutcome = 'sent' | 'deferred' | 'off' | 'no_device' | 'disabled'
 export async function sendPushToUser(
     userId: string,
     message: PushMessage,
-    opts: { category: PushCategory; now?: Date },
+    opts: {
+        category: PushCategory;
+        now?: Date;
+        /** Send even at night: an admin's choice for an announcement that cannot wait. */
+        sendNow?: boolean;
+    },
 ): Promise<SendOutcome> {
     // The bell keeps every notification, whether or not it reaches a phone —
     // except chat: conversations carry their own unread counts.
@@ -132,14 +137,14 @@ export async function sendPushToUser(
         if (await PushPreferenceModel.exists({ userId: uid, disabled: opts.category })) return 'disabled';
 
         const now = opts.now ?? new Date();
-        const urgent = isUrgent(opts.category);
-        if (!urgent && inQuietHours(now)) {
+        const holds = holdsAtNight(opts.category) && !opts.sendNow;
+        if (holds && inQuietHours(now)) {
             const pending = { userId: uid, category: opts.category, tag: message.tag, message, sendAt: endOfQuietHours(now) };
             if (message.tag) await PendingPushModel.updateOne({ userId: uid, tag: message.tag }, { $set: pending }, { upsert: true });
             else await PendingPushModel.create(pending);
             return 'deferred';
         }
-        await deliver(userId, message, urgent);
+        await deliver(userId, message, !holds);
         return 'sent';
     } catch (err: any) {
         log.error(`Push to ${userId} failed: ${err?.message ?? err}`);

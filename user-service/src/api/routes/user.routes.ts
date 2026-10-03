@@ -65,6 +65,9 @@ serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDe
 // which gates SMS relance to Cameroon; batch-details does not.
 serviceRouter.post('/relance-details', (req, res) => userController.getRelanceDetailsByIds(req, res));
 
+// Internal: of the members with push on, those a targeted announcement picks (notification-service).
+serviceRouter.post('/filter-for-announcement', (req, res) => userController.filterForAnnouncement(req, res));
+
 // Internal route to get the advertising targeting subset (advertising-service).
 // Campaign targeting runs on these fields; batch-details carries none of them.
 serviceRouter.post('/advertising-details', (req, res) => userController.getAdvertisingDetailsByIds(req, res));

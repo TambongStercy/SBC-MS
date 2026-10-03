@@ -1,5 +1,5 @@
 // Mapping from ISO 2-letter country codes to French names
-const countryCodeToNameMap: { [key: string]: string } = {
+export const countryCodeToNameMap: { [key: string]: string } = {
     DZ: "Algérie",
     AO: "Angola",
     BJ: "Bénin",
