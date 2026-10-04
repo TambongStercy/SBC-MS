@@ -82,3 +82,26 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* SBC loading screen (the original admin's), with the brand blue and orange. */
+.sbc-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; color: rgb(var(--c-ink)); }
+.sbc-loader-mark { width: 230px; animation: fade-in 400ms ease-out both; }
+.sbc-loader-mark p { margin: 0; }
+.sbc-loader-top { font-size: 16px; font-weight: 300; line-height: 16px; letter-spacing: 0.04em; }
+.sbc-loader-top::after { content: "\00a9"; font-size: 10px; position: relative; top: -5px; margin-left: 2px; }
+.sbc-loader-mid { font-size: 44px; font-weight: 800; line-height: 40px; letter-spacing: -0.02em; }
+.sbc-loader-mid span { font-size: 22px; display: inline-block; vertical-align: top; color: #FF6821; margin-top: -6px; margin-left: 4px; }
+.sbc-loader-bottom { font-size: 28px; font-weight: 300; line-height: 30px; margin-left: 4px; }
+.sbc-loader-track { width: 150px; height: 12px; border: 2px solid rgb(var(--c-ink-3)); border-radius: 7px; padding: 2px 1px; overflow: hidden; font-size: 0; white-space: nowrap; }
+.sbc-loader-box { width: 9px; height: 100%; margin-right: 2px; display: inline-block; border-radius: 2px;
+  background: linear-gradient(to bottom, #2838c7 0%, #5979ef 17%, #869ef3 32%, #869ef3 45%, #5979ef 59%, #2838c7 100%);
+  animation: sbc-loader-slide 2s linear infinite; }
+@keyframes sbc-loader-slide { from { transform: translateX(-30px); } to { transform: translateX(150px); } }
+
+/* Login: the original slowly drifting photo behind a frosted card. */
+.sbc-login-bg { background: url('./assets/bg-login.jpg') center / cover; animation: sbc-login-drift 50s linear infinite; }
+@keyframes sbc-login-drift { 0%, 100% { background-position: left center; } 50% { background-position: right center; } }
+
+/* Each screen eases in when you arrive on it; sheets rise from the bottom. */
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
