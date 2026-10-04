@@ -63,6 +63,21 @@ interface IConfig {
         enabled: boolean;
         intervalMs: number;
     };
+    /**
+     * Shared state for the animation module (live boards, vote quotas, rate
+     * limits, pub/sub, job leader lock). Empty url = in-process fallback, fine
+     * for one instance and for scripts; any multi-instance deploy must set it.
+     */
+    redis: {
+        url: string;
+        keyPrefix: string;
+    };
+    animation: {
+        /** SBC commission on paid votes when settings-service is unreachable. */
+        votePct: number;
+        /** Animation tick (transitions, draws, reconciler, outbox). */
+        tickIntervalMs: number;
+    };
 }
 
 const port = parseInt(process.env.PORT || '3011', 10);
@@ -108,6 +123,15 @@ const config: IConfig = {
     minWithdrawalAmount: parseInt(process.env.MIN_WITHDRAWAL_AMOUNT || '2000', 10),
     notifyChannels: (process.env.EVENT_NOTIFY_CHANNELS || 'push,email,sms')
         .split(',').map((c) => c.trim().toLowerCase()).filter(Boolean),
+    redis: {
+        url: process.env.REDIS_URL || '',
+        // Preprod and prod share one Redis on the host: keep their keys apart.
+        keyPrefix: process.env.REDIS_KEY_PREFIX || `sbc-event:${process.env.NODE_ENV || 'development'}:`,
+    },
+    animation: {
+        votePct: parseFloat(process.env.VOTE_COMMISSION_PCT || '0.10'),
+        tickIntervalMs: parseInt(process.env.ANIMATION_TICK_MS || '30000', 10),
+    },
     scheduler: {
         enabled: (process.env.SCHEDULER_ENABLED || 'true') !== 'false',
         intervalMs: parseInt(process.env.SCHEDULER_INTERVAL_MS || '300000', 10),

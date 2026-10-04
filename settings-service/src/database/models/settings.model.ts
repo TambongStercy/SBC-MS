@@ -32,6 +32,7 @@ export interface IEventCommissions {
     primaryPct: number;              // commission on a first-hand ticket sale (0–0.5)
     resalePct: number;               // commission on a resale (0–0.5)
     defaultMaxResalePricePct: number; // resale price ceiling, % of face value (100–300)
+    votePct: number;                 // commission on paid vote packs, animation module (0–0.5)
 }
 
 // Remove IEventItem interface - moved to event.model.ts
@@ -107,6 +108,7 @@ const SettingsSchema: Schema = new Schema(
             primaryPct: { type: Number, default: 0.05, min: 0, max: 0.5 },
             resalePct: { type: Number, default: 0.10, min: 0, max: 0.5 },
             defaultMaxResalePricePct: { type: Number, default: 120, min: 100, max: 300 },
+            votePct: { type: Number, default: 0.10, min: 0, max: 0.5 },
         },
     },
     {

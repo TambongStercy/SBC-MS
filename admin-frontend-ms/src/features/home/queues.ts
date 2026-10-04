@@ -2,11 +2,12 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import apiClient from '../../api/apiClient';
 import { getManualVerifications, getAdsCampaigns } from '../../api/adsNetwork';
 import { listOrganizers, listAdminDisputes, listAdminEvents } from '../../api/event';
+import { countOpenFraudFlags, countPendingChangeRequests } from '../modules/animation/api-counts';
 import { getStats as getSbcLoveStats } from '../../services/adminSbcLoveApi';
 import { getWithdrawalStats, getStuckMoneyFusionWithdrawals, getStuckCinetPayWithdrawals } from '../../services/adminWithdrawalApi';
 import { startOfTodayDouala, todayDouala } from '../../lib/format';
 
-export type QueueKey = 'proofs' | 'withdrawals' | 'campaigns' | 'love' | 'events' | 'organizers' | 'disputes' | 'stuck';
+export type QueueKey = 'proofs' | 'withdrawals' | 'campaigns' | 'love' | 'events' | 'organizers' | 'disputes' | 'animFraud' | 'animChanges' | 'stuck';
 
 export type QueueDef = {
     key: QueueKey;
@@ -56,6 +57,14 @@ export const QUEUES: QueueDef[] = [
     {
         key: 'disputes', title: 'Litiges billetterie', to: '/modules/billetterie?onglet=litiges', roles: ADMIN,
         load: async () => ({ count: (await listAdminDisputes({ status: 'OPEN', limit: 1 })).total }),
+    },
+    {
+        key: 'animFraud', title: 'Animation : activités suspectes', to: '/modules/animation?onglet=a-verifier', roles: ADMIN,
+        load: async () => ({ count: await countOpenFraudFlags() }),
+    },
+    {
+        key: 'animChanges', title: 'Animation : demandes de modification', to: '/modules/animation?onglet=demandes', roles: ADMIN,
+        load: async () => ({ count: await countPendingChangeRequests() }),
     },
     {
         key: 'stuck', title: 'Retraits bloqués chez le fournisseur', to: '/argent/bloques', roles: ['admin', 'withdrawal_admin'],

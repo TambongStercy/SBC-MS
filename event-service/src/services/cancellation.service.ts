@@ -44,6 +44,10 @@ export const cancelEventAndCascade = async (args: {
         await event.save();
     }
 
+    // Step 1b — its challenges are cancelled too; paid votes refunded in full.
+    const { cascadeEventStatus } = await import('../modules/animation/services/challenge.service');
+    await cascadeEventStatus(event._id, 'CANCELLED', `Événement annulé${args.reason ? ` : ${args.reason}` : ''}`);
+
     // Step 2 — cancel every ACTIVE resale listing for this event
     const listingsRes = await ResaleListing.updateMany(
         { eventId: event._id, status: ResaleListingStatus.ACTIVE },

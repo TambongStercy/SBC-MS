@@ -830,6 +830,27 @@ export class UserRepository {
     }
 
     /**
+     * [Internal] SBC Event team / jury invitations: resolve one member from an
+     * email or a phone number. A local number (no country code) matches only
+     * when exactly one account ends with it — never guess between two people.
+     */
+    async findEventMemberByContact(contact: string): Promise<IUser[]> {
+        const value = contact.trim();
+        if (value.includes('@')) {
+            const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return UserModel.find({ email: { $regex: `^${escaped}$`, $options: 'i' }, deleted: { $ne: true } })
+                .select('_id name avatar email phoneNumber').limit(2).lean().exec() as unknown as IUser[];
+        }
+        const digits = value.replace(/\D/g, '');
+        if (digits.length < 8) return [];
+        const exact = await UserModel.find({ phoneNumber: digits, deleted: { $ne: true } })
+            .select('_id name avatar email phoneNumber').limit(2).lean().exec();
+        if (exact.length) return exact as unknown as IUser[];
+        return UserModel.find({ phoneNumber: { $regex: `${digits}$` }, deleted: { $ne: true } })
+            .select('_id name avatar email phoneNumber').limit(2).lean().exec() as unknown as IUser[];
+    }
+
+    /**
      * [Internal] SBCLOVE admin search: which of `userIds` match `term` on name,
      * email, phone or city. Scoped to the given ids (the SBCLOVE members) so a
      * common term can't drag in the whole user base, and unverified or blocked

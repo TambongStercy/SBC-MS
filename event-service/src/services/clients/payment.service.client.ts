@@ -69,6 +69,25 @@ export const createResaleOrderPaymentIntent = async (args: {
     });
 };
 
+/** Open a payment session for a vote pack (animation module). */
+export const createVotePaymentIntent = async (args: {
+    userId: string;
+    amount: number;
+    voteTransactionId: string;
+    challengeName: string;
+    votes: number;
+}) => {
+    return openIntent({
+        userId: args.userId,
+        amount: args.amount,
+        paymentType: 'EVENT_CHALLENGE_VOTE',
+        metadata: {
+            voteTransactionId: args.voteTransactionId,
+            eventTitle: `${args.votes} votes — ${args.challengeName}`,
+        },
+    });
+};
+
 /**
  * Credit the buyer's main balance via payment-service /internal/deposit.
  * Used by the refund flow — recorded as an internal Transaction on the

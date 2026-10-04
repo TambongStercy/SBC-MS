@@ -30,6 +30,7 @@ const StoragePage = lazy(() => import('./features/plus/StoragePage'));
 const StatsPage = lazy(() => import('./features/plus/StatsPage'));
 const AdsModule = lazy(() => import('./features/modules/ads/AdsModule'));
 const BilletterieModule = lazy(() => import('./features/modules/billetterie/BilletterieModule'));
+const AnimationModule = lazy(() => import('./features/modules/animation/AnimationModule'));
 const EventDetailPage = lazy(() => import('./features/modules/billetterie/EventDetailPage'));
 const RelanceModule = lazy(() => import('./features/modules/relance/RelanceModule'));
 const RelanceEmailDayPage = lazy(() => import('./features/modules/relance/EmailDayPage'));
@@ -107,6 +108,7 @@ function App() {
               <Route path="/modules/ads" element={<AdsModule />} />
               <Route path="/modules/billetterie" element={<BilletterieModule />} />
               <Route path="/modules/billetterie/evenements/:eventId" element={<EventDetailPage />} />
+              <Route path="/modules/animation" element={<AnimationModule />} />
               <Route path="/modules/relance" element={<RelanceModule />} />
               <Route path="/modules/relance/emails/:day" element={<RelanceEmailDayPage />} />
               <Route path="/modules/sbc-love" element={<SbcLoveModule />} />
@@ -129,6 +131,12 @@ function App() {
               <Route path="/event/listings" element={<Navigate to="/modules/billetterie?onglet=revente" replace />} />
               <Route path="/event/disputes" element={<Navigate to="/modules/billetterie?onglet=litiges" replace />} />
               <Route path="/event/commissions" element={<Navigate to="/modules/billetterie?onglet=reglages" replace />} />
+              <Route path="/event/animation" element={<Navigate to="/modules/animation" replace />} />
+              <Route path="/event/animation/challenges" element={<Navigate to="/modules/animation?onglet=defis" replace />} />
+              <Route path="/event/animation/fraud" element={<Navigate to="/modules/animation?onglet=a-verifier" replace />} />
+              <Route path="/event/animation/change-requests" element={<Navigate to="/modules/animation?onglet=demandes" replace />} />
+              <Route path="/event/animation/transactions" element={<Navigate to="/modules/animation?onglet=votes" replace />} />
+              <Route path="/event/animation/audit" element={<Navigate to="/modules/animation?onglet=journal" replace />} />
               <Route path="/relance/dashboard" element={<Navigate to="/modules/relance" replace />} />
               <Route path="/relance/messages" element={<Navigate to="/modules/relance?onglet=emails" replace />} />
               <Route path="/relance/campaigns" element={<Navigate to="/modules/relance?onglet=campagnes" replace />} />

@@ -60,6 +60,8 @@ serviceRouter.post('/batch-details', (req, res) => userController.getUsersDetail
 
 // Internal route to get the SBCLOVE demographic subset for one or more users
 serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDetailsByIds(req, res));
+// SBC Event: resolve an invited team member / juror from an email or phone (masked projection)
+serviceRouter.post('/event-member-lookup', (req, res) => userController.lookupEventMember(req, res));
 // SBCLOVE admin search: which of the given members match a name/email/phone/city term
 serviceRouter.post('/sbclove-search', (req, res) => userController.searchSbcloveMemberIds(req, res));
 

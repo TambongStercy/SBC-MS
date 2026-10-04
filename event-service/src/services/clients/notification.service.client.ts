@@ -32,7 +32,9 @@ const client = axios.create({
  * falls under. Money coming back (refund, resale) is "money": it goes out at
  * any hour; the rest waits for the morning if it lands at night.
  */
-const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money' }> = {
+// cta: the notification's button; without one notification-service uses the
+// category's ("Voir mes billets" for events), which is wrong for animation notices.
+const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money'; cta?: string }> = {
     'event-ticket-purchased': { url: '/events/mes-billets', category: 'events' },
     'event-cancelled': { url: '/events/mes-billets', category: 'events' },
     'event-reminder': { url: '/events/mes-billets', category: 'events' },
@@ -43,11 +45,34 @@ const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money' }>
     'dispute-resolved': { url: '/events/mes-disputes', category: 'events' },
     'event-approved': { url: '/events/organizer', category: 'events' },
     'event-rejected': { url: '/events/organizer', category: 'events' },
+    // Animation & Engagement
+    'anim-candidate-registered': { url: '/events/mes-defis', category: 'events', cta: 'Mes défis' },
+    'anim-candidate-approved': { url: '/events/mes-defis', category: 'events', cta: 'Mes défis' },
+    'anim-candidate-rejected': { url: '/events/mes-defis', category: 'events', cta: 'Mes défis' },
+    'anim-candidate-disqualified': { url: '/events/mes-defis', category: 'events', cta: 'Mes défis' },
+    'anim-challenge-cancelled': { url: '/events/mes-defis', category: 'events', cta: 'Mes défis' },
+    'anim-voting-open': { url: '/events/mes-defis', category: 'events', cta: 'Mes défis' },
+    'anim-voting-closed': { url: '/events/mes-defis', category: 'events', cta: 'Mes défis' },
+    'anim-result': { url: '/events/mes-defis', category: 'events', cta: 'Voir mon résultat' },
+    'anim-reward-won': { url: '/events/mes-defis?tab=rewards', category: 'events', cta: 'Voir mon gain' },
+    'anim-vote-refunded': { url: '/wallet', category: 'money', cta: 'Voir mon solde' },
+    'anim-jury-invite': { url: '/events/jury', category: 'events', cta: 'Noter les candidats' },
+    'anim-team-invite': { url: '/events/equipe', category: 'events', cta: 'Ouvrir l’animation' },
+    'anim-change-reviewed': { url: '/events/organizer/{eventId}/animation', category: 'events', cta: 'Voir le défi' },
 };
 
-export const pushRelatedData = (kind: string, ref?: string) => {
+/**
+ * Push routing for a kind. `{eventId}` in a route is filled from the event.
+ * `tag` replaces the default one: a device shows only the latest push per
+ * tag, so notices that must not collapse (two refunds, two results) need
+ * their own.
+ */
+export const pushRelatedData = (kind: string, ref?: string, opts: { eventId?: string; tag?: string } = {}) => {
     const route = PUSH_ROUTES[kind] ?? { url: '/events', category: 'events' as const };
-    return { pushCategory: route.category, url: route.url, pushTag: ref ? `${kind}-${ref}` : kind };
+    const url = route.url.includes('{eventId}')
+        ? (opts.eventId ? route.url.replace('{eventId}', opts.eventId) : '/events/organizer')
+        : route.url;
+    return { pushCategory: route.category, url, pushTag: opts.tag ?? (ref ? `${kind}-${ref}` : kind), ...(route.cta ? { pushCta: route.cta } : {}) };
 };
 
 export const notify = async (args: {
@@ -62,6 +87,8 @@ export const notify = async (args: {
     orderId?: string;
     ticketId?: string;
     eventId?: string;
+    /** Own push tag (see pushRelatedData). */
+    pushTag?: string;
 }): Promise<boolean> => {
     if ((args.channel === 'email' || args.channel === 'sms') && !args.recipient) {
         log.warn(`${args.kind}: no recipient for ${args.channel}; skipping`);
@@ -80,7 +107,7 @@ export const notify = async (args: {
                 body: args.body,
                 ...args.data,
                 ...(args.channel === 'push'
-                    ? { relatedData: pushRelatedData(args.kind, args.orderId ?? args.ticketId ?? args.eventId) }
+                    ? { relatedData: pushRelatedData(args.kind, args.orderId ?? args.ticketId ?? args.eventId, { eventId: args.eventId, tag: args.pushTag }) }
                     : {}),
             },
         });
@@ -173,6 +200,7 @@ export const notifyUser = async (args: {
     orderId?: string;
     ticketId?: string;
     eventId?: string;
+    pushTag?: string;
 }): Promise<number> => {
     let { email, phone } = args;
     const wanted = args.channels.filter((c) => config.notifyChannels.includes(c));
