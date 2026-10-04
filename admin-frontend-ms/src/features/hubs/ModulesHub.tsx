@@ -21,7 +21,7 @@ export default function ModulesHub() {
                 <NavRow to="/modules/sbc-love" icon={<Heart size={20} />} tone="danger" title="SBC Love" description="Profils à valider, signalements, session de la semaine" trailing={<Count n={count('love')} />} />
                 <NavRow to="/modules/tombola" icon={<Gift size={20} />} tone="warning" title="Tombola" description="Tombola du mois, billets, tirage et gagnants" />
                 <NavRow to="/modules/boutique" icon={<ShoppingBag size={20} />} tone="primary" title="Boutique" description="Produits des membres et ventes flash" />
-                <NavRow to="/impact-challenges" icon={<Trophy size={20} />} tone="neutral" title="Impact Challenge" description="Votes et collectes du mois" />
+                <NavRow to="/modules/impact-challenge" icon={<Trophy size={20} />} tone="neutral" title="Impact Challenge" description="Entrepreneurs du mois, votes et versement" />
             </NavList>
         </Page>
     );
