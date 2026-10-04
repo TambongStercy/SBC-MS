@@ -1523,10 +1523,10 @@ export class PaymentController {
                 return;
             }
 
-            if (!['cinetpay', 'feexpay', 'nowpayments'].includes(provider)) {
+            if (!['cinetpay', 'feexpay', 'moneyfusion', 'nowpayments'].includes(provider)) {
                 res.status(400).json({
                     success: false,
-                    message: 'Fournisseur invalide. Doit être cinetpay, feexpay, ou nowpayments'
+                    message: 'Fournisseur invalide. Doit être cinetpay, feexpay, moneyfusion ou nowpayments'
                 });
                 return;
             }
@@ -1668,6 +1668,7 @@ export class PaymentController {
                     status: PaymentStatus.SUCCEEDED,
                     gateway: provider === 'cinetpay' ? 'cinetpay' : 
                              provider === 'feexpay' ? 'feexpay' :
+                             provider === 'moneyfusion' ? 'moneyfusion' :
                              provider === 'nowpayments' ? 'nowpayments' : 'testing',
                     paidAmount: amount,
                     paidCurrency: finalCurrency

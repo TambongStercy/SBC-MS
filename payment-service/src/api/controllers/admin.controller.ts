@@ -6,6 +6,7 @@ import paymentService from '../../services/payment.service';
 import { withdrawalMonitor } from '../../utils/withdrawal-monitor';
 import nowpaymentsService from '../../services/nowpayments.service';
 import { cinetpayPayoutService } from '../../services/cinetpay-payout.service';
+import config from '../../config';
 
 const log = logger.getLogger('AdminController');
 
@@ -265,6 +266,8 @@ export class AdminController {
                     inUse: number;
                     currency: string;
                     error?: string;
+                    /** One entry per country account: CinetPay keeps a balance per country. */
+                    countries?: Array<{ country: string; currency: string; available: boolean; total: number; available_balance: number; inUse: number; error?: string }>;
                 };
                 feexpay: {
                     available: boolean;
@@ -309,24 +312,31 @@ export class AdminController {
                 results.nowpayments.error = nowError.message;
             }
 
-            // Fetch CinetPay balance
-            try {
-                const cinetpayBalance = await cinetpayPayoutService.getBalance();
-                results.cinetpay = {
-                    available: true,
-                    total: cinetpayBalance.total,
-                    available_balance: cinetpayBalance.available,
-                    inUse: cinetpayBalance.inUse,
-                    currency: 'XAF'
-                };
-                log.info('CinetPay balance fetched successfully', {
-                    total: cinetpayBalance.total,
-                    available: cinetpayBalance.available
-                });
-            } catch (cinetError: any) {
-                log.error('Failed to fetch CinetPay balance:', cinetError.message);
-                results.cinetpay.error = cinetError.message;
-            }
+            // CinetPay keeps one merchant account and balance per country, and
+            // getBalance() without a country silently answers for the first one —
+            // so ask each configured country. The top-level figures are the sum
+            // (XAF and XOF are both CFA francs at par, so they add up).
+            const cinetpayCountries = Object.entries(config.cinetpay.countries);
+            const perCountry = await Promise.all(cinetpayCountries.map(async ([country, creds]) => {
+                try {
+                    const b = await cinetpayPayoutService.getBalance(country);
+                    return { country, currency: creds.currency, available: true, total: b.total, available_balance: b.available, inUse: b.inUse };
+                } catch (err: any) {
+                    log.error(`Failed to fetch CinetPay balance for ${country}:`, err.message);
+                    return { country, currency: creds.currency, available: false, total: 0, available_balance: 0, inUse: 0, error: err.message };
+                }
+            }));
+            const reached = perCountry.filter(c => c.available);
+            results.cinetpay = {
+                available: reached.length > 0,
+                total: reached.reduce((s, c) => s + c.total, 0),
+                available_balance: reached.reduce((s, c) => s + c.available_balance, 0),
+                inUse: reached.reduce((s, c) => s + c.inUse, 0),
+                currency: 'XAF',
+                countries: perCountry,
+                ...(reached.length === 0 && perCountry.length ? { error: perCountry[0].error } : {}),
+            };
+            log.info('CinetPay balances fetched', { countries: perCountry.map(c => `${c.country}:${c.available ? c.available_balance : 'err'}`).join(' ') });
 
             // FeexPay does not have a balance API endpoint
             // The balance can only be checked via their web dashboard
