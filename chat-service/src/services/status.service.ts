@@ -506,11 +506,14 @@ class StatusService {
     /**
      * Delete a status
      */
-    async deleteStatus(statusId: string, userId: string): Promise<IStatus | null> {
-        const status = await statusRepository.softDelete(statusId, userId);
+    async deleteStatus(statusId: string, userId: string, isAdmin: boolean = false): Promise<IStatus | null> {
+        // Members delete their own; an admin can remove anyone's (moderation).
+        const status = isAdmin
+            ? await statusRepository.softDeleteAsAdmin(statusId)
+            : await statusRepository.softDelete(statusId, userId);
 
         if (status) {
-            log.info(`User ${userId} deleted status ${statusId}`);
+            log.info(`${isAdmin ? 'Admin' : 'User'} ${userId} deleted status ${statusId}${isAdmin && String(status.authorId) !== userId ? ` (author ${status.authorId})` : ''}`);
         }
 
         return status;

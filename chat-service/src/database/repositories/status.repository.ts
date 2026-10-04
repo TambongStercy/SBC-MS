@@ -184,6 +184,19 @@ export class StatusRepository {
     }
 
     /**
+     * Soft delete any member's status — admin moderation. The author check in
+     * softDelete is what members need; an admin removing someone else's story
+     * would never match it.
+     */
+    async softDeleteAsAdmin(statusId: string | Types.ObjectId): Promise<IStatus | null> {
+        return StatusModel.findOneAndUpdate(
+            { _id: statusId, deleted: { $ne: true } },
+            { deleted: true, deletedAt: new Date() },
+            { new: true }
+        ).exec();
+    }
+
+    /**
      * Flag a status
      */
     async flagStatus(
