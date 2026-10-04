@@ -43,7 +43,6 @@ const ChallengeDetailPage = lazy(() => import('./features/modules/challenges/Cha
 
 // Pages still to be rebuilt, shown in their old look
 const Deconnexion = lazy(() => import('./pages/Deconnexion'));
-const ProductsManagementPage = lazy(() => import('./pages/ProductsManagementPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
 
@@ -136,7 +135,7 @@ function App() {
               <Route path="/sbclove" element={<Navigate to="/modules/sbc-love" replace />} />
               <Route path="/tombola" element={<Navigate to="/modules/tombola" replace />} />
               <Route path="/tombola/draw/:monthId" element={<OldTombolaDrawLink />} />
-              <Route path="/products" element={legacy(<ProductsManagementPage />)} />
+              <Route path="/products" element={<Navigate to="/modules/boutique" replace />} />
               <Route path="/impact-challenges" element={legacy(<ImpactChallengePage />)} />
               <Route path="/impact-challenges/:challengeId" element={legacy(<ChallengeDetailsPage />)} />
 
