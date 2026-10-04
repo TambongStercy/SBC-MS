@@ -191,6 +191,29 @@ The admin frontend must maintain professional UI/UX standards. Follow these rule
    - **Confirmation Modals**: Delete operations, irreversible actions, role changes, bulk operations
    - **Form Validation**: Display errors inline or in modals, never with alerts
 
+### Admin redesign (Oct 2026): where things live now
+
+The admin is being rebuilt phone-first (94% of admin traffic comes from phones;
+the daily work is ~155 video-proof and ~27 withdrawal decisions). New code:
+- `src/ui/` — the only components new screens use (Page, Button, Card,
+  DataList = table on desktop / cards on phone, ConfirmSheet, Sheet, Tabs,
+  Badge/StatusBadge, MemberLink, Stat, NavRow…). French labels, no raw codes.
+- `src/index.css` + `tailwind.config.js` — the member app's tokens as CSS
+  variables (`bg-surface`, `text-ink-2`, `bg-primary`…). Light by default;
+  `.dark` on `<html>` (Plus → Apparence) switches the set. **Use tokens, not
+  raw `gray-800`/hex** in new screens.
+- `src/shell/` — bottom tab bar on phones, left rail on desktop; five places:
+  À traiter, Membres, Argent, Modules, Plus (`nav.ts`, role-aware).
+- `src/features/` — rebuilt screens. `src/pages/` — old screens still to be
+  rebuilt; they render inside `LegacyFrame` (dark, scoped) until their turn.
+- `src/lib/roles.ts` — roles are enforced in the router too. Staff roles:
+  `admin`, `withdrawal_admin`, `moderator` (video-proof queue only; added
+  2026-10-04, user-service + advertising-service `authorizeProofReviewer`).
+- Admin login accepted only `admin` until 2026-10-04, so the withdrawal-admin
+  role had never been able to sign in.
+- No `alert()/confirm()`: money actions go through `ConfirmSheet` (locks while
+  running, keeps the error inside the sheet).
+
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
 

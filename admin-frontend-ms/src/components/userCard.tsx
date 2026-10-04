@@ -242,7 +242,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     const newRole = event.target.value;
 
     // Show confirmation dialog for sensitive roles (admin, withdrawal_admin)
-    if (newRole === 'admin' || newRole === 'withdrawal_admin') {
+    if (newRole === 'admin' || newRole === 'withdrawal_admin' || newRole === 'moderator') {
       setPendingRole(newRole);
       setShowRoleConfirmDialog(true);
     } else {
@@ -283,6 +283,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
       'user': 'Utilisateur',
       'admin': 'Administrateur',
       'withdrawal_admin': 'Admin Retraits',
+      'moderator': 'Modérateur',
       'tester': 'Testeur'
     };
     return roleNames[role] || role;
@@ -553,6 +554,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               <option value="user">👤 Utilisateur</option>
               <option value="tester">🧪 Testeur</option>
               <option value="withdrawal_admin">💳 Admin Retraits</option>
+              <option value="moderator">🎬 Modérateur</option>
               <option value="admin">🛡️ Administrateur</option>
             </select>
           </div>

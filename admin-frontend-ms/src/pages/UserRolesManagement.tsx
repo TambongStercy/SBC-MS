@@ -64,7 +64,7 @@ const UserRolesManagement = () => {
     };
 
     const handleRoleChange = (user: AdminUserData, newRole: string) => {
-        const isElevatingToAdmin = newRole === 'admin' || newRole === 'withdrawal_admin';
+        const isElevatingToAdmin = newRole === 'admin' || newRole === 'withdrawal_admin' || newRole === 'moderator';
 
         setConfirmAction({
             title: isElevatingToAdmin ? '⚠️ Confirm Role Change' : 'Change User Role',
@@ -90,6 +90,7 @@ const UserRolesManagement = () => {
             'user': 'Utilisateur',
             'admin': 'Administrateur',
             'withdrawal_admin': 'Admin Retraits',
+            'moderator': 'Modérateur',
             'tester': 'Testeur'
         };
         return roleNames[role] || role;
@@ -101,6 +102,8 @@ const UserRolesManagement = () => {
                 return 'bg-red-900 text-red-200 border-red-500';
             case 'withdrawal_admin':
                 return 'bg-yellow-900 text-yellow-200 border-yellow-500';
+            case 'moderator':
+                return 'bg-blue-900 text-blue-200 border-blue-500';
             case 'tester':
                 return 'bg-purple-900 text-purple-200 border-purple-500';
             default:
@@ -114,6 +117,8 @@ const UserRolesManagement = () => {
                 return '🛡️';
             case 'withdrawal_admin':
                 return '💳';
+            case 'moderator':
+                return '🎬';
             case 'tester':
                 return '🧪';
             default:
@@ -180,6 +185,7 @@ const UserRolesManagement = () => {
                                 <option value="user">👤 Utilisateur</option>
                                 <option value="tester">🧪 Testeur</option>
                                 <option value="withdrawal_admin">💳 Admin Retraits</option>
+                                <option value="moderator">🎬 Modérateur (vérifications vidéo)</option>
                                 <option value="admin">🛡️ Administrateur</option>
                             </select>
                         </div>
@@ -279,6 +285,7 @@ const UserRolesManagement = () => {
                                                     <option value="user">👤 Utilisateur</option>
                                                     <option value="tester">🧪 Testeur</option>
                                                     <option value="withdrawal_admin">💳 Admin Retraits</option>
+                                <option value="moderator">🎬 Modérateur (vérifications vidéo)</option>
                                                     <option value="admin">🛡️ Administrateur</option>
                                                 </select>
                                             </td>

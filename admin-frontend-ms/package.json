@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.1",
     "axios": "^1.7.7",
     "canvas-confetti": "^1.9.3",
     "date-fns": "^4.1.0",
