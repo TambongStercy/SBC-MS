@@ -1,5 +1,5 @@
 import { lazy, ReactNode, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import AppShell from './shell/AppShell';
@@ -14,36 +14,32 @@ const WithdrawalQueuePage = lazy(() => import('./features/queues/WithdrawalQueue
 const ArgentHub = lazy(() => import('./features/hubs/ArgentHub'));
 const ModulesHub = lazy(() => import('./features/hubs/ModulesHub'));
 const PlusHub = lazy(() => import('./features/hubs/PlusHub'));
+const MembersPage = lazy(() => import('./features/members/MembersPage'));
+const MemberPage = lazy(() => import('./features/members/MemberPage'));
+const WithdrawalsPage = lazy(() => import('./features/money/WithdrawalsPage'));
+const StuckPage = lazy(() => import('./features/money/StuckPage'));
+const PaymentsPage = lazy(() => import('./features/money/PaymentsPage'));
+const GatewaysPage = lazy(() => import('./features/money/GatewaysPage'));
+const ResolvePage = lazy(() => import('./features/money/ResolvePage'));
+const RecoveryPage = lazy(() => import('./features/money/RecoveryPage'));
+const AnalysisPage = lazy(() => import('./features/money/AnalysisPage'));
 
 // Pages still to be rebuilt, shown in their old look
 const OverViewPage = lazy(() => import('./pages/overViewPage'));
 const Deconnexion = lazy(() => import('./pages/Deconnexion'));
-const Users = lazy(() => import('./pages/Users'));
-const UsersPage = lazy(() => import('./pages/usersPage'));
-const Partners = lazy(() => import('./pages/Partners'));
 const UserRolesManagement = lazy(() => import('./pages/UserRolesManagement'));
-const UserFinancialAnalyticsPage = lazy(() => import('./pages/UserFinancialAnalyticsPage'));
 const ProductsManagementPage = lazy(() => import('./pages/ProductsManagementPage'));
 const TombolaManagementPage = lazy(() => import('./pages/TombolaManagementPage'));
 const TombolaDrawPage = lazy(() => import('./pages/TombolaDrawPage'));
 const SbcLoveManagementPage = lazy(() => import('./pages/SbcLoveManagementPage'));
-const TransactionManagementPage = lazy(() => import('./pages/TransactionManagementPage'));
-const AccountTransactionsManagementPage = lazy(() => import('./pages/AccountTransactionsManagementPage'));
 const SettingsManagementPage = lazy(() => import('./pages/SettingsManagementPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const PushAnnouncementsPage = lazy(() => import('./pages/PushAnnouncementsPage'));
-const FixFeexpayPaymentsPage = lazy(() => import('./pages/FixFeexpayPaymentsPage'));
-const FixMoneyFusionWithdrawalsPage = lazy(() => import('./pages/FixMoneyFusionWithdrawalsPage'));
-const FixCinetPayWithdrawalsPage = lazy(() => import('./pages/FixCinetPayWithdrawalsPage'));
-const FixProviderIssuesPage = lazy(() => import('./pages/FixProviderIssuesPage'));
-const ManualPaymentRecoveryPage = lazy(() => import('./pages/ManualPaymentRecoveryPage'));
 const StorageMonitoringPage = lazy(() => import('./pages/StorageMonitoringPage'));
 const RelanceDashboardPage = lazy(() => import('./pages/RelanceDashboardPage'));
 const RelanceMessagesPage = lazy(() => import('./pages/RelanceMessagesPage'));
 const RelanceCampaignsPage = lazy(() => import('./pages/RelanceCampaignsPage'));
 const RelanceSmsTemplatesPage = lazy(() => import('./pages/RelanceSmsTemplatesPage'));
-const WithdrawalApprovalPage = lazy(() => import('./pages/WithdrawalApprovalPage'));
-const WithdrawalHistoryPage = lazy(() => import('./pages/WithdrawalHistoryPage'));
 const StatusPage = lazy(() => import('./pages/StatusPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
@@ -63,6 +59,12 @@ const EventTicketsPage = lazy(() => import('./pages/EventTicketsPage'));
 
 const legacy = (page: ReactNode) => <LegacyFrame>{page}</LegacyFrame>;
 
+/** Old member links (/userpage/:id) land on the new member page. */
+function OldMemberLink() {
+  const { userId } = useParams();
+  return <Navigate to={`/membres/${userId}`} replace />;
+}
+
 function App() {
   return (
     <>
@@ -79,25 +81,31 @@ function App() {
               <Route path="/a-traiter/retraits" element={<WithdrawalQueuePage />} />
 
               {/* Membres */}
-              <Route path="/membres" element={legacy(<Users />)} />
-              <Route path="/membres/:userId" element={legacy(<UsersPage />)} />
+              <Route path="/membres" element={<MembersPage />} />
+              <Route path="/membres/:userId" element={<MemberPage />} />
               <Route path="/users" element={<Navigate to="/membres" replace />} />
-              <Route path="/userpage/:userId" element={legacy(<UsersPage />)} />
-              <Route path="/partners" element={legacy(<Partners />)} />
-              <Route path="/user-analytics" element={legacy(<UserFinancialAnalyticsPage />)} />
+              <Route path="/userpage/:userId" element={<OldMemberLink />} />
+              <Route path="/partners" element={<Navigate to="/membres?partenaire=any" replace />} />
 
               {/* Argent */}
               <Route path="/argent" element={<ArgentHub />} />
-              <Route path="/argent/bloques" element={legacy(<FixProviderIssuesPage />)} />
-              <Route path="/withdrawals/approvals" element={legacy(<WithdrawalApprovalPage />)} />
-              <Route path="/withdrawals/history" element={legacy(<WithdrawalHistoryPage />)} />
-              <Route path="/transactions" element={legacy(<TransactionManagementPage />)} />
-              <Route path="/account-transactions" element={legacy(<AccountTransactionsManagementPage />)} />
+              <Route path="/argent/retraits" element={<WithdrawalsPage />} />
+              <Route path="/argent/bloques" element={<StuckPage />} />
+              <Route path="/argent/paiements" element={<PaymentsPage />} />
+              <Route path="/argent/passerelles" element={<GatewaysPage />} />
+              <Route path="/argent/resoudre" element={<ResolvePage />} />
+              <Route path="/argent/resoudre/abonnement" element={<RecoveryPage />} />
+              <Route path="/argent/analyse" element={<AnalysisPage />} />
+              <Route path="/withdrawals/approvals" element={<Navigate to="/argent/retraits" replace />} />
+              <Route path="/withdrawals/history" element={<Navigate to="/argent/retraits?vue=historique" replace />} />
+              <Route path="/transactions" element={<Navigate to="/argent/paiements" replace />} />
+              <Route path="/account-transactions" element={<Navigate to="/argent/paiements?vue=mouvements" replace />} />
+              <Route path="/user-analytics" element={<Navigate to="/argent/analyse" replace />} />
               <Route path="/fix-provider-issues" element={<Navigate to="/argent/bloques" replace />} />
-              <Route path="/fix-feexpay-payments" element={legacy(<FixFeexpayPaymentsPage />)} />
-              <Route path="/fix-moneyfusion-withdrawals" element={legacy(<FixMoneyFusionWithdrawalsPage />)} />
-              <Route path="/fix-cinetpay-withdrawals" element={legacy(<FixCinetPayWithdrawalsPage />)} />
-              <Route path="/manual-payment-recovery" element={legacy(<ManualPaymentRecoveryPage />)} />
+              <Route path="/fix-moneyfusion-withdrawals" element={<Navigate to="/argent/bloques?fournisseur=moneyfusion" replace />} />
+              <Route path="/fix-cinetpay-withdrawals" element={<Navigate to="/argent/bloques?fournisseur=cinetpay" replace />} />
+              <Route path="/fix-feexpay-payments" element={<Navigate to="/argent/resoudre?probleme=paye" replace />} />
+              <Route path="/manual-payment-recovery" element={<Navigate to="/argent/resoudre/abonnement" replace />} />
 
               {/* Modules */}
               <Route path="/modules" element={<ModulesHub />} />

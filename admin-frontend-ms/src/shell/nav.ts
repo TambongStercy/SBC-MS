@@ -15,9 +15,9 @@ export type NavItem = {
  */
 export const NAV: NavItem[] = [
     { to: '/', label: 'À traiter', icon: Inbox, roles: ['admin', 'withdrawal_admin', 'moderator'], owns: ['/a-traiter'] },
-    { to: '/membres', label: 'Membres', icon: Users, roles: ['admin'], owns: ['/membres', '/users', '/userpage', '/partners', '/user-analytics'] },
+    { to: '/membres', label: 'Membres', icon: Users, roles: ['admin'], owns: ['/membres', '/users', '/userpage', '/partners'] },
     { to: '/argent', label: 'Argent', icon: Wallet, roles: ['admin', 'withdrawal_admin'],
-        owns: ['/argent', '/transactions', '/account-transactions', '/withdrawals', '/fix-', '/manual-payment-recovery'] },
+        owns: ['/argent', '/transactions', '/account-transactions', '/withdrawals', '/fix-', '/manual-payment-recovery', '/user-analytics'] },
     { to: '/modules', label: 'Modules', icon: LayoutGrid, roles: ['admin'],
         owns: ['/modules', '/ads-network', '/event', '/relance', '/sbclove', '/tombola', '/products', '/impact-challenges'] },
     { to: '/plus', label: 'Plus', icon: Menu, roles: ['admin', 'withdrawal_admin', 'moderator'],

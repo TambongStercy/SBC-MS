@@ -15,10 +15,14 @@ export function useDebounced<T>(value: T, ms = 350): T {
 export function useParamState(key: string, fallback: string): [string, (v: string) => void] {
     const [params, setParams] = useSearchParams();
     const value = params.get(key) ?? fallback;
+    // Functional update: several setters in one tick (e.g. "clear all") each
+    // start from the latest address, not the same stale copy.
     const set = (v: string) => {
-        const next = new URLSearchParams(params);
-        if (v === fallback) next.delete(key); else next.set(key, v);
-        setParams(next, { replace: true });
+        setParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (v === fallback) next.delete(key); else next.set(key, v);
+            return next;
+        }, { replace: true });
     };
     return [value, set];
 }
