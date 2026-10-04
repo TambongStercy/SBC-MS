@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
 import { validatePaymentIntent, validatePaymentDetails } from '../middleware/validation';
-import { authenticate, requireAdmin } from '../middleware/auth.middleware';
+import { authenticate, authenticateServiceRequest, requireAdmin } from '../middleware/auth.middleware';
 import { requireSsoScope } from '../middleware/sso-auth.middleware';
 import adminController from '../controllers/admin.controller';
 import { sbcLiveRefundController } from '../controllers/sbc-live-refund.controller';
@@ -57,7 +57,9 @@ router.get('/process/:sessionId', paymentController.renderPaymentPage);
 router.get('/sandbox/checkout/:sessionId', paymentController.renderSandboxCheckout);
 router.post('/sandbox/checkout/:sessionId/resolve', paymentController.resolveSandboxCheckout);
 
-router.post('/intents', validatePaymentIntent, paymentController.createPaymentIntent);
+// Services only. The intent's callbackPath is later sent our service secret, so
+// a public caller could aim it at their own server and collect the secret.
+router.post('/intents', authenticateServiceRequest, validatePaymentIntent, paymentController.createPaymentIntent);
 
 // Submit payment details and initiate provider payment
 router.post('/intents/:sessionId/submit', validatePaymentDetails, paymentController.submitPaymentDetails);

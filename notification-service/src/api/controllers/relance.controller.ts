@@ -730,7 +730,11 @@ class RelanceController {
                         callbackPath: callbackUrl
                     }
                 },
-                { headers: { 'x-service-secret': config.services.serviceSecret }, timeout: 10000 }
+                {
+                    // payment-service accepts only `Authorization: Bearer` on /payments/intents.
+                    headers: { Authorization: `Bearer ${config.services.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+                    timeout: 10000,
+                }
             );
 
             // payment-service `/payments/intents` returns only { sessionId, clientSecret }.

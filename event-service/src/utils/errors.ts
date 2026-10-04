@@ -6,13 +6,16 @@ export class AppError extends Error {
      * clients can branch without parsing the French message.
      */
     public readonly code?: string;
+    /** Structured context for the client (e.g. which fields are locked). */
+    public readonly details?: Record<string, unknown>;
 
-    constructor(message: string, statusCode: number, isOperational: boolean = true, code?: string) {
+    constructor(message: string, statusCode: number, isOperational: boolean = true, code?: string, details?: Record<string, unknown>) {
         super(message);
         Object.setPrototypeOf(this, new.target.prototype);
         this.statusCode = statusCode;
         this.isOperational = isOperational;
         this.code = code;
+        this.details = details;
         Error.captureStackTrace(this, this.constructor);
     }
 }

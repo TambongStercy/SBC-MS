@@ -1,5 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { AuthenticatedRequest } from './auth.middleware';
+import { clientIp } from '../../utils/client-ip';
 
 /**
  * Per-user rate limit for the scan endpoint (spec §27).
@@ -13,8 +14,10 @@ export const scanLimiter = rateLimit({
     legacyHeaders: false,
     keyGenerator: (req) => {
         const uid = (req as AuthenticatedRequest).user?.userId;
-        return uid ? `scan:${uid}` : `scan:ip:${req.ip}`;
+        return uid ? `scan:${uid}` : `scan:ip:${clientIp(req)}`;
     },
+    // We key on our own clientIp(), not req.ip.
+    validate: { xForwardedForHeader: false },
     message: { success: false, message: 'Trop de scans en peu de temps. Ralentissez.' },
 });
 
@@ -27,5 +30,8 @@ export const publicReadLimiter = rateLimit({
     max: 240,
     standardHeaders: true,
     legacyHeaders: false,
+    // Per visitor, not per gateway: req.ip is the gateway for everyone.
+    keyGenerator: (req) => `public:${clientIp(req)}`,
+    validate: { xForwardedForHeader: false },
     message: { success: false, message: 'Trop de requêtes. Réessayez dans un instant.' },
 });

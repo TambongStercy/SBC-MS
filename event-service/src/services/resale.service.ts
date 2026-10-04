@@ -246,6 +246,9 @@ export const buyListing = async (args: {
  *
  * Idempotent: a second webhook for the same sessionId is a no-op.
  */
+/** How long a resale settlement claim holds before another callback may resume it. */
+const RESALE_SETTLEMENT_LEASE_MS = 10 * 60 * 1000;
+
 export const settleResaleFromWebhook = async (payload: {
     sessionId: string;
     status: string;
@@ -266,9 +269,12 @@ export const settleResaleFromWebhook = async (payload: {
     const order = resaleOrder.orderId ? await Order.findById(resaleOrder.orderId) : null;
 
     if (status !== 'SUCCEEDED') {
-        resaleOrder.status = ResaleOrderStatus.FAILED;
-        await resaleOrder.save();
-        if (order) {
+        // Never downgrade a resale another callback is settling.
+        const failed = await ResaleOrder.updateOne(
+            { _id: resaleOrder._id, status: { $ne: ResaleOrderStatus.PAID }, settlingAt: { $exists: false } },
+            { $set: { status: ResaleOrderStatus.FAILED } },
+        );
+        if (order && failed.modifiedCount === 1) {
             order.status = OrderStatus.FAILED;
             order.failedAt = new Date();
             await order.save();
@@ -276,14 +282,36 @@ export const settleResaleFromWebhook = async (payload: {
         return { handled: true, outcome: 'failed' };
     }
 
-    const listing = await ResaleListing.findById(resaleOrder.listingId);
+    // Claim (see order.service settleFromWebhook): duplicate SUCCEEDED
+    // callbacks used to both pass the PAID check above and both mint a ticket.
+    const claimed = await ResaleOrder.findOneAndUpdate(
+        {
+            _id: resaleOrder._id,
+            status: { $ne: ResaleOrderStatus.PAID },
+            $or: [
+                { settlingAt: { $exists: false } },
+                { settlingAt: { $lt: new Date(Date.now() - RESALE_SETTLEMENT_LEASE_MS) } },
+            ],
+        },
+        { $set: { settlingAt: new Date() } },
+        { new: true },
+    );
+    if (!claimed) return { handled: true, alreadyProcessed: true };
+
+    const listing = await ResaleListing.findById(claimed.listingId);
     if (!listing) throw new AppError('Listing vanished', 500);
-    if (listing.status !== ResaleListingStatus.ACTIVE) {
+
+    // A resumed settlement finds the listing already SOLD by its own crashed
+    // run: the buyer's new ticket (previousTicketId = the listed ticket) proves it.
+    const resumedTicket = listing.status === ResaleListingStatus.SOLD
+        ? await Ticket.findOne({ previousTicketId: listing.ticketId, ownerUserId: claimed.buyerUserId })
+        : null;
+
+    if (listing.status !== ResaleListingStatus.ACTIVE && !resumedTicket) {
         // Someone else got there first or the listing was cancelled between
         // payment start and settlement. Mark the resale-order failed; the buyer
         // needs a refund (handled elsewhere).
-        resaleOrder.status = ResaleOrderStatus.FAILED;
-        await resaleOrder.save();
+        await ResaleOrder.updateOne({ _id: claimed._id }, { $set: { status: ResaleOrderStatus.FAILED }, $unset: { settlingAt: '' } });
         if (order) {
             order.status = OrderStatus.CANCELLED;
             order.metadata = { ...(order.metadata || {}), reason: 'Listing no longer active at settlement' };
@@ -315,12 +343,12 @@ export const settleResaleFromWebhook = async (payload: {
         },
     );
 
-    // 2. New ticket minted for the buyer
-    const newTicket = await Ticket.create({
+    // 2. New ticket minted for the buyer (once — a resumed run reuses it)
+    const newTicket = resumedTicket ?? await Ticket.create({
         orderId: resaleOrder.orderId,
         eventId: oldTicket.eventId,
         ticketTypeId: oldTicket.ticketTypeId,
-        ownerUserId: resaleOrder.buyerUserId,
+        ownerUserId: claimed.buyerUserId,
         serial: generateTicketSerial(),
         qrToken: generateQrToken(),
         status: TicketStatus.ISSUED,
@@ -337,10 +365,10 @@ export const settleResaleFromWebhook = async (payload: {
     listing.soldAt = new Date();
     await listing.save();
 
-    resaleOrder.status = ResaleOrderStatus.PAID;
-    resaleOrder.newTicketId = newTicket._id;
-    resaleOrder.settledAt = new Date();
-    await resaleOrder.save();
+    claimed.status = ResaleOrderStatus.PAID;
+    claimed.newTicketId = newTicket._id;
+    claimed.settledAt = new Date();
+    await claimed.save();
 
     if (order) {
         order.status = OrderStatus.PAID;
@@ -362,18 +390,25 @@ export const settleResaleFromWebhook = async (payload: {
         log.warn(`TicketTransfer audit write failed for resale ${resaleOrder._id}: ${(err as Error).message}`);
     }
 
-    // Commission row (audit, non-transactional so a bad write can't crash the sale)
+    // Commission row (audit, non-transactional so a bad write can't crash the
+    // sale). Upsert: one row per resale, however many times settlement runs.
     try {
-        await Commission.create({
-            kind: CommissionKind.RESALE,
-            resaleOrderId: resaleOrder._id,
-            orderId: resaleOrder.orderId,
-            eventId: listing.eventId,
-            basisAmount: listing.askingPrice,
-            rate: listing.askingPrice ? (order?.commission ?? 0) / listing.askingPrice : 0,
-            amount: order?.commission ?? 0,
-            sbcRevenueBookedAt: new Date(),
-        });
+        await Commission.updateOne(
+            { resaleOrderId: resaleOrder._id },
+            {
+                $setOnInsert: {
+                    kind: CommissionKind.RESALE,
+                    resaleOrderId: resaleOrder._id,
+                    orderId: resaleOrder.orderId,
+                    eventId: listing.eventId,
+                    basisAmount: listing.askingPrice,
+                    rate: listing.askingPrice ? (order?.commission ?? 0) / listing.askingPrice : 0,
+                    amount: order?.commission ?? 0,
+                    sbcRevenueBookedAt: new Date(),
+                },
+            },
+            { upsert: true },
+        );
     } catch (err) {
         log.warn(`Resale commission row insert failed for ${resaleOrder._id}: ${(err as Error).message}`);
     }

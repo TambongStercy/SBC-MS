@@ -47,6 +47,16 @@ export interface IOrder extends Document {
      * Idempotent guard: sweeper skips orders where creditedAt is present.
      */
     creditedAt?: Date;
+    /**
+     * Settlement claim. Set atomically by the one webhook that gets to settle;
+     * a concurrent or replayed callback finds it set and stops. Expires after a
+     * lease so a crash mid-settlement can be picked up again.
+     */
+    settlingAt?: Date;
+    /** Seats were taken for this order — a resumed settlement must not take them twice. */
+    seatsAllocatedAt?: Date;
+    /** Last time the payment reconciler asked payment-service about this order. */
+    reconciledAt?: Date;
     metadata?: Record<string, unknown>;
     createdAt: Date;
     updatedAt: Date;
@@ -78,6 +88,9 @@ const OrderSchema = new Schema<IOrder>({
     paidAt: { type: Date },
     failedAt: { type: Date },
     creditedAt: { type: Date },
+    settlingAt: { type: Date },
+    seatsAllocatedAt: { type: Date },
+    reconciledAt: { type: Date },
     metadata: { type: Schema.Types.Mixed },
 }, { timestamps: true });
 

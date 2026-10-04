@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { UserRepository } from '../database/repositories/user.repository';
+import { EventOrganizerLedgerDirection } from '../database/models/event-organizer-ledger.model';
 import { paymentService } from './clients/payment.service.client';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
@@ -15,6 +16,20 @@ const log = logger.getLogger('EventOrganizerBalanceService');
  * advertisingBalance, for the same "keep the incident-prone payout code
  * untouched" reason.
  */
+/**
+ * A PENDING ledger row (sequential path only) is normal for the milliseconds a
+ * concurrent retry overlaps the first attempt; one that outlives this window
+ * is a crash between the ledger insert and the balance move.
+ */
+const PENDING_STUCK_MS = 2 * 60 * 1000;
+const reportPending = (kind: string, reference: string, userId: string, since?: Date) => {
+    if (since && Date.now() - since.getTime() < PENDING_STUCK_MS) {
+        log.warn(`Event-organizer ${kind} ${reference} for ${userId} is in progress; the caller will retry.`);
+    } else {
+        log.error(`Event-organizer ${kind} ${reference} is stuck PENDING for ${userId} since ${since?.toISOString()} — check the balance by hand, then mark the row APPLIED or delete it.`);
+    }
+};
+
 const MIN_TRANSFER_AMOUNT = Number(process.env.EVENT_ORGANIZER_MIN_TRANSFER || 2000);
 
 export class EventOrganizerBalanceService {
@@ -31,25 +46,38 @@ export class EventOrganizerBalanceService {
     }
 
     /**
-     * Credits organizer earnings (primary sale or resale share).
+     * Credits organizer earnings (primary sale, resale share, paid votes).
      * Service-to-service only; called from event-service.
      *
-     * Idempotency is the caller's job: event-service stamps creditedAt on the
-     * order and refuses to credit twice. A ledger here would duplicate that
-     * responsibility.
+     * Idempotent on `reference`: event-service's webhooks, reconcilers and
+     * sweepers all retry, and its own creditedAt stamp can be lost in a crash
+     * between our response and its save. A replay returns the current balance
+     * with `alreadyApplied: true` and moves nothing.
      */
     async credit(
         userId: string,
         amount: number,
         reference: string,
         description: string,
-    ): Promise<{ newEventOrganizerBalance: number; transactionId: string }> {
+    ): Promise<{ newEventOrganizerBalance: number; transactionId: string; alreadyApplied?: boolean }> {
         if (!Number.isFinite(amount) || amount <= 0) {
             throw new AppError('Credit amount must be a positive number', 400);
         }
+        if (!Types.ObjectId.isValid(userId)) throw new AppError('Invalid userId', 400);
 
-        const updated = await this.userRepository.creditEventOrganizerBalance(userId, amount);
-        if (!updated) throw new AppError('User not found', 404);
+        const outcome = await this.userRepository.applyEventOrganizerMovement({
+            userId, amount, reference, description, direction: EventOrganizerLedgerDirection.CREDIT,
+        });
+        if (!outcome.user) throw new AppError('User not found', 404);
+        if (outcome.pendingConflict) {
+            reportPending('credit', reference, userId, outcome.pendingSince);
+            throw new AppError(`Credit ${reference} is pending verification`, 409);
+        }
+        if (!outcome.applied) {
+            log.info(`Event-organizer credit ${reference} already applied for ${userId}; nothing moved.`);
+            return { newEventOrganizerBalance: outcome.user.eventOrganizerBalance, transactionId: '', alreadyApplied: true };
+        }
+        const updated = outcome.user;
 
         let transactionId = '';
         try {
@@ -85,13 +113,27 @@ export class EventOrganizerBalanceService {
         amount: number,
         reference: string,
         description: string,
-    ): Promise<{ newEventOrganizerBalance: number; wentNegative: boolean; transactionId: string }> {
+    ): Promise<{ newEventOrganizerBalance: number; wentNegative: boolean; transactionId: string; alreadyApplied?: boolean }> {
         if (!Number.isFinite(amount) || amount <= 0) {
             throw new AppError('Debit amount must be a positive number', 400);
         }
+        if (!Types.ObjectId.isValid(userId)) throw new AppError('Invalid userId', 400);
 
-        const updated = await this.userRepository.debitEventOrganizerBalance(userId, amount);
-        if (!updated) throw new AppError('User not found', 404);
+        // Idempotent on `reference`, like credit().
+        const outcome = await this.userRepository.applyEventOrganizerMovement({
+            userId, amount, reference, description, direction: EventOrganizerLedgerDirection.DEBIT,
+        });
+        if (!outcome.user) throw new AppError('User not found', 404);
+        if (outcome.pendingConflict) {
+            reportPending('debit', reference, userId, outcome.pendingSince);
+            throw new AppError(`Debit ${reference} is pending verification`, 409);
+        }
+        if (!outcome.applied) {
+            log.info(`Event-organizer debit ${reference} already applied for ${userId}; nothing moved.`);
+            const balance = outcome.user.eventOrganizerBalance;
+            return { newEventOrganizerBalance: balance, wentNegative: balance < 0, transactionId: '', alreadyApplied: true };
+        }
+        const updated = outcome.user;
 
         const wentNegative = updated.eventOrganizerBalance < 0;
 
