@@ -44,8 +44,6 @@ const ChallengeDetailPage = lazy(() => import('./features/modules/challenges/Cha
 // Pages still to be rebuilt, shown in their old look
 const Deconnexion = lazy(() => import('./pages/Deconnexion'));
 const ProductsManagementPage = lazy(() => import('./pages/ProductsManagementPage'));
-const TombolaManagementPage = lazy(() => import('./pages/TombolaManagementPage'));
-const TombolaDrawPage = lazy(() => import('./pages/TombolaDrawPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
 
@@ -55,6 +53,11 @@ const legacy = (page: ReactNode) => <LegacyFrame>{page}</LegacyFrame>;
 function OldMemberLink() {
   const { userId } = useParams();
   return <Navigate to={`/membres/${userId}`} replace />;
+}
+
+function OldTombolaDrawLink() {
+  const { monthId } = useParams();
+  return <Navigate to={`/modules/tombola/tirage/${monthId}`} replace />;
 }
 
 function App() {
@@ -131,8 +134,8 @@ function App() {
               <Route path="/relance/campaigns" element={<Navigate to="/modules/relance?onglet=campagnes" replace />} />
               <Route path="/relance/sms-templates" element={<Navigate to="/modules/relance?onglet=sms" replace />} />
               <Route path="/sbclove" element={<Navigate to="/modules/sbc-love" replace />} />
-              <Route path="/tombola" element={legacy(<TombolaManagementPage />)} />
-              <Route path="/tombola/draw/:monthId" element={legacy(<TombolaDrawPage />)} />
+              <Route path="/tombola" element={<Navigate to="/modules/tombola" replace />} />
+              <Route path="/tombola/draw/:monthId" element={<OldTombolaDrawLink />} />
               <Route path="/products" element={legacy(<ProductsManagementPage />)} />
               <Route path="/impact-challenges" element={legacy(<ImpactChallengePage />)} />
               <Route path="/impact-challenges/:challengeId" element={legacy(<ChallengeDetailsPage />)} />
