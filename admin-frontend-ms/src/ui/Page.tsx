@@ -1,12 +1,15 @@
 import { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Menu } from 'lucide-react';
 import { cn } from './cn';
 import { IconButton } from './Button';
+import { useOpenMenu } from './menuContext';
 
 /**
- * Every new screen: a header (back, title, actions) and its content at a
- * readable width. The header sticks while scrolling on a phone.
+ * Every screen: a header (back or menu, title, actions) and its content at a
+ * readable width. The header sticks while scrolling on a phone. A page reached
+ * from the menu shows ☰ on a phone (the computer has the sidebar); a page inside
+ * another one shows a back arrow instead.
  */
 export function Page({ title, subtitle, back, actions, width = 'default', children }: {
     title: ReactNode;
@@ -18,14 +21,19 @@ export function Page({ title, subtitle, back, actions, width = 'default', childr
     children: ReactNode;
 }) {
     const navigate = useNavigate();
+    const openMenu = useOpenMenu();
     const max = width === 'narrow' ? 'max-w-2xl' : width === 'wide' ? 'max-w-page' : 'max-w-5xl';
     return (
         <div className="min-h-full">
             <header className="sticky top-0 z-20 bg-bg/95 backdrop-blur supports-[backdrop-filter]:bg-bg/80 border-b border-transparent">
                 <div className={cn('mx-auto flex items-center gap-2 px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-3', max)}>
-                    {back && (
+                    {back ? (
                         <IconButton label="Retour" className="-ml-2" onClick={() => (typeof back === 'string' ? navigate(back) : navigate(-1))}>
                             <ArrowLeft size={20} />
+                        </IconButton>
+                    ) : openMenu && (
+                        <IconButton label="Menu" className="-ml-2 lg:hidden" onClick={openMenu}>
+                            <Menu size={22} />
                         </IconButton>
                     )}
                     <div className="min-w-0 flex-1">

@@ -75,7 +75,7 @@ export default function ChallengesModule() {
         { key: 'd', header: 'Période', cell: c => <span className="text-ink-2 whitespace-nowrap">{formatDate(c.startDate)} → {formatDate(c.endDate)}</span> },
     ];
     return (
-        <Page title="Impact Challenge" back="/modules" actions={<Button size="sm" icon={<Plus size={16} />} onClick={() => setCreating(true)}>Nouveau</Button>}>
+        <Page title="Impact Challenge" actions={<Button size="sm" icon={<Plus size={16} />} onClick={() => setCreating(true)}>Nouveau</Button>}>
             <div className="space-y-3">
                 <DataList rows={q.data?.challenges} columns={cols} rowKey={c => c._id} loading={q.isLoading} error={q.error} onRetry={() => q.refetch()}
                     onRowClick={c => navigate(`/modules/impact-challenge/${c._id}`)}

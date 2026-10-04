@@ -148,7 +148,7 @@ function HistoryTab() {
 export default function WithdrawalsPage() {
     const [view, setView] = useParamState('vue', 'a-valider');
     return (
-        <Page title="Retraits" back="/argent">
+        <Page title="Tous les retraits">
             <div className="space-y-4">
                 <Tabs value={view} onChange={setView} items={[{ value: 'a-valider', label: 'À valider' }, { value: 'historique', label: 'Historique' }]} />
                 {view === 'historique' ? <HistoryTab /> : <PendingTab />}

@@ -9,9 +9,6 @@ import { AppToaster, Spinner } from './ui';
 const HomePage = lazy(() => import('./features/home/HomePage'));
 const ProofQueuePage = lazy(() => import('./features/queues/ProofQueuePage'));
 const WithdrawalQueuePage = lazy(() => import('./features/queues/WithdrawalQueuePage'));
-const ArgentHub = lazy(() => import('./features/hubs/ArgentHub'));
-const ModulesHub = lazy(() => import('./features/hubs/ModulesHub'));
-const PlusHub = lazy(() => import('./features/hubs/PlusHub'));
 const MembersPage = lazy(() => import('./features/members/MembersPage'));
 const MemberPage = lazy(() => import('./features/members/MemberPage'));
 const WithdrawalsPage = lazy(() => import('./features/money/WithdrawalsPage'));
@@ -83,7 +80,7 @@ function App() {
               <Route path="/partners" element={<Navigate to="/membres?partenaire=any" replace />} />
 
               {/* Argent */}
-              <Route path="/argent" element={<ArgentHub />} />
+              <Route path="/argent" element={<Navigate to="/" replace />} />
               <Route path="/argent/retraits" element={<WithdrawalsPage />} />
               <Route path="/argent/bloques" element={<StuckPage />} />
               <Route path="/argent/paiements" element={<PaymentsPage />} />
@@ -103,7 +100,7 @@ function App() {
               <Route path="/manual-payment-recovery" element={<Navigate to="/argent/resoudre/abonnement" replace />} />
 
               {/* Modules */}
-              <Route path="/modules" element={<ModulesHub />} />
+              <Route path="/modules" element={<Navigate to="/" replace />} />
               <Route path="/modules/ads" element={<AdsModule />} />
               <Route path="/modules/billetterie" element={<BilletterieModule />} />
               <Route path="/modules/billetterie/evenements/:eventId" element={<EventDetailPage />} />
@@ -141,7 +138,7 @@ function App() {
               <Route path="/impact-challenges/:challengeId" element={<OldChallengeLink />} />
 
               {/* Plus */}
-              <Route path="/plus" element={<PlusHub />} />
+              <Route path="/plus" element={<Navigate to="/" replace />} />
               <Route path="/plus/annonces" element={<AnnouncementsPage />} />
               <Route path="/plus/contenu" element={<ContentPage />} />
               <Route path="/plus/stories" element={<StoriesPage />} />

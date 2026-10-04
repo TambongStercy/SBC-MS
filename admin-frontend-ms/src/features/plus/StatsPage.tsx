@@ -30,7 +30,7 @@ export default function StatsPage() {
     const tooltip = { contentStyle: { borderRadius: 12, border: `1px solid ${t.grid}`, fontSize: 13 } };
 
     return (
-        <Page title="Statistiques" back="/plus">
+        <Page title="Statistiques">
             <div className="space-y-5">
                 <div className="grid grid-cols-3 gap-2">
                     <Stat label="Membres" value={formatNumber(summary.data?.totalUsers)} loading={summary.isLoading} to="/membres" />

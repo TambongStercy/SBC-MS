@@ -128,7 +128,7 @@ function WithdrawalNotReceived() {
 export default function ResolvePage() {
     const [problem, setProblem] = useParamState('probleme', '');
     return (
-        <Page title="Problème de paiement" back={problem ? undefined : '/argent'} width="narrow">
+        <Page title="Problème de paiement" back={problem ? '/argent/resoudre' : undefined} width="narrow">
             {!problem ? (
                 <NavList>
                     <NavRow onClick={() => setProblem('paye')} icon={<Receipt size={20} />} tone="primary" title="Un membre a payé mais n’a rien reçu"

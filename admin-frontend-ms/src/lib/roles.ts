@@ -28,8 +28,8 @@ export function roleFromToken(token: string | null): string | null {
 
 /** Paths a limited role may open: '=/x' exactly ('/' always exact), others as prefixes. Admins open everything. */
 const ALLOWED: Record<string, string[]> = {
-    withdrawal_admin: ['/', '/a-traiter/retraits', '=/argent', '/argent/retraits', '/argent/bloques', '/plus'],
-    moderator: ['/', '/a-traiter/verifications', '/plus'],
+    withdrawal_admin: ['/', '/a-traiter/retraits', '/argent/retraits', '/argent/bloques'],
+    moderator: ['/', '/a-traiter/verifications'],
 };
 
 export const HOME_FOR: Record<string, string> = {

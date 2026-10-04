@@ -31,7 +31,7 @@ export default function GatewaysPage() {
     const l = live.data;
 
     return (
-        <Page title="Soldes des passerelles" back="/argent" width="narrow"
+        <Page title="Argent chez les opérateurs" width="narrow"
             actions={<IconButton label="Actualiser" onClick={() => { live.refetch(); manual.refetch(); }}><RefreshCw size={20} /></IconButton>}>
             <div className="space-y-5">
                 <section>

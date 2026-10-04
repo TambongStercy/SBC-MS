@@ -27,7 +27,7 @@ export default function StoragePage() {
     };
 
     return (
-        <Page title="Stockage" back="/plus" width="narrow" actions={<IconButton label="Actualiser" onClick={() => status.refetch()}><RefreshCw size={20} /></IconButton>}>
+        <Page title="Fichiers et stockage" width="narrow" actions={<IconButton label="Actualiser" onClick={() => status.refetch()}><RefreshCw size={20} /></IconButton>}>
             {status.isLoading ? <Skeleton className="h-60 rounded-card" /> : status.isError || !s ? (
                 <ErrorState message="Impossible de lire l’état du stockage." onRetry={() => status.refetch()} />
             ) : (

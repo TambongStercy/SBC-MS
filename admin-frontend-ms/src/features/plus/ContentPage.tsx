@@ -221,7 +221,7 @@ function GroupsTab() {
 export default function ContentPage() {
     const [tab, setTab] = useParamState('onglet', 'formations');
     return (
-        <Page title="Contenu de l’app" back="/plus" width="narrow">
+        <Page title="Contenu de l’app" width="narrow">
             <div className="space-y-4">
                 <Tabs value={tab} onChange={setTab} phoneColumns={2} items={[
                     { value: 'formations', label: 'Formations' }, { value: 'actualites', label: 'Actualités' },

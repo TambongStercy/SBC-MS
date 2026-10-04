@@ -68,7 +68,7 @@ function Overview() {
 export default function RelanceModule() {
     const [tab, setTab] = useParamState('onglet', 'apercu');
     return (
-        <Page title="Relance" back="/modules" width="wide">
+        <Page title="Relance des filleuls" width="wide">
             <div className="space-y-4">
                 <Tabs value={tab} onChange={setTab} phoneColumns={3} items={[
                     { value: 'apercu', label: 'Aperçu' }, { value: 'campagnes', label: 'Campagnes' }, { value: 'parrains', label: 'Parrains' },

@@ -38,7 +38,7 @@ export const QUEUES: QueueDef[] = [
         load: async () => ({ count: (await getWithdrawalStats()).data.pendingApproval }),
     },
     {
-        key: 'campaigns', title: 'Campagnes pub à valider', to: '/modules/ads?onglet=campagnes&statut=a-valider', roles: ADMIN,
+        key: 'campaigns', title: 'Publicités à valider', to: '/modules/ads?onglet=campagnes&statut=a-valider', roles: ADMIN,
         load: async () => ({ count: (await getAdsCampaigns({ status: ['paid', 'pending_review'], limit: 1 })).pagination?.total ?? 0 }),
     },
     {
@@ -54,7 +54,7 @@ export const QUEUES: QueueDef[] = [
         load: async () => ({ count: (await listAdminDisputes({ status: 'OPEN', limit: 1 })).total }),
     },
     {
-        key: 'stuck', title: 'Retraits bloqués chez le fournisseur', to: '/argent/bloques', roles: ['admin', 'withdrawal_admin'],
+        key: 'stuck', title: 'Retraits sans réponse', to: '/argent/bloques', roles: ['admin', 'withdrawal_admin'],
         load: async () => {
             const [mf, cp] = await Promise.all([getStuckMoneyFusionWithdrawals(1, 1), getStuckCinetPayWithdrawals(1, 1)]);
             const m = mf.data.pagination.total, c = cp.data.pagination.total;

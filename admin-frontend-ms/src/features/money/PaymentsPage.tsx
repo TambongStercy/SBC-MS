@@ -148,7 +148,7 @@ function MovementsTab() {
 export default function PaymentsPage() {
     const [view, setView] = useParamState('vue', 'paiements');
     return (
-        <Page title="Paiements" back="/argent" width="wide">
+        <Page title="Paiements des membres" width="wide">
             <div className="space-y-4">
                 <Tabs value={view} onChange={setView} items={[{ value: 'paiements', label: 'Paiements' }, { value: 'mouvements', label: 'Mouvements de solde' }]} />
                 {view === 'mouvements' ? <MovementsTab /> : <AttemptsTab />}

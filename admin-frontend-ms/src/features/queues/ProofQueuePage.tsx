@@ -64,7 +64,7 @@ export default function ProofQueuePage() {
     const position = current ? pending.indexOf(current) + 1 : 0;
 
     return (
-        <Page title="Vérifications vidéo" back="/" width="wide"
+        <Page title="Vérifications vidéo" width="wide"
             subtitle={list.data ? (pending.length ? `${pending.length} en attente` : 'Aucune en attente') : undefined}>
             {list.isLoading ? <ListSkeleton rows={3} /> : list.isError ? (
                 <ErrorState message="Impossible de charger les vérifications." onRetry={() => list.refetch()} />

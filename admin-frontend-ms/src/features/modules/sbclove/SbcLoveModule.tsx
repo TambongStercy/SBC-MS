@@ -12,7 +12,7 @@ export default function SbcLoveModule() {
     const [tab, setTab] = useParamState('onglet', 'a-valider');
     const stats = useQuery({ queryKey: ['sbclove', 'stats'], queryFn: getStats });
     return (
-        <Page title="SBC Love" back="/modules" width="wide">
+        <Page title="SBC Love" width="wide">
             <div className="space-y-4">
                 <Tabs value={tab} onChange={setTab} phoneColumns={2} items={[
                     { value: 'a-valider', label: 'À valider', count: stats.data?.profiles.pending },

@@ -63,7 +63,7 @@ export default function StuckPage() {
 
     const rows = list.data?.withdrawals;
     return (
-        <Page title="Retraits bloqués" back="/argent" subtitle="Envoyés au fournisseur, sans réponse">
+        <Page title="Retraits sans réponse" subtitle="Envoyés au fournisseur, sans réponse">
             <div className="space-y-3">
                 <Tabs<Provider> value={provider as Provider} onChange={v => { setProvider(v); setPage(1); }} items={[
                     { value: 'moneyfusion', label: 'MoneyFusion', count: counts.data?.moneyfusion },

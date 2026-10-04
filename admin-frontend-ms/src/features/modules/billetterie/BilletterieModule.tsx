@@ -60,7 +60,7 @@ function Overview({ go }: { go: (tab: string) => void }) {
 export default function BilletterieModule() {
     const [tab, setTab] = useParamState('onglet', 'apercu');
     return (
-        <Page title="Billetterie" back="/modules" width="wide">
+        <Page title="Billetterie" width="wide">
             <div className="space-y-4">
                 <Tabs value={tab} onChange={setTab} phoneColumns={3} items={[
                     { value: 'apercu', label: 'Aperçu' }, { value: 'organisateurs', label: 'Organisateurs' }, { value: 'evenements', label: 'Événements' },

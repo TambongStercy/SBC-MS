@@ -108,7 +108,7 @@ function FlashTab() {
 export default function BoutiqueModule() {
     const [tab, setTab] = useParamState('onglet', 'produits');
     return (
-        <Page title="Boutique" back="/modules" width="wide">
+        <Page title="Boutique" width="wide">
             <div className="space-y-4">
                 <Tabs value={tab} onChange={setTab} items={[{ value: 'produits', label: 'Produits' }, { value: 'flash', label: 'Ventes flash' }]} />
                 {tab === 'flash' ? <FlashTab /> : <ProductsTab />}
