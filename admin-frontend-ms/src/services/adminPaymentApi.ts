@@ -178,7 +178,7 @@ export interface ManualPaymentIntentRequest {
     amount: number;
     currency?: string;
     paymentType?: string;
-    provider?: 'cinetpay' | 'feexpay' | 'nowpayments';
+    provider?: 'cinetpay' | 'feexpay' | 'moneyfusion' | 'nowpayments';
     externalReference?: string;
     metadata?: Record<string, any>;
     autoMarkSucceeded?: boolean;

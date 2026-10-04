@@ -23,6 +23,16 @@ const GatewaysPage = lazy(() => import('./features/money/GatewaysPage'));
 const ResolvePage = lazy(() => import('./features/money/ResolvePage'));
 const RecoveryPage = lazy(() => import('./features/money/RecoveryPage'));
 const AnalysisPage = lazy(() => import('./features/money/AnalysisPage'));
+const AdsModule = lazy(() => import('./features/modules/ads/AdsModule'));
+const BilletterieModule = lazy(() => import('./features/modules/billetterie/BilletterieModule'));
+const EventDetailPage = lazy(() => import('./features/modules/billetterie/EventDetailPage'));
+const RelanceModule = lazy(() => import('./features/modules/relance/RelanceModule'));
+const SbcLoveModule = lazy(() => import('./features/modules/sbclove/SbcLoveModule'));
+const TombolaModule = lazy(() => import('./features/modules/tombola/TombolaModule'));
+const TombolaDrawModulePage = lazy(() => import('./features/modules/tombola/TombolaDrawPage'));
+const BoutiqueModule = lazy(() => import('./features/modules/boutique/BoutiqueModule'));
+const ChallengesModule = lazy(() => import('./features/modules/challenges/ChallengesModule'));
+const ChallengeDetailPage = lazy(() => import('./features/modules/challenges/ChallengeDetailPage'));
 
 // Pages still to be rebuilt, shown in their old look
 const OverViewPage = lazy(() => import('./pages/overViewPage'));
@@ -109,6 +119,16 @@ function App() {
 
               {/* Modules */}
               <Route path="/modules" element={<ModulesHub />} />
+              <Route path="/modules/ads" element={<AdsModule />} />
+              <Route path="/modules/billetterie" element={<BilletterieModule />} />
+              <Route path="/modules/billetterie/evenements/:eventId" element={<EventDetailPage />} />
+              <Route path="/modules/relance" element={<RelanceModule />} />
+              <Route path="/modules/sbc-love" element={<SbcLoveModule />} />
+              <Route path="/modules/tombola" element={<TombolaModule />} />
+              <Route path="/modules/tombola/tirage/:monthId" element={<TombolaDrawModulePage />} />
+              <Route path="/modules/boutique" element={<BoutiqueModule />} />
+              <Route path="/modules/impact-challenge" element={<ChallengesModule />} />
+              <Route path="/modules/impact-challenge/:challengeId" element={<ChallengeDetailPage />} />
               <Route path="/ads-network" element={legacy(<AdsNetworkDashboardPage />)} />
               <Route path="/ads-network/review" element={legacy(<AdsNetworkReviewPage />)} />
               <Route path="/ads-network/manual-verifications" element={<Navigate to="/a-traiter/verifications" replace />} />
