@@ -105,7 +105,7 @@ class AdminController {
     async listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request to list users');
         try {
-            const { page = 1, limit = 20, status, role, search, country, profession, interests, createdFrom, createdTo } = req.query;
+            const { page = 1, limit = 20, status, role, search, country, profession, interests, createdFrom, createdTo, subscription, partner } = req.query;
             const pagination: PaginationOptions = {
                 page: parseInt(page as string, 10) || 1,
                 limit: parseInt(limit as string, 10) || 10,
@@ -130,6 +130,8 @@ class AdminController {
                 interests: interestsArray,
                 createdFrom: createdFrom as string | undefined,
                 createdTo: createdTo as string | undefined,
+                subscription: subscription as string | undefined,
+                partner: partner as string | undefined,
             };
             log.debug('Filtering users with:', { filters, pagination });
 
@@ -162,6 +164,33 @@ class AdminController {
             res.status(200).json({ success: true, data: user });
         } catch (error) {
             log.error(`Error getting user details for ${userId} (admin):`, error);
+            next(error);
+        }
+    }
+
+    /**
+     * [Admin] A member's filleuls, for the member page.
+     * @route GET /api/users/admin/users/:userId/referrals?level=1|2|3&search=&page=&limit=
+     */
+    async getUserReferrals(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        const { userId } = req.params;
+        if (!isValidObjectId(userId)) {
+            res.status(400).json({ success: false, message: 'Invalid User ID format' });
+            return;
+        }
+        try {
+            const level = parseInt(String(req.query.level ?? ''), 10);
+            const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
+            const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? '20'), 10) || 20));
+            const search = typeof req.query.search === 'string' && req.query.search.trim() ? req.query.search.trim() : undefined;
+            const result = await userService.getReferredUsersInfoPaginated(userId, [1, 2, 3].includes(level) ? level : undefined, search, page, limit);
+            res.status(200).json({
+                success: true,
+                data: result.referredUsers,
+                pagination: { currentPage: result.page, totalPages: result.totalPages, totalCount: result.totalCount, limit },
+            });
+        } catch (error) {
+            log.error(`Error listing referrals for ${userId} (admin):`, error);
             next(error);
         }
     }

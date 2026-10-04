@@ -23,6 +23,8 @@ import { dailyWithdrawalRepository } from '../database/repositories/daily-withdr
 export type BalanceTarget = 'main' | 'activation';
 import SubscriptionModel, { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model';
 import UserModel from '../database/models/user.model';
+import PartnerModel from '../database/models/partner.model';
+import ReferralModel from '../database/models/referral.model';
 import { subscriptionService } from './subscription.service';
 import { partnerService } from './partner.service';
 import { subscriptionRepository } from '../database/repositories/subscription.repository';
@@ -2574,7 +2576,7 @@ export class UserService {
     /**
      * [Admin] List users with filtering and pagination.
      */
-    async adminListUsers(filters: { status?: string; role?: string; search?: string; country?: string; profession?: string; interests?: string[]; createdFrom?: string; createdTo?: string }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold', activeSubscriptionTypes?: SubscriptionType[] })[], paginationInfo: any }> {
+    async adminListUsers(filters: { status?: string; role?: string; search?: string; country?: string; profession?: string; interests?: string[]; createdFrom?: string; createdTo?: string; subscription?: string; partner?: string }, pagination: PaginationOptions): Promise<{ users: (Partial<IUser> & { partnerPack?: 'silver' | 'gold', activeSubscriptionTypes?: SubscriptionType[] })[], paginationInfo: any }> {
         log.info('Admin request to list users with filters:', { filters, pagination });
         const { page = 1, limit = 10 } = pagination;
         const skip = (page - 1) * limit;
@@ -2606,6 +2608,36 @@ export class UserService {
             if (digits.length >= 4 && /^[\d\s+().-]+$/.test(term)) or.push({ phoneNumber: { $regex: digits } });
             if (/^[0-9a-f]{24}$/i.test(term)) or.push({ _id: new Types.ObjectId(term) });
             query.$or = or;
+        }
+
+        // Subscription: 'classique' | 'cible' | 'any' (either) | 'none' (neither).
+        // Same rule as targeted announcements: an ACTIVE CLASSIQUE or CIBLE row.
+        const ids: Types.ObjectId[][] = [];
+        const notIds: Types.ObjectId[][] = [];
+        if (filters.subscription && ['classique', 'cible', 'any', 'none'].includes(filters.subscription)) {
+            const types = filters.subscription === 'classique' ? [SubscriptionType.CLASSIQUE]
+                : filters.subscription === 'cible' ? [SubscriptionType.CIBLE]
+                : [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE];
+            const subscribed = await SubscriptionModel.distinct('user', { status: SubscriptionStatus.ACTIVE, subscriptionType: { $in: types } }) as Types.ObjectId[];
+            (filters.subscription === 'none' ? notIds : ids).push(subscribed);
+        }
+        // Partner: 'silver' | 'gold' | 'any' — an active partner record.
+        if (filters.partner && ['silver', 'gold', 'any'].includes(filters.partner)) {
+            const partners = await PartnerModel.distinct('user', {
+                isActive: true, ...(filters.partner === 'any' ? {} : { pack: filters.partner }),
+            }) as Types.ObjectId[];
+            ids.push(partners);
+        }
+        if (ids.length || notIds.length) {
+            const idQuery: Record<string, unknown> = {};
+            if (ids.length) {
+                // every positive filter must hold: intersect the lists
+                const [first, ...rest] = ids.map(list => new Set(list.map(String)));
+                const both = [...first].filter(id => rest.every(set => set.has(id)));
+                idQuery.$in = both.map(id => new Types.ObjectId(id));
+            }
+            if (notIds.length) idQuery.$nin = notIds.flat();
+            query._id = idQuery as FilterQuery<IUser>['_id'];
         }
 
         // Signed up between createdFrom and createdTo (ISO dates or timestamps).
@@ -2704,22 +2736,30 @@ export class UserService {
      * [Admin] Get full details for a specific user.
      * Returns the complete user document, including active subscription types and partner pack.
      */
-    async adminGetUserById(userId: string | Types.ObjectId): Promise<Partial<IUser> & { activeSubscriptionTypes?: SubscriptionType[], partnerPack?: 'silver' | 'gold' } | null> {
+    async adminGetUserById(userId: string | Types.ObjectId): Promise<Partial<IUser> & { activeSubscriptionTypes?: SubscriptionType[], partnerPack?: 'silver' | 'gold', referrer?: unknown } | null> {
         log.info(`Admin request to get full details for user: ${userId}`);
         try {
-            const user = await userRepository.findById(userId);
+            // The soft-delete hook hides deleted members unless asked for explicitly.
+            const user = (await userRepository.findById(userId)) ?? (await UserModel.findOne({ _id: userId, deleted: true }).exec());
 
-            if (!user || user.deleted) { // Check for soft delete
-                log.warn(`Admin request failed: User ${userId} not found or deleted.`);
+            // Deleted members are shown too (flagged): the admin page is where
+            // they get restored, so it has to be able to open them.
+            if (!user) {
+                log.warn(`Admin request failed: User ${userId} not found.`);
                 return null;
             }
 
             // Fetch active subscription types and partner status in parallel
             const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
-            const [activeSubscriptionTypes, activePartner] = await Promise.all([
+            const [activeSubscriptionTypes, activePartner, referral] = await Promise.all([
                 subscriptionService.getActiveSubscriptionTypes(userObjectId.toString()),
-                partnerService.getActivePartnerByUserId(userObjectId.toString()) // Fetch partner status
+                partnerService.getActivePartnerByUserId(userObjectId.toString()), // Fetch partner status
+                // Who brought this member in (their level-1 parrain)
+                ReferralModel.findOne({ referredUser: userObjectId, referralLevel: 1 }).select('referrer').lean(),
             ]);
+            const referrer = referral?.referrer
+                ? await UserModel.findById(referral.referrer).select('_id name phoneNumber email avatar').lean()
+                : null;
 
             log.debug(`Active subscriptions for user ${userId}:`, activeSubscriptionTypes);
             if (activePartner) {
@@ -2740,7 +2780,8 @@ export class UserService {
             const result = {
                 ...userObject,
                 activeSubscriptionTypes: activeSubscriptionTypes.length > 0 ? activeSubscriptionTypes : undefined,
-                partnerPack: activePartner ? activePartner.pack : undefined // Add partnerPack
+                partnerPack: activePartner ? activePartner.pack : undefined, // Add partnerPack
+                referrer: referrer || undefined,
             };
 
             return result;
@@ -3296,34 +3337,23 @@ export class UserService {
         if (!searchTerm || searchTerm.trim() === '') return [];
 
         const trimmedSearch = searchTerm.trim();
-        const queryFilters: FilterQuery<IUser>[] = [];
-
-        // Check if search term looks like a phone number (simple numeric check)
-        const isNumeric = /^[\d\s()+-]+$/.test(trimmedSearch);
-        if (isNumeric) {
-            // Attempt to parse as number for exact match
-            // Remove non-digit characters for potential matching
-            const numericPhone = parseInt(trimmedSearch.replace(/\D/g, ''), 10);
-            if (!isNaN(numericPhone)) {
-                queryFilters.push({ phoneNumber: numericPhone });
-            }
+        // Callers are admin screens (payments, ledger, tombola tickets): they need
+        // to find blocked, unverified or deleted members too — investigating one
+        // is exactly when an admin searches. The text is escaped so "(" or "+"
+        // can't make an invalid regex, phone numbers are matched as the strings
+        // they are stored as (the old numeric match never hit), and a 24-hex
+        // term finds that exact member — the admin member page filters by id.
+        const escaped = trimmedSearch.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const searchRegex = new RegExp(escaped, 'i');
+        const queryFilters: FilterQuery<IUser>[] = [{ name: searchRegex }, { email: searchRegex }];
+        const digits = trimmedSearch.replace(/\D/g, '');
+        if (digits.length >= 4 && /^[\d\s()+.-]+$/.test(trimmedSearch)) {
+            queryFilters.push({ phoneNumber: { $regex: digits } });
         }
-
-        // Add regex search for name (case-insensitive)
-        const searchRegex = new RegExp(trimmedSearch, 'i');
-        queryFilters.push({ name: searchRegex });
-
-        // Add regex search for email (case-insensitive)
-        queryFilters.push({ email: searchRegex });
-
-        // Combine filters with $or
-        const finalQuery: FilterQuery<IUser> = {
-            $or: queryFilters,
-            // Ensure user is active/valid
-            blocked: { $ne: true },
-            deleted: { $ne: true },
-            isVerified: true,
-        };
+        if (/^[0-9a-f]{24}$/i.test(trimmedSearch)) {
+            queryFilters.push({ _id: new Types.ObjectId(trimmedSearch) });
+        }
+        const finalQuery: FilterQuery<IUser> = { $or: queryFilters };
 
         try {
             const userIds = await userRepository.findIdsBySearchTerm(finalQuery);
