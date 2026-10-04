@@ -60,6 +60,12 @@ export class LoveProfileRepository {
             .exec();
     }
 
+    /** The member ids behind every profile matching `query` (admin search scope). */
+    async distinctUserIds(query: FilterQuery<ILoveProfile>): Promise<string[]> {
+        const ids = await LoveProfileModel.distinct('userId', query).exec();
+        return ids.map(id => id.toString());
+    }
+
     async count(query: FilterQuery<ILoveProfile>): Promise<number> {
         return LoveProfileModel.countDocuments(query).exec();
     }

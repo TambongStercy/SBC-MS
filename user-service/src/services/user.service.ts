@@ -3299,6 +3299,11 @@ export class UserService {
         }
     }
 
+    /** [Internal] SBCLOVE admin search — see userRepository.findSbcloveMemberIdsMatching. */
+    async searchSbcloveMemberIds(userIds: string[], term: string): Promise<string[]> {
+        return userRepository.findSbcloveMemberIdsMatching(userIds.map(id => new Types.ObjectId(id)), term);
+    }
+
     /**
      * [Internal] Returns the targeting projection for advertising-service.
      * Reuse, no copy — the ads network targets on the same profile fields.

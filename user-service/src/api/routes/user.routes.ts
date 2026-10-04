@@ -60,6 +60,8 @@ serviceRouter.post('/batch-details', (req, res) => userController.getUsersDetail
 
 // Internal route to get the SBCLOVE demographic subset for one or more users
 serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDetailsByIds(req, res));
+// SBCLOVE admin search: which of the given members match a name/email/phone/city term
+serviceRouter.post('/sbclove-search', (req, res) => userController.searchSbcloveMemberIds(req, res));
 
 // Internal route to get the relance subset (notification-service). Carries country,
 // which gates SMS relance to Cameroon; batch-details does not.

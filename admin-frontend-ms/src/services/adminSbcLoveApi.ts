@@ -172,6 +172,8 @@ export async function listProfiles(params: {
     status?: ProfileStatus;
     page?: number;
     limit?: number;
+    /** Pseudo, name, email, phone, city or id — matched server-side across every profile. */
+    search?: string;
 }): Promise<ProfileListResponse> {
     try {
         const response = await apiClient.get('/sbclove/admin/profiles', { params });
@@ -190,6 +192,8 @@ export async function listMembers(params: {
     status?: ProfileStatus;
     page?: number;
     limit?: number;
+    /** Pseudo, name, email, phone, city or id — matched server-side across every profile. */
+    search?: string;
 }): Promise<MemberListResponse> {
     try {
         const response = await apiClient.get('/sbclove/admin/members', { params });

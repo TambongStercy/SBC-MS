@@ -784,6 +784,29 @@ export class UserRepository {
     }
 
     /**
+     * [Internal] SBCLOVE admin search: which of `userIds` match `term` on name,
+     * email, phone or city. Scoped to the given ids (the SBCLOVE members) so a
+     * common term can't drag in the whole user base, and unverified or blocked
+     * accounts stay findable — the moderator is looking for exactly those.
+     */
+    async findSbcloveMemberIdsMatching(userIds: Types.ObjectId[], term: string): Promise<string[]> {
+        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const or: FilterQuery<IUser>[] = [
+            { name: { $regex: escaped, $options: 'i' } },
+            { email: { $regex: escaped, $options: 'i' } },
+            { city: { $regex: escaped, $options: 'i' } },
+        ];
+        // Phones are stored as digit strings; "+237 699-12" should still find them.
+        const digits = term.replace(/\D/g, '');
+        if (digits.length >= 4) or.push({ phoneNumber: { $regex: digits } });
+        const users = await UserModel.find({ _id: { $in: userIds }, deleted: { $ne: true }, $or: or })
+            .select('_id')
+            .lean()
+            .exec();
+        return users.map(user => (user._id as Types.ObjectId).toHexString());
+    }
+
+    /**
      * [Internal] Returns the projection consumed by advertising-service.
      *
      * Campaign targeting runs on these fields, so an omission here does not error —

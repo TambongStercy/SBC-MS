@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getStats, listMembers, setSuspension, ProfileStatus, type MemberRow } from '../../../services/adminSbcLoveApi';
-import { Button, ButtonLink, ConfirmSheet, DataList, EmptyState, KeyValue, MemberLink, Pagination, Select, Sheet, Stat, StatusBadge, notify, type Column } from '../../../ui';
+import { Button, ButtonLink, ConfirmSheet, DataList, EmptyState, KeyValue, MemberLink, Pagination, SearchInput, Select, Sheet, Stat, StatusBadge, notify, type Column } from '../../../ui';
 import { formatDate, formatNumber } from '../../../lib/format';
-import { useParamState } from '../../../lib/hooks';
+import { useDebounced, useParamState } from '../../../lib/hooks';
 import { PROFILE_STATUS, sexLabel } from './shared';
 
 const PAGE = 20;
@@ -58,10 +58,12 @@ export function ProfilesTab() {
     const [status, setStatus] = useParamState('statut', '');
     const [page, setPage] = useState(1);
     const [open, setOpen] = useState<MemberRow | null>(null);
+    const [search, setSearch] = useState('');
+    const term = useDebounced(search.trim());
     const stats = useQuery({ queryKey: ['sbclove', 'stats'], queryFn: getStats });
     const q = useQuery({
-        queryKey: ['sbclove', 'members', status, page],
-        queryFn: () => listMembers({ status: (status || undefined) as ProfileStatus | undefined, page, limit: PAGE }),
+        queryKey: ['sbclove', 'members', status, term, page],
+        queryFn: () => listMembers({ status: (status || undefined) as ProfileStatus | undefined, search: term || undefined, page, limit: PAGE }),
         placeholderData: keepPreviousData,
     });
     const s = stats.data;
@@ -82,12 +84,15 @@ export function ProfilesTab() {
                 <Stat label="Intérêts envoyés" value={formatNumber(s?.interests.total)} loading={stats.isLoading} />
                 <Stat label="Suspendus" value={formatNumber(s?.profiles.suspended)} loading={stats.isLoading} hint={s ? `${formatNumber(s.profiles.rejected)} refusés` : undefined} />
             </div>
-            <div className="sm:w-64"><Select aria-label="Statut" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
-                <option value="">Tous</option>
-                {Object.entries(PROFILE_STATUS).map(([v, [l]]) => <option key={v} value={v}>{l}</option>)}
-            </Select></div>
+            <div className="flex flex-col sm:flex-row gap-2">
+                <SearchInput className="flex-1" value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Pseudo, nom, e-mail, téléphone, ville" />
+                <div className="sm:w-56"><Select aria-label="Statut" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
+                    <option value="">Tous</option>
+                    {Object.entries(PROFILE_STATUS).map(([v, [l]]) => <option key={v} value={v}>{l}</option>)}
+                </Select></div>
+            </div>
             <DataList rows={q.data?.data} columns={cols} rowKey={m => m._id} loading={q.isLoading} error={q.error} onRetry={() => q.refetch()}
-                onRowClick={setOpen} empty={<EmptyState title="Aucun profil" />}
+                onRowClick={setOpen} empty={<EmptyState title={term ? 'Aucun profil ne correspond' : 'Aucun profil'} />}
                 card={m => (
                     <span className="flex items-center gap-3">
                         <Thumb m={m} />
