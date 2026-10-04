@@ -16,6 +16,6 @@ export function Stat({ label, value, hint, to, tone, loading }: {
             {hint && <div className="mt-0.5 text-xs text-ink-3">{hint}</div>}
         </>
     );
-    const cls = 'block bg-surface border border-border rounded-card p-3.5';
-    return to ? <Link to={to} className={cn(cls, 'hover:bg-surface-2')}>{body}</Link> : <div className={cls}>{body}</div>;
+    const cls = 'block panel rounded-card p-3.5';
+    return to ? <Link to={to} className={cn(cls, 'lift')}>{body}</Link> : <div className={cls}>{body}</div>;
 }

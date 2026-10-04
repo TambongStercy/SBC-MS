@@ -29,9 +29,9 @@ function MenuBody({ onNavigate }: { onNavigate?: () => void }) {
                                 const active = isCurrent(item, pathname, search);
                                 return (
                                     <NavLink key={item.to} to={item.to} onClick={onNavigate} aria-current={active ? 'page' : undefined}
-                                        className={cn('flex items-center gap-3 rounded-tile px-3 h-10 text-[15px] font-semibold transition-colors',
-                                            active ? 'bg-primary-soft text-primary' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')}>
-                                        <item.icon size={18} className="shrink-0" />
+                                        className={cn('group flex items-center gap-3 rounded-lg px-3 h-11 text-[15px] font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]',
+                                            active ? 'bg-primary-soft text-primary dark:bg-surface-2 dark:text-white shadow-md' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')}>
+                                        <item.icon size={20} className="shrink-0 transition-colors" style={{ color: active ? undefined : item.color }} />
                                         <span className="flex-1 truncate">{item.label}</span>
                                         <CountBadge count={count(item.badge)} />
                                     </NavLink>
@@ -93,8 +93,8 @@ export default function AppShell() {
 
     return (
         <MenuContext.Provider value={openMenu}>
-            <div className="min-h-screen bg-bg text-ink lg:flex">
-                <aside className="hidden lg:flex lg:flex-col w-72 shrink-0 h-screen sticky top-0 border-r border-border bg-surface">
+            <div className="min-h-screen text-ink lg:flex">
+                <aside className="hidden lg:flex lg:flex-col w-72 shrink-0 h-screen sticky top-0 border-r border-border bg-surface dark:bg-surface/90 dark:backdrop-blur-md shadow-lg">
                     <Link to="/" className="flex items-center px-5 h-16 shrink-0"><Brand /></Link>
                     <div className="flex-1 min-h-0"><MenuBody /></div>
                 </aside>
@@ -108,7 +108,7 @@ export default function AppShell() {
                 {drawer && (
                     <div className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Menu">
                         <div className="absolute inset-0 bg-black/50 animate-[fade-in_150ms_ease-out]" onClick={close} />
-                        <div className="absolute inset-y-0 left-0 w-[min(20rem,86vw)] bg-surface border-r border-border flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] animate-[drawer-in_180ms_ease-out]">
+                        <div className="absolute inset-y-0 left-0 w-[min(20rem,86vw)] bg-surface dark:bg-surface/95 dark:backdrop-blur-md shadow-2xl border-r border-border flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] animate-[drawer-in_180ms_ease-out]">
                             <div className="flex items-center justify-between px-5 h-14 shrink-0">
                                 <Link to="/" onClick={close}><Brand /></Link>
                                 <IconButton label="Fermer le menu" onClick={close} className="-mr-2"><X size={20} /></IconButton>

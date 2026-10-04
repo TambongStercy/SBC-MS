@@ -8,6 +8,8 @@ export type MenuItem = {
     to: string;
     label: string;
     icon: LucideIcon;
+    /** The icon's colour, as each entry had its own in the original admin's sidebar. */
+    color: string;
     /** Queue keys (features/home/queues) whose counts show as a badge. */
     badge?: string[];
     /** Other paths that belong to this entry, so it stays lit on them. */
@@ -21,43 +23,43 @@ export type MenuSection = { title?: string; items: MenuItem[] };
  */
 export const MENU: MenuSection[] = [
     { items: [
-        { to: '/', label: 'Accueil', icon: Home },
-        { to: '/membres', label: 'Membres', icon: Users, also: ['/membres/'] },
+        { to: '/', label: 'Accueil', icon: Home, color: '#6366f1' },
+        { to: '/membres', label: 'Membres', icon: Users, color: '#8b5cf6', also: ['/membres/'] },
     ] },
     { title: 'À traiter', items: [
-        { to: '/a-traiter/verifications', label: 'Vérifications vidéo', icon: Video, badge: ['proofs'] },
-        { to: '/a-traiter/retraits', label: 'Retraits à valider', icon: Banknote, badge: ['withdrawals'] },
+        { to: '/a-traiter/verifications', label: 'Vérifications vidéo', icon: Video, color: '#ef4444', badge: ['proofs'] },
+        { to: '/a-traiter/retraits', label: 'Retraits à valider', icon: Banknote, color: '#f59e0b', badge: ['withdrawals'] },
     ] },
     { title: 'Retraits', items: [
-        { to: '/argent/retraits', label: 'Tous les retraits', icon: ListChecks },
-        { to: '/argent/bloques', label: 'Retraits sans réponse', icon: Hourglass, badge: ['stuck'] },
+        { to: '/argent/retraits', label: 'Tous les retraits', icon: ListChecks, color: '#06b6d4' },
+        { to: '/argent/bloques', label: 'Retraits sans réponse', icon: Hourglass, color: '#3b82f6', badge: ['stuck'] },
     ] },
     { title: 'Paiements', items: [
-        { to: '/argent/paiements', label: 'Paiements des membres', icon: CreditCard },
-        { to: '/argent/paiements?vue=mouvements', label: 'Historique des soldes', icon: ArrowDownUp },
-        { to: '/argent/resoudre', label: 'Problème de paiement', icon: LifeBuoy, also: ['/argent/resoudre/'] },
-        { to: '/argent/passerelles', label: 'Argent chez les opérateurs', icon: Landmark },
-        { to: '/argent/analyse', label: 'Plus gros gains', icon: BarChart3 },
+        { to: '/argent/paiements', label: 'Paiements des membres', icon: CreditCard, color: '#f472b6' },
+        { to: '/argent/paiements?vue=mouvements', label: 'Historique des soldes', icon: ArrowDownUp, color: '#10b981' },
+        { to: '/argent/resoudre', label: 'Problème de paiement', icon: LifeBuoy, color: '#f59e0b', also: ['/argent/resoudre/'] },
+        { to: '/argent/passerelles', label: 'Argent chez les opérateurs', icon: Landmark, color: '#a855f7' },
+        { to: '/argent/analyse', label: 'Plus gros gains', icon: BarChart3, color: '#8b5cf6' },
     ] },
     { title: 'Services de l’app', items: [
-        { to: '/modules/ads', label: 'Publicité', icon: Megaphone, badge: ['campaigns'] },
-        { to: '/modules/billetterie', label: 'Billetterie', icon: Ticket, badge: ['organizers', 'disputes'], also: ['/modules/billetterie/'] },
-        { to: '/modules/relance', label: 'Relance des filleuls', icon: Mail, also: ['/modules/relance/'] },
-        { to: '/modules/sbc-love', label: 'SBC Love', icon: Heart, badge: ['love'] },
-        { to: '/modules/tombola', label: 'Tombola', icon: Gift, also: ['/modules/tombola/'] },
-        { to: '/modules/boutique', label: 'Boutique', icon: ShoppingBag },
-        { to: '/modules/impact-challenge', label: 'Impact Challenge', icon: Trophy, also: ['/modules/impact-challenge/'] },
+        { to: '/modules/ads', label: 'Publicité', icon: Megaphone, color: '#6366f1', badge: ['campaigns'] },
+        { to: '/modules/billetterie', label: 'Billetterie', icon: Ticket, color: '#3b82f6', badge: ['organizers', 'disputes'], also: ['/modules/billetterie/'] },
+        { to: '/modules/relance', label: 'Relance des filleuls', icon: Mail, color: '#06b6d4', also: ['/modules/relance/'] },
+        { to: '/modules/sbc-love', label: 'SBC Love', icon: Heart, color: '#ec4899', badge: ['love'] },
+        { to: '/modules/tombola', label: 'Tombola', icon: Gift, color: '#f59e0b', also: ['/modules/tombola/'] },
+        { to: '/modules/boutique', label: 'Boutique', icon: ShoppingBag, color: '#10b981' },
+        { to: '/modules/impact-challenge', label: 'Impact Challenge', icon: Trophy, color: '#f97316', also: ['/modules/impact-challenge/'] },
     ] },
     { title: 'Communication', items: [
-        { to: '/plus/annonces', label: 'Notifications aux membres', icon: Bell },
-        { to: '/plus/whatsapp', label: 'WhatsApp de SBC', icon: MessageCircle },
-        { to: '/plus/stories', label: 'Stories', icon: Sparkles },
+        { to: '/plus/annonces', label: 'Notifications aux membres', icon: Bell, color: '#f472b6' },
+        { to: '/plus/whatsapp', label: 'WhatsApp de SBC', icon: MessageCircle, color: '#22c55e' },
+        { to: '/plus/stories', label: 'Stories', icon: Sparkles, color: '#a855f7' },
     ] },
     { title: 'Réglages', items: [
-        { to: '/plus/contenu', label: 'Contenu de l’app', icon: FileText },
-        { to: '/plus/roles', label: 'Équipe admin', icon: ShieldCheck },
-        { to: '/plus/statistiques', label: 'Statistiques', icon: BarChart3 },
-        { to: '/plus/stockage', label: 'Fichiers et stockage', icon: HardDrive },
+        { to: '/plus/contenu', label: 'Contenu de l’app', icon: FileText, color: '#6366f1' },
+        { to: '/plus/roles', label: 'Équipe admin', icon: ShieldCheck, color: '#8b5cf6' },
+        { to: '/plus/statistiques', label: 'Statistiques', icon: BarChart3, color: '#06b6d4' },
+        { to: '/plus/stockage', label: 'Fichiers et stockage', icon: HardDrive, color: '#94a3b8' },
     ] },
 ];
 

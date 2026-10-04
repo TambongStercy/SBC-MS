@@ -35,7 +35,7 @@ export function Sheet({ open, onClose, title, children, footer, busy, size = 'md
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
             <div className="absolute inset-0 bg-black/50 animate-[fade-in_150ms_ease-out]" onClick={() => !busy && onClose()} />
             <div ref={panel}
-                className={cn('relative w-full bg-surface text-ink rounded-t-card sm:rounded-card border border-border max-h-[92vh] flex flex-col animate-[sheet-up_200ms_ease-out]',
+                className={cn('relative w-full bg-surface text-ink rounded-t-card sm:rounded-card border border-border shadow-2xl max-h-[92vh] flex flex-col animate-[sheet-up_200ms_ease-out]',
                     size === 'lg' ? 'sm:max-w-2xl' : 'sm:max-w-md', 'sm:mx-4')}>
                 <div className="flex items-center gap-2 px-5 pt-4 pb-2">
                     <div className="min-w-0 flex-1 text-lg font-bold">{title}</div>

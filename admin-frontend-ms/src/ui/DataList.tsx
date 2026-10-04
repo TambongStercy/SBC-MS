@@ -33,7 +33,7 @@ export function DataList<T>({ rows, columns, rowKey, onRowClick, card, loading, 
 
     return (
         <>
-            <div className="hidden md:block overflow-x-auto bg-surface border border-border rounded-card">
+            <div className="hidden md:block overflow-x-auto panel rounded-card">
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="border-b border-border">
@@ -63,12 +63,12 @@ export function DataList<T>({ rows, columns, rowKey, onRowClick, card, loading, 
                     <li key={rowKey(row)}>
                         {onRowClick ? (
                             <button type="button" onClick={() => onRowClick(row)}
-                                className="w-full text-left bg-surface border border-border rounded-card p-3.5 flex items-center gap-3 active:bg-surface-2">
+                                className="w-full text-left panel lift rounded-card p-3.5 flex items-center gap-3">
                                 <div className="min-w-0 flex-1">{card(row)}</div>
                                 <ChevronRight size={16} className="text-ink-3 shrink-0" />
                             </button>
                         ) : (
-                            <div className="bg-surface border border-border rounded-card p-3.5">{card(row)}</div>
+                            <div className="panel rounded-card p-3.5">{card(row)}</div>
                         )}
                     </li>
                 ))}
