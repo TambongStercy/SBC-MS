@@ -1,25 +1,13 @@
-import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import apiClient from '../../api/apiClient';
 import { getUserSummaryStats } from '../../services/adminUserApi';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useChartColors } from '../../lib/chartColors';
 import { Card, ErrorState, KeyValue, Page, SectionTitle, Skeleton, Stat } from '../../ui';
 import { formatCompact, formatMoney, formatNumber } from '../../lib/format';
 import { countryName } from '../../lib/labels';
 
 type Month = { month: string; registered: number; classiqueActive: number; cibleActive: number };
-
-/** SVG attributes can't read CSS variables: resolve the theme tokens to colours. */
-function useTokens() {
-    const { theme } = useTheme();
-    return useMemo(() => {
-        const css = getComputedStyle(document.documentElement);
-        const c = (name: string) => `rgb(${css.getPropertyValue(`--c-${name}`).trim().split(/\s+/).join(',')})`;
-        return { primary: c('primary'), success: c('success'), accent: c('accent'), grid: c('border'), ink: c('ink-3') };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [theme]);
-}
 
 const monthLabel = (key: string) => {
     const [y, m] = key.split('-').map(Number);
@@ -32,7 +20,7 @@ const monthLabel = (key: string) => {
  * figures were wrong or dead — see the redesign audit.)
  */
 export default function StatsPage() {
-    const t = useTokens();
+    const t = useChartColors();
     const summary = useQuery({ queryKey: ['stats', 'summary'], queryFn: getUserSummaryStats });
     const months = useQuery({ queryKey: ['stats', 'monthly'], queryFn: async (): Promise<Month[]> => (await apiClient.get('/users/admin/stats/monthly-activity', { params: { months: 12 } })).data.data });
     const balances = useQuery({ queryKey: ['stats', 'balances'], queryFn: async (): Promise<Array<{ _id: string | null; totalBalance: number }>> => (await apiClient.get('/users/admin/stats/balance-by-country')).data.data });

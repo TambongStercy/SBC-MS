@@ -38,8 +38,8 @@ export const QUEUES: QueueDef[] = [
         load: async () => ({ count: (await getWithdrawalStats()).data.pendingApproval }),
     },
     {
-        key: 'campaigns', title: 'Campagnes pub à valider', to: '/ads-network/review', roles: ADMIN,
-        load: async () => ({ count: (await getAdsCampaigns({ status: 'pending_review', limit: 1 })).pagination?.total ?? 0 }),
+        key: 'campaigns', title: 'Campagnes pub à valider', to: '/modules/ads?onglet=campagnes&statut=a-valider', roles: ADMIN,
+        load: async () => ({ count: (await getAdsCampaigns({ status: ['paid', 'pending_review'], limit: 1 })).pagination?.total ?? 0 }),
     },
     {
         key: 'love', title: 'Profils SBC Love', to: '/sbclove', roles: ADMIN,
