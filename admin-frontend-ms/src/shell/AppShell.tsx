@@ -100,7 +100,9 @@ export default function AppShell() {
                 </aside>
 
                 <main className="flex-1 min-w-0 pb-[env(safe-area-inset-bottom,0px)]">
-                    <ErrorBoundary resetKey={pathname}><Outlet /></ErrorBoundary>
+                    <ErrorBoundary resetKey={pathname}>
+                        <div key={pathname} className="animate-[page-in_220ms_ease-out]"><Outlet /></div>
+                    </ErrorBoundary>
                 </main>
 
                 {drawer && (

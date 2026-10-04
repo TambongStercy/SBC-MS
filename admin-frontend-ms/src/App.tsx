@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
+import Loader from './components/common/loader';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import AppShell from './shell/AppShell';
-import { AppToaster, Spinner } from './ui';
+import { AppToaster } from './ui';
 
 // New screens
 const HomePage = lazy(() => import('./features/home/HomePage'));
@@ -61,7 +62,7 @@ function App() {
   return (
     <>
       <AppToaster />
-      <Suspense fallback={<Spinner className="min-h-[50vh]" />}>
+      <Suspense fallback={<div className="min-h-[60vh] grid place-items-center"><Loader compact /></div>}>
         <Routes>
           <Route path="/login" element={<Login />} />
 

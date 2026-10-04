@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
+// Imported, not a "/src/..." string: that path only exists on the dev server.
+import logoSbc from '../assets/logo-sbc.png';
 import { useAuth } from '../context/AuthContext';
-import { Button, Input } from '../ui';
 
 /** The server answers in English; admins read French. */
 function frenchError(message?: string): string {
@@ -16,6 +18,9 @@ function frenchError(message?: string): string {
     return 'Connexion impossible. Vérifie tes identifiants.';
 }
 
+const field = 'w-full rounded-xl bg-black/35 text-white placeholder-white/50 border border-white/15 px-4 h-12 text-[15px] focus:outline-none focus:ring-2 focus:ring-white/40 disabled:opacity-60';
+
+/** The original admin login: the drifting photo, a frosted card, the SBC logo. */
 function Login() {
     const navigate = useNavigate();
     const { login, isAdminAuthenticated, isLoading } = useAuth();
@@ -38,29 +43,49 @@ function Login() {
     };
 
     return (
-        <main className="min-h-screen bg-bg text-ink flex items-center justify-center px-4 py-10">
-            <div className="w-full max-w-sm">
-                <div className="flex flex-col items-center text-center mb-6">
-                    <img src="/sbc-app-icon.png" alt="" className="size-16 rounded-card mb-4" />
-                    <h1 className="text-2xl font-extrabold tracking-tight">SBC Admin</h1>
-                    <p className="text-sm text-ink-2 mt-1">Sniper Business Center</p>
+        <main className="sbc-login-bg min-h-screen flex items-center justify-center px-4 py-10">
+            <motion.div
+                className="w-full max-w-sm rounded-2xl bg-gray-900/40 backdrop-blur-md border border-white/10 shadow-2xl p-6 sm:p-7 text-white"
+                initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: 'easeOut' }}>
+                <div className="flex items-center justify-center gap-3 mb-6">
+                    <motion.img src={logoSbc} alt="Logo SBC" className="size-20 rounded-full object-cover shadow-lg"
+                        initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.6, delay: 0.15 }} />
+                    <p className="text-xl font-semibold leading-snug">Administrateur Sniper<br />Business Center</p>
                 </div>
-                <form onSubmit={submit} className="bg-surface border border-border rounded-card p-5 space-y-4" noValidate>
-                    <Input label="Email" type="email" autoComplete="username" inputMode="email" value={email}
-                        onChange={e => setEmail(e.target.value)} placeholder="nom@exemple.com" />
+                <form onSubmit={submit} className="space-y-3" noValidate>
+                    <AnimatedError text={error} />
+                    <label className="sr-only" htmlFor="login-email">Email</label>
+                    <input id="login-email" type="email" autoComplete="username" inputMode="email" placeholder="Email"
+                        className={field} value={email} onChange={e => setEmail(e.target.value)} disabled={isLoading} />
                     <div className="relative">
-                        <Input label="Mot de passe" type={show ? 'text' : 'password'} autoComplete="current-password" value={password}
-                            onChange={e => setPassword(e.target.value)} className="pr-11" />
+                        <label className="sr-only" htmlFor="login-password">Mot de passe</label>
+                        <input id="login-password" type={show ? 'text' : 'password'} autoComplete="current-password" placeholder="Mot de passe"
+                            className={`${field} pr-12`} value={password} onChange={e => setPassword(e.target.value)} disabled={isLoading} />
                         <button type="button" onClick={() => setShow(s => !s)} aria-label={show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                            className="absolute right-1 bottom-0.5 size-10 grid place-items-center text-ink-3 hover:text-ink">
+                            className="absolute right-1 top-1 size-10 grid place-items-center text-white/60 hover:text-white">
                             {show ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
-                    {error && <p className="text-sm text-danger bg-danger-soft rounded-tile px-3 py-2" role="alert">{error}</p>}
-                    <Button type="submit" size="lg" full loading={isLoading}>Se connecter</Button>
+                    <motion.button type="submit" disabled={isLoading}
+                        className="w-full h-12 mt-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.3, ease: 'easeOut' }}
+                        whileTap={{ scale: 0.98 }}>
+                        {isLoading && <Loader2 size={18} className="animate-spin" />}
+                        {isLoading ? 'Connexion…' : 'Se connecter'}
+                    </motion.button>
                 </form>
-            </div>
+            </motion.div>
         </main>
+    );
+}
+
+function AnimatedError({ text }: { text: string }) {
+    if (!text) return null;
+    return (
+        <motion.p key={text} role="alert" className="text-sm bg-red-500/80 rounded-xl px-3 py-2"
+            initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: [0, -6, 6, -3, 0] }} transition={{ duration: 0.35 }}>
+            {text}
+        </motion.p>
     );
 }
 
