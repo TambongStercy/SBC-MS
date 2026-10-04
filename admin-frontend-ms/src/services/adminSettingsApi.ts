@@ -1,7 +1,7 @@
 import apiClient from '../api/apiClient'; // Assuming shared Axios instance with base URL and auth handling
 
 // Define interfaces matching the backend models/responses
-export interface IFileReference {
+interface IFileReference {
     fileId: string;
     url?: string;        // Dynamically generated proxy URL
     fileName?: string;
