@@ -111,7 +111,7 @@ export default function AnnouncementsPage() {
     const toggleCountry = (c: string) => setCountries(cs => (cs.includes(c) ? cs.filter(x => x !== c) : [...cs, c]));
 
     return (
-        <Page title="Annonces" back="/plus" width="narrow">
+        <Page title="Notifications aux membres" width="narrow">
             <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-2">
                     <Stat label="Membres joignables" value={formatNumber(overview.data?.audience)} loading={overview.isLoading} hint="notifications activées" />

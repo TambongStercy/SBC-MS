@@ -153,8 +153,11 @@ the daily work is ~155 video-proof and ~27 withdrawal decisions). New code:
   variables (`bg-surface`, `text-ink-2`, `bg-primary`…). Light by default;
   `.dark` on `<html>` (Plus → Apparence) switches the set. **Use tokens, not
   raw `gray-800`/hex** in new screens.
-- `src/shell/` — bottom tab bar on phones, left rail on desktop; five places:
-  À traiter, Membres, Argent, Modules, Plus (`nav.ts`, role-aware).
+- `src/shell/` — one menu listing every page (`menu.ts`, role-aware): a
+  sidebar on a computer, a ☰ drawer on a phone. `Page` shows ☰ when it has no
+  `back` (pages reached from the menu) and a back arrow otherwise. There are no
+  hub pages: Rufus found "Plus"/"Modules" pages and a bottom bar confusing
+  (2026-10-04) — add new pages to `menu.ts`, named for the task, not the service.
 - `src/features/` — every screen (rebuilt Oct 2026; `LegacyFrame` is gone).
   `src/pages/` holds only Login and Déconnexion. Modules live in
   `src/features/modules/<module>/`, each with its own `api.ts` typed against the

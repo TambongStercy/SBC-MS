@@ -50,7 +50,7 @@ export default function StoriesPage() {
     };
 
     return (
-        <Page title="Stories" back="/plus" width="wide">
+        <Page title="Stories" width="wide">
             <div className="space-y-4">
                 <Tabs value={tab} onChange={setTab} items={[{ value: 'stories', label: 'Stories des membres' }, { value: 'publier', label: 'Publier en tant que SBC' }]} />
                 {tab === 'publier' ? (

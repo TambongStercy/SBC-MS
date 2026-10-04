@@ -32,7 +32,7 @@ export default function RolesPage() {
     const staff = (role: string) => ['admin', 'withdrawal_admin', 'moderator'].includes(role);
 
     return (
-        <Page title="Rôles et accès" back="/plus" width="narrow" actions={<Button size="sm" icon={<UserPlus size={16} />} onClick={() => setAdding(true)}>Ajouter</Button>}>
+        <Page title="Équipe admin" width="narrow" actions={<Button size="sm" icon={<UserPlus size={16} />} onClick={() => setAdding(true)}>Ajouter</Button>}>
             <div className="space-y-5">
                 {STAFF.map((s, i) => {
                     const q = lists[i];

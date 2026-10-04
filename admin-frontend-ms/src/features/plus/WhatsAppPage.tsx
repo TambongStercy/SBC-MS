@@ -46,7 +46,7 @@ export default function WhatsAppPage() {
     const [label, tone] = s ? STATE[s.connectionState] ?? [s.connectionState, 'neutral' as Tone] : ['—', 'neutral' as Tone];
 
     return (
-        <Page title="WhatsApp" back="/plus" width="narrow" actions={<IconButton label="Actualiser" onClick={() => status.refetch()}><RefreshCw size={20} /></IconButton>}>
+        <Page title="WhatsApp de SBC" width="narrow" actions={<IconButton label="Actualiser" onClick={() => status.refetch()}><RefreshCw size={20} /></IconButton>}>
             {status.isLoading ? <Skeleton className="h-48 rounded-card" /> : status.isError || !s ? (
                 <ErrorState message="Impossible de lire l’état de WhatsApp." onRetry={() => status.refetch()} />
             ) : (

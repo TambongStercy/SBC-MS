@@ -67,7 +67,7 @@ export default function TombolaModule() {
         { key: 'd', header: 'Tirage', cell: t => <span className="text-ink-2">{t.drawDate ? formatDate(t.drawDate) : '—'}</span> },
     ];
     return (
-        <Page title="Tombola" back="/modules" actions={<Button size="sm" icon={<Plus size={16} />} onClick={() => setCreating(true)}>Nouvelle</Button>}>
+        <Page title="Tombola" actions={<Button size="sm" icon={<Plus size={16} />} onClick={() => setCreating(true)}>Nouvelle</Button>}>
             <div className="space-y-3">
                 <DataList rows={q.data?.data} columns={cols} rowKey={t => t._id} loading={q.isLoading} error={q.error} onRetry={() => q.refetch()}
                     onRowClick={t => navigate(`/modules/tombola/tirage/${t._id}`)}

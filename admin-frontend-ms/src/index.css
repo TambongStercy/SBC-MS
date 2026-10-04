@@ -72,3 +72,13 @@ body {
   to { transform: translateX(0); opacity: 1; }
 }
 .animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+/* The phone menu slides in from the left over a fading backdrop. */
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

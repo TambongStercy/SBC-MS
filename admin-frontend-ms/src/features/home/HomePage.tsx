@@ -37,7 +37,7 @@ export default function HomePage() {
     const refresh = () => { qc.invalidateQueries({ queryKey: ['queue'] }); qc.invalidateQueries({ queryKey: ['today'] }); };
 
     return (
-        <Page title="À traiter" subtitle={todayLabel}
+        <Page title="Accueil" subtitle={todayLabel}
             actions={<IconButton label="Actualiser" onClick={refresh}><RefreshCw size={20} /></IconButton>}>
             <div className="space-y-6">
                 <section>

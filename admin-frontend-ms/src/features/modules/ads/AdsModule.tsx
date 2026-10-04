@@ -73,7 +73,7 @@ function Overview() {
 export default function AdsModule() {
     const [tab, setTab] = useParamState('onglet', 'apercu');
     return (
-        <Page title="Ads Network" back="/modules" width="wide">
+        <Page title="Publicité" width="wide">
             <div className="space-y-4">
                 <Tabs value={tab} onChange={setTab} phoneColumns={2} items={[
                     { value: 'apercu', label: 'Aperçu' }, { value: 'campagnes', label: 'Campagnes' },

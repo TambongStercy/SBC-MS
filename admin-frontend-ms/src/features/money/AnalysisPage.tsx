@@ -31,7 +31,7 @@ export default function AnalysisPage() {
         { key: 'b', header: 'Solde', align: 'right', cell: r => formatMoney(r.balance) },
     ];
     return (
-        <Page title="Plus gros gains et retraits" back="/argent" width="wide">
+        <Page title="Plus gros gains" width="wide">
             <div className="space-y-3">
                 <Tabs value={sortBy} onChange={v => { setSortBy(v); setPage(1); }} items={[{ value: 'totalWithdrawn', label: 'Plus gros retraits' }, { value: 'totalEarned', label: 'Plus gros gains' }]} />
                 <div className="grid grid-cols-2 gap-2 sm:max-w-md">
