@@ -33,6 +33,7 @@ const AdsModule = lazy(() => import('./features/modules/ads/AdsModule'));
 const BilletterieModule = lazy(() => import('./features/modules/billetterie/BilletterieModule'));
 const EventDetailPage = lazy(() => import('./features/modules/billetterie/EventDetailPage'));
 const RelanceModule = lazy(() => import('./features/modules/relance/RelanceModule'));
+const RelanceEmailDayPage = lazy(() => import('./features/modules/relance/EmailDayPage'));
 const SbcLoveModule = lazy(() => import('./features/modules/sbclove/SbcLoveModule'));
 const TombolaModule = lazy(() => import('./features/modules/tombola/TombolaModule'));
 const TombolaDrawModulePage = lazy(() => import('./features/modules/tombola/TombolaDrawPage'));
@@ -46,10 +47,6 @@ const ProductsManagementPage = lazy(() => import('./pages/ProductsManagementPage
 const TombolaManagementPage = lazy(() => import('./pages/TombolaManagementPage'));
 const TombolaDrawPage = lazy(() => import('./pages/TombolaDrawPage'));
 const SbcLoveManagementPage = lazy(() => import('./pages/SbcLoveManagementPage'));
-const RelanceDashboardPage = lazy(() => import('./pages/RelanceDashboardPage'));
-const RelanceMessagesPage = lazy(() => import('./pages/RelanceMessagesPage'));
-const RelanceCampaignsPage = lazy(() => import('./pages/RelanceCampaignsPage'));
-const RelanceSmsTemplatesPage = lazy(() => import('./pages/RelanceSmsTemplatesPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
 
@@ -109,6 +106,7 @@ function App() {
               <Route path="/modules/billetterie" element={<BilletterieModule />} />
               <Route path="/modules/billetterie/evenements/:eventId" element={<EventDetailPage />} />
               <Route path="/modules/relance" element={<RelanceModule />} />
+              <Route path="/modules/relance/emails/:day" element={<RelanceEmailDayPage />} />
               <Route path="/modules/sbc-love" element={<SbcLoveModule />} />
               <Route path="/modules/tombola" element={<TombolaModule />} />
               <Route path="/modules/tombola/tirage/:monthId" element={<TombolaDrawModulePage />} />
@@ -129,10 +127,10 @@ function App() {
               <Route path="/event/listings" element={<Navigate to="/modules/billetterie?onglet=revente" replace />} />
               <Route path="/event/disputes" element={<Navigate to="/modules/billetterie?onglet=litiges" replace />} />
               <Route path="/event/commissions" element={<Navigate to="/modules/billetterie?onglet=reglages" replace />} />
-              <Route path="/relance/dashboard" element={legacy(<RelanceDashboardPage />)} />
-              <Route path="/relance/messages" element={legacy(<RelanceMessagesPage />)} />
-              <Route path="/relance/campaigns" element={legacy(<RelanceCampaignsPage />)} />
-              <Route path="/relance/sms-templates" element={legacy(<RelanceSmsTemplatesPage />)} />
+              <Route path="/relance/dashboard" element={<Navigate to="/modules/relance" replace />} />
+              <Route path="/relance/messages" element={<Navigate to="/modules/relance?onglet=emails" replace />} />
+              <Route path="/relance/campaigns" element={<Navigate to="/modules/relance?onglet=campagnes" replace />} />
+              <Route path="/relance/sms-templates" element={<Navigate to="/modules/relance?onglet=sms" replace />} />
               <Route path="/sbclove" element={legacy(<SbcLoveManagementPage />)} />
               <Route path="/tombola" element={legacy(<TombolaManagementPage />)} />
               <Route path="/tombola/draw/:monthId" element={legacy(<TombolaDrawPage />)} />

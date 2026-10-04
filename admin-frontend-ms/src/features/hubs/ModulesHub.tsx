@@ -17,7 +17,7 @@ export default function ModulesHub() {
             <NavList>
                 <NavRow to="/modules/ads" icon={<Megaphone size={20} />} tone="accent" title="Ads Network" description="Campagnes, diffuseurs, vérifications" trailing={<Count n={count('campaigns', 'proofs')} />} />
                 <NavRow to="/modules/billetterie" icon={<Ticket size={20} />} title="Billetterie" description="Organisateurs, événements, commandes, litiges" trailing={<Count n={count('organizers', 'disputes')} />} />
-                <NavRow to="/relance/dashboard" icon={<Mail size={20} />} tone="success" title="Relance" description="Relance des nouveaux et campagnes" />
+                <NavRow to="/modules/relance" icon={<Mail size={20} />} tone="success" title="Relance" description="Relance des nouveaux, campagnes, crédits des parrains, messages" />
                 <NavRow to="/sbclove" icon={<Heart size={20} />} tone="danger" title="SBC Love" description="Profils, signalements, réglages" trailing={<Count n={count('love')} />} />
                 <NavRow to="/tombola" icon={<Gift size={20} />} tone="warning" title="Tombola" description="Tirages du mois et gagnants" />
                 <NavRow to="/products" icon={<ShoppingBag size={20} />} tone="primary" title="Boutique" description="Produits et ventes flash" />
