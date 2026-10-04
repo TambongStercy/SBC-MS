@@ -11,6 +11,7 @@ import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, isCameroon } from '../../c
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { pushFilleulPaid } from '../../services/relance-alerts.service';
 import { creditRelancePack } from '../../services/relance-credit.service';
+import { adminOverview, adminParrains } from '../../services/relance-admin.service';
 import config from '../../config';
 
 const log = logger.getLogger('RelanceController');
@@ -433,6 +434,36 @@ class RelanceController {
                 success: false,
                 message: 'Failed to get stats'
             });
+        }
+    }
+
+    /**
+     * GET /api/relance/admin/overview
+     * Admin home for relance: the two products counted apart, sends, credits, packs.
+     */
+    async getAdminOverview(_req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            res.status(200).json({ success: true, data: await adminOverview() });
+        } catch (error: any) {
+            log.error('Error in getAdminOverview:', error);
+            res.status(500).json({ success: false, message: 'Failed to get relance overview' });
+        }
+    }
+
+    /**
+     * GET /api/relance/admin/parrains?page&limit&withCredits=true|false&userId
+     * Parrains' relance settings and credits, with names, for support.
+     */
+    async getAdminParrains(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+            const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
+            const withCredits = req.query.withCredits !== 'false';
+            const userId = (req.query.userId as string) || undefined;
+            res.status(200).json({ success: true, data: await adminParrains({ page, limit, withCredits, userId }) });
+        } catch (error: any) {
+            log.error('Error in getAdminParrains:', error);
+            res.status(500).json({ success: false, message: 'Failed to get parrains' });
         }
     }
 
@@ -861,11 +892,22 @@ class RelanceController {
             // to live here compared against 'ADMIN' while tokens carry 'admin', so it
             // turned away every real admin.
             const { userId } = req.params;
-            const allowed = ['smsEnabled', 'maxMessagesPerDay', 'maxTargetsPerCampaign', 'enabled', 'sendingPaused', 'enrollmentPaused'];
+            const flags = ['smsEnabled', 'enabled', 'sendingPaused', 'enrollmentPaused'];
+            const limits: Record<string, [number, number]> = { maxMessagesPerDay: [1, 5000], maxTargetsPerCampaign: [10, 50000] };
             const update: Record<string, any> = {};
-            for (const key of allowed) {
-                if (req.body[key] !== undefined) update[key] = req.body[key];
+            for (const key of flags) {
+                if (req.body[key] === undefined) continue;
+                if (typeof req.body[key] !== 'boolean') { res.status(400).json({ success: false, message: `${key} must be true or false` }); return; }
+                update[key] = req.body[key];
             }
+            // Same bounds as the member's own settings (PATCH /api/relance/config).
+            for (const [key, [min, max]] of Object.entries(limits)) {
+                if (req.body[key] === undefined) continue;
+                const n = req.body[key];
+                if (!Number.isInteger(n) || n < min || n > max) { res.status(400).json({ success: false, message: `${key} must be a whole number from ${min} to ${max}` }); return; }
+                update[key] = n;
+            }
+            if (Object.keys(update).length === 0) { res.status(400).json({ success: false, message: 'Nothing to update' }); return; }
             const cfg = await RelanceConfigModel.findOneAndUpdate({ userId }, { $set: update }, { new: true, upsert: false });
             if (!cfg) { res.status(404).json({ success: false, message: 'Config not found' }); return; }
             res.status(200).json({ success: true, data: cfg });
