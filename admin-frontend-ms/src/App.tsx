@@ -43,8 +43,6 @@ const ChallengeDetailPage = lazy(() => import('./features/modules/challenges/Cha
 
 // Pages still to be rebuilt, shown in their old look
 const Deconnexion = lazy(() => import('./pages/Deconnexion'));
-const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
-const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
 
 const legacy = (page: ReactNode) => <LegacyFrame>{page}</LegacyFrame>;
 
@@ -52,6 +50,11 @@ const legacy = (page: ReactNode) => <LegacyFrame>{page}</LegacyFrame>;
 function OldMemberLink() {
   const { userId } = useParams();
   return <Navigate to={`/membres/${userId}`} replace />;
+}
+
+function OldChallengeLink() {
+  const { challengeId } = useParams();
+  return <Navigate to={`/modules/impact-challenge/${challengeId}`} replace />;
 }
 
 function OldTombolaDrawLink() {
@@ -136,8 +139,8 @@ function App() {
               <Route path="/tombola" element={<Navigate to="/modules/tombola" replace />} />
               <Route path="/tombola/draw/:monthId" element={<OldTombolaDrawLink />} />
               <Route path="/products" element={<Navigate to="/modules/boutique" replace />} />
-              <Route path="/impact-challenges" element={legacy(<ImpactChallengePage />)} />
-              <Route path="/impact-challenges/:challengeId" element={legacy(<ChallengeDetailsPage />)} />
+              <Route path="/impact-challenges" element={<Navigate to="/modules/impact-challenge" replace />} />
+              <Route path="/impact-challenges/:challengeId" element={<OldChallengeLink />} />
 
               {/* Plus */}
               <Route path="/plus" element={<PlusHub />} />
