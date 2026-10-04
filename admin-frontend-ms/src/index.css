@@ -34,28 +34,43 @@
 }
 
 .dark {
-  --c-bg: 11 17 32;
-  --c-surface: 17 26 46;
-  --c-surface-2: 24 35 58;
-  --c-border: 34 48 74;
-  --c-ink: 230 235 245;
-  --c-ink-2: 169 180 200;
-  --c-ink-3: 107 120 145;
-  --c-primary: 61 116 245;
-  --c-primary-hover: 96 141 248;
-  --c-primary-soft: 22 38 74;
-  --c-accent: 246 162 58;
-  --c-accent-soft: 58 42 18;
-  --c-success: 60 196 122;
-  --c-success-soft: 16 48 31;
+  /* The original admin's dark greys (Tailwind gray-900 / 800 / 700), its blue,
+     and SBC's orange as the accent. Dark is the default theme. */
+  --c-bg: 17 24 39;
+  --c-surface: 31 41 55;
+  --c-surface-2: 55 65 81;
+  --c-border: 55 65 81;
+  --c-ink: 243 244 246;
+  --c-ink-2: 209 213 219;
+  --c-ink-3: 156 163 175;
+  --c-primary: 59 130 246;
+  --c-primary-hover: 37 99 235;
+  --c-primary-soft: 23 37 84;
+  --c-accent: 255 104 33;
+  --c-accent-soft: 67 25 8;
+  --c-success: 74 222 128;
+  --c-success-soft: 20 60 36;
   --c-danger: 248 113 113;
-  --c-danger-soft: 58 23 23;
+  --c-danger-soft: 80 22 22;
   --c-warning: 251 191 36;
-  --c-warning-soft: 58 46 16;
+  --c-warning-soft: 74 46 10;
   color-scheme: dark;
 }
 
 html, body { background: rgb(var(--c-bg)); color: rgb(var(--c-ink)); }
+/* The original admin's backdrop: a soft diagonal gradient behind frosted panels. */
+.dark body { background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%) fixed; }
+
+@layer components {
+  /* A surface: flat with a hairline in light; frosted glass with a shadow in dark, as the old admin's cards. */
+  .panel { background-color: rgb(var(--c-surface)); border: 1px solid rgb(var(--c-border)); }
+  .dark .panel { background-color: rgb(var(--c-surface) / 0.55); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    border-color: rgb(var(--c-border) / 0.8); box-shadow: 0 10px 25px -8px rgb(0 0 0 / 0.45); }
+  /* A clickable surface lifts a little under the pointer. */
+  .lift { transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease; }
+  .lift:hover { transform: translateY(-2px); box-shadow: 0 18px 35px -12px rgb(0 0 0 / 0.35); }
+  .lift:active { transform: translateY(0) scale(0.99); }
+}
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;

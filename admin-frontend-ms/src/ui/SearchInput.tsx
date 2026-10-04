@@ -10,7 +10,7 @@ export function SearchInput({ value, onChange, placeholder = 'Rechercher', class
             <input
                 type="search" inputMode="search" value={value} autoFocus={autoFocus}
                 onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
-                className="w-full h-11 rounded-pill border border-border bg-surface pl-10 pr-10 text-[15px] text-ink placeholder:text-ink-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 [&::-webkit-search-cancel-button]:hidden"
+                className="w-full h-11 rounded-pill border border-border bg-surface dark:bg-surface-2/60 pl-10 pr-10 text-[15px] text-ink placeholder:text-ink-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 [&::-webkit-search-cancel-button]:hidden"
             />
             {value && (
                 <button type="button" aria-label="Effacer" onClick={() => onChange('')}

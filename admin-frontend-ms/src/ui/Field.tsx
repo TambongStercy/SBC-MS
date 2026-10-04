@@ -2,7 +2,7 @@ import { forwardRef, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, Texta
 import { ChevronDown } from 'lucide-react';
 import { cn } from './cn';
 
-const control = 'w-full rounded-tile border border-border bg-surface text-ink placeholder:text-ink-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60';
+const control = 'w-full rounded-tile border border-border bg-surface dark:bg-surface-2/60 text-ink placeholder:text-ink-3 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60';
 
 function Wrap({ id, label, hint, error, children }: { id: string; label?: ReactNode; hint?: ReactNode; error?: ReactNode; children: ReactNode }) {
     return (

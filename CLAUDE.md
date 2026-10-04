@@ -149,10 +149,15 @@ the daily work is ~155 video-proof and ~27 withdrawal decisions). New code:
 - `src/ui/` — the only components new screens use (Page, Button, Card,
   DataList = table on desktop / cards on phone, ConfirmSheet, Sheet, Tabs,
   Badge/StatusBadge, MemberLink, Stat, NavRow…). French labels, no raw codes.
-- `src/index.css` + `tailwind.config.js` — the member app's tokens as CSS
-  variables (`bg-surface`, `text-ink-2`, `bg-primary`…). Light by default;
-  `.dark` on `<html>` (Plus → Apparence) switches the set. **Use tokens, not
-  raw `gray-800`/hex** in new screens.
+- `src/index.css` + `tailwind.config.js` — tokens as CSS variables
+  (`bg-surface`, `text-ink-2`, `bg-primary`…). **Dark is the default** and uses
+  the original admin's greys (gray-900/800/700), blue and SBC orange; light is
+  the alternative (toggle at the bottom of the menu). Rufus preferred the old
+  look (2026-10-04): surfaces use `.panel` (frosted with a shadow in dark),
+  clickable cards `.lift`, menu entries keep their own icon colour, icons are
+  never put in tinted discs. The login (drifting photo, frosted card) and the
+  SIMBTECH/SBC loading screen are the originals. **Use tokens, not raw
+  `gray-800`/hex** in screens.
 - `src/shell/` — one menu listing every page (`menu.ts`, role-aware): a
   sidebar on a computer, a ☰ drawer on a phone. `Page` shows ☰ when it has no
   `back` (pages reached from the menu) and a back arrow otherwise. There are no

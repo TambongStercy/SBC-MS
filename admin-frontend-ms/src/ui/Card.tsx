@@ -1,9 +1,9 @@
 import { HTMLAttributes } from 'react';
 import { cn } from './cn';
 
-/** A surface on the page. Flat: border hairline, no shadow. */
+/** A surface on the page: flat in light, frosted with a shadow in dark (`.panel`). */
 export function Card({ className, padded = true, ...rest }: HTMLAttributes<HTMLDivElement> & { padded?: boolean }) {
-    return <div className={cn('bg-surface border border-border rounded-card', padded && 'p-4 sm:p-5', className)} {...rest} />;
+    return <div className={cn('panel rounded-card', padded && 'p-4 sm:p-5', className)} {...rest} />;
 }
 
 export function SectionTitle({ children, action, className }: { children: React.ReactNode; action?: React.ReactNode; className?: string }) {

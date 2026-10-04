@@ -3,12 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useState, ReactNode 
 export type Theme = 'light' | 'dark';
 const KEY = 'sbc-admin-theme';
 
-/** Light unless the admin picked dark. index.html applies it before first paint. */
+/** Dark (the original admin's look) unless the admin picked light. index.html applies it before first paint. */
 export function storedTheme(): Theme {
-    try { return localStorage.getItem(KEY) === 'dark' ? 'dark' : 'light'; } catch { return 'light'; }
+    try { return localStorage.getItem(KEY) === 'light' ? 'light' : 'dark'; } catch { return 'dark'; }
 }
 
-const ThemeContext = createContext<{ theme: Theme; setTheme: (t: Theme) => void }>({ theme: 'light', setTheme: () => {} });
+const ThemeContext = createContext<{ theme: Theme; setTheme: (t: Theme) => void }>({ theme: 'dark', setTheme: () => {} });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setThemeState] = useState<Theme>(storedTheme);
@@ -16,7 +16,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         document.documentElement.classList.toggle('dark', theme === 'dark');
         const meta = document.querySelector('meta[name="theme-color"]');
-        meta?.setAttribute('content', theme === 'dark' ? '#0B1120' : '#F8FAFC');
+        meta?.setAttribute('content', theme === 'dark' ? '#111827' : '#F8FAFC');
     }, [theme]);
 
     const setTheme = useCallback((t: Theme) => {
