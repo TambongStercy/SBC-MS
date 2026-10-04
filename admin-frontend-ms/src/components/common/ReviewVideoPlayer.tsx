@@ -12,6 +12,11 @@ import { Play, Pause, Maximize2, Gauge } from 'lucide-react';
  *
  * Hence a speed control, which the native player only exposes through a
  * right-click menu most people never find.
+ *
+ * The picture is capped at half the screen height, whatever its orientation:
+ * full width, a phone recording filled the whole screen and pushed the code,
+ * the views field and the buttons out of sight. The full-screen button is there
+ * for reading small digits.
  */
 const SPEEDS = [0.5, 1, 1.5, 2];
 
@@ -70,14 +75,14 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
 
     if (failure) {
         return (
-            <div className="rounded-xl border border-gray-700 bg-gray-900/60 p-6 text-center text-sm text-gray-400">
+            <div className="rounded-card border border-border bg-surface-2 p-6 text-center text-sm text-ink-2">
                 {failure}
             </div>
         );
     }
 
     return (
-        <div className="overflow-hidden rounded-xl border border-gray-700 bg-black">
+        <div className="overflow-hidden rounded-card border border-border bg-black">
             <video
                 ref={videoRef}
                 src={src}
@@ -88,19 +93,19 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                 onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                 onEnded={() => setPlaying(false)}
                 onError={() => { void diagnose(); }}
-                className="w-full cursor-pointer bg-black"
+                className="block w-full max-h-[50vh] object-contain cursor-pointer bg-black"
             />
 
-            <div className="flex items-center gap-3 border-t border-gray-700 bg-gray-900 px-3 py-2">
+            <div className="flex items-center gap-3 border-t border-white/10 bg-black px-3 py-2 text-white/80">
                 <button
                     onClick={toggle}
                     aria-label={playing ? 'Pause' : 'Lecture'}
-                    className="text-gray-200 hover:text-white"
+                    className="hover:text-white"
                 >
                     {playing ? <Pause size={18} /> : <Play size={18} />}
                 </button>
 
-                <span className="w-20 shrink-0 text-[11px] tabular-nums text-gray-400">
+                <span className="w-20 shrink-0 text-[11px] tabular-nums text-white/60">
                     {clock(progress)} / {clock(duration)}
                 </span>
 
@@ -112,13 +117,13 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                     value={progress}
                     onChange={(e) => seek(Number(e.target.value))}
                     aria-label="Position dans la vidéo"
-                    className="h-1 flex-1 cursor-pointer accent-blue-500"
+                    className="h-1 flex-1 cursor-pointer accent-primary"
                 />
 
                 <button
                     onClick={cycleSpeed}
                     title="Vitesse de lecture"
-                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-white/10 hover:text-white"
                 >
                     <Gauge size={14} /> {speed}×
                 </button>
@@ -126,7 +131,7 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                 <button
                     onClick={() => videoRef.current?.requestFullscreen?.()}
                     aria-label="Plein écran"
-                    className="text-gray-300 hover:text-white"
+                    className="hover:text-white"
                 >
                     <Maximize2 size={16} />
                 </button>
