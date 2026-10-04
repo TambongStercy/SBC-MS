@@ -46,11 +46,11 @@ export const QUEUES: QueueDef[] = [
         load: async () => ({ count: (await getSbcLoveStats()).profiles.pending }),
     },
     {
-        key: 'organizers', title: 'Organisateurs à approuver', to: '/event/organizers', roles: ADMIN,
+        key: 'organizers', title: 'Organisateurs à approuver', to: '/modules/billetterie?onglet=organisateurs', roles: ADMIN,
         load: async () => ({ count: (await listOrganizers({ status: 'PENDING', limit: 1 })).total }),
     },
     {
-        key: 'disputes', title: 'Litiges billetterie', to: '/event/disputes', roles: ADMIN,
+        key: 'disputes', title: 'Litiges billetterie', to: '/modules/billetterie?onglet=litiges', roles: ADMIN,
         load: async () => ({ count: (await listAdminDisputes({ status: 'OPEN', limit: 1 })).total }),
     },
     {

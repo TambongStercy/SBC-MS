@@ -1,18 +1,23 @@
 /** French formatting used across the admin: money, dates, phones, "il y a". */
 
 const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
+// fr-FR groups digits with a narrow space (U+202F), which all but disappears in
+// bold, tightly tracked figures ("2060000"). A regular no-break space stays visible.
+const intFmt = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+const numFmt = new Intl.NumberFormat('fr-FR');
+const visibleGroups = (s: string) => s.replace(/\u202f/g, '\u00a0');
 
 /** 12 500 FCFA · 3,50 $ — XAF is shown as FCFA, as members see it. */
 export function formatMoney(amount: number | null | undefined, currency: string = 'XAF'): string {
     if (amount === null || amount === undefined || Number.isNaN(amount)) return '—';
     const c = (currency || 'XAF').toUpperCase();
-    if (c === 'XAF' || c === 'XOF' || c === 'FCFA') return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Math.round(amount))} FCFA`;
+    if (c === 'XAF' || c === 'XOF' || c === 'FCFA') return `${visibleGroups(intFmt.format(Math.round(amount)))} FCFA`;
     if (c === 'USD') return `${nf.format(amount)} $`;
     return `${nf.format(amount)} ${c}`;
 }
 
 export const formatNumber = (n: number | null | undefined) =>
-    n === null || n === undefined ? '—' : new Intl.NumberFormat('fr-FR').format(n);
+    n === null || n === undefined ? '—' : visibleGroups(numFmt.format(n));
 
 /** 1,2 M · 45 k — for tight tiles. */
 export function formatCompact(n: number | null | undefined): string {

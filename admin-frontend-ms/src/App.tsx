@@ -52,14 +52,6 @@ const RelanceCampaignsPage = lazy(() => import('./pages/RelanceCampaignsPage'));
 const RelanceSmsTemplatesPage = lazy(() => import('./pages/RelanceSmsTemplatesPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
-const EventDashboardPage = lazy(() => import('./pages/EventDashboardPage'));
-const EventOrganizersPage = lazy(() => import('./pages/EventOrganizersPage'));
-const EventListPage = lazy(() => import('./pages/EventListPage'));
-const EventOrdersPage = lazy(() => import('./pages/EventOrdersPage'));
-const EventListingsPage = lazy(() => import('./pages/EventListingsPage'));
-const EventDisputesPage = lazy(() => import('./pages/EventDisputesPage'));
-const EventCommissionsPage = lazy(() => import('./pages/EventCommissionsPage'));
-const EventTicketsPage = lazy(() => import('./pages/EventTicketsPage'));
 
 const legacy = (page: ReactNode) => <LegacyFrame>{page}</LegacyFrame>;
 
@@ -129,14 +121,14 @@ function App() {
               <Route path="/ads-network/campaigns" element={<Navigate to="/modules/ads?onglet=campagnes" replace />} />
               <Route path="/ads-network/diffuseurs" element={<Navigate to="/modules/ads?onglet=diffuseurs" replace />} />
               <Route path="/ads-network/test-campaign" element={<Navigate to="/modules/ads?onglet=reglages" replace />} />
-              <Route path="/event" element={legacy(<EventDashboardPage />)} />
-              <Route path="/event/organizers" element={legacy(<EventOrganizersPage />)} />
-              <Route path="/event/events" element={legacy(<EventListPage />)} />
-              <Route path="/event/orders" element={legacy(<EventOrdersPage />)} />
-              <Route path="/event/tickets" element={legacy(<EventTicketsPage />)} />
-              <Route path="/event/listings" element={legacy(<EventListingsPage />)} />
-              <Route path="/event/disputes" element={legacy(<EventDisputesPage />)} />
-              <Route path="/event/commissions" element={legacy(<EventCommissionsPage />)} />
+              <Route path="/event" element={<Navigate to="/modules/billetterie" replace />} />
+              <Route path="/event/organizers" element={<Navigate to="/modules/billetterie?onglet=organisateurs" replace />} />
+              <Route path="/event/events" element={<Navigate to="/modules/billetterie?onglet=evenements" replace />} />
+              <Route path="/event/orders" element={<Navigate to="/modules/billetterie?onglet=commandes" replace />} />
+              <Route path="/event/tickets" element={<Navigate to="/modules/billetterie?onglet=commandes" replace />} />
+              <Route path="/event/listings" element={<Navigate to="/modules/billetterie?onglet=revente" replace />} />
+              <Route path="/event/disputes" element={<Navigate to="/modules/billetterie?onglet=litiges" replace />} />
+              <Route path="/event/commissions" element={<Navigate to="/modules/billetterie?onglet=reglages" replace />} />
               <Route path="/relance/dashboard" element={legacy(<RelanceDashboardPage />)} />
               <Route path="/relance/messages" element={legacy(<RelanceMessagesPage />)} />
               <Route path="/relance/campaigns" element={legacy(<RelanceCampaignsPage />)} />
