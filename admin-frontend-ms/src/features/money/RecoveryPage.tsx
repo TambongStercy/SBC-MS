@@ -17,6 +17,7 @@ import { errorMessage } from '../../lib/hooks';
 const PRICING = {
     cinetpay: { currency: 'XAF', plans: { CLASSIQUE: 2070, CIBLE: 5140, UPGRADE: 3070 } },
     feexpay: { currency: 'XAF', plans: { CLASSIQUE: 2070, CIBLE: 5140, UPGRADE: 3070 } },
+    moneyfusion: { currency: 'XAF', plans: { CLASSIQUE: 2070, CIBLE: 5140, UPGRADE: 3070 } },
     nowpayments: { currency: 'USD', plans: { CLASSIQUE: 4.8, CIBLE: 11.6, UPGRADE: 7 } },
 } as const;
 type Provider = keyof typeof PRICING;
@@ -58,9 +59,8 @@ function CreateTab({ initialMember }: { initialMember: Member | null }) {
                             <Select label="Abonnement payé" value={plan} onChange={e => setPlan(e.target.value as Plan)}>
                                 {plans.map(p => <option key={p} value={p}>{PLAN_NAME[p]}</option>)}
                             </Select>
-                            <Select label="Payé par" value={provider} onChange={e => setProvider(e.target.value as Provider)}
-                                hint="MoneyFusion n’est pas encore accepté par le serveur pour une récupération.">
-                                <option value="cinetpay">CinetPay</option><option value="feexpay">FeexPay</option><option value="nowpayments">NOWPayments (crypto)</option>
+                            <Select label="Payé par" value={provider} onChange={e => setProvider(e.target.value as Provider)}>
+                                <option value="cinetpay">CinetPay</option><option value="feexpay">FeexPay</option><option value="moneyfusion">MoneyFusion</option><option value="nowpayments">NOWPayments (crypto)</option>
                             </Select>
                         </div>
                         <Input label="Référence du paiement (opérateur ou fournisseur)" value={reference} onChange={e => setReference(e.target.value)}

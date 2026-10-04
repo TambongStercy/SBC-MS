@@ -18,18 +18,18 @@ export default function PlusHub() {
                         <section>
                             <SectionTitle>Communication</SectionTitle>
                             <NavList>
-                                <NavRow to="/notifications/push" icon={<Megaphone size={20} />} title="Annonces" description="Notifications sur le téléphone des membres" />
-                                <NavRow to="/notifications" icon={<MessageCircle size={20} />} tone="success" title="WhatsApp" description="Connexion du compte WhatsApp de SBC" />
-                                <NavRow to="/statuses" icon={<Sparkles size={20} />} tone="accent" title="Stories" description="Les stories des membres, publier en tant que SBC" />
+                                <NavRow to="/plus/annonces" icon={<Megaphone size={20} />} title="Annonces" description="Notifications sur le téléphone des membres" />
+                                <NavRow to="/plus/whatsapp" icon={<MessageCircle size={20} />} tone="success" title="WhatsApp" description="Connexion du compte WhatsApp de SBC" />
+                                <NavRow to="/plus/stories" icon={<Sparkles size={20} />} tone="accent" title="Stories" description="Les stories des membres, publier en tant que SBC" />
                             </NavList>
                         </section>
                         <section>
                             <SectionTitle>Contenu et accès</SectionTitle>
                             <NavList>
-                                <NavRow to="/settings" icon={<FileText size={20} />} tone="neutral" title="Contenu de l'app" description="Formations, fichiers, actualités" />
-                                <NavRow to="/user-roles" icon={<ShieldCheck size={20} />} tone="warning" title="Rôles et accès" description="Administrateurs, admins retraits, modérateurs" />
-                                <NavRow to="/storage" icon={<HardDrive size={20} />} tone="neutral" title="Stockage" description="Fichiers et coût du stockage" />
-                                <NavRow to="/dashboard" icon={<BarChart3 size={20} />} tone="neutral" title="Statistiques" description="L'ancien tableau de bord et ses graphiques" />
+                                <NavRow to="/plus/contenu" icon={<FileText size={20} />} tone="neutral" title="Contenu de l'app" description="Formations, actualités, fichiers, groupes" />
+                                <NavRow to="/plus/roles" icon={<ShieldCheck size={20} />} tone="warning" title="Rôles et accès" description="Administrateurs, admins retraits, modérateurs" />
+                                <NavRow to="/plus/stockage" icon={<HardDrive size={20} />} tone="neutral" title="Stockage" description="Fichiers et coût du stockage" />
+                                <NavRow to="/plus/statistiques" icon={<BarChart3 size={20} />} tone="neutral" title="Statistiques" description="Membres, inscriptions et abonnements dans le temps" />
                             </NavList>
                         </section>
                     </>

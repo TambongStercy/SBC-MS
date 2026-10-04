@@ -21,7 +21,7 @@ export const NAV: NavItem[] = [
     { to: '/modules', label: 'Modules', icon: LayoutGrid, roles: ['admin'],
         owns: ['/modules', '/ads-network', '/event', '/relance', '/sbclove', '/tombola', '/products', '/impact-challenges'] },
     { to: '/plus', label: 'Plus', icon: Menu, roles: ['admin', 'withdrawal_admin', 'moderator'],
-        owns: ['/plus', '/settings', '/storage', '/notifications', '/statuses', '/user-roles', '/dashboard', '/logout'] },
+        owns: ['/plus', '/logout'] },
 ];
 
 export const navFor = (role: string | null) => NAV.filter(n => role && n.roles.includes(role));

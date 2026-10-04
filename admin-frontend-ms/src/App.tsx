@@ -5,7 +5,6 @@ import Login from './pages/Login';
 import AppShell from './shell/AppShell';
 import { LegacyFrame } from './shell/LegacyFrame';
 import { AppToaster, Spinner } from './ui';
-import { SocketProvider } from './contexts/SocketContext';
 
 // New screens
 const HomePage = lazy(() => import('./features/home/HomePage'));
@@ -23,24 +22,34 @@ const GatewaysPage = lazy(() => import('./features/money/GatewaysPage'));
 const ResolvePage = lazy(() => import('./features/money/ResolvePage'));
 const RecoveryPage = lazy(() => import('./features/money/RecoveryPage'));
 const AnalysisPage = lazy(() => import('./features/money/AnalysisPage'));
+const AnnouncementsPage = lazy(() => import('./features/plus/AnnouncementsPage'));
+const ContentPage = lazy(() => import('./features/plus/ContentPage'));
+const StoriesPage = lazy(() => import('./features/plus/StoriesPage'));
+const WhatsAppPage = lazy(() => import('./features/plus/WhatsAppPage'));
+const RolesPage = lazy(() => import('./features/plus/RolesPage'));
+const StoragePage = lazy(() => import('./features/plus/StoragePage'));
+const StatsPage = lazy(() => import('./features/plus/StatsPage'));
+const AdsModule = lazy(() => import('./features/modules/ads/AdsModule'));
+const BilletterieModule = lazy(() => import('./features/modules/billetterie/BilletterieModule'));
+const EventDetailPage = lazy(() => import('./features/modules/billetterie/EventDetailPage'));
+const RelanceModule = lazy(() => import('./features/modules/relance/RelanceModule'));
+const SbcLoveModule = lazy(() => import('./features/modules/sbclove/SbcLoveModule'));
+const TombolaModule = lazy(() => import('./features/modules/tombola/TombolaModule'));
+const TombolaDrawModulePage = lazy(() => import('./features/modules/tombola/TombolaDrawPage'));
+const BoutiqueModule = lazy(() => import('./features/modules/boutique/BoutiqueModule'));
+const ChallengesModule = lazy(() => import('./features/modules/challenges/ChallengesModule'));
+const ChallengeDetailPage = lazy(() => import('./features/modules/challenges/ChallengeDetailPage'));
 
 // Pages still to be rebuilt, shown in their old look
-const OverViewPage = lazy(() => import('./pages/overViewPage'));
 const Deconnexion = lazy(() => import('./pages/Deconnexion'));
-const UserRolesManagement = lazy(() => import('./pages/UserRolesManagement'));
 const ProductsManagementPage = lazy(() => import('./pages/ProductsManagementPage'));
 const TombolaManagementPage = lazy(() => import('./pages/TombolaManagementPage'));
 const TombolaDrawPage = lazy(() => import('./pages/TombolaDrawPage'));
 const SbcLoveManagementPage = lazy(() => import('./pages/SbcLoveManagementPage'));
-const SettingsManagementPage = lazy(() => import('./pages/SettingsManagementPage'));
-const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
-const PushAnnouncementsPage = lazy(() => import('./pages/PushAnnouncementsPage'));
-const StorageMonitoringPage = lazy(() => import('./pages/StorageMonitoringPage'));
 const RelanceDashboardPage = lazy(() => import('./pages/RelanceDashboardPage'));
 const RelanceMessagesPage = lazy(() => import('./pages/RelanceMessagesPage'));
 const RelanceCampaignsPage = lazy(() => import('./pages/RelanceCampaignsPage'));
 const RelanceSmsTemplatesPage = lazy(() => import('./pages/RelanceSmsTemplatesPage'));
-const StatusPage = lazy(() => import('./pages/StatusPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
 const AdsNetworkDashboardPage = lazy(() => import('./pages/AdsNetworkDashboardPage'));
@@ -109,6 +118,16 @@ function App() {
 
               {/* Modules */}
               <Route path="/modules" element={<ModulesHub />} />
+              <Route path="/modules/ads" element={<AdsModule />} />
+              <Route path="/modules/billetterie" element={<BilletterieModule />} />
+              <Route path="/modules/billetterie/evenements/:eventId" element={<EventDetailPage />} />
+              <Route path="/modules/relance" element={<RelanceModule />} />
+              <Route path="/modules/sbc-love" element={<SbcLoveModule />} />
+              <Route path="/modules/tombola" element={<TombolaModule />} />
+              <Route path="/modules/tombola/tirage/:monthId" element={<TombolaDrawModulePage />} />
+              <Route path="/modules/boutique" element={<BoutiqueModule />} />
+              <Route path="/modules/impact-challenge" element={<ChallengesModule />} />
+              <Route path="/modules/impact-challenge/:challengeId" element={<ChallengeDetailPage />} />
               <Route path="/ads-network" element={legacy(<AdsNetworkDashboardPage />)} />
               <Route path="/ads-network/review" element={legacy(<AdsNetworkReviewPage />)} />
               <Route path="/ads-network/manual-verifications" element={<Navigate to="/a-traiter/verifications" replace />} />
@@ -136,13 +155,20 @@ function App() {
 
               {/* Plus */}
               <Route path="/plus" element={<PlusHub />} />
-              <Route path="/notifications/push" element={legacy(<PushAnnouncementsPage />)} />
-              <Route path="/notifications" element={legacy(<NotificationsPage />)} />
-              <Route path="/statuses" element={legacy(<SocketProvider><StatusPage /></SocketProvider>)} />
-              <Route path="/settings" element={legacy(<SettingsManagementPage />)} />
-              <Route path="/user-roles" element={legacy(<UserRolesManagement />)} />
-              <Route path="/storage" element={legacy(<StorageMonitoringPage />)} />
-              <Route path="/dashboard" element={legacy(<OverViewPage />)} />
+              <Route path="/plus/annonces" element={<AnnouncementsPage />} />
+              <Route path="/plus/contenu" element={<ContentPage />} />
+              <Route path="/plus/stories" element={<StoriesPage />} />
+              <Route path="/plus/whatsapp" element={<WhatsAppPage />} />
+              <Route path="/plus/roles" element={<RolesPage />} />
+              <Route path="/plus/stockage" element={<StoragePage />} />
+              <Route path="/plus/statistiques" element={<StatsPage />} />
+              <Route path="/notifications/push" element={<Navigate to="/plus/annonces" replace />} />
+              <Route path="/notifications" element={<Navigate to="/plus/whatsapp" replace />} />
+              <Route path="/statuses" element={<Navigate to="/plus/stories" replace />} />
+              <Route path="/settings" element={<Navigate to="/plus/contenu" replace />} />
+              <Route path="/user-roles" element={<Navigate to="/plus/roles" replace />} />
+              <Route path="/storage" element={<Navigate to="/plus/stockage" replace />} />
+              <Route path="/dashboard" element={<Navigate to="/plus/statistiques" replace />} />
               <Route path="/chat" element={<Navigate to="/" replace />} />
               <Route path="/logout" element={legacy(<Deconnexion />)} />
 

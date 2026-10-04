@@ -1,9 +1,13 @@
+import type React from 'react';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { getGatewayBalances, getLiveGatewayBalances, updateGatewayBalances } from '../../services/adminSettingsApi';
 import { Badge, Button, Card, ConfirmSheet, IconButton, Input, KeyValue, Page, SectionTitle, Skeleton, Textarea, notify } from '../../ui';
 import { formatDateTime, formatMoney } from '../../lib/format';
+import { countryName } from '../../lib/labels';
+
+type CinetPayCountry = { country: string; currency: string; available: boolean; available_balance: number; error?: string };
 
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
@@ -40,13 +44,17 @@ export default function GatewaysPage() {
                                 ['NOWPayments (crypto)', l.nowpayments.available
                                     ? <span>{formatMoney(num(l.nowpayments.totalUsd), 'USD')}{num(l.nowpayments.totalPendingUsd) > 0 && <span className="block text-xs text-ink-3">+ {formatMoney(num(l.nowpayments.totalPendingUsd), 'USD')} en attente</span>}</span>
                                     : <Badge tone="danger">Indisponible</Badge>],
-                                ['CinetPay', l.cinetpay.available
-                                    ? <span>{formatMoney(num(l.cinetpay.available_balance), l.cinetpay.currency)}<span className="block text-xs text-ink-3">un seul pays : le premier configuré</span></span>
-                                    : <Badge tone="danger">Indisponible</Badge>],
+                                // Per-country balances once payment-service returns them (#305); before that, one country only.
+                                ...(((l.cinetpay as { countries?: CinetPayCountry[] }).countries ?? []).length
+                                    ? ((l.cinetpay as { countries?: CinetPayCountry[] }).countries ?? []).map(c => [`CinetPay ${countryName(c.country)}`,
+                                        c.available ? formatMoney(num(c.available_balance), c.currency) : <Badge tone="danger">Indisponible</Badge>] as [string, React.ReactNode])
+                                    : [['CinetPay', l.cinetpay.available
+                                        ? <span>{formatMoney(num(l.cinetpay.available_balance), l.cinetpay.currency)}<span className="block text-xs text-ink-3">un seul pays : le premier configuré</span></span>
+                                        : <Badge tone="danger">Indisponible</Badge>] as [string, React.ReactNode]]),
                                 ['FeexPay', <span className="text-ink-3 font-normal">Pas d’API de solde</span>],
                                 ['MoneyFusion', <span className="text-ink-3 font-normal">Pas d’API de solde</span>],
                             ]} />
-                            <p className="mt-2 text-xs text-ink-3">Relevé {formatDateTime(l.timestamp)}. CinetPay tient un solde par pays ; ce chiffre n’en montre qu’un.</p>
+                            <p className="mt-2 text-xs text-ink-3">Relevé {formatDateTime(l.timestamp)}. CinetPay tient un solde par pays.</p>
                         </Card>
                     )}
                 </section>
