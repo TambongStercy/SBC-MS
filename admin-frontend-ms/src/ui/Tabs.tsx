@@ -2,14 +2,19 @@ import { ReactNode } from 'react';
 import { cn } from './cn';
 
 /** A segmented control. Scrolls sideways on a phone when there are many tabs. */
-export function Tabs<T extends string>({ value, onChange, items, className }: {
+export function Tabs<T extends string>({ value, onChange, items, className, phoneColumns }: {
     value: T;
     onChange: (v: T) => void;
     items: Array<{ value: T; label: ReactNode; count?: number }>;
     className?: string;
+    /** Many tabs: lay them out on rows of N on a phone instead of scrolling, so none hides off-screen. */
+    phoneColumns?: 2 | 3;
 }) {
+    const layout = phoneColumns
+        ? cn('grid gap-1 rounded-tile sm:flex sm:rounded-pill', phoneColumns === 3 ? 'grid-cols-3' : 'grid-cols-2')
+        : 'flex gap-1 overflow-x-auto rounded-pill [scrollbar-width:none]';
     return (
-        <div role="tablist" className={cn('flex gap-1 overflow-x-auto rounded-pill bg-surface-2 p-1 [scrollbar-width:none]', className)}>
+        <div role="tablist" className={cn(layout, 'bg-surface-2 p-1', className)}>
             {items.map(it => (
                 <button key={it.value} role="tab" type="button" aria-selected={it.value === value}
                     onClick={() => onChange(it.value)}

@@ -1,4 +1,4 @@
-import { ArrowDownUp, Banknote, BarChart3, CreditCard, History, Hourglass, LifeBuoy, ListChecks } from 'lucide-react';
+import { ArrowDownUp, Banknote, BarChart3, CreditCard, History, Hourglass, LifeBuoy, ListChecks, Landmark } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useQueueCounts } from '../home/queues';
 import { NavList, NavRow, Page, SectionTitle } from '../../ui';
@@ -20,21 +20,29 @@ export default function ArgentHub() {
                     <SectionTitle>Retraits</SectionTitle>
                     <NavList>
                         <NavRow to="/a-traiter/retraits" icon={<Banknote size={20} />} tone="success" title="À valider" description="Un par un, avec tout pour décider" trailing={<Count n={count('withdrawals')} />} />
-                        <NavRow to="/withdrawals/approvals" icon={<ListChecks size={20} />} title="Liste et validation groupée" description="Filtrer, cocher plusieurs retraits" />
+                        <NavRow to="/argent/retraits" icon={<ListChecks size={20} />} title="Liste et validation groupée" description="Cocher plusieurs retraits et les valider ensemble" />
                         <NavRow to="/argent/bloques" icon={<Hourglass size={20} />} tone="danger" title="Bloqués chez le fournisseur" description="MoneyFusion et CinetPay sans réponse" trailing={<Count n={count('stuck')} />} />
-                        <NavRow to="/withdrawals/history" icon={<History size={20} />} tone="neutral" title="Historique" description="Retraits payés, refusés, échoués" />
+                        <NavRow to="/argent/retraits?vue=historique" icon={<History size={20} />} tone="neutral" title="Historique" description="Retraits payés, refusés, échoués" />
                     </NavList>
                 </section>
                 {isAdmin && (
-                    <section>
-                        <SectionTitle>Paiements</SectionTitle>
-                        <NavList>
-                            <NavRow to="/transactions" icon={<CreditCard size={20} />} title="Paiements" description="Abonnements, packs, billets, campagnes" />
-                            <NavRow to="/account-transactions" icon={<ArrowDownUp size={20} />} tone="neutral" title="Mouvements de solde" description="Tout ce qui entre et sort des soldes" />
-                            <NavRow to="/manual-payment-recovery" icon={<LifeBuoy size={20} />} tone="warning" title="Récupérer un abonnement payé" description="Quand un membre a payé sans être abonné" />
-                            <NavRow to="/user-analytics" icon={<BarChart3 size={20} />} tone="accent" title="Plus gros gains et retraits" description="Classement des membres par montants" />
-                        </NavList>
-                    </section>
+                    <>
+                        <section>
+                            <SectionTitle>Paiements</SectionTitle>
+                            <NavList>
+                                <NavRow to="/argent/paiements" icon={<CreditCard size={20} />} title="Paiements" description="Abonnements, tickets, campagnes… et leur statut" />
+                                <NavRow to="/argent/paiements?vue=mouvements" icon={<ArrowDownUp size={20} />} tone="neutral" title="Mouvements de solde" description="Tout ce qui entre et sort des soldes des membres" />
+                                <NavRow to="/argent/resoudre" icon={<LifeBuoy size={20} />} tone="warning" title="Résoudre un problème de paiement" description="Payé sans être activé, retrait bloqué ou non reçu" />
+                            </NavList>
+                        </section>
+                        <section>
+                            <SectionTitle>Suivi</SectionTitle>
+                            <NavList>
+                                <NavRow to="/argent/passerelles" icon={<Landmark size={20} />} tone="neutral" title="Soldes des passerelles" description="Ce que SBC détient chez chaque fournisseur" />
+                                <NavRow to="/argent/analyse" icon={<BarChart3 size={20} />} tone="accent" title="Plus gros gains et retraits" description="Classement des membres par montants" />
+                            </NavList>
+                        </section>
+                    </>
                 )}
             </div>
         </Page>

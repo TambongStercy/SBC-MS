@@ -75,13 +75,13 @@ export default function HomePage() {
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                             {isAdmin && (
                                 <>
-                                    <Stat label="Inscriptions" value={formatNumber(todayQ.data?.signups)} loading={todayQ.isLoading} to="/membres" />
-                                    <Stat label="Paiements réussis" value={formatNumber(todayQ.data?.paid)} loading={todayQ.isLoading} to="/transactions" />
-                                    <Stat label="Paiements échoués" value={formatNumber(todayQ.data?.failed)} loading={todayQ.isLoading} to="/transactions" />
+                                    <Stat label="Inscriptions" value={formatNumber(todayQ.data?.signups)} loading={todayQ.isLoading} to="/membres?depuis=aujourdhui" />
+                                    <Stat label="Paiements réussis" value={formatNumber(todayQ.data?.paid)} loading={todayQ.isLoading} to="/argent/paiements" />
+                                    <Stat label="Paiements échoués" value={formatNumber(todayQ.data?.failed)} loading={todayQ.isLoading} to="/argent/paiements" />
                                 </>
                             )}
                             <Stat label="Retraits validés" value={formatNumber(todayQ.data?.withdrawalsApproved)} loading={todayQ.isLoading}
-                                hint={todayQ.data?.withdrawalsRejected ? `${todayQ.data.withdrawalsRejected} refusés` : undefined} to="/withdrawals/history" />
+                                hint={todayQ.data?.withdrawalsRejected ? `${todayQ.data.withdrawalsRejected} refusés` : undefined} to="/argent/retraits?vue=historique" />
                         </div>
                     </section>
                 ) : null}

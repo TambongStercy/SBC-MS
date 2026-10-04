@@ -76,7 +76,7 @@ export default function WithdrawalQueuePage() {
 
     return (
         <Page title="Retraits à valider" back="/" width="wide" subtitle={list.data ? (remaining ? `${remaining} en attente` : 'Aucun en attente') : undefined}
-            actions={<ButtonLink to="/withdrawals/approvals" variant="ghost" size="sm">Liste complète</ButtonLink>}>
+            actions={<ButtonLink to="/argent/retraits" variant="ghost" size="sm">Liste complète</ButtonLink>}>
             {list.isLoading ? <ListSkeleton rows={3} /> : list.isError ? (
                 <ErrorState message="Impossible de charger les retraits." onRetry={() => list.refetch()} />
             ) : !current ? (

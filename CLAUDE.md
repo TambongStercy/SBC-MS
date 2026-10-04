@@ -213,6 +213,17 @@ the daily work is ~155 video-proof and ~27 withdrawal decisions). New code:
   role had never been able to sign in.
 - No `alert()/confirm()`: money actions go through `ConfirmSheet` (locks while
   running, keeps the error inside the sheet).
+- Phase 2 (Membres, Argent): one member page filters payment history by the
+  member's **id** through `userSearchTerm` — user-service `search-ids` matches an
+  exact 24-hex id since #303 (and phones as strings, and no longer hides blocked,
+  unverified or deleted members). The ledger (`/transactions/admin`) is
+  ADMIN-only; withdrawal admins read `/payments/admin/withdrawals/*` instead.
+- `POST /users/admin/users/:id/adjust-balance` changes the balance **without
+  writing any transaction** (log line only). It is deliberately not exposed in
+  the admin until it records a ledger entry.
+- The live CinetPay balance (`/payments/admin/gateway-balances/live`) calls
+  `getBalance()` without a country, so it is ONE country's balance (the first
+  configured). The Passerelles page says so.
 
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
