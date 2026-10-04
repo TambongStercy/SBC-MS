@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Banknote, CheckCircle2, Flag, Heart, Hourglass, Megaphone, RefreshCw, Ticket, Video, type LucideIcon } from 'lucide-react';
+import { Banknote, CalendarCheck, CheckCircle2, Flag, Heart, Hourglass, Megaphone, RefreshCw, Ticket, Video, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Card, EmptyState, IconButton, NavList, NavRow, SectionTitle, Skeleton, Stat, Page, type Tone } from '../../ui';
 import { formatNumber, timeAgo } from '../../lib/format';
@@ -10,6 +10,7 @@ const LOOK: Record<QueueKey, { icon: LucideIcon; tone: Tone }> = {
     withdrawals: { icon: Banknote, tone: 'success' },
     campaigns: { icon: Megaphone, tone: 'accent' },
     love: { icon: Heart, tone: 'danger' },
+    events: { icon: CalendarCheck, tone: 'warning' },
     organizers: { icon: Ticket, tone: 'primary' },
     disputes: { icon: Flag, tone: 'warning' },
     stuck: { icon: Hourglass, tone: 'danger' },

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { cancelAdminEvent, getAdminEvent, listAdminTickets, suspendAdminEvent, type AdminTicket, type TicketStatus } from '../../../api/event';
+import { approveAdminEvent, cancelAdminEvent, getAdminEvent, listAdminTickets, rejectAdminEvent, suspendAdminEvent, type AdminTicket, type TicketStatus } from '../../../api/event';
 import { Button, Card, ConfirmSheet, DataList, EmptyState, ErrorState, KeyValue, Page, Pagination, SearchInput, Select, Skeleton, Stat, StatusBadge, Tabs, notify, type Column } from '../../../ui';
 import { formatDateTime, formatMoney, formatNumber } from '../../../lib/format';
 import { useDebounced, useParamState } from '../../../lib/hooks';
-import { EVENT_STATUS, TICKET_STATUS } from './shared';
+import { EVENT_STATUS, TICKET_STATUS, eventPlace } from './shared';
 import { OrdersTab } from './OrdersTab';
 
 const PAGE = 20;
@@ -44,7 +44,10 @@ function Tickets({ eventId }: { eventId: string }) {
 }
 
 /**
- * One event: its figures, its orders and tickets, and the two admin actions.
+ * One event: its figures, its orders and tickets, and the admin actions.
+ * An event sent for review is accepted (published, tickets on sale) or
+ * refused with a reason the organizer sees; the organizer can then edit it
+ * and send it again. Refusing never blocks the organizer's other events.
  * Cancelling refunds every paid order automatically (event-service
  * cancelEventAndCascade): buyers credited, tickets voided, resale listings
  * withdrawn, buyers notified.
@@ -53,10 +56,10 @@ export default function EventDetailPage() {
     const { eventId = '' } = useParams();
     const qc = useQueryClient();
     const [tab, setTab] = useParamState('onglet', 'commandes');
-    const [action, setAction] = useState<'suspend' | 'cancel' | null>(null);
+    const [action, setAction] = useState<'suspend' | 'cancel' | 'approve' | 'reject' | null>(null);
     const ev = useQuery({ queryKey: ['events', 'event', eventId], queryFn: () => getAdminEvent(eventId), enabled: !!eventId });
     const e = ev.data;
-    const refresh = () => qc.invalidateQueries({ queryKey: ['events'] });
+    const refresh = () => { qc.invalidateQueries({ queryKey: ['events'] }); qc.invalidateQueries({ queryKey: ['queue', 'events'] }); };
 
     return (
         <Page title={e?.title || 'Événement'} back="/modules/billetterie?onglet=evenements" subtitle={e ? `${formatDateTime(e.startsAt)} · ${e.city}` : undefined}>
@@ -64,7 +67,22 @@ export default function EventDetailPage() {
                 <div className="space-y-4">
                     <Card className="space-y-3">
                         <StatusBadge status={e.status} labels={EVENT_STATUS} />
-                        <KeyValue items={[['Lieu', [e.venue, e.city].filter(Boolean).join(', ')], ['Début', formatDateTime(e.startsAt)], ['Fin', formatDateTime(e.endsAt)]]} />
+                        <KeyValue items={[
+                            ['Lieu', eventPlace(e) || '—'],
+                            e.category === 'webinaire' && ['Lien WhatsApp', e.accessLink
+                                ? <a href={e.accessLink} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all">{e.accessLink}</a>
+                                : <span className="text-danger">Pas encore renseigné</span>],
+                            ['Début', formatDateTime(e.startsAt)], ['Fin', formatDateTime(e.endsAt)],
+                            !!e.submittedAt && ['Envoyé pour validation', formatDateTime(e.submittedAt)],
+                            !!e.reviewedAt && [e.status === 'REJECTED' ? 'Refusé le' : 'Validé le', formatDateTime(e.reviewedAt)],
+                            e.status === 'REJECTED' && !!e.rejectionReason && ['Motif du refus', e.rejectionReason],
+                        ]} />
+                        {e.status === 'PENDING_REVIEW' && (
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                                <Button variant="danger-soft" onClick={() => setAction('reject')}>Refuser…</Button>
+                                <Button variant="success" onClick={() => setAction('approve')}>Accepter</Button>
+                            </div>
+                        )}
                         {(e.status === 'PUBLISHED' || e.status === 'SUSPENDED' || e.status === 'DRAFT') && (
                             <div className="grid grid-cols-2 gap-2 pt-1">
                                 {e.status === 'PUBLISHED' ? <Button variant="secondary" onClick={() => setAction('suspend')}>Suspendre…</Button> : <span />}
@@ -80,6 +98,14 @@ export default function EventDetailPage() {
                     <Tabs value={tab} onChange={setTab} items={[{ value: 'commandes', label: 'Commandes' }, { value: 'billets', label: 'Billets' }]} />
                     {tab === 'billets' ? <Tickets eventId={e._id} /> : <OrdersTab eventId={e._id} />}
 
+                    <ConfirmSheet open={action === 'approve'} onClose={() => setAction(null)} tone="success" title={`Accepter « ${e.title} » ?`}
+                        message={<p>L’événement est publié et ses billets mis en vente. L’organisateur est prévenu.</p>} confirmLabel="Accepter et publier"
+                        onConfirm={async () => { await approveAdminEvent(e._id); notify.success('Événement accepté et publié.'); refresh(); }} />
+                    <ConfirmSheet open={action === 'reject'} onClose={() => setAction(null)} tone="danger" title={`Refuser « ${e.title} » ?`}
+                        message={<p>Il n’est pas publié. L’organisateur reçoit le motif et peut modifier son événement puis l’envoyer à nouveau. Son compte et ses autres événements ne sont pas touchés.</p>}
+                        reason={{ label: 'Motif (envoyé à l’organisateur)', suggestions: ['Informations incomplètes', 'Affiche ou description inappropriée', 'Date ou lieu incohérent', 'Lien WhatsApp manquant ou invalide'], minLength: 5 }}
+                        confirmLabel="Refuser"
+                        onConfirm={async (reason) => { await rejectAdminEvent(e._id, reason); notify.success('Événement refusé : l’organisateur est prévenu.'); refresh(); }} />
                     <ConfirmSheet open={action === 'suspend'} onClose={() => setAction(null)} title="Suspendre cet événement ?"
                         message={<p>Il n’est plus en vente. Les billets déjà vendus restent valables.</p>} confirmLabel="Suspendre"
                         onConfirm={async () => { await suspendAdminEvent(e._id); notify.success('Événement suspendu.'); refresh(); }} />

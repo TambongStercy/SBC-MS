@@ -1,12 +1,12 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import apiClient from '../../api/apiClient';
 import { getManualVerifications, getAdsCampaigns } from '../../api/adsNetwork';
-import { listOrganizers, listAdminDisputes } from '../../api/event';
+import { listOrganizers, listAdminDisputes, listAdminEvents } from '../../api/event';
 import { getStats as getSbcLoveStats } from '../../services/adminSbcLoveApi';
 import { getWithdrawalStats, getStuckMoneyFusionWithdrawals, getStuckCinetPayWithdrawals } from '../../services/adminWithdrawalApi';
 import { startOfTodayDouala, todayDouala } from '../../lib/format';
 
-export type QueueKey = 'proofs' | 'withdrawals' | 'campaigns' | 'love' | 'organizers' | 'disputes' | 'stuck';
+export type QueueKey = 'proofs' | 'withdrawals' | 'campaigns' | 'love' | 'events' | 'organizers' | 'disputes' | 'stuck';
 
 export type QueueDef = {
     key: QueueKey;
@@ -44,6 +44,10 @@ export const QUEUES: QueueDef[] = [
     {
         key: 'love', title: 'Profils SBC Love', to: '/modules/sbc-love', roles: ADMIN,
         load: async () => ({ count: (await getSbcLoveStats()).profiles.pending }),
+    },
+    {
+        key: 'events', title: 'Événements à valider', to: '/modules/billetterie?onglet=evenements', roles: ADMIN,
+        load: async () => ({ count: (await listAdminEvents({ status: 'PENDING_REVIEW', limit: 1 })).total }),
     },
     {
         key: 'organizers', title: 'Organisateurs à approuver', to: '/modules/billetterie?onglet=organisateurs', roles: ADMIN,

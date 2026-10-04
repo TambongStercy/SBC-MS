@@ -11,7 +11,7 @@ import apiClient from './apiClient';
  */
 
 export type OrganizerStatus = 'PENDING' | 'APPROVED' | 'SUSPENDED';
-export type EventStatus = 'DRAFT' | 'PUBLISHED' | 'SUSPENDED' | 'CANCELLED' | 'COMPLETED';
+export type EventStatus = 'DRAFT' | 'PENDING_REVIEW' | 'REJECTED' | 'PUBLISHED' | 'SUSPENDED' | 'CANCELLED' | 'COMPLETED';
 
 export interface AdminOrganizer {
     _id: string;
@@ -38,6 +38,13 @@ export interface AdminEvent {
     city: string;
     venue: string;
     totals?: { ticketsSold: number; grossRevenue: number; checkedIn: number };
+    category?: string;
+    /** Webinaire only: the WhatsApp link buyers get once they have paid. */
+    accessLink?: string;
+    /** Sent for review by the organizer; reviewed (accepted/refused) by SBC. */
+    submittedAt?: string;
+    reviewedAt?: string;
+    rejectionReason?: string;
     createdAt: string;
 }
 
@@ -56,11 +63,6 @@ export async function approveOrganizer(organizerId: string) {
     return data.data as AdminOrganizer;
 }
 
-export async function suspendOrganizer(organizerId: string, reason?: string) {
-    const { data } = await apiClient.post(`/tickets/admin/organizers/${organizerId}/suspend`, { reason });
-    return data.data as AdminOrganizer;
-}
-
 export async function listAdminEvents(params: { status?: EventStatus; organizerId?: string; limit?: number; skip?: number; q?: string } = {}) {
     const { data } = await apiClient.get('/tickets/admin/events', { params });
     return data.data as { items: AdminEvent[]; total: number };
@@ -68,6 +70,18 @@ export async function listAdminEvents(params: { status?: EventStatus; organizerI
 
 export async function getAdminEvent(eventId: string) {
     const { data } = await apiClient.get(`/tickets/admin/events/${eventId}`);
+    return data.data as AdminEvent;
+}
+
+/** Publishes an event waiting for review; the organizer is notified. */
+export async function approveAdminEvent(eventId: string) {
+    const { data } = await apiClient.post(`/tickets/admin/events/${eventId}/approve`);
+    return data.data as AdminEvent;
+}
+
+/** Refuses an event waiting for review: the organizer sees the reason and may edit and resubmit. */
+export async function rejectAdminEvent(eventId: string, reason: string) {
+    const { data } = await apiClient.post(`/tickets/admin/events/${eventId}/reject`, { reason });
     return data.data as AdminEvent;
 }
 

@@ -8,6 +8,7 @@ import Commission from '../../database/models/commission.model';
 import ResaleListing from '../../database/models/resale-listing.model';
 import Refund, { RefundStatus } from '../../database/models/refund.model';
 import * as organizerService from '../../services/organizer.service';
+import * as eventService from '../../services/event.service';
 import * as refundService from '../../services/refund.service';
 import * as cancellationService from '../../services/cancellation.service';
 import { notifyUser, Channel } from '../../services/clients/notification.service.client';
@@ -91,6 +92,8 @@ export const dashboard = async (_req: Request, res: Response, next: NextFunction
                 },
                 events: {
                     draft: eventCounts.DRAFT || 0,
+                    pendingReview: eventCounts.PENDING_REVIEW || 0,
+                    rejected: eventCounts.REJECTED || 0,
                     published: eventCounts.PUBLISHED || 0,
                     suspended: eventCounts.SUSPENDED || 0,
                     cancelled: eventCounts.CANCELLED || 0,
@@ -157,13 +160,6 @@ export const approveOrganizer = async (req: Request, res: Response, next: NextFu
     } catch (err) { next(err); }
 };
 
-export const suspendOrganizer = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const org = await organizerService.suspendOrganizer(req.params.id, req.body?.reason);
-        res.json({ success: true, data: org });
-    } catch (err) { next(err); }
-};
-
 export const listEvents = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const filter: any = {};
@@ -181,7 +177,7 @@ export const listEvents = async (req: Request, res: Response, next: NextFunction
         const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
         const skip = parseInt(String(req.query.skip || 0), 10);
         const [items, total] = await Promise.all([
-            Event.find(filter).sort({ createdAt: -1 }).limit(limit).skip(skip).lean(),
+            Event.find(filter).select('+accessLink').sort({ createdAt: -1 }).limit(limit).skip(skip).lean(),
             Event.countDocuments(filter),
         ]);
         res.json({ success: true, data: { items, total } });
@@ -190,8 +186,47 @@ export const listEvents = async (req: Request, res: Response, next: NextFunction
 
 export const getEvent = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const ev = await Event.findById(req.params.id).lean();
+        const ev = await Event.findById(req.params.id).select('+accessLink').lean();
         if (!ev) throw new AppError('Événement introuvable.', 404);
+        res.json({ success: true, data: ev });
+    } catch (err) { next(err); }
+};
+
+/** Tell the organizer the outcome of the review of their event. */
+const notifyOrganizerOfReview = async (ev: { _id: Types.ObjectId; organizerId: Types.ObjectId; title: string; rejectionReason?: string }, approved: boolean) => {
+    const org = await Organizer.findById(ev.organizerId).select('userId').lean();
+    if (!org) return;
+    await notifyUserByLookup(org.userId, approved
+        ? {
+            kind: 'event-approved',
+            subject: `✅ Votre événement a été accepté — ${ev.title}`,
+            body: `Votre événement « ${ev.title} » a été validé par l'équipe SBC. Il est maintenant en ligne et les billets sont en vente.`,
+            data: { eventTitle: ev.title },
+            eventId: String(ev._id),
+        }
+        : {
+            kind: 'event-rejected',
+            subject: `⛔ Votre événement a été refusé — ${ev.title}`,
+            body: `Votre événement « ${ev.title} » n'a pas été validé. Motif : ${ev.rejectionReason || 'non précisé'}. Vous pouvez le modifier et le soumettre à nouveau.`,
+            data: { eventTitle: ev.title, reason: ev.rejectionReason || 'non précisé' },
+            eventId: String(ev._id),
+        });
+};
+
+/** POST /admin/events/:id/approve — accept a submitted event; it goes live. */
+export const approveEvent = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const ev = await eventService.approveEvent(req.params.id);
+        await notifyOrganizerOfReview(ev, true);
+        res.json({ success: true, data: ev });
+    } catch (err) { next(err); }
+};
+
+/** POST /admin/events/:id/reject — refuse a submitted event. The organizer is not blocked. */
+export const rejectEvent = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const ev = await eventService.rejectEvent(req.params.id, req.body?.reason);
+        await notifyOrganizerOfReview(ev, false);
         res.json({ success: true, data: ev });
     } catch (err) { next(err); }
 };

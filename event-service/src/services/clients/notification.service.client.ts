@@ -41,6 +41,8 @@ const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money' }>
     'resale-listing-suspended': { url: '/events/mes-billets', category: 'events' },
     'resale-listing-removed': { url: '/events/mes-billets', category: 'events' },
     'dispute-resolved': { url: '/events/mes-disputes', category: 'events' },
+    'event-approved': { url: '/events/organizer', category: 'events' },
+    'event-rejected': { url: '/events/organizer', category: 'events' },
 };
 
 export const pushRelatedData = (kind: string, ref?: string) => {
