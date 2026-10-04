@@ -46,7 +46,6 @@ const Deconnexion = lazy(() => import('./pages/Deconnexion'));
 const ProductsManagementPage = lazy(() => import('./pages/ProductsManagementPage'));
 const TombolaManagementPage = lazy(() => import('./pages/TombolaManagementPage'));
 const TombolaDrawPage = lazy(() => import('./pages/TombolaDrawPage'));
-const SbcLoveManagementPage = lazy(() => import('./pages/SbcLoveManagementPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
 
@@ -131,7 +130,7 @@ function App() {
               <Route path="/relance/messages" element={<Navigate to="/modules/relance?onglet=emails" replace />} />
               <Route path="/relance/campaigns" element={<Navigate to="/modules/relance?onglet=campagnes" replace />} />
               <Route path="/relance/sms-templates" element={<Navigate to="/modules/relance?onglet=sms" replace />} />
-              <Route path="/sbclove" element={legacy(<SbcLoveManagementPage />)} />
+              <Route path="/sbclove" element={<Navigate to="/modules/sbc-love" replace />} />
               <Route path="/tombola" element={legacy(<TombolaManagementPage />)} />
               <Route path="/tombola/draw/:monthId" element={legacy(<TombolaDrawPage />)} />
               <Route path="/products" element={legacy(<ProductsManagementPage />)} />

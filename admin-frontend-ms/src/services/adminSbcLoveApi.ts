@@ -228,13 +228,16 @@ export async function validateProfile(
     }
 }
 
+/** `reason` is kept on the profile for the team; the member is not shown it. */
 export async function setSuspension(
     id: string,
-    suspend: boolean
+    suspend: boolean,
+    reason?: string
 ): Promise<LoveProfile> {
     try {
         const response = await apiClient.patch(`/sbclove/admin/profiles/${id}/suspension`, {
             suspend,
+            ...(reason ? { reason } : {}),
         });
         if (!response.data.success) throw new Error(response.data.message || 'Erreur');
         return response.data.data;

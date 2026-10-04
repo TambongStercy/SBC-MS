@@ -42,7 +42,7 @@ export const QUEUES: QueueDef[] = [
         load: async () => ({ count: (await getAdsCampaigns({ status: ['paid', 'pending_review'], limit: 1 })).pagination?.total ?? 0 }),
     },
     {
-        key: 'love', title: 'Profils SBC Love', to: '/sbclove', roles: ADMIN,
+        key: 'love', title: 'Profils SBC Love', to: '/modules/sbc-love', roles: ADMIN,
         load: async () => ({ count: (await getSbcLoveStats()).profiles.pending }),
     },
     {
