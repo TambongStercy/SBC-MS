@@ -67,9 +67,6 @@ body {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-/* Old pages still being moved over keep their dark look inside the new shell. */
-.legacy-frame .scrollbar-thin { scrollbar-width: thin; scrollbar-color: #4b5563 #1f2937; }
-
 @keyframes slide-in {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }

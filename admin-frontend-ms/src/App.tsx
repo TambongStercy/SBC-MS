@@ -1,9 +1,8 @@
-import { lazy, ReactNode, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import AppShell from './shell/AppShell';
-import { LegacyFrame } from './shell/LegacyFrame';
 import { AppToaster, Spinner } from './ui';
 
 // New screens
@@ -44,7 +43,6 @@ const ChallengeDetailPage = lazy(() => import('./features/modules/challenges/Cha
 // Pages still to be rebuilt, shown in their old look
 const Deconnexion = lazy(() => import('./pages/Deconnexion'));
 
-const legacy = (page: ReactNode) => <LegacyFrame>{page}</LegacyFrame>;
 
 /** Old member links (/userpage/:id) land on the new member page. */
 function OldMemberLink() {
@@ -159,7 +157,7 @@ function App() {
               <Route path="/storage" element={<Navigate to="/plus/stockage" replace />} />
               <Route path="/dashboard" element={<Navigate to="/plus/statistiques" replace />} />
               <Route path="/chat" element={<Navigate to="/" replace />} />
-              <Route path="/logout" element={legacy(<Deconnexion />)} />
+              <Route path="/logout" element={<Deconnexion />} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
