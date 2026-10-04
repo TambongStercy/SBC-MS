@@ -8,6 +8,7 @@ import RelanceMessageModel from '../../database/models/relance-message.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { emailRelanceService } from '../../services/email.relance.service';
 import { campaignBudget, matchCampaignReferrals, newFilleulsLast30Days } from '../../services/relance-campaign-targets.service';
+import { peopleById } from '../../services/relance-admin.service';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('RelanceCampaignController');
@@ -18,6 +19,22 @@ const canSeeCampaign = (req: Request, campaign: { userId?: unknown }): boolean =
     if (typeof user?.role === 'string' && user.role.toLowerCase() === 'admin') return true;
     return !!user?.userId && String(campaign.userId) === String(user.userId);
 };
+
+/**
+ * The admin routes reuse these handlers. `asAdmin` lifts the "your own campaigns
+ * only" filter: before it existed every admin route quietly scoped itself to the
+ * admin's own userId, so the admin list showed only the admin's campaigns and
+ * pause/resume/cancel on anyone else's answered "Campaign not found".
+ */
+export interface CampaignScope { asAdmin?: boolean }
+
+/** Owner of the campaign the request acts on: the signed-in member, or for an admin the campaign's real owner. */
+async function ownerFor(req: Request, campaignId: string, scope: CampaignScope): Promise<string | null> {
+    if (!scope.asAdmin) return (req as any).user?.userId || req.body?.userId || null;
+    if (!mongoose.isValidObjectId(campaignId)) return null;
+    const campaign = await CampaignModel.findById(campaignId).select('userId').lean();
+    return campaign ? String(campaign.userId) : null;
+}
 
 /**
  * Campaign Controller
@@ -167,14 +184,15 @@ class RelanceCampaignController {
      * GET /api/relance/campaigns (user)
      * GET /api/relance/admin/campaigns (admin)
      */
-    async getCampaigns(req: Request, res: Response): Promise<void> {
+    async getCampaigns(req: Request, res: Response, scope: CampaignScope = {}): Promise<void> {
         try {
             const authenticatedUserId = (req as any).user?.userId;
             const queryUserId = req.query.userId as string;
             const { status, type, page = '1', limit = '20' } = req.query;
 
-            // For admin routes, userId is optional (can query all campaigns)
-            const userId = queryUserId || authenticatedUserId;
+            // Admins see everyone's campaigns, optionally narrowed to one owner. A
+            // member only ever sees their own — ?userId= used to let them read anyone's.
+            const userId = scope.asAdmin ? queryUserId : authenticatedUserId;
 
             const filters: any = {};
             if (userId) filters.userId = userId;
@@ -182,8 +200,8 @@ class RelanceCampaignController {
             if (type) filters.type = type as CampaignType;
 
             // Pagination
-            const pageNum = parseInt(page as string);
-            const limitNum = parseInt(limit as string);
+            const pageNum = Math.max(parseInt(page as string) || 1, 1);
+            const limitNum = Math.min(Math.max(parseInt(limit as string) || 20, 1), 100);
             const skip = (pageNum - 1) * limitNum;
 
             const campaigns = await CampaignModel.find(filters)
@@ -194,10 +212,15 @@ class RelanceCampaignController {
             const total = await CampaignModel.countDocuments(filters);
             const totalPages = Math.ceil(total / limitNum);
 
+            // Admins see whose campaign it is.
+            const owners = scope.asAdmin ? await peopleById(campaigns.map(c => String(c.userId))) : null;
+
             res.status(200).json({
                 success: true,
                 data: {
-                    campaigns,
+                    campaigns: owners
+                        ? campaigns.map(c => ({ ...c.toObject(), owner: owners[String(c.userId)] ?? null }))
+                        : campaigns,
                     total,
                     page: pageNum,
                     totalPages
@@ -218,14 +241,18 @@ class RelanceCampaignController {
      * Get campaign details
      * GET /api/relance/campaigns/:id
      */
-    async getCampaignById(req: Request, res: Response): Promise<void> {
+    async getCampaignById(req: Request, res: Response, scope: CampaignScope = {}): Promise<void> {
         try {
             const { id } = req.params;
             const userId = (req as any).user?.userId;
 
+            if (!mongoose.isValidObjectId(id)) {
+                res.status(404).json({ success: false, message: 'Campaign not found' });
+                return;
+            }
             const campaign = await CampaignModel.findOne({
                 _id: id,
-                ...(userId ? { userId } : {}) // Only filter by userId if authenticated
+                ...(userId && !scope.asAdmin ? { userId } : {})
             });
 
             if (!campaign) {
@@ -263,15 +290,19 @@ class RelanceCampaignController {
      * Get campaign targets
      * GET /api/relance/campaigns/:id/targets
      */
-    async getCampaignTargets(req: Request, res: Response): Promise<void> {
+    async getCampaignTargets(req: Request, res: Response, scope: CampaignScope = {}): Promise<void> {
         try {
             const { id } = req.params;
             const userId = (req as any).user?.userId;
             const { page = 1, limit = 50, status } = req.query;
 
+            if (!mongoose.isValidObjectId(id)) {
+                res.status(404).json({ success: false, message: 'Campaign not found' });
+                return;
+            }
             const campaign = await CampaignModel.findOne({
                 _id: id,
-                ...(userId ? { userId } : {})
+                ...(userId && !scope.asAdmin ? { userId } : {})
             });
 
             if (!campaign) {
@@ -292,10 +323,14 @@ class RelanceCampaignController {
 
             const total = await RelanceTargetModel.countDocuments(query);
 
+            const filleuls = scope.asAdmin ? await peopleById(targets.map(t => String(t.referralUserId))) : null;
+
             res.status(200).json({
                 success: true,
                 data: {
-                    targets,
+                    targets: filleuls
+                        ? targets.map(t => ({ ...t.toObject(), referralUser: filleuls[String(t.referralUserId)] ?? null }))
+                        : targets,
                     pagination: {
                         page: Number(page),
                         limit: Number(limit),
@@ -360,20 +395,20 @@ class RelanceCampaignController {
      * Pause a campaign
      * POST /api/relance/campaigns/:id/pause
      */
-    async pauseCampaign(req: Request, res: Response): Promise<void> {
+    async pauseCampaign(req: Request, res: Response, scope: CampaignScope = {}): Promise<void> {
         try {
             const { id } = req.params;
-            const userId = (req as any).user?.userId || req.body.userId;
+            const userId = await ownerFor(req, id, scope);
 
             if (!userId) {
-                res.status(400).json({
+                res.status(scope.asAdmin ? 404 : 400).json({
                     success: false,
-                    message: 'User ID is required'
+                    message: scope.asAdmin ? 'Campaign not found' : 'User ID is required'
                 });
                 return;
             }
 
-            const result = await campaignService.pauseCampaign(id, userId);
+            const result = await campaignService.pauseCampaign(id, userId, (req as any).user?.userId || userId);
 
             if (result.success) {
                 res.status(200).json({
@@ -401,15 +436,15 @@ class RelanceCampaignController {
      * Resume a campaign
      * POST /api/relance/campaigns/:id/resume
      */
-    async resumeCampaign(req: Request, res: Response): Promise<void> {
+    async resumeCampaign(req: Request, res: Response, scope: CampaignScope = {}): Promise<void> {
         try {
             const { id } = req.params;
-            const userId = (req as any).user?.userId || req.body.userId;
+            const userId = await ownerFor(req, id, scope);
 
             if (!userId) {
-                res.status(400).json({
+                res.status(scope.asAdmin ? 404 : 400).json({
                     success: false,
-                    message: 'User ID is required'
+                    message: scope.asAdmin ? 'Campaign not found' : 'User ID is required'
                 });
                 return;
             }
@@ -442,21 +477,21 @@ class RelanceCampaignController {
      * Cancel a campaign
      * POST /api/relance/campaigns/:id/cancel
      */
-    async cancelCampaign(req: Request, res: Response): Promise<void> {
+    async cancelCampaign(req: Request, res: Response, scope: CampaignScope = {}): Promise<void> {
         try {
             const { id } = req.params;
-            const userId = (req as any).user?.userId || req.body.userId;
+            const userId = await ownerFor(req, id, scope);
             const { reason } = req.body;
 
             if (!userId) {
-                res.status(400).json({
+                res.status(scope.asAdmin ? 404 : 400).json({
                     success: false,
-                    message: 'User ID is required'
+                    message: scope.asAdmin ? 'Campaign not found' : 'User ID is required'
                 });
                 return;
             }
 
-            const result = await campaignService.cancelCampaign(id, userId, reason);
+            const result = await campaignService.cancelCampaign(id, userId, reason, (req as any).user?.userId || userId);
 
             if (result.success) {
                 res.status(200).json({

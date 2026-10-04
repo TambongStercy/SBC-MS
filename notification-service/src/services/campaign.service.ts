@@ -242,9 +242,10 @@ class CampaignService {
     }
 
     /**
-     * Pause a campaign
+     * Pause a campaign. `userId` is the owner; `actorId` is who did it (an admin
+     * acting on someone else's campaign), recorded as pausedBy.
      */
-    async pauseCampaign(campaignId: string, userId: string): Promise<{ success: boolean; error?: string }> {
+    async pauseCampaign(campaignId: string, userId: string, actorId: string = userId): Promise<{ success: boolean; error?: string }> {
         try {
             const campaign = await CampaignModel.findOne({ _id: campaignId, userId });
 
@@ -256,7 +257,7 @@ class CampaignService {
                 return { success: false, error: `Cannot pause campaign with status: ${campaign.status}` };
             }
 
-            campaign.pause(new mongoose.Types.ObjectId(userId));
+            campaign.pause(new mongoose.Types.ObjectId(actorId));
             await campaign.save();
 
             log.info(`Paused campaign ${campaignId} for user ${userId}`);
@@ -298,9 +299,10 @@ class CampaignService {
     }
 
     /**
-     * Cancel a campaign
+     * Cancel a campaign. `userId` is the owner; `actorId` is who did it, recorded
+     * as cancelledBy.
      */
-    async cancelCampaign(campaignId: string, userId: string, reason?: string): Promise<{ success: boolean; error?: string }> {
+    async cancelCampaign(campaignId: string, userId: string, reason?: string, actorId: string = userId): Promise<{ success: boolean; error?: string }> {
         try {
             const campaign = await CampaignModel.findOne({ _id: campaignId, userId });
 
@@ -312,7 +314,7 @@ class CampaignService {
                 return { success: false, error: `Cannot cancel campaign with status: ${campaign.status}` };
             }
 
-            campaign.cancel(new mongoose.Types.ObjectId(userId), reason);
+            campaign.cancel(new mongoose.Types.ObjectId(actorId), reason);
             await campaign.save();
 
             // Exit all active targets for this campaign
