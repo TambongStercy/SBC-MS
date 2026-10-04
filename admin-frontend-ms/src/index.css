@@ -2,253 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Design tokens — the member app's palette (SBC-WEB-UI src/index.css), so the
+   admin and the app look like one product. Stored as RGB triplets so Tailwind
+   can apply opacity (bg-primary/10). Light by default; `.dark` on <html>
+   switches the whole set, and on any element switches its subtree.
+
+   Flat rules, as in the app: separation comes from the border hairline and
+   surface colour, not from shadows; a coloured border only signals state.
+   --------------------------------------------------------------------------- */
+:root {
+  --c-bg: 248 250 252;
+  --c-surface: 255 255 255;
+  --c-surface-2: 241 245 249;
+  --c-border: 230 233 239;
+  --c-ink: 15 23 42;
+  --c-ink-2: 71 85 105;
+  --c-ink-3: 148 163 184;
+  --c-primary: 17 92 246;
+  --c-primary-hover: 13 73 196;
+  --c-primary-soft: 234 242 255;
+  --c-accent: 246 143 15;
+  --c-accent-soft: 254 243 226;
+  --c-success: 12 124 60;
+  --c-success-soft: 232 247 238;
+  --c-danger: 220 38 38;
+  --c-danger-soft: 254 226 226;
+  --c-warning: 180 83 9;
+  --c-warning-soft: 254 243 199;
+  color-scheme: light;
+}
+
+.dark {
+  --c-bg: 11 17 32;
+  --c-surface: 17 26 46;
+  --c-surface-2: 24 35 58;
+  --c-border: 34 48 74;
+  --c-ink: 230 235 245;
+  --c-ink-2: 169 180 200;
+  --c-ink-3: 107 120 145;
+  --c-primary: 61 116 245;
+  --c-primary-hover: 96 141 248;
+  --c-primary-soft: 22 38 74;
+  --c-accent: 246 162 58;
+  --c-accent-soft: 58 42 18;
+  --c-success: 60 196 122;
+  --c-success-soft: 16 48 31;
+  --c-danger: 248 113 113;
+  --c-danger-soft: 58 23 23;
+  --c-warning: 251 191 36;
+  --c-warning-soft: 58 46 16;
+  color-scheme: dark;
+}
+
+html, body { background: rgb(var(--c-bg)); color: rgb(var(--c-ink)); }
 body {
-  @apply bg-gray-900 text-gray-100;
-  overflow: hidden;
-  /* Prevent body from scrolling */
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+:focus-visible { outline: 2px solid rgb(var(--c-primary)); outline-offset: 2px; }
+.tabular { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-/* Toast animations */
+/* Old pages still being moved over keep their dark look inside the new shell. */
+.legacy-frame .scrollbar-thin { scrollbar-width: thin; scrollbar-color: #4b5563 #1f2937; }
+
 @keyframes slide-in {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
-
-.animate-slide-in {
-  animation: slide-in 0.3s ease-out;
-}
-
-/* Custom scrollbar styles */
-.scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: #4b5563 #1f2937;
-}
-
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: #1f2937;
-  border-radius: 3px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 3px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
-}
-
-/* Sidebar specific styles */
-.sidebar-tooltip {
-  position: absolute;
-  left: 100%;
-  margin-left: 8px;
-  padding: 4px 8px;
-  background-color: #111827;
-  color: white;
-  font-size: 12px;
-  border-radius: 4px;
-  opacity: 0;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 1000;
-  transition: opacity 0.2s;
-  border: 1px solid #374151;
-}
-
-/*Toggle switch*/
-.toggle-container {
-  --active-color: rgba(69, 234, 124, 0.2);
-  --inactive-color: #9ca3af6c;
-  position: relative;
-  aspect-ratio: 292 / 142;
-  height: 1.875em;
-}
-
-.toggle-input {
-  appearance: none;
-  margin: 0;
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-}
-
-.toggle {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.toggle-background {
-  fill: var(--inactive-color);
-  transition: fill .4s;
-}
-
-.toggle-input:checked+.toggle .toggle-background {
-  fill: var(--active-color);
-}
-
-.toggle-circle-center {
-  transform-origin: center;
-  transition: transform .6s;
-}
-
-.toggle-input:checked+.toggle .toggle-circle-center {
-  transform: translateX(150px);
-}
-
-.toggle-circle {
-  transform-origin: center;
-  transition: transform .45s;
-  backface-visibility: hidden;
-}
-
-.toggle-circle.left {
-  transform: scale(1);
-}
-
-.toggle-input:checked+.toggle .toggle-circle.left {
-  transform: scale(0);
-}
-
-.toggle-circle.right {
-  transform: scale(0);
-}
-
-.toggle-input:checked+.toggle .toggle-circle.right {
-  transform: scale(1);
-}
-
-.toggle-icon {
-  transition: fill .4s;
-}
-
-.toggle-icon.on {
-  fill: var(--inactive-color);
-}
-
-.toggle-input:checked+.toggle .toggle-icon.on {
-  fill: #fff;
-}
-
-.toggle-icon.off {
-  fill: #eaeaec;
-}
-
-.toggle-input:checked+.toggle .toggle-icon.off {
-  fill: var(--active-color);
-}
-
-/*Login Page background*/
-.background {
-  background: url('./assets/bg-login.jpg');
-  background-position: center;
-  background-size: cover;
-  animation: moveBackground 50s linear infinite;
-}
-
-@keyframes moveBackground {
-  0% {
-    background-position: left center;
-  }
-
-  50% {
-    background-position: right center;
-  }
-
-  100% {
-    background-position: left center;
-  }
-}
-
-/*Loader*/
-.container {
-  width: 150px;
-  height: 10px;
-  border: 2px solid #b2b2b2;
-  border-radius: 7px;
-  margin: 0 auto;
-  padding: 2px 1px;
-  overflow: hidden;
-  font-size: 0;
-}
-
-.box {
-  width: 9px;
-  height: 100%;
-  background: linear-gradient(to bottom, #2838c7 0%, #5979ef 17%, #869ef3 32%, #869ef3 45%, #5979ef 59%, #2838c7 100%);
-  display: inline-block;
-  margin-right: 2px;
-  animation: loader 2s infinite;
-  animation-timing-function: linear;
-}
-
-.logo {
-  width: 220px;
-  margin: 50px auto;
-  margin-top: 20px;
-}
-
-.logo p {
-  margin: 0;
-  padding: 0;
-}
-
-.top {
-  font-size: 16px;
-  font-weight: 300;
-  line-height: 16px;
-}
-
-.top:after {
-  content: "\00a9";
-  font-size: 10px;
-  position: relative;
-  top: -5px;
-  margin-left: 2px;
-}
-
-.mid {
-  font-size: 46px;
-  font-weight: 700;
-  line-height: 36px;
-}
-
-.mid span {
-  font-size: 22px;
-  display: inline-block;
-  vertical-align: top;
-  color: #FF6821;
-  margin-top: -8px;
-}
-
-.logo .bottom {
-  font-size: 30px;
-  font-weight: 300;
-  line-height: 30px;
-  margin-left: 5px;
-}
-
-@keyframes loader {
-  0% {
-    transform: translate(-30px);
-  }
-
-  100% {
-    transform: translate(150px);
-  }
-}
+.animate-slide-in { animation: slide-in 0.3s ease-out; }

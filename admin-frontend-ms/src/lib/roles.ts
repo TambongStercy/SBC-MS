@@ -26,15 +26,16 @@ export function roleFromToken(token: string | null): string | null {
     }
 }
 
-/** Paths a limited role may open (prefix match). Admins open everything. */
+/** Paths a limited role may open ('/' exactly, others as prefixes). Admins open everything. */
 const ALLOWED: Record<string, string[]> = {
-    withdrawal_admin: ['/withdrawals/approvals', '/withdrawals/history', '/logout'],
-    moderator: ['/ads-network/manual-verifications', '/logout'],
+    withdrawal_admin: ['/', '/a-traiter/retraits', '/argent', '/withdrawals/approvals', '/withdrawals/history',
+        '/fix-moneyfusion-withdrawals', '/fix-cinetpay-withdrawals', '/plus'],
+    moderator: ['/', '/a-traiter/verifications', '/plus'],
 };
 
 export const HOME_FOR: Record<string, string> = {
-    withdrawal_admin: '/withdrawals/approvals',
-    moderator: '/ads-network/manual-verifications',
+    withdrawal_admin: '/',
+    moderator: '/',
 };
 
 export function canOpen(role: string | null, path: string): boolean {
@@ -43,5 +44,5 @@ export function canOpen(role: string | null, path: string): boolean {
     if (role === 'admin') return true;
     const allowed = role ? ALLOWED[role] : undefined;
     if (!allowed) return false;
-    return allowed.some(p => path === p || path.startsWith(p + '/'));
+    return allowed.some(p => (p === '/' ? path === '/' : path === p || path.startsWith(p + '/')));
 }
