@@ -1,0 +1,655 @@
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Check, ShieldAlert } from "lucide-react";
+import { AdminUserData, updateUser, PartnerPack, updateUserRole } from "../services/adminUserApi"; // <-- Update import to include PartnerPack and updateUserRole
+import { useToast } from "../hooks/useToast";
+import ToastContainer from "../components/common/ToastContainer";
+
+import Dropdown from "../components/common/dropdown";
+import ConfirmationModal from "../components/common/ConfirmationModal";
+
+
+
+enum SubscriptionType {
+  CLASSIQUE = 'CLASSIQUE',
+  CIBLE = 'CIBLE',
+  // Add other types if necessary
+}
+
+interface UserCardProps {
+  // Define the data shape UserCard actually needs, based on AdminUserData
+  // but ensuring correct types for display/input components.
+  data: {
+    // Fields directly from AdminUserData (types might need adjustment)
+    _id: string; // Use _id from AdminUserData
+    id: string; // Keep id if needed for child components
+    name: string;
+    email?: string; // Allow optional email
+    role: string; // Assuming role is a string
+    avatar?: string; // Optional avatar
+    momoOperator?: string; // Optional momoOperator
+    city?: string; // Optional city
+    region?: string; // Optional region
+    country?: string; // Optional country
+    isVerified?: boolean; // Assuming boolean
+    activeSubscriptionTypes?: string[]; // Assuming array of strings
+    createdAt?: string; // Original date string
+    partnerPack?: PartnerPack; // Add partner pack
+
+    // Fields that need type conversion or specific handling
+    phoneNumber: string; // Ensure this is string for the component
+    momoNumber: string;  // Ensure this is string for the component
+    registeredAt: string; // Ensure this is string (formatted date)
+
+    // Include other fields from AdminUserData if UserCard actually uses them
+    product?: Array<any>; // Assuming product is needed, keep type flexible
+  };
+  onSubscriptionChange: (userId: string, newType: SubscriptionType | 'NONE') => Promise<void>;
+  onPartnerPackChange: (userId: string, newPack: 'silver' | 'gold' | 'none') => Promise<void>;
+}
+
+const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartnerPackChange }) => {
+  const { toasts, removeToast, showSuccess, showError } = useToast();
+  const [name, setName] = useState(data.name);
+  const [phoneNumber, setPhoneNumber] = useState<string>(String(data.phoneNumber || ''));
+  const [selectedSubscription, setSelectedSubscription] = useState<SubscriptionType | 'NONE'>(() => {
+    const types = data.activeSubscriptionTypes || [];
+    console.log("UserCard received activeSubscriptionTypes:", types); // Debug log
+    if (types.includes(SubscriptionType.CIBLE)) {
+      console.log("Setting initial subscription to CIBLE");
+      return SubscriptionType.CIBLE;
+    }
+    if (types.includes(SubscriptionType.CLASSIQUE)) {
+      console.log("Setting initial subscription to CLASSIQUE");
+      return SubscriptionType.CLASSIQUE;
+    }
+    console.log("Setting initial subscription to NONE");
+    return 'NONE';
+  });
+
+  // Add state for partner pack
+  const [selectedPartnerPack, setSelectedPartnerPack] = useState<'silver' | 'gold' | 'none'>(() => {
+    if (data.partnerPack === PartnerPack.SILVER) return 'silver';
+    if (data.partnerPack === PartnerPack.GOLD) return 'gold';
+    return 'none';
+  });
+
+  // Add state for user role
+  const [selectedRole, setSelectedRole] = useState<string>(data.role || 'user');
+  const [showRoleConfirmDialog, setShowRoleConfirmDialog] = useState(false);
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
+
+  const [momoNumber, setMomoNumber] = useState<string>(String(data.momoNumber || ''));
+  const [momoOperator, setMomoOperator] = useState(data.momoOperator);
+  const [region, setRegion] = useState(data.region);
+  const [country, setCountry] = useState(data.country || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Add country code mapping at the top of the component
+  const countryCodeMap: Record<string, CountryCode> = {
+    '229': 'BJ', // Benin
+    '237': 'CM', // Cameroon
+    '226': 'BF', // Burkina Faso
+    '243': 'CD', // DRC
+    '254': 'KE', // Kenya
+    '234': 'NG', // Nigeria
+    '221': 'SN', // Senegal
+    '242': 'CG', // Congo
+    '241': 'GA', // Gabon
+    '225': 'CI'  // Côte d'Ivoire
+  };
+
+  // Bring back the country operators configuration
+  type CountryCode = 'BJ' | 'CM' | 'BF' | 'CD' | 'KE' | 'NG' | 'SN' | 'CG' | 'GA' | 'CI';
+  const countryOperators: Record<CountryCode, string[]> = {
+    'BJ': ['MTN_MOMO_BEN', 'MOOV_BEN'],
+    'CM': ['MTN_MOMO_CMR', 'ORANGE_CMR'],
+    'BF': ['MOOV_BFA', 'ORANGE_BFA'],
+    'CD': ['VODACOM_MPESA_COD', 'AIRTEL_COD', 'ORANGE_COD'],
+    'KE': ['MPESA_KEN'],
+    'NG': ['MTN_MOMO_NGA', 'AIRTEL_NGA'],
+    'SN': ['FREE_SEN', 'ORANGE_SEN', 'WAVE_SEN'],
+    'CG': ['AIRTEL_COG', 'MTN_MOMO_COG'],
+    'GA': ['AIRTEL_GAB'],
+    'CI': ['MTN_MOMO_CIV', 'ORANGE_CIV', 'WAVE_CIV']
+  };
+
+  // Add a function to check if a string is a valid CountryCode
+  const isValidCountryCode = (code: string): code is CountryCode => {
+    return ['BJ', 'CM', 'BF', 'CD', 'KE', 'NG', 'SN', 'CG', 'GA', 'CI'].includes(code);
+  };
+
+  // Replace the momoCountry state initialization with this improved version
+  const [momoCountry, setMomoCountry] = useState<CountryCode>(() => {
+    // First try to detect from momoNumber (now guaranteed string)
+    if (momoNumber && momoNumber.length >= 3) {
+      const cleanNumber = momoNumber.replace(/^\+/, ''); // Remove leading +
+      const prefix = cleanNumber.substring(0, 3);
+      const detectedCountry = countryCodeMap[prefix];
+      if (detectedCountry) {
+        console.log("Initial country detected from momo number:", detectedCountry);
+        return detectedCountry;
+      }
+    }
+
+    // If we have a momoOperator, find which country it belongs to
+    if (data.momoOperator) {
+      for (const [country, operators] of Object.entries(countryOperators)) {
+        if (operators.includes(data.momoOperator)) {
+          console.log("Initial country detected from operator:", country);
+          return country as CountryCode;
+        }
+      }
+    }
+
+    // If region is a valid country code, use that
+    const upperRegion = data.region?.toUpperCase(); // Get uppercase version safely
+    if (upperRegion && isValidCountryCode(upperRegion)) { // Check both existence and validity
+      console.log("Using region as country:", upperRegion);
+      return upperRegion; // Return the validated uppercase string
+    }
+
+    // Default fallback
+    console.log("Using default country: BJ");
+    return 'BJ';
+  });
+
+  // Update momoCountry when Momo number changes (but don't affect region)
+  useEffect(() => {
+    if (momoNumber && momoNumber.length >= 3) {
+      const cleanNumber = momoNumber.replace(/^\+/, '');
+      const prefix = cleanNumber.substring(0, 3);
+      const detectedCountry = countryCodeMap[prefix];
+
+      if (detectedCountry) {
+        console.log("Momo country updated:", detectedCountry);
+        setMomoCountry(detectedCountry);
+      }
+    }
+  }, [momoNumber]);
+
+  // Define the country list here
+  const africanCountries = [
+    { code: 'CM', name: 'Cameroon' }, { code: 'BJ', name: 'Benin' },
+    { code: 'CG', name: 'Congo - Brazzaville' }, { code: 'CD', name: 'Congo - Kinshasa (DRC)' },
+    { code: 'GA', name: 'Gabon' }, { code: 'GH', name: 'Ghana' }, { code: 'CI', name: 'Côte d\'Ivoire' },
+    { code: 'SN', name: 'Senegal' }, { code: 'NG', name: 'Nigeria' }, { code: 'BF', name: 'Burkina Faso' },
+    { code: 'KE', name: 'Kenya' }, { code: 'DZ', name: 'Algeria' }, { code: 'AO', name: 'Angola' },
+    { code: 'BW', name: 'Botswana' }, { code: 'BI', name: 'Burundi' }, { code: 'CV', name: 'Cabo Verde' },
+    { code: 'CF', name: 'Central African Republic' }, { code: 'TD', name: 'Chad' }, { code: 'KM', name: 'Comoros' },
+    { code: 'DJ', name: 'Djibouti' }, { code: 'EG', name: 'Egypt' }, { code: 'GQ', name: 'Equatorial Guinea' },
+    { code: 'ER', name: 'Eritrea' }, { code: 'SZ', name: 'Eswatini' }, { code: 'ET', name: 'Ethiopia' },
+    { code: 'GM', name: 'Gambia' }, { code: 'GN', name: 'Guinea' }, { code: 'GW', name: 'Guinea-Bissau' },
+    { code: 'LS', name: 'Lesotho' }, { code: 'LR', name: 'Liberia' }, { code: 'LY', name: 'Libya' },
+    { code: 'MG', name: 'Madagascar' }, { code: 'MW', name: 'Malawi' }, { code: 'ML', name: 'Mali' },
+    { code: 'MR', name: 'Mauritania' }, { code: 'MU', name: 'Mauritius' }, { code: 'MA', name: 'Morocco' },
+    { code: 'MZ', name: 'Mozambique' }, { code: 'NA', name: 'Namibia' }, { code: 'NE', name: 'Niger' },
+    { code: 'RW', name: 'Rwanda' }, { code: 'ST', name: 'Sao Tome and Principe' }, { code: 'SC', name: 'Seychelles' },
+    { code: 'SL', name: 'Sierra Leone' }, { code: 'SO', name: 'Somalia' }, { code: 'ZA', name: 'South Africa' },
+    { code: 'SS', name: 'South Sudan' }, { code: 'SD', name: 'Sudan' }, { code: 'TZ', name: 'Tanzania' },
+    { code: 'TG', name: 'Togo' }, { code: 'TN', name: 'Tunisia' }, { code: 'UG', name: 'Uganda' },
+    { code: 'ZM', name: 'Zambia' }, { code: 'ZW', name: 'Zimbabwe' },
+    // Add other non-African countries if needed
+    { code: 'FR', name: 'France' }, { code: 'US', name: 'United States' },
+    // Add a separator or group non-African countries if the list gets long
+  ];
+
+  // Subscription and partner pack change what the member is paid: ask before applying.
+  const [pendingChange, setPendingChange] = useState<
+    { kind: 'subscription'; value: SubscriptionType | 'NONE' } | { kind: 'pack'; value: 'silver' | 'gold' | 'none' } | null
+  >(null);
+
+  const handleSubscriptionSelect = (event: React.ChangeEvent<HTMLSelectElement>) =>
+    setPendingChange({ kind: 'subscription', value: event.target.value as SubscriptionType | 'NONE' });
+
+  const handlePartnerPackSelect = (event: React.ChangeEvent<HTMLSelectElement>) =>
+    setPendingChange({ kind: 'pack', value: event.target.value as 'silver' | 'gold' | 'none' });
+
+  const applySubscription = async (newType: SubscriptionType | 'NONE') => {
+    const originalType = selectedSubscription; // Store original state for potential revert
+    setSelectedSubscription(newType);
+    console.log("Selected subscription:", newType);
+    setIsSubmitting(true);
+    try {
+      await onSubscriptionChange(data.id, newType);
+    } catch (error) {
+      console.error("Failed to update subscription from UserCard", error);
+      // Revert local state if the API call fails
+      setSelectedSubscription(originalType);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const applyPartnerPack = async (newPack: 'silver' | 'gold' | 'none') => {
+    const originalPack = selectedPartnerPack; // Store original state for potential revert
+    setSelectedPartnerPack(newPack);
+    console.log("Selected partner pack:", newPack);
+    setIsSubmitting(true);
+    try {
+      await onPartnerPackChange(data.id, newPack);
+    } catch (error) {
+      console.error("Failed to update partner pack from UserCard", error);
+      // Revert local state if the API call fails
+      setSelectedPartnerPack(originalPack);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Add handler for role selection
+  const handleRoleSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRole = event.target.value;
+
+    // Show confirmation dialog for sensitive roles (admin, withdrawal_admin)
+    if (newRole === 'admin' || newRole === 'withdrawal_admin') {
+      setPendingRole(newRole);
+      setShowRoleConfirmDialog(true);
+    } else {
+      // Direct update for user and tester roles
+      confirmRoleChange(newRole);
+    }
+  };
+
+  const confirmRoleChange = async (newRole: string) => {
+    const originalRole = selectedRole;
+    setSelectedRole(newRole);
+    setIsSubmitting(true);
+    setShowRoleConfirmDialog(false);
+
+    try {
+      await updateUserRole(data._id, newRole);
+      console.log(`Successfully updated role to ${newRole} for user ${data._id}`);
+      showSuccess(`Rôle mis à jour avec succès: ${getRoleDisplayName(newRole)}`);
+    } catch (error: any) {
+      console.error("Failed to update role from UserCard", error);
+      showError(`Échec de la mise à jour du rôle: ${error.message}`);
+      // Revert local state if the API call fails
+      setSelectedRole(originalRole);
+    } finally {
+      setIsSubmitting(false);
+      setPendingRole(null);
+    }
+  };
+
+  const cancelRoleChange = () => {
+    setShowRoleConfirmDialog(false);
+    setPendingRole(null);
+  };
+
+  // Helper to get role display name
+  const getRoleDisplayName = (role: string): string => {
+    const roleNames: Record<string, string> = {
+      'user': 'Utilisateur',
+      'admin': 'Administrateur',
+      'withdrawal_admin': 'Admin Retraits',
+      'tester': 'Testeur'
+    };
+    return roleNames[role] || role;
+  };
+
+  const handleOperatorSelect = (item: string) => {
+    setMomoOperator(item);
+    console.log("Selected operator:", item);
+    // Maybe trigger handleUpdate for momoOperator here?
+  };
+
+  // Function to handle the API call for updating simple fields using the ADMIN endpoint
+  const handleSimpleFieldUpdate = async (field: keyof AdminUserData, value: string | number | boolean | string[]) => {
+    const updateData: Partial<AdminUserData> = {};
+    const finalValue = field === 'country' && typeof value === 'string' ? value.toUpperCase() : value;
+    (updateData as any)[field] = finalValue;
+    setIsSubmitting(true);
+    try {
+      // Use the correctly imported updateUser function
+      await updateUser(data.id, updateData);
+      showSuccess('Modification enregistrée.');
+    } catch (error) {
+      console.error(`Failed to update ${field}:`, error);
+      showError("La modification n'a pas été enregistrée. Réessaie.");
+      // Revert local state on error
+      if (field === 'name') setName(data.name);
+      if (field === 'phoneNumber') setPhoneNumber(String(data.phoneNumber || ''));
+      if (field === 'region') setRegion(data.region);
+      if (field === 'country') setCountry(data.country || '');
+      if (field === 'momoNumber') setMomoNumber(String(data.momoNumber || ''));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Specific handler for momoOperator
+  const handleMomoOperatorUpdate = async (selectedOperator: string) => {
+    setIsSubmitting(true);
+    try {
+      // Use the correctly imported updateUser function
+      await updateUser(data.id, { momoOperator: selectedOperator });
+      setMomoOperator(selectedOperator); // Update local state on success
+      showSuccess('Opérateur enregistré.');
+    } catch (error) {
+      console.error(`Failed to update momoOperator:`, error);
+      showError("L'opérateur n'a pas été enregistré. Réessaie.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const SUB_LABEL: Record<string, string> = { CLASSIQUE: 'Classique', CIBLE: 'Ciblé', NONE: 'Aucun abonnement' };
+  const PACK_LABEL: Record<string, string> = { silver: 'Silver', gold: 'Gold', none: 'Aucun pack' };
+
+  return (
+    <>
+      <ConfirmationModal
+        isOpen={!!pendingChange}
+        variant="primary"
+        title={pendingChange?.kind === 'pack' ? 'Changer le pack partenaire ?' : "Changer l'abonnement ?"}
+        message={pendingChange && (
+          <p className="text-sm">
+            {data.name} passera à <b>{pendingChange.kind === 'pack' ? PACK_LABEL[pendingChange.value] : SUB_LABEL[pendingChange.value]}</b>.
+            {' '}Cela change ses droits et ce qu'il touche sur ses filleuls.
+          </p>
+        )}
+        confirmText="Appliquer"
+        onConfirm={async () => {
+          if (pendingChange?.kind === 'subscription') await applySubscription(pendingChange.value);
+          else if (pendingChange?.kind === 'pack') await applyPartnerPack(pendingChange.value);
+          setPendingChange(null);
+        }}
+        onCancel={() => setPendingChange(null)}
+      />
+      <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4 sm:mb-0">
+        Informations personelles
+      </h2>
+      <div className="flex flex-col sm:flex-col items-center justify-between mb-6">
+        <img
+          src={data.avatar}
+          alt={name}
+          className="rounded-full size-20 object-cover"
+        />
+        <p className="text-gray-100">{name}</p>
+        <p className="text-gray-400 opacity-40 font-extralight text-xs">
+          Membre depuis le {data.registeredAt}
+        </p>
+
+        {/* Name Input */}
+        <div className="flex flex-row gap-2 items-center justify-center mb-6">
+          <div className="flex-col">
+            <h3 className="mb-1">Nom</h3>
+            <input
+              type="text"
+              name="name"
+              placeholder="Entrer le nouveau nom..."
+              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <motion.button
+            className="text-white rounded pt-0 flex items-center mt-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            onClick={() => handleSimpleFieldUpdate("name", name)}
+            disabled={isSubmitting}
+          >
+            <Check color="#10b981" />
+          </motion.button>
+        </div>
+
+        {/* Phone Number Input */}
+        <div className="flex flex-row gap-2 items-center justify-center mb-6">
+          <div className="flex-col">
+            <h3 className="mb-1">Tel</h3>
+            <input
+              type="text"
+              name="phoneNumber"
+              placeholder="Entrer le nouveau numero..."
+              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <motion.button
+            className="text-white rounded pt-0 flex items-center mt-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            onClick={() => handleSimpleFieldUpdate("phoneNumber", phoneNumber)}
+            disabled={isSubmitting}
+          >
+            <Check color="#10b981" />
+          </motion.button>
+        </div>
+
+        {/* Region Input */}
+        <div className="flex flex-row gap-2 items-center justify-center mb-6">
+          <div className="flex-col">
+            <h3 className="mb-1">Region</h3>
+            <input
+              type="text"
+              name="region"
+              placeholder="Entrer la région..."
+              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              value={region}
+              onChange={(e) => {
+                const upperValue = e.target.value.toUpperCase();
+                if (isValidCountryCode(upperValue)) {
+                  setRegion(upperValue);
+                }
+              }}
+              disabled={isSubmitting}
+            />
+          </div>
+          <motion.button
+            className="text-white rounded pt-0 flex items-center mt-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            onClick={() => {
+              if (region !== undefined) { // Ensure region is defined before updating
+                handleSimpleFieldUpdate("region", region)
+              }
+            }}
+            disabled={isSubmitting}
+          >
+            <Check color="#10b981" />
+          </motion.button>
+        </div>
+
+        {/* Country Dropdown (ISO Alpha-2) */}
+        <div className="flex flex-row gap-2 items-center justify-center mb-6">
+          <div className="flex-col w-full max-w-xs">
+            <h3 className="mb-1 self-start">Country</h3>
+            <select
+              name="country"
+              value={country} // Bind to state
+              onChange={(e) => setCountry(e.target.value)} // Update state on change
+              disabled={isSubmitting}
+              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-8 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
+              style={{ backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="white" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em' }}
+            >
+              <option value="" disabled>-- Select Country --</option>
+              {africanCountries.map(c => (
+                <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
+              ))}
+            </select>
+          </div>
+          <motion.button
+            className="text-white rounded pt-0 flex items-center mt-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            onClick={() => handleSimpleFieldUpdate("country", country)}
+            disabled={isSubmitting || !country} // Disable if no country selected
+          >
+            <Check color="#10b981" />
+          </motion.button>
+        </div>
+
+        {/* Subscription Selector */}
+        <div className="flex flex-col sm:flex-row sm:gap-4 mt-4 sm:mt-0 w-full">
+          <div className="mb-4 sm:mb-0 flex-1">
+            <label htmlFor="subscription" className="block text-sm font-medium mb-1 text-gray-300">
+              Type d'abonnement
+            </label>
+            <select
+              id="subscription"
+              name="subscription"
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors 
+                ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+              onChange={handleSubscriptionSelect}
+              value={selectedSubscription}
+              disabled={isSubmitting}
+            >
+              <option value="NONE">Aucun</option>
+              <option value="CLASSIQUE">CLASSIQUE</option>
+              <option value="CIBLE">CIBLE</option>
+            </select>
+          </div>
+
+          {/* Partner Pack Selector */}
+          <div className="mb-4 sm:mb-0 flex-1">
+            <label htmlFor="partnerPack" className="block text-sm font-medium mb-1 text-gray-300">
+              Pack Partenaire
+            </label>
+            <select
+              id="partnerPack"
+              name="partnerPack"
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors
+                ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+              onChange={handlePartnerPackSelect}
+              value={selectedPartnerPack}
+              disabled={isSubmitting}
+            >
+              <option value="none">Non Partenaire</option>
+              <option value="silver">Silver</option>
+              <option value="gold">Gold</option>
+            </select>
+          </div>
+
+          {/* Role Selector */}
+          <div className="mb-4 sm:mb-0 flex-1">
+            <label htmlFor="role" className="flex items-center gap-1 text-sm font-medium mb-1 text-gray-300">
+              <ShieldAlert size={16} />
+              Rôle Utilisateur
+            </label>
+            <select
+              id="role"
+              name="role"
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border ${
+                selectedRole === 'admin' ? 'border-red-500' :
+                selectedRole === 'withdrawal_admin' ? 'border-yellow-500' :
+                selectedRole === 'tester' ? 'border-purple-500' : 'border-gray-600'
+              } focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors
+                ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+              onChange={handleRoleSelect}
+              value={selectedRole}
+              disabled={isSubmitting}
+            >
+              <option value="user">👤 Utilisateur</option>
+              <option value="tester">🧪 Testeur</option>
+              <option value="withdrawal_admin">💳 Admin Retraits</option>
+              <option value="admin">🛡️ Administrateur</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Role Confirmation Dialog */}
+        {showRoleConfirmDialog && pendingRole && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-red-500">
+              <div className="flex items-center gap-2 mb-4">
+                <ShieldAlert className="text-red-500" size={24} />
+                <h3 className="text-xl font-bold text-white">Confirmation Requise</h3>
+              </div>
+              <p className="text-gray-300 mb-4">
+                Vous êtes sur le point de changer le rôle de <strong>{data.name}</strong> en <strong className="text-red-400">{getRoleDisplayName(pendingRole)}</strong>.
+              </p>
+              <p className="text-yellow-400 text-sm mb-6">
+                ⚠️ Cette action donnera des privilèges administratifs à cet utilisateur. Êtes-vous sûr de vouloir continuer ?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => confirmRoleChange(pendingRole)}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  disabled={isSubmitting}
+                >
+                  Confirmer
+                </button>
+                <button
+                  onClick={cancelRoleChange}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  disabled={isSubmitting}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Momo Number Input */}
+        <div className="flex flex-row gap-2 items-center justify-center mb-6">
+          <div className="flex-col">
+            <h3 className="mb-1">Numéro Momo</h3>
+            <input
+              type="text"
+              name="momoNumber"
+              placeholder="Entrer le nouveau numéro Momo..."
+              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              value={momoNumber}
+              onChange={(e) => setMomoNumber(e.target.value)}
+              disabled={isSubmitting}
+            />
+          </div>
+          <motion.button
+            className="text-white rounded pt-0 flex items-center mt-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            onClick={() => handleSimpleFieldUpdate("momoNumber", momoNumber)}
+            disabled={isSubmitting}
+          >
+            <Check color="#10b981" />
+          </motion.button>
+        </div>
+
+        {/* Momo Operator Dropdown */}
+        <div className="flex flex-row gap-2 items-center justify-center mb-6">
+          <div className="flex-col">
+            <h3 className="mb-1">Opérateur Momo</h3>
+            <Dropdown
+              label={momoOperator || "Sélectionner un opérateur"}
+              items={countryOperators[momoCountry]}
+              onSelect={handleOperatorSelect}
+              disabled={isSubmitting}
+            />
+          </div>
+          <motion.button
+            className="text-white rounded pt-0 flex items-center mt-6"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            onClick={() => {
+              if (momoOperator) { // Ensure momoOperator is defined before updating
+                handleMomoOperatorUpdate(momoOperator)
+              }
+            }}
+            disabled={isSubmitting || !momoOperator}
+          >
+            <Check color="#10b981" />
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </>
+  );
+};
+
+export default UserCard;

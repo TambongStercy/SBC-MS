@@ -1,168 +1,147 @@
-import { lazy, Suspense } from 'react';
-import Loader from './components/common/loader';
-import { Navigate, Route, Routes, useParams } from 'react-router-dom';
-import ProtectedRoute from './components/ProtectedRoute';
-import Login from './pages/Login';
-import AppShell from './shell/AppShell';
-import { AppToaster } from './ui';
-
-// New screens
-const HomePage = lazy(() => import('./features/home/HomePage'));
-const ProofQueuePage = lazy(() => import('./features/queues/ProofQueuePage'));
-const WithdrawalQueuePage = lazy(() => import('./features/queues/WithdrawalQueuePage'));
-const MembersPage = lazy(() => import('./features/members/MembersPage'));
-const MemberPage = lazy(() => import('./features/members/MemberPage'));
-const WithdrawalsPage = lazy(() => import('./features/money/WithdrawalsPage'));
-const StuckPage = lazy(() => import('./features/money/StuckPage'));
-const PaymentsPage = lazy(() => import('./features/money/PaymentsPage'));
-const GatewaysPage = lazy(() => import('./features/money/GatewaysPage'));
-const ResolvePage = lazy(() => import('./features/money/ResolvePage'));
-const RecoveryPage = lazy(() => import('./features/money/RecoveryPage'));
-const AnalysisPage = lazy(() => import('./features/money/AnalysisPage'));
-const AnnouncementsPage = lazy(() => import('./features/plus/AnnouncementsPage'));
-const ContentPage = lazy(() => import('./features/plus/ContentPage'));
-const StoriesPage = lazy(() => import('./features/plus/StoriesPage'));
-const WhatsAppPage = lazy(() => import('./features/plus/WhatsAppPage'));
-const RolesPage = lazy(() => import('./features/plus/RolesPage'));
-const StoragePage = lazy(() => import('./features/plus/StoragePage'));
-const StatsPage = lazy(() => import('./features/plus/StatsPage'));
-const AdsModule = lazy(() => import('./features/modules/ads/AdsModule'));
-const BilletterieModule = lazy(() => import('./features/modules/billetterie/BilletterieModule'));
-const EventDetailPage = lazy(() => import('./features/modules/billetterie/EventDetailPage'));
-const RelanceModule = lazy(() => import('./features/modules/relance/RelanceModule'));
-const RelanceEmailDayPage = lazy(() => import('./features/modules/relance/EmailDayPage'));
-const SbcLoveModule = lazy(() => import('./features/modules/sbclove/SbcLoveModule'));
-const TombolaModule = lazy(() => import('./features/modules/tombola/TombolaModule'));
-const TombolaDrawModulePage = lazy(() => import('./features/modules/tombola/TombolaDrawPage'));
-const BoutiqueModule = lazy(() => import('./features/modules/boutique/BoutiqueModule'));
-const ChallengesModule = lazy(() => import('./features/modules/challenges/ChallengesModule'));
-const ChallengeDetailPage = lazy(() => import('./features/modules/challenges/ChallengeDetailPage'));
-
-// Pages still to be rebuilt, shown in their old look
-const Deconnexion = lazy(() => import('./pages/Deconnexion'));
-
-
-/** Old member links (/userpage/:id) land on the new member page. */
-function OldMemberLink() {
-  const { userId } = useParams();
-  return <Navigate to={`/membres/${userId}`} replace />;
-}
-
-function OldChallengeLink() {
-  const { challengeId } = useParams();
-  return <Navigate to={`/modules/impact-challenge/${challengeId}`} replace />;
-}
-
-function OldTombolaDrawLink() {
-  const { monthId } = useParams();
-  return <Navigate to={`/modules/tombola/tirage/${monthId}`} replace />;
-}
+import { Route, Routes, useLocation } from "react-router-dom";
+import OverViewPage from "./pages/overViewPage";
+import Deconnexion from "./pages/Deconnexion";
+import Users from "./pages/Users";
+import Sidebar from "./components/Sidebar";
+import UsersPage from "./pages/usersPage";
+import Login from "./pages/Login";
+import ProtectedRoute from "./components/ProtectedRoute";
+import ProductsManagementPage from "./pages/ProductsManagementPage";
+import TombolaManagementPage from "./pages/TombolaManagementPage";
+import TombolaDrawPage from './pages/TombolaDrawPage';
+import SbcLoveManagementPage from "./pages/SbcLoveManagementPage";
+import TransactionManagementPage from './pages/TransactionManagementPage';
+import AccountTransactionsManagementPage from './pages/AccountTransactionsManagementPage';
+import SettingsManagementPage from './pages/SettingsManagementPage';
+import NotificationsPage from './pages/NotificationsPage';
+import PushAnnouncementsPage from './pages/PushAnnouncementsPage';
+import Partners from './pages/Partners';
+import FixFeexpayPaymentsPage from './pages/FixFeexpayPaymentsPage';
+import FixMoneyFusionWithdrawalsPage from './pages/FixMoneyFusionWithdrawalsPage';
+import FixCinetPayWithdrawalsPage from './pages/FixCinetPayWithdrawalsPage';
+import FixProviderIssuesPage from './pages/FixProviderIssuesPage';
+import ManualPaymentRecoveryPage from './pages/ManualPaymentRecoveryPage';
+import StorageMonitoringPage from './pages/StorageMonitoringPage';
+import RelanceDashboardPage from './pages/RelanceDashboardPage';
+import RelanceMessagesPage from './pages/RelanceMessagesPage';
+import RelanceCampaignsPage from './pages/RelanceCampaignsPage';
+import RelanceSmsTemplatesPage from './pages/RelanceSmsTemplatesPage';
+import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
+import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
+import UserFinancialAnalyticsPage from './pages/UserFinancialAnalyticsPage';
+import UserRolesManagement from './pages/UserRolesManagement';
+import ChatPage from './pages/ChatPage';
+import StatusPage from './pages/StatusPage';
+import ImpactChallengePage from './pages/ImpactChallengePage';
+import ChallengeDetailsPage from './pages/ChallengeDetailsPage';
+import AdsNetworkDashboardPage from './pages/AdsNetworkDashboardPage';
+import AdsNetworkReviewPage from './pages/AdsNetworkReviewPage';
+import AdsNetworkManualVerifyPage from './pages/AdsNetworkManualVerifyPage';
+import AdsNetworkCampaignsPage from './pages/AdsNetworkCampaignsPage';
+import AdsNetworkDiffuseursPage from './pages/AdsNetworkDiffuseursPage';
+import AdsNetworkTestCampaignPage from './pages/AdsNetworkTestCampaignPage';
+import EventDashboardPage from './pages/EventDashboardPage';
+import EventOrganizersPage from './pages/EventOrganizersPage';
+import EventListPage from './pages/EventListPage';
+import EventOrdersPage from './pages/EventOrdersPage';
+import EventListingsPage from './pages/EventListingsPage';
+import EventDisputesPage from './pages/EventDisputesPage';
+import EventCommissionsPage from './pages/EventCommissionsPage';
+import EventTicketsPage from './pages/EventTicketsPage';
+import { Toaster } from 'react-hot-toast';
+import { SocketProvider } from './contexts/SocketContext';
 
 function App() {
+  const location = useLocation();
+  const isLoginRoute = location.pathname === "/login";
+
   return (
-    <>
-      <AppToaster />
-      <Suspense fallback={<div className="min-h-[60vh] grid place-items-center"><Loader compact /></div>}>
+    <SocketProvider>
+    <div className="flex h-screen bg-gray-900 text-gray-100">
+      <Toaster
+        position="top-left"
+        toastOptions={{
+          style: {
+            background: '#333',
+            color: '#fff',
+          },
+          error: {
+            duration: 5000,
+          },
+        }}
+      />
+
+      {/* Background Gradient and Blur */}
+      <div className="fixed inset-0 z-0">
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 opacity-80" />
+        <div className="absolute inset-0 backdrop-blur-sm" />
+      </div>
+
+      {/* Sidebar - Ensure it's above background */}
+      {!isLoginRoute && <div className="relative z-10"><Sidebar /></div>}
+
+      {/* Main Content - Ensure it's above background */}
+      <main className="relative z-10 flex-grow overflow-auto">
         <Routes>
           <Route path="/login" element={<Login />} />
 
           <Route element={<ProtectedRoute />}>
-            <Route element={<AppShell />}>
-              {/* À traiter */}
-              <Route path="/" element={<HomePage />} />
-              <Route path="/a-traiter/verifications" element={<ProofQueuePage />} />
-              <Route path="/a-traiter/retraits" element={<WithdrawalQueuePage />} />
+            <Route path="/" element={<OverViewPage />} />
+            <Route path="/dashboard" element={<OverViewPage />} />
+            <Route path="/users" element={<Users />} />
+            <Route path="/partners" element={<Partners />} />
+            <Route path="/products" element={<ProductsManagementPage />} />
+            <Route path="/transactions" element={<TransactionManagementPage />} />
+            <Route path="/account-transactions" element={<AccountTransactionsManagementPage />} />
+            <Route path="/settings" element={<SettingsManagementPage />} />
+            <Route path="/storage" element={<StorageMonitoringPage />} />
+            <Route path="/tombola" element={<TombolaManagementPage />} />
+            <Route path="/tombola/draw/:monthId" element={<TombolaDrawPage />} />
+            <Route path="/sbclove" element={<SbcLoveManagementPage />} />
+            <Route path="/logout" element={<Deconnexion />} />
+            <Route path="/userpage/:userId" element={<UsersPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/notifications/push" element={<PushAnnouncementsPage />} />
+            <Route path="/fix-feexpay-payments" element={<FixFeexpayPaymentsPage />} />
+            <Route path="/fix-moneyfusion-withdrawals" element={<FixMoneyFusionWithdrawalsPage />} />
+            <Route path="/fix-cinetpay-withdrawals" element={<FixCinetPayWithdrawalsPage />} />
+            <Route path="/fix-provider-issues" element={<FixProviderIssuesPage />} />
+            <Route path="/manual-payment-recovery" element={<ManualPaymentRecoveryPage />} />
+            <Route path="/relance/dashboard" element={<RelanceDashboardPage />} />
+            <Route path="/relance/messages" element={<RelanceMessagesPage />} />
+            <Route path="/relance/campaigns" element={<RelanceCampaignsPage />} />
+            <Route path="/relance/sms-templates" element={<RelanceSmsTemplatesPage />} />
+            <Route path="/withdrawals/approvals" element={<WithdrawalApprovalPage />} />
+            <Route path="/withdrawals/history" element={<WithdrawalHistoryPage />} />
+            <Route path="/user-analytics" element={<UserFinancialAnalyticsPage />} />
+            <Route path="/user-roles" element={<UserRolesManagement />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/statuses" element={<StatusPage />} />
+            <Route path="/impact-challenges" element={<ImpactChallengePage />} />
+            <Route path="/impact-challenges/:challengeId" element={<ChallengeDetailsPage />} />
+            <Route path="/ads-network" element={<AdsNetworkDashboardPage />} />
+            <Route path="/ads-network/review" element={<AdsNetworkReviewPage />} />
+            <Route path="/ads-network/manual-verifications" element={<AdsNetworkManualVerifyPage />} />
+            <Route path="/ads-network/campaigns" element={<AdsNetworkCampaignsPage />} />
+            <Route path="/ads-network/diffuseurs" element={<AdsNetworkDiffuseursPage />} />
+            <Route path="/ads-network/test-campaign" element={<AdsNetworkTestCampaignPage />} />
 
-              {/* Membres */}
-              <Route path="/membres" element={<MembersPage />} />
-              <Route path="/membres/:userId" element={<MemberPage />} />
-              <Route path="/users" element={<Navigate to="/membres" replace />} />
-              <Route path="/userpage/:userId" element={<OldMemberLink />} />
-              <Route path="/partners" element={<Navigate to="/membres?partenaire=any" replace />} />
-
-              {/* Argent */}
-              <Route path="/argent" element={<Navigate to="/" replace />} />
-              <Route path="/argent/retraits" element={<WithdrawalsPage />} />
-              <Route path="/argent/bloques" element={<StuckPage />} />
-              <Route path="/argent/paiements" element={<PaymentsPage />} />
-              <Route path="/argent/passerelles" element={<GatewaysPage />} />
-              <Route path="/argent/resoudre" element={<ResolvePage />} />
-              <Route path="/argent/resoudre/abonnement" element={<RecoveryPage />} />
-              <Route path="/argent/analyse" element={<AnalysisPage />} />
-              <Route path="/withdrawals/approvals" element={<Navigate to="/argent/retraits" replace />} />
-              <Route path="/withdrawals/history" element={<Navigate to="/argent/retraits?vue=historique" replace />} />
-              <Route path="/transactions" element={<Navigate to="/argent/paiements" replace />} />
-              <Route path="/account-transactions" element={<Navigate to="/argent/paiements?vue=mouvements" replace />} />
-              <Route path="/user-analytics" element={<Navigate to="/argent/analyse" replace />} />
-              <Route path="/fix-provider-issues" element={<Navigate to="/argent/bloques" replace />} />
-              <Route path="/fix-moneyfusion-withdrawals" element={<Navigate to="/argent/bloques?fournisseur=moneyfusion" replace />} />
-              <Route path="/fix-cinetpay-withdrawals" element={<Navigate to="/argent/bloques?fournisseur=cinetpay" replace />} />
-              <Route path="/fix-feexpay-payments" element={<Navigate to="/argent/resoudre?probleme=paye" replace />} />
-              <Route path="/manual-payment-recovery" element={<Navigate to="/argent/resoudre/abonnement" replace />} />
-
-              {/* Modules */}
-              <Route path="/modules" element={<Navigate to="/" replace />} />
-              <Route path="/modules/ads" element={<AdsModule />} />
-              <Route path="/modules/billetterie" element={<BilletterieModule />} />
-              <Route path="/modules/billetterie/evenements/:eventId" element={<EventDetailPage />} />
-              <Route path="/modules/relance" element={<RelanceModule />} />
-              <Route path="/modules/relance/emails/:day" element={<RelanceEmailDayPage />} />
-              <Route path="/modules/sbc-love" element={<SbcLoveModule />} />
-              <Route path="/modules/tombola" element={<TombolaModule />} />
-              <Route path="/modules/tombola/tirage/:monthId" element={<TombolaDrawModulePage />} />
-              <Route path="/modules/boutique" element={<BoutiqueModule />} />
-              <Route path="/modules/impact-challenge" element={<ChallengesModule />} />
-              <Route path="/modules/impact-challenge/:challengeId" element={<ChallengeDetailPage />} />
-              <Route path="/ads-network" element={<Navigate to="/modules/ads" replace />} />
-              <Route path="/ads-network/review" element={<Navigate to="/modules/ads?onglet=campagnes&statut=a-valider" replace />} />
-              <Route path="/ads-network/manual-verifications" element={<Navigate to="/a-traiter/verifications" replace />} />
-              <Route path="/ads-network/campaigns" element={<Navigate to="/modules/ads?onglet=campagnes" replace />} />
-              <Route path="/ads-network/diffuseurs" element={<Navigate to="/modules/ads?onglet=diffuseurs" replace />} />
-              <Route path="/ads-network/test-campaign" element={<Navigate to="/modules/ads?onglet=reglages" replace />} />
-              <Route path="/event" element={<Navigate to="/modules/billetterie" replace />} />
-              <Route path="/event/organizers" element={<Navigate to="/modules/billetterie?onglet=organisateurs" replace />} />
-              <Route path="/event/events" element={<Navigate to="/modules/billetterie?onglet=evenements" replace />} />
-              <Route path="/event/orders" element={<Navigate to="/modules/billetterie?onglet=commandes" replace />} />
-              <Route path="/event/tickets" element={<Navigate to="/modules/billetterie?onglet=commandes" replace />} />
-              <Route path="/event/listings" element={<Navigate to="/modules/billetterie?onglet=revente" replace />} />
-              <Route path="/event/disputes" element={<Navigate to="/modules/billetterie?onglet=litiges" replace />} />
-              <Route path="/event/commissions" element={<Navigate to="/modules/billetterie?onglet=reglages" replace />} />
-              <Route path="/relance/dashboard" element={<Navigate to="/modules/relance" replace />} />
-              <Route path="/relance/messages" element={<Navigate to="/modules/relance?onglet=emails" replace />} />
-              <Route path="/relance/campaigns" element={<Navigate to="/modules/relance?onglet=campagnes" replace />} />
-              <Route path="/relance/sms-templates" element={<Navigate to="/modules/relance?onglet=sms" replace />} />
-              <Route path="/sbclove" element={<Navigate to="/modules/sbc-love" replace />} />
-              <Route path="/tombola" element={<Navigate to="/modules/tombola" replace />} />
-              <Route path="/tombola/draw/:monthId" element={<OldTombolaDrawLink />} />
-              <Route path="/products" element={<Navigate to="/modules/boutique" replace />} />
-              <Route path="/impact-challenges" element={<Navigate to="/modules/impact-challenge" replace />} />
-              <Route path="/impact-challenges/:challengeId" element={<OldChallengeLink />} />
-
-              {/* Plus */}
-              <Route path="/plus" element={<Navigate to="/" replace />} />
-              <Route path="/plus/annonces" element={<AnnouncementsPage />} />
-              <Route path="/plus/contenu" element={<ContentPage />} />
-              <Route path="/plus/stories" element={<StoriesPage />} />
-              <Route path="/plus/whatsapp" element={<WhatsAppPage />} />
-              <Route path="/plus/roles" element={<RolesPage />} />
-              <Route path="/plus/stockage" element={<StoragePage />} />
-              <Route path="/plus/statistiques" element={<StatsPage />} />
-              <Route path="/notifications/push" element={<Navigate to="/plus/annonces" replace />} />
-              <Route path="/notifications" element={<Navigate to="/plus/whatsapp" replace />} />
-              <Route path="/statuses" element={<Navigate to="/plus/stories" replace />} />
-              <Route path="/settings" element={<Navigate to="/plus/contenu" replace />} />
-              <Route path="/user-roles" element={<Navigate to="/plus/roles" replace />} />
-              <Route path="/storage" element={<Navigate to="/plus/stockage" replace />} />
-              <Route path="/dashboard" element={<Navigate to="/plus/statistiques" replace />} />
-              <Route path="/chat" element={<Navigate to="/" replace />} />
-              <Route path="/logout" element={<Deconnexion />} />
-
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
+            {/* SBC Event admin */}
+            <Route path="/event" element={<EventDashboardPage />} />
+            <Route path="/event/organizers" element={<EventOrganizersPage />} />
+            <Route path="/event/events" element={<EventListPage />} />
+            <Route path="/event/orders" element={<EventOrdersPage />} />
+            <Route path="/event/tickets" element={<EventTicketsPage />} />
+            <Route path="/event/listings" element={<EventListingsPage />} />
+            <Route path="/event/disputes" element={<EventDisputesPage />} />
+            <Route path="/event/commissions" element={<EventCommissionsPage />} />
           </Route>
+
+          <Route path="*" element={<Login />} />
         </Routes>
-      </Suspense>
-    </>
+      </main>
+    </div>
+    </SocketProvider>
   );
 }
 

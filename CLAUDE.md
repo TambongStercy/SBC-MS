@@ -125,88 +125,111 @@ service-name/
 
 **CRITICAL: Never use browser alerts, prompts, or confirms in the admin frontend.**
 
-1. **No JavaScript dialogs**: never `alert()`, `confirm()` or `prompt()`.
-2. **Feedback**: `notify.success(...)` / `notify.error(...)` from `src/ui`
-   (react-hot-toast underneath, one `AppToaster` in `App.tsx`).
-3. **Confirmations**: `ConfirmSheet` from `src/ui` for anything destructive or
-   that moves money / changes what members get. Its message names the person,
-   the amount or the effect; `reason` makes it ask for a written reason. It locks
-   while running and shows the API error inside the sheet.
-   ```tsx
-   <ConfirmSheet open={open} onClose={() => setOpen(false)} tone="danger"
-       title={`Suspendre ${name} ?`} message={<p>Ce qui va se passer, en clair.</p>}
-       reason={{ label: 'Motif', suggestions: ['…'], minLength: 5 }}
-       confirmLabel="Suspendre" onConfirm={async (reason) => { await api(reason); notify.success('Fait.'); }} />
+The admin frontend must maintain professional UI/UX standards. Follow these rules:
+
+1. **No JavaScript Alerts**: Never use `alert()`, `window.alert()`, `confirm()`, `window.confirm()`, or `prompt()` for user feedback.
+
+2. **Use Toast Notifications**: For non-blocking feedback (success, error, warning, info):
+   ```typescript
+   import { useToast } from '../hooks/useToast';
+   import ToastContainer from '../components/common/ToastContainer';
+
+   const { toasts, removeToast, showSuccess, showError, showWarning, showInfo } = useToast();
+
+   // Success feedback
+   showSuccess('Operation completed successfully!');
+
+   // Error feedback
+   showError('Operation failed. Please try again.');
+
+   // Add ToastContainer to JSX
+   <ToastContainer toasts={toasts} onRemove={removeToast} />
    ```
-4. **Forms**: errors inline (or inside the sheet), never in a dialog.
-5. Only write copy you verified in the backend ("le membre est prévenu" only if
-   the code notifies).
 
-### Admin redesign (Oct 2026): where things live now
+3. **Use Confirmation Modals**: For user confirmations before dangerous actions:
+   ```typescript
+   import ConfirmationModal from '../components/common/ConfirmationModal';
 
-The admin was rebuilt phone-first in Oct 2026 (94% of admin traffic comes from phones;
-the daily work is ~155 video-proof and ~27 withdrawal decisions). New code:
-- `src/ui/` — the only components new screens use (Page, Button, Card,
-  DataList = table on desktop / cards on phone, ConfirmSheet, Sheet, Tabs,
-  Badge/StatusBadge, MemberLink, Stat, NavRow…). French labels, no raw codes.
-- `src/index.css` + `tailwind.config.js` — tokens as CSS variables
-  (`bg-surface`, `text-ink-2`, `bg-primary`…). **Dark is the default** and uses
-  the original admin's greys (gray-900/800/700), blue and SBC orange; light is
-  the alternative (toggle at the bottom of the menu). Rufus preferred the old
-  look (2026-10-04): surfaces use `.panel` (frosted with a shadow in dark),
-  clickable cards `.lift`, menu entries keep their own icon colour, icons are
-  never put in tinted discs. The login (drifting photo, frosted card) and the
-  SIMBTECH/SBC loading screen are the originals. **Use tokens, not raw
-  `gray-800`/hex** in screens.
-- `src/shell/` — one menu listing every page (`menu.ts`, role-aware): a
-  sidebar on a computer, a ☰ drawer on a phone. `Page` shows ☰ when it has no
-  `back` (pages reached from the menu) and a back arrow otherwise. There are no
-  hub pages: Rufus found "Plus"/"Modules" pages and a bottom bar confusing
-  (2026-10-04) — add new pages to `menu.ts`, named for the task, not the service.
-- `src/features/` — every screen (rebuilt Oct 2026; `LegacyFrame` is gone).
-  `src/pages/` holds only Login and Déconnexion. Modules live in
-  `src/features/modules/<module>/`, each with its own `api.ts` typed against the
-  real backend responses.
-- `src/lib/roles.ts` — roles are enforced in the router too. Staff roles:
-  `admin`, `withdrawal_admin`, `moderator` (video-proof queue only; added
-  2026-10-04, user-service + advertising-service `authorizeProofReviewer`).
-- Admin login accepted only `admin` until 2026-10-04, so the withdrawal-admin
-  role had never been able to sign in.
-- No `alert()/confirm()`: money actions go through `ConfirmSheet` (locks while
-  running, keeps the error inside the sheet).
-- Phase 2 (Membres, Argent): one member page filters payment history by the
-  member's **id** through `userSearchTerm` — user-service `search-ids` matches an
-  exact 24-hex id since #303 (and phones as strings, and no longer hides blocked,
-  unverified or deleted members). The ledger (`/transactions/admin`) is
-  ADMIN-only; withdrawal admins read `/payments/admin/withdrawals/*` instead.
+   const [showConfirmModal, setShowConfirmModal] = useState(false);
+   const [confirmAction, setConfirmAction] = useState<{
+       title: string;
+       message: string;
+       onConfirm: () => void;
+   } | null>(null);
+
+   // Trigger confirmation
+   setConfirmAction({
+       title: 'Confirm Action',
+       message: 'Are you sure you want to proceed?',
+       onConfirm: async () => {
+           // Execute action
+           setShowConfirmModal(false);
+       }
+   });
+   setShowConfirmModal(true);
+
+   // Add ConfirmationModal to JSX
+   {confirmAction && (
+       <ConfirmationModal
+           isOpen={showConfirmModal}
+           title={confirmAction.title}
+           message={confirmAction.message}
+           confirmText="Confirm"
+           cancelText="Cancel"
+           onConfirm={confirmAction.onConfirm}
+           onCancel={() => setShowConfirmModal(false)}
+       />
+   )}
+   ```
+
+4. **Available Toast Systems**:
+   - Custom toast system: `useToast()` hook with ToastContainer component
+   - React Hot Toast: `toast.success()`, `toast.error()` (used in some pages)
+
+5. **When to Use Each**:
+   - **Toast Notifications**: Success messages, error messages, warnings, non-critical info
+   - **Confirmation Modals**: Delete operations, irreversible actions, role changes, bulk operations
+   - **Form Validation**: Display errors inline or in modals, never with alerts
+
+### Admin redesign: parked on branch `admin-redesign` (2026-10-04)
+
+A phone-first rebuild of the admin (one ☰ menu, `src/ui` components, modules
+rebuilt) was merged to develop on 2026-10-04, then **taken off preprod the same
+day at Rufus's request**: develop/preprod run the original admin again (with
+the #299 safety fixes and half-height proof videos). The rebuild lives on the
+`admin-redesign` branch (not deployed; it can be shown on preprod with the
+manual "Deploy to preprod" workflow). Do not merge it back without Rufus's go.
+Why he stopped it: the look (flat, generic icons, no animation, a weaker login
+and loading screen) felt worse than the original — see memory
+`feedback_admin_look`.
+
+Backend changes made during the rebuild stayed on develop (they are compatible
+with the original admin): moderator role and staff login (#300), member search
+and filters (#301, #303), admin story delete (#306), admin relance routes acting
+on every member's campaign + overview/parrains endpoints (#310), admin product
+removal (#314). Facts found while rebuilding — still true of the backend:
 - `POST /users/admin/users/:id/adjust-balance` changes the balance **without
-  writing any transaction** (log line only). It is deliberately not exposed in
-  the admin until it records a ledger entry.
+  writing any transaction** (log line only).
 - The live CinetPay balance (`/payments/admin/gateway-balances/live`) calls
-  `getBalance()` without a country, so it is ONE country's balance (the first
-  configured). The Passerelles page says so.
-- Phase 3 (Modules) facts found on the way — check before "fixing" them again:
-  - **Relance**: the admin campaign routes reused the member handlers and were
-    silently scoped to the admin's own id until #310 (`asAdmin`). The member app
-    shows ONE relance switch = `enabled && !sendingPaused`; turning it on clears
-    `enrollmentPaused`, which the app never displays — so the admin only ever
-    clears that flag, never sets it. Deactivating one of the 7 email days leaves
-    every filleul who reaches that day stuck on it (the sender `continue`s
-    without advancing). The old media upload built `localhost` URLs; dropped.
-  - **SBC Love**: the member never sees a rejection reason (fixed copy only).
-    `PATCH /sbclove/admin/module` accepts any value — bounds live in the UI.
-  - **Tombola**: the service draws only an OPEN tombola (closing first means
-    reopening to draw). Prizes are hard-coded English (`Bike`, `Phone`,
-    `100k FCFA`) and pushed to winners as-is. `previousMonthWinners` is set only
-    when an Impact Challenge creates the month. Delete would orphan paid tickets
-    and is not exposed.
-  - **Boutique**: product `status` changes nothing — the member app lists
-    products whatever their status (12k "pending" are public). Admin removal is
-    `DELETE /api/products/admin/:id` (#314, soft, cancels live flash sales).
-  - **Impact Challenge**: the old admin never matched the API (wrong fields,
-    POST vs PATCH approve, non-existent distribute routes). Payout needs
-    `LOTTERY_POOL_ACCOUNT_ID` and `SBC_COMMISSION_ACCOUNT_ID` in
-    `tombola-service/.env` — unset on prod and preprod as of 2026-10-04.
+  `getBalance()` without a country, so it is ONE country's balance (#305, open,
+  fixes it).
+- **Relance**: the member app shows ONE relance switch = `enabled &&
+  !sendingPaused`; turning it on clears `enrollmentPaused`, which the app never
+  displays. Deactivating one of the 7 email days leaves every filleul who reaches
+  that day stuck on it (the sender `continue`s without advancing). The admin
+  media upload builds `localhost` URLs that no email client can reach.
+- **SBC Love**: the member never sees a rejection reason (fixed copy only).
+  `PATCH /sbclove/admin/module` accepts any value, unvalidated.
+- **Tombola**: the service draws only an OPEN tombola. Prizes are hard-coded
+  English (`Bike`, `Phone`, `100k FCFA`) and pushed to winners as-is.
+  `previousMonthWinners` is set only when an Impact Challenge creates the month.
+  Delete leaves the month's paid tickets orphaned.
+- **Boutique**: product `status` changes nothing — the member app lists
+  products whatever their status (12k "pending" are public).
+- **Impact Challenge**: the original admin pages don't match the API (wrong
+  entrepreneur fields, POST vs PATCH approve, non-existent distribute routes).
+  Payout needs `LOTTERY_POOL_ACCOUNT_ID` and `SBC_COMMISSION_ACCOUNT_ID` in
+  `tombola-service/.env` — unset on prod and preprod as of 2026-10-04.
 
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).

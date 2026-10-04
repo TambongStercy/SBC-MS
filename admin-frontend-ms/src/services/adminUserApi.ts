@@ -1,5 +1,4 @@
 import axios from 'axios';
-import apiClient from '../api/apiClient';
 
 // Define PaginationOptions locally
 export interface PaginationOptions {
@@ -126,7 +125,25 @@ export interface PartnerSummaryData {
     activeGoldPartners: number;
 }
 
-// One HTTP client for the whole admin: same base URL, token and 401 handling.
+// --- Axios Instance ---
+
+const apiClient = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || '/api',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+});
+
+// Interceptor to add Auth token
+apiClient.interceptors.request.use((config) => {
+    const token = localStorage.getItem('adminToken'); // Simple token storage, context is better
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+}, (error) => {
+    return Promise.reject(error);
+});
 
 // --- API Functions ---
 
