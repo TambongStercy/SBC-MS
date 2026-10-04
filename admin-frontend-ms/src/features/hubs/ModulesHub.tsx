@@ -19,7 +19,7 @@ export default function ModulesHub() {
                 <NavRow to="/modules/billetterie" icon={<Ticket size={20} />} title="Billetterie" description="Organisateurs, événements, commandes, litiges" trailing={<Count n={count('organizers', 'disputes')} />} />
                 <NavRow to="/modules/relance" icon={<Mail size={20} />} tone="success" title="Relance" description="Relance des nouveaux, campagnes, crédits des parrains, messages" />
                 <NavRow to="/modules/sbc-love" icon={<Heart size={20} />} tone="danger" title="SBC Love" description="Profils à valider, signalements, session de la semaine" trailing={<Count n={count('love')} />} />
-                <NavRow to="/tombola" icon={<Gift size={20} />} tone="warning" title="Tombola" description="Tirages du mois et gagnants" />
+                <NavRow to="/modules/tombola" icon={<Gift size={20} />} tone="warning" title="Tombola" description="Tombola du mois, billets, tirage et gagnants" />
                 <NavRow to="/products" icon={<ShoppingBag size={20} />} tone="primary" title="Boutique" description="Produits et ventes flash" />
                 <NavRow to="/impact-challenges" icon={<Trophy size={20} />} tone="neutral" title="Impact Challenge" description="Votes et collectes du mois" />
             </NavList>
