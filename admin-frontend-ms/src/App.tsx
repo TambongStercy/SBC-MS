@@ -52,11 +52,6 @@ const RelanceCampaignsPage = lazy(() => import('./pages/RelanceCampaignsPage'));
 const RelanceSmsTemplatesPage = lazy(() => import('./pages/RelanceSmsTemplatesPage'));
 const ImpactChallengePage = lazy(() => import('./pages/ImpactChallengePage'));
 const ChallengeDetailsPage = lazy(() => import('./pages/ChallengeDetailsPage'));
-const AdsNetworkDashboardPage = lazy(() => import('./pages/AdsNetworkDashboardPage'));
-const AdsNetworkReviewPage = lazy(() => import('./pages/AdsNetworkReviewPage'));
-const AdsNetworkCampaignsPage = lazy(() => import('./pages/AdsNetworkCampaignsPage'));
-const AdsNetworkDiffuseursPage = lazy(() => import('./pages/AdsNetworkDiffuseursPage'));
-const AdsNetworkTestCampaignPage = lazy(() => import('./pages/AdsNetworkTestCampaignPage'));
 const EventDashboardPage = lazy(() => import('./pages/EventDashboardPage'));
 const EventOrganizersPage = lazy(() => import('./pages/EventOrganizersPage'));
 const EventListPage = lazy(() => import('./pages/EventListPage'));
@@ -128,12 +123,12 @@ function App() {
               <Route path="/modules/boutique" element={<BoutiqueModule />} />
               <Route path="/modules/impact-challenge" element={<ChallengesModule />} />
               <Route path="/modules/impact-challenge/:challengeId" element={<ChallengeDetailPage />} />
-              <Route path="/ads-network" element={legacy(<AdsNetworkDashboardPage />)} />
-              <Route path="/ads-network/review" element={legacy(<AdsNetworkReviewPage />)} />
+              <Route path="/ads-network" element={<Navigate to="/modules/ads" replace />} />
+              <Route path="/ads-network/review" element={<Navigate to="/modules/ads?onglet=campagnes&statut=a-valider" replace />} />
               <Route path="/ads-network/manual-verifications" element={<Navigate to="/a-traiter/verifications" replace />} />
-              <Route path="/ads-network/campaigns" element={legacy(<AdsNetworkCampaignsPage />)} />
-              <Route path="/ads-network/diffuseurs" element={legacy(<AdsNetworkDiffuseursPage />)} />
-              <Route path="/ads-network/test-campaign" element={legacy(<AdsNetworkTestCampaignPage />)} />
+              <Route path="/ads-network/campaigns" element={<Navigate to="/modules/ads?onglet=campagnes" replace />} />
+              <Route path="/ads-network/diffuseurs" element={<Navigate to="/modules/ads?onglet=diffuseurs" replace />} />
+              <Route path="/ads-network/test-campaign" element={<Navigate to="/modules/ads?onglet=reglages" replace />} />
               <Route path="/event" element={legacy(<EventDashboardPage />)} />
               <Route path="/event/organizers" element={legacy(<EventOrganizersPage />)} />
               <Route path="/event/events" element={legacy(<EventListPage />)} />
