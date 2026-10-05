@@ -134,6 +134,24 @@ class UserServiceClient {
     }
 
     /**
+     * A member's country, or null when user-service can't say. batch-details
+     * leaves country out, so this reads the advertising projection, which has it.
+     */
+    async getMemberCountry(userId: string): Promise<string | null> {
+        try {
+            const response = await axios.post(`${this.userServiceUrl}/users/internal/advertising-details`, { userIds: [userId] }, {
+                headers: { 'Authorization': `Bearer ${this.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+                timeout: 5000,
+            });
+            const user = response.data?.data?.[0];
+            return user ? (user.country ?? '') : null;
+        } catch (error: any) {
+            log.error(`Error fetching country for user ${userId}:`, error.response?.data || error.message);
+            return null;
+        }
+    }
+
+    /**
      * Get batch user details for multiple user IDs
      * @param userIds Array of user IDs
      * @returns Array of user detail objects

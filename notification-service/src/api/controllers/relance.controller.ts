@@ -7,7 +7,8 @@ import RelanceSmsTemplateModel from '../../database/models/relance-sms-template.
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
 import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
-import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack } from '../../config/relance-packs';
+import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, isCameroon } from '../../config/relance-packs';
+import { userServiceClient } from '../../services/clients/user.service.client';
 import { creditRelancePack } from '../../services/relance-credit.service';
 import config from '../../config';
 
@@ -650,6 +651,14 @@ class RelanceController {
             const { packId } = req.body;
             const pack = findPack(packId);
             if (!pack) { res.status(400).json({ success: false, message: 'Invalid packId' }); return; }
+
+            // Rufus: SMS relance is for Cameroonian parrains only — SMS only ever goes to
+            // +237 numbers, so a pack bought elsewhere could never be used.
+            if (pack.type === 'sms') {
+                const country = await userServiceClient.getMemberCountry(userId);
+                if (country === null) { res.status(503).json({ success: false, message: 'Vérification impossible pour le moment. Réessayez.' }); return; }
+                if (!isCameroon(country)) { res.status(403).json({ success: false, message: 'Les SMS de relance sont réservés aux membres du Cameroun.' }); return; }
+            }
 
             const paymentType = pack.type === 'email' ? 'RELANCE_EMAIL_PACK' : 'RELANCE_SMS_PACK';
             const callbackUrl = `${config.services.notificationService}/relance/internal/credit-pack`;
