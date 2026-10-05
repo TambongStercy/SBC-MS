@@ -204,6 +204,35 @@ describe('the button on the notification', () => {
     });
 });
 
+describe('the WhatsApp button (new filleul)', () => {
+    const wa = 'https://wa.me/237675123456?text=Bonjour%20Paul';
+
+    it('reaches the phone and the list, through the night too', async () => {
+        await device();
+        await call('POST', '/api/notifications/push/internal/send', {
+            auth: config.services.serviceSecret,
+            body: { userId, category: 'filleuls', title: 'Nouveau filleul', body: 'Paul vient de s\'inscrire.', url: '/filleuls', whatsapp: wa },
+        });
+        expect((await InboxItemModel.findOne({ userId }).lean())!.whatsapp).toBe(wa);
+        await flushDuePushes(at('2099-01-01T06:00:00Z'));
+        expect(JSON.parse(sendNotification.mock.calls[0][1]).whatsapp).toBe(wa);
+    });
+
+    it.each([
+        ['another site', 'https://evil.example/237675123456'],
+        ['a script', 'javascript:alert(1)'],
+        ['wa.me without a number', 'https://wa.me/?text=hi'],
+    ])('is dropped when the link is %s', async (_label, link) => {
+        await device();
+        await call('POST', '/api/notifications/push/internal/send', {
+            auth: config.services.serviceSecret,
+            body: { userId, category: 'money', title: 'T', body: 'B', whatsapp: link },
+        });
+        expect((await InboxItemModel.findOne({ userId }).lean())!.whatsapp).toBeUndefined();
+        expect(JSON.parse(sendNotification.mock.calls[0][1]).whatsapp).toBeUndefined();
+    });
+});
+
 describe('the user\'s settings', () => {
     it('lists every kind, all on by default, and remembers what is turned off', async () => {
         const before = await call('GET', '/api/notifications/push/preferences', { auth: tokenFor(userId) });

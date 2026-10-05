@@ -21,7 +21,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     const items = await InboxItemModel.find({
         userId,
         ...(before && !isNaN(before.getTime()) ? { createdAt: { $lt: before } } : {}),
-    }).sort({ createdAt: -1 }).limit(limit).select('category title body url tag readAt createdAt').lean();
+    }).sort({ createdAt: -1 }).limit(limit).select('category title body url tag whatsapp readAt createdAt').lean();
     res.status(200).json({ success: true, data: { items, unread: await unreadOf(userId), hasMore: items.length === limit } });
 });
 

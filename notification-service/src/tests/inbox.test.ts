@@ -60,6 +60,12 @@ describe('what lands in the list', () => {
         expect(r.json.data.unread).toBe(2);
     });
 
+    it('hands the app the WhatsApp link of a new filleul', async () => {
+        const wa = 'https://wa.me/237675123456?text=Bonjour';
+        await InboxItemModel.create({ userId: me, category: 'filleuls', title: 'Nouveau filleul', body: 'b', whatsapp: wa });
+        expect((await call('GET', '/api/notifications/inbox')).json.data.items[0].whatsapp).toBe(wa);
+    });
+
     it('leaves chat out — conversations have their own unread counts', async () => {
         await notify('Paul', 'chat');
         expect((await call('GET', '/api/notifications/inbox/unread-count')).json.data.unread).toBe(0);

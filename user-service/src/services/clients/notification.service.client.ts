@@ -69,7 +69,7 @@ class NotificationService {
      * A push to the user's phones (notification-service /push/internal/send).
      * Best-effort: never throws; a user without push is not an error.
      */
-    async sendPush(payload: { userId: string; category: string; title: string; body: string; url?: string; tag?: string }): Promise<boolean> {
+    async sendPush(payload: { userId: string; category: string; title: string; body: string; url?: string; tag?: string; whatsapp?: string }): Promise<boolean> {
         try {
             const { data } = await this.apiClient.post('/notifications/push/internal/send', payload);
             return !!data?.success;

@@ -18,6 +18,9 @@ router.get('/default/targets', (req, res) => relanceCampaignController.getDefaul
 // until 2026-09-30 the page used the admin route, which now refuses non-admins.
 router.post('/message-preview', (req, res) => relanceController.previewMessage(req, res));
 
+// What to suggest to a parrain with credits and no campaign (must be before /:id)
+router.get('/suggestion', (req, res) => relanceCampaignController.getCampaignSuggestion(req, res));
+
 // Preview filter results (with sample users)
 router.post('/preview', (req, res) => relanceCampaignController.previewFilterResults(req, res));
 
