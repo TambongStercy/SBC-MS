@@ -3087,15 +3087,18 @@ class PaymentService {
             return PaymentGateway.FEEXPAY;
         }
 
-        // MoneyFusion: BF, SN, ML, CD, GA, NE, GN, TD, CM, CF
+        // MoneyFusion: BF, SN, ML, CD, GA, NE, GN, TD, CM, CF, GH
         // CM restored to MoneyFusion (was here originally, briefly moved to CinetPay
         // in PR #61, restored here per Rufus 2026-06-24).
         // CF (Centrafrique) added 2026-07-08 per Rufus — MoneyFusion added the country
-        // on their side. MF's /v1/withdraw/methods lists only "crypto-cf" for CF, so
-        // payins work but payouts to CF via MoMo are not supported yet (WITHDRAW_MODES
-        // in moneyfusion.service.ts has no CF entry; withdraws will fail at operator
-        // lookup with a clear "not supported" error).
-        const moneyFusionCountries = ['BF', 'SN', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD', 'CM', 'CF'];
+        // on their side. Re-checked 2026-09-23: MF's /v1/withdraw/methods still returns
+        // an EMPTY method list for CF, so payins work but payouts to CF via MoMo remain
+        // unsupported (WITHDRAW_MODES in moneyfusion.service.ts has no CF entry;
+        // withdraws fail at operator lookup with a clear "not supported" error).
+        // GH (Ghana) added 2026-09-23 per Rufus — MF now lists mtn-gh, telecel-gh and
+        // airtel-gh for Ghana. Payouts settle in GHS, so amounts convert at the live
+        // rate the same way RDC (USD) and Guinée (GNF) do.
+        const moneyFusionCountries = ['BF', 'SN', 'ML', 'CD', 'GA', 'NE', 'GN', 'TD', 'CM', 'CF', 'GH'];
         if (moneyFusionCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using MONEYFUSION.`);
             return PaymentGateway.MONEYFUSION;
