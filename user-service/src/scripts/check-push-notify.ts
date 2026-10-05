@@ -37,16 +37,8 @@ const last = () => sent[sent.length - 1];
     check('crypto commissions are in dollars', last().title === '+$2 de commission', last().title);
 
     // New filleul
-    pushNewFilleul('r1', { _id: 'u9', name: 'Paul Biya', phoneNumber: '+237 6 75 12 34 56' });
+    pushNewFilleul('r1', 'Paul Biya', 'u9');
     check('a new filleul pushes to the parrain and opens the filleuls page', last().category === 'filleuls' && last().url === '/filleuls' && last().body === "Paul vient de s'inscrire avec ton lien.", JSON.stringify(last()));
-    const wa = new URL(last().whatsapp);
-    check('it carries a WhatsApp chat with the filleul, welcome typed in', wa.origin === 'https://wa.me' && wa.pathname === '/237675123456' && wa.searchParams.get('text')!.startsWith('Bonjour Paul 👋 Bienvenue sur SBC'), last().whatsapp);
-
-    pushNewFilleul('r1', { _id: 'u10', name: 'Grace', phoneNumber: '242061234567' });
-    check("Congo's leading 0 is kept", new URL(last().whatsapp).pathname === '/242061234567', last().whatsapp);
-
-    pushNewFilleul('r1', { _id: 'u11', name: 'Awa', phoneNumber: '' });
-    check('no number, no WhatsApp button (and still the push)', last().whatsapp === undefined && last().body === "Awa vient de s'inscrire avec ton lien.", JSON.stringify(last()));
 
     // Subscription ending
     await mongoose.connect(DB, { serverSelectionTimeoutMS: 3000 });
