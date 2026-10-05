@@ -288,7 +288,7 @@ export class UserService {
         // 5. Create referral hierarchy if referrer exists
         if (referrer) {
             await this.createReferralHierarchy(referrer, newUser);
-            pushNewFilleul(referrer._id, newUser);
+            pushNewFilleul(referrer._id, newUser.name, newUser._id);
         }
 
         // --- Update IP Address --- 

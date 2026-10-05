@@ -34,35 +34,16 @@ export function pushCommission(args: {
     });
 }
 
-/**
- * A wa.me chat with a member, first message already typed. Phone numbers are
- * stored with their country code (Congo's leading 0 included), so the digits
- * are the WhatsApp number as they are. Undefined when there is no usable one.
- */
-export function whatsAppLink(phoneNumber: unknown, text: string): string | undefined {
-    const digits = String(phoneNumber ?? '').replace(/\D/g, '');
-    if (digits.length < 8 || digits.length > 15) return undefined;
-    return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-}
-
-/**
- * Someone just signed up with the parrain's link. The notification carries a
- * WhatsApp button to welcome them straight away (Rufus, 2026-10-05).
- */
-export function pushNewFilleul(referrerId: unknown, filleul: { _id: unknown; name?: string; phoneNumber?: unknown }): void {
-    const first = firstName(filleul.name);
-    const whatsapp = whatsAppLink(
-        filleul.phoneNumber,
-        `Bonjour${first ? ` ${first}` : ''} 👋 Bienvenue sur SBC ! Je suis ton parrain, je suis là pour t'aider à bien démarrer.`,
-    );
+/** Someone just signed up with the parrain's link. */
+export function pushNewFilleul(referrerId: unknown, filleulName: string | undefined, filleulId: unknown): void {
+    const who = firstName(filleulName) || "Quelqu'un";
     void notificationService.sendPush({
         userId: String(referrerId),
         category: 'filleuls',
         title: 'Nouveau filleul',
-        body: `${first || "Quelqu'un"} vient de s'inscrire avec ton lien.`,
+        body: `${who} vient de s'inscrire avec ton lien.`,
         url: '/filleuls',
-        tag: `filleul-${String(filleul._id)}`,
-        ...(whatsapp ? { whatsapp } : {}),
+        tag: `filleul-${String(filleulId)}`,
     });
 }
 
