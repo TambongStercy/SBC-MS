@@ -76,3 +76,57 @@ export function campaignBudget(emailBalance: number, newPerMonth: number) {
     const available = Math.max(0, emailBalance - reservedForNew);
     return { reservedForNew, maxTargets: Math.floor(available / EMAILS_PER_FILLEUL) };
 }
+
+export interface CampaignSuggestion {
+    /** '30d' = the last 30 days; 'custom' = the calendar month with the most unpaid filleuls. */
+    period: '30d' | 'custom';
+    from: string;
+    to: string;
+    /** Filleuls in that range who registered, haven't paid, and aren't in relance now. */
+    count: number;
+    /** How many of them the parrain's email credits can relance (a month of relance des nouveaux kept aside). */
+    affordable: number;
+}
+
+/**
+ * What to suggest to a parrain who has credits and no campaign running (Rufus,
+ * 2026-10-05): relance des nouveaux only takes filleuls in the 2 hours after
+ * they sign up, so a parrain without new filleuls never spends what they paid
+ * for. Suggest the last 30 days when they have unpaid filleuls there; otherwise
+ * the month of the past year where they have the most; otherwise nothing.
+ */
+export async function suggestCampaign(userId: string, emailBalance: number, now: Date = new Date()): Promise<CampaignSuggestion | null> {
+    const referrals: any[] = await userServiceClient.getReferralsForCampaign(userId);
+    const inRelance = new Set(
+        (await RelanceTargetModel.distinct('referralUserId', {
+            referrerUserId: new mongoose.Types.ObjectId(userId),
+            status: { $in: [TargetStatus.ACTIVE, TargetStatus.PAUSED] },
+        })).map(id => id.toString()),
+    );
+    const yearAgo = now.getTime() - 365 * DAY_MS;
+    const unpaid = referrals
+        .filter(ref => !hasPaidInscription(ref) && !inRelance.has(String(ref._id)) && ref.createdAt)
+        .map(ref => new Date(ref.createdAt))
+        .filter(d => d.getTime() >= yearAgo && d.getTime() <= now.getTime());
+    if (unpaid.length === 0) return null;
+
+    const { maxTargets } = campaignBudget(emailBalance, await newFilleulsLast30Days(userId, now));
+    const since30 = new Date(now.getTime() - 30 * DAY_MS);
+    const last30 = unpaid.filter(d => d >= since30).length;
+    if (last30 > 0) {
+        return { period: '30d', from: since30.toISOString(), to: now.toISOString(), count: last30, affordable: Math.min(last30, maxTargets) };
+    }
+
+    // No unpaid filleul in the last 30 days: the month where they have the most.
+    const byMonth = new Map<number, number>(); // key: year * 12 + month
+    for (const d of unpaid) {
+        const key = d.getUTCFullYear() * 12 + d.getUTCMonth();
+        byMonth.set(key, (byMonth.get(key) ?? 0) + 1);
+    }
+    // Most filleuls first; on a tie, the more recent month.
+    const [bestKey, count] = [...byMonth.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0];
+    const y = Math.floor(bestKey / 12), m = bestKey % 12;
+    const from = new Date(Date.UTC(y, m, 1));
+    const to = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999));
+    return { period: 'custom', from: from.toISOString(), to: to.toISOString(), count, affordable: Math.min(count, maxTargets) };
+}
