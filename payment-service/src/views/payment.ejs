@@ -54,7 +54,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             body {
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #f8fafc 0%, #ffffff 25%, #f1f5f9 50%, #ffffff 75%, #f8fafc 100%);
+                background: #f8fafc;
                 min-height: 100vh;
                 position: relative;
                 overflow-x: hidden;
@@ -68,10 +68,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 left: -50%;
                 width: 200%;
                 height: 200%;
-                background:
-                    radial-gradient(circle at 25% 25%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-                    radial-gradient(circle at 75% 75%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
-                    radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+                background: none;
                 animation: float 20s ease-in-out infinite;
                 pointer-events: none;
                 z-index: 1;
@@ -198,14 +195,9 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
             }
 
             .payment-card {
-                background: rgba(255, 255, 255, 0.95);
-                backdrop-filter: blur(20px);
-                border: 1px solid rgba(255, 255, 255, 0.2);
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
                 border-radius: 24px;
-                box-shadow:
-                    0 20px 25px -5px rgba(0, 0, 0, 0.1),
-                    0 10px 10px -5px rgba(0, 0, 0, 0.04),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.1);
                 width: 100%;
                 max-width: 480px;
                 padding: 40px;
@@ -221,7 +213,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 left: 0;
                 right: 0;
                 height: 1px;
-                background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+                background: none;
             }
 
             /* Logo section */
@@ -234,7 +226,6 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 height: 64px;
                 width: auto;
                 margin-bottom: 16px;
-                filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
             }
 
             /* Typography */
@@ -257,7 +248,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             /* Amount display */
             .amount-card {
-                background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                background: #6366f1;
                 border-radius: 16px;
                 padding: 24px;
                 text-align: center;
@@ -273,7 +264,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 left: -100%;
                 width: 100%;
                 height: 100%;
-                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+                background: none;
                 animation: shimmer 3s infinite;
             }
 
@@ -281,7 +272,6 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 color: white;
                 font-size: 24px;
                 font-weight: 700;
-                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
                 position: relative;
                 z-index: 2;
             }
@@ -325,7 +315,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 left: -100%;
                 width: 100%;
                 height: 100%;
-                background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.05), transparent);
+                background: none;
                 transition: left 0.5s;
             }
 
@@ -335,13 +325,11 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             .method-card:hover {
                 transform: translateY(-2px);
-                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
             }
 
             .method-card.selected {
                 border-color: #6366f1;
-                background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%);
-                box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
+                background: #f0f7ff;
             }
 
             .method-icon {
@@ -435,7 +423,8 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
             .form-input:focus {
                 outline: none;
                 border-color: #6366f1;
-                box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+                outline: 2px solid rgba(99, 102, 241, 0.45);
+                outline-offset: 0;
                 transform: translateY(-1px);
             }
 
@@ -471,27 +460,27 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             /* Crypto currency colors */
             .crypto-icon.btc {
-                background: linear-gradient(135deg, #f7931a, #ff9500);
+                background: #f7931a;
             }
 
             .crypto-icon.ltc {
-                background: linear-gradient(135deg, #345d9d, #4a90e2);
+                background: #345d9d;
             }
 
             .crypto-icon.xrp {
-                background: linear-gradient(135deg, #23292f, #000000);
+                background: #23292f;
             }
 
             .crypto-icon.trx {
-                background: linear-gradient(135deg, #ff0000, #dc143c);
+                background: #ff0000;
             }
 
             .crypto-icon.usdt {
-                background: linear-gradient(135deg, #26a17b, #009688);
+                background: #26a17b;
             }
 
             .crypto-icon.bnb {
-                background: linear-gradient(135deg, #f3ba2f, #f0b90b);
+                background: #f3ba2f;
             }
 
             /* Payment method icons styles */
@@ -524,7 +513,6 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 background-position: center;
                 background-repeat: no-repeat;
                 overflow: hidden;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
                 transition: transform 0.3s ease;
             }
 
@@ -637,7 +625,8 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             .select-display.active {
                 border-color: #6366f1;
-                box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+                outline: 2px solid rgba(99, 102, 241, 0.45);
+                outline-offset: 0;
             }
 
             .select-arrow {
@@ -659,7 +648,6 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 background: #ffffff;
                 border: 1px solid #e5e7eb;
                 border-radius: 12px;
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
                 max-height: 280px;
                 overflow-y: auto;
                 margin-top: 4px;
@@ -701,7 +689,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
             /* Button styles */
             .btn-primary {
                 width: 100%;
-                background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                background: #6366f1;
                 color: white;
                 border: none;
                 border-radius: 16px;
@@ -725,7 +713,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 left: -100%;
                 width: 100%;
                 height: 100%;
-                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+                background: none;
                 transition: left 0.5s;
             }
 
@@ -735,7 +723,6 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             .btn-primary:hover {
                 transform: translateY(-2px);
-                box-shadow: 0 12px 30px rgba(99, 102, 241, 0.3);
             }
 
             .btn-primary:disabled {
@@ -746,7 +733,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             .btn-secondary {
                 width: 100%;
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                background: #10b981;
                 color: white;
                 border: none;
                 border-radius: 16px;
@@ -764,7 +751,6 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
 
             .btn-secondary:hover {
                 transform: translateY(-2px);
-                box-shadow: 0 12px 30px rgba(16, 185, 129, 0.3);
             }
 
             .copy-button {
@@ -802,32 +788,32 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
             }
 
             .status-error {
-                background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
+                background: #fef2f2;
                 border: 1px solid #fecaca;
                 color: #dc2626;
             }
 
             .status-warning {
-                background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+                background: #fffbeb;
                 border: 1px solid #fed7aa;
                 color: #d97706;
             }
 
             .status-info {
-                background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+                background: #eff6ff;
                 border: 1px solid #bfdbfe;
                 color: #2563eb;
             }
 
             .status-success {
-                background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+                background: #f0fdf4;
                 border: 1px solid #bbf7d0;
                 color: #16a34a;
             }
 
             /* Crypto display */
             .crypto-display {
-                background: linear-gradient(135deg, #fef3c7 0%, #ffffff 100%);
+                background: #fef3c7;
                 border: 2px solid #f59e0b;
                 border-radius: 20px;
                 padding: 32px;
@@ -849,13 +835,11 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 align-items: center;
                 justify-content: center;
                 transition: all 0.3s ease;
-                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             }
 
             .qr-container:hover {
                 border-color: #6366f1;
                 background: #f8fafc;
-                box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
             }
 
             /* QR Code specific styling */
@@ -871,7 +855,6 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 width: 200px !important;
                 height: 200px !important;
                 border-radius: 12px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
                 border: 2px solid #f1f5f9;
             }
 
@@ -881,7 +864,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 height: 200px;
                 border: 2px dashed #cbd5e1;
                 border-radius: 16px;
-                background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+                background: #f8fafc;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -894,7 +877,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 width: 80px;
                 height: 80px;
                 margin: 0 auto 24px;
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                background: #10b981;
                 border-radius: 50%;
                 display: flex;
                 align-items: center;
@@ -905,7 +888,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 width: 80px;
                 height: 80px;
                 margin: 0 auto 24px;
-                background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                background: #ef4444;
                 border-radius: 50%;
                 display: flex;
                 align-items: center;
@@ -961,11 +944,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background: repeating-linear-gradient(45deg,
-                        transparent,
-                        transparent 10px,
-                        rgba(245, 158, 11, 0.05) 10px,
-                        rgba(245, 158, 11, 0.05) 20px);
+                background: none;
                 border-radius: 16px;
                 pointer-events: none;
             }
@@ -1463,7 +1442,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                                                                     </div>
                                                                     <!-- Progress Bar -->
                                                                     <div class="w-full bg-blue-100 rounded-full h-3">
-                                                                        <div class="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500"
+                                                                        <div style="background:#3b82f6" class="h-3 rounded-full transition-all duration-500"
                                                                             style="width: <%= paymentProgress %>%">
                                                                         </div>
                                                                     </div>
@@ -1482,7 +1461,7 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                                                                 <label class="form-label text-blue-800">Montant
                                                                     restant à envoyer:</label>
                                                                 <div
-                                                                    class="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-xl p-4 text-center">
+                                                                    style="background:#fefce8" class="border-2 border-yellow-300 rounded-xl p-4 text-center">
                                                                     <span class="text-3xl font-bold text-orange-900">
                                                                         <%= displayRemainingAmount %>
                                                                             <%= payCurrency %>
