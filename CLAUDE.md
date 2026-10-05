@@ -600,6 +600,20 @@ day 1 to everyone waiting, however old.
   filleul is at **`paymentProvider.metadata.sourceUserId`** (a string), not
   top-level `metadata`. `POST /api/internal/user/:userId/commissions-from` sums
   them for `/api/relance/earnings`.
+- **SMS is sent only to +237 numbers** (`isCmNumber`, every send path), so a
+  non-CM parrain's SMS credit was unusable. 2026-10-05: the 5 non-CM parrains
+  who had paid for `sms_250` (4000 FCFA) got it converted at paid value — 250
+  SMS → 4800 email (1.2 email credits per FCFA, the `email_3k` rate), and
+  `smsEnabled: false`. Each conversion is a row in
+  `sbc_notifications.relancecreditadjustments` (`kind: 'sms_to_email'`, the
+  pack `sessionIds`, country). Any future manual credit change goes there too.
+- **Campaign suggestion:** `GET /api/relance/campaigns/suggestion` returns
+  `{ period, from, to, count, affordable }` or `null`: unpaid filleuls not
+  already in a journey, in the last 30 days, else the busiest calendar month of
+  the past year. `null` when there is no email credit, a campaign is
+  running/scheduled/paused, or nobody qualifies (Rufus: "don't do anything").
+  Cached 10 min per parrain. The web app shows it as a card that opens the
+  wizard with that period.
 
 ### Web push (VAPID)
 

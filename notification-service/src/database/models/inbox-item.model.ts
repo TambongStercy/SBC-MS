@@ -13,6 +13,8 @@ export interface IInboxItem extends Document {
     url?: string;
     /** The push's tag on the phone, so the app can close it when this is cleared. */
     tag?: string;
+    /** wa.me link to the person it is about: the list shows a WhatsApp button. */
+    whatsapp?: string;
     readAt?: Date;
     createdAt: Date;
 }
@@ -25,6 +27,7 @@ const InboxItemSchema = new Schema<IInboxItem>(
         body: { type: String, required: true },
         url: String,
         tag: String,
+        whatsapp: String,
         readAt: Date,
     },
     { timestamps: { createdAt: true, updatedAt: false } },

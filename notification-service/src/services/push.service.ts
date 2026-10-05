@@ -27,7 +27,16 @@ export type PushMessage = {
      * Defaults to the kind's (push-categories).
      */
     cta?: string;
+    /**
+     * A wa.me link to the person the notification is about (a new filleul).
+     * The phone and the app's list show a WhatsApp button that opens it.
+     */
+    whatsapp?: string;
 };
+
+/** Only a wa.me chat link is accepted, so the button can never point elsewhere. */
+export const isWhatsAppLink = (v: unknown): v is string =>
+    typeof v === 'string' && v.length <= 1500 && /^https:\/\/wa\.me\/\d{8,15}(\?text=\S*)?$/.test(v);
 
 let configured: boolean | null = null;
 
@@ -102,6 +111,7 @@ async function recordInbox(userId: string, message: PushMessage, category: PushC
             body: message.body,
             tag,
             ...(message.url ? { url: message.url } : {}),
+            ...(message.whatsapp ? { whatsapp: message.whatsapp } : {}),
         });
     } catch (err: any) {
         log.warn(`Inbox record for ${userId} failed: ${err?.message ?? err}`);
