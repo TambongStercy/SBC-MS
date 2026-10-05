@@ -62,6 +62,7 @@ const MF_PAYIN_CURRENCY: Record<string, string> = {
     CF: 'XAF',  // Centrafrique — added 2026-07-08 after Rufus flagged MF supports it
     CD: 'USD',  // ⚠ requires real-rate conversion
     GN: 'GNF',  // ⚠ requires real-rate conversion
+    GH: 'GHS',  // ⚠ requires real-rate conversion — added 2026-09-23, MF now pays out to Ghana
 };
 
 /**
@@ -105,13 +106,14 @@ const WITHDRAW_MODES: Record<string, Record<string, string>> = {
         'WAVE_CI': 'wave-ci',
     },
     SN: {
-        'FREE_SEN': 'free-money-senegal',
+        // Live list (2026-09-23) has only orange-money-senegal and wave-senegal.
+        // 'free-money-senegal' and 'expresso-senegal' were guessed and do not
+        // exist, so Free and Expresso accounts now fail at lookup with a clear
+        // "not supported" message instead of being sent an invalid slug.
         'ORANGE_SEN': 'orange-money-senegal',
         'WAVE_SEN': 'wave-senegal',
         'ORANGE_SN': 'orange-money-senegal',
-        'FREE_SN': 'free-money-senegal',
         'WAVE_SN': 'wave-senegal',
-        'EXPRESSO_SN': 'expresso-senegal',
     },
     BF: {
         'MOOV_BFA': 'moov-burkina-faso',
@@ -165,13 +167,26 @@ const WITHDRAW_MODES: Record<string, Record<string, string>> = {
         'MOOV_GAB': 'moov-ga',
     },
     GH: {
-        'AIRTEL_GH': 'airtel-money-gh',
+        // Verified 2026-09-23 against GET /api/v1/withdraw/methods, which lists
+        // exactly: airtel-gh, mtn-gh, telecel-gh. The previous entries were
+        // guessed — 'airtel-money-gh' and 'vodafone-gh' do not exist — and were
+        // keyed on names we never store, so no Ghanaian payout could ever have
+        // resolved. Vodafone Ghana is now Telecel; accounts registered as
+        // VODAFONE_GHA pay out through telecel-gh.
+        'MTN_MOMO_GHA': 'mtn-gh',
+        'VODAFONE_GHA': 'telecel-gh',
+        'TELECEL_GHA': 'telecel-gh',
+        'AIRTEL_GHA': 'airtel-gh',
+        // Short-form aliases
         'MTN_GH': 'mtn-gh',
-        'VODAFONE_GH': 'vodafone-gh',
+        'VODAFONE_GH': 'telecel-gh',
+        'TELECEL_GH': 'telecel-gh',
+        'AIRTEL_GH': 'airtel-gh',
     },
     GN: {
+        // Orange is the only network MoneyFusion pays out to in Guinée
+        // (live list, 2026-09-23). 'mtn-gn' was guessed and does not exist.
         'ORANGE_GN': 'orange-gn',
-        'MTN_GN': 'mtn-gn',
     },
     NE: {
         // Verified 2026-08-30 against GET /api/v1/withdraw/methods, which lists
