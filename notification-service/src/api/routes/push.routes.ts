@@ -7,7 +7,7 @@ import { userServiceClient } from '../../services/clients/user.service.client';
 import { endOfQuietHours, inQuietHours, isPushCategory, PUSH_CATEGORIES, QUIET_FROM_H, QUIET_UNTIL_H } from '../../services/push-categories';
 import logger from '../../utils/logger';
 import config from '../../config';
-import { PushMessage, pushEnabled, removeSubscription, saveSubscription, sendPushToUser, usersWithDevices } from '../../services/push.service';
+import { PushMessage, isWhatsAppLink, pushEnabled, removeSubscription, saveSubscription, sendPushToUser, usersWithDevices } from '../../services/push.service';
 
 const log = logger.getLogger('PushRoutes');
 
@@ -75,12 +75,13 @@ const messageFrom = (b: any): PushMessage | null => {
         ...(typeof b.icon === 'string' && /^(https:\/\/|\/)/.test(b.icon) ? { icon: b.icon.slice(0, 500) } : {}),
         ...(b.renotify === true ? { renotify: true } : {}),
         ...(typeof b.cta === 'string' && b.cta.trim() ? { cta: b.cta.trim().slice(0, 30) } : {}),
+        ...(isWhatsAppLink(b.whatsapp) ? { whatsapp: b.whatsapp } : {}),
     };
 };
 
 /**
  * Other services send push through here: { userId | userIds, category, title,
- * body, url?, tag?, icon?, renotify? }. Best-effort for the caller — a 2xx
+ * body, url?, tag?, icon?, renotify?, cta?, whatsapp? }. Best-effort for the caller — a 2xx
  * with counts, never a failure because one user has no device.
  */
 router.post('/internal/send', authenticateServiceRequest, async (req, res) => {
