@@ -7,7 +7,7 @@ import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { emailRelanceService } from '../../services/email.relance.service';
-import { campaignBudget, matchCampaignReferrals, newFilleulsLast30Days } from '../../services/relance-campaign-targets.service';
+import { campaignBudget, matchCampaignReferrals, newFilleulsLast30Days, suggestCampaign, type CampaignSuggestion } from '../../services/relance-campaign-targets.service';
 import { peopleById } from '../../services/relance-admin.service';
 import logger from '../../utils/logger';
 
@@ -35,6 +35,8 @@ async function ownerFor(req: Request, campaignId: string, scope: CampaignScope):
     const campaign = await CampaignModel.findById(campaignId).select('userId').lean();
     return campaign ? String(campaign.userId) : null;
 }
+
+const suggestionCache = new Map<string, { value: CampaignSuggestion | null; at: number }>();
 
 /**
  * Campaign Controller
@@ -648,6 +650,34 @@ class RelanceCampaignController {
      * Get default relance statistics (targets without campaignId)
      * GET /api/relance/default/stats
      */
+    /**
+     * GET /api/relance/campaigns/suggestion
+     * For a parrain with email credits and no campaign running: the range of
+     * unpaid filleuls worth a campaign (last 30 days, else their busiest month),
+     * or null. Cached 10 minutes per parrain: it reads all their referrals.
+     */
+    async getCampaignSuggestion(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = (req as any).user?.userId;
+            if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+            const hit = suggestionCache.get(userId);
+            if (hit && hit.at > Date.now() - 10 * 60 * 1000) { res.status(200).json({ success: true, data: hit.value }); return; }
+
+            const config = await RelanceConfigModel.findOne({ userId }).select('emailBalance').lean();
+            const running = await CampaignModel.exists({
+                userId, status: { $in: [CampaignStatus.ACTIVE, CampaignStatus.SCHEDULED, CampaignStatus.PAUSED] },
+            });
+            const value = !config || (config.emailBalance ?? 0) <= 0 || running
+                ? null
+                : await suggestCampaign(String(userId), config.emailBalance ?? 0);
+            suggestionCache.set(userId, { value, at: Date.now() });
+            res.status(200).json({ success: true, data: value });
+        } catch (error: any) {
+            log.error('Error building campaign suggestion:', error);
+            res.status(500).json({ success: false, message: 'Failed to build suggestion' });
+        }
+    }
+
     async getDefaultRelanceStats(req: Request, res: Response): Promise<void> {
         try {
             const userId = (req as any).user?.userId;
