@@ -1,3 +1,4 @@
+import { pushCommission } from './push-notify';
 import { Types } from 'mongoose';
 import { UserRepository } from '../database/repositories/user.repository';
 import { ReferralRepository } from '../database/repositories/referral.repository';
@@ -702,7 +703,7 @@ export class ActivationBalanceService {
                     sourceIsUpgrade: isUpgrade,
                     sponsoredActivation: true
                 }
-            }));
+            }).then(r => { pushCommission({ referrerId: referrers.level1, amount: l1Amount, currency, level: 1, filleulName: beneficiaryName, plan: isUpgrade ? 'le passage à CIBLE' : `l'abonnement ${subscriptionType}`, sourceRef: String(sourcePaymentSessionId) }); return r; }));
         }
 
         if (referrers.level2) {
@@ -721,7 +722,7 @@ export class ActivationBalanceService {
                     sourceIsUpgrade: isUpgrade,
                     sponsoredActivation: true
                 }
-            }));
+            }).then(r => { pushCommission({ referrerId: referrers.level2, amount: l2Amount, currency, level: 2, filleulName: beneficiaryName, plan: isUpgrade ? 'le passage à CIBLE' : `l'abonnement ${subscriptionType}`, sourceRef: String(sourcePaymentSessionId) }); return r; }));
         }
 
         if (referrers.level3) {
@@ -740,7 +741,7 @@ export class ActivationBalanceService {
                     sourceIsUpgrade: isUpgrade,
                     sponsoredActivation: true
                 }
-            }));
+            }).then(r => { pushCommission({ referrerId: referrers.level3, amount: l3Amount, currency, level: 3, filleulName: beneficiaryName, plan: isUpgrade ? 'le passage à CIBLE' : `l'abonnement ${subscriptionType}`, sourceRef: String(sourcePaymentSessionId) }); return r; }));
         }
 
         await Promise.allSettled(payoutPromises);

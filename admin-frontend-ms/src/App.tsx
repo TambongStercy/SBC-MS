@@ -14,6 +14,7 @@ import TransactionManagementPage from './pages/TransactionManagementPage';
 import AccountTransactionsManagementPage from './pages/AccountTransactionsManagementPage';
 import SettingsManagementPage from './pages/SettingsManagementPage';
 import NotificationsPage from './pages/NotificationsPage';
+import PushAnnouncementsPage from './pages/PushAnnouncementsPage';
 import Partners from './pages/Partners';
 import FixFeexpayPaymentsPage from './pages/FixFeexpayPaymentsPage';
 import FixMoneyFusionWithdrawalsPage from './pages/FixMoneyFusionWithdrawalsPage';
@@ -25,7 +26,6 @@ import RelanceDashboardPage from './pages/RelanceDashboardPage';
 import RelanceMessagesPage from './pages/RelanceMessagesPage';
 import RelanceCampaignsPage from './pages/RelanceCampaignsPage';
 import RelanceSmsTemplatesPage from './pages/RelanceSmsTemplatesPage';
-import RelanceSmsLinksPage from './pages/RelanceSmsLinksPage';
 import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
 import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
 import UserFinancialAnalyticsPage from './pages/UserFinancialAnalyticsPage';
@@ -101,6 +101,7 @@ function App() {
             <Route path="/logout" element={<Deconnexion />} />
             <Route path="/userpage/:userId" element={<UsersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/notifications/push" element={<PushAnnouncementsPage />} />
             <Route path="/fix-feexpay-payments" element={<FixFeexpayPaymentsPage />} />
             <Route path="/fix-moneyfusion-withdrawals" element={<FixMoneyFusionWithdrawalsPage />} />
             <Route path="/fix-cinetpay-withdrawals" element={<FixCinetPayWithdrawalsPage />} />
@@ -110,7 +111,6 @@ function App() {
             <Route path="/relance/messages" element={<RelanceMessagesPage />} />
             <Route path="/relance/campaigns" element={<RelanceCampaignsPage />} />
             <Route path="/relance/sms-templates" element={<RelanceSmsTemplatesPage />} />
-            <Route path="/relance/sms-links" element={<RelanceSmsLinksPage />} />
             <Route path="/withdrawals/approvals" element={<WithdrawalApprovalPage />} />
             <Route path="/withdrawals/history" element={<WithdrawalHistoryPage />} />
             <Route path="/user-analytics" element={<UserFinancialAnalyticsPage />} />

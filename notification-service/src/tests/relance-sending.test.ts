@@ -37,14 +37,24 @@ jest.mock('../services/clients/user.service.client', () => ({
     },
 }));
 
+const pushCreditsLow = jest.fn();
+const pushCreditsExhausted = jest.fn();
+const pushFilleulPaid = jest.fn();
+jest.mock('../services/relance-alerts.service', () => ({
+    pushCreditsLow: (...a: unknown[]) => pushCreditsLow(...a),
+    pushCreditsExhausted: (...a: unknown[]) => pushCreditsExhausted(...a),
+    pushFilleulPaid: (...a: unknown[]) => pushFilleulPaid(...a),
+}));
+
 process.env.RELANCE_EMAIL_DELAY_MS = '0';
 
 import mongoose from 'mongoose';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
 import RelanceMessageModel from '../database/models/relance-message.model';
+import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import CampaignModel, { CampaignStatus, CampaignType } from '../database/models/relance-campaign.model';
-import { processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit } from '../jobs/relance-sender.job';
+import { processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit, runMessageSendingJob } from '../jobs/relance-sender.job';
 import { closeRelanceBacklog } from '../scripts/close-relance-backlog';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_sending_test';
@@ -106,6 +116,7 @@ beforeEach(async () => {
     })));
     sendRelanceEmail.mockReset().mockResolvedValue({ success: true, messageId: '<m@x>' });
     sendSms.mockReset().mockResolvedValue(true);
+    [pushCreditsLow, pushCreditsExhausted, pushFilleulPaid].forEach(m => m.mockReset());
     getUserDetails.mockReset().mockImplementation(async (id: string) => ({ _id: id, name: 'Filleul', email: `${id}@example.com`, phoneNumber: '237600000000' }));
     getActiveSubscriptionTypes.mockReset().mockResolvedValue([]);
 });
@@ -292,6 +303,100 @@ describe('campaigns', () => {
         await run();
 
         expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+    });
+
+    // Preprod 2026-10-01: a March campaign whose filleuls were gone stayed
+    // "active" for months, because completion was only checked on runs where
+    // some target, anywhere, was due.
+    it('closes an emptied campaign even when nobody is due a message', async () => {
+        const empty = await makeCampaign(CampaignStatus.ACTIVE);
+        const running = await makeCampaign(CampaignStatus.ACTIVE);
+        await makeTarget({ campaignId: running._id, currentDay: 2, nextMessageDue: new Date(Date.now() + DAY) });
+
+        await runMessageSendingJob();
+
+        expect((await CampaignModel.findById(empty._id))!.status).toBe(CampaignStatus.COMPLETED);
+        expect((await CampaignModel.findById(running._id))!.status).toBe(CampaignStatus.ACTIVE);
+        expect(sendRelanceEmail).not.toHaveBeenCalled();
+    });
+});
+
+describe('telling the parrain (push)', () => {
+    it('warns when the last credit goes — on a first-day email too, which used to warn nobody', async () => {
+        await makeConfig({ emailBalance: 1 });
+        await makeTarget({ currentDay: 0 });
+
+        await run();
+
+        expect(pushCreditsExhausted).toHaveBeenCalledWith(referrerId.toString());
+    });
+
+    it('warns at the low mark on a regular day', async () => {
+        await makeConfig({ emailBalance: 51 });
+        await makeTarget({ currentDay: 2 });
+
+        await run();
+
+        expect(pushCreditsLow).toHaveBeenCalledWith(referrerId.toString(), 50);
+        expect(pushCreditsExhausted).not.toHaveBeenCalled();
+    });
+
+    it('says nothing while credits are comfortable', async () => {
+        await makeConfig({ emailBalance: 500 });
+        await makeTarget({ currentDay: 2 });
+        await run();
+        expect(pushCreditsLow).not.toHaveBeenCalled();
+        expect(pushCreditsExhausted).not.toHaveBeenCalled();
+    });
+
+    it('tells the parrain when a relanced filleul pays', async () => {
+        await makeConfig();
+        const t = await makeTarget({ currentDay: 3 });
+        getActiveSubscriptionTypes.mockResolvedValue(['CLASSIQUE']);
+
+        await run();
+
+        expect(pushFilleulPaid).toHaveBeenCalledWith(referrerId.toString(), t.referralUserId.toString());
+    });
+});
+
+describe('SMS for campaigns (2026-10-03)', () => {
+    const smsOn = { smsEnabled: true, smsBalance: 10 };
+    beforeEach(async () => {
+        await RelanceSmsTemplateModel.deleteMany({});
+        await RelanceSmsTemplateModel.insertMany([
+            { type: 'manual', dayNumber: 2, templateText: 'Campagne J2 {{link}}', active: true },
+            { type: 'auto', dayNumber: 2, templateText: 'Nouveaux J2 {{link}}', active: true },
+        ]);
+    });
+    const campaignWith = (channel: string) => CampaignModel.create({
+        userId: referrerId, name: 'Anciens', type: CampaignType.FILTERED, status: CampaignStatus.ACTIVE, targetFilter: {}, channel,
+    });
+
+    it('sends no SMS for a campaign created for email only — the channel used to be ignored', async () => {
+        await makeConfig(smsOn);
+        const c = await campaignWith('email');
+        await makeTarget({ campaignId: c._id, currentDay: 2 });
+        await run();
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+        expect(sendSms).not.toHaveBeenCalled();
+    });
+
+    it('sends the campaign SMS when the campaign was created with SMS', async () => {
+        await makeConfig(smsOn);
+        const c = await campaignWith('both');
+        await makeTarget({ campaignId: c._id, currentDay: 2 });
+        await run();
+        expect(sendSms).toHaveBeenCalledTimes(1);
+        expect(sendSms.mock.calls[0][0].body).toMatch(/^Campagne J2/);
+    });
+
+    it('leaves relance des nouveaux alone: SMS on means SMS sent', async () => {
+        await makeConfig(smsOn);
+        await makeTarget({ currentDay: 2 });
+        await run();
+        expect(sendSms).toHaveBeenCalledTimes(1);
+        expect(sendSms.mock.calls[0][0].body).toMatch(/^Nouveaux J2/);
     });
 });
 

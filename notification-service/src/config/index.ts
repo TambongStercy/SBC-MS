@@ -69,6 +69,20 @@ interface IConfig {
             maxRetries: number;
             retryDelay: number;
         };
+        /** Where bounce reports land (IMAP). Defaults to the sending account. */
+        bounceMailbox: {
+            enabled: boolean;
+            host: string;
+            port: number;
+            user: string;
+            password: string;
+        };
+    };
+    /** Web push (VAPID). Empty keys = push off. */
+    push: {
+        publicKey: string;
+        privateKey: string;
+        subject: string;
     };
     sms: {
         twilioAccountSid: string;
@@ -168,7 +182,21 @@ const config: IConfig = {
             webhookSecret: process.env.SENDGRID_WEBHOOK_SECRET || '',
             maxRetries: parseInt(process.env.EMAIL_MAX_RETRIES || '3', 10),
             retryDelay: parseInt(process.env.EMAIL_RETRY_DELAY || '300000', 10), // 5 minutes
-        }
+        },
+        // Off until someone has checked the login works against the real mailbox.
+        bounceMailbox: {
+            enabled: process.env.BOUNCE_MAILBOX_ENABLED === 'true',
+            host: process.env.BOUNCE_IMAP_HOST || process.env.EMAIL_SERVICE || '',
+            port: parseInt(process.env.BOUNCE_IMAP_PORT || '993', 10),
+            user: process.env.BOUNCE_IMAP_USER || process.env.EMAIL_USER || '',
+            password: process.env.BOUNCE_IMAP_PASSWORD || process.env.EMAIL_PASSWORD || '',
+        },
+    },
+
+    push: {
+        publicKey: process.env.VAPID_PUBLIC_KEY || '',
+        privateKey: process.env.VAPID_PRIVATE_KEY || '',
+        subject: process.env.VAPID_SUBJECT || 'mailto:noreply@sniperbuisnesscenter.com',
     },
 
     sms: {

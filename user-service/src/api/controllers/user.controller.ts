@@ -1945,6 +1945,41 @@ export class UserController {
     }
 
     /**
+     * [Internal] Relance subset (with country) for one or more users.
+     * @route POST /api/users/internal/relance-details
+     * Body: { userIds: string[] }
+     */
+    async filterForAnnouncement(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds, filter } = req.body ?? {};
+            if (!Array.isArray(userIds) || typeof filter !== 'object' || filter === null) {
+                res.status(400).json({ success: false, message: 'userIds (array) and filter (object) are required.' });
+                return;
+            }
+            const matched = await this.userService.filterForAnnouncement(userIds.slice(0, 200000), filter);
+            res.status(200).json({ success: true, data: { userIds: matched } });
+        } catch (error: any) {
+            this.log.error(`Error filtering users for an announcement: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to filter users.' });
+        }
+    }
+
+    async getRelanceDetailsByIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds } = req.body;
+            if (!Array.isArray(userIds) || userIds.length === 0 || userIds.some(id => !isValidObjectId(id))) {
+                res.status(400).json({ success: false, message: 'A non-empty array of valid user IDs must be provided.' });
+                return;
+            }
+            const details = await this.userService.getRelanceDetailsByIds(userIds);
+            res.status(200).json({ success: true, data: details });
+        } catch (error: any) {
+            this.log.error(`Error getting relance user details by IDs: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to retrieve relance user details.' });
+        }
+    }
+
+    /**
      * [Internal] Get the SBCLOVE demographic subset for one or more users.
      * @route POST /api/users/internal/sbclove-details
      * Body: { userIds: string[] }

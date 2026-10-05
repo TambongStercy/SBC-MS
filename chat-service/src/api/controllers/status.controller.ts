@@ -312,8 +312,9 @@ class StatusController {
         try {
             const userId = req.user!.userId;
             const { id } = req.params;
+            const isAdmin = req.user!.role === 'admin';
 
-            const status = await statusService.deleteStatus(id, userId);
+            const status = await statusService.deleteStatus(id, userId, isAdmin);
 
             if (!status) {
                 res.status(404).json({

@@ -19,6 +19,13 @@ import { queueService } from './queue.service';
 import whatsappServiceFactory from './whatsapp-service-factory';
 
 // Create a component-specific logger
+import { sendPushToUser } from './push.service';
+import { isPushCategory, PushCategory } from './push-categories';
+
+/** When a sender does not say which kind of push it is. */
+const pushCategoryForType = (type: string): PushCategory =>
+    type === 'transaction' ? 'money' : type === 'referral' ? 'filleuls' : 'announcements';
+
 const log = logger.getLogger('NotificationService');
 
 // Interface for creating a notification
@@ -181,7 +188,8 @@ class NotificationService {
                     break;
 
                 case DeliveryChannel.PUSH:
-                    throw new Error('Push notifications not implemented yet');
+                    success = await this.sendPushNotification(notification);
+                    break;
 
                 default:
                     throw new Error(`Unknown delivery channel: ${notification.channel}`);
@@ -685,21 +693,39 @@ class NotificationService {
     }
 
     /**
+     * A PUSH notification from another service (event-service sends tickets,
+     * cancellations, refunds, reminders and resales this way). The kind and the
+     * page to open come from data.relatedData.{pushCategory, url}; otherwise the
+     * kind follows the notification type. A user without a device, or who
+     * turned the kind off, is not a failure — there is just nothing to send.
+     */
+    private async sendPushNotification(notification: INotification): Promise<boolean> {
+        const related = (notification.data?.relatedData ?? {}) as Record<string, unknown>;
+        const category = isPushCategory(related.pushCategory) ? related.pushCategory : pushCategoryForType(notification.type);
+        const url = typeof related.url === 'string' && related.url.startsWith('/') ? related.url : undefined;
+        const tag = typeof related.pushTag === 'string' ? related.pushTag : undefined;
+        const cta = typeof related.pushCta === 'string' ? related.pushCta.slice(0, 30) : undefined;
+        await sendPushToUser(String(notification.userId), {
+            title: notification.data?.subject || 'SBC',
+            body: notification.data?.body ?? '',
+            ...(url ? { url } : {}),
+            ...(tag ? { tag } : {}),
+            ...(cta ? { cta } : {}),
+        }, { category });
+        return true;
+    }
+
+    /**
      * (Private) Triggers the actual sending of the notification based on its channel.
      *
      * Delegates to the same sendNotification the queue processor uses. This used
      * to be a placeholder that logged "not implemented" and then marked the
      * notification SENT — every internal email (advertising offers, approvals,
-     * day-opened) died here while reporting success. PUSH keeps the stub-mark
-     * behaviour: sendNotification throws for it, and internal callers use PUSH
-     * as an in-app record rather than a delivery.
+     * day-opened) died here while reporting success. PUSH used to be marked SENT
+     * without delivery too (no web push existed); it now goes to the user's devices.
      */
     private async triggerNotificationSending(notification: INotification): Promise<void> {
         log.info(`Triggering send for notification ${notification._id}, channel: ${notification.channel}`);
-        if (notification.channel === DeliveryChannel.PUSH) {
-            await notificationRepository.update(notification._id, { status: NotificationStatus.SENT, sentAt: new Date() });
-            return;
-        }
         // Marks sent/failed itself, and never throws upward past its own handler.
         await this.sendNotification(notification);
     }

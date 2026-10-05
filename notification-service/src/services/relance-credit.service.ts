@@ -53,7 +53,12 @@ export async function creditRelancePack(input: {
     try {
         const cfg = await RelanceConfigModel.findOneAndUpdate(
             { userId },
-            { $inc: { [balanceField]: pack.credits } },
+            // SMS packs are sold to Cameroonian parrains only; buying one is what
+            // switches SMS relance on. It used to need an admin to flip smsEnabled,
+            // so paid SMS credits sat unused.
+            pack.type === 'sms'
+                ? { $inc: { smsBalance: pack.credits }, $set: { smsEnabled: true } }
+                : { $inc: { emailBalance: pack.credits } },
             { upsert: true, new: true, setDefaultsOnInsert: true },
         );
         const balance = (cfg as any)?.[balanceField] ?? pack.credits;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import { motion } from 'framer-motion';
 import { Search, Plus, DollarSign, CheckCircle, AlertCircle } from 'lucide-react';
 import Header from '../components/common/Header';
@@ -66,6 +67,8 @@ function ManualPaymentRecoveryPage() {
     });
     
     const [isCreating, setIsCreating] = useState(false);
+    // Both actions grant a lifetime subscription and pay commissions: ask first.
+    const [confirmAction, setConfirmAction] = useState<'create' | 'recover' | null>(null);
     const [creationResult, setCreationResult] = useState<ManualPaymentIntentResponse | null>(null);
 
     // Debounce search input
@@ -461,7 +464,7 @@ function ManualPaymentRecoveryPage() {
                                     <div className="flex items-center justify-between">
                                         <span className="text-green-400 text-sm">✅ Cette intention peut être récupérée</span>
                                         <button
-                                            onClick={handleRecoverPaymentIntent}
+                                            onClick={() => setConfirmAction('recover')}
                                             disabled={isCreating}
                                             className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
                                         >
@@ -718,7 +721,7 @@ function ManualPaymentRecoveryPage() {
                         {/* Create Button */}
                         <div className="mt-8">
                             <button
-                                onClick={handleCreatePaymentIntent}
+                                onClick={() => setConfirmAction('create')}
                                 disabled={isCreating}
                                 className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center space-x-2 transition-colors duration-200"
                             >
@@ -824,6 +827,32 @@ function ManualPaymentRecoveryPage() {
                     </motion.div>
                 )}
             </main>
+            <ConfirmationModal
+                isOpen={confirmAction !== null}
+                variant="success"
+                title={confirmAction === 'recover' ? 'Récupérer ce paiement ?' : 'Créer ce paiement ?'}
+                message={
+                    <div className="space-y-1 text-sm">
+                        {confirmAction === 'create' && selectedUser && (
+                            <>
+                                <p><span className="text-gray-400">Membre :</span> {selectedUser.name}</p>
+                                <p><span className="text-gray-400">Abonnement :</span> {formData.subscriptionType}</p>
+                            </>
+                        )}
+                        {confirmAction === 'recover' && foundPaymentIntent && (
+                            <p><span className="text-gray-400">Paiement :</span> {foundPaymentIntent.sessionId}</p>
+                        )}
+                        <p className="pt-2 text-gray-400">Le membre reçoit un abonnement à vie et les commissions sont versées aux parrains. Fais-le seulement si le paiement a bien été reçu.</p>
+                    </div>
+                }
+                confirmText={confirmAction === 'recover' ? 'Récupérer' : 'Créer le paiement'}
+                onConfirm={async () => {
+                    if (confirmAction === 'recover') await handleRecoverPaymentIntent();
+                    else if (confirmAction === 'create') await handleCreatePaymentIntent();
+                    setConfirmAction(null);
+                }}
+                onCancel={() => setConfirmAction(null)}
+            />
         </div>
     );
 }

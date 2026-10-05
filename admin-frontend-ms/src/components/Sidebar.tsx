@@ -12,6 +12,7 @@ import {
   Settings,
   Wallet,
   Send,
+  Bell,
   Hammer,
   HardDrive,
   LifeBuoy,
@@ -70,18 +71,6 @@ const SIDEBAR_GROUPS = [
         icon: Hammer,
         color: "#f59e0b",
         path: "/fix-provider-issues",
-      },
-      {
-        name: "Fix MoneyFusion Withdrawals",
-        icon: Hammer,
-        color: "#3b82f6",
-        path: "/fix-moneyfusion-withdrawals",
-      },
-      {
-        name: "Fix CinetPay Withdrawals",
-        icon: Hammer,
-        color: "#a855f7",
-        path: "/fix-cinetpay-withdrawals",
       },
       {
         name: "Récupération de Paiement",
@@ -294,6 +283,12 @@ const SIDEBAR_GROUPS = [
         icon: Send,
         color: "#10b981",
         path: "/notifications",
+      },
+      {
+        name: "Push Announcements",
+        icon: Bell,
+        color: "#f59e0b",
+        path: "/notifications/push",
       },
     ]
   },

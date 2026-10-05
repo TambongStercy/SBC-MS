@@ -19,6 +19,17 @@
  * Needs MongoDB at TEST_MONGODB_URI (default mongodb://127.0.0.1:27017). Uses
  * its own database and drops it.
  */
+// The outside world for pack purchases: who the buyer is, and payment-service.
+const getRelanceDetails = jest.fn();
+jest.mock('../services/clients/user.service.client', () => ({
+    userServiceClient: { getRelanceDetails: (...a: unknown[]) => getRelanceDetails(...a) },
+}));
+const axiosPost = jest.fn();
+jest.mock('axios', () => {
+    const actual = jest.requireActual('axios');
+    return { ...actual, __esModule: true, default: { ...actual.default, post: (...a: unknown[]) => axiosPost(...a) } };
+});
+
 import express from 'express';
 import http from 'http';
 import { AddressInfo } from 'net';
@@ -28,6 +39,8 @@ import config from '../config';
 import relanceRoutes from '../api/routes/relance.routes';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelancePackCreditModel from '../database/models/relance-pack-credit.model';
+import RelanceMessageModel from '../database/models/relance-message.model';
+import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import { creditRelancePack } from '../services/relance-credit.service';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_credit_test';
@@ -128,6 +141,118 @@ describe('crediting a paid pack', () => {
     it('refuses a missing or malformed userId', async () => {
         expect((await creditRelancePack({ sessionId: 'Y', packId: 'email_3k' })).outcome).toBe('rejected');
         expect((await creditRelancePack({ sessionId: 'Z', userId: 'not-an-id', packId: 'email_3k' })).outcome).toBe('rejected');
+    });
+});
+
+describe('GET /api/relance/default-messages — what goes out under the parrain name', () => {
+    beforeEach(async () => {
+        await RelanceMessageModel.deleteMany({});
+        await RelanceMessageModel.create([
+            { dayNumber: 2, messageTemplate: { fr: 'Jour deux, {{name}}', en: 'Day two' }, active: true },
+            { dayNumber: 1, subject: 'Bienvenue {{name}}', messageTemplate: { fr: 'Bonjour {{name}}', en: 'Hello' }, active: true },
+            { dayNumber: 3, messageTemplate: { fr: 'Désactivé', en: 'Off' }, active: false },
+        ]);
+    });
+
+    it('lists the active messages in day order, in French, with the subject the email will carry', async () => {
+        const r = await call('GET', '/api/relance/default-messages', { auth: tokenFor('user') });
+        expect(r.status).toBe(200);
+        expect(r.json.data).toEqual([
+            { dayNumber: 1, subject: 'Bienvenue {{name}}', text: 'Bonjour {{name}}' },
+            { dayNumber: 2, subject: 'Jour 2: Découvrez les opportunités SBC', text: 'Jour deux, {{name}}' },
+        ]);
+    });
+
+    it('needs a signed-in user', async () => {
+        expect((await call('GET', '/api/relance/default-messages')).status).toBe(401);
+    });
+});
+
+describe('SMS controls for the parrain (2026-10-03)', () => {
+    const me = new mongoose.Types.ObjectId().toString();
+    beforeEach(() => getRelanceDetails.mockReset());
+
+    it('lets a Cameroonian parrain switch SMS relance on', async () => {
+        getRelanceDetails.mockResolvedValue({ _id: me, country: 'CM' });
+        const r = await call('PUT', '/api/relance/settings', { auth: tokenFor('user', me), body: { smsEnabled: true } });
+        expect(r.status).toBe(200);
+        expect(((await RelanceConfigModel.findOne({ userId: me }).lean()) as any).smsEnabled).toBe(true);
+    });
+
+    it('refuses to switch it on outside Cameroon', async () => {
+        getRelanceDetails.mockResolvedValue({ _id: me, country: 'SN' });
+        const r = await call('PUT', '/api/relance/settings', { auth: tokenFor('user', me), body: { smsEnabled: true } });
+        expect(r.status).toBe(403);
+        expect(r.json.message).toMatch(/Cameroun/);
+    });
+
+    it('always lets anyone switch it off, without asking where they are', async () => {
+        const r = await call('PUT', '/api/relance/settings', { auth: tokenFor('user', me), body: { smsEnabled: false } });
+        expect(r.status).toBe(200);
+        expect(getRelanceDetails).not.toHaveBeenCalled();
+    });
+
+    it('lists the SMS texts, active ones, by product and day', async () => {
+        await RelanceSmsTemplateModel.deleteMany({});
+        await RelanceSmsTemplateModel.insertMany([
+            { type: 'manual', dayNumber: 1, templateText: 'Campagne J1 {{link}}', active: true },
+            { type: 'auto', dayNumber: 1, templateText: 'Nouveaux J1 {{link}}', active: true },
+            { type: 'auto', dayNumber: 0, templateText: 'Nouveaux J0 {{link}}', active: true },
+            { type: 'auto', dayNumber: 2, templateText: 'Off', active: false },
+        ]);
+        const r = await call('GET', '/api/relance/sms-messages', { auth: tokenFor('user') });
+        expect(r.json.data).toEqual([
+            { type: 'auto', dayNumber: 0, text: 'Nouveaux J0 {{link}}' },
+            { type: 'auto', dayNumber: 1, text: 'Nouveaux J1 {{link}}' },
+            { type: 'manual', dayNumber: 1, text: 'Campagne J1 {{link}}' },
+        ]);
+    });
+});
+
+describe('SMS relance — Cameroon only (Rufus, 2026-10-01)', () => {
+    beforeEach(() => {
+        getRelanceDetails.mockReset();
+        axiosPost.mockReset().mockResolvedValue({ data: { data: { sessionId: 'sess_1' } } });
+    });
+
+    it('switches SMS on when an SMS pack is credited — it used to wait for an admin', async () => {
+        const userId = new mongoose.Types.ObjectId().toString();
+        await creditRelancePack({ sessionId: 'SMS1', userId, packId: 'sms_250' });
+        expect(((await RelanceConfigModel.findOne({ userId }).lean()) as any).smsEnabled).toBe(true);
+    });
+
+    it('leaves SMS as it was when an email pack is credited', async () => {
+        const userId = new mongoose.Types.ObjectId().toString();
+        await creditRelancePack({ sessionId: 'EM1', userId, packId: 'email_3k' });
+        expect(((await RelanceConfigModel.findOne({ userId }).lean()) as any).smsEnabled).toBe(false);
+    });
+
+    it('refuses to sell an SMS pack outside Cameroon, before any payment is created', async () => {
+        getRelanceDetails.mockResolvedValue({ _id: 'x', country: 'BJ' });
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'sms_250' } });
+        expect(r.status).toBe(403);
+        expect(r.json.message).toMatch(/Cameroun/);
+        expect(axiosPost).not.toHaveBeenCalled();
+    });
+
+    it.each(['CM', 'cm', 'Cameroun'])('sells an SMS pack to a parrain whose country is %s', async (country) => {
+        getRelanceDetails.mockResolvedValue({ _id: 'x', country });
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'sms_250' } });
+        expect(r.status).toBe(200);
+        expect(axiosPost).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses rather than guesses when the buyer country cannot be checked', async () => {
+        getRelanceDetails.mockResolvedValue(null);
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'sms_250' } });
+        expect(r.status).toBe(503);
+        expect(axiosPost).not.toHaveBeenCalled();
+    });
+
+    it('sells email packs everywhere, without asking who the buyer is', async () => {
+        const r = await call('POST', '/api/relance/packs/purchase', { auth: tokenFor('user'), body: { packId: 'email_3k' } });
+        expect(r.status).toBe(200);
+        expect(getRelanceDetails).not.toHaveBeenCalled();
     });
 });
 

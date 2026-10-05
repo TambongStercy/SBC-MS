@@ -61,20 +61,20 @@ export default function EventListingsPage() {
             <Header title="SBC Event — Marketplace revente" />
             <div className="p-6 space-y-4">
                 <div className="flex items-center gap-3">
-                    <select value={status} onChange={(e) => setStatus(e.target.value as ResaleListingStatus | '')} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as ResaleListingStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
                         <option value="">Tous les statuts</option>
                         <option value="ACTIVE">En vente</option>
                         <option value="SOLD">Vendues</option>
                         <option value="CANCELLED">Annulées</option>
                         <option value="SUSPENDED">Suspendues</option>
                     </select>
-                    <button onClick={load} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">Rafraîchir</button>
+                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-white rounded-xl border border-gray-200">
+                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50">
+                            <thead className="bg-gray-900/50 text-gray-300">
                                 <tr>
                                     <th className="px-4 py-2 text-left">Annonce</th>
                                     <th className="px-4 py-2 text-left">Statut</th>
@@ -86,10 +86,10 @@ export default function EventListingsPage() {
                             </thead>
                             <tbody>
                                 {items.length === 0 && (
-                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Aucune annonce.</td></tr>
+                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Aucune annonce.</td></tr>
                                 )}
                                 {items.map((l) => (
-                                    <tr key={l._id} className="border-t border-gray-100">
+                                    <tr key={l._id} className="border-t border-gray-700">
                                         <td className="px-4 py-2 text-xs font-mono">{l._id.slice(-8)}</td>
                                         <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[l.status]}`}>{l.status}</span></td>
                                         <td className="px-4 py-2 text-right text-sm">{l.originalPrice.toLocaleString('fr-FR')}</td>

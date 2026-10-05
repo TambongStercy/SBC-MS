@@ -1,3 +1,4 @@
+import { pushCommission } from './push-notify';
 import { UserRepository } from '../database/repositories/user.repository';
 import { SubscriptionRepository, SubscriptionPaginationResponse } from '../database/repositories/subscription.repository';
 import { Types } from 'mongoose';
@@ -768,7 +769,7 @@ export class SubscriptionService {
                         sourcePlanType: planType,
                         sourceIsUpgrade: isUpgrade
                     }
-                }));
+                }).then(r => { pushCommission({ referrerId: referrers.level1, amount: l1Amount, currency, level: 1, filleulName: buyerUser?.name, plan: isUpgrade ? 'le passage à CIBLE' : `l'abonnement ${planType}`, sourceRef: String(sourcePaymentSessionId ?? buyerUserId) }); return r; }));
             }
             // Level 2 - Referral of referral (via L1 referrer)
             if (referrers.level2) {
@@ -788,7 +789,7 @@ export class SubscriptionService {
                         sourcePlanType: planType,
                         sourceIsUpgrade: isUpgrade
                     }
-                }));
+                }).then(r => { pushCommission({ referrerId: referrers.level2, amount: l2Amount, currency, level: 2, filleulName: buyerUser?.name, plan: isUpgrade ? 'le passage à CIBLE' : `l'abonnement ${planType}`, sourceRef: String(sourcePaymentSessionId ?? buyerUserId) }); return r; }));
             }
             // Level 3 - Referral of referral of referral (via L2 referrer)
             if (referrers.level3) {
@@ -808,7 +809,7 @@ export class SubscriptionService {
                         sourcePlanType: planType,
                         sourceIsUpgrade: isUpgrade
                     }
-                }));
+                }).then(r => { pushCommission({ referrerId: referrers.level3, amount: l3Amount, currency, level: 3, filleulName: buyerUser?.name, plan: isUpgrade ? 'le passage à CIBLE' : `l'abonnement ${planType}`, sourceRef: String(sourcePaymentSessionId ?? buyerUserId) }); return r; }));
             }
 
             // Calculate remaining commission for partners

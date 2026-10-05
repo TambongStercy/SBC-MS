@@ -1,3 +1,4 @@
+import { pushNewMessage } from './chat-push.service';
 import { Types } from 'mongoose';
 import { messageRepository } from '../database/repositories/message.repository';
 import { conversationRepository } from '../database/repositories/conversation.repository';
@@ -221,6 +222,17 @@ class MessageService {
         await conversationService.incrementMessageCount(data.conversationId, data.senderId);
 
         log.debug(`Message created in conversation ${data.conversationId} by ${data.senderId}`);
+
+        // Every send path (REST, socket, forward) comes through here, so the push does too.
+        pushNewMessage({
+            conversationId: data.conversationId,
+            conversationType: conversation.type,
+            senderId: data.senderId,
+            recipients: otherParticipants,
+            messageType: data.type ?? MessageType.TEXT,
+            content: data.content,
+            documentName: data.documentName,
+        });
 
         return message;
     }

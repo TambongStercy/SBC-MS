@@ -31,6 +31,7 @@ router.get('/leaderboard-bonus', adminController.listLeaderboardBonuses as any);
 router.get('/users', adminController.listUsers as any); // GET /api/admin/users
 router.get('/users/unpaid-initial', adminController.exportUnpaidInitialUsers as any); // Existing route
 router.get('/users/:userId', adminController.getUserDetails as any); // GET /api/admin/users/:userId
+router.get('/users/:userId/referrals', adminController.getUserReferrals as any); // a member's filleuls, for the admin member page
 router.put('/users/:userId', adminController.updateUser as any); // PUT /api/admin/users/:userId
 router.patch('/users/:userId/block', adminController.blockUser as any); // PATCH /api/admin/users/:userId/block
 router.patch('/users/:userId/unblock', adminController.unblockUser as any); // PATCH /api/admin/users/:userId/unblock

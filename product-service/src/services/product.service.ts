@@ -3,6 +3,7 @@ import { productRepository, ProductSearchFilters, AdminProductSearchFilters } fr
 import { ratingRepository } from '../database/repositories/rating.repository';
 import { IProduct, ProductStatus, IProductImage } from '../database/models/product.model';
 import { IRating } from '../database/models/rating.model';
+import FlashSaleModel, { FlashSaleStatus } from '../database/models/flashsale.model';
 import { CustomError } from '../utils/custom-error';
 import { settingsServiceClient } from '../services/clients/settings.service.client';
 import { userServiceClient, UserDetails } from '../services/clients/user.service.client';
@@ -335,6 +336,26 @@ export class ProductService {
      * @param productId Product ID
      * @returns Restored product with whatsappLink
      */
+    /**
+     * Takes a product offline on an admin's decision (soft delete, so it can be
+     * restored). Its running or upcoming flash sales are cancelled with it, or
+     * they would keep advertising a product that no longer exists. Until this
+     * existed an admin could not remove anyone else's product: the member delete
+     * route checks ownership.
+     */
+    async adminRemoveProduct(productId: string): Promise<{ product: ProductWithWhatsappLink; flashSalesCancelled: number } | null> {
+        // findById skips soft-deleted products, so an already removed one answers null.
+        if (!(await productRepository.findById(productId))) return null;
+        const removed = await productRepository.softDelete(productId);
+        if (!removed) return null;
+        const { modifiedCount } = await FlashSaleModel.updateMany(
+            { productId: new Types.ObjectId(productId), status: { $in: [FlashSaleStatus.PENDING_PAYMENT, FlashSaleStatus.SCHEDULED, FlashSaleStatus.ACTIVE] } },
+            { $set: { status: FlashSaleStatus.CANCELLED } },
+        );
+        log.info(`Admin removed product ${productId}; ${modifiedCount} flash sale(s) cancelled.`);
+        return { product: await this.augmentProductWithWhatsappLink(removed), flashSalesCancelled: modifiedCount };
+    }
+
     async restoreProduct(productId: string | Types.ObjectId): Promise<ProductWithWhatsappLink | null> {
         try {
             const restoredProductDoc = await productRepository.restore(productId);

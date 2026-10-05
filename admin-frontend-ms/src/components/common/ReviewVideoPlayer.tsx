@@ -88,7 +88,7 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                 onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                 onEnded={() => setPlaying(false)}
                 onError={() => { void diagnose(); }}
-                className="w-full cursor-pointer bg-black"
+                className="block w-full max-h-[50vh] object-contain cursor-pointer bg-black"
             />
 
             <div className="flex items-center gap-3 border-t border-gray-700 bg-gray-900 px-3 py-2">

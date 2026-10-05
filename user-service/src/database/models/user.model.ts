@@ -7,6 +7,7 @@ export enum UserRole {
     ADMIN = 'admin', // Super admin with full access
     WITHDRAWAL_ADMIN = 'withdrawal_admin', // Sub-admin for managing withdrawals only
     TESTER = 'tester', // Tester role for testing features
+    MODERATOR = 'moderator', // Reviews the Ads video-proof queue only; no money pages
 }
 
 // Define User Sex options

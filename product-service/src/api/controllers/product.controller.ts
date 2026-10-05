@@ -655,6 +655,23 @@ export class ProductController {
     }
 
     /**
+     * [Admin] Take any member's product offline (soft delete; restorable)
+     * @route DELETE /api/products/admin/:productId
+     */
+    async adminRemoveProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { productId } = req.params;
+            if (!Types.ObjectId.isValid(productId)) throw new CustomError('Invalid product ID', 400);
+            const result = await productService.adminRemoveProduct(productId);
+            if (!result) throw new CustomError('Product not found or already removed', 404);
+            log.info(`Admin ${req.user?.id} removed product ${productId}`);
+            res.status(200).json({ success: true, message: 'Product removed', data: result.product, flashSalesCancelled: result.flashSalesCancelled });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
      * [Admin] Restore a soft-deleted product
      * @route PATCH /api/products/admin/:productId/restore
      */

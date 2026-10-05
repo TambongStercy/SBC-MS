@@ -65,9 +65,9 @@ export default function EventTicketsPage() {
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
                         placeholder="N° de billet, nom ou téléphone"
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-72"
+                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-72 bg-gray-700 text-white"
                     />
-                    <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus | '')} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
                         <option value="">Tous les statuts</option>
                         <option value="PENDING">En attente</option>
                         <option value="ISSUED">Émis</option>
@@ -76,18 +76,18 @@ export default function EventTicketsPage() {
                         <option value="REFUNDED">Remboursés</option>
                         <option value="EXPIRED">Expirés</option>
                     </select>
-                    <select value={eventId} onChange={(e) => setEventId(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm max-w-xs">
+                    <select value={eventId} onChange={(e) => setEventId(e.target.value)} className="border border-gray-600 rounded-lg px-3 py-2 text-sm max-w-xs bg-gray-700 text-white hover:bg-gray-600">
                         <option value="">Tous les événements</option>
                         {events.map((ev) => <option key={ev._id} value={ev._id}>{ev.title}</option>)}
                     </select>
-                    <button onClick={load} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">Rafraîchir</button>
+                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
                     <>
-                        <div className="overflow-x-auto bg-white rounded-xl border border-gray-200">
+                        <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
                             <table className="min-w-full text-sm">
-                                <thead className="bg-gray-50">
+                                <thead className="bg-gray-900/50 text-gray-300">
                                     <tr>
                                         <th className="px-4 py-2 text-left">N° de billet</th>
                                         <th className="px-4 py-2 text-left">Participant</th>
@@ -99,20 +99,20 @@ export default function EventTicketsPage() {
                                 </thead>
                                 <tbody>
                                     {items.length === 0 && (
-                                        <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Aucun billet.</td></tr>
+                                        <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Aucun billet.</td></tr>
                                     )}
                                     {items.map((t) => (
-                                        <tr key={t._id} className="border-t border-gray-100">
+                                        <tr key={t._id} className="border-t border-gray-700">
                                             <td className="px-4 py-2 text-xs font-mono">{t.serial}</td>
                                             <td className="px-4 py-2">
                                                 <div className="font-medium">{t.holderName}</div>
-                                                <div className="text-xs text-gray-500">{t.holderPhone}</div>
-                                                {t.holderEmail && <div className="text-xs text-gray-500">{t.holderEmail}</div>}
+                                                <div className="text-xs text-gray-400">{t.holderPhone}</div>
+                                                {t.holderEmail && <div className="text-xs text-gray-400">{t.holderEmail}</div>}
                                             </td>
                                             <td className="px-4 py-2 text-xs">
-                                                {eventTitle(t.eventId) || <span className="font-mono text-gray-500">{t.eventId.slice(-8)}</span>}
+                                                {eventTitle(t.eventId) || <span className="font-mono text-gray-400">{t.eventId.slice(-8)}</span>}
                                             </td>
-                                            <td className="px-4 py-2 text-xs font-mono text-gray-500">{(t as any).ticketTypeId?.slice(-8) || '—'}</td>
+                                            <td className="px-4 py-2 text-xs font-mono text-gray-400">{(t as any).ticketTypeId?.slice(-8) || '—'}</td>
                                             <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[t.status]}`}>{t.status}</span></td>
                                             <td className="px-4 py-2 text-xs">{fmt(t.createdAt)}</td>
                                         </tr>
@@ -121,7 +121,7 @@ export default function EventTicketsPage() {
                             </table>
                         </div>
                         {total > items.length && (
-                            <div className="text-xs text-gray-500">{items.length} billets affichés sur {total.toLocaleString('fr-FR')} — affinez la recherche.</div>
+                            <div className="text-xs text-gray-400">{items.length} billets affichés sur {total.toLocaleString('fr-FR')} — affinez la recherche.</div>
                         )}
                     </>
                 )}

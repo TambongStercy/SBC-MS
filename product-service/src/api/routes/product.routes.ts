@@ -14,6 +14,7 @@ adminRouter.use(authorize(['admin']));
 adminRouter.get('/', productController.adminListProducts); // GET /api/products/admin
 adminRouter.patch('/:productId/status', productController.updateProductStatus); // PATCH /api/products/admin/:productId/status
 adminRouter.delete('/:productId/hard', productController.adminHardDeleteProduct); // DELETE /api/products/admin/:productId/hard
+adminRouter.delete('/:productId', productController.adminRemoveProduct); // DELETE /api/products/admin/:productId (soft, restorable)
 adminRouter.patch('/:productId/restore', productController.adminRestoreProduct); // PATCH /api/products/admin/:productId/restore
 
 // Mount the admin router under the /admin path

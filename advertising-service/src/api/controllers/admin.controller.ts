@@ -406,7 +406,11 @@ export const approve = async (req: AuthenticatedRequest, res: Response) => {
             status = result.status;
         }
 
-        await notifyCampaignApproved(String(approved.advertiserUserId), approved.title);
+        // A paid campaign went live just now and its annonceur is told so by the
+        // activation; « validée — payez » would contradict it.
+        if (status !== CampaignStatus.ACTIVE) {
+            await notifyCampaignApproved(String(approved.advertiserUserId), approved.title);
+        }
 
         return res.json({
             success: true,

@@ -60,6 +60,20 @@ export const authorizeAdmin = (req: Request, res: Response, next: NextFunction):
 };
 
 /**
+ * The video-proof review queue: admins, plus moderators, whose whole job is
+ * this queue. Everything else in the admin API stays behind authorizeAdmin.
+ */
+export const authorizeProofReviewer = (req: Request, res: Response, next: NextFunction): void => {
+    const user = (req as AuthenticatedRequest).user;
+    if (user && (user.role === 'admin' || user.role === 'withdrawal_admin' || user.role === 'moderator')) {
+        next();
+    } else {
+        log.warn(`Proof-review authorization failed for user: ${user?.userId}. Role: ${user?.role}`);
+        next(new AppError('Forbidden: Insufficient permissions.', 403));
+    }
+};
+
+/**
  * Service-to-service authentication using the shared service secret.
  */
 export const authenticateServiceRequest = (req: Request, res: Response, next: NextFunction) => {

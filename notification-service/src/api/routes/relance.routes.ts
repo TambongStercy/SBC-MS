@@ -29,6 +29,24 @@ router.put('/settings', authenticate, (req, res) =>
 );
 
 /**
+ * @route   GET /api/relance/sms-messages
+ * @desc    The SMS texts relance sends, read-only, for parrains to read
+ * @access  Private
+ */
+router.get('/sms-messages', authenticate, (req, res) =>
+    relanceController.getSmsMessages(req, res)
+);
+
+/**
+ * @route   GET /api/relance/default-messages
+ * @desc    The 7 SBC relance messages, read-only, for parrains to read
+ * @access  Private
+ */
+router.get('/default-messages', authenticate, (req, res) =>
+    relanceController.getDefaultMessages(req, res)
+);
+
+/**
  * @route   GET /api/relance/message-templates
  * @desc    Get user's saved message templates for pre-filling campaign forms
  * @access  Private
@@ -133,6 +151,24 @@ router.get('/admin/stats', authenticate, requireAdmin, (req, res) =>
 );
 
 /**
+ * @route   GET /api/relance/admin/overview
+ * @desc    Relance des nouveaux vs campagnes, sends, credits and packs sold
+ * @access  Admin
+ */
+router.get('/admin/overview', authenticate, requireAdmin, (req, res) =>
+    relanceController.getAdminOverview(req, res)
+);
+
+/**
+ * @route   GET /api/relance/admin/parrains
+ * @desc    Parrains' relance settings, credits and filleuls in progress (paginated, with names)
+ * @access  Admin
+ */
+router.get('/admin/parrains', authenticate, requireAdmin, (req, res) =>
+    relanceController.getAdminParrains(req, res)
+);
+
+/**
  * @route   GET /api/relance/admin/logs
  * @desc    Get relance activity logs
  * @access  Admin
@@ -165,7 +201,7 @@ router.get('/admin/configs', authenticate, requireAdmin, (req, res) =>
  * @access  Admin
  */
 router.get('/admin/campaigns', authenticate, requireAdmin, (req, res) =>
-    relanceCampaignController.getCampaigns(req, res)
+    relanceCampaignController.getCampaigns(req, res, { asAdmin: true })
 );
 
 /**
@@ -201,7 +237,7 @@ router.get('/admin/campaigns/:id/messages/recent', authenticate, requireAdmin, (
  * @access  Admin
  */
 router.get('/admin/campaigns/:id', authenticate, requireAdmin, (req, res) =>
-    relanceCampaignController.getCampaignById(req, res)
+    relanceCampaignController.getCampaignById(req, res, { asAdmin: true })
 );
 
 /**
@@ -210,7 +246,7 @@ router.get('/admin/campaigns/:id', authenticate, requireAdmin, (req, res) =>
  * @access  Admin
  */
 router.get('/admin/campaigns/:id/targets', authenticate, requireAdmin, (req, res) =>
-    relanceCampaignController.getCampaignTargets(req, res)
+    relanceCampaignController.getCampaignTargets(req, res, { asAdmin: true })
 );
 
 /**
@@ -219,7 +255,7 @@ router.get('/admin/campaigns/:id/targets', authenticate, requireAdmin, (req, res
  * @access  Admin
  */
 router.post('/admin/campaigns/:id/pause', authenticate, requireAdmin, (req, res) =>
-    relanceCampaignController.pauseCampaign(req, res)
+    relanceCampaignController.pauseCampaign(req, res, { asAdmin: true })
 );
 
 /**
@@ -228,7 +264,7 @@ router.post('/admin/campaigns/:id/pause', authenticate, requireAdmin, (req, res)
  * @access  Admin
  */
 router.post('/admin/campaigns/:id/resume', authenticate, requireAdmin, (req, res) =>
-    relanceCampaignController.resumeCampaign(req, res)
+    relanceCampaignController.resumeCampaign(req, res, { asAdmin: true })
 );
 
 /**
@@ -237,7 +273,7 @@ router.post('/admin/campaigns/:id/resume', authenticate, requireAdmin, (req, res
  * @access  Admin
  */
 router.post('/admin/campaigns/:id/cancel', authenticate, requireAdmin, (req, res) =>
-    relanceCampaignController.cancelCampaign(req, res)
+    relanceCampaignController.cancelCampaign(req, res, { asAdmin: true })
 );
 
 /**

@@ -191,6 +191,46 @@ The admin frontend must maintain professional UI/UX standards. Follow these rule
    - **Confirmation Modals**: Delete operations, irreversible actions, role changes, bulk operations
    - **Form Validation**: Display errors inline or in modals, never with alerts
 
+### Admin redesign: parked on branch `admin-redesign` (2026-10-04)
+
+A phone-first rebuild of the admin (one ☰ menu, `src/ui` components, modules
+rebuilt) was merged to develop on 2026-10-04, then **taken off preprod the same
+day at Rufus's request**: develop/preprod run the original admin again (with
+the #299 safety fixes and half-height proof videos). The rebuild lives on the
+`admin-redesign` branch (not deployed; it can be shown on preprod with the
+manual "Deploy to preprod" workflow). Do not merge it back without Rufus's go.
+Why he stopped it: the look (flat, generic icons, no animation, a weaker login
+and loading screen) felt worse than the original — see memory
+`feedback_admin_look`.
+
+Backend changes made during the rebuild stayed on develop (they are compatible
+with the original admin): moderator role and staff login (#300), member search
+and filters (#301, #303), admin story delete (#306), admin relance routes acting
+on every member's campaign + overview/parrains endpoints (#310), admin product
+removal (#314). Facts found while rebuilding — still true of the backend:
+- `POST /users/admin/users/:id/adjust-balance` changes the balance **without
+  writing any transaction** (log line only).
+- The live CinetPay balance (`/payments/admin/gateway-balances/live`) calls
+  `getBalance()` without a country, so it is ONE country's balance (#305, open,
+  fixes it).
+- **Relance**: the member app shows ONE relance switch = `enabled &&
+  !sendingPaused`; turning it on clears `enrollmentPaused`, which the app never
+  displays. Deactivating one of the 7 email days leaves every filleul who reaches
+  that day stuck on it (the sender `continue`s without advancing). The admin
+  media upload builds `localhost` URLs that no email client can reach.
+- **SBC Love**: the member never sees a rejection reason (fixed copy only).
+  `PATCH /sbclove/admin/module` accepts any value, unvalidated.
+- **Tombola**: the service draws only an OPEN tombola. Prizes are hard-coded
+  English (`Bike`, `Phone`, `100k FCFA`) and pushed to winners as-is.
+  `previousMonthWinners` is set only when an Impact Challenge creates the month.
+  Delete leaves the month's paid tickets orphaned.
+- **Boutique**: product `status` changes nothing — the member app lists
+  products whatever their status (12k "pending" are public).
+- **Impact Challenge**: the original admin pages don't match the API (wrong
+  entrepreneur fields, POST vs PATCH approve, non-existent distribute routes).
+  Payout needs `LOTTERY_POOL_ACCOUNT_ID` and `SBC_COMMISSION_ACCOUNT_ID` in
+  `tombola-service/.env` — unset on prod and preprod as of 2026-10-04.
+
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
 
@@ -542,6 +582,96 @@ Scripts (dry run by default, `--apply` to act):
 30 days ago with exitReason `expired`) and `credit-unpaid-relance-packs.ts`.
 **Close the backlog before crediting**, or the first run after crediting sends
 day 1 to everyone waiting, however old.
+
+**Rules and mechanisms added 2026-10-01:**
+- **SMS relance is for Cameroonian parrains only** (Rufus): the purchase is
+  refused unless the buyer's `country` is CM, and crediting an SMS pack sets
+  `smsEnabled`. Country comes from `POST /users/internal/relance-details`.
+- **Campaign budget:** the preview returns `budget`. A month of relance des
+  nouveaux (new filleuls in the last 30 days × 7) stays reserved, and
+  `targetFilter.maxTargets` caps enrollment, newest first. Preview and
+  enrollment share `matchCampaignReferrals`; never fork the filter code again.
+- **One journey per filleul per campaign.** The "already enrolled?" check must
+  match any status: an active/paused-only check re-enrolled finished filleuls
+  at J1 every 15 min.
+- **Campaign completion** (`checkAndCompleteCampaigns`) now runs on idle sender
+  passes too. It used to run only when some unrelated target was due.
+- **Commissions** are `deposit` transactions in `sbc_payment.transactions`, and the
+  filleul is at **`paymentProvider.metadata.sourceUserId`** (a string), not
+  top-level `metadata`. `POST /api/internal/user/:userId/commissions-from` sums
+  them for `/api/relance/earnings`.
+
+### Web push (VAPID)
+
+`/api/notifications/push/{public-key,subscribe,unsubscribe}`. It is off until
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` are in notification-service `.env`. They
+are set on preprod (generated on the server, 2026-10-01); prod needs its own pair:
+`node -e "console.log(require('web-push').generateVAPIDKeys())"`. **Never
+rotate them casually**: every existing subscription is tied to the public key.
+Relance pushes credits low/out and a filleul paying (`relance-alerts.service`).
+
+Push works directly in Android browsers. On iPhone it works only once SBC is
+on the home screen (iOS 16.4+), and the app says so. `public/sw.js` must stay
+registered: `cacheBuster` spares it on purpose, and unregistering it kills
+every push subscription.
+
+**Sending a push from a service:** `POST /api/notifications/push/internal/send`
+with the service secret and `{ userId | userIds, category, title, body, url?,
+tag?, icon?, renotify? }`. Every push has a **category** (`push-categories.ts`):
+money, chat, filleuls, relance, events, tombola, ads, subscription, or
+announcements.
+- Each user can turn each category off (`/notifications` in the web app).
+- **Only announcements wait for the morning** (`holdAtNight`). Sent between
+  22:00 and 07:00 Douala time, they wait in `PendingPush` and go at 07:00,
+  keeping only the latest per `tag`. The admin can override this with "send now".
+  Every other kind goes out at once, at high urgency (Sterling, 2026-10-03).
+  A personal push is about something that just happened, and some go stale
+  if held: an event reminder for "dans moins d'une heure" is useless at 07:00.
+  Don't bring back a night hold for personal kinds.
+- `/internal/create` with `channel: 'push'` also delivers now. It takes its
+  category and url from `data.relatedData.{pushCategory, url, pushTag}`.
+- Before 2026-10-01 it marked the notification sent and delivered nothing.
+
+**Who sends what:**
+- event-service: tickets, cancellations, reminders, resales, disputes, refunds.
+- tombola: winners.
+- user-service: commissions (chained on the deposit), new filleul, Visibilité
+  Max ending in 3 days (daily job).
+- advertising-service: every email also pushes.
+- chat-service: new messages with the sender's photo.
+- relance alerts.
+- payment-service: withdrawal results (PR #289).
+- Admin announcements: `/push/admin/announce` with an optional `filter`
+  (`countries`, `subscription`, `sex`). It is resolved through
+  user-service `POST /users/internal/filter-for-announcement`, which skips
+  deleted and blocked users. Only one announcement to EVERYONE per 24 h;
+  targeted ones are unlimited. `/push/admin/audience` gives the live count.
+  Each announcement has its own tag (`announcement-<id>`): a shared tag made the
+  night queue keep only the last one.
+
+Chat-service needs `NOTIFICATION_SERVICE_URL` in its env: the default is prod's port 3002.
+
+**Two Cloudflare traps, both met while shipping this:**
+- **`.js` files are cached for a month.** nginx sends `expires 1M` for every `.js`
+  file, so Cloudflare served a weeks-old `/sw.js` without the push handler. The
+  app now registers `/sw.js?v=<build>`, a new URL on every deploy (`cacheBuster.ts`).
+- **Chrome's own notification-icon fetch failed through Cloudflare**, showing a
+  grey "P" instead of our icon. So the SBC icon is inlined in `sw.js`, and a
+  sender's photo is fetched by the service worker itself and inlined. Pass
+  photos as same-origin `/api/settings/files/<id>?w=128` paths (`avatarIcon` in
+  chat-service).
+
+### Bounces from our own mail server
+
+Since mail moved off SendGrid/SES, refusals arrive as bounce emails in
+`noreply@`'s inbox. `bounce-mailbox.service` reads them over IMAP every 15 min
+and suppresses only "the address is bad" statuses (5.1.x, 5.2.1, 5.4.4).
+**5.7.x means they blocked US**: never suppress on it. The suppression list
+also blocks OTP mail, so a false positive locks someone out.
+
+It is off until `BOUNCE_MAILBOX_ENABLED=true` (IMAP creds default to `EMAIL_*`).
+**Enable it on prod only.** Preprod sends from the same mailbox, so a preprod
+reader would mark prod's bounces read and record them in the preprod DB.
 
 ### Health endpoints aren't standardised
 

@@ -1,3 +1,4 @@
+import { getUserDetails } from '../services/adminUserApi';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -294,17 +295,9 @@ function TombolaDrawPage() {
             console.log('Fetching user details for winner IDs:', winnerIds);
             setIsLoadingUserDetails(true);
             try {
-                // --- ASSUMPTION: getUsersDetailsByIds exists in adminUserApi --- 
-                // Replace with your actual API call implementation
-                // const users = await getUsersDetailsByIds(winnerIds); 
-                // --- MOCK IMPLEMENTATION (Replace this) --- 
-                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-                const users = winnerIds.map(id => ({
-                    _id: id,
-                    name: `Winner ${id.substring(0, 5)}...`, // Mock name
-                    country: Math.random() > 0.5 ? 'Cameroon' : 'Nigeria' // Mock country
-                }));
-                // --- End Mock Implementation ---
+                // The real members: one admin lookup per winner (a draw has a handful).
+                const users = (await Promise.all(winnerIds.map(id => getUserDetails(id).catch(() => null))))
+                    .filter((u): u is NonNullable<typeof u> => !!u);
 
                 const userMap = new Map<string, { name: string; country?: string }>();
                 users.forEach(user => {

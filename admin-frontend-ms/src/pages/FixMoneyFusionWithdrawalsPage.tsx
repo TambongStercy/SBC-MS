@@ -14,6 +14,7 @@ import {
 import ToastContainer from '../components/common/ToastContainer';
 import { useToast } from '../hooks/useToast';
 import Pagination from '../components/common/Pagination';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 /**
  * Dedicated page for reconciling MoneyFusion withdrawals stuck in PROCESSING.
@@ -40,14 +41,16 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
+    // What's typed, and what's searched: the second follows the first after a pause.
+    const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
-    const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
 
     // Per-row state — which transaction is currently being acted on + the
     // expanded reason input for failure.
     const [actingOn, setActingOn] = useState<string | null>(null);
     const [failReasonByTx, setFailReasonByTx] = useState<Record<string, string>>({});
     const [showFailFormFor, setShowFailFormFor] = useState<string | null>(null);
+    const [confirmComplete, setConfirmComplete] = useState<WithdrawalTransaction | null>(null);
 
     const fetchData = useCallback(async () => {
         try {
@@ -66,14 +69,12 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const v = e.target.value;
-        setSearch(v);
-        setPage(1);
-        if (debounceTimeout) clearTimeout(debounceTimeout);
-        const t = setTimeout(() => { /* fetchData fires via dep change */ }, 400);
-        setDebounceTimeout(t);
-    };
+    useEffect(() => {
+        const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
+        return () => clearTimeout(t);
+    }, [searchInput]);
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e.target.value);
 
     const handleMarkCompleted = async (tx: WithdrawalTransaction) => {
         setActingOn(tx.transactionId);
@@ -123,7 +124,7 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                             <input
                                 type="text"
-                                value={search}
+                                value={searchInput}
                                 onChange={handleSearchChange}
                                 placeholder="Search by name / email / phone / transactionId / recipient momo"
                                 className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -194,7 +195,7 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
                                                 {!showingFail ? (
                                                     <div className="flex gap-2">
                                                         <button
-                                                            onClick={() => handleMarkCompleted(tx)}
+                                                            onClick={() => setConfirmComplete(tx)}
                                                             disabled={isActing}
                                                             className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
                                                         >
@@ -256,6 +257,22 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
                     )}
                 </motion.div>
             </main>
+            {/* Marking completed debits the member's wallet: only once MoneyFusion shows the payout. */}
+            <ConfirmationModal
+                isOpen={!!confirmComplete}
+                variant="success"
+                title="Marquer ce retrait comme payé ?"
+                message={confirmComplete && (
+                    <div className="space-y-1 text-sm">
+                        <p><span className="text-gray-400">Vers :</span> {confirmComplete.metadata?.accountInfo?.fullMomoNumber || '—'}</p>
+                        <p><span className="text-gray-400">Montant :</span> {formatCurrency(confirmComplete.amount, confirmComplete.currency)}</p>
+                        <p className="pt-2 text-gray-400">Vérifie d'abord qu'il apparaît « Validé » sur le tableau de bord MoneyFusion. Le portefeuille du membre sera débité.</p>
+                    </div>
+                )}
+                confirmText="Oui, il est payé"
+                onConfirm={async () => { if (confirmComplete) await handleMarkCompleted(confirmComplete); setConfirmComplete(null); }}
+                onCancel={() => setConfirmComplete(null)}
+            />
             <ToastContainer toasts={toasts} onRemove={removeToast} />
         </div>
     );

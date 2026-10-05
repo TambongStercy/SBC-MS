@@ -7,8 +7,11 @@ import RelanceSmsTemplateModel from '../../database/models/relance-sms-template.
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
 import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
-import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack } from '../../config/relance-packs';
+import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, isCameroon } from '../../config/relance-packs';
+import { userServiceClient } from '../../services/clients/user.service.client';
+import { pushFilleulPaid } from '../../services/relance-alerts.service';
 import { creditRelancePack } from '../../services/relance-credit.service';
+import { adminOverview, adminParrains } from '../../services/relance-admin.service';
 import config from '../../config';
 
 const log = logger.getLogger('RelanceController');
@@ -67,12 +70,25 @@ class RelanceController {
                 return;
             }
 
-            const { enabled, enrollmentPaused, sendingPaused } = req.body;
+            const { enabled, enrollmentPaused, sendingPaused, smsEnabled } = req.body;
 
             const updates: any = {};
             if (typeof enabled === 'boolean') updates.enabled = enabled;
             if (typeof enrollmentPaused === 'boolean') updates.enrollmentPaused = enrollmentPaused;
             if (typeof sendingPaused === 'boolean') updates.sendingPaused = sendingPaused;
+            // The parrain turns SMS relance on or off. On is for Cameroon only (Rufus);
+            // off is always allowed.
+            if (typeof smsEnabled === 'boolean') {
+                if (smsEnabled) {
+                    const me = await userServiceClient.getRelanceDetails(userId);
+                    if (!me) { res.status(503).json({ success: false, message: 'Vérification impossible pour le moment. Réessayez.' }); return; }
+                    if (!isCameroon(me.country)) {
+                        res.status(403).json({ success: false, message: 'Les SMS de relance sont réservés aux membres du Cameroun.' });
+                        return;
+                    }
+                }
+                updates.smsEnabled = smsEnabled;
+            }
 
             const config = await RelanceConfigModel.findOneAndUpdate(
                 { userId },
@@ -422,6 +438,36 @@ class RelanceController {
     }
 
     /**
+     * GET /api/relance/admin/overview
+     * Admin home for relance: the two products counted apart, sends, credits, packs.
+     */
+    async getAdminOverview(_req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            res.status(200).json({ success: true, data: await adminOverview() });
+        } catch (error: any) {
+            log.error('Error in getAdminOverview:', error);
+            res.status(500).json({ success: false, message: 'Failed to get relance overview' });
+        }
+    }
+
+    /**
+     * GET /api/relance/admin/parrains?page&limit&withCredits=true|false&userId
+     * Parrains' relance settings and credits, with names, for support.
+     */
+    async getAdminParrains(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+            const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
+            const withCredits = req.query.withCredits !== 'false';
+            const userId = (req.query.userId as string) || undefined;
+            res.status(200).json({ success: true, data: await adminParrains({ page, limit, withCredits, userId }) });
+        } catch (error: any) {
+            log.error('Error in getAdminParrains:', error);
+            res.status(500).json({ success: false, message: 'Failed to get parrains' });
+        }
+    }
+
+    /**
      * GET /api/relance/admin/logs
      * Get relance logs (recent targets)
      */
@@ -595,6 +641,7 @@ class RelanceController {
                 target.exitReason = ExitReason.PAID;
                 target.exitedLoopAt = new Date();
                 await target.save();
+                pushFilleulPaid(String(target.referrerUserId), String(target.referralUserId));
 
                 // Update campaign conversion counter
                 if (target.campaignId) {
@@ -650,6 +697,16 @@ class RelanceController {
             const { packId } = req.body;
             const pack = findPack(packId);
             if (!pack) { res.status(400).json({ success: false, message: 'Invalid packId' }); return; }
+
+            // Rufus: SMS relance is for Cameroonian parrains (and their +237 filleuls) only.
+            if (pack.type === 'sms') {
+                const buyer = await userServiceClient.getRelanceDetails(userId);
+                if (!buyer) { res.status(503).json({ success: false, message: 'Vérification impossible pour le moment. Réessayez.' }); return; }
+                if (!isCameroon(buyer.country)) {
+                    res.status(403).json({ success: false, message: 'Les SMS de relance sont réservés aux membres du Cameroun.' });
+                    return;
+                }
+            }
 
             const paymentType = pack.type === 'email' ? 'RELANCE_EMAIL_PACK' : 'RELANCE_SMS_PACK';
             const callbackUrl = `${config.services.notificationService}/relance/internal/credit-pack`;
@@ -835,11 +892,22 @@ class RelanceController {
             // to live here compared against 'ADMIN' while tokens carry 'admin', so it
             // turned away every real admin.
             const { userId } = req.params;
-            const allowed = ['smsEnabled', 'maxMessagesPerDay', 'maxTargetsPerCampaign', 'enabled', 'sendingPaused', 'enrollmentPaused'];
+            const flags = ['smsEnabled', 'enabled', 'sendingPaused', 'enrollmentPaused'];
+            const limits: Record<string, [number, number]> = { maxMessagesPerDay: [1, 5000], maxTargetsPerCampaign: [10, 50000] };
             const update: Record<string, any> = {};
-            for (const key of allowed) {
-                if (req.body[key] !== undefined) update[key] = req.body[key];
+            for (const key of flags) {
+                if (req.body[key] === undefined) continue;
+                if (typeof req.body[key] !== 'boolean') { res.status(400).json({ success: false, message: `${key} must be true or false` }); return; }
+                update[key] = req.body[key];
             }
+            // Same bounds as the member's own settings (PATCH /api/relance/config).
+            for (const [key, [min, max]] of Object.entries(limits)) {
+                if (req.body[key] === undefined) continue;
+                const n = req.body[key];
+                if (!Number.isInteger(n) || n < min || n > max) { res.status(400).json({ success: false, message: `${key} must be a whole number from ${min} to ${max}` }); return; }
+                update[key] = n;
+            }
+            if (Object.keys(update).length === 0) { res.status(400).json({ success: false, message: 'Nothing to update' }); return; }
             const cfg = await RelanceConfigModel.findOneAndUpdate({ userId }, { $set: update }, { new: true, upsert: false });
             if (!cfg) { res.status(404).json({ success: false, message: 'Config not found' }); return; }
             res.status(200).json({ success: true, data: cfg });
@@ -852,6 +920,52 @@ class RelanceController {
      * POST /api/relance/admin/messages/preview
      * Generate a preview of the relance email template
      */
+    /**
+     * GET /api/relance/sms-messages — the SMS texts relance sends (read-only),
+     * for "Voir les messages". {{link}} is the parrain's own link at send time.
+     * "auto" = relance des nouveaux (J0–J7), "manual" = campagnes (J1–J7).
+     */
+    async getSmsMessages(_req: Request, res: Response): Promise<void> {
+        try {
+            const templates = await RelanceSmsTemplateModel.find({ active: true })
+                .sort({ type: 1, dayNumber: 1 })
+                .select('type dayNumber templateText')
+                .lean();
+            res.status(200).json({
+                success: true,
+                data: templates.map(t => ({ type: t.type, dayNumber: t.dayNumber, text: t.templateText })),
+            });
+        } catch (error: any) {
+            log.error('Error fetching relance SMS messages:', error);
+            res.status(500).json({ success: false, message: 'Impossible de charger les SMS.' });
+        }
+    }
+
+    /**
+     * GET /api/relance/default-messages — the 7 SBC messages relance sends, so a
+     * parrain can read what goes out under their name before buying credits.
+     * Raw French text; {{name}}/{{referrerName}} are filled in by the app.
+     */
+    async getDefaultMessages(_req: Request, res: Response): Promise<void> {
+        try {
+            const messages = await RelanceMessageModel.find({ active: true })
+                .sort({ dayNumber: 1 })
+                .select('dayNumber subject messageTemplate')
+                .lean();
+            res.status(200).json({
+                success: true,
+                data: messages.map(m => ({
+                    dayNumber: m.dayNumber,
+                    subject: m.subject || emailRelanceService.getSubjectForDay(m.dayNumber, '{{referrerName}}'),
+                    text: m.messageTemplate?.fr || m.messageTemplate?.en || '',
+                })),
+            });
+        } catch (error: any) {
+            log.error('Error fetching default relance messages:', error);
+            res.status(500).json({ success: false, message: 'Impossible de charger les messages.' });
+        }
+    }
+
     async previewMessage(req: Request, res: Response): Promise<void> {
         try {
             const {

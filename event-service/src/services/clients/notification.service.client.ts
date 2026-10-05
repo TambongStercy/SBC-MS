@@ -27,6 +27,27 @@ const client = axios.create({
  * does not resolve userId → email; a missing recipient silently 400s and every
  * caller returns 2xx-shaped success without delivering).
  */
+/**
+ * What a push of this kind opens, and which of the user's push settings it
+ * falls under. Money coming back (refund, resale) is "money": it goes out at
+ * any hour; the rest waits for the morning if it lands at night.
+ */
+const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money' }> = {
+    'event-ticket-purchased': { url: '/events/mes-billets', category: 'events' },
+    'event-cancelled': { url: '/events/mes-billets', category: 'events' },
+    'event-reminder': { url: '/events/mes-billets', category: 'events' },
+    'refund-processed': { url: '/wallet', category: 'money' },
+    'resale-sold': { url: '/wallet', category: 'money' },
+    'resale-listing-suspended': { url: '/events/mes-billets', category: 'events' },
+    'resale-listing-removed': { url: '/events/mes-billets', category: 'events' },
+    'dispute-resolved': { url: '/events/mes-disputes', category: 'events' },
+};
+
+export const pushRelatedData = (kind: string, ref?: string) => {
+    const route = PUSH_ROUTES[kind] ?? { url: '/events', category: 'events' as const };
+    return { pushCategory: route.category, url: route.url, pushTag: ref ? `${kind}-${ref}` : kind };
+};
+
 export const notify = async (args: {
     kind: string;
     userId?: string;
@@ -56,6 +77,9 @@ export const notify = async (args: {
                 subject: args.subject,
                 body: args.body,
                 ...args.data,
+                ...(args.channel === 'push'
+                    ? { relatedData: pushRelatedData(args.kind, args.orderId ?? args.ticketId ?? args.eventId) }
+                    : {}),
             },
         });
         const ok = Boolean(data?.success);
