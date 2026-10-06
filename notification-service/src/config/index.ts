@@ -78,6 +78,22 @@ interface IConfig {
             password: string;
         };
     };
+    /**
+     * Where relance emails go out. 'cloudflare' sends through Cloudflare Email
+     * Sending (relance.sniperbuisnesscenter.com) and falls back to iRedMail when
+     * Cloudflare refuses or is not configured; anything else keeps iRedMail.
+     */
+    relanceEmail: {
+        provider: 'iredmail' | 'cloudflare';
+        /** Sender for the Cloudflare path; the iRedMail path keeps email.from. */
+        from: string;
+        cloudflare: {
+            accountId: string;
+            apiToken: string;
+            /** Most relance emails a calendar month through Cloudflare; null = no cap. */
+            monthlyCap: number | null;
+        };
+    };
     /** Web push (VAPID). Empty keys = push off. */
     push: {
         publicKey: string;
@@ -190,6 +206,18 @@ const config: IConfig = {
             port: parseInt(process.env.BOUNCE_IMAP_PORT || '993', 10),
             user: process.env.BOUNCE_IMAP_USER || process.env.EMAIL_USER || '',
             password: process.env.BOUNCE_IMAP_PASSWORD || process.env.EMAIL_PASSWORD || '',
+        },
+    },
+
+    relanceEmail: {
+        provider: process.env.RELANCE_EMAIL_PROVIDER?.trim().toLowerCase() === 'cloudflare' ? 'cloudflare' : 'iredmail',
+        from: process.env.RELANCE_EMAIL_FROM?.trim() || 'Sniper Business Center <noreply@relance.sniperbuisnesscenter.com>',
+        cloudflare: {
+            accountId: process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || '',
+            apiToken: process.env.CLOUDFLARE_EMAIL_API_TOKEN?.trim() || '',
+            monthlyCap: /^\d+$/.test(process.env.CLOUDFLARE_EMAIL_MONTHLY_CAP?.trim() || '')
+                ? parseInt(process.env.CLOUDFLARE_EMAIL_MONTHLY_CAP!.trim(), 10)
+                : null,
         },
     },
 
