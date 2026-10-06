@@ -654,6 +654,13 @@ on iRedMail.
   button POSTs, which adds the address to the suppression list the sender already
   honours. Until this change the footer linked to `<frontend>/unsubscribe`, a page
   that never existed.
+- **One suppression list, two scopes.** `relancebouncesuppressions` holds bounces,
+  complaints *and* unsubscribes. The relance sender skips all of them. The
+  `BounceHandlerService` blacklist gates **every** email, OTP codes included, so it
+  loads everything **except `source: 'unsubscribe'`**. Someone who unsubscribes
+  from relance must still get their login codes. A Cloudflare bounce uses `$set`,
+  so it upgrades an earlier unsubscribe to a full block. An unsubscribe uses
+  `$setOnInsert`, so it never downgrades a bounce.
 
 ### No `List-Unsubscribe` header on our emails: Gmail → Promotions (measured 2026-10-06)
 
