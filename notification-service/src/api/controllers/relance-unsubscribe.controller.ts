@@ -41,6 +41,8 @@ export async function relanceUnsubscribeConfirm(req: Request, res: Response): Pr
         return;
     }
     const email = e.trim().toLowerCase();
+    // $setOnInsert: never turn an existing bounce (blocks every email) into an
+    // unsubscribe (stops relance only).
     await RelanceBounceSuppressionModel.updateOne(
         { email },
         { $setOnInsert: { email, reason: 'Unsubscribed from relance emails', bouncedAt: new Date(), source: 'unsubscribe' } },

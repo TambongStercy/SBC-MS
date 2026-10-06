@@ -105,10 +105,12 @@ export async function sendRelanceViaCloudflare(msg: CloudflareMessage, now: Date
 
         if (res.status >= 200 && res.status < 300 && res.data?.success) {
             if (listed('permanent_bounces')) {
-                // Billed, but the address is dead: stop every relance to it.
+                // Billed, but the address is dead: block it for every email, not
+                // just relance. $set, so a bounce also overrides an earlier
+                // unsubscribe (which only stops relance).
                 await RelanceBounceSuppressionModel.updateOne(
                     { email: msg.to.toLowerCase() },
-                    { $setOnInsert: { email: msg.to.toLowerCase(), reason: 'Cloudflare permanent bounce', bouncedAt: now, source: 'cloudflare' } },
+                    { $set: { reason: 'Cloudflare permanent bounce', bouncedAt: now, source: 'cloudflare' } },
                     { upsert: true },
                 ).catch(() => undefined);
                 log.warn(`Permanent bounce for ${msg.to}; suppressed`);

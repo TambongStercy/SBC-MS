@@ -32,6 +32,7 @@ import { emailRelanceService } from '../services/email.relance.service';
 import { parseSender } from '../services/cloudflare-email.service';
 import { relanceUnsubscribeUrl } from '../utils/relance-unsubscribe';
 import relanceRoutes from '../api/routes/relance.routes';
+import { BounceHandlerService } from '../services/bounceHandler.service';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_cloudflare_test';
 const TO = 'filleul@example.com';
@@ -159,6 +160,30 @@ describe('unsubscribe', () => {
         const done = await fetch(at(link()), { method: 'POST', body: 'List-Unsubscribe=One-Click', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
         expect(done.status).toBe(200);
         expect(await RelanceBounceSuppressionModel.findOne({ email: TO }).lean()).toEqual(expect.objectContaining({ source: 'unsubscribe' }));
+    });
+
+    // The bounce blacklist gates EVERY email, OTP codes included.
+    const blockedForAllEmail = async () => { const h = new BounceHandlerService(); await h.reloadBlacklist(); return h.isBlacklisted(TO); };
+    const unsubscribe = () => fetch(at(link()), { method: 'POST' });
+
+    it('stops relance only: an unsubscribed member still gets login codes', async () => {
+        await unsubscribe();
+        expect(await RelanceBounceSuppressionModel.exists({ email: TO })).toBeTruthy(); // relance skips them
+        expect(await blockedForAllEmail()).toBe(false);
+    });
+
+    it('a Cloudflare bounce blocks every email, even after an unsubscribe', async () => {
+        await unsubscribe();
+        post.mockResolvedValue({ status: 200, data: { success: true, result: { delivered: [], permanent_bounces: [TO], queued: [] } } });
+        await send();
+        expect(await blockedForAllEmail()).toBe(true);
+    });
+
+    it('never turns a bounce into a mere unsubscribe', async () => {
+        await RelanceBounceSuppressionModel.create({ email: TO, reason: 'bounce', bouncedAt: new Date(), source: 'cloudflare' });
+        await unsubscribe();
+        expect((await RelanceBounceSuppressionModel.findOne({ email: TO }).lean())!.source).toBe('cloudflare');
+        expect(await blockedForAllEmail()).toBe(true);
     });
 
     it('refuses a link whose signature does not match the address', async () => {
