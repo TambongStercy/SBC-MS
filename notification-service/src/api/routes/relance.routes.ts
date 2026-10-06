@@ -10,8 +10,7 @@ import { relanceUnsubscribeConfirm, relanceUnsubscribePage } from '../controller
 const router = Router();
 
 // ===== PUBLIC: unsubscribe (signed link in every relance email) =====
-// GET shows a confirm button; POST unsubscribes — the button, and Gmail's
-// one-click (List-Unsubscribe-Post), both POST.
+// GET shows a confirm button (link scanners open every link); the button POSTs.
 router.get('/unsubscribe', relanceUnsubscribePage);
 router.post('/unsubscribe', (req, res) => { relanceUnsubscribeConfirm(req, res).catch(() => res.status(500).end()); });
 

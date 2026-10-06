@@ -75,7 +75,8 @@ describe('sending through Cloudflare', () => {
         expect(opts.httpsAgent.options.family).toBe(4);
         expect(body.from).toEqual({ address: 'noreply@relance.sniperbuisnesscenter.com', name: 'Sniper Business Center' });
         expect(body.to).toBe(TO);
-        expect(body.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+        // A List-Unsubscribe header sends the mail to Gmail's Promotions tab.
+        expect(body.headers).toBeUndefined();
         expect(sendEmailWithTracking).not.toHaveBeenCalled();
         expect(await usage()).toBe(1);
     });
@@ -141,12 +142,12 @@ describe('unsubscribe', () => {
     const link = () => new URL(relanceUnsubscribeUrl(TO));
     const at = (u: URL) => `${base}${u.pathname}${u.search}`;
 
-    it('puts the recipient\'s own signed link in the footer and the one-click header, on both providers', async () => {
+    it('puts the recipient\'s own signed link in the footer, and no List-Unsubscribe header (Gmail → Promotions)', async () => {
         config.relanceEmail.provider = 'iredmail';
         await send();
         const { html, headers } = sendEmailWithTracking.mock.calls[0][0];
         expect(html).toContain(relanceUnsubscribeUrl(TO));
-        expect(headers['List-Unsubscribe']).toBe(`<${relanceUnsubscribeUrl(TO)}>`);
+        expect(headers).toBeUndefined();
     });
 
     it('asks first on GET — link scanners open links — and unsubscribes on POST', async () => {
