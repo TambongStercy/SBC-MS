@@ -400,19 +400,28 @@ export class BounceHandlerService {
      * Also schedules a periodic refresh to pick up entries added by other
      * processes (e.g. the backfill script or other service instances).
      */
+    /**
+     * Every suppressed address except relance unsubscribes. This blacklist
+     * gates EVERY email — OTP codes included — so it must hold only addresses
+     * that cannot receive mail (bounces, complaints). Someone who only asked to
+     * stop relance must still get their login codes; the relance sender reads
+     * the full list, unsubscribes included, on its own.
+     */
+    async reloadBlacklist(): Promise<void> {
+        try {
+            const entries = await RelanceBounceSuppressionModel
+                .find({ source: { $ne: 'unsubscribe' } }, { email: 1, _id: 0 })
+                .lean();
+            const next = new Set<string>(entries.map((e: any) => String(e.email).toLowerCase()));
+            this.blacklistedEmails = next;
+            log.info(`Bounce blacklist loaded: ${next.size} suppressed addresses`);
+        } catch (err: any) {
+            log.error('Failed to load bounce blacklist from DB', { error: err?.message });
+        }
+    }
+
     private loadBlacklistedEmails(): void {
-        const reloadFromDb = async () => {
-            try {
-                const entries = await RelanceBounceSuppressionModel
-                    .find({}, { email: 1, _id: 0 })
-                    .lean();
-                const next = new Set<string>(entries.map((e: any) => String(e.email).toLowerCase()));
-                this.blacklistedEmails = next;
-                log.info(`Bounce blacklist loaded: ${next.size} suppressed addresses`);
-            } catch (err: any) {
-                log.error('Failed to load bounce blacklist from DB', { error: err?.message });
-            }
-        };
+        const reloadFromDb = () => this.reloadBlacklist();
         // Initial load (deferred so Mongo is connected by the time we run)
         setTimeout(reloadFromDb, 5000);
         // Periodic refresh every 5 minutes — picks up backfill script writes

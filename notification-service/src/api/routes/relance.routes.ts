@@ -5,8 +5,14 @@ import { relanceCampaignController } from '../controllers/relance-campaign.contr
 import { authenticate, requireAdmin, authenticateServiceRequest, authenticateServiceOrAdmin } from '../middleware/auth.middleware';
 import { uploadRelanceMedia } from '../middleware/upload.middleware';
 import campaignRoutes from './relance-campaign.routes';
+import { relanceUnsubscribeConfirm, relanceUnsubscribePage } from '../controllers/relance-unsubscribe.controller';
 
 const router = Router();
+
+// ===== PUBLIC: unsubscribe (signed link in every relance email) =====
+// GET shows a confirm button (link scanners open every link); the button POSTs.
+router.get('/unsubscribe', relanceUnsubscribePage);
+router.post('/unsubscribe', (req, res) => { relanceUnsubscribeConfirm(req, res).catch(() => res.status(500).end()); });
 
 // ===== USER ROUTES (Authenticated) =====
 

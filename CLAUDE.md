@@ -615,6 +615,78 @@ day 1 to everyone waiting, however old.
   Cached 10 min per parrain. The web app shows it as a card that opens the
   wizard with that period.
 
+### Relance email via Cloudflare (2026-10-06)
+
+Relance emails can go out through **Cloudflare Email Sending** instead of iRedMail,
+so the unstable mail server keeps its capacity for OTPs. OTP and system emails stay
+on iRedMail.
+
+- **Account:** Georgesyvan12@gmail.com's Cloudflare account. It also holds the
+  sniperbuisnesscenter.com zone. That matters, because Cloudflare only sends for a
+  zone in the same account. Plan: Workers Paid, $5/month for 3,000 emails, then
+  $0.35 per 1,000. Hard bounces are billed too.
+- **Sending domain: `relance.sniperbuisnesscenter.com`**, not the top level. All of
+  Cloudflare's records live under `relance.` (`cf-bounce.relance` SPF + DKIM,
+  `_dmarc.relance` = `p=reject`). The root SPF record (`ip4:81.17.100.244
+  include:sendgrid.net -all`) is iRedMail's. **Never add a second root SPF record.**
+- **Settings** in notification-service `.env`: `RELANCE_EMAIL_PROVIDER=cloudflare`
+  turns it on (default iredmail), plus `CLOUDFLARE_ACCOUNT_ID`,
+  `CLOUDFLARE_EMAIL_API_TOKEN` and `RELANCE_EMAIL_FROM`. The token is a custom
+  token (Account → Email Sending → Edit), IP-locked to the server's IPv4
+  `207.180.242.122`. The server reaches api.cloudflare.com over **IPv6** by
+  default, and Cloudflare refuses an IPv4-locked token from there ("Cannot use the
+  access token from location 2a02:…"). So the client forces IPv4
+  (`https.Agent({ family: 4 })`). Keep it that way, or add the IPv6 address to the
+  token. `/user/tokens/verify` ignores the IP filter, so it passing proves nothing
+  about sending. Probe with an empty POST to `…/email/sending/send` instead: 400
+  `invalid_request_schema` means the account ID and token are good. The token *ID*
+  that verify returns is not the account ID.
+- **Fallback:** anything Cloudflare does not take goes out through iRedMail for
+  that email: not configured, monthly cap reached, refused, or unreachable. A
+  Cloudflare permanent bounce is suppressed instead (`relancebouncesuppressions`,
+  source `cloudflare`).
+- **Usage:** each Cloudflare send is counted in `emailproviderusages`
+  (`_id: cloudflare:YYYY-MM`). Compare it with the Cloudflare bill.
+  `CLOUDFLARE_EMAIL_MONTHLY_CAP` stops the paid path for the rest of the month.
+- **Unsubscribe:** every relance email's footer carries a signed link,
+  `/api/relance/unsubscribe?e=&t=` (HMAC of the address with the service secret).
+  A GET only shows a confirm button, because link scanners open every link. The
+  button POSTs, which adds the address to the suppression list the sender already
+  honours. Until this change the footer linked to `<frontend>/unsubscribe`, a page
+  that never existed.
+- **One suppression list, two scopes.** `relancebouncesuppressions` holds bounces,
+  complaints *and* unsubscribes. The relance sender skips all of them. The
+  `BounceHandlerService` blacklist gates **every** email, OTP codes included, so it
+  loads everything **except `source: 'unsubscribe'`**. Someone who unsubscribes
+  from relance must still get their login codes. A Cloudflare bounce uses `$set`,
+  so it upgrades an earlier unsubscribe to a full block. An unsubscribe uses
+  `$setOnInsert`, so it never downgrades a bounce.
+
+### No `List-Unsubscribe` header on our emails: Gmail → Promotions (measured 2026-10-06)
+
+Gmail files any mail carrying a `List-Unsubscribe` header under the
+**Promotions** tab, and Promotions sends no phone notification. Relance exists
+to be noticed, so that defeats it. Measured on two Gmail inboxes, one of which
+had never opened anything from us:
+
+| Email | Header | Tab |
+|---|---|---|
+| Full relance design (emojis, money claims, big button), Cloudflare | yes | Promotions |
+| Same design, prod wording, Cloudflare | no | **Primary** |
+| Full design, iRedMail | yes | Promotions |
+| Full design, iRedMail, clean inbox | no | **Primary** |
+| Plain personal note "Marie (SBC)", iRedMail, clean inbox | no | **Primary** |
+
+So it's the header, not the provider and not the wording. Both send paths in
+`email.service.ts` used to add `List-Unsubscribe: <mailto:…>` to **every** email,
+OTP codes included. It's gone everywhere now; the footer link stays. That OTP
+codes also went to Promotions because of it is a strong inference, not measured.
+Gmail only *requires* one-click unsubscribe above 5,000 marketing emails a day to
+Gmail. Relance is about 500–900 a day. Revisit if it nears that.
+
+Also measured: **opening one email trains Gmail for that sender in that inbox**.
+Later mail goes to Primary, but only for that person, so filleuls can't be relied on.
+
 ### Web push (VAPID)
 
 `/api/notifications/push/{public-key,subscribe,unsubscribe}`. It is off until

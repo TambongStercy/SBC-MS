@@ -1,6 +1,8 @@
 import { emailService } from './email.service';
+import { sendRelanceViaCloudflare } from './cloudflare-email.service';
 import logger from '../utils/logger';
 import config from '../config';
+import { relanceUnsubscribeUrl } from '../utils/relance-unsubscribe';
 
 const log = logger.getLogger('EmailRelanceService');
 
@@ -40,7 +42,9 @@ class EmailRelanceService {
         referrerName: string,
         mediaUrls?: RelanceMedia[],
         buttons?: RelanceButton[],
-        subject?: string
+        subject?: string,
+        /** The recipient's signed unsubscribe link; previews have none. */
+        unsubscribeHref?: string
     ): string {
         const formattedMessage = messageText.replace(/\n/g, '<br>');
         const frontendUrl = config.app.frontendUrl || 'https://sniperbuisnesscenter.com';
@@ -204,7 +208,7 @@ class EmailRelanceService {
                     <p style="margin: 0; color: #64748b; font-size: 13px; font-weight: 500;">Sniper Business Center</p>
                     <p style="margin: 6px 0 0 0; color: #94a3b8; font-size: 12px;">Développé par Simbtech &copy; ${new Date().getFullYear()}</p>
                     <p style="margin: 14px 0 0 0;">
-                        <a href="${frontendUrl}/unsubscribe" style="color: #94a3b8; font-size: 12px; text-decoration: underline;">Se désabonner</a>
+                        <a href="${unsubscribeHref ?? `${frontendUrl}/unsubscribe`}" style="color: #94a3b8; font-size: 12px; text-decoration: underline;">Se désabonner</a>
                     </p>
                 </div>
             </div>
@@ -243,14 +247,28 @@ class EmailRelanceService {
                 referrerName,
                 mediaUrls,
                 buttons,
-                subject
+                subject,
+                relanceUnsubscribeUrl(recipientEmail)
             );
+            // Cloudflare first when it is the chosen provider, under the same
+            // checks iRedMail applies; anything it does not take goes on below.
+            const message = { to: recipientEmail, subject, html: htmlContent };
+            if (config.relanceEmail.provider === 'cloudflare' && emailService.passesPreflight(message)) {
+                const cf = await sendRelanceViaCloudflare(message);
+                if (cf.status === 'sent') {
+                    log.info(`[EmailRelance] Day ${dayNumber} email to ${recipientEmail} sent via Cloudflare`);
+                    return { success: true };
+                }
+                if (cf.status === 'bounced') {
+                    return { success: false, error: 'Permanent bounce (Cloudflare); address suppressed' };
+                }
+            }
 
             const result = await emailService.sendEmailWithTracking({
                 to: recipientEmail,
                 subject: subject,
                 html: htmlContent,
-                from: config.email.from
+                from: config.email.from,
             });
 
             if (result.success) {
