@@ -2,7 +2,7 @@ import { emailService } from './email.service';
 import { sendRelanceViaCloudflare } from './cloudflare-email.service';
 import logger from '../utils/logger';
 import config from '../config';
-import { relanceUnsubscribeHeaders, relanceUnsubscribeUrl } from '../utils/relance-unsubscribe';
+import { relanceUnsubscribeUrl } from '../utils/relance-unsubscribe';
 
 const log = logger.getLogger('EmailRelanceService');
 
@@ -250,11 +250,9 @@ class EmailRelanceService {
                 subject,
                 relanceUnsubscribeUrl(recipientEmail)
             );
-            const headers = relanceUnsubscribeHeaders(recipientEmail);
-
             // Cloudflare first when it is the chosen provider, under the same
             // checks iRedMail applies; anything it does not take goes on below.
-            const message = { to: recipientEmail, subject, html: htmlContent, headers };
+            const message = { to: recipientEmail, subject, html: htmlContent };
             if (config.relanceEmail.provider === 'cloudflare' && emailService.passesPreflight(message)) {
                 const cf = await sendRelanceViaCloudflare(message);
                 if (cf.status === 'sent') {
@@ -271,7 +269,6 @@ class EmailRelanceService {
                 subject: subject,
                 html: htmlContent,
                 from: config.email.from,
-                headers,
             });
 
             if (result.success) {

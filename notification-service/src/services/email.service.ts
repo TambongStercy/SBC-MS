@@ -17,7 +17,7 @@ interface EmailOptions {
     text?: string;
     from?: string;
     attachments?: Attachment[];
-    /** Extra headers, merged over the defaults (e.g. a one-click List-Unsubscribe). */
+    /** Extra headers, merged over the defaults. */
     headers?: Record<string, string>;
 }
 
@@ -244,10 +244,11 @@ class EmailService {
                 text: options.text,
                 html: options.html,
                 attachments: options.attachments,
-                // Add headers for better deliverability
                 headers: {
+                    // No List-Unsubscribe header: Gmail files any mail carrying it under
+                    // Promotions, which sends no phone notification. Measured 2026-10-06 —
+                    // the same relance email went to Promotions with it, Primary without.
                     'X-Mailer': 'SBC-Notification-System',
-                    'List-Unsubscribe': '<mailto:unsubscribe@sniperbuisnesscenter.com>',
                     'X-Entity-Ref-ID': `sbc-${Date.now()}`, // Unique reference for tracking
                 },
             };
@@ -376,8 +377,10 @@ class EmailService {
                 html: options.html,
                 attachments: options.attachments,
                 headers: {
+                    // No List-Unsubscribe header: Gmail files any mail carrying it under
+                    // Promotions, which sends no phone notification. Measured 2026-10-06 —
+                    // the same relance email went to Promotions with it, Primary without.
                     'X-Mailer': 'SBC-Notification-System',
-                    'List-Unsubscribe': '<mailto:unsubscribe@sniperbuisnesscenter.com>',
                     'X-Entity-Ref-ID': `sbc-${Date.now()}`,
                     ...options.headers,
                 },

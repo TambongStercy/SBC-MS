@@ -2,13 +2,15 @@ import crypto from 'crypto';
 import config from '../config';
 
 /**
- * Signed one-click unsubscribe links for relance emails.
+ * Signed unsubscribe links for the relance email footer.
  *
  * The footer used to point at `<frontend>/unsubscribe`, a page the app never
- * had. Gmail and Yahoo also require a working one-click unsubscribe
- * (List-Unsubscribe + List-Unsubscribe-Post) from anyone sending this kind of
- * mail in volume. The link carries the address and an HMAC of it, so nobody
- * can unsubscribe an address they only guessed.
+ * had. The link carries the address and an HMAC of it, so nobody can
+ * unsubscribe an address they only guessed.
+ *
+ * Deliberately NOT sent as a List-Unsubscribe header: Gmail puts mail with
+ * that header in Promotions, where nobody is notified (measured 2026-10-06).
+ * Gmail only requires it above 5,000 marketing emails a day to Gmail.
  */
 
 const sign = (email: string) =>
@@ -30,10 +32,3 @@ export function isValidUnsubscribe(email: unknown, token: unknown): email is str
     return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
 
-/** Headers that let Gmail show its own "Unsubscribe" button and POST to us in one click. */
-export function relanceUnsubscribeHeaders(email: string): Record<string, string> {
-    return {
-        'List-Unsubscribe': `<${relanceUnsubscribeUrl(email)}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-    };
-}

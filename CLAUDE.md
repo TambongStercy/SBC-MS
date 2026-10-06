@@ -648,13 +648,37 @@ on iRedMail.
 - **Usage:** each Cloudflare send is counted in `emailproviderusages`
   (`_id: cloudflare:YYYY-MM`). Compare it with the Cloudflare bill.
   `CLOUDFLARE_EMAIL_MONTHLY_CAP` stops the paid path for the rest of the month.
-- **Unsubscribe:** every relance email (both providers) carries a signed one-click
-  link, `/api/relance/unsubscribe?e=&t=` (HMAC of the address with the service
-  secret), plus `List-Unsubscribe` / `List-Unsubscribe-Post` headers. A GET only
-  shows a confirm button, because link scanners open every link. The POST
-  unsubscribes, and Gmail's one-click button POSTs too. It adds the address to the
-  same suppression list the sender already honours. Until this change the footer
-  linked to `<frontend>/unsubscribe`, a page that never existed.
+- **Unsubscribe:** every relance email's footer carries a signed link,
+  `/api/relance/unsubscribe?e=&t=` (HMAC of the address with the service secret).
+  A GET only shows a confirm button, because link scanners open every link. The
+  button POSTs, which adds the address to the suppression list the sender already
+  honours. Until this change the footer linked to `<frontend>/unsubscribe`, a page
+  that never existed.
+
+### No `List-Unsubscribe` header on our emails: Gmail → Promotions (measured 2026-10-06)
+
+Gmail files any mail carrying a `List-Unsubscribe` header under the
+**Promotions** tab, and Promotions sends no phone notification. Relance exists
+to be noticed, so that defeats it. Measured on two Gmail inboxes, one of which
+had never opened anything from us:
+
+| Email | Header | Tab |
+|---|---|---|
+| Full relance design (emojis, money claims, big button), Cloudflare | yes | Promotions |
+| Same design, prod wording, Cloudflare | no | **Primary** |
+| Full design, iRedMail | yes | Promotions |
+| Full design, iRedMail, clean inbox | no | **Primary** |
+| Plain personal note "Marie (SBC)", iRedMail, clean inbox | no | **Primary** |
+
+So it's the header, not the provider and not the wording. Both send paths in
+`email.service.ts` used to add `List-Unsubscribe: <mailto:…>` to **every** email,
+OTP codes included. It's gone everywhere now; the footer link stays. That OTP
+codes also went to Promotions because of it is a strong inference, not measured.
+Gmail only *requires* one-click unsubscribe above 5,000 marketing emails a day to
+Gmail. Relance is about 500–900 a day. Revisit if it nears that.
+
+Also measured: **opening one email trains Gmail for that sender in that inbox**.
+Later mail goes to Primary, but only for that person, so filleuls can't be relied on.
 
 ### Web push (VAPID)
 
