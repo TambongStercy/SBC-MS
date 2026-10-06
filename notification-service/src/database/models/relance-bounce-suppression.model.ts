@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type BounceSource = 'sendgrid_webhook' | 'ses_webhook' | 'backfill' | 'smtp_dsn';
+/** `cloudflare`: Cloudflare reported a permanent bounce. `unsubscribe`: the recipient asked to stop. */
+export type BounceSource = 'sendgrid_webhook' | 'ses_webhook' | 'backfill' | 'smtp_dsn' | 'cloudflare' | 'unsubscribe';
 
 export interface IRelanceBounceSuppressionEntry extends Document {
     email: string;
@@ -30,7 +31,7 @@ const RelanceBounceSuppressionSchema = new Schema<IRelanceBounceSuppressionEntry
         },
         source: {
             type: String,
-            enum: ['sendgrid_webhook', 'ses_webhook', 'backfill', 'smtp_dsn'] as BounceSource[],
+            enum: ['sendgrid_webhook', 'ses_webhook', 'backfill', 'smtp_dsn', 'cloudflare', 'unsubscribe'] as BounceSource[],
             required: true
         }
     },

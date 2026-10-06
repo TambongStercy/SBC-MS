@@ -17,6 +17,8 @@ interface EmailOptions {
     text?: string;
     from?: string;
     attachments?: Attachment[];
+    /** Extra headers, merged over the defaults (e.g. a one-click List-Unsubscribe). */
+    headers?: Record<string, string>;
 }
 
 interface CommissionEmailData {
@@ -302,50 +304,60 @@ class EmailService {
     }
 
     /**
+     * The checks every tracked send makes before it goes out: a valid address,
+     * content that does not look like spam, a recipient not blacklisted.
+     * Shared with relance's Cloudflare path so both providers apply the same rules.
+     */
+    passesPreflight(options: EmailOptions): boolean {
+        const emailValidation = spamChecker.validateEmailAddress(options.to);
+        if (!emailValidation.isValid) {
+            log.warn('Email not sent - invalid email address', {
+                email: options.to,
+                warnings: emailValidation.warnings
+            });
+            return false;
+        }
+
+        if (emailValidation.warnings.length > 0) {
+            log.warn('Email address warnings detected', {
+                email: options.to,
+                warnings: emailValidation.warnings
+            });
+        }
+
+        const spamCheck = spamChecker.checkContent(
+            options.subject,
+            options.html,
+            options.text
+        );
+
+        if (spamCheck.isSpam) {
+            log.warn('Email blocked - spam content detected', {
+                email: options.to,
+                subject: options.subject,
+                spamScore: spamCheck.score,
+                reasons: spamCheck.reasons
+            });
+            return false;
+        }
+
+        if (this.bounceHandler.isBlacklisted(options.to)) {
+            log.warn('Email not sent - recipient is blacklisted', {
+                email: options.to
+            });
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Send email with message ID tracking (for relance emails)
      * Returns the SendGrid message ID for tracking open/click events
      */
     async sendEmailWithTracking(options: EmailOptions): Promise<{ success: boolean; messageId?: string }> {
         try {
             // Reuse the same logic but capture and return the message ID
-            const emailValidation = spamChecker.validateEmailAddress(options.to);
-            if (!emailValidation.isValid) {
-                log.warn('Email not sent - invalid email address', {
-                    email: options.to,
-                    warnings: emailValidation.warnings
-                });
-                return { success: false };
-            }
-
-            if (emailValidation.warnings.length > 0) {
-                log.warn('Email address warnings detected', {
-                    email: options.to,
-                    warnings: emailValidation.warnings
-                });
-            }
-
-            const spamCheck = spamChecker.checkContent(
-                options.subject,
-                options.html,
-                options.text
-            );
-
-            if (spamCheck.isSpam) {
-                log.warn('Email blocked - spam content detected', {
-                    email: options.to,
-                    subject: options.subject,
-                    spamScore: spamCheck.score,
-                    reasons: spamCheck.reasons
-                });
-                return { success: false };
-            }
-
-            if (this.bounceHandler.isBlacklisted(options.to)) {
-                log.warn('Email not sent - recipient is blacklisted', {
-                    email: options.to
-                });
-                return { success: false };
-            }
+            if (!this.passesPreflight(options)) return { success: false };
 
             if (!this.isInitialized) {
                 if (config.nodeEnv === 'development') {
@@ -367,6 +379,7 @@ class EmailService {
                     'X-Mailer': 'SBC-Notification-System',
                     'List-Unsubscribe': '<mailto:unsubscribe@sniperbuisnesscenter.com>',
                     'X-Entity-Ref-ID': `sbc-${Date.now()}`,
+                    ...options.headers,
                 },
                 trackingSettings: {
                     clickTracking: {

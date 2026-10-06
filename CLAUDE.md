@@ -615,6 +615,42 @@ day 1 to everyone waiting, however old.
   Cached 10 min per parrain. The web app shows it as a card that opens the
   wizard with that period.
 
+### Relance email via Cloudflare (2026-10-06)
+
+Relance emails can go out through **Cloudflare Email Sending** instead of iRedMail,
+so the unstable mail server keeps its capacity for OTPs. OTP and system emails stay
+on iRedMail.
+
+- **Account:** Georgesyvan12@gmail.com's Cloudflare account. It also holds the
+  sniperbuisnesscenter.com zone. That matters, because Cloudflare only sends for a
+  zone in the same account. Plan: Workers Paid, $5/month for 3,000 emails, then
+  $0.35 per 1,000. Hard bounces are billed too.
+- **Sending domain: `relance.sniperbuisnesscenter.com`**, not the top level. All of
+  Cloudflare's records live under `relance.` (`cf-bounce.relance` SPF + DKIM,
+  `_dmarc.relance` = `p=reject`). The root SPF record (`ip4:81.17.100.244
+  include:sendgrid.net -all`) is iRedMail's. **Never add a second root SPF record.**
+- **Settings** in notification-service `.env`: `RELANCE_EMAIL_PROVIDER=cloudflare`
+  turns it on (default iredmail), plus `CLOUDFLARE_ACCOUNT_ID`,
+  `CLOUDFLARE_EMAIL_API_TOKEN` and `RELANCE_EMAIL_FROM`. The token is a custom
+  token (Account → Email Sending → Edit) locked to the server's IPv4 **and** IPv6.
+  The server reaches api.cloudflare.com over IPv6 by default, so an IPv4-only
+  filter refuses every call. The token *ID* that `/user/tokens/verify` returns is
+  not the account ID.
+- **Fallback:** anything Cloudflare does not take goes out through iRedMail for
+  that email: not configured, monthly cap reached, refused, or unreachable. A
+  Cloudflare permanent bounce is suppressed instead (`relancebouncesuppressions`,
+  source `cloudflare`).
+- **Usage:** each Cloudflare send is counted in `emailproviderusages`
+  (`_id: cloudflare:YYYY-MM`). Compare it with the Cloudflare bill.
+  `CLOUDFLARE_EMAIL_MONTHLY_CAP` stops the paid path for the rest of the month.
+- **Unsubscribe:** every relance email (both providers) carries a signed one-click
+  link, `/api/relance/unsubscribe?e=&t=` (HMAC of the address with the service
+  secret), plus `List-Unsubscribe` / `List-Unsubscribe-Post` headers. A GET only
+  shows a confirm button, because link scanners open every link. The POST
+  unsubscribes, and Gmail's one-click button POSTs too. It adds the address to the
+  same suppression list the sender already honours. Until this change the footer
+  linked to `<frontend>/unsubscribe`, a page that never existed.
+
 ### Web push (VAPID)
 
 `/api/notifications/push/{public-key,subscribe,unsubscribe}`. It is off until
