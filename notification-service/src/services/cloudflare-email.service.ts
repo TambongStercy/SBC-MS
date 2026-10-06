@@ -1,4 +1,5 @@
 import axios from 'axios';
+import https from 'https';
 import config from '../config';
 import EmailProviderUsageModel from '../database/models/email-provider-usage.model';
 import RelanceBounceSuppressionModel from '../database/models/relance-bounce-suppression.model';
@@ -28,6 +29,14 @@ export interface CloudflareMessage {
     html: string;
     headers?: Record<string, string>;
 }
+
+/**
+ * Always IPv4. The API token is locked to the server's address, and this
+ * server reaches api.cloudflare.com over IPv6 by default — which a token
+ * filtered on the IPv4 address refuses ("Cannot use the access token from
+ * location 2a02:…"), measured 2026-10-06.
+ */
+const ipv4 = new https.Agent({ family: 4, keepAlive: true });
 
 const monthKey = (now: Date) => `cloudflare:${now.toISOString().slice(0, 7)}`;
 
@@ -87,6 +96,7 @@ export async function sendRelanceViaCloudflare(msg: CloudflareMessage, now: Date
             {
                 headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
                 timeout: 15_000,
+                httpsAgent: ipv4,
                 validateStatus: () => true,
             },
         );

@@ -71,6 +71,8 @@ describe('sending through Cloudflare', () => {
         const [url, body, opts] = post.mock.calls[0];
         expect(url).toBe('https://api.cloudflare.com/client/v4/accounts/acc123/email/sending/send');
         expect(opts.headers.Authorization).toBe('Bearer tok');
+        // The token is IP-locked to the server's IPv4; IPv6 calls are refused.
+        expect(opts.httpsAgent.options.family).toBe(4);
         expect(body.from).toEqual({ address: 'noreply@relance.sniperbuisnesscenter.com', name: 'Sniper Business Center' });
         expect(body.to).toBe(TO);
         expect(body.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');

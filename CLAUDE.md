@@ -632,10 +632,15 @@ on iRedMail.
 - **Settings** in notification-service `.env`: `RELANCE_EMAIL_PROVIDER=cloudflare`
   turns it on (default iredmail), plus `CLOUDFLARE_ACCOUNT_ID`,
   `CLOUDFLARE_EMAIL_API_TOKEN` and `RELANCE_EMAIL_FROM`. The token is a custom
-  token (Account → Email Sending → Edit) locked to the server's IPv4 **and** IPv6.
-  The server reaches api.cloudflare.com over IPv6 by default, so an IPv4-only
-  filter refuses every call. The token *ID* that `/user/tokens/verify` returns is
-  not the account ID.
+  token (Account → Email Sending → Edit), IP-locked to the server's IPv4
+  `207.180.242.122`. The server reaches api.cloudflare.com over **IPv6** by
+  default, and Cloudflare refuses an IPv4-locked token from there ("Cannot use the
+  access token from location 2a02:…"). So the client forces IPv4
+  (`https.Agent({ family: 4 })`). Keep it that way, or add the IPv6 address to the
+  token. `/user/tokens/verify` ignores the IP filter, so it passing proves nothing
+  about sending. Probe with an empty POST to `…/email/sending/send` instead: 400
+  `invalid_request_schema` means the account ID and token are good. The token *ID*
+  that verify returns is not the account ID.
 - **Fallback:** anything Cloudflare does not take goes out through iRedMail for
   that email: not configured, monthly cap reached, refused, or unreachable. A
   Cloudflare permanent bounce is suppressed instead (`relancebouncesuppressions`,
