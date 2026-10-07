@@ -17,11 +17,46 @@ const hasPaidInscription = (ref: any) =>
  * number a parrain is shown is the number that gets enrolled — they used to
  * carry two copies of the same filter code.
  */
-export async function matchCampaignReferrals(userId: string, filter: TargetFilter): Promise<any[]> {
+/**
+ * A parrain's whole filleul list, kept briefly for the wizard's live count.
+ * Fetching it takes ~8s for a network the size of millioncfa's (35,000), and
+ * the count runs again on every tap of a period chip; the stale number shown
+ * meanwhile read as the answer (Rufus, 2026-10-07). Campaign creation never
+ * uses this: it always reads a fresh list.
+ */
+const REFERRAL_CACHE_MS = 5 * 60_000;
+const REFERRAL_CACHE_MAX = 50;
+const referralCache = new Map<string, { at: number; list: any[] }>();
+export const resetReferralCache = () => referralCache.clear();
+
+async function cachedReferrals(userId: string): Promise<any[]> {
+    const hit = referralCache.get(userId);
+    if (hit && Date.now() - hit.at < REFERRAL_CACHE_MS) return hit.list;
+    const list: any[] = await userServiceClient.getReferralsForCampaign(userId);
+    if (list.length) {
+        referralCache.delete(userId);
+        referralCache.set(userId, { at: Date.now(), list });
+        if (referralCache.size > REFERRAL_CACHE_MAX) referralCache.delete(referralCache.keys().next().value!);
+    }
+    return list;
+}
+
+export async function matchCampaignReferrals(userId: string, filter: TargetFilter, opts: { cached?: boolean } = {}): Promise<any[]> {
     const dateFrom = filter.registrationDateFrom ? new Date(filter.registrationDateFrom).toISOString() : undefined;
     const dateTo = filter.registrationDateTo ? new Date(filter.registrationDateTo).toISOString() : undefined;
-    // Date range is applied by user-service at the DB level.
-    let referrals: any[] = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
+    let referrals: any[];
+    if (opts.cached) {
+        // The whole list, filtered here, so every period answers from one fetch.
+        const from = dateFrom ? new Date(dateFrom).getTime() : -Infinity;
+        const to = dateTo ? new Date(dateTo).getTime() : Infinity;
+        referrals = (await cachedReferrals(userId)).filter(ref => {
+            const t = ref.createdAt ? new Date(ref.createdAt).getTime() : NaN;
+            return !Number.isNaN(t) ? t >= from && t <= to : from === -Infinity && to === Infinity;
+        });
+    } else {
+        // Date range is applied by user-service at the DB level.
+        referrals = await userServiceClient.getReferralsForCampaign(userId, dateFrom, dateTo);
+    }
 
     if (filter.countries?.length) {
         referrals = referrals.filter(ref => filter.countries!.includes(ref.country));
