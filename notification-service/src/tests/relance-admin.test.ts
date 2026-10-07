@@ -207,7 +207,7 @@ describe('admin overview', () => {
 describe('admin parrain list', () => {
     it('lists parrains with credits by default, with names, filleuls in progress and packs', async () => {
         const c = await campaign(ALICE);
-        await RelanceConfigModel.create({ userId: ALICE, emailBalance: 500, messagesSentToday: 40, lastResetDate: new Date(), maxMessagesPerDay: 200 });
+        await RelanceConfigModel.create({ userId: ALICE, emailBalance: 500, messagesSentToday: 40, lastResetDate: new Date() });
         await RelanceConfigModel.create({ userId: BOB, emailBalance: 0, smsBalance: 0 });
         await target({});
         await target({ campaignId: c._id });
@@ -217,7 +217,7 @@ describe('admin parrain list', () => {
         expect(r.status).toBe(200);
         expect(r.json.data.total).toBe(1);
         expect(r.json.data.parrains[0]).toMatchObject({
-            userId: ALICE, user: { name: 'Alice Ngo' }, emailBalance: 500, emailsSentToday: 40, maxMessagesPerDay: 200,
+            userId: ALICE, user: { name: 'Alice Ngo' }, emailBalance: 500, emailsSentToday: 40,
             inLoop: { nouveaux: 1, campaigns: 1 }, packs: { count: 1 },
         });
 
@@ -233,14 +233,14 @@ describe('admin parrain list', () => {
 });
 
 describe('admin config update', () => {
-    it('validates the daily limit and the flags', async () => {
+    it('validates the campaign size and the flags', async () => {
         await RelanceConfigModel.create({ userId: ALICE });
-        expect((await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: { maxMessagesPerDay: 0 } })).status).toBe(400);
-        expect((await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: { maxMessagesPerDay: '800' } })).status).toBe(400);
+        expect((await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: { maxTargetsPerCampaign: 5 } })).status).toBe(400);
+        expect((await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: { maxTargetsPerCampaign: '800' } })).status).toBe(400);
         expect((await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: { sendingPaused: 'yes' } })).status).toBe(400);
         expect((await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: {} })).status).toBe(400);
-        const ok = await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: { maxMessagesPerDay: 800, sendingPaused: true } });
+        const ok = await call('PUT', `/api/relance/admin/configs/${ALICE}`, { auth: admin, body: { maxTargetsPerCampaign: 800, sendingPaused: true } });
         expect(ok.status).toBe(200);
-        expect(await RelanceConfigModel.findOne({ userId: ALICE }).lean()).toMatchObject({ maxMessagesPerDay: 800, sendingPaused: true });
+        expect(await RelanceConfigModel.findOne({ userId: ALICE }).lean()).toMatchObject({ maxTargetsPerCampaign: 800, sendingPaused: true });
     });
 });

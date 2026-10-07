@@ -591,15 +591,9 @@ const RelanceCampaignsPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-sm text-gray-400">User ID</p>
-                                    <p className="text-gray-100 font-mono text-sm">{selectedCampaign.userId}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-400">Max Messages/Day</p>
-                                    <p className="text-gray-100">{selectedCampaign.maxMessagesPerDay || 'Default'}</p>
-                                </div>
+                            <div>
+                                <p className="text-sm text-gray-400">User ID</p>
+                                <p className="text-gray-100 font-mono text-sm">{selectedCampaign.userId}</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

@@ -4,7 +4,9 @@ import logger from '../utils/logger';
 import { emailService } from './email.service';
 import { smsService } from './sms.service';
 import { notificationRepository } from '../database/repositories/notification.repository';
-import { DeliveryChannel, INotification } from '../database/models/notification.model';
+import { DeliveryChannel, INotification, NotificationType } from '../database/models/notification.model';
+import { msToNextMinute, reserveHighPrioritySend } from './send-budget.service';
+import { sendOtpViaCloudflare } from './cloudflare-email.service';
 import whatsappServiceFactory from './whatsapp-service-factory';
 import { notificationService } from './notification.service';
 import { NotificationStatus } from '../database/models/notification.model';
@@ -16,7 +18,19 @@ const log = logger.getLogger('QueueService');
 interface NotificationJobData {
     notificationId: string;
     retryAttempt?: number;
+    /** Minutes this email has already waited for a free send (pacing). */
+    deferrals?: number;
 }
+
+/** Bull: 1 is the highest priority. OTP jumps every other email in the queue. */
+const EMAIL_PRIORITY_OTP = 1;
+const EMAIL_PRIORITY_OTHER = 10;
+/** An OTP waits at most this long for our server; past it, Cloudflare takes it. */
+const OTP_MAX_WAIT_MS = 30_000;
+/** After this many minutes of waiting, send anyway: queued on the mail server, not lost. */
+const MAX_DEFERRALS_OTP = 3;
+const MAX_DEFERRALS_OTHER = 60;
+const deferJitterMs = () => Math.floor(Math.random() * 3000);
 
 export class QueueService {
     private emailQueue: Queue;
@@ -181,7 +195,10 @@ export class QueueService {
         try {
             switch (notification.channel) {
                 case DeliveryChannel.EMAIL:
-                    await this.emailQueue.add('send-email', jobData, jobOptions);
+                    await this.emailQueue.add('send-email', jobData, {
+                        ...jobOptions,
+                        priority: notification.type === NotificationType.OTP ? EMAIL_PRIORITY_OTP : EMAIL_PRIORITY_OTHER,
+                    });
                     log.info(`Email notification ${notification._id} queued for ${notification.recipient}`);
                     break;
 
@@ -219,6 +236,50 @@ export class QueueService {
 
             if (!notification.data.subject) {
                 throw new Error(`Email notification ${notificationId} missing subject`);
+            }
+
+            // An address we know cannot receive mail (hard bounce, complaint), or
+            // that fails the address/spam checks, gets nothing — on either server,
+            // and without spending a send of the minute.
+            const message = { to: notification.recipient, subject: notification.data.subject, html: notification.data.body };
+            if (!emailService.passesPreflight(message)) {
+                await notificationRepository.markAsFailed(notificationId, 'Not sent: invalid, blocked or bounced address');
+                return;
+            }
+
+            // Pacing (SMART-SENDER-OVERFLOW-SPEC): our server takes at most
+            // emailPacing.ratePerMinute a minute. With no send left this minute,
+            // an OTP that would wait more than 30s goes to Cloudflare; anything
+            // else waits for the next minute, OTP first (Bull priority 1).
+            const isOtp = notification.type === NotificationType.OTP;
+            const deferrals = job.data.deferrals ?? 0;
+            if (!(await reserveHighPrioritySend())) {
+                if (isOtp && msToNextMinute() > OTP_MAX_WAIT_MS) {
+                    const cf = await sendOtpViaCloudflare({
+                        to: notification.recipient,
+                        subject: notification.data.subject,
+                        html: notification.data.body,
+                        text: notification.data.body.replace(/<[^>]*>/g, ''),
+                    });
+                    if (cf.status === 'sent') {
+                        await notificationRepository.markAsSent(notification._id);
+                        log.info(`OTP ${notificationId} sent via Cloudflare overflow to ${notification.recipient}`);
+                        return;
+                    }
+                    if (cf.status === 'bounced') {
+                        await notificationRepository.markAsFailed(notificationId, 'Permanent bounce (Cloudflare)');
+                        return;
+                    }
+                }
+                if (deferrals < (isOtp ? MAX_DEFERRALS_OTP : MAX_DEFERRALS_OTHER)) {
+                    await this.emailQueue.add('send-email', { ...job.data, deferrals: deferrals + 1 }, {
+                        priority: isOtp ? EMAIL_PRIORITY_OTP : EMAIL_PRIORITY_OTHER,
+                        delay: msToNextMinute() + deferJitterMs(),
+                    });
+                    log.info(`Email ${notificationId} waits for the next minute (${deferrals + 1}x)`);
+                    return;
+                }
+                log.warn(`Email ${notificationId} waited ${deferrals} minutes; sending anyway (the mail server queues it)`);
             }
 
             // Attempt to send email

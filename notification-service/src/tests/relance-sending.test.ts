@@ -6,7 +6,8 @@
  * behaviour that was wrong on prod on 2026-09-30:
  *  - credits decremented in memory and saved back whole, so a pack credited
  *    during a run was overwritten;
- *  - the daily email limit was stored, editable, and never enforced;
+ *  - the daily email limit was stored, editable, and never enforced (since
+ *    removed: the mail server's per-minute budget paces relance now);
  *  - J0 advanced even when nothing could be sent, losing the welcome email;
  *  - the regular path sent emails with no email credit if any SMS credit existed;
  *  - a paused campaign kept sending;
@@ -47,6 +48,7 @@ jest.mock('../services/relance-alerts.service', () => ({
 }));
 
 process.env.RELANCE_EMAIL_DELAY_MS = '0';
+process.env.RELANCE_SPARE_WAIT_MINUTES = '0';
 
 import mongoose from 'mongoose';
 import RelanceConfigModel from '../database/models/relance-config.model';
@@ -64,7 +66,7 @@ const DAY = 24 * HOUR;
 const referrerId = new mongoose.Types.ObjectId();
 
 const makeConfig = (over: Record<string, unknown> = {}) =>
-    RelanceConfigModel.create({ userId: referrerId, emailBalance: 100, smsBalance: 0, maxMessagesPerDay: 500, ...over });
+    RelanceConfigModel.create({ userId: referrerId, emailBalance: 100, smsBalance: 0, ...over });
 
 const makeTarget = (over: Record<string, unknown> = {}) =>
     RelanceTargetModel.create({
@@ -197,45 +199,70 @@ describe('credits', () => {
     });
 });
 
-describe('daily email limit', () => {
-    it('sends no more than the parrain\'s daily limit; the rest wait', async () => {
-        await makeConfig({ emailBalance: 100, maxMessagesPerDay: 2 });
+describe('no per-parrain daily limit (removed 2026-10-07)', () => {
+    it('sends every due email, however many went out today — the mail server budget paces it instead', async () => {
+        await makeConfig({ emailBalance: 100, messagesSentToday: 5000, lastResetDate: new Date() });
         await Promise.all([1, 2, 3, 4, 5].map(() => makeTarget()));
 
         await run();
 
-        expect(sendRelanceEmail).toHaveBeenCalledTimes(2);
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(5);
         const cfg = await balance();
-        expect(cfg.emailBalance).toBe(98);
-        expect(cfg.messagesSentToday).toBe(2);
-        expect(await RelanceTargetModel.countDocuments({ currentDay: 0 })).toBe(3);
+        expect(cfg.emailBalance).toBe(95);
+        expect(cfg.messagesSentToday).toBe(5005); // still counted, for the admin
     });
 
-    it('refuses a credit at the limit even if a caller skips the in-run check', async () => {
-        // The sender also stops early on its in-memory count; this pins the
-        // database-side guard, which is what holds if two runs ever overlap.
-        await makeConfig({ emailBalance: 100, maxMessagesPerDay: 2, messagesSentToday: 2 });
+    it('takes a credit whatever the count says', async () => {
+        await makeConfig({ emailBalance: 100, messagesSentToday: 9999 });
         const cfg: any = await RelanceConfigModel.findOne({ userId: referrerId });
-        expect(await reserveRelanceCredit(cfg, 'email')).toBe(false);
-        expect((await balance()).emailBalance).toBe(100);
+        expect(await reserveRelanceCredit(cfg, 'email')).toBe(true);
+        expect((await balance()).emailBalance).toBe(99);
     });
 
-    it('starts a fresh allowance on a new day', async () => {
-        await makeConfig({ maxMessagesPerDay: 1, messagesSentToday: 1, lastResetDate: new Date(Date.now() - 2 * DAY) });
+    it('restarts the sent-today count on a new day, once', async () => {
+        await makeConfig({ messagesSentToday: 7, lastResetDate: new Date(Date.now() - 2 * DAY) });
         const cfg = await RelanceConfigModel.findOne({ userId: referrerId });
         await resetDailyCountIfNewDay(cfg);
         expect((await balance()).messagesSentToday).toBe(0);
+        await RelanceConfigModel.updateOne({ userId: referrerId }, { $set: { messagesSentToday: 3 } });
+        await resetDailyCountIfNewDay(await RelanceConfigModel.findOne({ userId: referrerId }));
+        expect((await balance()).messagesSentToday).toBe(3);
+    });
+});
 
-        await makeTarget();
+describe('no spare sending capacity (relance is lowest priority)', () => {
+    const deferred = { success: false, deferred: true, error: 'No spare sending capacity this minute' };
+
+    it('holds the welcome email at day 0, uncharged, and stops the run', async () => {
+        await makeConfig({ emailBalance: 10 });
+        const first = await makeTarget();
+        const second = await makeTarget();
+        sendRelanceEmail.mockResolvedValue(deferred);
+
         await run();
-        expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(1); // the rest of the run waits
+        expect((await balance()).emailBalance).toBe(10);
+        for (const t of [first, second]) {
+            const after = await reload(t._id);
+            expect(after.currentDay).toBe(0);
+            expect(after.messagesDelivered).toEqual([]);
+        }
     });
 
-    it('does not reset twice in the same day', async () => {
-        await makeConfig({ messagesSentToday: 7, lastResetDate: new Date() });
-        const cfg = await RelanceConfigModel.findOne({ userId: referrerId });
-        await resetDailyCountIfNewDay(cfg);
-        expect((await balance()).messagesSentToday).toBe(7);
+    it('leaves a regular day due as it is — not a failure, nothing charged', async () => {
+        await makeConfig({ emailBalance: 10 });
+        const t = await makeTarget({ currentDay: 2 });
+        const dueBefore = (await reload(t._id)).nextMessageDue;
+        sendRelanceEmail.mockResolvedValue(deferred);
+
+        await run();
+
+        const after = await reload(t._id);
+        expect((await balance()).emailBalance).toBe(10);
+        expect(after.currentDay).toBe(2);
+        expect(after.messagesDelivered).toEqual([]); // no "failed" entry counting toward retries
+        expect(new Date(after.nextMessageDue).getTime()).toBe(new Date(dueBefore).getTime());
     });
 });
 

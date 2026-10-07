@@ -393,7 +393,7 @@ router.post('/admin/sms-templates/preview', authenticate, requireAdmin, (req, re
 
 /**
  * @route   PUT /api/relance/admin/configs/:userId
- * @desc    Admin: update a user's relance config (smsEnabled, maxMessagesPerDay, etc.)
+ * @desc    Admin: update a user's relance config (smsEnabled, sending, enrolment)
  * @access  Admin
  */
 router.put('/admin/configs/:userId', authenticate, requireAdmin, (req, res) =>
