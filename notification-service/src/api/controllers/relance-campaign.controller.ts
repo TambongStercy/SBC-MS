@@ -73,7 +73,8 @@ class RelanceCampaignController {
             const filter: TargetFilter = targetFilter;
             log.info(`Preview filters: ${JSON.stringify(filter)}`);
             const [allReferrals, config, newPerMonth] = await Promise.all([
-                matchCampaignReferrals(userId, filter),
+                // Cached: the wizard counts again on every tap (see matchCampaignReferrals).
+                matchCampaignReferrals(userId, filter, { cached: true }),
                 RelanceConfigModel.findOne({ userId }).select('emailBalance').lean(),
                 newFilleulsLast30Days(userId),
             ]);

@@ -22,7 +22,7 @@ import mongoose from 'mongoose';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import CampaignModel, { CampaignStatus, CampaignType } from '../database/models/relance-campaign.model';
-import { campaignBudget, matchCampaignReferrals, newFilleulsLast30Days } from '../services/relance-campaign-targets.service';
+import { campaignBudget, matchCampaignReferrals, newFilleulsLast30Days, resetReferralCache } from '../services/relance-campaign-targets.service';
 import { enrollFilteredTargets } from '../jobs/relance-enrollment.job';
 import { relanceCampaignController } from '../api/controllers/relance-campaign.controller';
 
@@ -65,6 +65,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
     getReferralsForCampaign.mockReset();
+    resetReferralCache();
     await Promise.all([RelanceTargetModel.deleteMany({}), CampaignModel.deleteMany({}), RelanceConfigModel.deleteMany({})]);
 });
 
@@ -145,5 +146,33 @@ describe('enrolling a budgeted campaign', () => {
 
         expect(await enrollFilteredTargets(parrain.toString(), c, {})).toBe(0);
         expect(await RelanceTargetModel.countDocuments({ campaignId: c._id })).toBe(1);
+    });
+});
+
+describe('the live count for a big network (millioncfa, 35,000 filleuls)', () => {
+    const at = (days: number) => ({ _id: new mongoose.Types.ObjectId().toString(), activeSubscriptionTypes: [], createdAt: new Date(Date.now() - days * 86400_000).toISOString() });
+    const list = [at(2), at(20), at(100), at(400)];
+
+    it('fetches the whole list once and answers every period from it', async () => {
+        getReferralsForCampaign.mockResolvedValue(list);
+        const all = await matchCampaignReferrals('p1', { subscriptionStatus: 'non-subscribed' }, { cached: true });
+        const month = await matchCampaignReferrals('p1', { subscriptionStatus: 'non-subscribed', registrationDateFrom: new Date(Date.now() - 30 * 86400_000) }, { cached: true });
+        expect(all).toHaveLength(4);
+        expect(month).toHaveLength(2);
+        expect(getReferralsForCampaign).toHaveBeenCalledTimes(1);
+        expect(getReferralsForCampaign).toHaveBeenCalledWith('p1'); // no date range: the whole list
+    });
+
+    it('never serves campaign creation from the cache', async () => {
+        getReferralsForCampaign.mockResolvedValue(list);
+        await matchCampaignReferrals('p1', { subscriptionStatus: 'non-subscribed' }, { cached: true });
+        await matchCampaignReferrals('p1', { subscriptionStatus: 'non-subscribed' });
+        expect(getReferralsForCampaign).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not keep an empty answer (user-service down), so the next tap retries', async () => {
+        getReferralsForCampaign.mockResolvedValueOnce([]).mockResolvedValueOnce(list);
+        expect(await matchCampaignReferrals('p1', { subscriptionStatus: 'non-subscribed' }, { cached: true })).toHaveLength(0);
+        expect(await matchCampaignReferrals('p1', { subscriptionStatus: 'non-subscribed' }, { cached: true })).toHaveLength(4);
     });
 });
