@@ -563,9 +563,11 @@ The retired monthly RELANCE subscription must not gate anything any more.
   parrain had SMS credit. Now `reserveRelanceCredit` takes one credit atomically
   before each send and `refundRelanceCredit` returns it on failure. Never add a
   `config.save()` back to the sender.
-- `maxMessagesPerDay` was editable but never enforced and `lastResetDate` was
-  never updated; both work now (UTC days). It protects the mail server, which
-  also carries OTPs.
+- The per-parrain daily email limit (`maxMessagesPerDay`) was **removed on
+  2026-10-07** at Sterling's request, from the backend, the member app and the
+  admin. The shared per-minute budget on the mail server (see "Email routing:
+  the smart sender") paces relance now. `messagesSentToday` is still counted
+  (UTC days) for the admin list, but it limits nothing.
 - Paused campaigns kept sending; a J0 with no credit skipped the welcome email
   for good; a filleul who had paid via activation balance kept getting "pay
   now" emails (only SMS checked). All fixed.
@@ -615,39 +617,61 @@ day 1 to everyone waiting, however old.
   Cached 10 min per parrain. The web app shows it as a card that opens the
   wizard with that period.
 
-### Relance email via Cloudflare (2026-10-06)
+### Email routing: the smart sender (2026-10-07, SMART-SENDER-OVERFLOW-SPEC)
 
-Relance emails can go out through **Cloudflare Email Sending** instead of iRedMail,
-so the unstable mail server keeps its capacity for OTPs. OTP and system emails stay
-on iRedMail.
+Our own mail server (iRedMail, 81.17.100.244) is primary for **all** email.
+Cloudflare Email Sending is only the **OTP overflow**. Cloudflare refused to
+raise its 1,000/day quota, so it can't carry relance.
 
-- **Account:** Georgesyvan12@gmail.com's Cloudflare account. It also holds the
-  sniperbuisnesscenter.com zone. That matters, because Cloudflare only sends for a
-  zone in the same account. Plan: Workers Paid, $5/month for 3,000 emails, then
-  $0.35 per 1,000. Hard bounces are billed too.
-- **Sending domain: `relance.sniperbuisnesscenter.com`**, not the top level. All of
-  Cloudflare's records live under `relance.` (`cf-bounce.relance` SPF + DKIM,
-  `_dmarc.relance` = `p=reject`). The root SPF record (`ip4:81.17.100.244
-  include:sendgrid.net -all`) is iRedMail's. **Never add a second root SPF record.**
-- **Settings** in notification-service `.env`: `RELANCE_EMAIL_PROVIDER=cloudflare`
-  turns it on (default iredmail), plus `CLOUDFLARE_ACCOUNT_ID`,
-  `CLOUDFLARE_EMAIL_API_TOKEN` and `RELANCE_EMAIL_FROM`. The token is a custom
-  token (Account → Email Sending → Edit), IP-locked to the server's IPv4
-  `207.180.242.122`. The server reaches api.cloudflare.com over **IPv6** by
-  default, and Cloudflare refuses an IPv4-locked token from there ("Cannot use the
-  access token from location 2a02:…"). So the client forces IPv4
-  (`https.Agent({ family: 4 })`). Keep it that way, or add the IPv6 address to the
-  token. `/user/tokens/verify` ignores the IP filter, so it passing proves nothing
-  about sending. Probe with an empty POST to `…/email/sending/send` instead: 400
-  `invalid_request_schema` means the account ID and token are good. The token *ID*
-  that verify returns is not the account ID.
-- **Fallback:** anything Cloudflare does not take goes out through iRedMail for
-  that email: not configured, monthly cap reached, refused, or unreachable. A
-  Cloudflare permanent bounce is suppressed instead (`relancebouncesuppressions`,
-  source `cloudflare`).
-- **Usage:** each Cloudflare send is counted in `emailproviderusages`
-  (`_id: cloudflare:YYYY-MM`). Compare it with the Cloudflare bill.
-  `CLOUDFLARE_EMAIL_MONTHLY_CAP` stops the paid path for the rest of the month.
+- **Per-minute budget** (`send-budget.service`, collection `emailsendminutes`):
+  at most `EMAIL_RATE_PER_MINUTE` (25) sends a minute on our server. Contabo
+  throttles a server above ~25/min, and bursts are what made Gmail defer our IP.
+  - **OTP** (Bull priority 1) and **other email** (priority 10) each take a send
+    while any is left in the minute.
+  - **Relance** only gets `rate − (busiest high-priority minute of the last 5) − 2`.
+    It fills quiet minutes and stands aside at peak.
+- **The queue worker** (`queue.service` → `processEmailNotification`) acts when
+  the minute is full:
+  - An **OTP** that would wait more than 30s goes to **Cloudflare**.
+  - Otherwise the email is re-queued for the next minute (OTP first).
+  - After 3 waits for an OTP, or 60 for other email, it is sent anyway: it
+    queues on the mail server, so nothing is lost.
+- **Relance** (`email.relance.service`) gets `deferred` when there's no room:
+  nothing is sent and nothing charged. The sender waits for room minute by
+  minute, up to `RELANCE_SPARE_WAIT_MINUTES` (14, one cron cycle). The rest of
+  that parrain's targets stay due, untouched, with no "failed" entry. Relance
+  **never** goes to Cloudflare.
+- **Cloudflare** (`cloudflare-email.service`):
+  - **Account:** Georgesyvan12@gmail.com's, which also holds the zone.
+  - **Sender:** OTP overflow goes out as `CLOUDFLARE_OTP_FROM`, by default
+    `noreply@noreply.sniperbuisnesscenter.com`. That's the subdomain onboarded in
+    Cloudflare for OTPs (2026-10-07). Its records are `cf-bounce.noreply` (MX +
+    SPF), `cf-bounce._domainkey.noreply` (DKIM) and `_dmarc.noreply` (p=reject).
+    The main domain is **not** onboarded, so Cloudflare refuses
+    `@sniperbuisnesscenter.com` senders. Never send OTPs from the relance identity.
+  - **Caps:** counted per day (`emailproviderusages`, `cloudflare:YYYY-MM-DD`,
+    cap `CLOUDFLARE_EMAIL_DAILY_CAP`=900) and per month (to compare with the bill).
+  - **Refusals:** a 401/403/429 pauses Cloudflare for an hour.
+  - **Logo:** the inline `cid:sbc-logo` is stripped, because the REST API
+    documents no inline content-id.
+  - **On/off:** on whenever credentials are set; `CLOUDFLARE_OTP_OVERFLOW=false`
+    turns it off.
+  - **Pricing:** Workers Paid, $5/month for 3,000 emails, then $0.35 per 1,000.
+- **IPv4 only:** the token is a custom token (Account → Email Sending → Edit),
+  IP-locked to the server's IPv4 `207.180.242.122`. The server reaches
+  api.cloudflare.com over **IPv6** by default, and Cloudflare refuses an
+  IPv4-locked token from there ("Cannot use the access token from location
+  2a02:…"). The client therefore forces IPv4 (`https.Agent({ family: 4 })`).
+- **Probing the token:** `/user/tokens/verify` ignores the IP filter, so it
+  passing proves nothing about sending. Probe with an empty POST to
+  `…/email/sending/send` instead: 400 `invalid_request_schema` means the account
+  ID and token are good. The token *ID* that verify returns is not the account ID.
+- **The relance subdomain:** `relance.sniperbuisnesscenter.com` is also onboarded
+  in Cloudflare (`cf-bounce.relance` SPF + DKIM, `_dmarc.relance` p=reject). It's
+  unused since relance moved back to iRedMail; harmless.
+- **Root DNS:** the root SPF (`ip4:81.17.100.244 include:sendgrid.net -all`) and
+  root DMARC (`p=quarantine`) are iRedMail's. **Never add a second root SPF record,
+  and never let Cloudflare replace the root DMARC.**
 - **Unsubscribe:** every relance email's footer carries a signed link,
   `/api/relance/unsubscribe?e=&t=` (HMAC of the address with the service secret).
   A GET only shows a confirm button, because link scanners open every link. The
@@ -661,6 +685,31 @@ on iRedMail.
   from relance must still get their login codes. A Cloudflare bounce uses `$set`,
   so it upgrades an earlier unsubscribe to a full block. An unsubscribe uses
   `$setOnInsert`, so it never downgrades a bounce.
+
+### Hard bounces on our own mail server: the bounce-mailbox reader
+
+iRedMail delivers asynchronously, so a dead address comes back as a bounce
+report (DSN) in the `noreply@` mailbox, not as an SMTP error. The reader
+(`bounce-mailbox.service`, every 15 min, 2,000 a pass) suppresses the hard ones
+(`source: smtp_dsn`), which blocks every email to them. It marks every report
+read and never deletes mail.
+
+- **It was off on prod until 2026-10-07.** A read-only dry run that day found
+  **29,946 unread bounce reports**. The latest 3,000 alone held **908 dead
+  addresses**, none suppressed, that were still being sent OTP, Ads and relance
+  emails.
+- **IMAP host must be `mail.sbcprecom.com`.** The mail server's TLS certificate
+  covers only that name (same IP as `mail.sniperbuisnesscenter.com`), and the
+  default host fails certificate verification.
+- **To enable:** in the notification-service `.env`, set
+  `BOUNCE_MAILBOX_ENABLED=true` and `BOUNCE_IMAP_HOST=mail.sbcprecom.com`. User
+  and password default to the sending account.
+- **Cloudflare bounces are separate.** Immediate permanent bounces are suppressed
+  in code. Later bounces only land on Cloudflare's own suppression list, which
+  stops Cloudflare from resending to that address.
+- **The queue worker checks first.** It runs `passesPreflight` (blacklist,
+  address validity, spam check) before either server, so a known-dead address
+  gets nothing and doesn't use up a send in the minute's budget.
 
 ### No `List-Unsubscribe` header on our emails: Gmail → Promotions (measured 2026-10-06)
 

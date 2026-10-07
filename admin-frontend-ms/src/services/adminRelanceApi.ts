@@ -237,7 +237,6 @@ export interface Campaign {
     messagesFailed: number;
     targetsCompleted: number;
     targetsExited: number;
-    maxMessagesPerDay?: number;
     messagesSentToday?: number;
     startedAt?: string;
     actualEndDate?: string;
@@ -449,7 +448,6 @@ export interface RelanceBalance {
     emailBalance: number;
     smsBalance: number;
     smsEnabled: boolean;
-    maxMessagesPerDay: number;
 }
 
 export const getPacks = async (): Promise<{ emailPacks: RelancePack[]; smsPacks: RelancePack[] }> => {
@@ -520,7 +518,7 @@ export const previewSmsTemplate = async (
 
 export const adminUpdateUserConfig = async (
     userId: string,
-    data: { smsEnabled?: boolean; maxMessagesPerDay?: number }
+    data: { smsEnabled?: boolean }
 ): Promise<void> => {
     await apiClient.put(`/relance/admin/configs/${userId}`, data);
 };

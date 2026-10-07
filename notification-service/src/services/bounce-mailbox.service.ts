@@ -127,7 +127,8 @@ export async function runBounceMailboxPass(): Promise<void> {
     if (running) return;
     running = true;
     try {
-        const r = await withImapMailbox(mailbox => processBounces(mailbox));
+        // 2,000 a pass: the mailbox held ~30,000 unread reports when this was first switched on.
+        const r = await withImapMailbox(mailbox => processBounces(mailbox, 2000));
         if (r.read) log.info(`Bounce mailbox: read ${r.read}, suppressed ${r.suppressed} new address(es), ${r.ignored} not permanent`);
     } catch (err: any) {
         log.error(`Bounce mailbox pass failed: ${err?.message ?? err}`);

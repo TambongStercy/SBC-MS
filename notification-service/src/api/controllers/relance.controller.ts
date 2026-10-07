@@ -45,8 +45,7 @@ class RelanceController {
                     enabled: config?.enabled || false,
                     enrollmentPaused: config?.enrollmentPaused || false,
                     sendingPaused: config?.sendingPaused || false,
-                    messagesSentToday: config?.messagesSentToday || 0,
-                    maxMessagesPerDay: config?.maxMessagesPerDay || 500
+                    messagesSentToday: config?.messagesSentToday || 0
                 }
             });
         } catch (error: any) {
@@ -681,8 +680,8 @@ class RelanceController {
         try {
             const userId = req.user?.userId;
             if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
-            const cfg = await RelanceConfigModel.findOne({ userId }).select('emailBalance smsBalance smsEnabled maxMessagesPerDay');
-            res.status(200).json({ success: true, data: cfg ? { emailBalance: cfg.emailBalance, smsBalance: cfg.smsBalance, smsEnabled: cfg.smsEnabled, maxMessagesPerDay: cfg.maxMessagesPerDay } : { emailBalance: 0, smsBalance: 0, smsEnabled: false } });
+            const cfg = await RelanceConfigModel.findOne({ userId }).select('emailBalance smsBalance smsEnabled');
+            res.status(200).json({ success: true, data: cfg ? { emailBalance: cfg.emailBalance, smsBalance: cfg.smsBalance, smsEnabled: cfg.smsEnabled } : { emailBalance: 0, smsBalance: 0, smsEnabled: false } });
         } catch (error: any) {
             res.status(500).json({ success: false, message: 'Failed to get balance' });
         }
@@ -885,7 +884,7 @@ class RelanceController {
         }
     }
 
-    /** PUT /api/relance/admin/configs/:userId — admin can toggle smsEnabled, adjust maxMessagesPerDay */
+    /** PUT /api/relance/admin/configs/:userId — admin can toggle smsEnabled, sending, enrolment */
     async adminUpdateConfig(req: AuthenticatedRequest, res: Response): Promise<void> {
         try {
             // Admin role is enforced by `requireAdmin` on the route. The check that used
@@ -893,7 +892,7 @@ class RelanceController {
             // turned away every real admin.
             const { userId } = req.params;
             const flags = ['smsEnabled', 'enabled', 'sendingPaused', 'enrollmentPaused'];
-            const limits: Record<string, [number, number]> = { maxMessagesPerDay: [1, 5000], maxTargetsPerCampaign: [10, 50000] };
+            const limits: Record<string, [number, number]> = { maxTargetsPerCampaign: [10, 50000] };
             const update: Record<string, any> = {};
             for (const key of flags) {
                 if (req.body[key] === undefined) continue;

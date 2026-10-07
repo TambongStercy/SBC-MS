@@ -55,7 +55,6 @@ export interface IRelanceConfig extends Document {
     // Daily pacing (user-controlled, credits are the hard stop)
     messagesSentToday: number;
     lastResetDate: Date;
-    maxMessagesPerDay: number;      // default 500, user can adjust
     maxTargetsPerCampaign: number;
 
     // User's saved email message templates (for pre-filling campaign forms)
@@ -123,7 +122,6 @@ const RelanceConfigSchema = new Schema<IRelanceConfig>(
         // Daily pacing (user-controlled rate; credits are the hard stop)
         messagesSentToday: { type: Number, default: 0 },
         lastResetDate: { type: Date, default: Date.now },
-        maxMessagesPerDay: { type: Number, default: 500 },
         maxTargetsPerCampaign: { type: Number, default: 500 },
 
         // User's saved message templates (pre-fills campaign forms)
