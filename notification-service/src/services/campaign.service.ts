@@ -25,7 +25,6 @@ class CampaignService {
             scheduledStartDate?: Date;
             runAfterCampaignId?: string;
             customMessages?: ICampaign['customMessages'];
-            maxMessagesPerDay?: number;
             /** 'both' = email + SMS (SMS still needs SMS on, credits, and a +237 number). */
             channel?: 'email' | 'both';
         }
@@ -88,7 +87,6 @@ class CampaignService {
                 runAfterCampaignId: options?.runAfterCampaignId,
                 customMessages: options?.customMessages,
                 channel: options?.channel ?? 'email',
-                maxMessagesPerDay: options?.maxMessagesPerDay || config.maxMessagesPerDay,
                 createdBy: userId
             });
 

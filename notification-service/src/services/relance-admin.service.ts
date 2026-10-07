@@ -132,7 +132,7 @@ export async function adminParrains(opts: { page: number; limit: number; withCre
 
     const [configs, total] = await Promise.all([
         RelanceConfigModel.find(query)
-            .select('userId enabled enrollmentPaused sendingPaused smsEnabled emailBalance smsBalance messagesSentToday lastResetDate maxMessagesPerDay updatedAt')
+            .select('userId enabled enrollmentPaused sendingPaused smsEnabled emailBalance smsBalance messagesSentToday lastResetDate updatedAt')
             .sort({ updatedAt: -1 })
             .skip((opts.page - 1) * opts.limit)
             .limit(opts.limit)
@@ -176,7 +176,6 @@ export async function adminParrains(opts: { page: number; limit: number; withCre
                 smsBalance: c.smsBalance ?? 0,
                 // The sender only zeroes the count when it next runs for this parrain.
                 emailsSentToday: c.lastResetDate && c.lastResetDate >= today ? (c.messagesSentToday ?? 0) : 0,
-                maxMessagesPerDay: c.maxMessagesPerDay ?? 500,
                 inLoop: inLoop[id] ?? { nouveaux: 0, campaigns: 0 },
                 packs: packs[id] ?? { count: 0, lastAt: null },
             };

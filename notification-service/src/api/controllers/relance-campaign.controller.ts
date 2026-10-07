@@ -127,7 +127,7 @@ class RelanceCampaignController {
     async createCampaign(req: Request, res: Response): Promise<void> {
         try {
             const userId = (req as any).user?.userId || req.body.userId;
-            const { name, targetFilter, scheduledStartDate, runAfterCampaignId, customMessages, maxMessagesPerDay, channel } = req.body;
+            const { name, targetFilter, scheduledStartDate, runAfterCampaignId, customMessages, channel } = req.body;
 
             if (!userId) {
                 res.status(400).json({
@@ -153,7 +153,6 @@ class RelanceCampaignController {
                     scheduledStartDate: scheduledStartDate ? new Date(scheduledStartDate) : undefined,
                     runAfterCampaignId,
                     customMessages,
-                    maxMessagesPerDay,
                     channel: channel === 'both' ? 'both' : 'email',
                 }
             );
@@ -588,7 +587,7 @@ class RelanceCampaignController {
     async updateConfig(req: Request, res: Response): Promise<void> {
         try {
             const userId = (req as any).user?.userId || req.body.userId;
-            const { defaultCampaignPaused, allowSimultaneousCampaigns, maxMessagesPerDay, maxTargetsPerCampaign } = req.body;
+            const { defaultCampaignPaused, allowSimultaneousCampaigns, maxTargetsPerCampaign } = req.body;
 
             if (!userId) {
                 res.status(400).json({
@@ -615,10 +614,6 @@ class RelanceCampaignController {
 
             if (typeof allowSimultaneousCampaigns === 'boolean') {
                 config.allowSimultaneousCampaigns = allowSimultaneousCampaigns;
-            }
-
-            if (typeof maxMessagesPerDay === 'number' && maxMessagesPerDay >= 1 && maxMessagesPerDay <= 5000) {
-                config.maxMessagesPerDay = maxMessagesPerDay;
             }
 
             // Allow up to 50,000 targets per campaign for users with large referral networks

@@ -90,7 +90,6 @@ export interface ICampaign extends Document {
     channel?: 'email' | 'sms' | 'both';
 
     // Rate limiting (for filtered campaigns)
-    maxMessagesPerDay?: number;         // Limit messages/day for this campaign
 
     // Metadata
     createdAt: Date;
@@ -252,7 +251,6 @@ const CampaignSchema = new Schema<ICampaign>(
         },
 
         // Rate limiting
-        maxMessagesPerDay: Number,
 
         // Metadata
         createdBy: {

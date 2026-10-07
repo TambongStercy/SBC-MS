@@ -563,9 +563,11 @@ The retired monthly RELANCE subscription must not gate anything any more.
   parrain had SMS credit. Now `reserveRelanceCredit` takes one credit atomically
   before each send and `refundRelanceCredit` returns it on failure. Never add a
   `config.save()` back to the sender.
-- `maxMessagesPerDay` was editable but never enforced and `lastResetDate` was
-  never updated; both work now (UTC days). It protects the mail server, which
-  also carries OTPs.
+- The per-parrain daily email limit (`maxMessagesPerDay`) was **removed on
+  2026-10-07** at Sterling's request, from the backend, the member app and the
+  admin. The shared per-minute budget on the mail server (see "Email routing:
+  the smart sender") paces relance now. `messagesSentToday` is still counted
+  (UTC days) for the admin list, but it limits nothing.
 - Paused campaigns kept sending; a J0 with no credit skipped the welcome email
   for good; a filleul who had paid via activation balance kept getting "pay
   now" emails (only SMS checked). All fixed.
