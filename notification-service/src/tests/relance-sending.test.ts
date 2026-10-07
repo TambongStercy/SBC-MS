@@ -56,7 +56,7 @@ import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models
 import RelanceMessageModel from '../database/models/relance-message.model';
 import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import CampaignModel, { CampaignStatus, CampaignType } from '../database/models/relance-campaign.model';
-import { processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit, runMessageSendingJob } from '../jobs/relance-sender.job';
+import { inRelanceSendingHours, processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit, runMessageSendingJob } from '../jobs/relance-sender.job';
 import { closeRelanceBacklog } from '../scripts/close-relance-backlog';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_sending_test';
@@ -340,7 +340,7 @@ describe('campaigns', () => {
         const running = await makeCampaign(CampaignStatus.ACTIVE);
         await makeTarget({ campaignId: running._id, currentDay: 2, nextMessageDue: new Date(Date.now() + DAY) });
 
-        await runMessageSendingJob();
+        await runMessageSendingJob(new Date('2026-10-07T10:00:00Z')); // 11:00 Douala, within sending hours
 
         expect((await CampaignModel.findById(empty._id))!.status).toBe(CampaignStatus.COMPLETED);
         expect((await CampaignModel.findById(running._id))!.status).toBe(CampaignStatus.ACTIVE);
@@ -446,5 +446,27 @@ describe('closing the backlog', () => {
         expect(o.exitReason).toBe(ExitReason.EXPIRED);
         expect(r.status).toBe(TargetStatus.ACTIVE);
         expect(ct.status).toBe(TargetStatus.ACTIVE); // campaigns are the parrain's own choice
+    });
+});
+
+describe('relance goes out in the daytime only (07:00–19:00 Douala)', () => {
+    it.each([
+        ['05:59 UTC = 06:59 Douala', '2026-10-07T05:59:00Z', false],
+        ['06:00 UTC = 07:00 Douala', '2026-10-07T06:00:00Z', true],
+        ['12:00 UTC = 13:00 Douala', '2026-10-07T12:00:00Z', true],
+        ['17:59 UTC = 18:59 Douala', '2026-10-07T17:59:00Z', true],
+        ['18:00 UTC = 19:00 Douala', '2026-10-07T18:00:00Z', false],
+        ['21:30 UTC = 22:30 Douala (OTP peak)', '2026-10-07T21:30:00Z', false],
+        ['01:00 UTC = 02:00 Douala', '2026-10-07T01:00:00Z', false],
+    ])('%s', (_label, iso, expected) => {
+        expect(inRelanceSendingHours(new Date(iso))).toBe(expected);
+    });
+
+    it('sends nothing at night: a due filleul waits for the morning', async () => {
+        await makeConfig({ emailBalance: 10 });
+        const t = await makeTarget();
+        await runMessageSendingJob(new Date('2026-10-07T23:00:00Z')); // midnight Douala
+        expect(sendRelanceEmail).not.toHaveBeenCalled();
+        expect((await reload(t._id)).currentDay).toBe(0);
     });
 });
