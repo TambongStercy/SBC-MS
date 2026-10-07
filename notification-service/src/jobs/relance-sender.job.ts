@@ -782,7 +782,27 @@ let isJobRunning = false;
  * Main Message Sending Job
  * Groups targets by user and processes each user in parallel
  */
-export async function runMessageSendingJob() {
+/**
+ * Relance emails go out in the daytime only (Sterling, 2026-10-07): not at
+ * night, and not in the evening OTP peak (20:00–23:00 Douala). Within these
+ * hours the mail-server budget (send-budget.service) still gives relance only
+ * the room OTP leaves. Douala time is UTC+1 all year. Override with
+ * RELANCE_SEND_FROM_HOUR / RELANCE_SEND_TO_HOUR (0–24, end exclusive).
+ */
+const DOUALA_UTC_OFFSET_H = 1;
+const SEND_FROM_HOUR = Number(process.env.RELANCE_SEND_FROM_HOUR ?? 7);
+const SEND_TO_HOUR = Number(process.env.RELANCE_SEND_TO_HOUR ?? 19);
+
+export function inRelanceSendingHours(now: Date = new Date(), from = SEND_FROM_HOUR, to = SEND_TO_HOUR): boolean {
+    const h = (now.getUTCHours() + DOUALA_UTC_OFFSET_H) % 24;
+    return from <= to ? h >= from && h < to : h >= from || h < to;
+}
+
+export async function runMessageSendingJob(now: Date = new Date()) {
+    if (!inRelanceSendingHours(now)) {
+        console.log(`[Relance Sender] Outside sending hours (${SEND_FROM_HOUR}:00–${SEND_TO_HOUR}:00 Douala); next run will check again.`);
+        return;
+    }
     if (isJobRunning) {
         console.log('[Relance Sender] Previous job still running, skipping this cycle.');
         return;
@@ -922,7 +942,8 @@ export function startRelanceSenderJob() {
     runMessageSendingJob();
 
     // Run every 15 minutes
-    cron.schedule('*/15 * * * *', runMessageSendingJob);
+    // Wrapped: node-cron passes its own argument, which must not become `now`.
+    cron.schedule('*/15 * * * *', () => runMessageSendingJob());
 
     console.log('[Relance Sender] Job scheduled successfully');
 

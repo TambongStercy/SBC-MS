@@ -636,6 +636,10 @@ raise its 1,000/day quota, so it can't carry relance.
   - Otherwise the email is re-queued for the next minute (OTP first).
   - After 3 waits for an OTP, or 60 for other email, it is sent anyway: it
     queues on the mail server, so nothing is lost.
+- **Relance sends in the daytime only, 07:00–19:00 Douala** (Sterling, 2026-10-07):
+  never at night, and never in the 20:00–23:00 OTP peak. Change it with
+  `RELANCE_SEND_FROM_HOUR` / `RELANCE_SEND_TO_HOUR` (`inRelanceSendingHours`).
+  A night sign-up's first message waits for the morning.
 - **Relance** (`email.relance.service`) gets `deferred` when there's no room:
   nothing is sent and nothing charged. The sender waits for room minute by
   minute, up to `RELANCE_SPARE_WAIT_MINUTES` (14, one cron cycle). The rest of
