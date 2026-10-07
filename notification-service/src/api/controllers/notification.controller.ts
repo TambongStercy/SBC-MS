@@ -493,51 +493,6 @@ export class NotificationController {
     // --- NEW EMAIL HANDLERS ---
 
     /**
-     * Handle request to send a commission earned email.
-     * @route POST /internal/email/commission-earned
-     */
-    async handleCommissionEarnedEmail(req: Request, res: Response, next: Function): Promise<void> {
-        const callingService = req.headers['x-calling-service'] as string || 'Unknown Service';
-        log.info(`Received commission earned email request from ${callingService}:`, req.body);
-        try {
-            const { email, amount, level, name, username, debt, currency = 'FCFA' } = req.body;
-
-            // Basic validation
-            if (!email || !amount || !level || !name || !username) {
-                res.status(400).json({
-                    success: false,
-                    message: 'Missing required fields for commission email: email, amount, level, name, username'
-                });
-                return;
-            }
-
-            const success = await emailService.sendCommissionEarnedEmail({
-                email,
-                amount,
-                level,
-                name,
-                username,
-                debt,
-                currency // Now including the currency field
-            });
-
-            if (success) {
-                res.status(200).json({
-                    success: true,
-                    message: 'Commission earned email sent successfully. If you don\'t see the email, please check your spam folder.'
-                });
-            } else {
-                // emailService already logs the error, so we send a generic server error
-                res.status(500).json({ success: false, message: 'Failed to send commission earned email.' });
-            }
-
-        } catch (error: any) {
-            log.error(`Error handling commission earned email request from ${callingService}:`, error);
-            next(error); // Pass to global error handler
-        }
-    }
-
-    /**
      * Handle request to send a transaction successful email.
      * @route POST /internal/email/transaction-successful
      */

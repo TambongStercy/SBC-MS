@@ -21,16 +21,6 @@ interface EmailOptions {
     headers?: Record<string, string>;
 }
 
-interface CommissionEmailData {
-    email: string;
-    amount: number | string;
-    level: string | number;
-    name: string;
-    username: string;
-    debt?: number | string;
-    currency: string; // Added missing currency field
-}
-
 interface TransactionSuccessEmailData {
     email: string;
     name: string;
@@ -576,87 +566,6 @@ class EmailService {
         </body>
         </html>
         `;
-    }
-
-    /**
-     * Send Commission Earned Email - Updated with beautiful template
-     */
-    async sendCommissionEarnedEmail(data: CommissionEmailData): Promise<boolean> {
-        // Validate that data is provided
-        if (!data.email || !data.name || data.amount === undefined || !data.currency) {
-            log.error('Missing required data for commission earned email:', { data });
-            return false;
-        }
-
-        const content = `
-            <div style="text-align: center;">
-                <div class="success-icon">
-                    <span style="color: white; font-size: 24px;">🎉</span>
-                </div>
-            </div>
-            
-            <h2 style="color: #004d7a; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 600;">
-                Commission Reçue !
-            </h2>
-            
-            <p style="font-size: 18px; margin-bottom: 15px;">
-                Bonjour <strong style="color: #004d7a;">${data.name}</strong>,
-            </p>
-            
-            <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
-                Excellente nouvelle ! Vous avez reçu une commission de parrainage qui vient d'être créditée sur votre compte.
-            </p>
-            
-            <div class="highlight-box">
-                <h3 style="color: #2e7d32; margin-bottom: 15px; font-size: 20px; text-align: center;">
-                    💰 Commission Reçue
-                </h3>
-                <div class="amount" style="text-align: center;">
-                    ${data.amount} ${data.currency}
-                </div>
-                <p style="text-align: center; color: #666; font-size: 16px;">
-                    Niveau de parrainage: <strong>${data.level}</strong>
-                </p>
-                ${data.debt ? `<p style="text-align: center; color: #666; font-size: 14px; margin-top: 10px;">
-                    Solde restant: ${data.debt} ${data.currency}
-                </p>` : ''}
-            </div>
-            
-            <p style="font-size: 16px; color: #555; margin: 25px 0;">
-                Cette commission a été automatiquement ajoutée à votre solde SBC. Vous pouvez maintenant l'utiliser pour vos achats ou la retirer.
-            </p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="${config.app.frontendUrl || 'https://sniperbuisnesscenter.com'}/wallet" class="button">
-                    Voir mon solde
-                </a>
-        </div>
-            
-            <p style="font-size: 16px; color: #004d7a; text-align: center; font-weight: 500;">
-                Continuez à parrainer pour gagner plus de commissions ! 🚀
-            </p>
-        `;
-
-        const emailHtml = this.createBaseTemplate(
-            'Commission Reçue - Sniper Business Center',
-            content,
-            'Merci de faire partie de la famille Sniper Business Center!'
-        );
-
-        try {
-            const result = await this.sendEmail({
-                to: data.email,
-                subject: `🎉 Commission reçue: ${data.amount} ${data.currency}`,
-                html: emailHtml,
-                from: config.email.from
-            });
-
-            log.info(`Commission email sent successfully to ${data.email}`);
-            return result;
-        } catch (error) {
-            log.error(`Failed to send commission email to ${data.email}:`, error);
-            return false;
-        }
     }
 
     /**

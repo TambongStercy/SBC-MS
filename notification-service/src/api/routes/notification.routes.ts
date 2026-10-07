@@ -18,7 +18,7 @@ router.post('/internal/create', authenticateServiceRequest, (req, res) => notifi
 router.post('/internal/broadcast', authenticateServiceRequest, (req, res, next) => notificationController.handleBroadcastNotification(req, res, next));
 
 // --- NEW EMAIL ROUTES (INTERNAL) ---
-router.post('/internal/email/commission-earned', authenticateServiceRequest, (req, res, next) => notificationController.handleCommissionEarnedEmail(req, res, next));
+// No commission email: commissions are push + in-app notifications only (2026-10-07).
 router.post('/internal/email/transaction-successful', authenticateServiceRequest, (req, res, next) => notificationController.handleTransactionSuccessEmail(req, res, next));
 router.post('/internal/email/transaction-failed', authenticateServiceRequest, (req, res, next) => notificationController.handleTransactionFailureEmail(req, res, next));
 router.post('/internal/email/account-activation', authenticateServiceRequest, (req, res, next) => notificationController.handleAccountActivationEmail(req, res, next));
