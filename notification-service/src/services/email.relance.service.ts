@@ -1,5 +1,5 @@
 import { emailService } from './email.service';
-import { sendRelanceViaCloudflare } from './cloudflare-email.service';
+import { reserveRelanceSend } from './send-budget.service';
 import logger from '../utils/logger';
 import config from '../config';
 import { relanceUnsubscribeUrl } from '../utils/relance-unsubscribe';
@@ -229,7 +229,7 @@ class EmailRelanceService {
         mediaUrls?: RelanceMedia[],
         buttons?: RelanceButton[],
         customSubject?: string
-    ): Promise<{ success: boolean; error?: string; messageId?: string }> {
+    ): Promise<{ success: boolean; error?: string; messageId?: string; deferred?: boolean }> {
         try {
             if (!recipientEmail) {
                 log.error('[EmailRelance] No recipient email provided');
@@ -250,18 +250,11 @@ class EmailRelanceService {
                 subject,
                 relanceUnsubscribeUrl(recipientEmail)
             );
-            // Cloudflare first when it is the chosen provider, under the same
-            // checks iRedMail applies; anything it does not take goes on below.
-            const message = { to: recipientEmail, subject, html: htmlContent };
-            if (config.relanceEmail.provider === 'cloudflare' && emailService.passesPreflight(message)) {
-                const cf = await sendRelanceViaCloudflare(message);
-                if (cf.status === 'sent') {
-                    log.info(`[EmailRelance] Day ${dayNumber} email to ${recipientEmail} sent via Cloudflare`);
-                    return { success: true };
-                }
-                if (cf.status === 'bounced') {
-                    return { success: false, error: 'Permanent bounce (Cloudflare); address suppressed' };
-                }
+            // Lowest priority (SMART-SENDER-OVERFLOW-SPEC): relance only takes the
+            // sends OTP and other email leave this minute, and never overflows to
+            // Cloudflare. No room → `deferred`: nothing sent, nothing charged.
+            if (!(await reserveRelanceSend())) {
+                return { success: false, deferred: true, error: 'No spare sending capacity this minute' };
             }
 
             const result = await emailService.sendEmailWithTracking({

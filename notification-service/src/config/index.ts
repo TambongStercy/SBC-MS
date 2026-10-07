@@ -79,20 +79,28 @@ interface IConfig {
         };
     };
     /**
-     * Where relance emails go out. 'cloudflare' sends through Cloudflare Email
-     * Sending (relance.sniperbuisnesscenter.com) and falls back to iRedMail when
-     * Cloudflare refuses or is not configured; anything else keeps iRedMail.
+     * Pacing on our own mail server (iRedMail): at most `ratePerMinute` sends a
+     * minute, OTP first, other emails next, relance only with what is left.
+     * Contabo throttles a server above ~25/min, and bursts are what make Gmail
+     * defer our IP (SMART-SENDER-OVERFLOW-SPEC, 2026-10-06).
      */
-    relanceEmail: {
-        provider: 'iredmail' | 'cloudflare';
-        /** Sender for the Cloudflare path; the iRedMail path keeps email.from. */
-        from: string;
-        cloudflare: {
-            accountId: string;
-            apiToken: string;
-            /** Most relance emails a calendar month through Cloudflare; null = no cap. */
-            monthlyCap: number | null;
-        };
+    emailPacing: {
+        ratePerMinute: number;
+    };
+    /**
+     * Cloudflare Email Sending: the OTP overflow when our own server's minute is
+     * full. Capped at 1,000/day by Cloudflare (increase refused), so it is never
+     * used for relance. Sends as email.from, so the main domain must be onboarded.
+     */
+    cloudflareEmail: {
+        accountId: string;
+        apiToken: string;
+        /** Off with CLOUDFLARE_OTP_OVERFLOW=false; on whenever credentials are set. */
+        otpOverflow: boolean;
+        /** Stop below Cloudflare's 1,000/day to keep headroom. */
+        dailyCap: number;
+        /** Optional monthly stop; null = none. */
+        monthlyCap: number | null;
     };
     /** Web push (VAPID). Empty keys = push off. */
     push: {
@@ -209,16 +217,17 @@ const config: IConfig = {
         },
     },
 
-    relanceEmail: {
-        provider: process.env.RELANCE_EMAIL_PROVIDER?.trim().toLowerCase() === 'cloudflare' ? 'cloudflare' : 'iredmail',
-        from: process.env.RELANCE_EMAIL_FROM?.trim() || 'Sniper Business Center <noreply@relance.sniperbuisnesscenter.com>',
-        cloudflare: {
-            accountId: process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || '',
-            apiToken: process.env.CLOUDFLARE_EMAIL_API_TOKEN?.trim() || '',
-            monthlyCap: /^\d+$/.test(process.env.CLOUDFLARE_EMAIL_MONTHLY_CAP?.trim() || '')
-                ? parseInt(process.env.CLOUDFLARE_EMAIL_MONTHLY_CAP!.trim(), 10)
-                : null,
-        },
+    emailPacing: {
+        ratePerMinute: Math.max(1, parseInt(process.env.EMAIL_RATE_PER_MINUTE || '25', 10) || 25),
+    },
+    cloudflareEmail: {
+        accountId: process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || '',
+        apiToken: process.env.CLOUDFLARE_EMAIL_API_TOKEN?.trim() || '',
+        otpOverflow: process.env.CLOUDFLARE_OTP_OVERFLOW?.trim().toLowerCase() !== 'false',
+        dailyCap: Math.max(0, parseInt(process.env.CLOUDFLARE_EMAIL_DAILY_CAP || '900', 10) || 0),
+        monthlyCap: /^\d+$/.test(process.env.CLOUDFLARE_EMAIL_MONTHLY_CAP?.trim() || '')
+            ? parseInt(process.env.CLOUDFLARE_EMAIL_MONTHLY_CAP!.trim(), 10)
+            : null,
     },
 
     push: {

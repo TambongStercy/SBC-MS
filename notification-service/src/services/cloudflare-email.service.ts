@@ -8,36 +8,45 @@ import logger from '../utils/logger';
 const log = logger.getLogger('CloudflareEmail');
 
 /**
- * Relance emails through Cloudflare Email Sending (REST API).
+ * Cloudflare Email Sending as the OTP overflow (SMART-SENDER-OVERFLOW-SPEC).
  *
- * Billing is $5/month for 3,000 emails, then $0.35 per 1,000 — hard bounces
- * included — so every send is counted per month, and CLOUDFLARE_EMAIL_MONTHLY_CAP
- * can stop the paid path. Whatever Cloudflare does not take (not configured,
- * cap reached, refused, down) is reported as `fallback`, and the caller sends
- * it through iRedMail instead: a relance email is never lost to this path.
+ * Our own mail server is primary for everything. When its minute is full, an
+ * OTP that would otherwise wait goes out here instead. Cloudflare caps us at
+ * 1,000 emails a day (the increase was refused), so this is OTP only — never
+ * relance — and stops at `cloudflareEmail.dailyCap` (900) to keep headroom.
+ * OTPs keep their own identity (email.from, the main domain): sending them from
+ * relance.sniperbuisnesscenter.com would hurt both.
+ *
+ * Billed $0.35 per 1,000 past 3,000/month, hard bounces included. Every send is
+ * counted per day (the cap) and per month (to compare with the bill).
  */
 
 export type CloudflareOutcome =
     | { status: 'sent' }
-    /** The address does not exist: suppressed, and not worth retrying anywhere. */
+    /** The address does not exist: blocked for every email, not worth retrying. */
     | { status: 'bounced' }
-    | { status: 'fallback'; reason: string };
+    | { status: 'unavailable'; reason: string };
 
 export interface CloudflareMessage {
     to: string;
     subject: string;
     html: string;
-    headers?: Record<string, string>;
+    text?: string;
 }
 
 /**
- * Always IPv4. The API token is locked to the server's address, and this
- * server reaches api.cloudflare.com over IPv6 by default — which a token
- * filtered on the IPv4 address refuses ("Cannot use the access token from
- * location 2a02:…"), measured 2026-10-06.
+ * Always IPv4. The API token is locked to the server's IPv4, and this server
+ * reaches api.cloudflare.com over IPv6 by default — which the token refuses
+ * ("Cannot use the access token from location 2a02:…"), measured 2026-10-06.
  */
 const ipv4 = new https.Agent({ family: 4, keepAlive: true });
 
+/** After Cloudflare refuses (quota, token, domain), leave it alone for a while. */
+const PAUSE_AFTER_REFUSAL_MS = 60 * 60 * 1000;
+let pausedUntil = 0;
+export const resetCloudflarePause = () => { pausedUntil = 0; };
+
+const dayKey = (now: Date) => `cloudflare:${now.toISOString().slice(0, 10)}`;
 const monthKey = (now: Date) => `cloudflare:${now.toISOString().slice(0, 7)}`;
 
 /** "Name <addr>" or "addr" → the { address, name } Cloudflare expects. */
@@ -47,51 +56,63 @@ export function parseSender(from: string): { address: string; name?: string } {
     return { address: from.trim() };
 }
 
-export function cloudflareEmailEnabled(): boolean {
-    const cf = config.relanceEmail.cloudflare;
-    return config.relanceEmail.provider === 'cloudflare' && !!cf.accountId && !!cf.apiToken;
+export function cloudflareOtpOverflowEnabled(): boolean {
+    const cf = config.cloudflareEmail;
+    return cf.otpOverflow && !!cf.accountId && !!cf.apiToken && cf.dailyCap > 0;
 }
 
+const release = (_id: string) =>
+    EmailProviderUsageModel.updateOne({ _id, count: { $gt: 0 } }, { $inc: { count: -1 } }).then(() => undefined, () => undefined);
+
 /**
- * Counts one send against this month, unless the cap is already reached.
- * The filter-then-upsert races to a duplicate key once the month is full,
- * which is the "no" answer.
+ * Counts one send against today and this month, unless a cap is reached. A
+ * full day/month fails the filter, and the upsert then hits a duplicate key —
+ * that is the "no".
  */
 async function reserveSend(now: Date): Promise<boolean> {
-    const cap = config.relanceEmail.cloudflare.monthlyCap;
-    const _id = monthKey(now);
-    try {
-        await EmailProviderUsageModel.updateOne(
-            cap === null ? { _id } : { _id, count: { $lt: cap } },
-            { $inc: { count: 1 } },
-            { upsert: true },
-        );
-        return true;
-    } catch (err: any) {
-        if (err?.code === 11000) return false;
-        throw err;
+    const { dailyCap, monthlyCap } = config.cloudflareEmail;
+    const take = async (_id: string, cap: number | null) => {
+        try {
+            await EmailProviderUsageModel.updateOne(cap === null ? { _id } : { _id, count: { $lt: cap } }, { $inc: { count: 1 } }, { upsert: true });
+            return true;
+        } catch (err: any) {
+            if (err?.code === 11000) return false;
+            throw err;
+        }
+    };
+    if (!(await take(dayKey(now), dailyCap))) return false;
+    if (!(await take(monthKey(now), monthlyCap))) {
+        await release(dayKey(now));
+        return false;
     }
+    return true;
 }
 
 /** Gives back a send Cloudflare did not take (and so did not bill). */
-async function releaseSend(now: Date): Promise<void> {
-    await EmailProviderUsageModel.updateOne({ _id: monthKey(now), count: { $gt: 0 } }, { $inc: { count: -1 } }).catch(() => undefined);
-}
+const releaseSend = async (now: Date) => { await release(dayKey(now)); await release(monthKey(now)); };
 
-export async function sendRelanceViaCloudflare(msg: CloudflareMessage, now: Date = new Date()): Promise<CloudflareOutcome> {
-    if (!cloudflareEmailEnabled()) return { status: 'fallback', reason: 'not configured' };
-    if (!(await reserveSend(now))) return { status: 'fallback', reason: 'monthly cap reached' };
+/**
+ * Branded templates embed the logo as an inline cid: attachment. Cloudflare's
+ * REST API documents no inline content-id, so the overflow copy goes without
+ * the logo rather than with a broken image.
+ */
+const withoutInlineLogo = (html: string) => html.replace(/<img\b[^>]*src=["']cid:sbc-logo["'][^>]*>/gi, '');
 
-    const { accountId, apiToken } = config.relanceEmail.cloudflare;
+export async function sendOtpViaCloudflare(msg: CloudflareMessage, now: Date = new Date()): Promise<CloudflareOutcome> {
+    if (!cloudflareOtpOverflowEnabled()) return { status: 'unavailable', reason: 'not configured' };
+    if (now.getTime() < pausedUntil) return { status: 'unavailable', reason: 'paused after a refusal' };
+    if (!(await reserveSend(now))) return { status: 'unavailable', reason: 'daily cap reached' };
+
+    const { accountId, apiToken } = config.cloudflareEmail;
     try {
         const res = await axios.post(
             `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
             {
-                from: parseSender(config.relanceEmail.from),
+                from: parseSender(config.email.from),
                 to: msg.to,
                 subject: msg.subject,
-                html: msg.html,
-                ...(msg.headers ? { headers: msg.headers } : {}),
+                html: withoutInlineLogo(msg.html),
+                ...(msg.text ? { text: msg.text } : {}),
             },
             {
                 headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
@@ -105,9 +126,8 @@ export async function sendRelanceViaCloudflare(msg: CloudflareMessage, now: Date
 
         if (res.status >= 200 && res.status < 300 && res.data?.success) {
             if (listed('permanent_bounces')) {
-                // Billed, but the address is dead: block it for every email, not
-                // just relance. $set, so a bounce also overrides an earlier
-                // unsubscribe (which only stops relance).
+                // Billed, but the address is dead: block it for every email.
+                // $set, so a bounce also overrides an earlier relance unsubscribe.
                 await RelanceBounceSuppressionModel.updateOne(
                     { email: msg.to.toLowerCase() },
                     { $set: { reason: 'Cloudflare permanent bounce', bouncedAt: now, source: 'cloudflare' } },
@@ -121,11 +141,13 @@ export async function sendRelanceViaCloudflare(msg: CloudflareMessage, now: Date
 
         await releaseSend(now);
         const errors = (res.data?.errors ?? []).map((e: any) => `${e.code} ${e.message}`).join('; ');
-        log.warn(`Cloudflare refused ${msg.to} (HTTP ${res.status}${errors ? `: ${errors}` : ''}); using iRedMail`);
-        return { status: 'fallback', reason: `HTTP ${res.status}${errors ? ` ${errors}` : ''}` };
+        // Quota, token or domain trouble will not fix itself in a minute.
+        if (res.status === 401 || res.status === 403 || res.status === 429) pausedUntil = now.getTime() + PAUSE_AFTER_REFUSAL_MS;
+        log.warn(`Cloudflare refused an OTP to ${msg.to} (HTTP ${res.status}${errors ? `: ${errors}` : ''})`);
+        return { status: 'unavailable', reason: `HTTP ${res.status}${errors ? ` ${errors}` : ''}` };
     } catch (err: any) {
         await releaseSend(now);
-        log.warn(`Cloudflare unreachable for ${msg.to} (${err?.message ?? err}); using iRedMail`);
-        return { status: 'fallback', reason: err?.message ?? 'network error' };
+        log.warn(`Cloudflare unreachable for an OTP to ${msg.to} (${err?.message ?? err})`);
+        return { status: 'unavailable', reason: err?.message ?? 'network error' };
     }
 }

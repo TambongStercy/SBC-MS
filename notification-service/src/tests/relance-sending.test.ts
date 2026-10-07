@@ -47,6 +47,7 @@ jest.mock('../services/relance-alerts.service', () => ({
 }));
 
 process.env.RELANCE_EMAIL_DELAY_MS = '0';
+process.env.RELANCE_SPARE_WAIT_MINUTES = '0';
 
 import mongoose from 'mongoose';
 import RelanceConfigModel from '../database/models/relance-config.model';
@@ -236,6 +237,42 @@ describe('daily email limit', () => {
         const cfg = await RelanceConfigModel.findOne({ userId: referrerId });
         await resetDailyCountIfNewDay(cfg);
         expect((await balance()).messagesSentToday).toBe(7);
+    });
+});
+
+describe('no spare sending capacity (relance is lowest priority)', () => {
+    const deferred = { success: false, deferred: true, error: 'No spare sending capacity this minute' };
+
+    it('holds the welcome email at day 0, uncharged, and stops the run', async () => {
+        await makeConfig({ emailBalance: 10 });
+        const first = await makeTarget();
+        const second = await makeTarget();
+        sendRelanceEmail.mockResolvedValue(deferred);
+
+        await run();
+
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(1); // the rest of the run waits
+        expect((await balance()).emailBalance).toBe(10);
+        for (const t of [first, second]) {
+            const after = await reload(t._id);
+            expect(after.currentDay).toBe(0);
+            expect(after.messagesDelivered).toEqual([]);
+        }
+    });
+
+    it('leaves a regular day due as it is — not a failure, nothing charged', async () => {
+        await makeConfig({ emailBalance: 10 });
+        const t = await makeTarget({ currentDay: 2 });
+        const dueBefore = (await reload(t._id)).nextMessageDue;
+        sendRelanceEmail.mockResolvedValue(deferred);
+
+        await run();
+
+        const after = await reload(t._id);
+        expect((await balance()).emailBalance).toBe(10);
+        expect(after.currentDay).toBe(2);
+        expect(after.messagesDelivered).toEqual([]); // no "failed" entry counting toward retries
+        expect(new Date(after.nextMessageDue).getTime()).toBe(new Date(dueBefore).getTime());
     });
 });
 

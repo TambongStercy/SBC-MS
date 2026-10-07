@@ -9,6 +9,7 @@ import CampaignModel, { CampaignStatus } from '../database/models/relance-campai
 import { emailRelanceService } from '../services/email.relance.service';
 import { smsService } from '../services/sms.service';
 import { emailService } from '../services/email.service';
+import { msToNextMinute } from '../services/send-budget.service';
 import { userServiceClient } from '../services/clients/user.service.client';
 
 // CM country code — only CM numbers qualify for SMS relance
@@ -177,6 +178,24 @@ export async function refundRelanceCredit(config: any, channel: CreditChannel): 
  * For 3 users with 500 targets each: ~17 minutes (parallel)
  */
 const EMAIL_DELAY_MS = Number(process.env.RELANCE_EMAIL_DELAY_MS ?? 2000); // 2 seconds between emails per user (overridable for tests)
+
+/**
+ * Relance only sends when the mail server has room left after OTP and other
+ * email (send-budget.service). A run waits for room minute by minute, up to
+ * this many minutes — one cron cycle — then leaves the rest to the next run.
+ */
+const SPARE_WAIT_MINUTES = Number(process.env.RELANCE_SPARE_WAIT_MINUTES ?? 14);
+
+type RelanceSendResult = Awaited<ReturnType<typeof emailRelanceService.sendRelanceEmail>>;
+
+async function sendWhenSpare(send: () => Promise<RelanceSendResult>): Promise<RelanceSendResult> {
+    let result = await send();
+    for (let i = 0; result.deferred && i < SPARE_WAIT_MINUTES; i++) {
+        await new Promise(r => setTimeout(r, msToNextMinute() + Math.floor(Math.random() * 2000)));
+        result = await send();
+    }
+    return result;
+}
 const MAX_RETRIES_PER_DAY = 3; // Max send attempts per day before skipping to next day
 
 /**
@@ -191,8 +210,12 @@ export async function processUserTargets(
     let sent = 0;
     let failed = 0;
     let exited = 0;
+    // Set when the mail server had no room for this run: the remaining targets
+    // stay due, untouched, and go out on a later run.
+    let outOfCapacity = false;
 
     for (let i = 0; i < targets.length; i++) {
+        if (outOfCapacity) break;
         const target = targets[i];
         try {
             const referralId = target.referralUserId.toString();
@@ -356,7 +379,7 @@ export async function processUserTargets(
                             .replace(/\{\{name\}\}/g, referralInfo.name || 'there')
                             .replace(/\{\{referrerName\}\}/g, referrerInfo?.name || 'your referrer')
                             .replace(/\{\{day\}\}/g, '1');
-                        const sendResult = await emailRelanceService.sendRelanceEmail(
+                        const sendResult = await sendWhenSpare(() => emailRelanceService.sendRelanceEmail(
                             recipientEmail,
                             referralInfo.name || 'Member',
                             referrerInfo?.name || 'Your Referrer',
@@ -365,8 +388,14 @@ export async function processUserTargets(
                             emailTemplate.mediaUrls,
                             emailTemplate.buttons,
                             emailTemplate.subject
-                        );
-                        if (sendResult.success) {
+                        ));
+                        if (sendResult.deferred) {
+                            // No room on the mail server: the welcome waits, uncharged.
+                            await refundRelanceCredit(config, 'email');
+                            emailHeld = true;
+                            outOfCapacity = true;
+                            console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0: no spare sending capacity; ${recipientEmail} waits for the next run`);
+                        } else if (sendResult.success) {
                             let sendGridMessageId: string | undefined;
                             if (sendResult.messageId) {
                                 sendGridMessageId = sendResult.messageId.replace(/<|>/g, '').split('@')[0];
@@ -574,7 +603,7 @@ export async function processUserTargets(
 
             // Send email (use emailDayNumber for the actual template day; for default
             // targets this is currentDay+1, for manual it equals currentDay)
-            const sendResult = await emailRelanceService.sendRelanceEmail(
+            const sendResult = await sendWhenSpare(() => emailRelanceService.sendRelanceEmail(
                 recipientEmail,
                 referralInfo.name || 'Member',
                 referrerInfo.name || 'Your Referrer',
@@ -583,7 +612,16 @@ export async function processUserTargets(
                 messageTemplate.mediaUrls,
                 messageTemplate.buttons,
                 messageTemplate.subject
-            );
+            ));
+
+            if (sendResult.deferred) {
+                // No room on the mail server: not a failure, nothing charged, the
+                // target stays due as it is. The rest of this parrain's run waits too.
+                await refundRelanceCredit(config, 'email');
+                outOfCapacity = true;
+                console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] no spare sending capacity; remaining targets wait for the next run`);
+                break;
+            }
 
             if (sendResult.success) {
                 console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] Email J${emailDayNumber} sent to ${recipientEmail} (currentDay=${target.currentDay})`);
