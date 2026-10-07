@@ -90,11 +90,13 @@ interface IConfig {
     /**
      * Cloudflare Email Sending: the OTP overflow when our own server's minute is
      * full. Capped at 1,000/day by Cloudflare (increase refused), so it is never
-     * used for relance. Sends as email.from, so the main domain must be onboarded.
+     * used for relance.
      */
     cloudflareEmail: {
         accountId: string;
         apiToken: string;
+        /** OTP sender on Cloudflare — must be on a domain onboarded there (noreply.sniperbuisnesscenter.com). */
+        otpFrom: string;
         /** Off with CLOUDFLARE_OTP_OVERFLOW=false; on whenever credentials are set. */
         otpOverflow: boolean;
         /** Stop below Cloudflare's 1,000/day to keep headroom. */
@@ -223,6 +225,7 @@ const config: IConfig = {
     cloudflareEmail: {
         accountId: process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || '',
         apiToken: process.env.CLOUDFLARE_EMAIL_API_TOKEN?.trim() || '',
+        otpFrom: process.env.CLOUDFLARE_OTP_FROM?.trim() || 'Sniper Business Center <noreply@noreply.sniperbuisnesscenter.com>',
         otpOverflow: process.env.CLOUDFLARE_OTP_OVERFLOW?.trim().toLowerCase() !== 'false',
         dailyCap: Math.max(0, parseInt(process.env.CLOUDFLARE_EMAIL_DAILY_CAP || '900', 10) || 0),
         monthlyCap: /^\d+$/.test(process.env.CLOUDFLARE_EMAIL_MONTHLY_CAP?.trim() || '')

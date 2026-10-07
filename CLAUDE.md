@@ -643,9 +643,12 @@ raise its 1,000/day quota, so it can't carry relance.
   **never** goes to Cloudflare.
 - **Cloudflare** (`cloudflare-email.service`):
   - **Account:** Georgesyvan12@gmail.com's, which also holds the zone.
-  - **Sender:** OTPs go out as `EMAIL_FROM`
-    (`noreply@sniperbuisnesscenter.com`), so the **main domain must be onboarded**
-    in Cloudflare Email Sending. Never send OTPs from the relance identity.
+  - **Sender:** OTP overflow goes out as `CLOUDFLARE_OTP_FROM`, by default
+    `noreply@noreply.sniperbuisnesscenter.com`. That's the subdomain onboarded in
+    Cloudflare for OTPs (2026-10-07). Its records are `cf-bounce.noreply` (MX +
+    SPF), `cf-bounce._domainkey.noreply` (DKIM) and `_dmarc.noreply` (p=reject).
+    The main domain is **not** onboarded, so Cloudflare refuses
+    `@sniperbuisnesscenter.com` senders. Never send OTPs from the relance identity.
   - **Caps:** counted per day (`emailproviderusages`, `cloudflare:YYYY-MM-DD`,
     cap `CLOUDFLARE_EMAIL_DAILY_CAP`=900) and per month (to compare with the bill).
   - **Refusals:** a 401/403/429 pauses Cloudflare for an hour.
@@ -682,6 +685,31 @@ raise its 1,000/day quota, so it can't carry relance.
   from relance must still get their login codes. A Cloudflare bounce uses `$set`,
   so it upgrades an earlier unsubscribe to a full block. An unsubscribe uses
   `$setOnInsert`, so it never downgrades a bounce.
+
+### Hard bounces on our own mail server: the bounce-mailbox reader
+
+iRedMail delivers asynchronously, so a dead address comes back as a bounce
+report (DSN) in the `noreply@` mailbox, not as an SMTP error. The reader
+(`bounce-mailbox.service`, every 15 min, 2,000 a pass) suppresses the hard ones
+(`source: smtp_dsn`), which blocks every email to them. It marks every report
+read and never deletes mail.
+
+- **It was off on prod until 2026-10-07.** A read-only dry run that day found
+  **29,946 unread bounce reports**. The latest 3,000 alone held **908 dead
+  addresses**, none suppressed, that were still being sent OTP, Ads and relance
+  emails.
+- **IMAP host must be `mail.sbcprecom.com`.** The mail server's TLS certificate
+  covers only that name (same IP as `mail.sniperbuisnesscenter.com`), and the
+  default host fails certificate verification.
+- **To enable:** in the notification-service `.env`, set
+  `BOUNCE_MAILBOX_ENABLED=true` and `BOUNCE_IMAP_HOST=mail.sbcprecom.com`. User
+  and password default to the sending account.
+- **Cloudflare bounces are separate.** Immediate permanent bounces are suppressed
+  in code. Later bounces only land on Cloudflare's own suppression list, which
+  stops Cloudflare from resending to that address.
+- **The queue worker checks first.** It runs `passesPreflight` (blacklist,
+  address validity, spam check) before either server, so a known-dead address
+  gets nothing and doesn't use up a send in the minute's budget.
 
 ### No `List-Unsubscribe` header on our emails: Gmail → Promotions (measured 2026-10-06)
 

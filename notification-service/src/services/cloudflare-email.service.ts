@@ -14,8 +14,9 @@ const log = logger.getLogger('CloudflareEmail');
  * OTP that would otherwise wait goes out here instead. Cloudflare caps us at
  * 1,000 emails a day (the increase was refused), so this is OTP only — never
  * relance — and stops at `cloudflareEmail.dailyCap` (900) to keep headroom.
- * OTPs keep their own identity (email.from, the main domain): sending them from
- * relance.sniperbuisnesscenter.com would hurt both.
+ * OTPs keep an identity of their own — noreply.sniperbuisnesscenter.com, the
+ * domain onboarded in Cloudflare for them (CLOUDFLARE_OTP_FROM) — never the
+ * relance one: mixing them would hurt both.
  *
  * Billed $0.35 per 1,000 past 3,000/month, hard bounces included. Every send is
  * counted per day (the cap) and per month (to compare with the bill).
@@ -108,7 +109,7 @@ export async function sendOtpViaCloudflare(msg: CloudflareMessage, now: Date = n
         const res = await axios.post(
             `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
             {
-                from: parseSender(config.email.from),
+                from: parseSender(config.cloudflareEmail.otpFrom),
                 to: msg.to,
                 subject: msg.subject,
                 html: withoutInlineLogo(msg.html),

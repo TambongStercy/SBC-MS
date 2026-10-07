@@ -238,6 +238,15 @@ export class QueueService {
                 throw new Error(`Email notification ${notificationId} missing subject`);
             }
 
+            // An address we know cannot receive mail (hard bounce, complaint), or
+            // that fails the address/spam checks, gets nothing — on either server,
+            // and without spending a send of the minute.
+            const message = { to: notification.recipient, subject: notification.data.subject, html: notification.data.body };
+            if (!emailService.passesPreflight(message)) {
+                await notificationRepository.markAsFailed(notificationId, 'Not sent: invalid, blocked or bounced address');
+                return;
+            }
+
             // Pacing (SMART-SENDER-OVERFLOW-SPEC): our server takes at most
             // emailPacing.ratePerMinute a minute. With no send left this minute,
             // an OTP that would wait more than 30s goes to Cloudflare; anything

@@ -19,8 +19,10 @@ jest.mock('../services/email.service', () => ({
     emailService: {
         sendEmailWithTracking: (...a: unknown[]) => sendEmailWithTracking(...a),
         sendEmail: (...a: unknown[]) => sendEmail(...a),
+        passesPreflight: (...a: unknown[]) => passesPreflight(...a),
     },
 }));
+const passesPreflight = jest.fn();
 // Bull: capture the email processor and the jobs it re-queues.
 const queueAdd = jest.fn();
 let processEmail: (job: any) => Promise<void>;
@@ -86,10 +88,11 @@ beforeEach(async () => {
     post.mockReset().mockResolvedValue(accepted());
     sendEmailWithTracking.mockReset().mockResolvedValue({ success: true, messageId: '<abc@iredmail>' });
     sendEmail.mockReset().mockResolvedValue(true);
+    passesPreflight.mockReset().mockReturnValue(true);
     queueAdd.mockReset().mockResolvedValue(undefined);
     Object.values(repo).forEach(f => f.mockReset());
     config.emailPacing.ratePerMinute = 25;
-    Object.assign(config.cloudflareEmail, { accountId: 'acc123', apiToken: 'tok', otpOverflow: true, dailyCap: 900, monthlyCap: null });
+    Object.assign(config.cloudflareEmail, { accountId: 'acc123', apiToken: 'tok', otpFrom: 'Sniper Business Center <noreply@noreply.sniperbuisnesscenter.com>', otpOverflow: true, dailyCap: 900, monthlyCap: null });
     config.email.from = 'Sniper Business Center <noreply@sniperbuisnesscenter.com>';
     resetCloudflarePause();
     await Promise.all([EmailProviderUsageModel.deleteMany({}), RelanceBounceSuppressionModel.deleteMany({}), EmailSendMinuteModel.deleteMany({})]);
@@ -137,11 +140,11 @@ describe('relance: lowest priority, our server only', () => {
 });
 
 describe('OTP overflow to Cloudflare', () => {
-    it('sends as the main domain over IPv4, without the inline logo', async () => {
+    it('sends from the OTP domain onboarded in Cloudflare, over IPv4, without the inline logo', async () => {
         expect(await sendOtpViaCloudflare(OTP, EARLY)).toEqual({ status: 'sent' });
         const [url, body, opts] = post.mock.calls[0];
         expect(url).toBe('https://api.cloudflare.com/client/v4/accounts/acc123/email/sending/send');
-        expect(body.from).toEqual({ address: 'noreply@sniperbuisnesscenter.com', name: 'Sniper Business Center' });
+        expect(body.from).toEqual({ address: 'noreply@noreply.sniperbuisnesscenter.com', name: 'Sniper Business Center' });
         expect(body.html).not.toContain('cid:sbc-logo');
         expect(body.headers).toBeUndefined(); // no List-Unsubscribe (Gmail → Promotions)
         expect(opts.httpsAgent.options.family).toBe(4);
@@ -223,6 +226,17 @@ describe('the email queue worker', () => {
         await processEmail(job('otp'));
         expect(queueAdd.mock.calls[0][2].priority).toBe(1);
         expect(sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing to a bounced or invalid address, on either server, and spends no send', async () => {
+        passesPreflight.mockReturnValue(false);
+        earlyInMinute();
+        await fullMinute();
+        await processEmail(job('otp'));
+        expect(sendEmail).not.toHaveBeenCalled();
+        expect(post).not.toHaveBeenCalled();
+        expect(queueAdd).not.toHaveBeenCalled();
+        expect(repo.markAsFailed).toHaveBeenCalled();
     });
 
     it('sends anyway after waiting long enough: queued on the mail server, never lost', async () => {
