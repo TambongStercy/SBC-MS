@@ -26,6 +26,7 @@ import { withdrawalMonitor } from '../utils/withdrawal-monitor';
 import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.service';
 import { currencyService } from './currency.service';
 import { ssoWebhookService } from './sso-webhook.service';
+import { buildCinetPayPayer } from '../utils/cinetpay-payer';
 import * as sandbox from './sandbox.service';
 
 const host = 'https://sniperbuisnesscenter.com';
@@ -4020,10 +4021,15 @@ class PaymentService {
 
             log.info(`CinetPay fee calculation: Original=${amount} ${currency}, With 3.5% fee=${totalAmountWithFees} ${currency}`);
 
-            // Build first/last name from metadata
-            const firstName = paymentIntent.metadata?.customerName || `User-${paymentIntent.userId}` || 'User';
-            const lastName = paymentIntent.metadata?.customerSurname || 'SBC';
-            const email = paymentIntent.metadata?.customerEmail || 'no-email@sbc.com';
+            // CinetPay requires the real payer on every transaction. A user-service
+            // outage must not block a checkout, so fall back to placeholders then.
+            let payerUser: UserDetails | null = null;
+            try {
+                payerUser = await userServiceClient.getUserDetails(paymentIntent.userId.toString());
+            } catch (err: any) {
+                log.warn(`CinetPay payer lookup failed for user ${paymentIntent.userId}: ${err.message}`);
+            }
+            const payer = buildCinetPayPayer(payerUser, paymentIntent.userId.toString(), countryCode);
 
             // Truncate URLs to 120 chars (new API limit)
             const notifyUrl = `${host}/api/payments/webhooks/cinetpay`.substring(0, 120);
@@ -4036,19 +4042,12 @@ class PaymentService {
                 amount: totalAmountWithFees,
                 lang: 'fr',
                 designation: `${paymentIntent.subscriptionType} - ${paymentIntent.subscriptionPlan}`,
-                client_email: email,
-                client_first_name: firstName.substring(0, 255),
-                client_last_name: lastName.substring(0, 255),
+                ...payer,
                 success_url: successUrl,
                 failed_url: failedUrl,
                 notify_url: notifyUrl,
                 direct_pay: false,
             };
-
-            // Add phone number if available
-            if (paymentIntent.phoneNumber) {
-                requestBody.client_phone_number = paymentIntent.phoneNumber;
-            }
 
             log.info(`CinetPay payment request: merchant_tx=${merchantTxId}, amount=${totalAmountWithFees}, currency=${currency}`);
 
