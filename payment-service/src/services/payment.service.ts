@@ -23,7 +23,7 @@ import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
-import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.service';
+import { moneyFusionService, getMoneyFusionPayinCurrency, toMoneyFusionPayoutAmount } from './moneyfusion.service';
 import { currencyService } from './currency.service';
 import { ssoWebhookService } from './sso-webhook.service';
 import { buildCinetPayPayer } from '../utils/cinetpay-payer';
@@ -576,22 +576,15 @@ class PaymentService {
                 }
             };
 
-            let grossAmountToDebitInXAF: number;
-            let feeInXAF: number;
-
-            // Perform currency conversion if target payout currency is not XAF
-            if (targetPayoutCurrency !== Currency.XAF) {
-                log.info(`Converting NET amount from ${targetPayoutCurrency} to XAF for balance debit.`);
-                const netAmountInXAF = await this.convertCurrency(netAmountDesired, targetPayoutCurrency, Currency.XAF);
-                feeInXAF = this.calculateWithdrawalFee(netAmountInXAF, Currency.XAF, withdrawalDetails.method);
-                grossAmountToDebitInXAF = netAmountInXAF + feeInXAF;
-                log.info(`Converted NET ${netAmountDesired} ${targetPayoutCurrency} to ${netAmountInXAF} XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
-            } else {
-                // If target currency is XAF, no conversion needed for initial calculation
-                feeInXAF = this.calculateWithdrawalFee(netAmountDesired, Currency.XAF, withdrawalDetails.method);
-                grossAmountToDebitInXAF = netAmountDesired + feeInXAF;
-                log.info(`Target currency is XAF. Calculated fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
-            }
+            // The amount is XAF whatever the payout country: the app shows it in
+            // "F" and checks it against the XAF balance. It used to be read as the
+            // operator's currency (CDF, GHS) and converted here, so a Ghanaian
+            // asking for 2,000 F was debited 74,667 XAF. Countries MoneyFusion
+            // pays in another currency are converted once, at payout
+            // (toMoneyFusionPayoutAmount).
+            const feeInXAF = this.calculateWithdrawalFee(netAmountDesired, Currency.XAF, withdrawalDetails.method);
+            const grossAmountToDebitInXAF = netAmountDesired + feeInXAF;
+            log.info(`Withdrawal NET ${netAmountDesired} XAF (paid out in ${targetPayoutCurrency}). Fee: ${feeInXAF} XAF. Gross debit: ${grossAmountToDebitInXAF} XAF.`);
 
             // Check if user has sufficient balance (important to do upfront) against the GROSS amount in XAF
             const userBalance = await userServiceClient.getBalance(userId.toString());
@@ -619,12 +612,16 @@ class PaymentService {
                 fee: feeInXAF, // Fee stored in XAF
                 currency: Currency.XAF, // Transaction currency is always XAF for balance debits
                 status: TransactionStatus.PENDING_OTP_VERIFICATION,
-                description: `Demande de retrait pour NET ${netAmountDesired} ${targetPayoutCurrency}. Débit brut: ${grossAmountToDebitInXAF} FCFA.`,
+                description: `Demande de retrait pour NET ${netAmountDesired} FCFA. Débit brut: ${grossAmountToDebitInXAF} FCFA.`,
                 metadata: {
                     method: withdrawalDetails.method,
                     accountInfo: withdrawalDetails.accountInfo, // Store derived account info
-                    netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
-                    payoutCurrency: targetPayoutCurrency, // Store the target payout currency
+                    netAmountRequested: netAmountDesired,
+                    // The amount above is XAF (notifications print the pair). What the
+                    // operator actually pays out in is kept apart; the MoneyFusion
+                    // branch records the converted figure as mfPayoutAmount.
+                    payoutCurrency: Currency.XAF,
+                    operatorCurrency: targetPayoutCurrency,
                     selectedPayoutService: providerName // Store which service was selected
                 },
                 ipAddress,
@@ -2889,7 +2886,20 @@ class PaymentService {
         const finalCurrency = details.paymentCurrency;
 
         if (paymentIntent.currency !== finalCurrency) {
-            finalAmount = await this.convertCurrency(paymentIntent.amount, paymentIntent.currency, finalCurrency);
+            if (this.isCryptoCurrency(finalCurrency)) {
+                finalAmount = await this.convertCurrency(paymentIntent.amount, paymentIntent.currency, finalCurrency);
+            } else {
+                // Strict for fiat: the soft lookup handed back the unconverted
+                // figure when the rate API was down, so 2,150 XAF went to
+                // MoneyFusion as 2,150 GNF (about 15x too little). XAF<->XOF
+                // never calls the API.
+                try {
+                    finalAmount = await currencyService.convertStrict(paymentIntent.amount, paymentIntent.currency, finalCurrency);
+                } catch (err: any) {
+                    log.error(`Payin ${sessionId}: ${err.message}`);
+                    throw new Error('Le taux de change est momentanément indisponible. Veuillez réessayer dans quelques minutes.');
+                }
+            }
 
             // Validate converted amount - different logic for crypto vs fiat
             const isCryptoPayment = this.isCryptoCurrency(finalCurrency);
@@ -6890,10 +6900,28 @@ class PaymentService {
                     throw new Error(`MoneyFusion withdrawal not supported for ${countryCode}/${momoOperator}`);
                 }
 
+                // Our books are XAF; MoneyFusion takes `amount` literally in the
+                // country's own currency (USD for RDC, GNF, GHS). Sending the XAF
+                // figure unconverted asked MF to pay e.g. $1,965 for 1,965 XAF.
+                // A failed rate lookup throws here, before MF is called: the
+                // transaction is marked FAILED and the wallet is never touched.
+                const mfPayout = await toMoneyFusionPayoutAmount(netAmount, countryCode);
+                transaction.metadata = {
+                    ...(transaction.metadata || {}),
+                    mfPayoutAmount: mfPayout.amount,
+                    mfPayoutCurrency: mfPayout.currency,
+                    mfPayoutRate: mfPayout.rate,
+                };
+                await transactionRepository.update(transaction._id, { metadata: transaction.metadata });
+                log.info(
+                    `[PAYOUT-TRACE] ${transaction.transactionId}: MoneyFusion amount `
+                    + `${netAmount} XAF -> ${mfPayout.amount} ${mfPayout.currency} (rate ${mfPayout.rate})`,
+                );
+
                 const result = await moneyFusionService.initiatePayout({
                     countryCode,
                     phone: fullMomoNumber,
-                    amount: netAmount,
+                    amount: mfPayout.amount,
                     withdrawMode,
                     webhookUrl: `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion/payout`,
                 });
