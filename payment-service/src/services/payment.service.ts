@@ -2889,7 +2889,20 @@ class PaymentService {
         const finalCurrency = details.paymentCurrency;
 
         if (paymentIntent.currency !== finalCurrency) {
-            finalAmount = await this.convertCurrency(paymentIntent.amount, paymentIntent.currency, finalCurrency);
+            if (this.isCryptoCurrency(finalCurrency)) {
+                finalAmount = await this.convertCurrency(paymentIntent.amount, paymentIntent.currency, finalCurrency);
+            } else {
+                // Strict for fiat: the soft lookup handed back the unconverted
+                // figure when the rate API was down, so 2,150 XAF went to
+                // MoneyFusion as 2,150 GNF (about 15x too little). XAF<->XOF
+                // never calls the API.
+                try {
+                    finalAmount = await currencyService.convertStrict(paymentIntent.amount, paymentIntent.currency, finalCurrency);
+                } catch (err: any) {
+                    log.error(`Payin ${sessionId}: ${err.message}`);
+                    throw new Error('Le taux de change est momentanément indisponible. Veuillez réessayer dans quelques minutes.');
+                }
+            }
 
             // Validate converted amount - different logic for crypto vs fiat
             const isCryptoPayment = this.isCryptoCurrency(finalCurrency);
