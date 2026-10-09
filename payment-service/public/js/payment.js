@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 // XAF zone
                 'CM': 'XAF', 'CG': 'XAF', 'GA': 'XAF', 'TD': 'XAF',
                 // Other
-                'CD': 'CDF', 'GN': 'GNF',
+                'CD': 'CDF', 'GN': 'GNF', 'GH': 'GHS',
             };
             return countryCurrencyMap[countryCode] || 'XAF';
         };
