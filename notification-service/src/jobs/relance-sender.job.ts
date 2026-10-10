@@ -15,15 +15,17 @@ import { userServiceClient } from '../services/clients/user.service.client';
 // CM country code — only CM numbers qualify for SMS relance
 const CM_PHONE_PREFIX = '237';
 
-function isCmNumber(phone?: string): boolean {
-    if (!phone) return false;
-    const digits = phone.replace(/\D/g, '');
-    return digits.startsWith(CM_PHONE_PREFIX);
+// user-service returns phoneNumber as a NUMBER for some accounts. These helpers
+// once called phone.replace() on it, which threw after the email had gone out
+// and before the target was saved, so the same email was resent every run
+// (up to 35 times to one filleul, 2026-10-08 → 10-10).
+function isCmNumber(phone?: string | number | null): boolean {
+    if (phone === undefined || phone === null || phone === '') return false;
+    return String(phone).replace(/\D/g, '').startsWith(CM_PHONE_PREFIX);
 }
 
-function formatCmNumber(phone: string): string {
-    const digits = phone.replace(/\D/g, '');
-    return `+${digits}`;
+function formatCmNumber(phone: string | number): string {
+    return `+${String(phone).replace(/\D/g, '')}`;
 }
 
 // SMS relance is reserved for non-subscribed users — once a referral has
@@ -407,47 +409,54 @@ export async function processUserTargets(
                 }
 
                 // ─── J0 SMS (teaser) ───
-                const phone: string | undefined = referralInfo.phoneNumber;
-                if (config.smsEnabled && config.smsBalance > 0 && phone && isCmNumber(phone)) {
-                    if (await isSmsBlockedBySubscription(referralId)) {
-                        console.log(`${campaignLabel} J0: skipping SMS for ${referralId} — has CLASSIQUE/CIBLE subscription`);
-                    } else {
-                        const smsTemplate = await RelanceSmsTemplateModel.findOne({
-                            type: 'auto',
-                            dayNumber: 0,
-                            active: true
-                        });
-                        if (smsTemplate && await reserveRelanceCredit(config, 'sms')) {
-                            const userLink = (config.smsLinks || []).find((l: any) =>
-                                l.type === 'auto' && l.dayNumber === 0
-                            );
-                            const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
-                            const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
-                            if (!smsSent) await refundRelanceCredit(config, 'sms');
-                            if (smsSent) {
-                                target.messagesDelivered.push({
-                                    day: 0,
-                                    channel: 'sms',
-                                    sentAt: new Date(),
-                                    status: 'delivered' as any,
-                                });
-                                target.lastMessageSentAt = new Date();
-                                if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
-                                    const referrerInfo = await userServiceClient.getUserDetails(referrerId);
-                                    if (referrerInfo?.email) {
-                                        emailService.sendLowBalanceAlert(
-                                            referrerInfo.email,
-                                            referrerInfo.name || '',
-                                            'sms',
-                                            config.smsBalance
-                                        ).catch(() => { });
+                const phone: string | number | undefined = referralInfo.phoneNumber;
+                // An SMS problem must never stop the email above from being recorded:
+                // a throw here used to skip target.save(), so the email went out again
+                // on every run.
+                try {
+                    if (config.smsEnabled && config.smsBalance > 0 && phone && isCmNumber(phone)) {
+                        if (await isSmsBlockedBySubscription(referralId)) {
+                            console.log(`${campaignLabel} J0: skipping SMS for ${referralId} — has CLASSIQUE/CIBLE subscription`);
+                        } else {
+                            const smsTemplate = await RelanceSmsTemplateModel.findOne({
+                                type: 'auto',
+                                dayNumber: 0,
+                                active: true
+                            });
+                            if (smsTemplate && await reserveRelanceCredit(config, 'sms')) {
+                                const userLink = (config.smsLinks || []).find((l: any) =>
+                                    l.type === 'auto' && l.dayNumber === 0
+                                );
+                                const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
+                                const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
+                                if (!smsSent) await refundRelanceCredit(config, 'sms');
+                                if (smsSent) {
+                                    target.messagesDelivered.push({
+                                        day: 0,
+                                        channel: 'sms',
+                                        sentAt: new Date(),
+                                        status: 'delivered' as any,
+                                    });
+                                    target.lastMessageSentAt = new Date();
+                                    if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
+                                        const referrerInfo = await userServiceClient.getUserDetails(referrerId);
+                                        if (referrerInfo?.email) {
+                                            emailService.sendLowBalanceAlert(
+                                                referrerInfo.email,
+                                                referrerInfo.name || '',
+                                                'sms',
+                                                config.smsBalance
+                                            ).catch(() => { });
+                                        }
                                     }
+                                    j0SmsSent = true;
+                                    console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 SMS sent to ${phone}`);
                                 }
-                                j0SmsSent = true;
-                                console.log(`${campaignLabel} [User:${referrerId.slice(-6)}] J0 SMS sent to ${phone}`);
                             }
                         }
                     }
+                } catch (smsErr: any) {
+                    console.error(`${campaignLabel} J0 SMS step failed for target ${target._id}: ${smsErr?.message}`);
                 }
 
                 // Nothing went out only because of credit or sending capacity: keep
@@ -475,7 +484,7 @@ export async function processUserTargets(
             // (the email sequence ended at J7 sent at currentDay=6). Loop completes after.
             if (isDefaultTarget && target.currentDay === 7) {
                 const referralInfo = await userServiceClient.getUserDetails(referralId);
-                const phone: string | undefined = referralInfo?.phoneNumber;
+                const phone: string | number | undefined = referralInfo?.phoneNumber;
                 if (config.smsEnabled && config.smsBalance > 0 && phone && isCmNumber(phone)) {
                     if (await isSmsBlockedBySubscription(referralId)) {
                         console.log(`${campaignLabel} J7: skipping SMS for ${referralId} — has CLASSIQUE/CIBLE subscription`);
@@ -639,39 +648,46 @@ export async function processUserTargets(
                 // A campaign sends SMS only if it was created with SMS (channel
                 // sms/both); the field was stored but ignored before.
                 const campaignAllowsSms = isDefaultTarget || campaign?.channel !== 'email';
-                if (config.smsEnabled && config.smsBalance > 0 && campaignAllowsSms) {
-                    const phone: string | undefined = referralInfo.phoneNumber;
-                    if (phone && isCmNumber(phone) && !(await isSmsBlockedBySubscription(referralId))) {
-                        const smsTemplate = await RelanceSmsTemplateModel.findOne({
-                            type: isDefaultTarget ? 'auto' : 'manual',
-                            dayNumber: target.currentDay,
-                            active: true
-                        });
-                        if (smsTemplate && await reserveRelanceCredit(config, 'sms')) {
-                            const userLink = (config.smsLinks || []).find((l: any) =>
-                                l.type === (isDefaultTarget ? 'auto' : 'manual') &&
-                                l.dayNumber === target.currentDay
-                            );
-                            const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
-                            const smsSent = await smsService.sendSms({ to: formatCmNumber(phone!), body: smsText });
-                            if (!smsSent) await refundRelanceCredit(config, 'sms');
-                            if (smsSent) {
-                                target.messagesDelivered.push({
-                                    day: target.currentDay,
-                                    channel: 'sms',
-                                    sentAt: new Date(),
-                                    status: 'delivered' as any
-                                });
-                                if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
-                                    const referrerInfo2 = await userServiceClient.getUserDetails(referrerId);
-                                    if (referrerInfo2?.email) {
-                                        emailService.sendLowBalanceAlert(referrerInfo2.email, referrerInfo2.name || '', 'sms', config.smsBalance)
-                                            .catch(() => {});
+                // An SMS problem must never stop the email above from being recorded:
+                // a throw here used to skip target.save(), so the email went out again
+                // on every run.
+                try {
+                    if (config.smsEnabled && config.smsBalance > 0 && campaignAllowsSms) {
+                        const phone: string | number | undefined = referralInfo.phoneNumber;
+                        if (phone && isCmNumber(phone) && !(await isSmsBlockedBySubscription(referralId))) {
+                            const smsTemplate = await RelanceSmsTemplateModel.findOne({
+                                type: isDefaultTarget ? 'auto' : 'manual',
+                                dayNumber: target.currentDay,
+                                active: true
+                            });
+                            if (smsTemplate && await reserveRelanceCredit(config, 'sms')) {
+                                const userLink = (config.smsLinks || []).find((l: any) =>
+                                    l.type === (isDefaultTarget ? 'auto' : 'manual') &&
+                                    l.dayNumber === target.currentDay
+                                );
+                                const smsText = smsTemplate.templateText.replace(/\{\{link\}\}/g, userLink?.link || '');
+                                const smsSent = await smsService.sendSms({ to: formatCmNumber(phone), body: smsText });
+                                if (!smsSent) await refundRelanceCredit(config, 'sms');
+                                if (smsSent) {
+                                    target.messagesDelivered.push({
+                                        day: target.currentDay,
+                                        channel: 'sms',
+                                        sentAt: new Date(),
+                                        status: 'delivered' as any
+                                    });
+                                    if (config.smsBalance === SMS_LOW_BALANCE_THRESHOLD) {
+                                        const referrerInfo2 = await userServiceClient.getUserDetails(referrerId);
+                                        if (referrerInfo2?.email) {
+                                            emailService.sendLowBalanceAlert(referrerInfo2.email, referrerInfo2.name || '', 'sms', config.smsBalance)
+                                                .catch(() => {});
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                } catch (smsErr: any) {
+                    console.error(`${campaignLabel} day SMS step failed for target ${target._id}: ${smsErr?.message}`);
                 }
 
                 // Update campaign stats
