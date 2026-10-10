@@ -427,6 +427,67 @@ describe('SMS for campaigns (2026-10-03)', () => {
     });
 });
 
+// 2026-10-08 → 10-10 on prod: user-service returned phoneNumber as a number,
+// phone.replace() threw after the email had gone out, target.save() never ran,
+// and the same email was resent every 15 minutes (up to 35 times, 40 filleuls).
+describe('a phone number stored as a number (2026-10-10)', () => {
+    const smsOn = { smsEnabled: true, smsBalance: 10 };
+    /** Picks targets the way the job does: only those whose time has come. */
+    const runDue = async () => {
+        const config = await RelanceConfigModel.findOne({ userId: referrerId });
+        const ready = await RelanceTargetModel.find({
+            referrerUserId: referrerId, status: TargetStatus.ACTIVE, nextMessageDue: { $lte: new Date() },
+        }).populate('campaignId');
+        return processUserTargets(referrerId.toString(), ready, config);
+    };
+    beforeEach(async () => {
+        await RelanceSmsTemplateModel.deleteMany({});
+        await RelanceSmsTemplateModel.insertMany([
+            { type: 'auto', dayNumber: 0, templateText: 'Nouveaux J0', active: true },
+            { type: 'manual', dayNumber: 1, templateText: 'Campagne J1', active: true },
+        ]);
+        getUserDetails.mockImplementation(async (id: string) => ({ _id: id, name: 'Filleul', email: `${id}@example.com`, phoneNumber: 237600000000 }));
+    });
+
+    it('sends a campaign day once, records it and moves on — the next run sends nothing', async () => {
+        await makeConfig(smsOn);
+        const c = await CampaignModel.create({
+            userId: referrerId, name: 'Test', type: CampaignType.FILTERED, status: CampaignStatus.ACTIVE, targetFilter: {}, channel: 'both',
+        });
+        const t = await makeTarget({ campaignId: c._id, currentDay: 1 });
+        await runDue();
+        await runDue();
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+        expect(sendSms).toHaveBeenCalledTimes(1);
+        expect(sendSms.mock.calls[0][0].to).toBe('+237600000000');
+        const after = await reload(t._id);
+        expect(after.currentDay).toBe(2);
+        expect((await balance()).emailBalance).toBe(99);
+    });
+
+    it('sends the welcome email once at day 0 and moves the filleul to day 1', async () => {
+        await makeConfig(smsOn);
+        const t = await makeTarget();
+        await runDue();
+        await runDue();
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+        expect((await reload(t._id)).currentDay).toBe(1);
+    });
+
+    it('still records the email when the SMS step itself fails', async () => {
+        await makeConfig(smsOn);
+        sendSms.mockRejectedValue(new Error('gateway down'));
+        const c = await CampaignModel.create({
+            userId: referrerId, name: 'Test', type: CampaignType.FILTERED, status: CampaignStatus.ACTIVE, targetFilter: {}, channel: 'both',
+        });
+        const t = await makeTarget({ campaignId: c._id, currentDay: 1 });
+        await runDue();
+        await runDue();
+        expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
+        expect((await reload(t._id)).currentDay).toBe(2);
+    });
+});
+
 describe('closing the backlog', () => {
     it('closes relance-des-nouveaux filleuls enrolled over 30 days ago and keeps the recent ones', async () => {
         const now = new Date();
