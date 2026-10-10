@@ -58,6 +58,7 @@ import RelanceSmsTemplateModel from '../database/models/relance-sms-template.mod
 import CampaignModel, { CampaignStatus, CampaignType } from '../database/models/relance-campaign.model';
 import { inRelanceSendingHours, processUserTargets, resetDailyCountIfNewDay, reserveRelanceCredit, runMessageSendingJob } from '../jobs/relance-sender.job';
 import { closeRelanceBacklog } from '../scripts/close-relance-backlog';
+import { repairSmsCrashResends } from '../scripts/repair-sms-crash-resends';
 
 const MONGO = (process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017') + '/sbc_notifications_relance_sending_test';
 const HOUR = 60 * 60 * 1000;
@@ -485,6 +486,38 @@ describe('a phone number stored as a number (2026-10-10)', () => {
         await runDue();
         expect(sendRelanceEmail).toHaveBeenCalledTimes(1);
         expect((await reload(t._id)).currentDay).toBe(2);
+    });
+});
+
+describe('repairing the targets the crash left stuck', () => {
+    it('records the day so no further copy goes out, refunds all but the legitimate send, and is a no-op twice', async () => {
+        await makeConfig({ emailBalance: 5 });
+        const c = await CampaignModel.create({
+            userId: referrerId, name: 'Test', type: CampaignType.FILTERED, status: CampaignStatus.ACTIVE, targetFilter: {}, channel: 'both',
+        });
+        const t = await makeTarget({ campaignId: c._id, currentDay: 1 });
+
+        const first = await repairSmsCrashResends([{ id: String(t._id), count: 35 }], true);
+        expect(first.refunds[String(referrerId)]).toBe(34);
+        expect((await balance()).emailBalance).toBe(39);
+
+        await run();
+        expect(sendRelanceEmail).not.toHaveBeenCalled();
+        const after = await reload(t._id);
+        expect(after.currentDay).toBe(2);
+        expect(new Date(after.nextMessageDue).getTime()).toBeGreaterThan(Date.now() + 23 * HOUR);
+
+        const again = await repairSmsCrashResends([{ id: String(t._id), count: 35 }], true);
+        expect(again.repaired).toBe(0);
+        expect((await balance()).emailBalance).toBe(39);
+    });
+
+    it('changes nothing on a dry run', async () => {
+        await makeConfig({ emailBalance: 5 });
+        const t = await makeTarget({ currentDay: 1 });
+        await repairSmsCrashResends([{ id: String(t._id), count: 10 }], false);
+        expect((await balance()).emailBalance).toBe(5);
+        expect((await reload(t._id)).messagesDelivered).toHaveLength(0);
     });
 });
 
