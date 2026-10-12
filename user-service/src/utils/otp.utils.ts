@@ -129,3 +129,12 @@ export function otpSendDecision(
     const waitMs = Math.max(cooldownLeft, windowLeft, 0);
     return { allowed: waitMs === 0, retryAfterSeconds: Math.ceil(waitMs / 1000) };
 }
+
+/**
+ * WhatsApp OTP is off unless WHATSAPP_OTP_ENABLED=true. On 2026-10-12 Meta
+ * listed both OTP templates (connexionfr/fr, connexion/en_US) as REJECTED,
+ * reason "SCAM": every WhatsApp code failed (#132001, ~7,950 a day) while the
+ * app told members to look on WhatsApp. Codes go by email until a template is
+ * approved again; then set the variable and reload.
+ */
+export const whatsappOtpEnabled = (): boolean => process.env.WHATSAPP_OTP_ENABLED === 'true';
