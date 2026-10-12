@@ -1507,7 +1507,10 @@ class PaymentService {
             let channel: DeliveryChannel;
 
             // Determine recipient and channel based on user preference
-            if (notificationPreference === 'whatsapp' && userPhoneNumber) {
+            // WhatsApp OTP is off unless WHATSAPP_OTP_ENABLED=true: Meta rejected the
+            // OTP templates on 2026-10-12, so a WhatsApp code never arrives.
+            const whatsappOtpOn = process.env.WHATSAPP_OTP_ENABLED === 'true';
+            if (notificationPreference === 'whatsapp' && userPhoneNumber && (whatsappOtpOn || !userEmail)) {
                 recipient = userPhoneNumber;
                 channel = DeliveryChannel.WHATSAPP;
                 log.info(`Sending withdrawal OTP via WhatsApp to ${userPhoneNumber} for user ${transaction.userId}`);
