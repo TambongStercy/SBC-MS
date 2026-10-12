@@ -223,22 +223,28 @@ class PaymentService {
     ) {
         let userEmail: string | undefined;
         let userName: string | undefined; // Added for notification
+        // Commissions are announced by push and in the app inbox, never by email
+        // (Rufus, 2026-10-12): every referral purchase sent each of up to three
+        // parrains an email, on the mail server the OTP codes depend on.
+        const isCommission = paymentDetails.metadata?.commissionLevel !== undefined;
         try {
             log.info(`Processing deposit of ${amount} ${currency} for user ${userId}`);
 
             // Fetch user details to get email and name *before* proceeding with transaction
-            try {
-                const userDetails = await userServiceClient.getUserDetails(userId.toString());
-                if (!userDetails?.email) {
-                    log.warn(`Could not find email for user ${userId}. Deposit processed, but notification cannot be sent.`);
-                } else {
-                    userEmail = userDetails.email;
-                    userName = userDetails.name; // Get user's name
-                    log.debug(`Found email ${userEmail} and name ${userName} for user ${userId}`);
+            if (!isCommission) {
+                try {
+                    const userDetails = await userServiceClient.getUserDetails(userId.toString());
+                    if (!userDetails?.email) {
+                        log.warn(`Could not find email for user ${userId}. Deposit processed, but notification cannot be sent.`);
+                    } else {
+                        userEmail = userDetails.email;
+                        userName = userDetails.name; // Get user's name
+                        log.debug(`Found email ${userEmail} and name ${userName} for user ${userId}`);
+                    }
+                } catch (userError: any) {
+                    log.error(`Failed to fetch user details for ${userId} during deposit: ${userError.message}`);
+                    log.warn(`Continuing deposit for ${userId} despite failing to fetch user details for notification.`);
                 }
-            } catch (userError: any) {
-                log.error(`Failed to fetch user details for ${userId} during deposit: ${userError.message}`);
-                log.warn(`Continuing deposit for ${userId} despite failing to fetch user details for notification.`);
             }
 
             // Create a transaction record
@@ -269,7 +275,9 @@ class PaymentService {
             }
 
             // Send notification only if email was found
-            if (userEmail) {
+            if (isCommission) {
+                log.debug(`Commission deposit ${transaction.transactionId}: no email (push and in-app only)`);
+            } else if (userEmail) {
                 const notificationSent = await notificationService.sendTransactionSuccessEmail({
                     email: userEmail,
                     name: userName || 'Customer', // Use fetched name or default
