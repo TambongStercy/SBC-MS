@@ -1,5 +1,5 @@
 import { emailService } from './email.service';
-import { reserveRelanceSend } from './send-budget.service';
+import { relanceDailyCapReached, reserveRelanceSend } from './send-budget.service';
 import logger from '../utils/logger';
 import config from '../config';
 import { relanceUnsubscribeUrl } from '../utils/relance-unsubscribe';
@@ -229,7 +229,7 @@ class EmailRelanceService {
         mediaUrls?: RelanceMedia[],
         buttons?: RelanceButton[],
         customSubject?: string
-    ): Promise<{ success: boolean; error?: string; messageId?: string; deferred?: boolean }> {
+    ): Promise<{ success: boolean; error?: string; messageId?: string; deferred?: boolean; dailyCapReached?: boolean }> {
         try {
             if (!recipientEmail) {
                 log.error('[EmailRelance] No recipient email provided');
@@ -254,6 +254,9 @@ class EmailRelanceService {
             // sends OTP and other email leave this minute, and never overflows to
             // Cloudflare. No room → `deferred`: nothing sent, nothing charged.
             if (!(await reserveRelanceSend())) {
+                if (await relanceDailyCapReached()) {
+                    return { success: false, deferred: true, dailyCapReached: true, error: "Relance daily total reached; waits for tomorrow" };
+                }
                 return { success: false, deferred: true, error: 'No spare sending capacity this minute' };
             }
 

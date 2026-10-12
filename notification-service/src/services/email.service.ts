@@ -299,6 +299,11 @@ class EmailService {
      * content that does not look like spam, a recipient not blacklisted.
      * Shared with relance's Cloudflare path so both providers apply the same rules.
      */
+    /** Re-reads the block list now (the bounce reader calls it after adding addresses). */
+    reloadBlacklist(): Promise<void> {
+        return this.bounceHandler.reloadBlacklist();
+    }
+
     passesPreflight(options: EmailOptions): boolean {
         const emailValidation = spamChecker.validateEmailAddress(options.to);
         if (!emailValidation.isValid) {

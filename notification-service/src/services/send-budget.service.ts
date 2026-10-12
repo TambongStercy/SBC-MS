@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import config from '../config';
+import EmailProviderUsageModel from '../database/models/email-provider-usage.model';
 
 /**
  * Per-minute sending budget on our own mail server (SMART-SENDER-OVERFLOW-SPEC).
@@ -69,10 +70,39 @@ export async function relanceBudget(now: Date = new Date()): Promise<number> {
     return Math.max(0, config.emailPacing.ratePerMinute - expectedHigh);
 }
 
-/** Relance: a send only out of what OTP and transactional mail leave. */
+/**
+ * Relance's total for the day, shared by every parrain (the "shared pool"
+ * agreed on 2026-10-06; built 2026-10-12). The per-minute budget alone let
+ * relance take every quiet minute: 7,000–8,000 a day on top of ~16,000 OTP and
+ * transactional emails, from one IP that Gmail starts throttling well below
+ * that, so OTP codes stopped arriving. Once the day's total is reached relance
+ * waits for the next day; nothing is charged for an email that waits.
+ * RELANCE_DAILY_EMAIL_CAP changes it without a deploy (pm2 reload --update-env).
+ */
+export const relanceDailyCap = (): number => Number(process.env.RELANCE_DAILY_EMAIL_CAP ?? 2000);
+
+const relanceDayKey = (d: Date) => `relance:${d.toISOString().slice(0, 10)}`;
+
+export async function relanceSentToday(now: Date = new Date()): Promise<number> {
+    const doc = await EmailProviderUsageModel.findById(relanceDayKey(now)).lean();
+    return doc?.count ?? 0;
+}
+
+export async function relanceDailyCapReached(now: Date = new Date()): Promise<boolean> {
+    return (await relanceSentToday(now)) >= relanceDailyCap();
+}
+
+/**
+ * Relance: a send only out of what OTP and transactional mail leave this
+ * minute, and while the day's total has room. Parrains sending at the same
+ * moment can pass the day's total by a few; that is the price of not locking.
+ */
 export async function reserveRelanceSend(now: Date = new Date()): Promise<boolean> {
+    if (await relanceDailyCapReached(now)) return false;
     const budget = await relanceBudget(now);
     if (budget <= 0) return false;
     const rate = config.emailPacing.ratePerMinute;
-    return claim({ _id: minuteKey(now), total: { $lt: rate }, relance: { $lt: budget } }, { total: 1, relance: 1 });
+    const ok = await claim({ _id: minuteKey(now), total: { $lt: rate }, relance: { $lt: budget } }, { total: 1, relance: 1 });
+    if (ok) await EmailProviderUsageModel.updateOne({ _id: relanceDayKey(now) }, { $inc: { count: 1 } }, { upsert: true });
+    return ok;
 }
