@@ -6,7 +6,7 @@ import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } 
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
-import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS } from '../utils/otp.utils';
+import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import config from '../config';
@@ -3818,7 +3818,10 @@ export class UserService {
         recipient: string
     } {
         // Use override if provided, otherwise use user's preference
-        const preferredChannel = channelOverride || user.notificationPreference;
+        let preferredChannel = channelOverride || user.notificationPreference;
+        if (preferredChannel === 'whatsapp' && !whatsappOtpEnabled() && user.email) {
+            preferredChannel = 'email';
+        }
 
         switch (preferredChannel) {
             case 'whatsapp':
@@ -4152,11 +4155,15 @@ export class UserService {
         // 4. Generate and store OTP for the *current* user
         const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps');
 
-        // 5. Send OTP to the *new* phone number via WhatsApp
+        // 5. Send OTP to the *new* phone number via WhatsApp. While WhatsApp OTP
+        // is off (templates rejected by Meta) no code can reach the new number,
+        // so it goes to the account email: that proves control of the account,
+        // not of the new number, until WhatsApp is back.
+        const viaWhatsapp = whatsappOtpEnabled() || !currentUser.email;
         await notificationService.sendOtp({
             userId: currentUser._id.toString(),
-            recipient: normalizedPhoneNumber, // Send to the NEW phone number
-            channel: DeliveryChannel.WHATSAPP,
+            recipient: viaWhatsapp ? normalizedPhoneNumber : currentUser.email,
+            channel: viaWhatsapp ? DeliveryChannel.WHATSAPP : DeliveryChannel.EMAIL,
             code: otpCode,
             expireMinutes: 10,
             isRegistration: false,

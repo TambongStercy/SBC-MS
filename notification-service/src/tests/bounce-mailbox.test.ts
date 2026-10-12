@@ -75,6 +75,23 @@ describe('reading a bounce report', () => {
     ])('status %s (%s) suppresses the address: %s', (status, action, hard) => {
         expect(isHardBounce({ email: 'a@b.c', status, action })).toBe(hard);
     });
+
+    // 2026-10-12: these dead addresses were never suppressed and bounced again
+    // and again — the status code alone does not say the mailbox is gone.
+    it.each([
+        ['5.0.0', 'smtp; 552 1 Requested mail action aborted, mailbox not found', true],                  // Yahoo
+        ['5.0.0', 'smtp; 550 Requested action not taken: mailbox unavailable', true],                    // mail.com
+        ['5.5.0', 'smtp;550 5.5.0 Requested action not taken: mailbox unavailable.', true],              // Hotmail
+        ['5.0.0', 'smtp; 511 sorry, no mailbox here by that name (#5.1.1 - chkuser)', true],
+        ['5.0.0', 'smtp; 554 30 Sorry, your message cannot be delivered. This mailbox is disabled (554.30).', true],
+        ['5.2.2', 'smtp; 552-5.2.2 The recipient\'s inbox is out of storage space and inactive.', true],   // Gmail, dead
+        ['5.2.2', 'smtp; 552 5.2.2 <x@icloud.com>: user is over quota', false],                           // just full
+        ['5.7.1', 'smtp; 550 5.7.1 mailbox unavailable: client host blocked', false],                     // blocks US
+        ['5.6.7', 'X-Postfix; SMTPUTF8 is required, but was not offered by host', false],                // our message
+        ['5.0.0', 'X-Postfix; Message delivery failed', false],                                          // says nothing
+    ])('status %s "%s" suppresses the address: %s', (status, diagnostic, hard) => {
+        expect(isHardBounce({ email: 'a@b.c', status, action: 'failed', diagnostic })).toBe(hard);
+    });
 });
 
 describe('a pass over the mailbox', () => {

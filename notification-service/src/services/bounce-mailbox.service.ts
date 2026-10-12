@@ -2,6 +2,7 @@ import { ImapFlow } from 'imapflow';
 import RelanceBounceSuppressionModel from '../database/models/relance-bounce-suppression.model';
 import config from '../config';
 import logger from '../utils/logger';
+import { emailService } from './email.service';
 
 const log = logger.getLogger('BounceMailbox');
 
@@ -45,11 +46,25 @@ export function parseDsn(raw: string): DsnRecipient[] {
 /**
  * Only failures that say the address itself is bad. A 5.7.x refusal is the
  * receiving server blocking *us* (reputation, policy) — suppressing on it
- * would cut off real people. Full mailboxes (5.2.2) and anything temporary
- * (4.x.x) get another chance.
+ * would cut off real people — and 5.6.x / 5.3.x are about our message or our
+ * server, not the address. Ordinary full mailboxes (5.2.2) and anything
+ * temporary (4.x.x) get another chance.
+ *
+ * The status code alone missed many dead addresses (2026-10-12: 50 of them
+ * bounced again and again): Yahoo, mail.com and email.com say "mailbox not
+ * found" with 5.0.0, Hotmail "mailbox unavailable" with 5.5.0, and Gmail's
+ * "inbox is out of storage space and inactive" is a 5.2.2. So the diagnostic
+ * text counts too.
  */
-export const isHardBounce = (r: DsnRecipient) =>
-    r.action === 'failed' && /^5\.(1\.\d+|2\.1|4\.4)$/.test(r.status.split(/\s/)[0]);
+const DEAD_ADDRESS_TEXT = /does not exist|doesn't exist|no such (user|mailbox)|user unknown|unknown user|user not found|mailbox (is )?(not found|unavailable|disabled|does not exist|inactive)|no mailbox|account (is )?(disabled|inactive)|\binactive\b|recipient (address )?(rejected|unknown)|invalid recipient|address rejected/i;
+
+export const isHardBounce = (r: DsnRecipient) => {
+    if (r.action !== 'failed') return false;
+    const code = r.status.split(/\s/)[0];
+    if (/^5\.(1\.\d+|2\.1|4\.4)$/.test(code)) return true;
+    if (!/^5\./.test(code) || /^5\.(7|6|3)\./.test(code)) return false;
+    return DEAD_ADDRESS_TEXT.test(r.diagnostic ?? '');
+};
 
 /** Adds an address to the suppression list; a repeat bounce changes nothing. */
 async function suppress(r: DsnRecipient): Promise<boolean> {
@@ -130,6 +145,9 @@ export async function runBounceMailboxPass(): Promise<void> {
         // 2,000 a pass: the mailbox held ~30,000 unread reports when this was first switched on.
         const r = await withImapMailbox(mailbox => processBounces(mailbox, 2000));
         if (r.read) log.info(`Bounce mailbox: read ${r.read}, suppressed ${r.suppressed} new address(es), ${r.ignored} not permanent`);
+        // Block them now, not at the next 5-minute reload: a new member with a
+        // dead address asks for a code again within minutes.
+        if (r.suppressed) await emailService.reloadBlacklist();
     } catch (err: any) {
         log.error(`Bounce mailbox pass failed: ${err?.message ?? err}`);
     } finally {

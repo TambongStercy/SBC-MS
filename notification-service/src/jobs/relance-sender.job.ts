@@ -181,7 +181,8 @@ type RelanceSendResult = Awaited<ReturnType<typeof emailRelanceService.sendRelan
 
 async function sendWhenSpare(send: () => Promise<RelanceSendResult>): Promise<RelanceSendResult> {
     let result = await send();
-    for (let i = 0; result.deferred && i < SPARE_WAIT_MINUTES; i++) {
+    // Waiting minute by minute is pointless once the day's total is reached.
+    for (let i = 0; result.deferred && !result.dailyCapReached && i < SPARE_WAIT_MINUTES; i++) {
         await new Promise(r => setTimeout(r, msToNextMinute() + Math.floor(Math.random() * 2000)));
         result = await send();
     }

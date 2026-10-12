@@ -47,7 +47,7 @@ import mongoose from 'mongoose';
 import config from '../config';
 import EmailProviderUsageModel from '../database/models/email-provider-usage.model';
 import RelanceBounceSuppressionModel from '../database/models/relance-bounce-suppression.model';
-import { EmailSendMinuteModel, relanceBudget, reserveHighPrioritySend, reserveRelanceSend } from '../services/send-budget.service';
+import { EmailSendMinuteModel, relanceBudget, relanceSentToday, reserveHighPrioritySend, reserveRelanceSend } from '../services/send-budget.service';
 import { resetCloudflarePause, sendOtpViaCloudflare, parseSender } from '../services/cloudflare-email.service';
 import { emailRelanceService } from '../services/email.relance.service';
 import { QueueService } from '../services/queue.service';
@@ -122,6 +122,34 @@ describe('the per-minute budget on our own server', () => {
         for (let i = 0; i < 4; i++) results.push(await reserveRelanceSend(EARLY));
         expect(results).toEqual([true, true, true, false]);
         expect(await reserveHighPrioritySend(EARLY)).toBe(true); // room kept for OTP
+    });
+});
+
+// The shared daily pool (agreed 2026-10-06): relance took 7,000–8,000 a day of
+// spare minutes on the server OTP shares, and Gmail throttled the codes.
+describe('relance: one daily total for every parrain', () => {
+    afterEach(() => { delete process.env.RELANCE_DAILY_EMAIL_CAP; });
+
+    it('stops at the day\'s total, whatever room the minute has, and counts every send', async () => {
+        process.env.RELANCE_DAILY_EMAIL_CAP = '2';
+        const results = [];
+        for (let i = 0; i < 3; i++) results.push(await reserveRelanceSend(new Date(EARLY.getTime() + i * 60_000)));
+        expect(results).toEqual([true, true, false]);
+        expect(await relanceSentToday(EARLY)).toBe(2);
+        expect(await reserveHighPrioritySend(EARLY)).toBe(true); // OTP is never held by it
+    });
+
+    it('starts again the next day', async () => {
+        process.env.RELANCE_DAILY_EMAIL_CAP = '1';
+        expect(await reserveRelanceSend(EARLY)).toBe(true);
+        expect(await reserveRelanceSend(new Date(EARLY.getTime() + 60_000))).toBe(false);
+        expect(await reserveRelanceSend(new Date(EARLY.getTime() + 24 * 3600_000))).toBe(true);
+    });
+
+    it('tells the sender the day is over, so it stops waiting minute by minute', async () => {
+        process.env.RELANCE_DAILY_EMAIL_CAP = '0';
+        const r = await emailRelanceService.sendRelanceEmail('a@example.com', 'A', 'P', 'Bonjour', 1);
+        expect(r).toMatchObject({ success: false, deferred: true, dailyCapReached: true });
     });
 });
 
