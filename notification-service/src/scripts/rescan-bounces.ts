@@ -32,6 +32,7 @@ const DAYS = daysArg >= 0 ? Number(process.argv[daysArg + 1]) : 30;
     const uids = (await client.search({ since, or: [{ from: 'mailer-daemon' }, { header: { 'content-type': 'multipart/report' } }] }, { uid: true })) || [];
     const dead = new Map<string, string>();
     for await (const m of client.fetch(uids, { uid: true, source: true }, { uid: true })) {
+        if (!m.source) continue;
         for (const r of parseDsn(m.source.toString('utf8'))) {
             if (isHardBounce(r)) dead.set(r.email, `${r.status} ${r.diagnostic ?? ''}`.trim().slice(0, 500));
         }
