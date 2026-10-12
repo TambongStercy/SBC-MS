@@ -96,8 +96,10 @@ async function startServer() {
 
         // Bounce reports from our own mail server feed the suppression list.
         if (config.email.bounceMailbox.enabled) {
-            cron.schedule('*/15 * * * *', runBounceMailboxPass);
-            logger.info('[Server] Bounce mailbox reader scheduled (every 15 min)');
+            // Every 2 min: a sign-up with a dead address gets the welcome email,
+            // the code and a resend within minutes, each one a bounce.
+            cron.schedule('*/2 * * * *', runBounceMailboxPass);
+            logger.info('[Server] Bounce mailbox reader scheduled (every 2 min)');
         }
 
         // Start Express server

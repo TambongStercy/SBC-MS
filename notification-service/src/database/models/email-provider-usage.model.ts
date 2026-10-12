@@ -4,6 +4,7 @@ import mongoose, { Schema } from 'mongoose';
  * Emails sent through a paid provider, per calendar month (UTC):
  * `_id` is `<provider>:<YYYY-MM>`, e.g. `cloudflare:2026-10`. It is what the
  * monthly cap counts against, and the number to compare with the provider's bill.
+ * Also `relance:<YYYY-MM-DD>`: relance emails sent that day (the daily cap).
  */
 export interface IEmailProviderUsage {
     _id: string;
