@@ -302,6 +302,99 @@ class PaymentService {
     }
 
     /**
+     * Pays from the member's main balance (SBC Ads Network campaigns, Rufus
+     * 2026-10-17: « payer ou compléter la campagne avec son solde SBC »).
+     *
+     * The debit is one conditional update in user-service — the balance net of
+     * debt must cover it — so two payments landing together cannot overdraw.
+     * The wallet history gets a PAYMENT line (positive amount: the wallet adds
+     * the minus sign). `reference` identifies one reservation; the caller sends
+     * it once per reservation, and a retry with it returns the first payment.
+     */
+    async spendFromBalance(args: {
+        userId: string;
+        amount: number;
+        description: string;
+        reference: string;
+        metadata?: Record<string, any>;
+    }): Promise<ITransaction> {
+        if (!(args.amount > 0)) throw new AppError('Amount must be positive.', 400);
+        const existing = await TransactionModel.findOne({
+            type: TransactionType.PAYMENT, 'metadata.balanceSpendRef': args.reference, deleted: { $ne: true },
+        });
+        if (existing) return existing;
+
+        if (!(await userServiceClient.spendBalance(args.userId, args.amount))) {
+            throw new AppError('Solde SBC insuffisant.', 409);
+        }
+        try {
+            const tx = await transactionRepository.create({
+                userId: new Types.ObjectId(args.userId),
+                type: TransactionType.PAYMENT,
+                amount: args.amount,
+                fee: 0,
+                currency: Currency.XAF,
+                status: TransactionStatus.COMPLETED,
+                description: args.description,
+                metadata: { ...(args.metadata || {}), balanceSpendRef: args.reference },
+            });
+            log.info(`Balance payment ${tx.transactionId}: ${args.amount} XAF from user ${args.userId} (${args.reference})`);
+            return tx;
+        } catch (err: any) {
+            // The money left the balance but nothing records it: put it back.
+            await userServiceClient.updateUserBalance(args.userId, args.amount).catch((e: any) =>
+                log.error(`CRITICAL: balance payment ${args.reference} debited ${args.amount} XAF from ${args.userId}, `
+                    + `was not recorded, and could not be put back: ${e.message}`));
+            throw err;
+        }
+    }
+
+    /**
+     * Gives back a balance payment (the campaign was cancelled, or its mobile
+     * money part failed or never came). Never more than was taken for that
+     * reference, and never twice: the refund is written as PENDING before the
+     * credit, so a crash between the two leaves a PENDING line to check by hand
+     * rather than a second credit on retry.
+     */
+    async refundBalanceSpend(args: { userId: string; reference: string; description: string }): Promise<ITransaction | null> {
+        const spent = await TransactionModel.findOne({
+            type: TransactionType.PAYMENT, 'metadata.balanceSpendRef': args.reference, deleted: { $ne: true },
+        });
+        if (!spent) return null; // nothing was taken under this reference
+
+        const earlier: ITransaction | null = await TransactionModel.findOne({ type: TransactionType.REFUND, 'metadata.balanceRefundRef': args.reference });
+        if (earlier?.status === TransactionStatus.COMPLETED) return earlier;
+        if (earlier?.status === TransactionStatus.PENDING) {
+            log.error(`Balance refund ${earlier.transactionId} (${args.reference}) is PENDING from an earlier attempt; check it by hand before crediting`);
+            return earlier;
+        }
+        let refund: ITransaction | null = earlier; // a FAILED attempt is retried on the same line
+        if (!refund) {
+            refund = await transactionRepository.create({
+                userId: spent.userId,
+                type: TransactionType.REFUND,
+                amount: Math.abs(spent.amount),
+                fee: 0,
+                currency: Currency.XAF,
+                status: TransactionStatus.PENDING,
+                description: args.description,
+                metadata: { balanceRefundRef: args.reference, refundOf: spent.transactionId },
+            });
+        }
+        const refundId = refund.transactionId;
+        await transactionRepository.updateStatus(refundId, TransactionStatus.PENDING);
+        try {
+            await userServiceClient.updateUserBalance(String(spent.userId), Math.abs(spent.amount));
+        } catch (err) {
+            await transactionRepository.updateStatus(refundId, TransactionStatus.FAILED);
+            throw err;
+        }
+        await transactionRepository.updateStatus(refundId, TransactionStatus.COMPLETED);
+        log.info(`Balance refund ${refundId}: ${Math.abs(spent.amount)} XAF back to ${spent.userId} (${args.reference})`);
+        return (await transactionRepository.findByTransactionId(refundId)) ?? refund;
+    }
+
+    /**
      * Process an internally triggered withdrawal (e.g., commission payout failure reversal, fee)
      * Ensures transaction is logged and balance is updated.
      */

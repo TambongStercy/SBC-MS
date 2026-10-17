@@ -132,6 +132,22 @@ export class UserRepository {
     }
 
     /**
+     * Takes `amount` off the main balance only if the balance net of any debt
+     * covers it, in one update: two payments landing together cannot both pass
+     * a check made before the debit. Returns null when there is not enough.
+     */
+    async spendBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+        return UserModel.findOneAndUpdate(
+            {
+                _id: userId,
+                $expr: { $gte: [{ $subtract: [{ $ifNull: ['$balance', 0] }, { $ifNull: ['$debt', 0] }] }, amount] },
+            },
+            { $inc: { balance: -amount } },
+            { new: true },
+        ).exec();
+    }
+
+    /**
      * Atomically updates the USD balance for a user.
      * @param userId - The ID of the user.
      * @param amountChange - The amount to add (positive) or subtract (negative).

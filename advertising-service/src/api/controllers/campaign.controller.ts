@@ -13,6 +13,7 @@ import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../ser
 import { createCampaignPaymentIntent } from '../../services/clients/payment.service.client';
 import { settlePaidCampaign } from '../../services/activation.service';
 import { reserveCredit, releaseCredit, availableCredit } from '../../services/credit.service';
+import { outstandingAmount, releaseBalance, reserveBalance } from '../../services/balance-payment.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { estimateReach, describeReach } from '../../services/reach.service';
 import { AppError } from '../../utils/errors';
@@ -253,24 +254,48 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
         // Banked credit from earlier unfilled campaigns comes off the price first.
         // Rufus's rule: it comes back as credit toward a new campaign, never cash.
         const credit = await reserveCredit(campaign);
-        const due = Math.max(0, campaign.amountPaid - credit);
+        // Mobile money already received for it (a payment that left something to
+        // pay) counts like credit.
+        const afterCredit = Math.max(0, campaign.amountPaid - credit - (campaign.mobileMoneyPaid ?? 0));
+
+        // Then the SBC balance, when the annonceur asked for it (Rufus: « payer ou
+        // compléter la campagne avec son solde SBC »). A reservation from an
+        // earlier attempt is reused, never taken twice.
+        let fromBalance = campaign.balanceApplied ?? 0;
+        if (req.body?.useBalance === true && afterCredit > 0) {
+            try {
+                fromBalance = await reserveBalance(campaign, afterCredit);
+            } catch (err) {
+                await releaseCredit(campaign).catch(() => { });
+                throw err;
+            }
+        }
+        const due = outstandingAmount({ ...campaign.toObject(), creditApplied: credit, balanceApplied: fromBalance });
+
+        // A simultaneous tap may have settled it from the balance meanwhile.
+        if ((await CampaignModel.findById(campaign._id).select('paidAt').lean())?.paidAt) {
+            throw new AppError('Cette campagne vient d\'être payée.', 409);
+        }
 
         if (due === 0) {
-            // Fully covered by credit — this campaign has already been paid for, so
-            // there is nothing for a payment provider to do.
+            // Fully covered by credit and/or balance — this campaign has already been
+            // paid for, so there is nothing for a payment provider to do.
             const result = await settlePaidCampaign(campaign._id);
+            const covered = fromBalance > 0 && credit > 0 ? 'Votre crédit et votre solde SBC couvrent'
+                : fromBalance > 0 ? 'Votre solde SBC couvre' : 'Votre crédit couvre';
 
-            log.info(`Campaign ${campaign._id} settled entirely from ${credit} XAF of credit: ${result.status}`);
+            log.info(`Campaign ${campaign._id} settled from ${credit} XAF of credit and ${fromBalance} XAF of balance: ${result.status}`);
             return res.json({
                 success: true,
                 data: {
                     sessionId: null,
                     amount: 0,
                     creditApplied: credit,
+                    balanceApplied: fromBalance,
                     status: result.status,
                     message: result.status === 'active'
-                        ? 'Votre crédit couvre entièrement cette campagne. Elle est lancée.'
-                        : 'Votre crédit couvre entièrement cette campagne. Elle passe en validation.',
+                        ? `${covered} entièrement cette campagne. Elle est lancée.`
+                        : `${covered} entièrement cette campagne. Elle passe en validation.`,
                 },
             });
         }
@@ -283,19 +308,27 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
                 campaignTitle: campaign.title,
             });
 
-            log.info(`Payment session ${intent.sessionId} opened for campaign ${campaign._id} (${due} XAF due, ${credit} from credit)`);
+            await CampaignModel.updateOne(
+                { _id: campaign._id },
+                {
+                    $set: { pendingPaymentSessionId: intent.sessionId },
+                    $push: { paymentSessions: { sessionId: intent.sessionId, amount: due } },
+                },
+            );
+            log.info(`Payment session ${intent.sessionId} opened for campaign ${campaign._id} (${due} XAF due, ${credit} from credit, ${fromBalance} from balance)`);
 
             return res.json({
                 success: true,
                 // Only the session id: the frontend builds the payment page URL from it
                 // (SBCApiService.generatePaymentUrl), same as subscriptions and tombola.
-                data: { sessionId: intent.sessionId, amount: due, creditApplied: credit },
+                data: { sessionId: intent.sessionId, amount: due, creditApplied: credit, balanceApplied: fromBalance },
             });
         } catch (err) {
-            // No payment session means nothing will ever consume the reservation,
-            // and no callback will arrive to tell us so. Hand the credit back now
-            // rather than leaving the annonceur to wait out the sweep.
+            // No payment session means nothing will ever consume the reservations,
+            // and no callback will arrive to tell us so. Hand them back now rather
+            // than leaving the annonceur to wait out the sweep.
             await releaseCredit(campaign).catch(() => { });
+            await releaseBalance(campaign).catch(() => { });
             throw err;
         }
     } catch (err) {
@@ -374,7 +407,17 @@ export const cancel = async (req: AuthenticatedRequest, res: Response) => {
             );
         }
 
+        // Mobile money cannot be handed back automatically: once some was received
+        // the campaign is completed, not cancelled.
+        if ((campaign.mobileMoneyPaid ?? 0) > 0) {
+            throw new AppError(
+                `Un paiement Mobile Money de ${campaign.mobileMoneyPaid} F a déjà été reçu pour cette campagne. `
+                + 'Complétez le paiement pour la lancer, ou contactez le support.',
+                400,
+            );
+        }
         await releaseCredit(campaign);
+        await releaseBalance(campaign);
         campaign.status = CampaignStatus.CANCELLED;
         await campaign.save();
 

@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
 import { allocateCampaign, expireStaleOffers, remainingViewsToCover } from '../../services/allocation.service';
 import { activateApprovedCampaign, settlePaidCampaign } from '../../services/activation.service';
+import { recordMobileMoneyPayment, releaseBalance } from '../../services/balance-payment.service';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
 
@@ -42,6 +43,18 @@ export const handlePaymentConfirmation = async (req: Request, res: Response) => 
 
     if (status !== 'SUCCEEDED') {
         log.info(`Payment ${sessionId} for campaign ${campaignId} ended as ${status}; campaign stays unpaid`);
+        // The mobile-money part failed: give the balance part back now rather
+        // than at the sweep — unless a newer payment page was opened since.
+        if (status === 'FAILED' && campaignId) {
+            try {
+                const campaign = await CampaignModel.findById(campaignId);
+                if (campaign && !campaign.paidAt && campaign.balanceRef && campaign.pendingPaymentSessionId === sessionId) {
+                    await releaseBalance(campaign);
+                }
+            } catch (err) {
+                log.error(`Could not give back the balance part of campaign ${campaignId} after failed payment ${sessionId}; the sweep retries:`, err);
+            }
+        }
         return res.json({ success: true, message: `Webhook received (status: ${status}).` });
     }
     if (!campaignId) {
@@ -53,6 +66,12 @@ export const handlePaymentConfirmation = async (req: Request, res: Response) => 
         // Pay-first: the payment settles the campaign into PAID (awaiting an
         // admin's validation), and only activates it outright when it was already
         // approved under the old review-then-pay order.
+        // Fully paid before it moves (Sterling, 2026-10-17): a payment that leaves
+        // something to pay is kept on the campaign, which waits for the rest.
+        const recorded = await recordMobileMoneyPayment(campaignId, sessionId);
+        if (recorded.known && recorded.remaining > 0) {
+            return res.json({ success: true, data: { status: 'awaiting_rest', remaining: recorded.remaining } });
+        }
         const result = await settlePaidCampaign(campaignId, sessionId);
         log.info(`Campaign ${campaignId} settled from payment ${sessionId}: ${result.status}`);
         return res.json({ success: true, data: result });
