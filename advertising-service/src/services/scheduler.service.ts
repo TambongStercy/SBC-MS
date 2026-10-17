@@ -11,6 +11,7 @@ import { sweepPendingPayouts } from './payout.service';
 import { sweepReferralCommissions } from './referral-commission.service';
 import { nextUnpostedDay, scheduleSummary } from './day-window.service';
 import { sweepStaleCreditReservations } from './credit.service';
+import { sweepStaleBalanceReservations } from './balance-payment.service';
 import { offerTestCampaignToNewDiffuseurs } from './test-campaign.service';
 import { sweepReviewedVideos } from './manual-verification.service';
 import {
@@ -400,6 +401,7 @@ export const runScheduledJobs = async (): Promise<void> => {
         // Returns credit held by campaigns whose payment page was abandoned. No
         // callback ever arrives for those, so a timeout is the only signal.
         ['sweepStaleCreditReservations', sweepStaleCreditReservations],
+        ['sweepStaleBalanceReservations', sweepStaleBalanceReservations],
         // Before allocation: a diffuseur who links WhatsApp today should be
         // measured before being offered anything an annonceur is paying for.
         ['offerTestCampaignToNewDiffuseurs', offerTestCampaignToNewDiffuseurs],

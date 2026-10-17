@@ -790,6 +790,40 @@ export class PaymentController {
         }
     };
 
+    /** [INTERNAL] Pays from a member's main balance (Ads Network campaigns). */
+    public spendFromBalance = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { userId, amount, description, reference, metadata } = req.body ?? {};
+            if (!userId || !reference || !description || typeof amount !== 'number' || !(amount > 0)) {
+                res.status(400).json({ success: false, message: 'userId, a positive amount, description and reference are required' });
+                return;
+            }
+            const tx = await paymentService.spendFromBalance({ userId, amount, description, reference, metadata });
+            res.status(201).json({ success: true, data: { transactionId: tx.transactionId, amount: tx.amount } });
+        } catch (error: any) {
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            next(error);
+        }
+    };
+
+    /** [INTERNAL] Gives back a balance payment, at most once per reference. */
+    public refundBalanceSpend = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { userId, reference, description } = req.body ?? {};
+            if (!userId || !reference) {
+                res.status(400).json({ success: false, message: 'userId and reference are required' });
+                return;
+            }
+            const tx = await paymentService.refundBalanceSpend({ userId, reference, description: description || 'Remboursement' });
+            res.json({ success: true, data: tx ? { transactionId: tx.transactionId, status: tx.status } : null });
+        } catch (error: any) {
+            next(error);
+        }
+    };
+
     /**
      * [INTERNAL] Record an internal deposit transaction
      * @route POST /api/internal/deposit
