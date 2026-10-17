@@ -409,7 +409,13 @@ class ImpactChallengeController {
                 success: true,
                 data: {
                     challenge,
-                    entrepreneurs
+                    entrepreneurs,
+                    // The admin form enforces these before upload; sent so it does not guess.
+                    limits: {
+                        maxEntrepreneurs: config.impactChallenge.maxEntrepreneursPerChallenge,
+                        videoMaxDurationSeconds: config.impactChallenge.videoMaxDurationSeconds,
+                        ...votingRules(),
+                    },
                 }
             });
         } catch (error: any) {
@@ -539,6 +545,22 @@ class ImpactChallengeController {
             res.status(200).json({ success: true, data: entrepreneur });
         } catch (error: any) {
             log.error('Error updating entrepreneur:', error.message);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                next(error);
+            }
+        }
+    }
+
+    /**
+     * PATCH /api/challenges/admin/entrepreneurs/:entrepreneurId/unapprove
+     */
+    async unapproveEntrepreneur(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const updated = await entrepreneurService.rejectEntrepreneur(req.params.entrepreneurId);
+            res.status(200).json({ success: true, data: updated });
+        } catch (error: any) {
             if (error instanceof AppError) {
                 res.status(error.statusCode).json({ success: false, message: error.message });
             } else {

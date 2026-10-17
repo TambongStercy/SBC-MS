@@ -157,14 +157,20 @@ class ImpactChallengeService {
             throw new AppError('Challenge not found', 404);
         }
 
-        // Don't allow updating certain fields once active
-        if (challenge.status !== ChallengeStatus.DRAFT) {
-            delete update.month;
-            delete update.year;
-            delete update.tombolaMonthId;
+        // Only the editable details. The body used to be saved as-is, so an
+        // admin request could rewrite status, totals or payout transaction ids.
+        // Month/year are not editable: the challenge is tied to that month's
+        // tombola at creation.
+        const allowed: Partial<IImpactChallenge> = {};
+        if (update.campaignName !== undefined) allowed.campaignName = update.campaignName;
+        if (update.startDate !== undefined) allowed.startDate = update.startDate;
+        if (update.endDate !== undefined) allowed.endDate = update.endDate;
+        if (update.description !== undefined) allowed.description = update.description;
+        if (challenge.status === ChallengeStatus.FUNDS_DISTRIBUTED || challenge.status === ChallengeStatus.CANCELLED) {
+            throw new AppError(`A ${challenge.status} challenge can no longer be edited`, 400);
         }
 
-        return await impactChallengeRepository.findByIdAndUpdate(id, update);
+        return await impactChallengeRepository.findByIdAndUpdate(id, allowed);
     }
 
     /**
@@ -331,9 +337,15 @@ class ImpactChallengeService {
         const lotteryPool = challenge.lotteryPoolAmount ?? Math.floor(challenge.totalCollected * LOTTERY_PERCENTAGE);
         const commission = challenge.commissionAmount
             ?? challenge.totalCollected - winnerPayout - lotteryPool; // rounding remainder goes to commission
+        // A claim left by a crash (no process finished it) can be taken over
+        // after 15 minutes; paid legs are skipped either way.
+        const staleBefore = new Date(Date.now() - 15 * 60 * 1000);
         const claimed = await ImpactChallengeModel.findOneAndUpdate(
-            { _id: challengeId, status: ChallengeStatus.VOTING_CLOSED, fundsDistributed: false, distributionInProgress: { $ne: true } },
-            { $set: { distributionInProgress: true, winnerPayoutAmount: winnerPayout, lotteryPoolAmount: lotteryPool, commissionAmount: commission } },
+            {
+                _id: challengeId, status: ChallengeStatus.VOTING_CLOSED, fundsDistributed: false,
+                $or: [{ distributionInProgress: { $ne: true } }, { distributionStartedAt: { $lt: staleBefore } }],
+            },
+            { $set: { distributionInProgress: true, distributionStartedAt: new Date(), winnerPayoutAmount: winnerPayout, lotteryPoolAmount: lotteryPool, commissionAmount: commission } },
             { new: true },
         );
         if (!claimed) throw new AppError('A distribution is already running for this challenge', 409);

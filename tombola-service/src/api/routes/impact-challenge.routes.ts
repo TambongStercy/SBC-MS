@@ -45,6 +45,9 @@ router.patch('/admin/entrepreneurs/:entrepreneurId', authenticate, authorizeAdmi
 // Approve entrepreneur
 router.patch('/admin/entrepreneurs/:entrepreneurId/approve', authenticate, authorizeAdmin, impactChallengeController.approveEntrepreneur.bind(impactChallengeController));
 
+// Unapprove an entrepreneur (hidden from members again; only while they have no votes)
+router.patch('/admin/entrepreneurs/:entrepreneurId/unapprove', authenticate, authorizeAdmin, impactChallengeController.unapproveEntrepreneur.bind(impactChallengeController));
+
 // Delete entrepreneur
 router.delete('/admin/entrepreneurs/:entrepreneurId', authenticate, authorizeAdmin, impactChallengeController.deleteEntrepreneur.bind(impactChallengeController));
 

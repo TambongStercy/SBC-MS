@@ -162,6 +162,24 @@ const main = async () => {
     await impactChallengeController.getMyVotes({ user: { userId: String(member) }, params: { challengeId: String(ch._id) } }, res, () => undefined);
     check('my votes lists only completed ones, with their tickets', body?.data?.length === 1 && body.data[0].tickets === 3 && body.data[0].amountPaid === 600, JSON.stringify(body?.data));
 
+    // --- Admin edits cannot touch money or status ---
+    const edited = await makeChallenge({ totalCollected: 5000 });
+    await impactChallengeService.updateChallenge(String(edited._id), { campaignName: 'Nouveau nom', totalCollected: 999999, status: ChallengeStatus.FUNDS_DISTRIBUTED, winnerTransactionId: 'fake' } as any);
+    c = await fresh(edited._id);
+    check('an admin edit changes the name but not totals, status or payout ids', c.campaignName === 'Nouveau nom' && c.totalCollected === 5000 && c.status === ChallengeStatus.ACTIVE && !c.winnerTransactionId);
+
+    // --- A payout claim left by a crash can be resumed after 15 minutes ---
+    const stuck = await makeChallenge({ status: ChallengeStatus.VOTING_CLOSED, totalCollected: 1000, distributionInProgress: true, distributionStartedAt: new Date(Date.now() - 20 * 60000) });
+    await makeEntrepreneur(stuck._id, { isWinner: true, rank: 1 });
+    deposits.length = 0;
+    await impactChallengeService.distributeFunds(String(stuck._id));
+    check('a stale payout claim is taken over and finished', (await fresh(stuck._id)).fundsDistributed === true && deposits.length === 3);
+    const busy = await makeChallenge({ status: ChallengeStatus.VOTING_CLOSED, totalCollected: 1000, distributionInProgress: true, distributionStartedAt: new Date() });
+    await makeEntrepreneur(busy._id, { isWinner: true, rank: 1 });
+    msg = '';
+    try { await impactChallengeService.distributeFunds(String(busy._id)); } catch (e: any) { msg = e.message; }
+    check('a payout running right now is not taken over', /already running/.test(msg), msg);
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll checks passed');
