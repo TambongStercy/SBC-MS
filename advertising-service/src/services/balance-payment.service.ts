@@ -133,24 +133,55 @@ export const sweepStaleBalanceReservations = async (): Promise<number> => {
     return released;
 };
 
+/** What is still to pay once credit, balance and mobile money received are counted. */
+export const outstandingAmount = (c: Pick<ICampaign, 'amountPaid' | 'creditApplied' | 'balanceApplied' | 'mobileMoneyPaid'>): number =>
+    Math.max(0, (c.amountPaid ?? 0) - (c.creditApplied ?? 0) - (c.balanceApplied ?? 0) - (c.mobileMoneyPaid ?? 0));
+
 /**
  * A mobile-money payment can complete after its balance part was given back
  * (operator delays; the payin reconciler confirms payments up to 7 days old).
- * Take the balance part again before the campaign is settled. If the balance
- * no longer covers it, the campaign still goes ahead — the annonceur did pay —
- * and the gap is recorded for an admin rather than silently absorbed.
+ * Take the balance part again if the balance still has it; whatever it cannot
+ * cover stays to pay — the campaign does not move until it is.
  */
 export const reclaimBalanceForLatePayment = async (campaign: ICampaign): Promise<void> => {
     const owed = campaign.balanceReleasedAmount ?? 0;
     if (!owed || campaign.balanceRef || campaign.paidAt) return;
-    let taken = 0;
     try {
-        taken = await reserveBalance(campaign, owed);
+        await reserveBalance(campaign, owed);
     } catch (err) {
         log.error(`Campaign ${campaign._id}: could not take back ${owed} XAF for a late payment:`, err);
     }
-    if (taken < owed) {
-        await CampaignModel.updateOne({ _id: campaign._id }, { $set: { paymentShortfall: owed - taken } });
-        log.error(`Campaign ${campaign._id}: paid late, ${owed - taken} XAF of its balance part is missing (paymentShortfall)`);
+};
+
+/**
+ * Counts a successful mobile-money session toward its campaign, once.
+ *
+ * Sterling (2026-10-17): the payment is fully done before a campaign moves. So
+ * the caller settles only when `remaining` is 0; otherwise the campaign stays
+ * unpaid, keeps what was received, and asks for the rest. `known: false` is a
+ * session opened before sessions were recorded: the caller settles it as before.
+ */
+export const recordMobileMoneyPayment = async (
+    campaignId: string,
+    sessionId: string,
+): Promise<{ known: boolean; remaining: number }> => {
+    const current = await CampaignModel.findById(campaignId).lean();
+    const entry = current?.paymentSessions?.find(s => s.sessionId === sessionId);
+    if (!current || !entry) return { known: false, remaining: 0 };
+
+    if (!entry.paidAt) {
+        // Mark this session paid and count its amount in one update: a repeated
+        // callback finds it already paid and changes nothing.
+        await CampaignModel.updateOne(
+            { _id: campaignId, paymentSessions: { $elemMatch: { sessionId, paidAt: { $exists: false } } } },
+            { $set: { 'paymentSessions.$.paidAt': new Date() }, $inc: { mobileMoneyPaid: entry.amount } },
+        );
     }
+    const after = await CampaignModel.findById(campaignId);
+    if (!after) return { known: true, remaining: 0 };
+    await reclaimBalanceForLatePayment(after);
+    const settled = (await CampaignModel.findById(campaignId))!;
+    const remaining = outstandingAmount(settled);
+    if (remaining > 0) log.warn(`Campaign ${campaignId}: mobile money ${sessionId} received, ${remaining} XAF still to pay; it stays unpaid`);
+    return { known: true, remaining };
 };

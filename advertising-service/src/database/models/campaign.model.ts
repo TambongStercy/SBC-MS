@@ -151,10 +151,12 @@ export interface ICampaign extends Document {
     balanceRef?: string;
     /** Balance part given back before any payment came; taken again if a late payment arrives. */
     balanceReleasedAmount?: number;
-    /** Part of the price nobody paid (a late payment found the balance part gone): for an admin to follow up. */
-    paymentShortfall?: number;
     /** The payment session opened last; a failure of an older one leaves the balance part alone. */
     pendingPaymentSessionId?: string;
+    /** Every mobile-money session opened for this campaign, with the amount it asked for. */
+    paymentSessions?: Array<{ sessionId: string; amount: number; paidAt?: Date }>;
+    /** Mobile money received so far. The campaign moves only once credit + balance + this cover the price. */
+    mobileMoneyPaid?: number;
 
     // --- Moderation ---
     // A creative goes onto thousands of people's personal WhatsApp statuses, so
@@ -242,8 +244,14 @@ const CampaignSchema = new Schema<ICampaign>({
     balanceReservedAt: { type: Date },
     balanceRef: { type: String },
     balanceReleasedAmount: { type: Number, min: 0 },
-    paymentShortfall: { type: Number, min: 0 },
     pendingPaymentSessionId: { type: String },
+    paymentSessions: [{
+        _id: false,
+        sessionId: { type: String, required: true },
+        amount: { type: Number, required: true, min: 0 },
+        paidAt: { type: Date },
+    }],
+    mobileMoneyPaid: { type: Number, min: 0 },
 
     submittedForReviewAt: { type: Date },
     reviewedBy: { type: Schema.Types.ObjectId },

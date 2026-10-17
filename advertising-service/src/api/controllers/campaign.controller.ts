@@ -13,7 +13,7 @@ import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../ser
 import { createCampaignPaymentIntent } from '../../services/clients/payment.service.client';
 import { settlePaidCampaign } from '../../services/activation.service';
 import { reserveCredit, releaseCredit, availableCredit } from '../../services/credit.service';
-import { releaseBalance, reserveBalance } from '../../services/balance-payment.service';
+import { outstandingAmount, releaseBalance, reserveBalance } from '../../services/balance-payment.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { estimateReach, describeReach } from '../../services/reach.service';
 import { AppError } from '../../utils/errors';
@@ -254,7 +254,9 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
         // Banked credit from earlier unfilled campaigns comes off the price first.
         // Rufus's rule: it comes back as credit toward a new campaign, never cash.
         const credit = await reserveCredit(campaign);
-        const afterCredit = Math.max(0, campaign.amountPaid - credit);
+        // Mobile money already received for it (a payment that left something to
+        // pay) counts like credit.
+        const afterCredit = Math.max(0, campaign.amountPaid - credit - (campaign.mobileMoneyPaid ?? 0));
 
         // Then the SBC balance, when the annonceur asked for it (Rufus: « payer ou
         // compléter la campagne avec son solde SBC »). A reservation from an
@@ -268,7 +270,7 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
                 throw err;
             }
         }
-        const due = Math.max(0, afterCredit - fromBalance);
+        const due = outstandingAmount({ ...campaign.toObject(), creditApplied: credit, balanceApplied: fromBalance });
 
         // A simultaneous tap may have settled it from the balance meanwhile.
         if ((await CampaignModel.findById(campaign._id).select('paidAt').lean())?.paidAt) {
@@ -306,7 +308,13 @@ export const pay = async (req: AuthenticatedRequest, res: Response) => {
                 campaignTitle: campaign.title,
             });
 
-            await CampaignModel.updateOne({ _id: campaign._id }, { $set: { pendingPaymentSessionId: intent.sessionId } });
+            await CampaignModel.updateOne(
+                { _id: campaign._id },
+                {
+                    $set: { pendingPaymentSessionId: intent.sessionId },
+                    $push: { paymentSessions: { sessionId: intent.sessionId, amount: due } },
+                },
+            );
             log.info(`Payment session ${intent.sessionId} opened for campaign ${campaign._id} (${due} XAF due, ${credit} from credit, ${fromBalance} from balance)`);
 
             return res.json({
@@ -399,6 +407,15 @@ export const cancel = async (req: AuthenticatedRequest, res: Response) => {
             );
         }
 
+        // Mobile money cannot be handed back automatically: once some was received
+        // the campaign is completed, not cancelled.
+        if ((campaign.mobileMoneyPaid ?? 0) > 0) {
+            throw new AppError(
+                `Un paiement Mobile Money de ${campaign.mobileMoneyPaid} F a déjà été reçu pour cette campagne. `
+                + 'Complétez le paiement pour la lancer, ou contactez le support.',
+                400,
+            );
+        }
         await releaseCredit(campaign);
         await releaseBalance(campaign);
         campaign.status = CampaignStatus.CANCELLED;

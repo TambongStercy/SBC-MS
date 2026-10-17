@@ -138,13 +138,40 @@ const main = async () => {
     check('a fresh reservation is left alone', (await fresh(recent)).balanceApplied === 1000);
     check('a paid campaign is never swept', (await fresh(full)).balanceApplied === 6000);
 
-    // --- A late payment after the balance part was given back ---
-    wallet.set(String(modest), 2500);
-    await svc.reclaimBalanceForLatePayment(await fresh(partial));
-    check('late payment: balance part taken again', (await fresh(partial)).balanceApplied === 2500 && wallet.get(String(modest)) === 0);
-    const late = await seed(broke, { balanceReleasedAmount: 1800 });
-    await svc.reclaimBalanceForLatePayment(late);
-    check('late payment, empty balance: the gap is recorded', (await fresh(late)).paymentShortfall === 1800);
+    // --- Mobile money counts once, and the campaign moves only when fully paid ---
+    const mmUser = new Types.ObjectId();
+    const mmFull = await seed(mmUser, { paymentSessions: [{ sessionId: 'S1', amount: 6000 }] });
+    let r = await svc.recordMobileMoneyPayment(String(mmFull._id), 'S1');
+    check('a full mobile-money payment leaves nothing to pay', r.known && r.remaining === 0, JSON.stringify(r));
+    r = await svc.recordMobileMoneyPayment(String(mmFull._id), 'S1');
+    check('a repeated callback is not counted twice', (await fresh(mmFull)).mobileMoneyPaid === 6000, String((await fresh(mmFull)).mobileMoneyPaid));
+
+    wallet.set(String(mmUser), 2500);
+    const mix = await seed(mmUser);
+    await svc.reserveBalance(mix, 6000);
+    await CampaignModel.updateOne({ _id: mix._id }, { $push: { paymentSessions: { sessionId: 'S2', amount: 3500 } } });
+    r = await svc.recordMobileMoneyPayment(String(mix._id), 'S2');
+    check('balance + mobile money together cover it', r.remaining === 0, JSON.stringify(r));
+
+    // Late: the balance part was given back and the balance is now empty.
+    const lateUser = new Types.ObjectId();
+    const late = await seed(lateUser, { balanceReleasedAmount: 2500, paymentSessions: [{ sessionId: 'S3', amount: 3500 }] });
+    r = await svc.recordMobileMoneyPayment(String(late._id), 'S3');
+    check('late payment, balance gone: 2,500 still to pay, the campaign does not move', r.remaining === 2500, JSON.stringify(r));
+    check('the 3,500 received are kept on the campaign', (await fresh(late)).mobileMoneyPaid === 3500);
+    wallet.set(String(lateUser), 2500);
+    await svc.reserveBalance(await fresh(late), svc.outstandingAmount(await fresh(late)));
+    check('paying the rest from the balance completes it', svc.outstandingAmount(await fresh(late)) === 0);
+
+    // Late, and the balance still has it: taken again, nothing left.
+    const lucky = new Types.ObjectId();
+    wallet.set(String(lucky), 2500);
+    const relate = await seed(lucky, { balanceReleasedAmount: 2500, paymentSessions: [{ sessionId: 'S4', amount: 3500 }] });
+    r = await svc.recordMobileMoneyPayment(String(relate._id), 'S4');
+    check('late payment, balance still there: taken again, fully paid', r.remaining === 0 && wallet.get(String(lucky)) === 0, JSON.stringify(r));
+
+    r = await svc.recordMobileMoneyPayment(String(mmFull._id), 'OLD');
+    check('a session opened before this rule is left to the old behaviour', r.known === false);
 
     // --- The debit call fails ---
     const unlucky = new Types.ObjectId();
