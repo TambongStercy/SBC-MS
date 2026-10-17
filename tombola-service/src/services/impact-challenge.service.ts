@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { impactChallengeRepository } from '../database/repositories/impact-challenge.repository';
 import { entrepreneurRepository } from '../database/repositories/entrepreneur.repository';
 import { tombolaMonthRepository } from '../database/repositories/tombolaMonth.repository';
-import { IImpactChallenge, ChallengeStatus } from '../database/models/impact-challenge.model';
+import ImpactChallengeModel, { IImpactChallenge, ChallengeStatus } from '../database/models/impact-challenge.model';
 import { TombolaStatus } from '../database/models/tombolaMonth.model';
 import { paymentService } from './clients/payment.service.client';
 import { AppError } from '../utils/errors';
@@ -176,17 +176,36 @@ class ImpactChallengeService {
             throw new AppError('Challenge not found', 404);
         }
 
-        // Validate status transitions
+        // Only what a status change alone may do. Closing voting must rank the
+        // entrepreneurs (closeVoting) and "funds distributed" must pay them
+        // (distributeFunds); setting either status by hand skipped that work.
         const validTransitions: Record<ChallengeStatus, ChallengeStatus[]> = {
             [ChallengeStatus.DRAFT]: [ChallengeStatus.ACTIVE, ChallengeStatus.CANCELLED],
-            [ChallengeStatus.ACTIVE]: [ChallengeStatus.VOTING_CLOSED, ChallengeStatus.CANCELLED],
-            [ChallengeStatus.VOTING_CLOSED]: [ChallengeStatus.FUNDS_DISTRIBUTED, ChallengeStatus.CANCELLED],
+            [ChallengeStatus.ACTIVE]: [ChallengeStatus.CANCELLED],
+            [ChallengeStatus.VOTING_CLOSED]: [ChallengeStatus.CANCELLED],
             [ChallengeStatus.FUNDS_DISTRIBUTED]: [],
             [ChallengeStatus.CANCELLED]: []
         };
 
         if (!validTransitions[challenge.status].includes(newStatus)) {
-            throw new AppError(`Cannot transition from ${challenge.status} to ${newStatus}`, 400);
+            const hint = newStatus === ChallengeStatus.VOTING_CLOSED ? ' Use close-voting.'
+                : newStatus === ChallengeStatus.FUNDS_DISTRIBUTED ? ' Use distribute-funds.' : '';
+            throw new AppError(`Cannot transition from ${challenge.status} to ${newStatus}.${hint}`, 400);
+        }
+
+        // Members paid for these votes; there is no refund path, so a challenge
+        // that collected money is paid out, not cancelled.
+        if (newStatus === ChallengeStatus.CANCELLED && (challenge.totalCollected ?? 0) > 0) {
+            throw new AppError('Cannot cancel a challenge that has collected money; close voting and distribute instead', 400);
+        }
+
+        if (newStatus === ChallengeStatus.ACTIVE) {
+            const approved = (await entrepreneurRepository.findLeaderboardByChallenge(id)).filter(e => e.approved);
+            if (!approved.length) throw new AppError('Approve at least one entrepreneur before activating', 400);
+            const otherActive = await impactChallengeRepository.findCurrentActive();
+            if (otherActive && otherActive._id.toString() !== id) {
+                throw new AppError(`Another challenge is already active (${otherActive.campaignName})`, 400);
+            }
         }
 
         return await impactChallengeRepository.findByIdAndUpdate(id, { status: newStatus });
@@ -206,6 +225,15 @@ class ImpactChallengeService {
         if (challenge.status !== ChallengeStatus.ACTIVE) {
             throw new AppError(`Cannot close voting: challenge status is ${challenge.status}`, 400);
         }
+
+        // Stop new votes first, atomically: a manual close and the auto-close
+        // cannot both run, and no vote is counted after the ranking below.
+        const claimedClose = await ImpactChallengeModel.findOneAndUpdate(
+            { _id: challengeId, status: ChallengeStatus.ACTIVE },
+            { $set: { status: ChallengeStatus.VOTING_CLOSED } },
+            { new: true },
+        );
+        if (!claimedClose) throw new AppError('Voting is already closed for this challenge', 400);
 
         // Get all entrepreneurs sorted by vote count
         const entrepreneurs = await entrepreneurRepository.findLeaderboardByChallenge(challengeId);
@@ -273,116 +301,104 @@ class ImpactChallengeService {
 
     /**
      * Distributes funds (50% to winner, 30% to lottery pool, 20% to commission).
+     *
+     * Real money, three deposits. The challenge is claimed first
+     * (distributionInProgress) so two clicks cannot both pay; the amounts are
+     * fixed at the first attempt; each deposit's transaction id is saved the
+     * moment it succeeds, so a retry after a failure pays only the legs still
+     * unpaid. Before, a failure on the 2nd or 3rd deposit left the challenge
+     * VOTING_CLOSED and a retry paid the winner again.
      */
     async distributeFunds(challengeId: string): Promise<FundDistributionResult> {
         log.info(`Starting fund distribution for challenge ${challengeId}`);
 
         const challenge = await impactChallengeRepository.findById(challengeId);
-        if (!challenge) {
-            throw new AppError('Challenge not found', 404);
-        }
-
+        if (!challenge) throw new AppError('Challenge not found', 404);
+        if (challenge.fundsDistributed) throw new AppError('Funds have already been distributed for this challenge', 400);
         if (challenge.status !== ChallengeStatus.VOTING_CLOSED) {
             throw new AppError(`Cannot distribute funds: challenge status is ${challenge.status}`, 400);
         }
-
-        if (challenge.fundsDistributed) {
-            throw new AppError('Funds have already been distributed for this challenge', 400);
+        if (!config.impactChallenge.lotteryPoolAccountId || !config.impactChallenge.sbcCommissionAccountId) {
+            throw new AppError('Fund distribution account IDs not configured (LOTTERY_POOL_ACCOUNT_ID, SBC_COMMISSION_ACCOUNT_ID)', 500);
         }
-
-        // Get winner entrepreneur
-        const winner = await entrepreneurRepository.findOne({
-            challengeId: new Types.ObjectId(challengeId),
-            isWinner: true
-        });
-
+        const winner = await entrepreneurRepository.findOne({ challengeId: new Types.ObjectId(challengeId), isWinner: true });
         if (!winner || !winner.userId) {
             throw new AppError('Winner entrepreneur must have a linked user account to receive funds', 400);
         }
 
-        // Calculate distribution
-        const winnerPayout = Math.floor(challenge.totalCollected * WINNER_PERCENTAGE);
-        const lotteryPool = Math.floor(challenge.totalCollected * LOTTERY_PERCENTAGE);
-        const commission = Math.floor(challenge.totalCollected * COMMISSION_PERCENTAGE);
-        const remainder = challenge.totalCollected - (winnerPayout + lotteryPool + commission);
+        // Claim. The amounts are computed once and stored with the claim.
+        const winnerPayout = challenge.winnerPayoutAmount ?? Math.floor(challenge.totalCollected * WINNER_PERCENTAGE);
+        const lotteryPool = challenge.lotteryPoolAmount ?? Math.floor(challenge.totalCollected * LOTTERY_PERCENTAGE);
+        const commission = challenge.commissionAmount
+            ?? challenge.totalCollected - winnerPayout - lotteryPool; // rounding remainder goes to commission
+        const claimed = await ImpactChallengeModel.findOneAndUpdate(
+            { _id: challengeId, status: ChallengeStatus.VOTING_CLOSED, fundsDistributed: false, distributionInProgress: { $ne: true } },
+            { $set: { distributionInProgress: true, winnerPayoutAmount: winnerPayout, lotteryPoolAmount: lotteryPool, commissionAmount: commission } },
+            { new: true },
+        );
+        if (!claimed) throw new AppError('A distribution is already running for this challenge', 409);
 
-        const distribution = {
-            winnerPayout,
-            lotteryPool,
-            commission: commission + remainder
-        };
-
-        // Validate configuration
-        if (!config.impactChallenge.lotteryPoolAccountId || !config.impactChallenge.sbcCommissionAccountId) {
-            throw new AppError('Fund distribution account IDs not configured', 500);
-        }
+        const legs: Array<{ key: 'winnerTransactionId' | 'lotteryTransactionId' | 'commissionTransactionId'; userId: string; amount: number; description: string; type: string }> = [
+            { key: 'winnerTransactionId', userId: winner.userId.toString(), amount: winnerPayout, description: `Impact Challenge Winner Payout - ${challenge.campaignName}`, type: 'challenge_winner_payout' },
+            { key: 'lotteryTransactionId', userId: config.impactChallenge.lotteryPoolAccountId, amount: lotteryPool, description: `Impact Challenge Lottery Pool - ${challenge.campaignName}`, type: 'challenge_lottery_pool' },
+            { key: 'commissionTransactionId', userId: config.impactChallenge.sbcCommissionAccountId, amount: commission, description: `Impact Challenge Commission - ${challenge.campaignName}`, type: 'challenge_commission' },
+        ];
 
         try {
-            // Execute deposits via payment-service
-            log.info(`Distributing ${distribution.winnerPayout} CFA to winner ${winner.userId}`);
-            const winnerTx = await paymentService.recordInternalDeposit({
-                userId: winner.userId.toString(),
-                amount: distribution.winnerPayout,
-                description: `Impact Challenge Winner Payout - ${challenge.campaignName}`,
-                metadata: {
-                    challengeId: challengeId,
-                    entrepreneurId: winner._id.toString(),
-                    type: 'challenge_winner_payout'
-                }
-            });
-
-            log.info(`Transferring ${distribution.lotteryPool} CFA to lottery pool`);
-            const lotteryTx = await paymentService.recordInternalDeposit({
-                userId: config.impactChallenge.lotteryPoolAccountId,
-                amount: distribution.lotteryPool,
-                description: `Impact Challenge Lottery Pool - ${challenge.campaignName}`,
-                metadata: {
-                    challengeId: challengeId,
-                    tombolaMonthId: challenge.tombolaMonthId.toString(),
-                    type: 'challenge_lottery_pool'
-                }
-            });
-
-            log.info(`Transferring ${distribution.commission} CFA to SBC commission`);
-            const commissionTx = await paymentService.recordInternalDeposit({
-                userId: config.impactChallenge.sbcCommissionAccountId,
-                amount: distribution.commission,
-                description: `Impact Challenge Commission - ${challenge.campaignName}`,
-                metadata: {
-                    challengeId: challengeId,
-                    type: 'challenge_commission'
-                }
-            });
-
-            // Update challenge with distribution details
-            await impactChallengeRepository.findByIdAndUpdate(challengeId, {
-                fundsDistributed: true,
-                distributionDate: new Date(),
-                winnerPayoutAmount: distribution.winnerPayout,
-                lotteryPoolAmount: distribution.lotteryPool,
-                commissionAmount: distribution.commission,
-                winnerTransactionId: winnerTx.transactionId,
-                lotteryTransactionId: lotteryTx.transactionId,
-                commissionTransactionId: commissionTx.transactionId,
-                status: ChallengeStatus.FUNDS_DISTRIBUTED
-            });
-
-            log.info(`Successfully distributed funds for challenge ${challengeId}`);
-
-            return {
-                success: true,
-                distribution,
-                transactionIds: {
-                    winner: winnerTx.transactionId,
-                    lottery: lotteryTx.transactionId,
-                    commission: commissionTx.transactionId
-                }
-            };
-
+            for (const leg of legs) {
+                if (claimed[leg.key]) continue; // paid on an earlier attempt
+                if (leg.amount <= 0) continue;
+                log.info(`Distributing ${leg.amount} XAF (${leg.type}) to ${leg.userId}`);
+                const tx = await paymentService.recordInternalDeposit({
+                    userId: leg.userId,
+                    amount: leg.amount,
+                    description: leg.description,
+                    metadata: { challengeId, entrepreneurId: winner._id.toString(), tombolaMonthId: challenge.tombolaMonthId.toString(), type: leg.type },
+                });
+                await ImpactChallengeModel.updateOne({ _id: challengeId }, { $set: { [leg.key]: tx.transactionId } });
+                claimed.set(leg.key, tx.transactionId);
+            }
         } catch (error: any) {
-            log.error(`Fund distribution failed for challenge ${challengeId}: ${error.message}`);
-            throw new AppError('Fund distribution failed. Manual intervention required.', 500);
+            await ImpactChallengeModel.updateOne({ _id: challengeId }, { $set: { distributionInProgress: false } });
+            log.error(`Fund distribution for challenge ${challengeId} stopped: ${error.message}. Paid legs are recorded; retrying pays only the rest.`);
+            throw new AppError('Fund distribution stopped part-way. Already-paid parts are recorded; retry to pay the rest.', 500);
         }
+
+        await ImpactChallengeModel.updateOne(
+            { _id: challengeId },
+            { $set: { fundsDistributed: true, distributionInProgress: false, distributionDate: new Date(), status: ChallengeStatus.FUNDS_DISTRIBUTED } },
+        );
+        log.info(`Successfully distributed funds for challenge ${challengeId}`);
+        const done = (await impactChallengeRepository.findById(challengeId))!;
+        return {
+            success: true,
+            distribution: { winnerPayout, lotteryPool, commission },
+            transactionIds: {
+                winner: done.winnerTransactionId ?? '',
+                lottery: done.lotteryTransactionId ?? '',
+                commission: done.commissionTransactionId ?? '',
+            },
+        };
+    }
+
+    /**
+     * Closes voting on challenges whose end date has passed (an hour of grace
+     * for payments already on their way). Nothing used to close a challenge but
+     * an admin, so votes kept being taken after the end date.
+     */
+    async closeEndedChallenges(now: Date = new Date(), graceMs = 60 * 60 * 1000): Promise<number> {
+        const ended = await ImpactChallengeModel.find({ status: ChallengeStatus.ACTIVE, endDate: { $lt: new Date(now.getTime() - graceMs) } });
+        let closed = 0;
+        for (const c of ended) {
+            try {
+                await this.closeVoting(c._id.toString());
+                closed++;
+            } catch (err: any) {
+                log.error(`Auto-close of challenge ${c._id} failed: ${err.message}`);
+            }
+        }
+        if (closed) log.info(`Auto-closed voting on ${closed} challenge(s) past their end date`);
+        return closed;
     }
 
     /**
