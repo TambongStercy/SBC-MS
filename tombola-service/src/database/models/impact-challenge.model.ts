@@ -42,6 +42,10 @@ export interface IImpactChallenge extends Document {
     winnerTransactionId?: string;
     lotteryTransactionId?: string;
     commissionTransactionId?: string;
+    /** Set while a payout runs, so a second click cannot start another. */
+    distributionInProgress?: boolean;
+    /** Money confirmed after voting closed: kept, not counted in the result. */
+    lateCollected?: number;
 
     createdAt: Date;
     updatedAt: Date;
@@ -113,6 +117,8 @@ const ImpactChallengeSchema = new Schema<IImpactChallenge>(
             required: true,
             default: false,
         },
+        distributionInProgress: { type: Boolean, default: false },
+        lateCollected: { type: Number, default: 0 },
         distributionDate: {
             type: Date,
         },

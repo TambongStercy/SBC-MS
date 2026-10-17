@@ -5,7 +5,8 @@ import { impactChallengeRepository } from '../database/repositories/impact-chall
 import { entrepreneurRepository } from '../database/repositories/entrepreneur.repository';
 import { tombolaTicketRepository } from '../database/repositories/tombolaTicket.repository';
 import { tombolaMonthRepository } from '../database/repositories/tombolaMonth.repository';
-import { IChallengeVote, VotePaymentStatus, VoteType } from '../database/models/challenge-vote.model';
+import ChallengeVoteModel, { IChallengeVote, VotePaymentStatus, VoteType } from '../database/models/challenge-vote.model';
+import { IImpactChallenge } from '../database/models/impact-challenge.model';
 import { ChallengeStatus } from '../database/models/impact-challenge.model';
 import { paymentService } from './clients/payment.service.client';
 import { entrepreneurService } from './entrepreneur.service';
@@ -14,6 +15,16 @@ import logger from '../utils/logger';
 import config from '../config';
 
 const log = logger.getLogger('ChallengeVoteService');
+
+/** No vote before the start or after the end date: only the status was checked. */
+const assertWithinVotingDates = (challenge: IImpactChallenge, now: Date = new Date()) => {
+    if (challenge.startDate && now < new Date(challenge.startDate)) {
+        throw new AppError('Voting has not started yet', 400);
+    }
+    if (challenge.endDate && now > new Date(challenge.endDate)) {
+        throw new AppError('Voting has ended', 400);
+    }
+};
 
 // Interface for vote initiation response
 interface VoteInitiationResponse {
@@ -67,6 +78,7 @@ class ChallengeVoteService {
         if (challenge.status !== ChallengeStatus.ACTIVE) {
             throw new AppError('Challenge is not currently accepting votes', 400);
         }
+        assertWithinVotingDates(challenge);
 
         // 3. Validate entrepreneur exists and is approved
         const entrepreneur = await entrepreneurRepository.findById(entrepreneurId);
@@ -191,6 +203,7 @@ class ChallengeVoteService {
         if (challenge.status !== ChallengeStatus.ACTIVE) {
             throw new AppError('Challenge is not currently accepting support', 400);
         }
+        assertWithinVotingDates(challenge);
 
         // 3. Validate entrepreneur exists and is approved
         const entrepreneur = await entrepreneurRepository.findById(data.entrepreneurId);
@@ -275,20 +288,31 @@ class ChallengeVoteService {
     async confirmPayment(paymentSessionId: string, metadata: any): Promise<void> {
         log.info(`Confirming payment for session: ${paymentSessionId}`);
 
-        // 1. Find vote by payment intent ID
-        const vote = await challengeVoteRepository.findOne({ paymentIntentId: paymentSessionId });
+        // 1. Claim the vote: pending -> completed in one update. A repeated
+        // callback (payment-service has a dozen places that send one) finds it
+        // already completed and counts nothing — a read-then-write let two
+        // callbacks both count, inflating totalCollected and so the payout.
+        const vote = await ChallengeVoteModel.findOneAndUpdate(
+            { paymentIntentId: paymentSessionId, paymentStatus: { $ne: VotePaymentStatus.COMPLETED } },
+            { $set: { paymentStatus: VotePaymentStatus.COMPLETED } },
+            { new: true },
+        );
         if (!vote) {
-            throw new AppError('Vote not found for payment session', 404);
-        }
-
-        // 2. Idempotency check
-        if (vote.paymentStatus === VotePaymentStatus.COMPLETED) {
-            log.info(`Vote ${vote._id} already processed (idempotency check)`);
+            const known = await challengeVoteRepository.findOne({ paymentIntentId: paymentSessionId });
+            if (!known) throw new AppError('Vote not found for payment session', 404);
+            log.info(`Vote ${known._id} already processed (idempotency check)`);
             return;
         }
 
-        // 3. Update vote status
-        await challengeVoteRepository.updateStatus(vote._id, VotePaymentStatus.COMPLETED);
+        // 2. Paid after voting closed: the result (ranks, payout) is already set,
+        // so the money is kept and reported, not counted.
+        const challengeNow = await impactChallengeRepository.findById(vote.challengeId.toString());
+        if (!challengeNow || challengeNow.status !== ChallengeStatus.ACTIVE) {
+            await ChallengeVoteModel.updateOne({ _id: vote._id }, { $set: { lateAfterClose: true } });
+            await impactChallengeRepository.findByIdAndUpdate(vote.challengeId, { $inc: { lateCollected: vote.amountPaid } });
+            log.error(`Vote ${vote._id}: ${vote.amountPaid} XAF confirmed after voting closed (challenge ${challengeNow?.status ?? 'missing'}); kept, not counted`);
+            return;
+        }
 
         // 4. Increment entrepreneur stats
         await entrepreneurService.incrementVotes(

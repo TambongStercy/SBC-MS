@@ -4,38 +4,15 @@ import { authenticate, authorizeAdmin, authenticateServiceRequest } from '../mid
 
 const router = Router();
 
-// ================== PUBLIC ROUTES ==================
+// A malformed id is a 404, not a Mongoose CastError (500).
+const isObjectId = (v: string) => /^[0-9a-fA-F]{24}$/.test(v);
+router.param('challengeId', (req, res, next, id) => (isObjectId(id) ? next() : res.status(404).json({ success: false, message: 'Challenge not found' })));
+router.param('entrepreneurId', (req, res, next, id) => (isObjectId(id) ? next() : res.status(404).json({ success: false, message: 'Entrepreneur not found' })));
 
-// Get current active challenge
-router.get('/current', impactChallengeController.getCurrentChallenge.bind(impactChallengeController));
+// Order matters: the admin and webhook routes come before the public
+// `/:challengeId` ones, or `/admin` is read as a challenge id — the admin list
+// page could never load.
 
-// Get challenge by ID
-router.get('/:challengeId', impactChallengeController.getChallengeById.bind(impactChallengeController));
-
-// Get entrepreneurs for a challenge (public - approved only by default)
-router.get('/:challengeId/entrepreneurs', impactChallengeController.getEntrepreneurs.bind(impactChallengeController));
-
-// Get leaderboard
-router.get('/:challengeId/leaderboard', impactChallengeController.getLeaderboard.bind(impactChallengeController));
-
-// Get entrepreneur by ID
-router.get('/entrepreneurs/:entrepreneurId', impactChallengeController.getEntrepreneurById.bind(impactChallengeController));
-
-// ================== VOTING ROUTES (USER) ==================
-
-// Vote for an entrepreneur (authenticated, generates lottery tickets)
-router.post('/:challengeId/vote', authenticate, impactChallengeController.initiateVote.bind(impactChallengeController));
-
-// Support an entrepreneur (public, no lottery tickets)
-router.post('/:challengeId/support', impactChallengeController.initiateSupport.bind(impactChallengeController));
-
-// Get user's ticket allowance (authenticated)
-router.get('/:challengeId/ticket-allowance', authenticate, impactChallengeController.getTicketAllowance.bind(impactChallengeController));
-
-// ================== WEBHOOK ==================
-
-// Payment confirmation webhook (service-to-service)
-router.post('/webhooks/payment-confirmation', authenticateServiceRequest, impactChallengeController.handlePaymentWebhook.bind(impactChallengeController));
 
 // ================== ADMIN ROUTES ==================
 
@@ -87,5 +64,38 @@ router.get('/admin/:challengeId/analytics', authenticate, authorizeAdmin, impact
 
 // Get votes
 router.get('/admin/:challengeId/votes', authenticate, authorizeAdmin, impactChallengeController.getVotes.bind(impactChallengeController));
+
+// ================== PUBLIC ROUTES ==================
+
+// Get current active challenge
+router.get('/current', impactChallengeController.getCurrentChallenge.bind(impactChallengeController));
+
+// Get challenge by ID
+router.get('/:challengeId', impactChallengeController.getChallengeById.bind(impactChallengeController));
+
+// Get entrepreneurs for a challenge (public - approved only by default)
+router.get('/:challengeId/entrepreneurs', impactChallengeController.getEntrepreneurs.bind(impactChallengeController));
+
+// Get leaderboard
+router.get('/:challengeId/leaderboard', impactChallengeController.getLeaderboard.bind(impactChallengeController));
+
+// Get entrepreneur by ID
+router.get('/entrepreneurs/:entrepreneurId', impactChallengeController.getEntrepreneurById.bind(impactChallengeController));
+
+// ================== VOTING ROUTES (USER) ==================
+
+// Vote for an entrepreneur (authenticated, generates lottery tickets)
+router.post('/:challengeId/vote', authenticate, impactChallengeController.initiateVote.bind(impactChallengeController));
+
+// Support an entrepreneur (public, no lottery tickets)
+router.post('/:challengeId/support', impactChallengeController.initiateSupport.bind(impactChallengeController));
+
+// Get user's ticket allowance (authenticated)
+router.get('/:challengeId/ticket-allowance', authenticate, impactChallengeController.getTicketAllowance.bind(impactChallengeController));
+
+// ================== WEBHOOK ==================
+
+// Payment confirmation webhook (service-to-service)
+router.post('/webhooks/payment-confirmation', authenticateServiceRequest, impactChallengeController.handlePaymentWebhook.bind(impactChallengeController));
 
 export default router;

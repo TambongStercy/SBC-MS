@@ -9,6 +9,7 @@ import apiRoutes from './api/routes';
 import logger from './utils/logger';
 import mongoose from 'mongoose';
 import app from './app';
+import { impactChallengeService } from './services/impact-challenge.service';
 
 const log = logger.getLogger('TombolaService'); // Create logger instance
 
@@ -87,6 +88,11 @@ const startServer = async () => {
         log.info('Connecting to database...');
         await connectDB();
         log.info('Database connected.');
+
+        // Close Impact Challenge voting once the end date has passed (+1h grace).
+        setInterval(() => {
+            impactChallengeService.closeEndedChallenges().catch(err => logger.getLogger('Server').error(`Auto-close failed: ${err.message}`));
+        }, 5 * 60 * 1000).unref();
 
         const server = app.listen(PORT, () => {
             log.info(`Tombola Service started successfully on port ${PORT} in ${config.nodeEnv} mode.`);
