@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
 import { allocateCampaign, expireStaleOffers, remainingViewsToCover } from '../../services/allocation.service';
 import { activateApprovedCampaign, settlePaidCampaign } from '../../services/activation.service';
-import { reclaimBalanceForLatePayment, releaseBalance } from '../../services/balance-payment.service';
+import { recordMobileMoneyPayment, releaseBalance } from '../../services/balance-payment.service';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
 
@@ -66,8 +66,12 @@ export const handlePaymentConfirmation = async (req: Request, res: Response) => 
         // Pay-first: the payment settles the campaign into PAID (awaiting an
         // admin's validation), and only activates it outright when it was already
         // approved under the old review-then-pay order.
-        const campaign = await CampaignModel.findById(campaignId);
-        if (campaign) await reclaimBalanceForLatePayment(campaign);
+        // Fully paid before it moves (Sterling, 2026-10-17): a payment that leaves
+        // something to pay is kept on the campaign, which waits for the rest.
+        const recorded = await recordMobileMoneyPayment(campaignId, sessionId);
+        if (recorded.known && recorded.remaining > 0) {
+            return res.json({ success: true, data: { status: 'awaiting_rest', remaining: recorded.remaining } });
+        }
         const result = await settlePaidCampaign(campaignId, sessionId);
         log.info(`Campaign ${campaignId} settled from payment ${sessionId}: ${result.status}`);
         return res.json({ success: true, data: result });
