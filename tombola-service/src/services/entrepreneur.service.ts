@@ -144,13 +144,22 @@ class EntrepreneurService {
             throw new AppError('Entrepreneur not found', 404);
         }
 
-        // Prevent updating vote counts directly
-        delete update.voteCount;
-        delete update.totalAmount;
-        delete update.rank;
-        delete update.isWinner;
+        // Never through an edit: votes, money, rank, winner, approval, challenge.
+        const blocked = ['voteCount', 'totalAmount', 'rank', 'isWinner', 'approved', 'approvedBy', 'approvedAt', 'challengeId', '_id'] as const;
+        const clean: Record<string, unknown> = { ...update };
+        for (const k of blocked) delete clean[k];
 
-        return await entrepreneurRepository.findByIdAndUpdate(entrepreneurId, update);
+        if (clean.videoDuration !== undefined && Number(clean.videoDuration) > config.impactChallenge.videoMaxDurationSeconds) {
+            throw new AppError(`Video must be ${config.impactChallenge.videoMaxDurationSeconds} seconds or shorter`, 400);
+        }
+
+        // After voting closed only the linked SBC account may change (to pay the winner).
+        const challenge = await impactChallengeRepository.findById(entrepreneur.challengeId.toString());
+        if (challenge && challenge.status !== ChallengeStatus.DRAFT && challenge.status !== ChallengeStatus.ACTIVE) {
+            for (const k of Object.keys(clean)) if (k !== 'userId') delete clean[k];
+        }
+
+        return await entrepreneurRepository.findByIdAndUpdate(entrepreneurId, clean as Partial<IEntrepreneur>);
     }
 
     /**
@@ -183,6 +192,10 @@ class EntrepreneurService {
         const entrepreneur = await entrepreneurRepository.findById(entrepreneurId);
         if (!entrepreneur) {
             throw new AppError('Entrepreneur not found', 404);
+        }
+        // Members may have paid to vote for them: hiding them would strand those votes.
+        if ((entrepreneur.voteCount ?? 0) > 0) {
+            throw new AppError('Cannot unapprove an entrepreneur who already has votes', 400);
         }
 
         return await entrepreneurRepository.findByIdAndUpdate(entrepreneurId, {
