@@ -48,6 +48,24 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 };
 
 /**
+ * Attaches the user when a valid token is sent, and carries on without one.
+ * For routes open to guests where a logged-in member should still be known
+ * (supporting an entrepreneur).
+ */
+export const optionalAuthenticate = (req: Request, _res: Response, next: NextFunction): void => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ') && config.jwt.secret) {
+        try {
+            // @ts-ignore Possible type issue if Request not extended
+            req.user = jwt.verify(authHeader.split(' ')[1], config.jwt.secret) as JwtPayload;
+        } catch {
+            // An expired token on a guest route is just a guest.
+        }
+    }
+    next();
+};
+
+/**
  * Middleware to authorize users based on role.
  * Requires the user to be authenticated beforehand (req.user must be populated).
  */

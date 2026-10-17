@@ -152,6 +152,16 @@ const main = async () => {
     await impactChallengeController.getEntrepreneurs({ params: { challengeId: String(ch._id) }, query: { approved: 'false' } }, res, () => undefined);
     check('?approved=false no longer lists unapproved ones', body.data.every((e: any) => e.approved === true) && body.data.every((e: any) => !('email' in e)));
 
+    // --- Member API: rules sent with the challenge, and the member's own votes ---
+    await ImpactChallengeModel.updateMany({ _id: { $ne: ch._id }, status: ChallengeStatus.ACTIVE }, { $set: { status: ChallengeStatus.CANCELLED } });
+    await impactChallengeController.getCurrentChallenge({}, res, () => undefined);
+    check('the current challenge carries the vote price and ticket cap', body?.data?.rules?.votePrice === 200 && body?.data?.rules?.maxTicketsPerMonth === 25, JSON.stringify(body?.data?.rules));
+    const member = new Types.ObjectId();
+    await ChallengeVoteModel.create({ challengeId: ch._id, entrepreneurId: ent._id, userId: member, amountPaid: 600, voteQuantity: 3, voteType: VoteType.VOTE, paymentStatus: VotePaymentStatus.COMPLETED, paymentIntentId: 'M1', isAnonymous: false, tombolaTicketIds: [new Types.ObjectId(), new Types.ObjectId(), new Types.ObjectId()], ticketsGenerated: true });
+    await ChallengeVoteModel.create({ challengeId: ch._id, entrepreneurId: ent._id, userId: member, amountPaid: 200, voteQuantity: 1, voteType: VoteType.VOTE, paymentStatus: VotePaymentStatus.PENDING, paymentIntentId: 'M2', isAnonymous: false, tombolaTicketIds: [], ticketsGenerated: false });
+    await impactChallengeController.getMyVotes({ user: { userId: String(member) }, params: { challengeId: String(ch._id) } }, res, () => undefined);
+    check('my votes lists only completed ones, with their tickets', body?.data?.length === 1 && body.data[0].tickets === 3 && body.data[0].amountPaid === 600, JSON.stringify(body?.data));
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll checks passed');

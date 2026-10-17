@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { impactChallengeController } from '../controllers/impact-challenge.controller';
-import { authenticate, authorizeAdmin, authenticateServiceRequest } from '../middleware/auth.middleware';
+import { authenticate, authorizeAdmin, authenticateServiceRequest, optionalAuthenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -88,10 +88,13 @@ router.get('/entrepreneurs/:entrepreneurId', impactChallengeController.getEntrep
 router.post('/:challengeId/vote', authenticate, impactChallengeController.initiateVote.bind(impactChallengeController));
 
 // Support an entrepreneur (public, no lottery tickets)
-router.post('/:challengeId/support', impactChallengeController.initiateSupport.bind(impactChallengeController));
+router.post('/:challengeId/support', optionalAuthenticate, impactChallengeController.initiateSupport.bind(impactChallengeController));
 
 // Get user's ticket allowance (authenticated)
 router.get('/:challengeId/ticket-allowance', authenticate, impactChallengeController.getTicketAllowance.bind(impactChallengeController));
+
+// The member's own completed votes and supports for a challenge (authenticated)
+router.get('/:challengeId/my-votes', authenticate, impactChallengeController.getMyVotes.bind(impactChallengeController));
 
 // ================== WEBHOOK ==================
 
