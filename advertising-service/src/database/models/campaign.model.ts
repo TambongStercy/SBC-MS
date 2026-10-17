@@ -144,6 +144,17 @@ export interface ICampaign extends Document {
     creditApplied?: number;
     creditSources?: Array<{ campaignId: Types.ObjectId; amount: number }>;
     creditReservedAt?: Date;
+    /** Part of the price paid from the SBC balance (taken at reservation, given back if the campaign is never paid). */
+    balanceApplied?: number;
+    balanceReservedAt?: Date;
+    /** One per reservation; payment-service keys the debit and its refund on it. */
+    balanceRef?: string;
+    /** Balance part given back before any payment came; taken again if a late payment arrives. */
+    balanceReleasedAmount?: number;
+    /** Part of the price nobody paid (a late payment found the balance part gone): for an admin to follow up. */
+    paymentShortfall?: number;
+    /** The payment session opened last; a failure of an older one leaves the balance part alone. */
+    pendingPaymentSessionId?: string;
 
     // --- Moderation ---
     // A creative goes onto thousands of people's personal WhatsApp statuses, so
@@ -227,6 +238,12 @@ const CampaignSchema = new Schema<ICampaign>({
         amount: { type: Number, required: true, min: 0 },
     }],
     creditReservedAt: { type: Date },
+    balanceApplied: { type: Number, min: 0 },
+    balanceReservedAt: { type: Date },
+    balanceRef: { type: String },
+    balanceReleasedAmount: { type: Number, min: 0 },
+    paymentShortfall: { type: Number, min: 0 },
+    pendingPaymentSessionId: { type: String },
 
     submittedForReviewAt: { type: Date },
     reviewedBy: { type: Schema.Types.ObjectId },

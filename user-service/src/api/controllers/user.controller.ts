@@ -115,6 +115,29 @@ export class UserController {
      * Get user balance
      * @route GET /api/users/:userId/balance
      */
+    /**
+     * [Service] Spends from the main balance (SBC Ads Network campaigns paid
+     * with the balance). 409 when the balance net of debt does not cover it.
+     */
+    async spendBalance(req: Request, res: Response): Promise<void> {
+        try {
+            const amount = Number(req.body?.amount);
+            if (!Number.isFinite(amount) || amount <= 0) {
+                res.status(400).json({ success: false, message: 'A positive amount is required' });
+                return;
+            }
+            const updated = await userRepository.spendBalance(req.params.userId, amount);
+            if (!updated) {
+                res.status(409).json({ success: false, message: 'Insufficient balance' });
+                return;
+            }
+            res.status(200).json({ success: true, data: { balance: updated.balance } });
+        } catch (error: any) {
+            log.error(`Error spending balance: ${error.message}`);
+            res.status(500).json({ success: false, message: 'Failed to spend balance' });
+        }
+    }
+
     async getUserBalance(req: Request, res: Response): Promise<void> {
         try {
             const userId = req.params.userId;

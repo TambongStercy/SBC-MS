@@ -106,3 +106,9 @@ export const getUserProfiles = async (userIds: string[]): Promise<IUserProfile[]
         throw err;
     }
 };
+
+/** Main balance net of any debt: what the annonceur can spend from it. */
+export const getSpendableBalance = async (userId: string): Promise<number> => {
+    const { data } = await client.get<{ success: boolean; data?: { balance?: number } }>(`/users/internal/${userId}/balance`);
+    return Math.max(0, Math.floor(Number(data?.data?.balance ?? 0)));
+};

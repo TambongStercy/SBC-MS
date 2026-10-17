@@ -21,6 +21,10 @@ router.post('/deposit', (req, res, next) => paymentController.recordInternalDepo
  */
 router.post('/withdrawal', (req, res, next) => paymentController.recordInternalWithdrawal(req, res, next));
 
+/** Ads Network campaigns paid with the SBC balance: atomic debit, and its refund (at most once). */
+router.post('/balance-spend', (req, res, next) => paymentController.spendFromBalance(req, res, next));
+router.post('/balance-refund', (req, res, next) => paymentController.refundBalanceSpend(req, res, next));
+
 /**
  * @route   POST /api/internal/conversion
  * @desc    Create a conversion transaction record

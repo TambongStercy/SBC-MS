@@ -69,3 +69,40 @@ export const createCampaignPaymentIntent = async (args: {
         throw new AppError('Le service de paiement est injoignable.', 502);
     }
 };
+
+/**
+ * Pays part of a campaign from the annonceur's SBC balance. payment-service
+ * takes it in one conditional debit and writes it in the wallet history.
+ * Returns false when the balance no longer covers it (409).
+ */
+export const spendFromBalance = async (args: {
+    userId: string;
+    amount: number;
+    reference: string;
+    campaignId: string;
+    campaignTitle: string;
+}): Promise<boolean> => {
+    try {
+        await client.post('/internal/balance-spend', {
+            userId: args.userId,
+            amount: args.amount,
+            reference: args.reference,
+            description: `Campagne SBC Ads Network : ${args.campaignTitle}`,
+            metadata: { campaignId: args.campaignId, originatingService: 'advertising-service' },
+        });
+        return true;
+    } catch (err) {
+        if (axios.isAxiosError(err) && err.response?.status === 409) return false;
+        log.error(`Balance payment failed for campaign ${args.campaignId}: ${(err as Error).message}`);
+        throw new AppError('Le paiement avec le solde SBC a échoué. Réessayez.', 502);
+    }
+};
+
+/** Gives a balance payment back. Safe to call again: payment-service refunds a reference once. */
+export const refundBalanceSpend = async (args: { userId: string; reference: string; campaignTitle: string }) => {
+    await client.post('/internal/balance-refund', {
+        userId: args.userId,
+        reference: args.reference,
+        description: `Remboursement campagne SBC Ads Network : ${args.campaignTitle}`,
+    });
+};

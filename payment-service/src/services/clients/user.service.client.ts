@@ -163,6 +163,20 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Takes `amount` off the main balance in one conditional update (user-service
+     * checks the balance net of debt). False when it does not cover it.
+     */
+    async spendBalance(userId: string, amount: number): Promise<boolean> {
+        try {
+            await this.request('post', `/users/internal/${userId}/spend-balance`, { amount });
+            return true;
+        } catch (error: any) {
+            if (error instanceof AppError && error.statusCode === 409) return false;
+            throw error;
+        }
+    }
+
     async updateUserBalance(userId: string, amount: number): Promise<void> {
         if (!this.baseUrl) {
             log.error('Cannot update user balance: User service URL not configured.');
