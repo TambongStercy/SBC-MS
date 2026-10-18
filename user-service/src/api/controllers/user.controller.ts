@@ -2512,10 +2512,12 @@ export class UserController {
                 return;
             }
 
-            // Call the service method
-            const exists = await this.userService.checkExistence(email, phoneNumber);
+            // Call the service method. For a phone lookup that matches, `data`
+            // also carries a `maskedEmail` so the signup chat can tell the owner
+            // which address they already registered with.
+            const data = await this.userService.checkExistence(email, phoneNumber);
 
-            res.status(200).json({ success: true, data: { exists } });
+            res.status(200).json({ success: true, data });
         } catch (error: any) {
             log.error(`Error checking user existence: ${error.message}`);
             res.status(500).json({ success: false, message: 'Internal server error' });

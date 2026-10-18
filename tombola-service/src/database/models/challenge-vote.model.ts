@@ -40,6 +40,8 @@ export interface IChallengeVote extends Document {
     tombolaTicketIds: Types.ObjectId[]; // Empty if voteType = 'support'
     ticketsGenerated: boolean; // false if voteType = 'support'
     ticketGenerationError?: string;
+    /** Paid after voting closed: the money is kept but the vote is not counted. */
+    lateAfterClose?: boolean;
 
     // Metadata
     ipAddress?: string;
@@ -130,6 +132,7 @@ const ChallengeVoteSchema = new Schema<IChallengeVote>(
         ticketGenerationError: {
             type: String,
         },
+        lateAfterClose: { type: Boolean },
         ipAddress: {
             type: String,
         },

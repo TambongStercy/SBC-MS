@@ -5,6 +5,7 @@ import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
+import { maskEmail } from '../utils/mask-email';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
 import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
@@ -4234,14 +4235,17 @@ export class UserService {
     /**
      * Check if a user exists by email or phone number.
      * Used for registration forms to check availability.
-     * @param email - Optional email address.
-     * @param phoneNumber - Optional phone number.
-     * @returns True if a user with either the email or phone exists, false otherwise.
+     *
+     * When the caller looked up by phone and we found an account, a masked
+     * email is returned so the signup UI can remind the number's owner which
+     * address they already registered with (e.g. `jo***@gmail.com`). A masked
+     * email is NOT returned for email lookups — the result would either be a
+     * tautology (same address) or a cross-account leak.
      */
     async checkExistence(
         email?: string,
         phoneNumber?: string
-    ): Promise<boolean> {
+    ): Promise<{ exists: boolean; maskedEmail?: string }> {
         log.info(`Checking user existence for email: ${email}, phone: ${phoneNumber}`);
         if (!email && !phoneNumber) {
             throw new AppError('Email or phone number must be provided.', 400);
@@ -4254,9 +4258,13 @@ export class UserService {
             // Call the repository method that checks for both email or phone
             const user = await userRepository.findByEmailOrPhone(normalizedEmail, cleanedPhoneNumber);
 
-            const exists = !!user; // Convert user object existence to boolean
+            const exists = !!user;
             log.info(`Existence check result for email: ${email}, phone: ${phoneNumber} is ${exists}`);
-            return exists;
+
+            const maskedEmail = exists && !normalizedEmail && cleanedPhoneNumber && user?.email
+                ? maskEmail(user.email)
+                : undefined;
+            return { exists, maskedEmail };
 
         } catch (error: any) {
             log.error(`Error during existence check: ${error.message}`, { email, phoneNumber });

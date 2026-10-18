@@ -226,10 +226,20 @@ removal (#314). Facts found while rebuilding — still true of the backend:
   Delete leaves the month's paid tickets orphaned.
 - **Boutique**: product `status` changes nothing — the member app lists
   products whatever their status (12k "pending" are public).
-- **Impact Challenge**: the original admin pages don't match the API (wrong
-  entrepreneur fields, POST vs PATCH approve, non-existent distribute routes).
+- **Impact Challenge**: the original admin pages were rebuilt against the real
+  API on 2026-10-17 (`ImpactChallengePage`, `ChallengeDetailsPage`,
+  `components/impactChallenge/*`, `services/impactChallengeApi.ts`).
   Payout needs `LOTTERY_POOL_ACCOUNT_ID` and `SBC_COMMISSION_ACCOUNT_ID` in
   `tombola-service/.env` — unset on prod and preprod as of 2026-10-04.
+  API facts the UI works around: `PATCH /admin/:id` takes the raw body (any
+  field, incl. status/totals) — the UI sends only name, dates, description;
+  changing month/year on a draft does NOT re-link the month's tombola, so the
+  UI never offers it. No unapprove route (service has `rejectEntrepreneur`,
+  unrouted). Votes list returns `userId` only, no names, and there is no
+  admin batch member lookup. A crashed payout leaves `distributionInProgress`
+  true forever with no endpoint to clear it. Dates: a bare `YYYY-MM-DD` is
+  UTC midnight and would end voting at the START of the last day, so the
+  admin sends start/end of day in local time.
 
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).

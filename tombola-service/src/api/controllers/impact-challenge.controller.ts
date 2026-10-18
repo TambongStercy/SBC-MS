@@ -5,8 +5,27 @@ import { challengeVoteService } from '../../services/challenge-vote.service';
 import { ChallengeStatus } from '../../database/models/impact-challenge.model';
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
+import config from '../../config';
 
 const log = logger.getLogger('ImpactChallengeController');
+
+/** The rules the member app shows (vote price, ticket cap) — sent, not hard-coded twice. */
+const votingRules = () => ({
+    votePrice: config.impactChallenge.votePrice,
+    maxTicketsPerMonth: config.impactChallenge.maxTicketsPerUserPerMonth,
+});
+
+/**
+ * What the public may see of an entrepreneur. The public endpoints used to
+ * return the whole document — email, phone number, linked SBC account — to
+ * anyone, logged in or not.
+ */
+const publicEntrepreneur = (e: any) => {
+    if (!e) return e;
+    const o = typeof e.toObject === 'function' ? e.toObject() : e;
+    const { email, phoneNumber, userId, approvedBy, videoFilename, ...rest } = o;
+    return rest;
+};
 
 // Authenticated request interface
 interface AuthenticatedRequest extends Request {
@@ -43,7 +62,8 @@ class ImpactChallengeController {
                 success: true,
                 data: {
                     challenge,
-                    entrepreneurs
+                    entrepreneurs: entrepreneurs.map(publicEntrepreneur),
+                    rules: votingRules(),
                 }
             });
         } catch (error: any) {
@@ -80,14 +100,11 @@ class ImpactChallengeController {
     async getEntrepreneurs(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { challengeId } = req.params;
-            const approvedOnly = req.query.approved !== 'false';
+            // Public: approved entrepreneurs only. Unapproved ones are for the
+            // admin details endpoint; `?approved=false` used to list them to anyone.
+            const entrepreneurs = await entrepreneurService.listEntrepreneursByChallenge(challengeId, true);
 
-            const entrepreneurs = await entrepreneurService.listEntrepreneursByChallenge(
-                challengeId,
-                approvedOnly
-            );
-
-            res.status(200).json({ success: true, data: entrepreneurs });
+            res.status(200).json({ success: true, data: entrepreneurs.map(publicEntrepreneur) });
         } catch (error: any) {
             log.error('Error getting entrepreneurs:', error.message);
             next(error);
@@ -103,6 +120,7 @@ class ImpactChallengeController {
             const { challengeId } = req.params;
             const leaderboard = await entrepreneurService.getLeaderboard(challengeId);
 
+            // Already a public projection (name, project, votes, video): no contact data.
             res.status(200).json({ success: true, data: leaderboard });
         } catch (error: any) {
             log.error('Error getting leaderboard:', error.message);
@@ -119,12 +137,12 @@ class ImpactChallengeController {
             const { entrepreneurId } = req.params;
             const entrepreneur = await entrepreneurService.getEntrepreneurById(entrepreneurId);
 
-            if (!entrepreneur) {
+            if (!entrepreneur || !entrepreneur.approved) {
                 res.status(404).json({ success: false, message: 'Entrepreneur not found' });
                 return;
             }
 
-            res.status(200).json({ success: true, data: entrepreneur });
+            res.status(200).json({ success: true, data: publicEntrepreneur(entrepreneur) });
         } catch (error: any) {
             log.error('Error getting entrepreneur:', error.message);
             next(error);
@@ -248,6 +266,37 @@ class ImpactChallengeController {
         }
     }
 
+    /**
+     * GET /api/challenges/:challengeId/my-votes
+     * The member's completed votes and supports for this challenge.
+     */
+    async getMyVotes(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+        const userId = req.user?.userId;
+        if (!userId) {
+            res.status(401).json({ success: false, message: 'Authentication required' });
+            return;
+        }
+        try {
+            const votes = await challengeVoteService.getUserVotesForChallenge(userId, req.params.challengeId);
+            res.status(200).json({
+                success: true,
+                data: votes.map((v: any) => ({
+                    _id: v._id,
+                    entrepreneurId: v.entrepreneurId,
+                    voteType: v.voteType,
+                    voteQuantity: v.voteQuantity,
+                    amountPaid: v.amountPaid,
+                    tickets: v.tombolaTicketIds?.length ?? 0,
+                    lateAfterClose: Boolean(v.lateAfterClose),
+                    createdAt: v.createdAt,
+                })),
+            });
+        } catch (error: any) {
+            log.error('Error getting member votes:', error.message);
+            next(error);
+        }
+    }
+
     // ================== WEBHOOK ==================
 
     /**
@@ -360,7 +409,13 @@ class ImpactChallengeController {
                 success: true,
                 data: {
                     challenge,
-                    entrepreneurs
+                    entrepreneurs,
+                    // The admin form enforces these before upload; sent so it does not guess.
+                    limits: {
+                        maxEntrepreneurs: config.impactChallenge.maxEntrepreneursPerChallenge,
+                        videoMaxDurationSeconds: config.impactChallenge.videoMaxDurationSeconds,
+                        ...votingRules(),
+                    },
                 }
             });
         } catch (error: any) {
@@ -490,6 +545,22 @@ class ImpactChallengeController {
             res.status(200).json({ success: true, data: entrepreneur });
         } catch (error: any) {
             log.error('Error updating entrepreneur:', error.message);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+            } else {
+                next(error);
+            }
+        }
+    }
+
+    /**
+     * PATCH /api/challenges/admin/entrepreneurs/:entrepreneurId/unapprove
+     */
+    async unapproveEntrepreneur(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const updated = await entrepreneurService.rejectEntrepreneur(req.params.entrepreneurId);
+            res.status(200).json({ success: true, data: updated });
+        } catch (error: any) {
             if (error instanceof AppError) {
                 res.status(error.statusCode).json({ success: false, message: error.message });
             } else {
