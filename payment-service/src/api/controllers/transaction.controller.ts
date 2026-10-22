@@ -519,6 +519,10 @@ export class TransactionController {
                         message: 'Insufficient balance for this payment'
                     });
                 }
+                // Withdrawal lock after an email/phone change (assertWithdrawalsNotLocked)
+                if (error instanceof AppError && (error.statusCode === 403 || error.statusCode === 503)) {
+                    return res.status(error.statusCode).json({ success: false, message: error.message });
+                }
             }
 
             return res.status(500).json({

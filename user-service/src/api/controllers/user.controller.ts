@@ -138,6 +138,24 @@ export class UserController {
         }
     }
 
+    /**
+     * [Internal] Whether withdrawals are blocked after an email/phone change.
+     * @route GET /api/users/internal/:userId/withdrawal-lock
+     */
+    async getWithdrawalLock(req: Request, res: Response): Promise<void> {
+        try {
+            const lock = await this.userService.getWithdrawalLock(req.params.userId);
+            if (!lock) {
+                res.status(404).json({ success: false, message: 'User not found' });
+                return;
+            }
+            res.status(200).json({ success: true, data: lock });
+        } catch (error: any) {
+            log.error(`Error reading withdrawal lock for ${req.params.userId}: ${error.message}`);
+            res.status(500).json({ success: false, message: 'Error reading withdrawal lock' });
+        }
+    }
+
     async getUserBalance(req: Request, res: Response): Promise<void> {
         try {
             const userId = req.params.userId;
