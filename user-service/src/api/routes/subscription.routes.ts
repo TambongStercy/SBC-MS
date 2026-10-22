@@ -30,10 +30,12 @@ router.post('/upgrade', authenticate as any, generalLimiter, (req, res) => subsc
 /**
  * @route   POST /api/subscriptions/webhooks/payment-confirmation
  * @desc    Webhook endpoint for Payment Service to confirm successful payment
- * @access  Internal (Verify source in controller/middleware)
+ * @access  Internal — service secret only
  */
-// Note: Needs robust verification (signature/shared secret) in production
-router.post('/webhooks/payment-confirmation', webhookLimiter, (req, res) => subscriptionController.handlePaymentWebhook(req, res));
+// payment-service calls this with `Authorization: Bearer <SERVICE_SECRET>`.
+// It used to be open: anyone could activate any plan on any account (and pay
+// the referral commissions) by posting a fake SUCCEEDED body.
+router.post('/webhooks/payment-confirmation', webhookLimiter, authenticateServiceRequest, (req, res) => subscriptionController.handlePaymentWebhook(req, res));
 
 /**
  * @route   GET /api/subscriptions
