@@ -10,6 +10,7 @@ const router = Router();
 // --- Public Admin Routes (e.g., Login) ---
 // Apply strict limiter to admin login
 router.post('/login', strictLimiter, adminController.loginAdmin);
+router.post('/login/verify-otp', strictLimiter, adminController.verifyAdminLoginOtp);
 
 // --- Protected Admin Routes ---
 // Apply authentication and admin authorization middleware AFTER public routes

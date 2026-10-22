@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { AdminUserData, loginAdmin, AdminLoginResponse } from '../services/adminUserApi'; // Adjust path as needed
+import { AdminUserData, loginAdmin, verifyAdminLoginOtp, AdminLoginChallenge } from '../services/adminUserApi';
 import { roleFromToken } from '../lib/roles';
 
 interface AuthContextType {
@@ -8,7 +8,10 @@ interface AuthContextType {
   token: string | null;
   /** From the session token; the stored user only as a fallback. */
   role: string | null;
-  login: (credentials: { email: string; password: string }) => Promise<void>;
+  /** Step one: checks the password and emails a code. */
+  login: (credentials: { email: string; password: string }) => Promise<AdminLoginChallenge>;
+  /** Step two: exchanges the emailed code for the session. */
+  verifyLoginCode: (userId: string, code: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -47,21 +50,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [token, adminUser]);
 
-  const login = async (credentials: { email: string; password: string }): Promise<void> => {
+  const login = async (credentials: { email: string; password: string }): Promise<AdminLoginChallenge> => {
     setIsLoading(true);
     try {
-      const response: AdminLoginResponse = await loginAdmin(credentials);
-      if (response.token && response.user) {
-        setToken(response.token);
-        setAdminUser(response.user);
-      } else {
+      return await loginAdmin(credentials);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyLoginCode = async (userId: string, code: string): Promise<void> => {
+    setIsLoading(true);
+    try {
+      const response = await verifyAdminLoginOtp(userId, code);
+      if (!response.token || !response.user) {
         throw new Error('Login response missing token or user data');
       }
+      setToken(response.token);
+      setAdminUser(response.user);
     } catch (error) {
-      console.error("Admin login failed in context:", error);
-      setToken(null); // Clear any invalid state
+      setToken(null);
       setAdminUser(null);
-      // Re-throw the error so the calling component (e.g., login page) can handle it (show message to user)
       throw error;
     } finally {
       setIsLoading(false);
@@ -77,7 +86,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ isAdminAuthenticated: !!token, adminUser, token, role: roleFromToken(token) ?? adminUser?.role ?? null, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ isAdminAuthenticated: !!token, adminUser, token, role: roleFromToken(token) ?? adminUser?.role ?? null, login, verifyLoginCode, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );
