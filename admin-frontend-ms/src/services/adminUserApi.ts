@@ -147,41 +147,41 @@ apiClient.interceptors.request.use((config) => {
 
 // --- API Functions ---
 
-// Define the expected structure of the raw Axios response for login
-interface RawAdminLoginApiResponse {
+interface RawApiResponse<T> {
     success: boolean;
-    data: AdminLoginResponse; // The nested object with token and user
-    message?: string; // Optional message for errors
+    data: T;
+    message?: string;
 }
 
-export const loginAdmin = async (credentials: { email: string; password: string }): Promise<AdminLoginResponse> => {
-    try {
-        // Expect the raw API structure from the post call
-        const response = await apiClient.post<RawAdminLoginApiResponse>('/users/admin/login', credentials);
-        console.log("Raw loginAdmin response data:", response.data); // Log the raw structure
+/** Step one of the admin login: the password was right and a code was emailed. */
+export interface AdminLoginChallenge {
+    otpRequired: true;
+    userId: string;
+    otpSent: boolean;
+    otpRetryAfterSeconds: number;
+}
 
-        // Check for success flag and nested data existence
+const postLoginStep = async <T>(path: string, body: Record<string, string>): Promise<T> => {
+    try {
+        const response = await apiClient.post<RawApiResponse<T>>(path, body);
         if (response.data && response.data.success === true && response.data.data) {
-            // Return the nested data object which matches AdminLoginResponse
             return response.data.data;
-        } else {
-            // Throw an error if success is false or data is missing
-            throw new Error(response.data?.message || 'Login failed: Invalid response structure from server.');
         }
+        throw new Error(response.data?.message || 'Login failed: invalid response from server.');
     } catch (error) {
-        console.error('Admin login failed:', error);
-        // Handle Axios errors (network, 4xx, 5xx)
         if (axios.isAxiosError(error) && error.response) {
-            // Use message from backend error response if available
             throw new Error(error.response.data?.message || 'Admin login failed');
-        } else if (error instanceof Error) {
-            // Handle errors thrown from the success check above
-            throw error;
         }
-        // Fallback error
+        if (error instanceof Error) throw error;
         throw new Error('Admin login failed due to an unknown error.');
     }
 };
+
+export const loginAdmin = (credentials: { email: string; password: string }): Promise<AdminLoginChallenge> =>
+    postLoginStep<AdminLoginChallenge>('/users/admin/login', credentials);
+
+export const verifyAdminLoginOtp = (userId: string, otpCode: string): Promise<AdminLoginResponse> =>
+    postLoginStep<AdminLoginResponse>('/users/admin/login/verify-otp', { userId, otpCode });
 
 export const listUsers = async (
     filters: AdminUserListFilters = {},

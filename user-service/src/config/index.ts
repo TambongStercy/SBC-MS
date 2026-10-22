@@ -61,6 +61,8 @@ interface IConfig {
     withdrawal: {
         dailyLimit: number;
         maxTransactionsPerDay: number;
+        /** Hours withdrawals stay blocked after an email or phone change (utils/withdrawal-lock.ts). */
+        lockHoursAfterContactChange: number;
     };
     selfBaseUrl: string;
     /**
@@ -137,7 +139,8 @@ const config: IConfig = {
 
     withdrawal: {
         dailyLimit: Number(process.env.DAILY_WITHDRAWAL_LIMIT) || 50000,
-        maxTransactionsPerDay: Number(process.env.MAX_WITHDRAWALS_PER_DAY) || 3
+        maxTransactionsPerDay: Number(process.env.MAX_WITHDRAWALS_PER_DAY) || 3,
+        lockHoursAfterContactChange: Number(process.env.WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE) || 48,
     },
 
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3001',

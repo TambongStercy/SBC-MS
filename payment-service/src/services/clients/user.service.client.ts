@@ -39,6 +39,14 @@ interface ReferrerIds {
     level3?: string;
 }
 
+/** user-service utils/withdrawal-lock.ts */
+export interface WithdrawalLock {
+    locked: boolean;
+    /** ISO date, only when locked. */
+    until?: string;
+    reason?: 'email_change' | 'phone_change';
+}
+
 interface WithdrawalLimitCheckResponse {
     allowed: boolean;
     reason?: string;
@@ -361,6 +369,18 @@ class UserServiceClient {
             }
             return false;
         }
+    }
+
+    /**
+     * Whether withdrawals are blocked after an email/phone change. Throws when
+     * user-service cannot answer, so callers refuse rather than pay unchecked.
+     */
+    async getWithdrawalLock(userId: string): Promise<WithdrawalLock> {
+        const response = await this.request<{ success: boolean; data: WithdrawalLock }>('get', `/users/internal/${userId}/withdrawal-lock`);
+        if (typeof response?.data?.locked !== 'boolean') {
+            throw new AppError('Unexpected withdrawal-lock response from user service.', 502);
+        }
+        return response.data;
     }
 
     async checkWithdrawalLimits(userId: string, amount: number, currency: 'USD' | 'XAF' = 'XAF'): Promise<WithdrawalLimitCheckResponse> {

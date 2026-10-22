@@ -5,6 +5,7 @@ import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
+import { maskEmail } from '../utils/mask-email';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
 import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
@@ -36,7 +37,9 @@ import { UserDetails } from '../database/repositories/user.repository';
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
 import { AppError, OtpThrottledError } from '../utils/errors';
-import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes } from '../utils/phone.utils';
+import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
+import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
+import { alertContactChange } from './contact-change-alert';
 import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
@@ -61,6 +64,14 @@ const prefixToCountryCode: { [key: string]: string } = Object.entries(countryCod
     }, {} as { [key: string]: string });
 
 // Interface for optional data during registration
+// The only fields a sign-up request may set. Everything else on the user
+// (role, balances, verification, subscriptions, tokens) is server-owned.
+const REGISTRATION_FIELDS = [
+    'name', 'email', 'password', 'phoneNumber', 'country', 'region', 'city',
+    'sex', 'birthDate', 'language', 'interests', 'profession',
+    'preferenceCategories', 'notificationPreference',
+] as const;
+
 interface IRegistrationData extends Partial<IUser> {
     referrerCode?: string; // Optional code from the user who referred this new user
     // Add referralCode as an optional field here specifically for the incoming request,
@@ -216,9 +227,16 @@ export class UserService {
         // Determine the actual referrer code, prioritizing the correct 'referrerCode' field
         const actualReferrerCode = referrerCode || frontendBugReferralCode;
 
-        // Ensure userData only contains fields relevant to the new user's profile
-        // and doesn't contain the incoming referrer-related codes
-        const userToCreate: Partial<IUser> = { ...userDataWithoutReferrerInfo }; // Explicitly type as Partial<IUser>
+        // Copy only the profile fields a person may choose at sign-up. Spreading
+        // the request body here let anyone register with `role: "admin"` (or a
+        // balance, or `isVerified`) — exploited from May to October 2026 to
+        // create admin accounts that drained members' wallets.
+        const userToCreate: Partial<IUser> = {};
+        for (const field of REGISTRATION_FIELDS) {
+            if (userDataWithoutReferrerInfo[field] !== undefined) {
+                (userToCreate as Record<string, unknown>)[field] = userDataWithoutReferrerInfo[field];
+            }
+        }
 
         if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.country || !userToCreate.phoneNumber) {
             throw new Error('Missing required registration fields');
@@ -817,10 +835,17 @@ export class UserService {
         // client that resends the user's own phone on every profile save would
         // otherwise hit E11000 (dup key on its own value under some driver paths)
         // and abort the whole update — taking city/sex/birthDate down with it.
+        // A real change locks withdrawals (utils/withdrawal-lock.ts).
+        let phoneChangedFrom: IUser | null = null;
         if (allowedFields.phoneNumber !== undefined) {
             const current = await userRepository.findById(userId);
             if (current && current.phoneNumber === allowedFields.phoneNumber) {
                 delete allowedFields.phoneNumber;
+            } else if (current && isSamePhoneNumber(current.phoneNumber, allowedFields.phoneNumber)) {
+                // Same line in another format (e.g. now with its dialling code): saved, not a change.
+            } else {
+                Object.assign(allowedFields, withdrawalLockFields('phone_change'));
+                phoneChangedFrom = current;
             }
         }
 
@@ -831,6 +856,15 @@ export class UserService {
         }
 
         const updatedUser = await userRepository.updateById(userId, allowedFields);
+
+        if (updatedUser && phoneChangedFrom) {
+            alertContactChange({
+                userId,
+                previousEmail: phoneChangedFrom.email,
+                reason: 'phone_change',
+                newValue: String(allowedFields.phoneNumber ?? ''),
+            });
+        }
 
         // Sync denormalized fields on referrals if name, email, or phone changed
         if (updatedUser && (allowedFields.name || allowedFields.phoneNumber)) {
@@ -2055,17 +2089,17 @@ export class UserService {
     /**
      * Logs in an admin user.
      * Verifies credentials and checks for ADMIN role.
-     * No OTP required for admin login in this implementation.
+     * Step one of two: checks the password and emails a login code.
      * @param email - Admin's email.
      * @param passwordAttempt - Admin's password.
      * @param ipAddress - Optional IP address for logging/auditing.
-     * @returns An object containing the JWT token and admin user details (excluding sensitive fields).
+     * @returns The user id for step two (`verifyAdminLoginOtp`); no token yet.
      */
     async loginAdmin(
         email: string,
         passwordAttempt: string,
         ipAddress?: string
-    ): Promise<{ token: string; user: Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'> }> {
+    ): Promise<{ otpRequired: true; userId: string; otpSent: boolean; otpRetryAfterSeconds: number }> {
         if (!email || !passwordAttempt) {
             log.warn('Admin login attempt failed: Email and password are required.');
             throw new Error('Email and password are required');
@@ -2104,31 +2138,64 @@ export class UserService {
             throw new Error('User account is deleted');
         }
 
-        // --- IP Address Update (Optional for Admin) ---
-        if (ipAddress && ipAddress !== user.ipAddress) {
-            try {
-                // Don't wait for this, let it run in the background
-                userRepository.updateIpAddress(user._id, { ipAddress });
-                log.info(`Updated IP address for admin ${email} during login.`);
-            } catch (ipError) {
-                log.error(`Failed to update IP on admin login for ${user.email}`, ipError);
-            }
+        // A password alone no longer opens the admin. On 2026-10-21/22 accounts
+        // that held the admin role signed in with nothing but a password and
+        // drained members' wallets; a second factor sent to the account's email
+        // is now required before any admin token is issued.
+        let issued: { sent: boolean; retryAfterSeconds: number };
+        try {
+            issued = await this.issueAccountAccessOtp(user, { channelOverride: 'email', purpose: 'adminLogin' });
+        } catch (otpError) {
+            log.error(`Failed to send admin login code for ${email}`, otpError);
+            throw new Error('Login failed: could not send the verification code.');
         }
-        // --- End IP Update ---
 
-        // --- Generate JWT for Admin ---
-        const tokenPayload = { userId: user._id, id: user._id, email: user.email, role: user.role };
-        const token = signToken(tokenPayload);
-
-        // Optionally update the last login time or store the token if needed for session management
-        await userRepository.updateById(user._id, { token: token }); // Example if storing token
-
-        log.info(`Admin user ${email} logged in successfully.`);
-
+        log.info(`Admin password verified for ${email}; login code ${issued.sent ? 'sent' : 'throttled'} (ip ${ipAddress || 'unknown'}).`);
         return {
-            token,
-            user: this.mapUserToResponse(user) // Exclude sensitive fields
+            otpRequired: true,
+            userId: user._id.toString(),
+            otpSent: issued.sent,
+            otpRetryAfterSeconds: issued.retryAfterSeconds,
         };
+    }
+
+    /**
+     * Second step of the admin login: checks the emailed code and only then
+     * issues the admin token. Role, block and deletion are re-read from the
+     * database here, not trusted from the first step.
+     */
+    async verifyAdminLoginOtp(
+        userId: string,
+        otpCode: string,
+        ipAddress?: string
+    ): Promise<{ token: string; user: Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'> }> {
+        if (!userId || !otpCode || !Types.ObjectId.isValid(userId)) {
+            throw new Error('Invalid code');
+        }
+        const user = await userRepository.findById(userId);
+        const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
+        if (!user || !STAFF_ROLES.includes(user.role) || user.blocked || user.deleted) {
+            log.warn(`Admin login code refused for ${userId}: not an active staff account.`);
+            throw new Error('Invalid code');
+        }
+
+        const now = new Date();
+        const valid = (user.otps || []).some(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
+        if (!valid) {
+            log.warn(`Admin login code refused for ${user.email} (ip ${ipAddress || 'unknown'}).`);
+            throw new Error('Invalid or expired code');
+        }
+        await userRepository.clearOtps(user._id, 'otps');
+
+        if (ipAddress && ipAddress !== user.ipAddress) {
+            userRepository.updateIpAddress(user._id, { ipAddress });
+        }
+
+        const token = signToken({ userId: user._id, id: user._id, email: user.email, role: user.role });
+        await userRepository.updateById(user._id, { token });
+
+        log.info(`Admin user ${user.email} logged in successfully (ip ${ipAddress || 'unknown'}).`);
+        return { token, user: this.mapUserToResponse(user) };
     }
 
     /**
@@ -2858,6 +2925,28 @@ export class UserService {
         delete allowedAdminUpdates.contactsOtps;
         delete allowedAdminUpdates.token;
 
+        // An admin changing the email or phone locks withdrawals like the
+        // member's own change does: the October 2026 drain went through an
+        // admin account. Forms resend unchanged values, so compare first.
+        let contactChange: { reason: WithdrawalLockReason; newValue: string; previousEmail?: string } | null = null;
+        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined) {
+            const current = await userRepository.findById(userId);
+            if (current) {
+                const emailChanged = allowedAdminUpdates.email !== undefined
+                    && String(allowedAdminUpdates.email).trim().toLowerCase() !== (current.email || '').toLowerCase();
+                const phoneChanged = allowedAdminUpdates.phoneNumber !== undefined
+                    && !isSamePhoneNumber(current.phoneNumber, allowedAdminUpdates.phoneNumber);
+                if (emailChanged) {
+                    contactChange = { reason: 'email_change', newValue: String(allowedAdminUpdates.email), previousEmail: current.email };
+                } else if (phoneChanged) {
+                    contactChange = { reason: 'phone_change', newValue: String(allowedAdminUpdates.phoneNumber), previousEmail: current.email };
+                }
+            }
+        }
+        if (contactChange) {
+            Object.assign(allowedAdminUpdates, withdrawalLockFields(contactChange.reason));
+        }
+
         if (Object.keys(allowedAdminUpdates).length === 0) {
             log.warn(`Admin update user ${userId}: No valid fields provided for update.`);
             // Fetch the user directly to match the return type IUser | null
@@ -2869,6 +2958,10 @@ export class UserService {
         try {
             const updatedUser = await userRepository.updateById(userId, allowedAdminUpdates);
             log.info(`Admin successfully updated user ${userId}`);
+            if (updatedUser && contactChange) {
+                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
+                alertContactChange({ userId, ...contactChange });
+            }
             return updatedUser; // Return updated user
         } catch (error) {
             log.error(`Error updating user ${userId} (admin):`, error);
@@ -4108,8 +4201,16 @@ export class UserService {
         // 4. OTP is valid and email is available. Clear *all* general OTPs.
         await userRepository.clearOtps(user._id, 'otps');
 
-        // 5. Update the user's email address
-        await userRepository.updateById(user._id, { email: newEmail });
+        // 5. Update the user's email address. A real change locks withdrawals
+        // and alerts the address being replaced.
+        const emailChanged = newEmail.trim().toLowerCase() !== (user.email || '').toLowerCase();
+        await userRepository.updateById(user._id, {
+            email: newEmail,
+            ...(emailChanged ? withdrawalLockFields('email_change') : {}),
+        });
+        if (emailChanged) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'email_change', newValue: newEmail });
+        }
 
         log.info(`Email address successfully changed to ${newEmail} for user ${userId}`);
 
@@ -4222,8 +4323,16 @@ export class UserService {
         // 4. OTP is valid and phone number is available. Clear *all* general OTPs.
         await userRepository.clearOtps(user._id, 'otps');
 
-        // 5. Update the user's phone number
-        await userRepository.updateById(user._id, { phoneNumber: normalizedPhoneNumber });
+        // 5. Update the user's phone number. A real change locks withdrawals
+        // and alerts the account email.
+        const phoneChanged = !isSamePhoneNumber(user.phoneNumber, normalizedPhoneNumber);
+        await userRepository.updateById(user._id, {
+            phoneNumber: normalizedPhoneNumber,
+            ...(phoneChanged ? withdrawalLockFields('phone_change') : {}),
+        });
+        if (phoneChanged) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'phone_change', newValue: normalizedPhoneNumber });
+        }
 
         log.info(`Phone number successfully changed to ${normalizedPhoneNumber} for user ${userId}`);
 
@@ -4231,17 +4340,26 @@ export class UserService {
         // await notificationService.sendPhoneChangeConfirmation(user.id, user.phoneNumber /* old phone */, normalizedPhoneNumber, user.name);
     }
 
+    /** Whether withdrawals are blocked after an email/phone change (utils/withdrawal-lock.ts). */
+    async getWithdrawalLock(userId: string | Types.ObjectId): Promise<WithdrawalLockStatus | null> {
+        const user = await userRepository.findById(userId);
+        return user ? withdrawalLockStatus(user) : null;
+    }
+
     /**
      * Check if a user exists by email or phone number.
      * Used for registration forms to check availability.
-     * @param email - Optional email address.
-     * @param phoneNumber - Optional phone number.
-     * @returns True if a user with either the email or phone exists, false otherwise.
+     *
+     * When the caller looked up by phone and we found an account, a masked
+     * email is returned so the signup UI can remind the number's owner which
+     * address they already registered with (e.g. `jo***@gmail.com`). A masked
+     * email is NOT returned for email lookups — the result would either be a
+     * tautology (same address) or a cross-account leak.
      */
     async checkExistence(
         email?: string,
         phoneNumber?: string
-    ): Promise<boolean> {
+    ): Promise<{ exists: boolean; maskedEmail?: string }> {
         log.info(`Checking user existence for email: ${email}, phone: ${phoneNumber}`);
         if (!email && !phoneNumber) {
             throw new AppError('Email or phone number must be provided.', 400);
@@ -4254,9 +4372,13 @@ export class UserService {
             // Call the repository method that checks for both email or phone
             const user = await userRepository.findByEmailOrPhone(normalizedEmail, cleanedPhoneNumber);
 
-            const exists = !!user; // Convert user object existence to boolean
+            const exists = !!user;
             log.info(`Existence check result for email: ${email}, phone: ${phoneNumber} is ${exists}`);
-            return exists;
+
+            const maskedEmail = exists && !normalizedEmail && cleanedPhoneNumber && user?.email
+                ? maskEmail(user.email)
+                : undefined;
+            return { exists, maskedEmail };
 
         } catch (error: any) {
             log.error(`Error during existence check: ${error.message}`, { email, phoneNumber });

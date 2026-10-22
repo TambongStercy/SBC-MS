@@ -372,3 +372,18 @@ export function normalizeCountryName(countryInput?: string): string {
     // Return original input if no match found
     return countryInput;
 } 
+/**
+ * Whether two stored/submitted phone numbers are the same line. Older
+ * accounts hold numbers without their dialling code (`677123456` next to
+ * `237677123456`), so a profile save that resends the user's own number in
+ * the other format must not count as a change (it would lock withdrawals,
+ * see utils/withdrawal-lock.ts). Equal digits, or one ends with the other
+ * and differs only by a dialling code of at most 4 digits.
+ */
+export function isSamePhoneNumber(a?: string | null, b?: string | null): boolean {
+    const da = String(a ?? '').replace(/\D/g, '');
+    const db = String(b ?? '').replace(/\D/g, '');
+    if (da === db) return true;
+    const [shorter, longer] = da.length < db.length ? [da, db] : [db, da];
+    return shorter.length >= 8 && longer.length - shorter.length <= 4 && longer.endsWith(shorter);
+}

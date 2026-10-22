@@ -50,6 +50,9 @@ serviceRouter.post('/:userId/withdrawal-limits/check', (req, res) => userControl
 // Process successful withdrawal route
 serviceRouter.post('/:userId/withdrawal/success', (req, res) => userController.processSuccessfulWithdrawal(req, res));
 
+// Withdrawals blocked after an email/phone change (payment-service checks it before every payout)
+serviceRouter.get('/:userId/withdrawal-lock', (req, res) => userController.getWithdrawalLock(req, res));
+
 // Internal route to get referrer IDs for commission
 serviceRouter.get('/:userId/referrers', (req, res) => userController.getReferrerIdsForCommission(req, res));
 

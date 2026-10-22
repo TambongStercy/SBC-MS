@@ -323,6 +323,32 @@ If any of these is unclear in a particular code area, stop and ask before
 merging. Real money has been moved or frozen by skipping these checks in the
 past; the cost of pausing is far lower than the cost of cleaning up.
 
+### Withdrawals are locked 48 h after an email or phone change (2026-10-22)
+
+Rufus's rule, added after the October 2026 wallet drain: changing the account
+email or phone number blocks every withdrawal for
+`WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE` hours (user-service `.env`,
+default 48). The change stores `withdrawalsLockedUntil` + `withdrawalLockReason`
+on the user, and an alert goes to the email held **before** the change (plus a
+push), so a hijacker cannot silence it.
+- **Every path that writes `email` or `phoneNumber` must add
+  `withdrawalLockFields()`** (`user-service/src/utils/withdrawal-lock.ts`):
+  confirm-change-email, confirm-change-phone, the plain profile save (`PUT
+  /users/me` changes the phone with no OTP), and the admin user edit. Compare
+  with `isSamePhoneNumber` first: old accounts store numbers without the
+  dialling code, and the profile page resends the number on every save.
+- payment-service calls `assertWithdrawalsNotLocked()` (reads `GET
+  /users/internal/:userId/withdrawal-lock`, fails closed) at: mobile-money and
+  crypto initiate, OTP verify, admin approval (single and bulk), admin
+  withdrawal from a member's balance, the deprecated `/payments/crypto/payout`,
+  and member-to-member `/transactions/payment`. A withdrawal refused at approval
+  stays `pending_admin_approval` and can be approved once the lock ends.
+- Not locked: admin direct payouts (`/withdrawals/admin/direct`,
+  `/payouts/initiate`), which pay out of SBC's provider balance, not a
+  member's. MoMo number changes do not lock (not part of Rufus's rule).
+- There is no admin "lift lock" action: to lift one, unset
+  `withdrawalsLockedUntil` on the user document.
+
 ### Withdrawal investigation cheat-sheet (read before pinging Sterling)
 
 Recurring "user says they didn't receive their withdrawal" requests. The
