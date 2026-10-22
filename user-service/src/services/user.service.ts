@@ -62,6 +62,14 @@ const prefixToCountryCode: { [key: string]: string } = Object.entries(countryCod
     }, {} as { [key: string]: string });
 
 // Interface for optional data during registration
+// The only fields a sign-up request may set. Everything else on the user
+// (role, balances, verification, subscriptions, tokens) is server-owned.
+const REGISTRATION_FIELDS = [
+    'name', 'email', 'password', 'phoneNumber', 'country', 'region', 'city',
+    'sex', 'birthDate', 'language', 'interests', 'profession',
+    'preferenceCategories', 'notificationPreference',
+] as const;
+
 interface IRegistrationData extends Partial<IUser> {
     referrerCode?: string; // Optional code from the user who referred this new user
     // Add referralCode as an optional field here specifically for the incoming request,
@@ -217,9 +225,16 @@ export class UserService {
         // Determine the actual referrer code, prioritizing the correct 'referrerCode' field
         const actualReferrerCode = referrerCode || frontendBugReferralCode;
 
-        // Ensure userData only contains fields relevant to the new user's profile
-        // and doesn't contain the incoming referrer-related codes
-        const userToCreate: Partial<IUser> = { ...userDataWithoutReferrerInfo }; // Explicitly type as Partial<IUser>
+        // Copy only the profile fields a person may choose at sign-up. Spreading
+        // the request body here let anyone register with `role: "admin"` (or a
+        // balance, or `isVerified`) — exploited from May to October 2026 to
+        // create admin accounts that drained members' wallets.
+        const userToCreate: Partial<IUser> = {};
+        for (const field of REGISTRATION_FIELDS) {
+            if (userDataWithoutReferrerInfo[field] !== undefined) {
+                (userToCreate as Record<string, unknown>)[field] = userDataWithoutReferrerInfo[field];
+            }
+        }
 
         if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.country || !userToCreate.phoneNumber) {
             throw new Error('Missing required registration fields');
@@ -2056,17 +2071,17 @@ export class UserService {
     /**
      * Logs in an admin user.
      * Verifies credentials and checks for ADMIN role.
-     * No OTP required for admin login in this implementation.
+     * Step one of two: checks the password and emails a login code.
      * @param email - Admin's email.
      * @param passwordAttempt - Admin's password.
      * @param ipAddress - Optional IP address for logging/auditing.
-     * @returns An object containing the JWT token and admin user details (excluding sensitive fields).
+     * @returns The user id for step two (`verifyAdminLoginOtp`); no token yet.
      */
     async loginAdmin(
         email: string,
         passwordAttempt: string,
         ipAddress?: string
-    ): Promise<{ token: string; user: Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'> }> {
+    ): Promise<{ otpRequired: true; userId: string; otpSent: boolean; otpRetryAfterSeconds: number }> {
         if (!email || !passwordAttempt) {
             log.warn('Admin login attempt failed: Email and password are required.');
             throw new Error('Email and password are required');
@@ -2105,31 +2120,64 @@ export class UserService {
             throw new Error('User account is deleted');
         }
 
-        // --- IP Address Update (Optional for Admin) ---
-        if (ipAddress && ipAddress !== user.ipAddress) {
-            try {
-                // Don't wait for this, let it run in the background
-                userRepository.updateIpAddress(user._id, { ipAddress });
-                log.info(`Updated IP address for admin ${email} during login.`);
-            } catch (ipError) {
-                log.error(`Failed to update IP on admin login for ${user.email}`, ipError);
-            }
+        // A password alone no longer opens the admin. On 2026-10-21/22 accounts
+        // that held the admin role signed in with nothing but a password and
+        // drained members' wallets; a second factor sent to the account's email
+        // is now required before any admin token is issued.
+        let issued: { sent: boolean; retryAfterSeconds: number };
+        try {
+            issued = await this.issueAccountAccessOtp(user, { channelOverride: 'email', purpose: 'adminLogin' });
+        } catch (otpError) {
+            log.error(`Failed to send admin login code for ${email}`, otpError);
+            throw new Error('Login failed: could not send the verification code.');
         }
-        // --- End IP Update ---
 
-        // --- Generate JWT for Admin ---
-        const tokenPayload = { userId: user._id, id: user._id, email: user.email, role: user.role };
-        const token = signToken(tokenPayload);
-
-        // Optionally update the last login time or store the token if needed for session management
-        await userRepository.updateById(user._id, { token: token }); // Example if storing token
-
-        log.info(`Admin user ${email} logged in successfully.`);
-
+        log.info(`Admin password verified for ${email}; login code ${issued.sent ? 'sent' : 'throttled'} (ip ${ipAddress || 'unknown'}).`);
         return {
-            token,
-            user: this.mapUserToResponse(user) // Exclude sensitive fields
+            otpRequired: true,
+            userId: user._id.toString(),
+            otpSent: issued.sent,
+            otpRetryAfterSeconds: issued.retryAfterSeconds,
         };
+    }
+
+    /**
+     * Second step of the admin login: checks the emailed code and only then
+     * issues the admin token. Role, block and deletion are re-read from the
+     * database here, not trusted from the first step.
+     */
+    async verifyAdminLoginOtp(
+        userId: string,
+        otpCode: string,
+        ipAddress?: string
+    ): Promise<{ token: string; user: Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'> }> {
+        if (!userId || !otpCode || !Types.ObjectId.isValid(userId)) {
+            throw new Error('Invalid code');
+        }
+        const user = await userRepository.findById(userId);
+        const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
+        if (!user || !STAFF_ROLES.includes(user.role) || user.blocked || user.deleted) {
+            log.warn(`Admin login code refused for ${userId}: not an active staff account.`);
+            throw new Error('Invalid code');
+        }
+
+        const now = new Date();
+        const valid = (user.otps || []).some(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
+        if (!valid) {
+            log.warn(`Admin login code refused for ${user.email} (ip ${ipAddress || 'unknown'}).`);
+            throw new Error('Invalid or expired code');
+        }
+        await userRepository.clearOtps(user._id, 'otps');
+
+        if (ipAddress && ipAddress !== user.ipAddress) {
+            userRepository.updateIpAddress(user._id, { ipAddress });
+        }
+
+        const token = signToken({ userId: user._id, id: user._id, email: user.email, role: user.role });
+        await userRepository.updateById(user._id, { token });
+
+        log.info(`Admin user ${user.email} logged in successfully (ip ${ipAddress || 'unknown'}).`);
+        return { token, user: this.mapUserToResponse(user) };
     }
 
     /**
