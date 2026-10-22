@@ -471,6 +471,40 @@ class PaymentService {
     }
 
     /**
+     * Refuses the withdrawal while the member's email or phone number changed
+     * less than WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE (48 h) ago
+     * (user-service utils/withdrawal-lock.ts, Rufus 2026-10-22). Called on
+     * every path that starts or releases a payout from a member's balance.
+     * Fails closed: if user-service cannot answer, nothing is paid.
+     */
+    public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {
+        let lock;
+        try {
+            lock = await userServiceClient.getWithdrawalLock(userId.toString());
+        } catch (error: any) {
+            log.error(`Withdrawal lock check failed for user ${userId}: ${error.message}`);
+            throw new AppError('Les retraits sont momentanément indisponibles. Veuillez réessayer dans quelques minutes.', 503);
+        }
+        if (!lock.locked || !lock.until) return;
+
+        const until = new Date(lock.until);
+        const what = lock.reason === 'email_change' ? "de l'adresse e-mail"
+            : lock.reason === 'phone_change' ? 'du numéro de téléphone'
+            : "de l'adresse e-mail ou du numéro de téléphone";
+        log.warn(`Withdrawal refused for user ${userId}: locked until ${lock.until} after ${lock.reason ?? 'contact change'} (${audience})`);
+
+        if (audience === 'admin') {
+            const when = until.toLocaleString('fr-FR', { timeZone: 'Africa/Douala', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            throw new AppError(`Retraits bloqués pour ce membre jusqu'au ${when} (heure de Douala), après le changement ${what} du compte.`, 403);
+        }
+        const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000));
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        const remaining = h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
+        throw new AppError(`Pour protéger votre compte, les retraits sont bloqués après un changement ${what}. Vous pourrez retirer à nouveau dans ${remaining}.`, 403);
+    }
+
+    /**
      * Initiate a withdrawal for a user.
      * The 'amount' in the request is considered the NET amount the user wants to receive
      * in the TARGET CURRENCY (derived from their MoMo operator).
@@ -492,6 +526,8 @@ class PaymentService {
             throw new AppError('Withdrawals are currently unavailable. Please try again later or contact support.', 503);
         }
         // --- End Global Withdrawal Control Check ---
+
+        await this.assertWithdrawalsNotLocked(userId);
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -797,6 +833,8 @@ class PaymentService {
                 log.warn(`Transaction ${transactionId} is not in PENDING_OTP_VERIFICATION status. Current status: ${transaction.status}`);
                 throw new AppError(`Withdrawal transaction is not awaiting OTP verification. Current status: ${transaction.status}.`, 400);
             }
+
+            await this.assertWithdrawalsNotLocked(transaction.userId);
 
             // Check OTP and expiry
             if (!transaction.verificationCode || !transaction.verificationExpiry) {
@@ -1347,6 +1385,9 @@ class PaymentService {
     ) {
         try {
             log.info(`Processing payment of ${amount} ${currency} from user ${fromUserId} to ${toUserId}`);
+
+            // A transfer to another account is a withdrawal by another name.
+            await this.assertWithdrawalsNotLocked(fromUserId);
 
             // Check if sender has sufficient balance
             const senderBalance = await userServiceClient.getBalance(fromUserId.toString());
@@ -2065,6 +2106,8 @@ class PaymentService {
         try {
             log.info(`Creating crypto payout for user ${userId}: ${netAmountDesired} ${cryptoCurrency} to ${cryptoAddress}`);
 
+            await this.assertWithdrawalsNotLocked(userId);
+
             // Validate withdrawal against user's balance and limits from the user-service
             const limitCheck = await userServiceClient.checkWithdrawalLimits(userId.toString(), netAmountDesired);
             if (!limitCheck.allowed) {
@@ -2176,6 +2219,8 @@ class PaymentService {
             throw new AppError('Withdrawals are currently unavailable. Please try again later or contact support.', 503);
         }
         // --- End Global Withdrawal Control Check ---
+
+        await this.assertWithdrawalsNotLocked(userId);
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -5329,6 +5374,8 @@ class PaymentService {
                 throw new AppError('Target user not found for withdrawal.', 404);
             }
 
+            await this.assertWithdrawalsNotLocked(targetUserId, 'admin');
+
             // NEW: Derive TARGET CURRENCY from momoOperator for admin-initiated user withdrawal
             const targetPayoutCurrency = momoOperatorToCurrency[withdrawalDetails.accountInfo.momoOperator] as Currency;
             if (!targetPayoutCurrency) {
@@ -6766,6 +6813,9 @@ class PaymentService {
             if (transaction.status !== TransactionStatus.PENDING_ADMIN_APPROVAL) {
                 return { success: false, error: `Cannot approve withdrawal with status: ${transaction.status}` };
             }
+
+            // Stays PENDING_ADMIN_APPROVAL: it can be approved once the lock ends.
+            await this.assertWithdrawalsNotLocked(transaction.userId, 'admin');
 
             // Update transaction with approval details
             transaction.approvedBy = new Types.ObjectId(adminId);

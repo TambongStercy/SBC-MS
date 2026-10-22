@@ -79,6 +79,12 @@ export interface IUser extends Document {
     otps: Types.DocumentArray<IOtp>;
     /** When sign-in codes were last sent, newest last, capped to OTP_SEND_MAX_IN_WINDOW. */
     otpSendLog?: Date[];
+    /**
+     * Withdrawals are refused until this date: set when the email or phone
+     * number changes (see utils/withdrawal-lock.ts).
+     */
+    withdrawalsLockedUntil?: Date;
+    withdrawalLockReason?: 'email_change' | 'phone_change';
     ipAddress?: string;
     ipCity?: string;
     ipRegion?: string;
@@ -174,6 +180,8 @@ const UserSchema = new Schema<IUser>(
         contactsOtps: [otpSchema],
         otps: [otpSchema],
         otpSendLog: { type: [Date], default: undefined },
+        withdrawalsLockedUntil: { type: Date },
+        withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change'] },
         ipAddress: { type: String },
         ipCity: { type: String, index: true },
         ipRegion: { type: String },

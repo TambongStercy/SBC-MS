@@ -80,6 +80,26 @@ class NotificationService {
     }
 
     /**
+     * A plain account email (notification-service /notifications/internal/create,
+     * which wraps the text in the branded template). Best-effort: never throws.
+     */
+    async sendAccountEmail(payload: { userId: string; email: string; subject: string; body: string }): Promise<boolean> {
+        try {
+            const { data } = await this.apiClient.post('/notifications/internal/create', {
+                userId: payload.userId,
+                type: NotificationType.ACCOUNT,
+                channel: DeliveryChannel.EMAIL,
+                recipient: payload.email,
+                data: { subject: payload.subject, body: payload.body },
+            });
+            return !!data?.success;
+        } catch (error: any) {
+            log.warn(`Account email to ${payload.userId} failed: ${error?.message ?? error}`);
+            return false;
+        }
+    }
+
+    /**
      * Send an OTP code via email or SMS for 2FA
      */
     async sendOtp(data: OtpNotificationRequest): Promise<boolean> {

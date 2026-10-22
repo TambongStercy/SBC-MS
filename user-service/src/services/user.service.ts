@@ -37,7 +37,9 @@ import { UserDetails } from '../database/repositories/user.repository';
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
 import { AppError, OtpThrottledError } from '../utils/errors';
-import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes } from '../utils/phone.utils';
+import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
+import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
+import { alertContactChange } from './contact-change-alert';
 import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
 
 // Country Code to Prefix Mapping (for dashboard calculation)
@@ -833,10 +835,17 @@ export class UserService {
         // client that resends the user's own phone on every profile save would
         // otherwise hit E11000 (dup key on its own value under some driver paths)
         // and abort the whole update — taking city/sex/birthDate down with it.
+        // A real change locks withdrawals (utils/withdrawal-lock.ts).
+        let phoneChangedFrom: IUser | null = null;
         if (allowedFields.phoneNumber !== undefined) {
             const current = await userRepository.findById(userId);
             if (current && current.phoneNumber === allowedFields.phoneNumber) {
                 delete allowedFields.phoneNumber;
+            } else if (current && isSamePhoneNumber(current.phoneNumber, allowedFields.phoneNumber)) {
+                // Same line in another format (e.g. now with its dialling code): saved, not a change.
+            } else {
+                Object.assign(allowedFields, withdrawalLockFields('phone_change'));
+                phoneChangedFrom = current;
             }
         }
 
@@ -847,6 +856,15 @@ export class UserService {
         }
 
         const updatedUser = await userRepository.updateById(userId, allowedFields);
+
+        if (updatedUser && phoneChangedFrom) {
+            alertContactChange({
+                userId,
+                previousEmail: phoneChangedFrom.email,
+                reason: 'phone_change',
+                newValue: String(allowedFields.phoneNumber ?? ''),
+            });
+        }
 
         // Sync denormalized fields on referrals if name, email, or phone changed
         if (updatedUser && (allowedFields.name || allowedFields.phoneNumber)) {
@@ -2907,6 +2925,28 @@ export class UserService {
         delete allowedAdminUpdates.contactsOtps;
         delete allowedAdminUpdates.token;
 
+        // An admin changing the email or phone locks withdrawals like the
+        // member's own change does: the October 2026 drain went through an
+        // admin account. Forms resend unchanged values, so compare first.
+        let contactChange: { reason: WithdrawalLockReason; newValue: string; previousEmail?: string } | null = null;
+        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined) {
+            const current = await userRepository.findById(userId);
+            if (current) {
+                const emailChanged = allowedAdminUpdates.email !== undefined
+                    && String(allowedAdminUpdates.email).trim().toLowerCase() !== (current.email || '').toLowerCase();
+                const phoneChanged = allowedAdminUpdates.phoneNumber !== undefined
+                    && !isSamePhoneNumber(current.phoneNumber, allowedAdminUpdates.phoneNumber);
+                if (emailChanged) {
+                    contactChange = { reason: 'email_change', newValue: String(allowedAdminUpdates.email), previousEmail: current.email };
+                } else if (phoneChanged) {
+                    contactChange = { reason: 'phone_change', newValue: String(allowedAdminUpdates.phoneNumber), previousEmail: current.email };
+                }
+            }
+        }
+        if (contactChange) {
+            Object.assign(allowedAdminUpdates, withdrawalLockFields(contactChange.reason));
+        }
+
         if (Object.keys(allowedAdminUpdates).length === 0) {
             log.warn(`Admin update user ${userId}: No valid fields provided for update.`);
             // Fetch the user directly to match the return type IUser | null
@@ -2918,6 +2958,10 @@ export class UserService {
         try {
             const updatedUser = await userRepository.updateById(userId, allowedAdminUpdates);
             log.info(`Admin successfully updated user ${userId}`);
+            if (updatedUser && contactChange) {
+                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
+                alertContactChange({ userId, ...contactChange });
+            }
             return updatedUser; // Return updated user
         } catch (error) {
             log.error(`Error updating user ${userId} (admin):`, error);
@@ -4157,8 +4201,16 @@ export class UserService {
         // 4. OTP is valid and email is available. Clear *all* general OTPs.
         await userRepository.clearOtps(user._id, 'otps');
 
-        // 5. Update the user's email address
-        await userRepository.updateById(user._id, { email: newEmail });
+        // 5. Update the user's email address. A real change locks withdrawals
+        // and alerts the address being replaced.
+        const emailChanged = newEmail.trim().toLowerCase() !== (user.email || '').toLowerCase();
+        await userRepository.updateById(user._id, {
+            email: newEmail,
+            ...(emailChanged ? withdrawalLockFields('email_change') : {}),
+        });
+        if (emailChanged) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'email_change', newValue: newEmail });
+        }
 
         log.info(`Email address successfully changed to ${newEmail} for user ${userId}`);
 
@@ -4271,13 +4323,27 @@ export class UserService {
         // 4. OTP is valid and phone number is available. Clear *all* general OTPs.
         await userRepository.clearOtps(user._id, 'otps');
 
-        // 5. Update the user's phone number
-        await userRepository.updateById(user._id, { phoneNumber: normalizedPhoneNumber });
+        // 5. Update the user's phone number. A real change locks withdrawals
+        // and alerts the account email.
+        const phoneChanged = !isSamePhoneNumber(user.phoneNumber, normalizedPhoneNumber);
+        await userRepository.updateById(user._id, {
+            phoneNumber: normalizedPhoneNumber,
+            ...(phoneChanged ? withdrawalLockFields('phone_change') : {}),
+        });
+        if (phoneChanged) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'phone_change', newValue: normalizedPhoneNumber });
+        }
 
         log.info(`Phone number successfully changed to ${normalizedPhoneNumber} for user ${userId}`);
 
         // Optional: Send confirmation to the *old* phone number?
         // await notificationService.sendPhoneChangeConfirmation(user.id, user.phoneNumber /* old phone */, normalizedPhoneNumber, user.name);
+    }
+
+    /** Whether withdrawals are blocked after an email/phone change (utils/withdrawal-lock.ts). */
+    async getWithdrawalLock(userId: string | Types.ObjectId): Promise<WithdrawalLockStatus | null> {
+        const user = await userRepository.findById(userId);
+        return user ? withdrawalLockStatus(user) : null;
     }
 
     /**
