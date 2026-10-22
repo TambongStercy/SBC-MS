@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
 import { validatePaymentIntent, validatePaymentDetails } from '../middleware/validation';
-import { authenticate, requireAdmin } from '../middleware/auth.middleware';
+import { authenticate, requireAdmin, requireServiceCaller } from '../middleware/auth.middleware';
 import { requireSsoScope } from '../middleware/sso-auth.middleware';
 import adminController from '../controllers/admin.controller';
 import { sbcLiveRefundController } from '../controllers/sbc-live-refund.controller';
@@ -57,7 +57,13 @@ router.get('/process/:sessionId', paymentController.renderPaymentPage);
 router.get('/sandbox/checkout/:sessionId', paymentController.renderSandboxCheckout);
 router.post('/sandbox/checkout/:sessionId/resolve', paymentController.resolveSandboxCheckout);
 
-router.post('/intents', validatePaymentIntent, paymentController.createPaymentIntent);
+// Service-only. Only our services create intents, and the body carries
+// metadata.callbackPath / originatingService: payment-service later POSTs the
+// result there WITH the service secret, and the receiver trusts that metadata.
+// Open to the public, anyone could set their own amount and callback (pay 100 F,
+// get a subscription) or point the callback at their own server and receive the
+// secret. Members never call this; the app goes through each service.
+router.post('/intents', requireServiceCaller, validatePaymentIntent, paymentController.createPaymentIntent);
 
 // Submit payment details and initiate provider payment
 router.post('/intents/:sessionId/submit', validatePaymentDetails, paymentController.submitPaymentDetails);

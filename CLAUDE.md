@@ -495,6 +495,19 @@ targeting (fixed 2026-08-08); `sbclove-service` avoided it with its own
 (`advertising-details`, `sbclove-details`) rather than reusing `batch-details`.
 Always read the repository's `.select()` before trusting an internal route.
 
+### Payment intents and payment callbacks are service-only (2026-10-22)
+
+`POST /api/payments/intents` requires the service secret (`requireServiceCaller`
+accepts `Authorization: Bearer <secret>` or `x-service-secret: <secret>`). The body's
+`metadata.callbackPath`/`originatingService` decide where payment-service later
+POSTs the result **with the service secret**, and receivers trust that metadata
+(`planId`, `userId`). While it was public, anyone could set their own amount and
+callback: pay 100 F for any subscription, or point the callback at their own server
+to receive the secret. Five empty 100 F probes hit it on 2026-10-03. Members never
+call it; each service creates intents for them. Every receiver of a callback
+(user-service subscriptions, advertising, events, tombola, relance) must require
+the service secret. The subscription webhook was the last one open until this date.
+
 ### notification-service internal sends: exact path AND recipient required
 
 `POST /api/notifications/internal/create` — the `/notifications` segment is

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import config from '../../config';
 import logger from '../../utils/logger';
 
@@ -86,9 +87,34 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
 };
 
 /**
+ * Service-only gate that accepts either header our services send:
+ * `Authorization: Bearer <secret>` (most clients) or `x-service-secret: <secret>`
+ * (notification-service relance packs).
+ */
+export const requireServiceCaller = (req: Request, res: Response, next: NextFunction) => {
+    const secret = config.services.serviceSecret;
+    const authHeader = req.header('Authorization');
+    const bearer = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const provided = bearer || req.header('x-service-secret');
+
+    const matches = (value: string | undefined): boolean => {
+        if (!secret || !value) return false;
+        const a = Buffer.from(value);
+        const b = Buffer.from(secret);
+        return a.length === b.length && crypto.timingSafeEqual(a, b);
+    };
+
+    if (!matches(provided)) {
+        log.warn(`Refused service-only request to ${req.method} ${req.originalUrl} (no valid service secret)`);
+        return res.status(401).json({ success: false, message: 'Access denied.' });
+    }
+    next();
+};
+
+/**
  * Middleware to check for service-to-service authentication
  */
-export const authenticateServiceRequest = (req: Request, res: Response, next: NextFunction) => {
+export const authenticateServiceRequest =(req: Request, res: Response, next: NextFunction) => {
     try {
         // Get the token from the Authorization header
         const authHeader = req.header('Authorization');
