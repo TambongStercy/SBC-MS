@@ -636,6 +636,17 @@ The retired monthly RELANCE subscription must not gate anything any more.
   for good; a filleul who had paid via activation balance kept getting "pay
   now" emails (only SMS checked). All fixed.
 
+**Packs can be paid with the SBC balance (2026-10-25, Rufus).** Full price only,
+via `POST /relance/packs/purchase { packId, useBalance: true, requestId }`. It
+uses the same payment-service calls as Ads campaigns (`/internal/balance-spend`
+and `/balance-refund`, Bearer secret). The order is claim → debit → credit:
+a `relancebalancepurchases` row is written first under a unique reference
+`relance-pack:<userId>:<requestId>`, so a repeated tap is one purchase. That same
+reference is the wallet line's `balanceSpendRef` and the `RelancePackCredit.sessionId`.
+Anything not credited is refunded on the spot. A row still `pending` after 10 min
+(restart, payment-service down) is settled by a 10-min cron: kept if the credit
+row exists, otherwise refunded. Tests: `src/tests/relance-balance-purchase.test.ts`.
+
 **Data facts that mislead:** `relancemessages` holds the admin's **7 day
 templates**, not sent messages — sends live in `relancetargets.messagesDelivered`.
 Relance pack payments are PaymentIntents whose `metadata.callbackPath` contains
