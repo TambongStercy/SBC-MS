@@ -5,6 +5,14 @@ import googleDriveService from './googleDrive.service';
 
 const log = logger.getLogger('CloudStorageService');
 
+/** How long browsers and Cloudflare may keep a stored file. */
+export const LONG_CACHE_CONTROL = 'public, max-age=31536000';
+/**
+ * A video stored as it arrived, about to be replaced by its compressed copy
+ * under the same name. Kept short so no cache holds on to the big version.
+ */
+export const PENDING_CACHE_CONTROL = 'public, max-age=60';
+
 interface UploadResult {
     fileId: string;
     publicUrl: string;
@@ -40,11 +48,17 @@ class CloudStorageService {
     }
 
     // Smart hybrid service that handles both old and new files
-    async uploadFileHybrid(fileBuffer: Buffer, mimeType: string, fileName: string, folderType?: string): Promise<UploadResult> {
+    async uploadFileHybrid(
+        fileBuffer: Buffer,
+        mimeType: string,
+        fileName: string,
+        folderType?: string,
+        cacheControl: string = LONG_CACHE_CONTROL,
+    ): Promise<UploadResult> {
         // Route NEW uploads to Cloud Storage
         if (this.useCloudStorage) {
             try {
-                return await this.uploadFile(fileBuffer, mimeType, fileName, folderType);
+                return await this.uploadFile(fileBuffer, mimeType, fileName, folderType, cacheControl);
             } catch (error) {
                 log.warn('Cloud Storage upload failed, falling back to Google Drive');
                 const driveResult = await googleDriveService.uploadFile(fileBuffer, mimeType, fileName);
@@ -92,7 +106,13 @@ class CloudStorageService {
         return `https://drive.google.com/uc?export=download&id=${fileId}`;
     }
 
-    async uploadFile(fileBuffer: Buffer, mimeType: string, fileName: string, folderType?: string): Promise<UploadResult> {
+    async uploadFile(
+        fileBuffer: Buffer,
+        mimeType: string,
+        fileName: string,
+        folderType?: string,
+        cacheControl: string = LONG_CACHE_CONTROL,
+    ): Promise<UploadResult> {
         try {
             const bucket = this.storage.bucket(this.bucketName);
             const file = bucket.file(fileName);
@@ -106,7 +126,7 @@ class CloudStorageService {
                 resumable: fileBuffer.length >= 8 * 1024 * 1024,
                 metadata: {
                     contentType: mimeType,
-                    cacheControl: 'public, max-age=31536000', // 1 year cache
+                    cacheControl,
                 },
                 // Files will be publicly accessible via bucket-level IAM policy
             });
@@ -350,13 +370,19 @@ class CloudStorageService {
     }
 
     /** Type and size, without pulling any of the bytes. */
-    async statFile(fileId: string): Promise<{ contentType?: string; size?: string }> {
+    async statFile(fileId: string): Promise<{ contentType?: string; size?: string; cacheControl?: string }> {
         const [metadata] = await this.storage
             .bucket(this.bucketName).file(this.objectPath(fileId)).getMetadata();
         return {
             contentType: metadata.contentType,
             size: metadata.size != null ? String(metadata.size) : undefined,
+            cacheControl: metadata.cacheControl,
         };
+    }
+
+    /** Changes how long caches may keep an object, without re-uploading it. */
+    async setCacheControl(fileName: string, cacheControl: string): Promise<void> {
+        await this.storage.bucket(this.bucketName).file(fileName).setMetadata({ cacheControl });
     }
 
     /**

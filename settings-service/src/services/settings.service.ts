@@ -218,6 +218,10 @@ class SettingsService {
             // Import cloud storage service
             const CloudStorageService = (await import('./cloudStorage.service')).default;
 
+            if (file.mimetype?.startsWith('video/')) {
+                return await this.uploadVideoThenCompress(file, folderName);
+            }
+
             // Shrink before storing. Nothing used to: raw phone photos and screen
             // recordings went to the bucket untouched, which is how 47,955 images
             // came to average 667 KiB and video to grow ~25 GiB a month.
@@ -267,6 +271,68 @@ class SettingsService {
             log.error(`Failed to upload generic file: ${uploadError.message}`, uploadError);
             throw new Error('Failed to upload file to storage.');
         }
+    }
+
+    /**
+     * Stores a video as it arrived, answers, then replaces it with its compressed
+     * copy under the same name.
+     *
+     * Re-encoding inside the request made the member wait for it: a 40–60 MB
+     * video takes about a minute, and transcodes run two at a time behind every
+     * diffuseur's proof video. Past 100 s Cloudflare drops the connection (nginx
+     * 499) and the app shows "Le visuel n'a pas pu être envoyé" — about a third
+     * of uploads in October 2026. The member now gets the file id in seconds.
+     *
+     * The name ends in .mp4 from the start because that is what the re-encode
+     * produces. The original goes up with a 60 s cache so nothing keeps the big
+     * version; the copy replaces it with the usual one-year cache. If compression
+     * fails or saves nothing, the original stays and gets the long cache.
+     */
+    private async uploadVideoThenCompress(file: Express.Multer.File, folderName?: string): Promise<UploadedFileInfo> {
+        const CloudStorageService = (await import('./cloudStorage.service')).default;
+        const { LONG_CACHE_CONTROL, PENDING_CACHE_CONTROL } = await import('./cloudStorage.service');
+        const { compressUpload } = await import('./media-compression.service');
+
+        const folderPrefix = folderName ? `${folderName}/` : '';
+        const uniqueFileName = `${folderPrefix}${Date.now()}_${file.originalname.replace(/\.[^.]+$/, '')}.mp4`;
+
+        const uploadResult = await CloudStorageService.uploadFileHybrid(
+            file.buffer,
+            file.mimetype,
+            uniqueFileName,
+            folderName,
+            PENDING_CACHE_CONTROL,
+        );
+        log.info(`Generic file uploaded successfully. File ID: ${uploadResult.fileId} (video, compression follows)`);
+
+        // A Drive fallback has its own id; there is nothing to replace in place.
+        if (uploadResult.fileId === uniqueFileName) {
+            void (async () => {
+                try {
+                    const compressed = await compressUpload(file.buffer, file.mimetype);
+                    if (compressed.compressed) {
+                        await CloudStorageService.uploadFile(compressed.buffer, compressed.mimeType, uniqueFileName, folderName);
+                        log.info(
+                            `Compressed '${uniqueFileName}' ${(file.size / 1024).toFixed(0)} KiB -> `
+                            + `${(compressed.buffer.length / 1024).toFixed(0)} KiB, replaced in place`,
+                        );
+                    } else {
+                        await CloudStorageService.setCacheControl(uniqueFileName, LONG_CACHE_CONTROL);
+                    }
+                } catch (err: any) {
+                    // The original is stored and served; only its size and cache suffer.
+                    log.warn(`Background compression of '${uniqueFileName}' failed: ${err.message}`);
+                }
+            })();
+        }
+
+        return {
+            fileId: uploadResult.fileId,
+            url: uploadResult.publicUrl,
+            fileName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+        };
     }
 
     // --- Formations Management Methods ---

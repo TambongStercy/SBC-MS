@@ -443,6 +443,21 @@ Other standing facts:
   buckets (it needs the service's own credentials; a bare `new Storage()` reaches
   only the public bucket anonymously and silently omits the private one).
 
+### Video uploads answer before they are compressed (2026-10-25)
+
+`POST /api/settings/files/upload` used to re-encode a video (ffmpeg, 2 at a time,
+shared with every diffuseur proof) **inside the request**. A 40–60 MB video took
+about a minute plus queue time; past **100 s Cloudflare drops the connection**
+(nginx logs 499) and the app shows "Le visuel n'a pas pu être envoyé". That was
+~35% of all uploads every day in October. Videos are now stored as they arrived
+under a `.mp4` name with `PENDING_CACHE_CONTROL` (60 s), the id is returned at
+once, and the compressed copy replaces the object in place with the one-year
+cache. The file proxy sends 60 s instead of a year while an object is pending,
+so Cloudflare never pins the big version. Images are still compressed inline
+(about 1 s). The bucket has versioning suspended, so an overwrite leaves nothing behind.
+Measure upload health from nginx: `POST /api/settings/files/upload` 200 vs 499
+per day. The route itself takes no login.
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to
@@ -494,6 +509,19 @@ targeting (fixed 2026-08-08); `sbclove-service` avoided it with its own
 **When a module needs profile fields, add its own internal projection endpoint**
 (`advertising-details`, `sbclove-details`) rather than reusing `batch-details`.
 Always read the repository's `.select()` before trusting an internal route.
+
+### Payment intents and payment callbacks are service-only (2026-10-22)
+
+`POST /api/payments/intents` requires the service secret (`requireServiceCaller`
+accepts `Authorization: Bearer <secret>` or `x-service-secret: <secret>`). The body's
+`metadata.callbackPath`/`originatingService` decide where payment-service later
+POSTs the result **with the service secret**, and receivers trust that metadata
+(`planId`, `userId`). While it was public, anyone could set their own amount and
+callback: pay 100 F for any subscription, or point the callback at their own server
+to receive the secret. Five empty 100 F probes hit it on 2026-10-03. Members never
+call it; each service creates intents for them. Every receiver of a callback
+(user-service subscriptions, advertising, events, tombola, relance) must require
+the service secret. The subscription webhook was the last one open until this date.
 
 ### notification-service internal sends: exact path AND recipient required
 
