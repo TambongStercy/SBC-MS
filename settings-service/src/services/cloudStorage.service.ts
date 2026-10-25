@@ -370,19 +370,20 @@ class CloudStorageService {
     }
 
     /** Type and size, without pulling any of the bytes. */
-    async statFile(fileId: string): Promise<{ contentType?: string; size?: string; cacheControl?: string }> {
+    async statFile(fileId: string): Promise<{ contentType?: string; size?: string; cacheControl?: string; updated?: string }> {
         const [metadata] = await this.storage
             .bucket(this.bucketName).file(this.objectPath(fileId)).getMetadata();
         return {
             contentType: metadata.contentType,
             size: metadata.size != null ? String(metadata.size) : undefined,
             cacheControl: metadata.cacheControl,
+            updated: metadata.updated != null ? String(metadata.updated) : undefined,
         };
     }
 
     /** Changes how long caches may keep an object, without re-uploading it. */
-    async setCacheControl(fileName: string, cacheControl: string): Promise<void> {
-        await this.storage.bucket(this.bucketName).file(fileName).setMetadata({ cacheControl });
+    async setCacheControl(fileId: string, cacheControl: string): Promise<void> {
+        await this.storage.bucket(this.bucketName).file(this.objectPath(fileId)).setMetadata({ cacheControl });
     }
 
     /**
