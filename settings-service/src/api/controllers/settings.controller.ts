@@ -1,7 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import settingsService from '../../services/settings.service'; // Import the instance directly
 import GoogleDriveService from '../../services/googleDrive.service'; // Import Drive service
-import cloudStorageService, { PENDING_CACHE_CONTROL } from '../../services/cloudStorage.service'; // Import Cloud Storage service
+import cloudStorageService, { LONG_CACHE_CONTROL, PENDING_CACHE_CONTROL } from '../../services/cloudStorage.service'; // Import Cloud Storage service
+
+/** How long a video may wait for its compressed copy before its original is final. */
+const PENDING_GIVE_UP_MS = 15 * 60 * 1000;
 import logger from '../../utils/logger';
 import { NotFoundError, AppError, BadRequestError, ForbiddenError } from '../../utils/errors'; // Assuming custom error classes
 import axios from 'axios';
@@ -256,11 +259,19 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
             res.setHeader('Content-Type', meta.contentType ?? 'application/octet-stream');
             // A video still waiting for its compressed copy must not be pinned in
             // Cloudflare for a year: the copy replaces it under this same URL.
+            // A compression killed by a restart never comes back, though, and a
+            // 60 s cache for ever would have Cloudflare re-fetch the original from
+            // the bucket every minute. Past 15 minutes the original is final.
+            const pending = meta.cacheControl === PENDING_CACHE_CONTROL;
+            const abandoned = pending && !!meta.updated
+                && Date.now() - Date.parse(meta.updated) > PENDING_GIVE_UP_MS;
+            if (abandoned) {
+                cloudStorageService.setCacheControl(directUrl, LONG_CACHE_CONTROL)
+                    .catch(err => log.warn(`Could not settle the cache of ${fileId}: ${err.message}`));
+            }
             res.setHeader(
                 'Cache-Control',
-                meta.cacheControl === PENDING_CACHE_CONTROL
-                    ? PENDING_CACHE_CONTROL
-                    : 'public, max-age=31536000, immutable',
+                pending && !abandoned ? PENDING_CACHE_CONTROL : 'public, max-age=31536000, immutable',
             );
             if (req.query.download === '1') {
                 const name = fileId.split('/').pop() ?? 'fichier';
