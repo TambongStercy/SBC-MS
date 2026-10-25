@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import settingsService from '../../services/settings.service'; // Import the instance directly
 import GoogleDriveService from '../../services/googleDrive.service'; // Import Drive service
-import cloudStorageService from '../../services/cloudStorage.service'; // Import Cloud Storage service
+import cloudStorageService, { PENDING_CACHE_CONTROL } from '../../services/cloudStorage.service'; // Import Cloud Storage service
 import logger from '../../utils/logger';
 import { NotFoundError, AppError, BadRequestError, ForbiddenError } from '../../utils/errors'; // Assuming custom error classes
 import axios from 'axios';
@@ -254,7 +254,14 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
             const range = req.headers.range;
 
             res.setHeader('Content-Type', meta.contentType ?? 'application/octet-stream');
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            // A video still waiting for its compressed copy must not be pinned in
+            // Cloudflare for a year: the copy replaces it under this same URL.
+            res.setHeader(
+                'Cache-Control',
+                meta.cacheControl === PENDING_CACHE_CONTROL
+                    ? PENDING_CACHE_CONTROL
+                    : 'public, max-age=31536000, immutable',
+            );
             if (req.query.download === '1') {
                 const name = fileId.split('/').pop() ?? 'fichier';
                 res.setHeader('Content-Disposition', `attachment; filename="${name}"`);

@@ -443,6 +443,21 @@ Other standing facts:
   buckets (it needs the service's own credentials; a bare `new Storage()` reaches
   only the public bucket anonymously and silently omits the private one).
 
+### Video uploads answer before they are compressed (2026-10-25)
+
+`POST /api/settings/files/upload` used to re-encode a video (ffmpeg, 2 at a time,
+shared with every diffuseur proof) **inside the request**. A 40–60 MB video took
+about a minute plus queue time; past **100 s Cloudflare drops the connection**
+(nginx logs 499) and the app shows "Le visuel n'a pas pu être envoyé". That was
+~35% of all uploads every day in October. Videos are now stored as they arrived
+under a `.mp4` name with `PENDING_CACHE_CONTROL` (60 s), the id is returned at
+once, and the compressed copy replaces the object in place with the one-year
+cache. The file proxy sends 60 s instead of a year while an object is pending,
+so Cloudflare never pins the big version. Images are still compressed inline
+(about 1 s). The bucket has versioning suspended, so an overwrite leaves nothing behind.
+Measure upload health from nginx: `POST /api/settings/files/upload` 200 vs 499
+per day. The route itself takes no login.
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to
