@@ -14,6 +14,7 @@ import { startRelanceSenderJob } from './jobs/relance-sender.job';
 import cron from 'node-cron';
 import { runBounceMailboxPass } from './services/bounce-mailbox.service';
 import { flushDuePushes } from './services/push.service';
+import { sweepInterruptedBalancePurchases } from './services/relance-balance-purchase.service';
 
 // Create Express server
 const app = express();
@@ -90,6 +91,12 @@ async function startServer() {
         }, 3000);
 
         logger.info('[Server] Relance cron jobs initialized');
+
+        // Relance packs bought with the SBC balance and interrupted between the
+        // debit and the crediting: credited ones are kept, the rest refunded.
+        cron.schedule('*/10 * * * *', () => {
+            sweepInterruptedBalancePurchases().catch(err => logger.error('[Server] Relance balance purchase sweep failed:', err));
+        });
 
         // Pushes held through the night (quiet hours) go out from 07:00 Douala time.
         cron.schedule('*/5 * * * *', () => { flushDuePushes().catch(err => logger.error('[Server] Push flush failed:', err)); });

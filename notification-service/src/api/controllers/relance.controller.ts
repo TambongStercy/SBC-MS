@@ -11,6 +11,7 @@ import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, isCameroon } from '../../c
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { pushFilleulPaid } from '../../services/relance-alerts.service';
 import { creditRelancePack } from '../../services/relance-credit.service';
+import { buyPackWithBalance } from '../../services/relance-balance-purchase.service';
 import { adminOverview, adminParrains } from '../../services/relance-admin.service';
 import config from '../../config';
 
@@ -704,6 +705,37 @@ class RelanceController {
                 if (!isCameroon(buyer.country)) {
                     res.status(403).json({ success: false, message: 'Les SMS de relance sont réservés aux membres du Cameroun.' });
                     return;
+                }
+            }
+
+            // Paid in full from the SBC balance: credited at once, no payment page.
+            if (req.body?.useBalance === true) {
+                const result = await buyPackWithBalance({ userId, pack, requestId: req.body.requestId });
+                switch (result.outcome) {
+                    case 'credited':
+                        res.status(200).json({
+                            success: true,
+                            data: { paidWithBalance: true, pack, credits: result.credits, balance: result.balance },
+                        });
+                        return;
+                    case 'insufficient':
+                        res.status(409).json({ success: false, message: 'Votre solde SBC ne couvre pas ce pack.' });
+                        return;
+                    case 'in_progress':
+                        res.status(202).json({
+                            success: true,
+                            message: 'Achat en cours. Vos crédits apparaîtront dans un instant.',
+                            data: { paidWithBalance: true, inProgress: true, pack },
+                        });
+                        return;
+                    case 'failed':
+                        res.status(502).json({
+                            success: false,
+                            message: result.refunded
+                                ? "Le pack n'a pas pu être crédité. Votre solde n'a pas été débité, ou il a été remboursé."
+                                : "Le pack n'a pas pu être crédité. Le remboursement de votre solde est en cours.",
+                        });
+                        return;
                 }
             }
 
