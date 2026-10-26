@@ -3232,12 +3232,25 @@ class PaymentService {
             throw new Error('Country code is required for fiat currency payments.');
         }
 
-        // CinetPay: Côte d'Ivoire only (payin + payout).
+        // CinetPay: Côte d'Ivoire (payin + payout), and Burkina Faso once its
+        // CinetPay account is configured.
         // CM was moved here in PR #61 but reverted in this PR — CinetPay's CM
         // merchant account became unstable (140k+ XAF stuck in "inUse" with no
         // settlement ETA, blocking real users). CinetPay-CM credentials remain
         // in env so we can flip back quickly if CinetPay stabilises that account.
-        const cinetpaySupportedCountries = ['CI'];
+        //
+        // Burkina Faso (Rufus, 2026-10-26): payins and payouts move from
+        // MoneyFusion to CinetPay, but only while CINETPAY_BF_API_KEY and
+        // CINETPAY_BF_API_PASSWORD are set. Without them every BF payment and
+        // payout would fail, so BF stays on MoneyFusion (below) until they are
+        // filled in, and emptying them switches BF back. Every path — payin,
+        // user withdrawal, admin approval, admin payouts — picks the gateway
+        // here, so they all follow.
+        const cinetpayWhenConfigured = ['BF'];
+        const cinetpaySupportedCountries = [
+            'CI',
+            ...cinetpayWhenConfigured.filter(cc => Boolean(config.cinetpay.countries[cc])),
+        ];
         if (cinetpaySupportedCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using CINETPAY.`);
             return PaymentGateway.CINETPAY;
@@ -3251,6 +3264,7 @@ class PaymentService {
         }
 
         // MoneyFusion: BF, SN, ML, CD, GA, NE, GN, TD, CM, CF, GH
+        // BF only while its CinetPay account is not configured (see above).
         // CM restored to MoneyFusion (was here originally, briefly moved to CinetPay
         // in PR #61, restored here per Rufus 2026-06-24).
         // CF (Centrafrique) added 2026-07-08 per Rufus — MoneyFusion added the country
@@ -5614,6 +5628,9 @@ class PaymentService {
                     amount: netAmountDesired, // Pass the NET amount in TARGET payout currency
                     phoneNumber: nationalPhoneNumber,
                     countryCode: withdrawalDetails.accountInfo.countryCode,
+                    // Computed above and never passed, so CinetPay refused every
+                    // admin-initiated withdrawal ("payment method required").
+                    paymentMethod: cinetpayPaymentMethod,
                     recipientName: withdrawalDetails.accountInfo.recipientName || userDetails.name || 'SBC User',
                     recipientEmail: withdrawalDetails.accountInfo.recipientEmail || userDetails.email || `${targetUserId}@sbc.com`,
                     description: `Admin-initiated withdrawal for ${userDetails.name} (Tx: ${withdrawalTransaction.transactionId})`,
@@ -6973,8 +6990,10 @@ class PaymentService {
             // Select gateway based on country
             const selectedGateway = this.selectGateway(countryCode, undefined, true, undefined);
 
-            // Calculate net amount (amount - fee)
-            const netAmount = transaction.amount - transaction.fee;
+            // Calculate net amount (amount - fee). Rounded to the centime: the fee
+            // is stored rounded, so 8194.88 - 199.88 came out as 7994.999999999999
+            // and CinetPay refused it as "not a multiple of 5" (50 withdrawals).
+            const netAmount = Math.round((transaction.amount - transaction.fee) * 100) / 100;
 
             log.info(
                 `[PAYOUT-TRACE] ${transaction.transactionId}: gateway=${selectedGateway} `
@@ -7008,17 +7027,21 @@ class PaymentService {
                     throw new Error(result.message);
                 }
 
-                // Store the CinetPay transaction ID in the externalTransactionId field
-                if (result.cinetpayTransactionId) {
-                    await transactionRepository.update(transaction._id, {
-                        externalTransactionId: result.cinetpayTransactionId,
-                        metadata: {
-                            ...(transaction.metadata || {}),
-                            cinetpayTransactionId: result.cinetpayTransactionId
-                        }
-                    });
-                    log.info(`Stored CinetPay transaction ID ${result.cinetpayTransactionId} for transaction ${transaction.transactionId}`);
-                }
+                // Record that CinetPay is paying it, whatever the withdrawal was
+                // labelled when it was requested: the status checker and the fix
+                // pages route on these fields. A BF withdrawal requested under
+                // MoneyFusion and approved after BF moved to CinetPay would
+                // otherwise sit in "processing" with nothing checking it.
+                await transactionRepository.update(transaction._id, {
+                    serviceProvider: 'CinetPay',
+                    ...(result.cinetpayTransactionId ? { externalTransactionId: result.cinetpayTransactionId } : {}),
+                    metadata: {
+                        ...(transaction.metadata || {}),
+                        selectedPayoutService: 'CinetPay',
+                        ...(result.cinetpayTransactionId ? { cinetpayTransactionId: result.cinetpayTransactionId } : {}),
+                    }
+                });
+                log.info(`Stored CinetPay transaction ID ${result.cinetpayTransactionId ?? '(none returned)'} for transaction ${transaction.transactionId}`);
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
                 // Use existing processFeexpayPayout method
                 const targetCurrency = momoOperatorToCurrency[momoOperator] || Currency.XOF;
