@@ -1108,7 +1108,33 @@ Fix workflow (PR shipped 2026-07-01, feature/fix-cinetpay-withdrawals-page):
   - No admin verification against CinetPay dashboard needed — the status API
     is authoritative
 
+### Burkina Faso goes to CinetPay only when its account is configured (2026-10-26)
+
+Rufus asked to move BF payins and payouts from MoneyFusion to CinetPay.
+`selectGateway` sends BF to CinetPay **only while `CINETPAY_BF_API_KEY` and
+`CINETPAY_BF_API_PASSWORD` are non-empty** in payment-service `.env`; otherwise
+BF stays on MoneyFusion. On 2026-10-26 both keys existed but were **empty**, so
+BF was still on MoneyFusion. Fill them in and restart payment-service to switch;
+empty them to switch back. Before trusting BF payouts, send one small real payout:
+the CinetPay codes `OM_BF` / `MOOV_BF` (`operatorMaps.ts`) follow the new API's
+`OM_CI` pattern but had never been used. The old API's codes were `OMBF`/`MOOVBF`.
+Also confirm the BF account's IP whitelist includes `207.180.242.122`.
+`src/scripts/check-bf-gateway.ts` asserts both states.
+
+Two CinetPay payout bugs fixed at the same time:
+- **Rounding:** the approval paid `amount - fee` unrounded. With the fee stored
+  to the centime, 7,995 F became 7,994.999999999999, which CinetPay refused as
+  "Amount must be a multiple of 5". This failed 50 withdrawals.
+- **Missing payment method:** `adminInitiateUserWithdrawal` never sent
+  `paymentMethod`, so CinetPay refused every admin-initiated withdrawal.
+
 ### CinetPay top-level `serviceProvider` field is NOT set
+
+**Update 2026-10-26:** the admin-approval path (`processMobileMoneyWithdrawalPayout`)
+now sets `serviceProvider: 'CinetPay'` and `metadata.selectedPayoutService:
+'CinetPay'` when CinetPay pays. A withdrawal requested under another provider (BF
+under MoneyFusion before the switch) is then checked as CinetPay. Older rows
+still have it null, so keep the `$or` below.
 
 Pre-existing gap: withdrawals routed through CinetPay have `serviceProvider: null`
 in the transaction document, but `metadata.selectedPayoutService: 'CinetPay'`.
