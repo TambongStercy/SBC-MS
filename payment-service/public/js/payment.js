@@ -35,10 +35,14 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Countries that require a phone input on THIS page (FeexPay request-to-pay flow).
-        // CinetPay (CI only) redirects to CinetPay's hosted page — no phone here.
+        // CinetPay (CI) redirects to CinetPay's hosted page — no phone here.
         // MoneyFusion (BF, SN, CM, ML, CD, GA, NE, GN) takes the payment phone on
         // MoneyFusion's hosted checkout; we send the user's account phone server-side
         // as the contact.
+        // window.operatorChoices (from the server) lists countries where the operator
+        // decides the provider — BF once its CinetPay account is set: Orange → CinetPay,
+        // Moov → MoneyFusion. Both take the phone on their own page, so only the
+        // operator is asked here.
         const feexpayCountries = ['BJ', 'TG', 'CG'];
 
         // FeexPay operators per country
@@ -204,6 +208,23 @@ document.addEventListener('DOMContentLoaded', function () {
                     otpInputGroup.classList.add('hidden');
                     otpInput.required = false;
                     otpInput.value = '';
+                }
+            }
+            else if (window.operatorChoices && window.operatorChoices[selectedCountry]) {
+                const choices = window.operatorChoices[selectedCountry];
+                phoneInputGroup.classList.add('hidden');
+                phoneInput.required = false;
+                phoneInput.value = '';
+                choices.forEach(choice => {
+                    const option = document.createElement('option');
+                    option.value = choice.value;
+                    option.textContent = choice.label;
+                    operatorSelect.appendChild(option);
+                });
+                operatorSelectGroup.classList.remove('hidden');
+                operatorSelect.required = true;
+                if (window.prefillOperator && choices.some(c => c.value === window.prefillOperator)) {
+                    operatorSelect.value = window.prefillOperator;
                 }
             }
             else {
