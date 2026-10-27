@@ -1111,12 +1111,22 @@ Fix workflow (PR shipped 2026-07-01, feature/fix-cinetpay-withdrawals-page):
 ### Burkina Faso goes to CinetPay only when its account is configured (2026-10-26)
 
 Rufus asked to move BF payins and payouts from MoneyFusion to CinetPay.
-`selectGateway` sends BF to CinetPay **only while `CINETPAY_BF_API_KEY` and
+**CinetPay serves only Orange Burkina** (their support, 2026-10-26), so BF moves
+operator by operator (`CINETPAY_OPERATORS_BY_COUNTRY` in payment.service.ts):
+- **Orange goes to CinetPay.** The operator arrives in three forms: the withdrawal
+  operator `ORANGE_BFA`, the payment-page choice `orange_bf`, and an admin
+  direct-payout method `OM_BF`.
+- **Moov stays on MoneyFusion.** So does a BF payin that arrives with no operator.
+- **The page asks for the operator.** Once BF is split, the payment page shows an
+  "Orange Money / Moov Money" choice for BF (`payinOperatorChoices` → `window.operatorChoices`).
+  Payins must move too, because CinetPay pays BF out of the BF balance its payins fill.
+
+All of this applies **only while `CINETPAY_BF_API_KEY` and
 `CINETPAY_BF_API_PASSWORD` are non-empty** in payment-service `.env`; otherwise
-BF stays on MoneyFusion. On 2026-10-26 both keys existed but were **empty**, so
+all of BF stays on MoneyFusion and the page asks nothing extra. On 2026-10-26 both keys existed but were **empty**, so
 BF was still on MoneyFusion. Fill them in and restart payment-service to switch;
 empty them to switch back. Before trusting BF payouts, send one small real payout:
-the CinetPay codes `OM_BF` / `MOOV_BF` (`operatorMaps.ts`) follow the new API's
+the CinetPay code `OM_BF` (`operatorMaps.ts`) follows the new API's
 `OM_CI` pattern but had never been used. The old API's codes were `OMBF`/`MOOVBF`.
 Also confirm the BF account's IP whitelist includes `207.180.242.122`.
 `src/scripts/check-bf-gateway.ts` asserts both states.

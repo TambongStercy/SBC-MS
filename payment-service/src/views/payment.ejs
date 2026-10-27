@@ -1549,6 +1549,8 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
             var prefillPhoneNumber = "<%= (typeof phoneNumber !== 'undefined' && phoneNumber !== null) ? phoneNumber : '' %>";
             var prefillCountryCode = "<%= (typeof countryCode !== 'undefined' && countryCode !== null) ? countryCode : '' %>";
             var prefillOperator = "<%= (typeof operator !== 'undefined' && operator !== null) ? operator : '' %>";
+            // Countries where the operator decides the provider (server-built, not user input).
+            var operatorChoices = <%- JSON.stringify(typeof operatorChoices !== 'undefined' && operatorChoices ? operatorChoices : {}) %>;
             var gateway = "<%= gateway %>";
             var gatewayPaymentId = "<%= gatewayPaymentId %>";
             var cryptoAddress = "<%= (typeof cryptoAddress !== 'undefined' && cryptoAddress !== null) ? cryptoAddress : '' %>";
