@@ -617,7 +617,7 @@ class PaymentService {
             // --- FEEXPAY WITHDRAWALS CONTROL ---
             // Check if FeexPay withdrawals are enabled via configuration
             let selectedGateway: PaymentGateway;
-            const originalGateway = this.selectGateway(countryCode, undefined, true, undefined);
+            const originalGateway = this.selectGateway(countryCode, undefined, true, undefined, momoOperator);
 
             if (originalGateway === PaymentGateway.FEEXPAY && !config.feexpay.withdrawalsEnabled) {
                 log.error(`FeexPay withdrawals are currently disabled. Country: ${countryCode}, User: ${userId}`);
@@ -3104,7 +3104,7 @@ class PaymentService {
         // For crypto payments, countryCode might be undefined
         // Extract payment method from metadata if available
         const paymentMethod = paymentIntent.metadata?.paymentMethod;
-        const selectedGateway = this.selectGateway(details.countryCode || '', finalCurrency, false, paymentMethod);
+        const selectedGateway = this.selectGateway(details.countryCode || '', finalCurrency, false, paymentMethod, details.operator);
 
         // Set up update data for the PaymentIntent document
         const updateData: UpdatePaymentIntentInput = { // Use the specific Update type
@@ -3213,7 +3213,42 @@ class PaymentService {
         return updatedIntent;
     }
 
-    private selectGateway(countryCode: string, currency?: string, isWithdrawal?: boolean, paymentMethod?: string): PaymentGateway {
+    /**
+     * Countries moving to CinetPay one operator at a time.
+     *
+     * Burkina Faso (Rufus, 2026-10-26): CinetPay confirmed only Orange Burkina
+     * works on their side, so Orange goes to CinetPay and Moov stays on
+     * MoneyFusion. The operator arrives under three spellings: the stored
+     * withdrawal operator (ORANGE_BFA), the payment page choice (orange_bf), and
+     * the CinetPay method an admin types for a direct payout (OM_BF).
+     *
+     * Applies only while CINETPAY_<CC>_API_KEY / _PASSWORD are set: without them
+     * every payment would fail, so the country stays on its usual provider, and
+     * emptying them switches it back. Unknown or missing operator → usual
+     * provider too (MoneyFusion takes every BF operator).
+     */
+    private static readonly CINETPAY_OPERATORS_BY_COUNTRY: Record<string, string[]> = {
+        BF: ['ORANGE_BFA', 'orange_bf', 'OM_BF'],
+    };
+
+    private cinetpayServesOperator(countryCode: string, operator?: string): boolean {
+        const operators = PaymentService.CINETPAY_OPERATORS_BY_COUNTRY[countryCode];
+        return !!operators && !!operator && operators.includes(operator) && Boolean(config.cinetpay.countries[countryCode]);
+    }
+
+    /**
+     * Operator choices the payment page must offer before redirecting, per
+     * country: only where the operator decides the provider. Empty until the
+     * CinetPay account of that country is configured, so the page asks nothing
+     * extra before then.
+     */
+    public payinOperatorChoices(): Record<string, Array<{ value: string; label: string }>> {
+        return config.cinetpay.countries['BF']
+            ? { BF: [{ value: 'orange_bf', label: 'Orange Money' }, { value: 'moov_bf', label: 'Moov Money' }] }
+            : {};
+    }
+
+    private selectGateway(countryCode: string, currency?: string, isWithdrawal?: boolean, paymentMethod?: string, operator?: string): PaymentGateway {
         // Check if user wants to pay with cryptocurrency
         if (currency && this.isCryptoCurrency(currency)) {
             log.info(`Crypto currency ${currency} selected, using NOWPAYMENTS.`);
@@ -3239,18 +3274,13 @@ class PaymentService {
         // settlement ETA, blocking real users). CinetPay-CM credentials remain
         // in env so we can flip back quickly if CinetPay stabilises that account.
         //
-        // Burkina Faso (Rufus, 2026-10-26): payins and payouts move from
-        // MoneyFusion to CinetPay, but only while CINETPAY_BF_API_KEY and
-        // CINETPAY_BF_API_PASSWORD are set. Without them every BF payment and
-        // payout would fail, so BF stays on MoneyFusion (below) until they are
-        // filled in, and emptying them switches BF back. Every path — payin,
-        // user withdrawal, admin approval, admin payouts — picks the gateway
-        // here, so they all follow.
-        const cinetpayWhenConfigured = ['BF'];
-        const cinetpaySupportedCountries = [
-            'CI',
-            ...cinetpayWhenConfigured.filter(cc => Boolean(config.cinetpay.countries[cc])),
-        ];
+        // Burkina Faso (Rufus, 2026-10-26): moves to CinetPay operator by
+        // operator — see cinetpayServesOperator.
+        if (this.cinetpayServesOperator(countryCode, operator)) {
+            log.info(`Country ${countryCode} operator ${operator} selected, using CINETPAY.`);
+            return PaymentGateway.CINETPAY;
+        }
+        const cinetpaySupportedCountries = ['CI'];
         if (cinetpaySupportedCountries.includes(countryCode)) {
             log.info(`Country ${countryCode} selected, using CINETPAY.`);
             return PaymentGateway.CINETPAY;
@@ -3264,7 +3294,7 @@ class PaymentService {
         }
 
         // MoneyFusion: BF, SN, ML, CD, GA, NE, GN, TD, CM, CF, GH
-        // BF only while its CinetPay account is not configured (see above).
+        // BF: every operator CinetPay does not serve yet (see cinetpayServesOperator).
         // CM restored to MoneyFusion (was here originally, briefly moved to CinetPay
         // in PR #61, restored here per Rufus 2026-06-24).
         // CF (Centrafrique) added 2026-07-08 per Rufus — MoneyFusion added the country
@@ -5511,7 +5541,7 @@ class PaymentService {
             let providerName: 'CinetPay' | 'FeexPay';
 
             // Use gateway selection logic with withdrawal flag (CinetPay for Togo withdrawals)
-            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode, undefined, true, undefined);
+            const selectedGateway = this.selectGateway(withdrawalDetails.accountInfo.countryCode, undefined, true, undefined, withdrawalDetails.accountInfo.momoOperator);
 
             // --- FEEXPAY ADMIN WITHDRAWALS CONTROL ---
             // Ensure admin withdrawals also respect FeexPay blocking
@@ -5870,7 +5900,7 @@ class PaymentService {
                 : recipientDetails.phoneNumber.replace(/\D/g, '');
 
             // Use gateway selection logic with withdrawal flag (CinetPay for Togo withdrawals)
-            const selectedGateway = this.selectGateway(recipientDetails.countryCode, undefined, true, undefined);
+            const selectedGateway = this.selectGateway(recipientDetails.countryCode, undefined, true, undefined, recipientDetails.paymentMethod);
 
             // --- FEEXPAY ADMIN DIRECT PAYOUT CONTROL ---
             // Ensure admin direct payouts also respect FeexPay blocking
@@ -6988,7 +7018,7 @@ class PaymentService {
             const recipientName = accountInfo.recipientName || 'User';
 
             // Select gateway based on country
-            const selectedGateway = this.selectGateway(countryCode, undefined, true, undefined);
+            const selectedGateway = this.selectGateway(countryCode, undefined, true, undefined, momoOperator);
 
             // Calculate net amount (amount - fee). Rounded to the centime: the fee
             // is stored rounded, so 8194.88 - 199.88 came out as 7994.999999999999
