@@ -3,16 +3,23 @@ import { MessageType } from '../database/models/message.model';
 import { userServiceClient } from './clients/user.service.client';
 import { sendChatPush } from './clients/notification.service.client';
 
-const GCS_PUBLIC = 'https://storage.googleapis.com/sbc-file-storage/';
+// Public file URLs: the media domain (Cloudflare R2, since Nov 2026) and the
+// Google Cloud Storage address older records still carry.
+const PUBLIC_FILE_PREFIXES = [
+    'https://media.sniperbuisnesscenter.com/',
+    'https://media-preprod.sniperbuisnesscenter.com/',
+    'https://storage.googleapis.com/sbc-file-storage/',
+];
 
 /**
  * The sender's photo as a notification icon: a 128px copy through our own
  * /api/settings/files resizer. Same origin, so the service worker can fetch it
- * (a direct storage.googleapis.com URL has no CORS for it, and costs egress).
+ * (a direct bucket URL has no CORS for it).
  */
 export function avatarIcon(avatar?: string): string | undefined {
     if (!avatar) return undefined;
-    if (avatar.startsWith(GCS_PUBLIC)) return `/api/settings/files/${encodeURIComponent(avatar.slice(GCS_PUBLIC.length))}?w=128`;
+    const prefix = PUBLIC_FILE_PREFIXES.find(p => avatar.startsWith(p));
+    if (prefix) return `/api/settings/files/${encodeURIComponent(avatar.slice(prefix.length))}?w=128`;
     if (avatar.startsWith('/settings/files/')) return `/api${avatar}${avatar.includes('?') ? '&' : '?'}w=128`;
     if (avatar.startsWith('https://')) return avatar;
     return undefined;

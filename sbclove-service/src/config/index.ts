@@ -125,7 +125,7 @@ const config: IConfig = {
         apiGateway: ensureApiSuffix(process.env.API_GATEWAY_URL, 'http://localhost:3000'),
         chatService: ensureApiSuffix(process.env.CHAT_SERVICE_URL, 'http://localhost:3008'),
         // Same public bucket settings-service itself hands out URLs for.
-        publicFileBaseUrl: (process.env.PUBLIC_FILE_BASE_URL || 'https://storage.googleapis.com/sbc-file-storage').replace(/\/$/, ''),
+        publicFileBaseUrl: (process.env.PUBLIC_FILE_BASE_URL || 'https://media.sniperbuisnesscenter.com').replace(/\/$/, ''),
     },
 
     logging: {

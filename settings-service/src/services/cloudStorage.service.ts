@@ -1,7 +1,21 @@
-import { Storage } from '@google-cloud/storage';
-import config from '../config';
+import { PassThrough, Readable } from 'stream';
+import {
+    CopyObjectCommand,
+    DeleteObjectCommand,
+    GetObjectCommand,
+    HeadObjectCommand,
+    PutObjectCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl as presign } from '@aws-sdk/s3-request-presigner';
 import logger from '../utils/logger';
-import googleDriveService from './googleDrive.service';
+import {
+    r2,
+    r2Config,
+    publicUrl,
+    publicObjectKey,
+    privateObjectRef,
+    privateObjectKey,
+} from './r2.client';
 
 const log = logger.getLogger('CloudStorageService');
 
@@ -24,30 +38,28 @@ interface SignedUrlOptions {
     action?: 'read' | 'write' | 'delete';
 }
 
+const isNotFound = (error: any): boolean =>
+    error?.name === 'NotFound' || error?.name === 'NoSuchKey' || error?.$metadata?.httpStatusCode === 404;
+
+/** S3 CopySource: bucket and key, each path segment encoded. */
+const copySource = (bucket: string, key: string): string =>
+    `${bucket}/${key.split('/').map(encodeURIComponent).join('/')}`;
+
+/**
+ * Object storage for every file SBC serves, on Cloudflare R2 (see r2.client.ts).
+ * The public bucket holds avatars, products, creatives and videos, served from
+ * its custom domain; the private bucket holds statuses and chat documents,
+ * reachable only by signed URL.
+ */
 class CloudStorageService {
-    private storage: Storage;
-    private bucketName = 'sbc-file-storage'; // Public bucket for general files
-    private privateBucketName = 'sbc-status-media-private'; // Private bucket for status/stories
-    private useCloudStorage = true; // Feature flag - ENABLE for new uploads
+    private bucketName = r2Config.publicBucket;
+    private privateBucketName = r2Config.privateBucket;
 
     constructor() {
-        this.storage = new Storage({
-            projectId: 'snipper-c0411', // Your project ID
-            credentials: {
-                client_email: config.googleDrive.clientEmail,
-                private_key: config.googleDrive.privateKey,
-            }
-        });
-
-        // Auto-create bucket if it doesn't exist
-        this.createBucketIfNotExists().catch(error => {
-            log.error('Failed to create bucket:', error);
-        });
-
-        log.info('Cloud Storage service initialized.');
+        log.info(`Cloud Storage service initialized (R2: ${this.bucketName}, ${this.privateBucketName}).`);
     }
 
-    // Smart hybrid service that handles both old and new files
+    // Kept for its callers; Google Drive is no longer an upload target.
     async uploadFileHybrid(
         fileBuffer: Buffer,
         mimeType: string,
@@ -55,55 +67,15 @@ class CloudStorageService {
         folderType?: string,
         cacheControl: string = LONG_CACHE_CONTROL,
     ): Promise<UploadResult> {
-        // Route NEW uploads to Cloud Storage
-        if (this.useCloudStorage) {
-            try {
-                return await this.uploadFile(fileBuffer, mimeType, fileName, folderType, cacheControl);
-            } catch (error) {
-                log.warn('Cloud Storage upload failed, falling back to Google Drive');
-                const driveResult = await googleDriveService.uploadFile(fileBuffer, mimeType, fileName);
-                return {
-                    fileId: driveResult.fileId,
-                    publicUrl: driveResult.webContentLink || driveResult.webViewLink || '',
-                    fileName
-                };
-            }
-        } else {
-            // Use Drive for now (but this will change soon)
-            const driveResult = await googleDriveService.uploadFile(fileBuffer, mimeType, fileName);
-            return {
-                fileId: driveResult.fileId,
-                publicUrl: driveResult.webContentLink || driveResult.webViewLink || '',
-                fileName
-            };
-        }
+        return this.uploadFile(fileBuffer, mimeType, fileName, folderType, cacheControl);
     }
 
-    // Universal file retrieval - returns direct CDN URLs for Cloud Storage, proxy URLs for Drive
+    // Public URL for a stored object; proxy URL for a legacy Google Drive id.
     async getFileUrl(fileId: string): Promise<string> {
-        // Check if it's already a full URL (GCS direct URL)
-        if (fileId.startsWith('https://storage.googleapis.com/')) {
-            return fileId; // Already a direct URL
-        }
-
-        // Check if it's a GCS filename (contains folder structure) - return direct CDN URL
-        if (fileId.includes('/') || fileId.startsWith('avatars/') || fileId.startsWith('products/') || fileId.startsWith('documents/')) {
-            return `https://storage.googleapis.com/${this.bucketName}/${fileId}`;
-        }
-
-        // Check if it's a Drive file (33 character ID starting with '1') - use proxy to save bandwidth
-        if (fileId.length === 33 && fileId.startsWith('1')) {
+        if (fileId.length === 33 && fileId.startsWith('1') && !fileId.includes('/') && !fileId.includes('.')) {
             return `/api/settings/files/${fileId}`;
         }
-
-        // Fallback: assume it's a GCS filename and return direct CDN URL
-        return `https://storage.googleapis.com/${this.bucketName}/${fileId}`;
-    }
-
-    // Get direct Google Drive URL (no proxy needed)
-    private getDriveDirectUrl(fileId: string): string {
-        // Use Google Drive's direct download URL for public files
-        return `https://drive.google.com/uc?export=download&id=${fileId}`;
+        return publicUrl(publicObjectKey(fileId));
     }
 
     async uploadFile(
@@ -114,31 +86,19 @@ class CloudStorageService {
         cacheControl: string = LONG_CACHE_CONTROL,
     ): Promise<UploadResult> {
         try {
-            const bucket = this.storage.bucket(this.bucketName);
-            const file = bucket.file(fileName);
-
-            await file.save(fileBuffer, {
-                // Simple upload for anything under 8MB. The default resumable
-                // session is a multi-request dance that dies on a single
-                // mid-flight ECONNRESET (bit us 2026-08-09: campaign creative
-                // upload 500'd, and the Drive fallback is quota-dead). One
-                // request, retried whole, is far more robust at these sizes.
-                resumable: fileBuffer.length >= 8 * 1024 * 1024,
-                metadata: {
-                    contentType: mimeType,
-                    cacheControl,
-                },
-                // Files will be publicly accessible via bucket-level IAM policy
-            });
-
-            const publicUrl = `https://storage.googleapis.com/${this.bucketName}/${fileName}`;
+            await r2.send(new PutObjectCommand({
+                Bucket: this.bucketName,
+                Key: fileName,
+                Body: fileBuffer,
+                ContentType: mimeType,
+                CacheControl: cacheControl,
+            }));
 
             log.info(`File '${fileName}' uploaded successfully to Cloud Storage`);
-
             return {
-                fileId: fileName, // In Cloud Storage, fileName serves as ID
-                publicUrl,
-                fileName
+                fileId: fileName, // the object key serves as ID
+                publicUrl: publicUrl(fileName),
+                fileName,
             };
         } catch (error: any) {
             log.error(`Error uploading file '${fileName}' to Cloud Storage:`, error);
@@ -146,66 +106,9 @@ class CloudStorageService {
         }
     }
 
-    async createBucketIfNotExists(): Promise<void> {
-        try {
-            const bucket = this.storage.bucket(this.bucketName);
-            const [exists] = await bucket.exists();
-
-            if (!exists) {
-                await this.storage.createBucket(this.bucketName, {
-                    location: 'US',
-                    storageClass: 'STANDARD',
-                    uniformBucketLevelAccess: true, // Enable uniform bucket-level access
-                });
-
-                log.info(`Created bucket with uniform bucket-level access: ${this.bucketName}`);
-            }
-
-            // Set bucket-level IAM policy to allow public read access
-            await this.setBucketPublicPolicy(bucket);
-
-        } catch (error: any) {
-            log.error(`Error creating bucket: ${error.message}`);
-            throw error;
-        }
-    }
-
-    private async setBucketPublicPolicy(bucket: any): Promise<void> {
-        try {
-            // Get current IAM policy
-            const [policy] = await bucket.iam.getPolicy();
-
-            // Add public read access
-            const publicReadBinding = {
-                role: 'roles/storage.objectViewer',
-                members: ['allUsers'],
-            };
-
-            // Check if public read binding already exists
-            const existingBinding = policy.bindings?.find(
-                (binding: any) => binding.role === 'roles/storage.objectViewer' &&
-                    binding.members?.includes('allUsers')
-            );
-
-            if (!existingBinding) {
-                if (!policy.bindings) policy.bindings = [];
-                policy.bindings.push(publicReadBinding);
-
-                await bucket.iam.setPolicy(policy);
-                log.info(`Set bucket IAM policy for public read access: ${this.bucketName}`);
-            } else {
-                log.info(`Bucket already has public read access: ${this.bucketName}`);
-            }
-        } catch (error: any) {
-            log.warn(`Could not set bucket public policy (files may not be publicly accessible): ${error.message}`);
-            // Don't throw error - the bucket still works, files just might not be publicly accessible
-        }
-    }
-
     async deleteFile(fileName: string): Promise<void> {
         try {
-            const bucket = this.storage.bucket(this.bucketName);
-            await bucket.file(fileName).delete();
+            await r2.send(new DeleteObjectCommand({ Bucket: this.bucketName, Key: publicObjectKey(fileName) }));
             log.info(`File '${fileName}' deleted successfully from Cloud Storage`);
         } catch (error: any) {
             log.error(`Error deleting file '${fileName}' from Cloud Storage:`, error);
@@ -217,36 +120,29 @@ class CloudStorageService {
 
     /**
      * Upload file to PRIVATE bucket (for status/stories)
-     * Returns GCS path (gs://bucket/path), not a public URL
+     * Returns a `gs://bucket/path` reference, not a public URL.
      */
     async uploadFilePrivate(fileBuffer: Buffer, mimeType: string, fileName: string, folder: string = 'statuses'): Promise<UploadResult> {
         try {
-            const bucket = this.storage.bucket(this.privateBucketName);
             const filePath = `${folder}/${fileName}`;
-            const file = bucket.file(filePath);
-
-            await file.save(fileBuffer, {
-                metadata: {
-                    contentType: mimeType,
-                    // A status is immutable and lives 24h, so the browser can hold
-                    // it for its whole life. At 1h, a viewer who came back in the
-                    // afternoon re-downloaded the same video they had already
-                    // fetched that morning. Still private: only whoever holds a
-                    // valid signed URL can fetch it in the first place.
-                    cacheControl: 'private, max-age=86400, immutable',
-                },
-                // File is private by default (no public access)
-            });
-
-            // Return GCS path (gs:// format) - NOT a public URL
-            const gcsPath = `gs://${this.privateBucketName}/${filePath}`;
+            await r2.send(new PutObjectCommand({
+                Bucket: this.privateBucketName,
+                Key: filePath,
+                Body: fileBuffer,
+                ContentType: mimeType,
+                // A status is immutable and lives 24h, so the browser can hold
+                // it for its whole life. At 1h, a viewer who came back in the
+                // afternoon re-downloaded the same video they had already
+                // fetched that morning. Still private: only whoever holds a
+                // valid signed URL can fetch it in the first place.
+                CacheControl: 'private, max-age=86400, immutable',
+            }));
 
             log.info(`File '${filePath}' uploaded successfully to PRIVATE bucket`);
-
             return {
                 fileId: filePath, // Full path within bucket
-                publicUrl: gcsPath, // GCS path (will need signed URL to access)
-                fileName: filePath
+                publicUrl: privateObjectRef(filePath), // needs a signed URL to access
+                fileName: filePath,
             };
         } catch (error: any) {
             log.error(`Error uploading file '${fileName}' to private bucket:`, error);
@@ -261,41 +157,37 @@ class CloudStorageService {
      */
     async getSignedUrl(filePath: string, options: SignedUrlOptions = {}): Promise<string> {
         try {
-            const {
-                expiresIn = 3600, // 1 hour default
-                action = 'read'
-            } = options;
+            const { expiresIn = 3600, action = 'read' } = options;
+            const key = privateObjectKey(filePath);
 
-            // Remove gs:// prefix if present
-            const cleanPath = filePath.replace(`gs://${this.privateBucketName}/`, '');
-
-            const bucket = this.storage.bucket(this.privateBucketName);
-            const file = bucket.file(cleanPath);
-
-            // The expiry is snapped to a fixed hourly boundary rather than taken
-            // from the clock, so the SAME object yields the SAME URL for everyone
+            // The signing time and the expiry are both snapped to hourly
+            // boundaries, so the SAME object yields the SAME URL for everyone
             // who asks within that hour.
             //
-            // A raw Date.now() puts a different timestamp in every signature, so
-            // every request produced a brand new URL for the same bytes. Browser
-            // caches are keyed on the URL, so nothing was ever a cache hit: each
-            // time a viewer opened the status feed, every image and video in it
-            // was pulled from the bucket again in full. Status media is the one
-            // thing here that no cache could ever help, which makes it the worst
-            // byte-for-byte of anything we serve.
+            // A signature over the current time puts a different timestamp in
+            // every URL. Browser caches are keyed on the URL, so nothing was ever
+            // a cache hit: each time a viewer opened the status feed, every image
+            // and video in it was pulled from the bucket again in full.
             //
-            // Rounded UP, so the URL is always valid for at least expiresIn.
+            // Expiry rounded UP, so the URL is always valid for at least expiresIn.
             const HOUR_MS = 60 * 60 * 1000;
-            const expires = Math.ceil((Date.now() + expiresIn * 1000) / HOUR_MS) * HOUR_MS;
+            const now = Date.now();
+            const signingDate = new Date(Math.floor(now / HOUR_MS) * HOUR_MS);
+            const expires = Math.ceil((now + expiresIn * 1000) / HOUR_MS) * HOUR_MS;
 
-            const [url] = await file.getSignedUrl({
-                version: 'v4',
-                action,
-                expires,
+            const target = { Bucket: this.privateBucketName, Key: key };
+            const command = action === 'write'
+                ? new PutObjectCommand(target)
+                : action === 'delete'
+                    ? new DeleteObjectCommand(target)
+                    : new GetObjectCommand(target);
+
+            const url = await presign(r2, command, {
+                signingDate,
+                expiresIn: Math.round((expires - signingDate.getTime()) / 1000),
             });
 
-            log.debug(`Generated signed URL for ${cleanPath} (expires in ${expiresIn}s)`);
-
+            log.debug(`Generated signed URL for ${key} (expires in ${expiresIn}s)`);
             return url;
         } catch (error: any) {
             log.error(`Failed to generate signed URL for ${filePath}:`, error);
@@ -308,19 +200,10 @@ class CloudStorageService {
      */
     async getSignedUrls(filePaths: string[], options: SignedUrlOptions = {}): Promise<Map<string, string>> {
         try {
-            const urlPromises = filePaths.map(async (filePath) => {
-                const url = await this.getSignedUrl(filePath, options);
-                return { filePath, url };
-            });
-
-            const results = await Promise.all(urlPromises);
-
-            const urlMap = new Map<string, string>();
-            results.forEach(({ filePath, url }) => {
-                urlMap.set(filePath, url);
-            });
-
-            return urlMap;
+            const results = await Promise.all(
+                filePaths.map(async (filePath) => ({ filePath, url: await this.getSignedUrl(filePath, options) }))
+            );
+            return new Map(results.map(({ filePath, url }) => [filePath, url]));
         } catch (error: any) {
             log.error('Failed to generate multiple signed URLs:', error);
             throw new Error(`Failed to generate signed URLs: ${error.message}`);
@@ -328,62 +211,55 @@ class CloudStorageService {
     }
 
     /**
-     * Delete file from private bucket
+     * Delete file from private bucket. A file that is already gone is the
+     * outcome the caller wanted: otherwise the status-cleanup job treats it as
+     * "retry later" and re-attempts that status every hour forever.
      */
     async deleteFilePrivate(filePath: string): Promise<void> {
         try {
-            // Remove gs:// prefix if present
-            const cleanPath = filePath.replace(`gs://${this.privateBucketName}/`, '');
-
-            const bucket = this.storage.bucket(this.privateBucketName);
-            // ignoreNotFound: a file that is already gone is the outcome the
-            // caller wanted. Without this, GCS throws 404, this rethrows as a
-            // generic 500, and the status-cleanup job treats it as "retry later"
-            // — so every expired status whose media had already been removed was
-            // re-attempted every hour forever and never marked deleted.
-            await bucket.file(cleanPath).delete({ ignoreNotFound: true });
-            log.info(`File '${cleanPath}' deleted successfully from private bucket`);
+            const key = privateObjectKey(filePath);
+            await r2.send(new DeleteObjectCommand({ Bucket: this.privateBucketName, Key: key }));
+            log.info(`File '${key}' deleted successfully from private bucket`);
         } catch (error: any) {
+            if (isNotFound(error)) return;
             log.error(`Error deleting file '${filePath}' from private bucket:`, error);
             throw new Error(`Private bucket deletion failed: ${error.message}`);
         }
     }
 
-    /**
-     * Read an object from the PUBLIC bucket using our own credentials.
-     *
-     * The bucket used to be readable anonymously, so everything simply pointed a
-     * browser (or an axios call) at storage.googleapis.com. That stopped working
-     * on 2026-09-05: the bucket's IAM still grants allUsers objectViewer, but
-     * `publicAccessPrevention` is now `inherited` from an org policy that
-     * overrides it, so every anonymous GET returns 403 — which took down every
-     * image, creative and verification video in the app at once, through the
-     * proxy as well as directly.
-     *
-     * Reading through the authenticated client is immune to that, and it is where
-     * we wanted the traffic anyway: served from our own origin, Cloudflare caches
-     * it, and repeat views cost no egress.
-     */
+    /** Read a whole object from the PUBLIC bucket (used to resize images). */
     async downloadFile(fileId: string): Promise<Buffer> {
-        const [contents] = await this.storage.bucket(this.bucketName).file(this.objectPath(fileId)).download();
-        return contents;
+        const out = await r2.send(new GetObjectCommand({ Bucket: this.bucketName, Key: publicObjectKey(fileId) }));
+        return Buffer.from(await out.Body!.transformToByteArray());
     }
 
     /** Type and size, without pulling any of the bytes. */
     async statFile(fileId: string): Promise<{ contentType?: string; size?: string; cacheControl?: string; updated?: string }> {
-        const [metadata] = await this.storage
-            .bucket(this.bucketName).file(this.objectPath(fileId)).getMetadata();
+        const head = await r2.send(new HeadObjectCommand({ Bucket: this.bucketName, Key: publicObjectKey(fileId) }));
         return {
-            contentType: metadata.contentType,
-            size: metadata.size != null ? String(metadata.size) : undefined,
-            cacheControl: metadata.cacheControl,
-            updated: metadata.updated != null ? String(metadata.updated) : undefined,
+            contentType: head.ContentType,
+            size: head.ContentLength != null ? String(head.ContentLength) : undefined,
+            cacheControl: head.CacheControl,
+            updated: head.LastModified?.toISOString(),
         };
     }
 
-    /** Changes how long caches may keep an object, without re-uploading it. */
+    /**
+     * Changes how long caches may keep an object, without re-uploading it from
+     * here: S3 has no metadata-only update, so the object is copied onto itself
+     * with the new header (content type kept).
+     */
     async setCacheControl(fileId: string, cacheControl: string): Promise<void> {
-        await this.storage.bucket(this.bucketName).file(this.objectPath(fileId)).setMetadata({ cacheControl });
+        const key = publicObjectKey(fileId);
+        const head = await r2.send(new HeadObjectCommand({ Bucket: this.bucketName, Key: key }));
+        await r2.send(new CopyObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+            CopySource: copySource(this.bucketName, key),
+            MetadataDirective: 'REPLACE',
+            ContentType: head.ContentType,
+            CacheControl: cacheControl,
+        }));
     }
 
     /**
@@ -391,20 +267,19 @@ class CloudStorageService {
      *
      * The range matters for video: a <video> element seeks by asking for ranges,
      * and a server that always returns the whole file cannot be scrubbed.
+     * Returned at once; an R2 failure arrives as the stream's 'error' event.
      */
     streamFile(fileId: string, range?: { start?: number; end?: number }): NodeJS.ReadableStream {
-        return this.storage
-            .bucket(this.bucketName)
-            .file(this.objectPath(fileId))
-            .createReadStream(range?.start !== undefined ? { start: range.start, end: range.end } : undefined);
-    }
-
-    /** `https://storage.googleapis.com/<bucket>/a/b.jpg` or `a/b.jpg` -> `a/b.jpg`. */
-    private objectPath(fileId: string): string {
-        const prefix = `https://storage.googleapis.com/${this.bucketName}/`;
-        const path = fileId.startsWith(prefix) ? fileId.slice(prefix.length) : fileId;
-        // Callers pass ids taken straight out of URLs, so %20 and friends are common.
-        return decodeURIComponent(path.split('?')[0]);
+        const out = new PassThrough();
+        const Range = range?.start !== undefined ? `bytes=${range.start}-${range.end ?? ''}` : undefined;
+        r2.send(new GetObjectCommand({ Bucket: this.bucketName, Key: publicObjectKey(fileId), Range }))
+            .then(res => {
+                const body = res.Body as Readable;
+                body.on('error', err => out.destroy(err));
+                body.pipe(out);
+            })
+            .catch(err => out.destroy(err));
+        return out;
     }
 
     /**
@@ -412,13 +287,10 @@ class CloudStorageService {
      */
     async fileExistsPrivate(filePath: string): Promise<boolean> {
         try {
-            const cleanPath = filePath.replace(`gs://${this.privateBucketName}/`, '');
-            const bucket = this.storage.bucket(this.privateBucketName);
-            const file = bucket.file(cleanPath);
-            const [exists] = await file.exists();
-            return exists;
+            await r2.send(new HeadObjectCommand({ Bucket: this.privateBucketName, Key: privateObjectKey(filePath) }));
+            return true;
         } catch (error: any) {
-            log.error(`Error checking file existence ${filePath}:`, error);
+            if (!isNotFound(error)) log.error(`Error checking file existence ${filePath}:`, error);
             return false;
         }
     }
