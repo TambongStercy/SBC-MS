@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus } from '../../database/models/campaign.model';
-import CampaignParticipationModel from '../../database/models/campaign-participation.model';
+import CampaignParticipationModel, { ParticipationStatus } from '../../database/models/campaign-participation.model';
 import { campaignClickBreakdown, getLeaderboard as leaderboard } from '../../services/ranking.service';
 import { activateApprovedCampaign as activatePaidCampaign } from '../../services/activation.service';
 import {
@@ -27,7 +27,18 @@ import {
     simulationSnapshot,
     activeCampaignsForSimulation,
 } from '../../services/simulation.service';
-import { notifyCampaignApproved, notifyCampaignRejected } from '../../services/clients/notification.service.client';
+import {
+    notifyCampaignApproved,
+    notifyCampaignRejected,
+    notifyMediaChangeApproved,
+    notifyMediaChangeRejected,
+    notifyCreativeUpdated,
+} from '../../services/clients/notification.service.client';
+import {
+    approveMediaChange,
+    rejectMediaChange,
+    listPendingMediaChanges,
+} from '../../services/campaign.service';
 import { verificationStats, activeCount, queuedCount } from '../../services/verification-session.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { estimateReach } from '../../services/reach.service';
@@ -476,5 +487,62 @@ export const unbanDiffuseurAccount = async (req: AuthenticatedRequest, res: Resp
         return res.json({ success: true, message: 'Bannissement levé.' });
     } catch (err) {
         return fail(res, err, 'unbanDiffuseurAccount');
+    }
+};
+
+/** Creative replacements waiting for review, with the current creative alongside. */
+export const listMediaChanges = async (_req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaigns = await listPendingMediaChanges();
+        return res.json({
+            success: true,
+            data: campaigns.map(c => ({
+                _id: c._id,
+                title: c.title,
+                status: c.status,
+                advertiserUserId: c.advertiserUserId,
+                mediaFileId: c.mediaFileId,
+                mediaType: c.mediaType,
+                pendingMedia: c.pendingMedia,
+            })),
+        });
+    } catch (err) {
+        return fail(res, err, 'listMediaChanges');
+    }
+};
+
+export const approveMediaChangeRequest = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await CampaignModel.findById(req.params.id);
+        if (!campaign) throw new AppError('Campagne introuvable.', 404);
+
+        const updated = await approveMediaChange(campaign, adminUserId(req));
+        log.info(`Campaign ${updated._id}: new creative approved by ${updated.reviewedBy}`);
+
+        await notifyMediaChangeApproved(String(updated.advertiserUserId), updated.title);
+        const inProgress = await CampaignParticipationModel.find(
+            { campaignId: updated._id, status: ParticipationStatus.IN_PROGRESS },
+            { diffuseurUserId: 1 },
+        ).lean();
+        for (const p of inProgress) void notifyCreativeUpdated(String(p.diffuseurUserId), updated.title);
+
+        return res.json({ success: true, data: { mediaFileId: updated.mediaFileId, mediaType: updated.mediaType } });
+    } catch (err) {
+        return fail(res, err, 'approveMediaChange');
+    }
+};
+
+export const rejectMediaChangeRequest = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await CampaignModel.findById(req.params.id);
+        if (!campaign) throw new AppError('Campagne introuvable.', 404);
+
+        const updated = await rejectMediaChange(campaign, adminUserId(req), req.body?.reason);
+        log.info(`Campaign ${updated._id}: new creative rejected by ${updated.reviewedBy}`);
+        await notifyMediaChangeRejected(String(updated.advertiserUserId), updated.title, updated.mediaChangeRejection!.reason);
+
+        return res.json({ success: true, data: { mediaChangeRejection: updated.mediaChangeRejection } });
+    } catch (err) {
+        return fail(res, err, 'rejectMediaChange');
     }
 };

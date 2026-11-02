@@ -15,6 +15,8 @@ import {
     cancel,
     pause,
     resume,
+    requestMediaChange,
+    withdrawMediaChange,
 } from '../controllers/campaign.controller';
 
 const router = Router();
@@ -38,5 +40,7 @@ router.post('/:id/pause', pause);
 router.post('/:id/resume', resume);
 router.get('/:id/performance', getPerformance);
 router.post('/:id/decide', decideUnfilled);
+router.post('/:id/media-change', requestMediaChange);
+router.delete('/:id/media-change', withdrawMediaChange);
 
 export default router;

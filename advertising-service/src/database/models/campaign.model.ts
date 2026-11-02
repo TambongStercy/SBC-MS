@@ -81,6 +81,27 @@ export interface ICampaign extends Document {
      * covered.
      */
     mediaPerceptualHash?: string;
+    /**
+     * Fingerprints of the creatives this campaign showed before a replacement.
+     * A diffuseur who posted an earlier creative while it was the live one still
+     * posted OUR flyer, so verification matches against these too.
+     */
+    previousMediaPerceptualHashes?: string[];
+
+    /**
+     * A replacement creative the annonceur submitted for a live or paused
+     * campaign. It waits for an admin; the current creative keeps running
+     * until the replacement is approved.
+     */
+    pendingMedia?: {
+        fileId: string;
+        type: 'image' | 'video';
+        mimeType?: string;
+        sha256?: string;
+        submittedAt: Date;
+    };
+    /** Why the last replacement was refused; cleared by the next submission. */
+    mediaChangeRejection?: { reason: string; at: Date };
 
     /** Caption text suggested to diffuseurs. Their tracking link is appended. */
     suggestedCaption?: string;
@@ -204,6 +225,24 @@ const CampaignSchema = new Schema<ICampaign>({
     mediaMimeType: { type: String },
     mediaSha256: { type: String, index: true },
     mediaPerceptualHash: { type: String },
+    previousMediaPerceptualHashes: { type: [String], default: undefined },
+    pendingMedia: {
+        type: new Schema({
+            fileId: { type: String, required: true },
+            type: { type: String, enum: ['image', 'video'], required: true },
+            mimeType: { type: String },
+            sha256: { type: String },
+            submittedAt: { type: Date, required: true },
+        }, { _id: false }),
+        default: undefined,
+    },
+    mediaChangeRejection: {
+        type: new Schema({
+            reason: { type: String, trim: true, maxlength: 1000, required: true },
+            at: { type: Date, required: true },
+        }, { _id: false }),
+        default: undefined,
+    },
 
     suggestedCaption: { type: String, trim: true, maxlength: 700 },
 
