@@ -3,8 +3,8 @@
  * Based on the cloud storage migration guide
  */
 
-// Cloud Storage bucket URL
-const CLOUD_STORAGE_BASE_URL = 'https://storage.googleapis.com/sbc-file-storage';
+// Public file storage (Cloudflare R2 behind the media domain since Nov 2026)
+const CLOUD_STORAGE_BASE_URL = (import.meta.env.VITE_MEDIA_BASE_URL || 'https://media.sniperbuisnesscenter.com').replace(/\/+$/, '');
 
 /**
  * Generate the appropriate file URL based on file ID format

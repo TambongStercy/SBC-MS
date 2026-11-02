@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import settingsService from '../../services/settings.service'; // Import the instance directly
 import GoogleDriveService from '../../services/googleDrive.service'; // Import Drive service
 import cloudStorageService, { LONG_CACHE_CONTROL, PENDING_CACHE_CONTROL } from '../../services/cloudStorage.service'; // Import Cloud Storage service
+import { r2Config, LEGACY_PUBLIC_PREFIXES } from '../../services/r2.client';
 
 /** How long a video may wait for its compressed copy before its original is final. */
 const PENDING_GIVE_UP_MS = 15 * 60 * 1000;
@@ -186,13 +187,12 @@ export const getFileFromStorage = async (req: Request, res: Response, next: Next
         // Uploads via /files/upload land at the bucket root with a plain filename
         // ("1786263530665_flyer.jpg") — no slash, no known prefix — so a
         // prefix-only test sent them down the Drive path and 404'd.
-        const isFullCdnUrl = fileId.startsWith('https://storage.googleapis.com/');
+        const isFullCdnUrl = [`${r2Config.publicBaseUrl}/`, ...LEGACY_PUBLIC_PREFIXES].some(p => fileId.startsWith(p));
         const isCloudStorage = isFullCdnUrl || fileId.includes('/') || /\.[a-z0-9]{2,5}$/i.test(fileId);
 
         if (isCloudStorage) {
-            const directUrl = isFullCdnUrl
-                ? fileId
-                : `https://storage.googleapis.com/sbc-file-storage/${fileId}`;
+            // The storage service accepts a bare key or any stored public URL.
+            const directUrl = fileId;
 
             // A redirect is cheaper and fine for <img>, but the bucket sends no
             // Access-Control-Allow-Origin, so anything that reads the *bytes* —

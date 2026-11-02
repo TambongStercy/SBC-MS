@@ -1,4 +1,5 @@
 // import { NotFoundError } from '../utils/errors';
+import { publicUrl, publicObjectKey } from './r2.client';
 import SettingsRepository from '../database/repositories/settings.repository';
 import {
     ISettings,
@@ -59,22 +60,12 @@ class SettingsService {
         const generateUrl = (ref?: IFileReference) => {
             if (!ref?.fileId) return ref;
 
-            // Check if it's a Cloud Storage file (contains folder structure)
-            if (ref.fileId.includes('/') || ref.fileId.startsWith('avatars/') || ref.fileId.startsWith('products/') || ref.fileId.startsWith('documents/')) {
-                // Direct CDN URL for Cloud Storage files
-                ref.url = `https://storage.googleapis.com/sbc-file-storage/${ref.fileId}`;
-            }
-            // Check if it's already a full URL
-            else if (ref.fileId.startsWith('https://storage.googleapis.com/')) {
-                ref.url = ref.fileId; // Already a direct URL
-            }
-            // Google Drive file - use proxy for bandwidth efficiency
-            else if (ref.fileId.length === 33 && ref.fileId.startsWith('1')) {
+            // Legacy Google Drive id (33 characters starting with '1'): served through the proxy.
+            if (ref.fileId.length === 33 && ref.fileId.startsWith('1') && !ref.fileId.includes('/') && !ref.fileId.includes('.')) {
                 ref.url = `/api/settings/files/${ref.fileId}`;
-            }
-            // Fallback: assume Cloud Storage path
-            else {
-                ref.url = `https://storage.googleapis.com/sbc-file-storage/${ref.fileId}`;
+            } else {
+                // A stored object (bare key or old/new public URL): its public media URL.
+                ref.url = publicUrl(publicObjectKey(ref.fileId));
             }
 
             return ref;

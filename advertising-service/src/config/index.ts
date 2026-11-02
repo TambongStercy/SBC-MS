@@ -168,7 +168,7 @@ const config: IConfig = {
         paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
     },
     publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3010',
-    mediaCdnBaseUrl: process.env.MEDIA_CDN_BASE_URL || 'https://storage.googleapis.com/sbc-file-storage',
+    mediaCdnBaseUrl: process.env.MEDIA_CDN_BASE_URL || 'https://media.sniperbuisnesscenter.com',
     // Rufus opens the network at the end of his Tuesday presentation. Set on
     // prod so the feature can ship days early and stay shut until then; admins
     // pass through so it can be rehearsed on the real thing.
