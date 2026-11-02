@@ -93,7 +93,7 @@ const config: IConfig = {
         paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
     },
     publicBaseUrl: process.env.PUBLIC_BASE_URL || `http://localhost:${port}`,
-    mediaCdnBaseUrl: process.env.MEDIA_CDN_BASE_URL || 'https://storage.googleapis.com/sbc-file-storage',
+    mediaCdnBaseUrl: process.env.MEDIA_CDN_BASE_URL || 'https://media.sniperbuisnesscenter.com',
     appBaseUrl: process.env.APP_BASE_URL || 'https://sniperbuisnesscenter.com',
     // Derived from running port, not hardcoded: preprod listens on 6011, and a fixed 3011 default
     // would have preprod's payment callbacks land on prod.

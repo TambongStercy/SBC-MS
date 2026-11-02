@@ -14,7 +14,8 @@ const app: Application = express();
 
 app.use(cors());
 
-const CDN_ORIGIN = 'https://storage.googleapis.com';
+// Public media (Cloudflare R2 behind the media domain) and the old Google bucket.
+const CDN_ORIGINS = ['https://media.sniperbuisnesscenter.com', 'https://media-preprod.sniperbuisnesscenter.com', 'https://storage.googleapis.com'];
 
 // Per-response CSP nonce for the event landing page's inline scripts.
 app.use((_req: Request, res: Response, next: NextFunction) => {
@@ -27,8 +28,8 @@ app.use(helmet({
     contentSecurityPolicy: {
         useDefaults: true,
         directives: {
-            'img-src': ["'self'", 'data:', CDN_ORIGIN],
-            'media-src': ["'self'", CDN_ORIGIN],
+            'img-src': ["'self'", 'data:', ...CDN_ORIGINS],
+            'media-src': ["'self'", ...CDN_ORIGINS],
             'script-src': ["'self'", (_req, res) => `'nonce-${(res as Response).locals.cspNonce}'`],
             'upgrade-insecure-requests': null,
         },

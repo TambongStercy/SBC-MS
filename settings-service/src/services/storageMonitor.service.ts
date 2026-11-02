@@ -1,5 +1,4 @@
-import { Storage } from '@google-cloud/storage';
-import config from '../config';
+import { listAllObjects, r2Config } from './r2.client';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('StorageMonitorService');
@@ -27,38 +26,24 @@ interface StorageAlert {
 }
 
 class StorageMonitorService {
-    private storage: Storage;
-    private bucketName: string;
+    private bucketName = r2Config.publicBucket;
 
-    // Cloud Storage pricing (in USD, converted to FCFA at ~600 FCFA per USD)
+    // Cloudflare R2 pricing (in USD, converted to FCFA at ~600 FCFA per USD).
+    // Downloads are free on R2.
     private readonly PRICING = {
-        storagePerGBMonth: 0.020 * 600,      // ~12 FCFA per GB per month
-        bandwidthPerGB: 0.12 * 600,          // ~72 FCFA per GB (after 1TB free)
-        operationsPer10K: 0.004 * 600,       // ~2.4 FCFA per 10K operations
-        freeBandwidthGB: 1024,               // 1TB free egress per month
+        storagePerGBMonth: 0.015 * 600,      // ~9 FCFA per GB per month
+        bandwidthPerGB: 0,                   // R2 egress is free
+        operationsPer10K: 0.0036 * 600,      // reads: 0.36 USD per million
+        freeBandwidthGB: Infinity,
         exchangeRate: 600                    // USD to FCFA
     };
-
-    constructor() {
-        // Use existing Google Drive credentials for Cloud Storage
-        this.storage = new Storage({
-            credentials: {
-                client_email: config.googleDrive.clientEmail,
-                private_key: config.googleDrive.privateKey,
-            },
-            projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
-        });
-
-        this.bucketName = process.env.CLOUD_STORAGE_BUCKET_NAME || 'sbc-file-storage';
-    }
 
     /**
      * Get current Cloud Storage usage information
      */
     async getStorageUsage(): Promise<StorageUsage> {
         try {
-            const bucket = this.storage.bucket(this.bucketName);
-            const [files] = await bucket.getFiles({ autoPaginate: true });
+            const files = await listAllObjects(this.bucketName);
 
             let totalBytes = 0;
             for (const file of files) {
@@ -172,8 +157,7 @@ class StorageMonitorService {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-            const bucket = this.storage.bucket(this.bucketName);
-            const [files] = await bucket.getFiles({ autoPaginate: true });
+            const files = await listAllObjects(this.bucketName);
 
             const candidates = [];
 
@@ -304,8 +288,7 @@ class StorageMonitorService {
         costs: StorageCosts;
     }> {
         try {
-            const bucket = this.storage.bucket(this.bucketName);
-            const [files] = await bucket.getFiles({ autoPaginate: true });
+            const files = await listAllObjects(this.bucketName);
 
             let profilePictureFiles = 0;
             let productFiles = 0;

@@ -15,7 +15,8 @@ const app: Application = express();
 app.use(cors());
 
 /** Where uploaded media actually ends up; /api/settings/files redirects there. */
-const CDN_ORIGIN = 'https://storage.googleapis.com';
+// Public media (Cloudflare R2 behind the media domain) and the old Google bucket.
+const CDN_ORIGINS = ['https://media.sniperbuisnesscenter.com', 'https://media-preprod.sniperbuisnesscenter.com', 'https://storage.googleapis.com'];
 
 // A per-response nonce lets the landing page keep its inline player script
 // without opening the door to 'unsafe-inline', which would let any script that
@@ -36,8 +37,8 @@ app.use(helmet({
             // The file proxy 302s to the bucket, and CSP is judged on where the
             // request finally lands — so the CDN has to be named here or every
             // creative is blocked.
-            'img-src': ["'self'", 'data:', CDN_ORIGIN],
-            'media-src': ["'self'", CDN_ORIGIN],
+            'img-src': ["'self'", 'data:', ...CDN_ORIGINS],
+            'media-src': ["'self'", ...CDN_ORIGINS],
             'script-src': ["'self'", (_req, res) => `'nonce-${(res as Response).locals.cspNonce}'`],
             // Nothing here posts anywhere else, and upgrade-insecure-requests
             // would rewrite the localhost URLs used in development.
