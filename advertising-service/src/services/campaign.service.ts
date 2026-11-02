@@ -3,6 +3,8 @@ import { Types } from 'mongoose';
 import CampaignModel, { CampaignStatus, ICampaign, ITargeting } from '../database/models/campaign.model';
 import config from '../config';
 import { AppError } from '../utils/errors';
+import { downloadFile } from './clients/settings.service.client';
+import { perceptualHash } from './media-hash.service';
 
 /**
  * Slug/code alphabet: no vowels (can't accidentally spell anything), no 0/O/1/l/I
@@ -153,8 +155,8 @@ export const updateCampaign = async (campaign: ICampaign, args: UpdateArgs): Pro
 
     if (live && !isTargetingOnly(args)) {
         throw new AppError(
-            'Une campagne en diffusion ne peut plus changer de visuel ni de budget : '
-            + 'des diffuseurs l\'ont déjà publiée. Vous pouvez encore élargir le ciblage.',
+            'Une campagne en diffusion ne peut plus changer de budget, et son visuel ne change '
+            + 'que par « Remplacer le visuel » (validé par notre équipe). Vous pouvez élargir le ciblage.',
             400,
         );
     }
@@ -200,6 +202,120 @@ export const updateCampaign = async (campaign: ICampaign, args: UpdateArgs): Pro
 
     return campaign.save();
 };
+
+/**
+ * Statuses where the creative changes only through an admin-reviewed request.
+ * Before going live a campaign is edited directly (and reviewed as a whole).
+ */
+const MEDIA_CHANGE_STATUSES = [CampaignStatus.ACTIVE, CampaignStatus.PAUSED];
+
+interface MediaArgs {
+    mediaFileId?: string;
+    mediaType?: string;
+    mediaMimeType?: string;
+    mediaSha256?: string;
+}
+
+/**
+ * The annonceur proposes a new creative for a live or paused campaign.
+ *
+ * It waits as `pendingMedia` while the current creative keeps running: a
+ * creative goes onto strangers' WhatsApp statuses, so nothing reaches them
+ * without an admin looking at it first. A second submission replaces the first.
+ */
+export const submitMediaChange = async (campaign: ICampaign, args: MediaArgs): Promise<ICampaign> => {
+    if (!MEDIA_CHANGE_STATUSES.includes(campaign.status)) {
+        throw new AppError(
+            'Seule une campagne en diffusion ou en pause passe par cette demande. '
+            + 'Avant la diffusion, modifiez directement votre campagne.',
+            400,
+        );
+    }
+    if (!args.mediaFileId) throw new AppError('Le nouveau visuel est requis.', 400);
+    if (args.mediaType !== 'image' && args.mediaType !== 'video') {
+        throw new AppError('Le visuel doit être une image ou une vidéo.', 400);
+    }
+
+    campaign.pendingMedia = {
+        fileId: args.mediaFileId,
+        type: args.mediaType,
+        mimeType: args.mediaMimeType,
+        sha256: args.mediaSha256,
+        submittedAt: new Date(),
+    };
+    campaign.mediaChangeRejection = undefined;
+    return campaign.save();
+};
+
+/** The annonceur withdraws a replacement nobody has reviewed yet. */
+export const cancelMediaChange = async (campaign: ICampaign): Promise<ICampaign> => {
+    if (!campaign.pendingMedia) throw new AppError('Aucun changement de visuel en attente.', 400);
+    campaign.pendingMedia = undefined;
+    return campaign.save();
+};
+
+/**
+ * Fingerprint of the creative being replaced, so posts of it still match.
+ * Usually already cached by verification; computed here when it is not.
+ * Best-effort: a video, or a file that cannot be fetched, has none.
+ */
+const currentCreativeHash = async (campaign: ICampaign): Promise<string | undefined> => {
+    if (campaign.mediaPerceptualHash) return campaign.mediaPerceptualHash;
+    if (campaign.mediaType !== 'image') return undefined;
+    const bytes = await downloadFile(campaign.mediaFileId).catch(() => null);
+    return bytes ? (await perceptualHash(bytes)) ?? undefined : undefined;
+};
+
+/**
+ * The admin accepts the replacement: it becomes the campaign's creative.
+ *
+ * The old fingerprint moves to `previousMediaPerceptualHashes`, so a diffuseur
+ * who already posted the old creative is still recognised as posting ours.
+ * The new fingerprint is computed lazily by the next verification.
+ */
+export const approveMediaChange = async (campaign: ICampaign, adminId: Types.ObjectId): Promise<ICampaign> => {
+    const pending = campaign.pendingMedia;
+    if (!pending) throw new AppError('Aucun changement de visuel en attente.', 400);
+
+    const oldHash = await currentCreativeHash(campaign);
+    if (oldHash && !(campaign.previousMediaPerceptualHashes ?? []).includes(oldHash)) {
+        campaign.previousMediaPerceptualHashes = [...(campaign.previousMediaPerceptualHashes ?? []), oldHash];
+    }
+
+    campaign.mediaFileId = pending.fileId;
+    campaign.mediaType = pending.type;
+    campaign.mediaMimeType = pending.mimeType;
+    campaign.mediaSha256 = pending.sha256;
+    campaign.mediaPerceptualHash = undefined;
+    campaign.pendingMedia = undefined;
+    campaign.mediaChangeRejection = undefined;
+    campaign.reviewedBy = adminId;
+    campaign.reviewedAt = new Date();
+    return campaign.save();
+};
+
+/** The admin refuses the replacement; the current creative stays. A reason is required. */
+export const rejectMediaChange = async (
+    campaign: ICampaign,
+    adminId: Types.ObjectId,
+    reason: string | undefined,
+): Promise<ICampaign> => {
+    const trimmed = (reason ?? '').trim();
+    if (!trimmed) throw new AppError('Un motif de refus est obligatoire.', 400);
+    if (!campaign.pendingMedia) throw new AppError('Aucun changement de visuel en attente.', 400);
+
+    campaign.pendingMedia = undefined;
+    campaign.mediaChangeRejection = { reason: trimmed, at: new Date() };
+    campaign.reviewedBy = adminId;
+    campaign.reviewedAt = new Date();
+    return campaign.save();
+};
+
+/** Replacement creatives waiting for an admin, oldest first. */
+export const listPendingMediaChanges = () =>
+    CampaignModel.find({ pendingMedia: { $exists: true } })
+        .sort({ 'pendingMedia.submittedAt': 1 })
+        .lean();
 
 /**
  * The old review-then-pay entry point. It no longer does anything.

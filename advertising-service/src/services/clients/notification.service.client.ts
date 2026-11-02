@@ -320,3 +320,34 @@ export const notifyManualVerificationRejected = (userId: string, day: number, re
         `Votre preuve du jour ${day} n'a pas été validée. Motif : ${reason}`,
         { day, reason, ctaLabel: 'Voir ma campagne', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
     );
+
+const annonceurUrl = () => `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/annonceur`;
+
+export const notifyMediaChangeApproved = (userId: string, campaignTitle: string) =>
+    email(
+        userId,
+        '✅ Nouveau visuel validé',
+        `Le nouveau visuel de votre campagne « ${campaignTitle} » a été validé. `
+        + `Les diffuseurs publient désormais celui-ci.`,
+        { campaignTitle, ctaLabel: 'Voir ma campagne', ctaUrl: annonceurUrl() },
+    );
+
+/** The reason is what lets them send a visual that will pass. */
+export const notifyMediaChangeRejected = (userId: string, campaignTitle: string, reason: string) =>
+    email(
+        userId,
+        '❌ Nouveau visuel non validé',
+        `Le nouveau visuel proposé pour « ${campaignTitle} » n'a pas été validé. `
+        + `Votre campagne continue avec le visuel actuel.\n\nMotif : ${reason}`,
+        { campaignTitle, reason, ctaLabel: 'Proposer un autre visuel', ctaUrl: annonceurUrl() },
+    );
+
+/** Diffuseurs in progress post the creative again each day, so they must switch. */
+export const notifyCreativeUpdated = (userId: string, campaignTitle: string) =>
+    email(
+        userId,
+        '🔄 Nouveau visuel pour votre campagne',
+        `Le visuel de la campagne « ${campaignTitle} » a changé. `
+        + `Pour vos prochains jours, téléchargez et publiez le nouveau visuel depuis l'application.`,
+        { campaignTitle, ctaLabel: 'Voir le nouveau visuel', ctaUrl: `${config.appBaseUrl.replace(/\/$/, '')}/ads-network/diffuseur` },
+    );

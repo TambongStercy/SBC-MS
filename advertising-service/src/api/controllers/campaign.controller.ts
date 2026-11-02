@@ -8,6 +8,8 @@ import {
     campaignProgress,
     updateCampaign,
     submitForReview,
+    submitMediaChange,
+    cancelMediaChange,
 } from '../../services/campaign.service';
 import { getLeaderboard as leaderboard, campaignClickBreakdown } from '../../services/ranking.service';
 import { createCampaignPaymentIntent } from '../../services/clients/payment.service.client';
@@ -561,5 +563,32 @@ export const reach = async (req: AuthenticatedRequest, res: Response) => {
         });
     } catch (err) {
         return fail(res, err, 'reach');
+    }
+};
+
+/**
+ * Proposes a new creative for a live or paused campaign. It is reviewed by an
+ * admin before replacing the current one, which keeps running meanwhile.
+ */
+export const requestMediaChange = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await ownedCampaign(req);
+        const { mediaFileId, mediaType, mediaMimeType, mediaSha256 } = req.body ?? {};
+        const updated = await submitMediaChange(campaign, { mediaFileId, mediaType, mediaMimeType, mediaSha256 });
+        log.info(`Campaign ${updated._id}: new creative submitted for review by ${updated.advertiserUserId}`);
+        return res.json({ success: true, data: { pendingMedia: updated.pendingMedia } });
+    } catch (err) {
+        return fail(res, err, 'requestMediaChange');
+    }
+};
+
+/** Withdraws a creative replacement that has not been reviewed yet. */
+export const withdrawMediaChange = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const campaign = await ownedCampaign(req);
+        await cancelMediaChange(campaign);
+        return res.json({ success: true });
+    } catch (err) {
+        return fail(res, err, 'withdrawMediaChange');
     }
 };

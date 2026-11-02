@@ -17,6 +17,9 @@ import {
     saveTestCampaign,
     removeTestCampaign,
     getVerificationStats,
+    listMediaChanges,
+    approveMediaChangeRequest,
+    rejectMediaChangeRequest,
 } from '../controllers/admin.controller';
 import {
     listPending as listPendingManual,
@@ -63,5 +66,8 @@ router.delete('/test-campaign', removeTestCampaign);
 router.get('/campaigns/:id/performance', getCampaignPerformance);
 router.post('/campaigns/:id/approve', approve);
 router.post('/campaigns/:id/reject', reject);
+router.get('/media-changes', listMediaChanges);
+router.post('/campaigns/:id/media-change/approve', approveMediaChangeRequest);
+router.post('/campaigns/:id/media-change/reject', rejectMediaChangeRequest);
 
 export default router;

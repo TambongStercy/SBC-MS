@@ -8,6 +8,7 @@ import ToastContainer from '../components/common/ToastContainer';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import { useToast } from '../hooks/useToast';
 import { getFileUrl } from '../utils/fileUtils';
+import MediaChangeQueue from '../components/adsNetwork/MediaChangeQueue';
 import {
     AdsCampaign,
     apiErrorMessage,
@@ -146,6 +147,7 @@ const AdsNetworkReviewPage: React.FC = () => {
         <div className="flex-1 overflow-auto relative z-10">
             <Header title="SBC Ads Network — Validation des campagnes" />
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+                <MediaChangeQueue showSuccess={showSuccess} showError={showError} />
                 <motion.div
                     className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
                     initial={{ opacity: 0, y: 20 }}
