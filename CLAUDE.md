@@ -458,6 +458,56 @@ so Cloudflare never pins the big version. Images are still compressed inline
 Measure upload health from nginx: `POST /api/settings/files/upload` 200 vs 499
 per day. The route itself takes no login.
 
+### File storage is Cloudflare R2 since 2026-11-02 (Google Cloud dropped)
+
+The Google Cloud project `snipper-c0411` was suspended for unpaid billing on
+2026-11-01 (shared billing account with another app), and every image, video and
+status stopped loading. Everything moved to **Cloudflare R2**, in the Cloudflare
+account that also holds the `sniperbuisnesscenter.com` zone (Georgesyvan12's;
+R2 custom domains only work in the zone's own account). The Google sections above
+are history: their egress lessons still apply, their bucket names do not.
+
+| R2 bucket | Use | Served at |
+|---|---|---|
+| `sbc-media` | public files (was `sbc-file-storage`) | `https://media.sniperbuisnesscenter.com/<key>` (custom domain, Cloudflare-cached) |
+| `sbc-status-private` | statuses, chat documents | presigned URLs only |
+| `sbc-db-backups` | nightly mongodump (`mongodb-backups/`) | private |
+| `sbc-media-preprod`, `sbc-status-private-preprod` | created, **unused**: preprod shares the prod buckets, as it shared the Google ones | `media-preprod.sniperbuisnesscenter.com` |
+
+- **Code:** settings-service `services/r2.client.ts` (S3 client, `publicUrl`,
+  `publicObjectKey`, `listAllObjects`) behind the unchanged `CloudStorageService`.
+  Env in settings-service `.env`: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+  `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_BUCKET`, `R2_PRIVATE_BUCKET`, `MEDIA_PUBLIC_BASE_URL`.
+- **Old URLs still resolve:** `publicObjectKey` strips the old
+  `storage.googleapis.com/sbc-file-storage/` prefix; private references keep the
+  `gs://bucket/path` format on purpose (chat-service parses it), any bucket name.
+  Presigned URLs keep the hour snap (signing date AND expiry), so they stay cacheable.
+- **Stored URLs were rewritten** (prod 26,858 docs: users.avatar, products.images,
+  settings files; preprod 18,002). Originals are in each DB's
+  `media_url_rewrite_backup` collection. `users.incident_20261022_backup` was left
+  untouched on purpose (evidence).
+- **rclone 1.60 (Ubuntu's) + R2 needs `--s3-no-head`.** Otherwise every upload
+  "fails" with 501 NotImplemented: the upload succeeds, then rclone re-reads it by
+  versionId, which R2 does not implement.
+- **Backups:** `/root/mongodb-backup.sh` (root cron, 02:00 server time) uploads to
+  `sbc-db-backups` with rclone, reading the R2 key from settings-service `.env`,
+  and keeps the last 3 dumps in `/var/backups/sbc-mongodb`. Old GCS version:
+  `/root/mongodb-backup.sh.bak-gcs-20261102`.
+- **Full copy of the old Google buckets** on the server: `/home/sterling/gcs-mirror/`
+  (~95 GB, verified file-for-file 2026-11-01). `upload-r2.sh` there pushed it to R2.
+
+### Ads Network: replacing a live campaign's creative goes through review
+
+A live (active/paused) campaign's `mediaFileId` cannot be edited directly.
+The annonceur posts `POST /api/advertising/campaigns/:id/media-change`; the new
+file waits in `pendingMedia` while the old creative keeps running, and an admin
+approves or refuses it ("Nouveaux visuels à valider" on the admin's Ads review
+page). On approval the old perceptual hash moves to
+`previousMediaPerceptualHashes`, and verification compares a posted status
+against every one of them, so a diffuseur who already posted the old creative is
+not refused for it. Diffuseurs in progress are emailed + pushed about the new
+creative. `src/scripts/check-creative-replacement.ts` asserts it.
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to
@@ -489,6 +539,25 @@ comments inside `admin.routes.ts` claim `/api/admin/users/...` — **those comme
 are wrong**; the actual mount overrides them. Admin frontend must call
 `/users/admin/users/...`. PR #67 fixed an instance where the admin frontend was
 on the wrong pattern.
+
+### Forensics traps (learned in the 2026-10-22 incident)
+
+- **`referrals.referredUserName/Email/Phone` is NOT a sign-up snapshot.** A
+  member's own profile save re-syncs it ("Synced denormalized fields on N
+  referrals"); an admin edit does not. The 10-22 attacker's referral record
+  showed the payout number because he set it on his profile mid-attack. For
+  pre-incident values use the daily dump (02:00 server time; R2
+  `sbc-db-backups/mongodb-backups/` since 2026-11-02, the last 3 also in
+  `/var/backups/sbc-mongodb`; older ones on `gs://db-backups-vps/`) restored
+  into a scratch DB.
+- **user-service logs every OTP code in clear** (`Generated OTP <code> …`,
+  `user.service.ts:628`). Useful for forensics (proves who validated a code),
+  but anyone with log access can log in as a member while a code is valid.
+- **The admin panel has no direct-payout screen.** `POST /api/withdrawals/admin/direct`
+  is API-only, so any direct payout was sent by a hand-made request (curl/Postman).
+- Logs: `~/.pm2/logs`, ~3 days kept. Access-log lines (IP + user agent) are in
+  the gateway/user/payment `-out` files. Times there are UTC; app lines are
+  server time (UTC+2 in summer); MoneyFusion's dashboard is Cameroon time (UTC+1).
 
 ### user-service internal routes: there is no `GET /users/internal/:userId`
 
@@ -534,6 +603,19 @@ email ever (offers, approvals, day-opened) had silently failed on both counts;
 tombola's PUSH channel skips the recipient requirement, sbclove was correct.
 When adding a notification call, test one real delivery — a 2xx-shaped silence
 proves nothing.
+
+### Password reset finds the account by email OR phone, in any format (2026-11-05)
+
+The forgot-password form takes "email ou numéro". The web app then sends that same
+text as `email` to verify and reset. Until 2026-11-05 the request matched the
+typed text exactly against `email`/`phoneNumber`, and verify/reset looked up by
+email only. So ~70% of requests answered 404: `+226 70000001` against the stored
+`22670000001`, emails typed with a capital letter. A member who did get a code by
+phone was then always refused at verify. Request, resend, verify and reset now
+all use `userRepository.findByIdentifier` (`phoneLookupCandidates` in
+`utils/phone.utils.ts`). Several accounts matching a number typed without its
+dialling code is treated as not found. Replaying the 1,366 identifiers refused
+over 3 days found 571 accounts. `src/scripts/check-reset-lookup.ts`.
 
 ### OTP delivery: what the codes look like, and what "sent" means
 
@@ -646,6 +728,19 @@ reference is the wallet line's `balanceSpendRef` and the `RelancePackCredit.sess
 Anything not credited is refunded on the spot. A row still `pending` after 10 min
 (restart, payment-service down) is settled by a 10-min cron: kept if the credit
 row exists, otherwise refunded. Tests: `src/tests/relance-balance-purchase.test.ts`.
+
+**Relance throughput is a shared daily total, not credits (2026-11-05).**
+`RELANCE_DAILY_EMAIL_CAP` (notification-service `.env`, code default 2000) is
+for the whole platform. It was hit every day from 10-13 while ~23,000 targets
+were active (one email each per day), so journeys crawled: a parrain with 2,600
+due targets got ~80 a day, and a campaign launched 10-30 had sent nothing a week
+later. Raised to 6000 on 2026-11-05, when OTP/transactional mail was down to
+3.5–7k a day (it was ~16k when the cap was set). Before raising it further,
+compare user-service `OTP validation failed` vs `validated successfully`. Within a
+parrain, journeys (relance des nouveaux and each campaign) now take turns, oldest
+due first (`jobs/relance-journey-order.ts`); in database order the default
+backlog used his whole share. `src/tests/relance-sender.test.ts` does not load
+(pre-existing `reading 'prototype'` error), so its tests have not been running.
 
 **Data facts that mislead:** `relancemessages` holds the admin's **7 day
 templates**, not sent messages — sends live in `relancetargets.messagesDelivered`.
@@ -1051,6 +1146,20 @@ provider, so don't "fix" those entries). CG is routed to FeexPay, not MF.
 
 **Before adding or changing any MF slug, curl that endpoint and match it
 literally.** A wrong slug fails every payout for that operator silently.
+
+### MoneyFusion IP allow-list (since their 2026-11-03/04 update)
+
+From 2026-11-04 04:42 to 2026-11-05 ~12:00, MF refused every payout with
+`Adresse IP server non autorisée (<ip>)`; MF fixed it on their side and payouts
+were accepted again from 13:57. If it comes back: The IP it
+prints is **not ours**: it is a different Cloudflare address on every call
+(172.69/70/71.x, 162.158.x, 104.23.x). Our server reaches `pay.moneyfusion.net`
+(135.181.19.210, Hetzner) directly, no proxy, and leaves from **207.180.242.122**
+(checked with `curl -4 api.ipify.org`). So MF's API reads its own Cloudflare hop
+instead of the caller's IP; whitelisting can only be fixed on their side. A
+refused payout fails at initiation (status `failed`, wallet untouched).
+MF validates key, then fields (amount 0 counts as missing), then `withdraw_mode`,
+and only then the IP, so a probe needs a real operator slug to reach the check.
 
 ### MF dashboard limits — what you can and can't verify
 

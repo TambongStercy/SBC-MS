@@ -106,3 +106,21 @@ export const compareMedia = (
 
     return { matches: distance <= threshold, distance };
 };
+
+/**
+ * Best match of a posted image against several creatives: the campaign's
+ * current one and any it replaced. A post of an earlier creative made while it
+ * was live is still OUR flyer.
+ */
+export const compareMediaToAny = (
+    campaignHashes: (string | undefined | null)[],
+    postedHash: string | undefined | null,
+    threshold = DEFAULT_THRESHOLD,
+): MediaMatch => {
+    let best: MediaMatch = { matches: null, distance: null };
+    for (const hash of campaignHashes) {
+        const result = compareMedia(hash, postedHash, threshold);
+        if (result.distance !== null && (best.distance === null || result.distance < best.distance)) best = result;
+    }
+    return best;
+};

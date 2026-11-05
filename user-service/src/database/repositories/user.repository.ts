@@ -3,6 +3,7 @@ import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType 
 import mongoose, { Types, FilterQuery } from 'mongoose';
 import { ContactSearchFilters, ContactSearchResponse } from '../../types/contact.types';
 import log from '../../utils/logger';
+import { phoneLookupCandidates } from '../../utils/phone.utils';
 import { OTP_SEND_COOLDOWN_MS, OTP_SEND_WINDOW_MS, OTP_SEND_MAX_IN_WINDOW } from '../../utils/otp.utils';
 
 // Interface for specific user details needed by other services
@@ -93,6 +94,27 @@ export class UserRepository {
      * @param phoneNumber - The phone number.
      * @returns The user document or null if none found.
      */
+    /**
+     * The account a member means by what they typed on a sign-in style form: an
+     * email (any case, stray spaces), or a phone number in any format (see
+     * phoneLookupCandidates). Deleted accounts are ignored. When a phone number
+     * matches several accounts, the one stored exactly as typed wins; otherwise
+     * it is ambiguous and nobody is returned.
+     */
+    async findByIdentifier(identifier: string): Promise<IUser | null> {
+        const typed = String(identifier ?? '').trim();
+        if (!typed) return null;
+        if (typed.includes('@')) {
+            return UserModel.findOne({ email: typed.toLowerCase(), deleted: { $ne: true } }).exec();
+        }
+        const candidates = phoneLookupCandidates(typed);
+        if (candidates.length === 0) return null;
+        const matches = await UserModel.find({ phoneNumber: { $in: candidates }, deleted: { $ne: true } }).limit(5).exec();
+        if (matches.length <= 1) return matches[0] ?? null;
+        const digits = typed.replace(/\D/g, '');
+        return matches.find(u => String(u.phoneNumber ?? '').replace(/\D/g, '') === digits) ?? null;
+    }
+
     async findByEmailOrPhone(email: string | undefined, phoneNumber: string | undefined): Promise<IUser | null> {
         return UserModel.findOne({ $or: [{ email }, { phoneNumber }] }).exec();
     }

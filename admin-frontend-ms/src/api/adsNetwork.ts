@@ -196,6 +196,34 @@ export const rejectAdsCampaign = async (campaignId: string, reason: string) => {
     return data.data;
 };
 
+/** A live campaign whose annonceur proposed a new creative, waiting for review. */
+export interface AdsMediaChange {
+    _id: string;
+    title: string;
+    status: CampaignStatus;
+    advertiserUserId: string;
+    mediaFileId: string;
+    mediaType: 'image' | 'video';
+    pendingMedia: { fileId: string; type: 'image' | 'video'; mimeType?: string; submittedAt: string };
+}
+
+export const getAdsMediaChanges = async (): Promise<AdsMediaChange[]> => {
+    const { data } = await apiClient.get('/advertising/admin/media-changes');
+    return data.data ?? [];
+};
+
+/** The new creative replaces the live one; the annonceur and diffuseurs in progress are told. */
+export const approveAdsMediaChange = async (campaignId: string) => {
+    const { data } = await apiClient.post(`/advertising/admin/campaigns/${campaignId}/media-change/approve`);
+    return data.data;
+};
+
+/** The live creative stays; the reason is sent to the annonceur. */
+export const rejectAdsMediaChange = async (campaignId: string, reason: string) => {
+    const { data } = await apiClient.post(`/advertising/admin/campaigns/${campaignId}/media-change/reject`, { reason });
+    return data.data;
+};
+
 export interface TestCampaign {
     _id: string;
     title: string;

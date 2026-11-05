@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import CampaignModel, { ICampaign } from '../database/models/campaign.model';
-import { perceptualHash, compareMedia } from './media-hash.service';
+import { perceptualHash, compareMediaToAny } from './media-hash.service';
 import { downloadFile } from './clients/settings.service.client';
 import CampaignParticipationModel, {
     DayStatus,
@@ -295,7 +295,7 @@ export const applyExtraction = async (
         // tracking code is the proof, this catches the link pasted onto an
         // unrelated photo.
         const postedHash = match.mediaBuffer ? await perceptualHash(match.mediaBuffer) : null;
-        const comparison = compareMedia(campaignHash, postedHash);
+        const comparison = compareMediaToAny([campaignHash, ...(campaign.previousMediaPerceptualHashes ?? [])], postedHash);
         day.mediaPerceptualHash = postedHash ?? undefined;
         day.mediaDistance = comparison.distance ?? undefined;
         day.mediaMatches = comparison.matches ?? undefined;

@@ -717,7 +717,9 @@ export class UserService {
     ): Promise<{ passwordResetToken: string }> {
         log.info(`Attempting to verify password reset OTP for email: ${email}`);
 
-        const user = await userRepository.findByEmail(email);
+        // `email` is whatever the member typed on the forgot-password form, often
+        // a phone number: the code was sent to the account found that way.
+        const user = await userRepository.findByIdentifier(email);
         if (!user || user.blocked || user.deleted) {
             log.warn(`Password reset OTP verification failed: User not found or inactive for email ${email}`);
             throw new AppError('Invalid email or OTP.', 400); // Generic error to prevent enumeration
@@ -3840,8 +3842,7 @@ export class UserService {
     ): Promise<void> {
         log.info(`OTP resend requested for identifier: ${identifier}, purpose: ${purpose}, channelOverride: ${channelOverride}`);
 
-        // Try to find user by email or phone
-        const user = await userRepository.findByEmailOrPhone(identifier, identifier);
+        const user = await userRepository.findByIdentifier(identifier);
 
         // IMPORTANT: Do not confirm if the user exists to prevent enumeration attacks.
         // If user exists, proceed with OTP generation and sending.
@@ -3880,8 +3881,7 @@ export class UserService {
         const purpose = 'forgotPassword';
         log.info(`Password reset OTP requested for identifier: ${identifier}, channelOverride: ${channelOverride}`);
 
-        // Try to find user by email or phone
-        const user = await userRepository.findByEmailOrPhone(identifier, identifier);
+        const user = await userRepository.findByIdentifier(identifier);
 
         // IMPORTANT: Do not confirm if the user exists.
         if (user && !user.blocked && !user.deleted) {
@@ -4096,8 +4096,8 @@ export class UserService {
             throw new AppError('Email, new password, and either OTP or password reset token are required.', 400);
         }
 
-        // 1. Find user by email
-        const user = await userRepository.findByEmail(email);
+        // 1. Find the user the same way the reset code was requested (email or phone)
+        const user = await userRepository.findByIdentifier(email);
         if (!user) {
             throw new AppError('Invalid request. User not found or inactive.', 400); // Generic error
         }
