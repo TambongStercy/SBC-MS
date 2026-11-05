@@ -604,6 +604,19 @@ tombola's PUSH channel skips the recipient requirement, sbclove was correct.
 When adding a notification call, test one real delivery — a 2xx-shaped silence
 proves nothing.
 
+### Password reset finds the account by email OR phone, in any format (2026-11-05)
+
+The forgot-password form takes "email ou numéro". The web app then sends that same
+text as `email` to verify and reset. Until 2026-11-05 the request matched the
+typed text exactly against `email`/`phoneNumber`, and verify/reset looked up by
+email only. So ~70% of requests answered 404: `+226 70000001` against the stored
+`22670000001`, emails typed with a capital letter. A member who did get a code by
+phone was then always refused at verify. Request, resend, verify and reset now
+all use `userRepository.findByIdentifier` (`phoneLookupCandidates` in
+`utils/phone.utils.ts`). Several accounts matching a number typed without its
+dialling code is treated as not found. Replaying the 1,366 identifiers refused
+over 3 days found 571 accounts. `src/scripts/check-reset-lookup.ts`.
+
 ### OTP delivery: what the codes look like, and what "sent" means
 
 Investigated 2026-09-19 after Rufus reported "les mails OTP dérangent". Two
@@ -715,6 +728,19 @@ reference is the wallet line's `balanceSpendRef` and the `RelancePackCredit.sess
 Anything not credited is refunded on the spot. A row still `pending` after 10 min
 (restart, payment-service down) is settled by a 10-min cron: kept if the credit
 row exists, otherwise refunded. Tests: `src/tests/relance-balance-purchase.test.ts`.
+
+**Relance throughput is a shared daily total, not credits (2026-11-05).**
+`RELANCE_DAILY_EMAIL_CAP` (notification-service `.env`, code default 2000) is
+for the whole platform. It was hit every day from 10-13 while ~23,000 targets
+were active (one email each per day), so journeys crawled: a parrain with 2,600
+due targets got ~80 a day, and a campaign launched 10-30 had sent nothing a week
+later. Raised to 6000 on 2026-11-05, when OTP/transactional mail was down to
+3.5–7k a day (it was ~16k when the cap was set). Before raising it further,
+compare user-service `OTP validation failed` vs `validated successfully`. Within a
+parrain, journeys (relance des nouveaux and each campaign) now take turns, oldest
+due first (`jobs/relance-journey-order.ts`); in database order the default
+backlog used his whole share. `src/tests/relance-sender.test.ts` does not load
+(pre-existing `reading 'prototype'` error), so its tests have not been running.
 
 **Data facts that mislead:** `relancemessages` holds the admin's **7 day
 templates**, not sent messages — sends live in `relancetargets.messagesDelivered`.
@@ -1120,6 +1146,20 @@ provider, so don't "fix" those entries). CG is routed to FeexPay, not MF.
 
 **Before adding or changing any MF slug, curl that endpoint and match it
 literally.** A wrong slug fails every payout for that operator silently.
+
+### MoneyFusion IP allow-list (since their 2026-11-03/04 update)
+
+From 2026-11-04 04:42 to 2026-11-05 ~12:00, MF refused every payout with
+`Adresse IP server non autorisée (<ip>)`; MF fixed it on their side and payouts
+were accepted again from 13:57. If it comes back: The IP it
+prints is **not ours**: it is a different Cloudflare address on every call
+(172.69/70/71.x, 162.158.x, 104.23.x). Our server reaches `pay.moneyfusion.net`
+(135.181.19.210, Hetzner) directly, no proxy, and leaves from **207.180.242.122**
+(checked with `curl -4 api.ipify.org`). So MF's API reads its own Cloudflare hop
+instead of the caller's IP; whitelisting can only be fixed on their side. A
+refused payout fails at initiation (status `failed`, wallet untouched).
+MF validates key, then fields (amount 0 counts as missing), then `withdraw_mode`,
+and only then the IP, so a probe needs a real operator slug to reach the check.
 
 ### MF dashboard limits — what you can and can't verify
 
