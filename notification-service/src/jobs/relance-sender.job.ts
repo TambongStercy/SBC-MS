@@ -10,6 +10,7 @@ import { emailRelanceService } from '../services/email.relance.service';
 import { smsService } from '../services/sms.service';
 import { emailService } from '../services/email.service';
 import { msToNextMinute } from '../services/send-budget.service';
+import { interleaveJourneys } from './relance-journey-order';
 import { userServiceClient } from '../services/clients/user.service.client';
 
 // CM country code — only CM numbers qualify for SMS relance
@@ -883,7 +884,7 @@ export async function runMessageSendingJob(now: Date = new Date()) {
                 await resetDailyCountIfNewDay(config);
 
                 console.log(`[Relance Sender] [User:${referrerId.slice(-6)}] Processing ${userTargets.length} targets (email: ${config.emailBalance}, sms: ${config.smsBalance}, sent today ${config.messagesSentToday})...`);
-                const result = await processUserTargets(referrerId, userTargets, config);
+                const result = await processUserTargets(referrerId, interleaveJourneys(userTargets), config);
                 return { userId: referrerId, ...result };
             })();
 

@@ -387,3 +387,40 @@ export function isSamePhoneNumber(a?: string | null, b?: string | null): boolean
     const [shorter, longer] = da.length < db.length ? [da, db] : [db, da];
     return shorter.length >= 8 && longer.length - shorter.length <= 4 && longer.endsWith(shorter);
 }
+
+/**
+ * Every stored form a typed phone number could match. Members type their
+ * number however they like (`+226 70000001`, `0100000001`, `237 6 77…`), while
+ * accounts store bare digits, usually with the dialling code (`22670000001`),
+ * older ones without it, and +243/+242 numbers keep a 0 after the code. An
+ * exact match on what was typed missed ~70% of password-reset requests
+ * (measured 2026-11-05). Callers must treat several matches as ambiguous.
+ */
+export function phoneLookupCandidates(raw: string): string[] {
+    const typed = String(raw ?? '').trim();
+    const digits = typed.replace(/\D/g, '');
+    if (digits.length < 8) return [];
+    const out = new Set<string>([typed, digits, `+${digits}`]);
+    const dialCodes = Array.from(new Set(Object.values(countryDialingCodes)));
+    const ownCode = dialCodes.find(code => digits.startsWith(code) && digits.length - code.length >= 8);
+    if (ownCode) {
+        const national = digits.slice(ownCode.length);
+        out.add(national);
+        if (national.startsWith('0')) {
+            out.add(national.slice(1));
+            out.add(ownCode + national.slice(1));
+        } else {
+            out.add(`0${national}`);
+            out.add(`${ownCode}0${national}`);
+        }
+    } else {
+        // Typed without a dialling code: it may be stored with any of them.
+        const national = digits.startsWith('0') ? digits.slice(1) : digits;
+        out.add(national);
+        for (const code of dialCodes) {
+            out.add(code + national);
+            out.add(`${code}0${national}`);
+        }
+    }
+    return Array.from(out);
+}
