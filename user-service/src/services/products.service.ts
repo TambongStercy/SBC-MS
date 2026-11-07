@@ -225,6 +225,10 @@ async function applyWinner(userId: string, sessionId: string, metadata: any) {
     if (!await SubscriptionModel.exists({ user, subscriptionType: SubscriptionType.PRO, 'metadata.paymentSessionIds': sessionId })) {
         await extendFeature(userId, SubscriptionType.PRO, WINNER.proMonths, sessionId, SubscriptionDuration.YEARLY);
     }
+    // 3b. A month of MISE_EN_AVANT on SBC Network.
+    if (!await SubscriptionModel.exists({ user, subscriptionType: SubscriptionType.MISE_EN_AVANT, 'metadata.paymentSessionIds': sessionId })) {
+        await extendFeature(userId, SubscriptionType.MISE_EN_AVANT, WINNER.miseEnAvantMonths, sessionId, SubscriptionDuration.MONTHLY);
+    }
     // 4. Three extra WhatsApp numbers.
     await UserModel.updateOne({ _id: userId }, { $inc: { extraNumberSlots: WINNER.extraNumberSlots } });
     // 5. Relance credits (credited once per payment by notification-service).

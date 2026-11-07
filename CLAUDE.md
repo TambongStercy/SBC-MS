@@ -516,7 +516,7 @@ Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
 - **Pack Winner** (`WINNER`, lifetime marker):
   - Price: 15,900 F (15,000 + fees) or $37.1. From Ciblé 10,600 F, from
     Classique 13,650 F (Rufus quoted 10,000 / 12,850 + fees).
-  - Grants CIBLE, 12 months of PRO, 3 extra-number slots and 1,000 relance
+  - Grants CIBLE, 12 months of PRO, 1 month of MISE_EN_AVANT, 3 extra-number slots and 1,000 relance
     credits (notification-service `BUNDLED_PACKS`, never sold alone,
     `findSellablePack`).
   - Commissions: 5,000/2,500/1,250; from Ciblé 2,500/1,250/625; from Classique

@@ -69,12 +69,14 @@ export const WINNER = {
         CIBLE: { xaf: [2500, 1250, 625], usd: [5, 2.5, 1.25] },
     } as Record<WinnerFrom, { xaf: number[]; usd: number[] }>,
     proMonths: 12,
+    miseEnAvantMonths: 1, // Rufus 2026-11-07: "ajoute la mise en avant pendant 1 mois sur SBC Network"
     relancePackId: 'winner_email_1k', // 1 000 relance email credits (notification-service BUNDLED_PACKS)
     relanceCredits: 1000,
     extraNumberSlots: 3,
     features: [
         'Tout le Pack Ciblé, à vie',
         'Recevez les demandes de clients pendant 1 an (Espace Pro offert)',
+        'Mise en avant pendant 1 mois sur SBC Network',
         '3 numéros WhatsApp en plus dans le fichier de contacts SBC',
         '1 000 crédits de relance prospects',
         'Accès au groupe VIP SBC',
