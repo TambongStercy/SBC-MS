@@ -148,7 +148,7 @@ const config: IConfig = {
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3001',
 
     /**
-     * SBC Contacts app: it reads PRO / MISE_EN_AVANT from SBC. Every subscription
+     * SBC Network app: it reads PRO / MISE_EN_AVANT from SBC. Every subscription
      * change is POSTed to it, signed with the shared secret. Off until both are set.
      */
     contactsApp: {

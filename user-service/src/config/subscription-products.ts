@@ -30,7 +30,7 @@ export interface AddonOffer {
 
 const PRO_FEATURES = [
     'Recevez les demandes de clients près de chez vous',
-    'Dans l\'application SBC Contacts, rubrique Espace pro',
+    'Dans l\'application SBC Network, rubrique Espace pro',
 ];
 
 export const ADDON_OFFERS: AddonOffer[] = [

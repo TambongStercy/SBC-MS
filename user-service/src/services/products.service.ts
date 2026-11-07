@@ -221,7 +221,7 @@ async function applyWinner(userId: string, sessionId: string, metadata: any) {
         startDate: now, endDate: new Date('9999-12-31T23:59:59.999Z'), status: SubscriptionStatus.ACTIVE,
         metadata: { paymentSessionId: sessionId, from: metadata?.winnerFrom ?? 'NONE' },
     } as Partial<ISubscription>);
-    // 3. A year of PRO (client requests in the SBC Contacts app).
+    // 3. A year of PRO (client requests in the SBC Network app).
     if (!await SubscriptionModel.exists({ user, subscriptionType: SubscriptionType.PRO, 'metadata.paymentSessionIds': sessionId })) {
         await extendFeature(userId, SubscriptionType.PRO, WINNER.proMonths, sessionId, SubscriptionDuration.YEARLY);
     }

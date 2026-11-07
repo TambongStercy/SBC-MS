@@ -590,7 +590,7 @@ export class SubscriptionService {
         }
         // --- End Commission Distribution ---
 
-        // Tell the SBC Contacts app (it reads subscriptionTypes and the dates).
+        // Tell the SBC Network app (it reads subscriptionTypes and the dates).
         if (!satisfiedByExisting) {
             const { emitContactsEvent } = await import('./contacts-webhook.service');
             emitContactsEvent(userId, isUpgrade ? 'subscription.updated' : 'subscription.activated').catch(() => undefined);
