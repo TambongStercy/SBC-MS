@@ -22,6 +22,7 @@ export const escapeVCardField = (value: string | number | undefined): string => 
  */
 export const generateVCard = (user: IUser): string => {
     const { name, email, phoneNumber, region } = user;
+    const extraNumbers = (user.extraWhatsappNumbers ?? []).map(n => n.number);
 
     // Append "SBC" to the contact name for all exported contacts
     const displayName = name ? `${name} SBC` : 'SBC';
@@ -34,6 +35,7 @@ export const generateVCard = (user: IUser): string => {
         `N:${escapeVCardField(displayName)};;;`,
         email ? `EMAIL:${escapeVCardField(email)}` : '',
         phoneNumber ? `TEL;TYPE=CELL:${escapeVCardField(phoneNumber)}` : '',
+        ...extraNumbers.map(n => `TEL;TYPE=CELL:${escapeVCardField(n)}`),
         region ? `ADR;TYPE=HOME:;;${escapeVCardField(region)};;;` : '',
         `REV:${new Date().toISOString()}`,
         'END:VCARD'
@@ -52,6 +54,7 @@ export const generateVCFFile = (users: Array<{
     name: string;
     email: string;
     phoneNumber?: string;
+    extraWhatsappNumbers?: { number: string }[];
     region?: string;
     shareContactInfo?: boolean;
 }>): Buffer => {

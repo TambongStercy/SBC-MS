@@ -11,6 +11,7 @@ import logger from './utils/logger';
 import { vcfCacheScheduler } from './jobs/vcf-cache-scheduler';
 import { leaderboardBonusScheduler } from './jobs/leaderboard-bonus-scheduler';
 import { subscriptionEndingScheduler } from './jobs/subscription-ending-scheduler';
+import { contactsWebhookJob } from './jobs/contacts-webhook.job';
 
 // Create Express server
 const app: Express = express();
@@ -90,6 +91,7 @@ async function startServer() {
         // Monthly leaderboard bonus payout (no-op unless LEADERBOARD_BONUS_ENABLED)
         leaderboardBonusScheduler.start();
         subscriptionEndingScheduler.start();
+        contactsWebhookJob.start();
 
         // Build the first leaderboard snapshot now, so the first visitor after
         // a deploy is not the one who pays for the cold aggregation.
@@ -110,6 +112,7 @@ async function startServer() {
             logger.info('[Server] VCF cache scheduler stopped');
             leaderboardBonusScheduler.stop();
             subscriptionEndingScheduler.stop();
+            contactsWebhookJob.stop();
             process.exit(0);
         };
 

@@ -2958,6 +2958,12 @@ class PaymentService {
                 baseUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.cible.inscription; // $11.6 USD for Ciblés  
             } else if (paymentIntent.subscriptionType === 'UPGRADE') {
                 baseUsdAmount = CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription; // $7 USD for Upgrade
+            } else if (Number(paymentIntent.metadata?.cryptoUsdAmount) > 0) {
+                // Products priced by user-service in USD as well (PRO, MISE_EN_AVANT,
+                // Pack Winner, extra numbers): it puts the crypto price in the intent.
+                // Intents are created only by services (service secret), so this is ours.
+                baseUsdAmount = Math.round(Number(paymentIntent.metadata?.cryptoUsdAmount) * 100) / 100;
+                log.info(`Using the USD price set by ${paymentIntent.metadata?.originatingService ?? 'the creating service'}: $${baseUsdAmount} for ${paymentIntent.amount} XAF`);
             } else if (paymentIntent.amount === 2150) {
                 // Classique: 2150 XAF = 2000 base + 150 fee margin → $4.8 base + fee margin
                 const baseUsd = CRYPTO_SUBSCRIPTION_PRICING.classique.inscription; // $4.8 USD base (equivalent to 2000 XAF)

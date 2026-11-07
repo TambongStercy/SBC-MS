@@ -47,6 +47,8 @@ export class VCFCacheService {
             `UID;CHARSET=UTF-8:${contact._id?.toString() || ''}`,
             // TEL: Use phone number
             `TEL;TYPE=CELL:${contact.phoneNumber || ''}`,
+            // Paid extra WhatsApp numbers: same contact, so every number gets saved
+            ...(contact.extraWhatsappNumbers ?? []).map(n => `TEL;TYPE=CELL:${n.number}`),
             // REV: Use createdAt timestamp in ISO format
             `REV:${contact.createdAt ? new Date(contact.createdAt).toISOString() : new Date().toISOString()}`
         ];

@@ -508,6 +508,52 @@ against every one of them, so a diffuseur who already posted the old creative is
 not refused for it. Diffuseurs in progress are emailed + pushed about the new
 creative. `src/scripts/check-creative-replacement.ts` asserts it.
 
+### Pack Winner, PRO, MISE_EN_AVANT, extra numbers, Contacts webhook (2026-11-07)
+
+Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
+`user-service/src/config/subscription-products.ts`, and the logic is in
+`services/products.service.ts`. Assertions: `src/scripts/check-products.ts`.
+- **Pack Winner** (`WINNER`, lifetime marker):
+  - Price: 15,900 F (15,000 + fees) or $37.1. From Ciblé 10,600 F, from
+    Classique 13,650 F (Rufus quoted 10,000 / 12,850 + fees).
+  - Grants CIBLE, 12 months of PRO, 3 extra-number slots and 1,000 relance
+    credits (notification-service `BUNDLED_PACKS`, never sold alone,
+    `findSellablePack`).
+  - Commissions: 5,000/2,500/1,250; from Ciblé 2,500/1,250/625; from Classique
+    4,000/2,000/1,000 (USD at 500 F/$).
+  - The VIP group link is `WINNER_VIP_GROUP_LINK` (user-service `.env`),
+    hidden while empty.
+- **PRO and MISE_EN_AVANT** are for members only (an active CLASSIQUE/CIBLE),
+  so the "any active subscription" gates can't be opened by an add-on alone.
+  - Prices: PRO 2,000/month or 12,000/year; MISE_EN_AVANT 3,000/month.
+  - Commission: 20% to the direct parrain only.
+  - Renewal is manual and extends from the current end date.
+  - `contacts-webhook.job` marks ended periods `expired`; nothing else ever
+    sets EXPIRED.
+- **Each product payment is applied once:** `productpayments` holds a unique
+  `sessionId`, claimed first and released if applying fails. Monthly products
+  extend from the end date, so a replayed callback would otherwise give a free
+  month.
+- **Extra WhatsApp numbers:**
+  - Stored in `users.extraWhatsappNumbers`; slots in `extraNumberSlots`
+    (500 F each).
+  - Added as more `TEL` lines on the member's card in both contact exports.
+  - Routes: `/api/users/me/extra-numbers`.
+- **SBC Contacts app:**
+  - SSO `userinfo` and `token` carry `subscriptions: [{type, status,
+    startedAt, expiresAt}]` (CLASSIQUE, CIBLE, PRO, MISE_EN_AVANT; lifetime has
+    `expiresAt: null`).
+  - `isActivated` now means a paid pack, not any subscription.
+  - Every change is POSTed to `CONTACTS_WEBHOOK_URL` and signed with
+    `SBC_WEBHOOK_SECRET` (HMAC-SHA256 hex of the raw body, header
+    `X-SBC-Signature`).
+  - Delivery goes through an outbox (`contactswebhookevents`): retried after
+    1/5/30/120 min until a 202, with the same event id and body.
+  - Off unless both env vars are set: set them on **prod only**, since preprod
+    would send test events to the real app.
+- **Crypto:** user-service puts the USD price in `metadata.cryptoUsdAmount`,
+  and payment-service uses it instead of guessing from the XAF amount.
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to
@@ -558,6 +604,22 @@ on the wrong pattern.
 - Logs: `~/.pm2/logs`, ~3 days kept. Access-log lines (IP + user agent) are in
   the gateway/user/payment `-out` files. Times there are UTC; app lines are
   server time (UTC+2 in summer); MoneyFusion's dashboard is Cameroon time (UTC+1).
+
+### Member debts (`users.debt`) come from the old system's March 2025 restore
+
+`debt` is carried over from the old backend (`TambongStercy/sniper_backend`,
+private). Every credit pays it off first, and the member app never shows it,
+so an indebted member sees commissions arrive by email but a balance of 0.
+Most of the debt total traces to one event:
+- **10 Mar 2025:** deleted accounts were restored with balance = lifetime
+  earnings (past withdrawals ignored).
+- **11 Mar, 02:35–10:09 UTC:** that restore sat on the public
+  `GET /api/user/test` and **added** the balance again each time it was opened.
+- **"placed debt":** the excess was recorded as debt. That created 11 debts
+  (1.2 M F); 10 were still open on 2026-11-05.
+
+Cancelling a debt is Rufus's call; record it in `sbc_users.debt_adjustments`
+(before/after, reason, who decided). First one: Mr DOPÉ, 531,691 F, 2026-11-06.
 
 ### user-service internal routes: there is no `GET /users/internal/:userId`
 

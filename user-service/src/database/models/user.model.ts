@@ -60,6 +60,10 @@ export interface IUser extends Document {
     momoNumber?: string;
     momoOperator?: string;
     whatsappGroupLink?: string;
+    /** WhatsApp numbers beside phoneNumber that go into the SBC contacts file. One per paid slot. */
+    extraWhatsappNumbers?: { _id?: Types.ObjectId; number: string; addedAt: Date }[];
+    /** Slots for extra numbers: bought at 500 F each, 3 come with Pack Winner. */
+    extraNumberSlots?: number;
     email: string;
     password?: string; // Exists in DB but often excluded from responses
     token?: string;
@@ -150,6 +154,11 @@ const UserSchema = new Schema<IUser>(
         momoNumber: { type: String },
         momoOperator: { type: String },
         whatsappGroupLink: { type: String, trim: true },
+        extraWhatsappNumbers: {
+            type: [{ number: { type: String, required: true }, addedAt: { type: Date, default: Date.now } }],
+            default: undefined,
+        },
+        extraNumberSlots: { type: Number, default: 0 },
         email: {
             type: String,
             required: true,

@@ -12,6 +12,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 const REMINDED: Partial<Record<SubscriptionType, string>> = {
     [SubscriptionType.VISIBILITE_MAX]: 'Visibilité Max',
+    [SubscriptionType.PRO]: 'Espace Pro',
+    [SubscriptionType.MISE_EN_AVANT]: 'Mise en avant',
 };
 
 /**
@@ -22,7 +24,7 @@ const REMINDED: Partial<Record<SubscriptionType, string>> = {
 export async function remindEndingSubscriptions(now: Date = new Date()): Promise<number> {
     const subs = await SubscriptionModel.find({
         status: SubscriptionStatus.ACTIVE,
-        duration: SubscriptionDuration.MONTHLY,
+        duration: { $in: [SubscriptionDuration.MONTHLY, SubscriptionDuration.YEARLY] },
         subscriptionType: { $in: Object.keys(REMINDED) },
         endDate: { $gte: new Date(now.getTime() + 3 * DAY_MS), $lt: new Date(now.getTime() + 4 * DAY_MS) },
     }).select('user subscriptionType endDate').lean();
