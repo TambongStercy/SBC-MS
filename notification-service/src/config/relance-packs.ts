@@ -17,10 +17,25 @@ export const SMS_PACKS: RelancePack[] = [
     { id: 'sms_10k', credits: 10000, priceXAF: 125000, type: 'sms' },
 ];
 
-export const ALL_PACKS = [...EMAIL_PACKS, ...SMS_PACKS];
+/**
+ * Credits that come with another purchase, never sold on their own: they are
+ * not in EMAIL_PACKS, so the packs list and the purchase route never offer
+ * them. user-service credits them through /internal/credit-pack with its
+ * own payment reference, so each purchase is credited once.
+ */
+export const BUNDLED_PACKS: RelancePack[] = [
+    { id: 'winner_email_1k', credits: 1000, priceXAF: 0, type: 'email' }, // Pack Winner
+];
+
+export const ALL_PACKS = [...EMAIL_PACKS, ...SMS_PACKS, ...BUNDLED_PACKS];
 
 export function findPack(packId: string): RelancePack | undefined {
     return ALL_PACKS.find(p => p.id === packId);
+}
+
+/** A pack a member can buy. Bundled packs come with another purchase and are never sold. */
+export function findSellablePack(packId: string): RelancePack | undefined {
+    return [...EMAIL_PACKS, ...SMS_PACKS].find(p => p.id === packId);
 }
 
 // Recommend a pack based on referral count (shown in the frontend)

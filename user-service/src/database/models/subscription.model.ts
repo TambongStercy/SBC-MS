@@ -6,6 +6,9 @@ export enum SubscriptionType {
     CIBLE = 'CIBLE',
     RELANCE = 'RELANCE', // Monthly recurring WhatsApp follow-up feature
     VISIBILITE_MAX = 'VISIBILITE_MAX', // SBC Live "Visibilité Maximale" — 50,000 FCFA/month creator-side feature subscription. Per Rufus's eligibility rule: lets the user create formations even without 25 direct referrals.
+    PRO = 'PRO', // SBC Contacts "Espace pro": receive nearby client requests. Monthly or yearly; members only.
+    MISE_EN_AVANT = 'MISE_EN_AVANT', // SBC Contacts "En vedette" profile and more WhatsApp views. Monthly; members only.
+    WINNER = 'WINNER', // Pack Winner marker (lifetime). The pack itself grants CIBLE, a year of PRO, relance credits and extra numbers.
     // Add other subscription types here
 }
 
@@ -19,6 +22,7 @@ export enum SubscriptionCategory {
 export enum SubscriptionDuration {
     LIFETIME = 'lifetime',
     MONTHLY = 'monthly',
+    YEARLY = 'yearly',
 }
 
 // Enum for subscription status

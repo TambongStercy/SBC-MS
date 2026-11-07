@@ -22,7 +22,7 @@ import { dailyWithdrawalRepository } from '../database/repositories/daily-withdr
  * bonus, belong on 'activation'.
  */
 export type BalanceTarget = 'main' | 'activation';
-import SubscriptionModel, { SubscriptionType, SubscriptionStatus, ISubscription } from '../database/models/subscription.model';
+import SubscriptionModel, { SubscriptionType, SubscriptionStatus, ISubscription, SubscriptionCategory, SubscriptionDuration } from '../database/models/subscription.model';
 import UserModel from '../database/models/user.model';
 import PartnerModel from '../database/models/partner.model';
 import ReferralModel from '../database/models/referral.model';
@@ -2490,7 +2490,7 @@ export class UserService {
                 skip: skip,
                 limit: batchSize,
                 sort: { _id: 1 }, // Consistent sort order for pagination (use _id for performance)
-                select: '_id name email phoneNumber country region city birthDate sex language profession interests avatar createdAt'
+                select: '_id name email phoneNumber extraWhatsappNumbers country region city birthDate sex language profession interests avatar createdAt'
             });
 
             if (users.length > 0) {
@@ -2598,7 +2598,7 @@ export class UserService {
                 // No skip/limit
                 sort: { createdAt: -1 },
                 // Include city
-                select: '_id name email phoneNumber country region city birthDate sex language profession interests avatar createdAt'
+                select: '_id name email phoneNumber extraWhatsappNumbers country region city birthDate sex language profession interests avatar createdAt'
             });
 
             // Specify type for user parameter in map
@@ -3288,14 +3288,19 @@ export class UserService {
                 } else {
                     // No existing subscription of this type to reactivate, create a new one
                     log.info(`Creating new ${targetType} subscription for user ${userId}`);
+                    const isAddon = targetType === SubscriptionType.PRO || targetType === SubscriptionType.MISE_EN_AVANT;
                     await subscriptionRepository.create({
                         user: userObjectId,
                         subscriptionType: targetType,
                         endDate: newEndDate,
+                        // A month of PRO / MISE_EN_AVANT granted by hand is a feature month, not a membership
+                        ...(isAddon ? { category: SubscriptionCategory.FEATURE, duration: SubscriptionDuration.MONTHLY } : {}),
                         // startDate defaults to now
-                    });
+                    } as any);
                 }
             }
+            const { emitContactsEvent } = await import('./contacts-webhook.service');
+            await emitContactsEvent(userObjectId.toString(), newType === 'NONE' ? 'subscription.cancelled' : 'subscription.updated');
         } catch (error) {
             log.error(`Error setting subscription for user ${userId} to ${newType}:`, error);
             throw new Error('Failed to update user subscription.');

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { PRODUCT_PLAN_IDS, getOffers, initiateProductPurchase, handleProductPayment } from '../../services/products.service';
 import { SubscriptionService } from '../../services/subscription.service';
 import logger from '../../utils/logger';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -179,6 +180,22 @@ export class SubscriptionController {
     }
 
     /**
+     * GET /offers - The packs and add-ons as this member can buy them now
+     * (upgrade prices, what they already own), for ?paymentMethod=traditional|crypto.
+     */
+    async getOffers(req: AuthenticatedRequest, res: Response): Promise<void> {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) { res.status(401).json({ success: false, message: 'User ID not found in request' }); return; }
+            const paymentMethod = req.query.paymentMethod === 'crypto' ? 'crypto' : 'traditional';
+            res.status(200).json({ success: true, data: await getOffers(userId, paymentMethod) });
+        } catch (error) {
+            this.log.error('Error fetching offers:', error);
+            res.status(500).json({ success: false, message: 'Impossible de charger les offres.' });
+        }
+    }
+
+    /**
      * POST /purchase - Initiate purchase for a specific plan type
      */
     async initiatePurchase(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -190,14 +207,22 @@ export class SubscriptionController {
             }
 
             const { planType, paymentMethod } = req.body;
-            if (!planType || !(planType in SubscriptionType)) {
-                res.status(400).json({ success: false, message: 'Missing or invalid planType in request body. Must be CLASSIQUE, CIBLE, or RELANCE.' });
+            const isProduct = PRODUCT_PLAN_IDS.includes(planType);
+            if (!planType || !(isProduct || planType in SubscriptionType)) {
+                res.status(400).json({ success: false, message: 'Missing or invalid planType in request body.' });
                 return;
             }
 
             // Validate payment method if provided
             if (paymentMethod && !['crypto', 'traditional'].includes(paymentMethod)) {
                 res.status(400).json({ success: false, message: 'Invalid paymentMethod. Must be "crypto" or "traditional".' });
+                return;
+            }
+
+            // Pack Winner and the add-ons (PRO, MISE_EN_AVANT) have their own pricing and activation.
+            if (isProduct) {
+                const result = await initiateProductPurchase(userId, planType, paymentMethod || 'traditional');
+                res.status(200).json({ success: true, data: result });
                 return;
             }
 
@@ -262,6 +287,18 @@ export class SubscriptionController {
         if (status !== 'SUCCEEDED') {
             this.log.warn(`Ignoring non-successful payment webhook status: ${status} for session ${sessionId}`);
             res.status(200).json({ success: true, message: 'Webhook received but status not successful.' });
+            return;
+        }
+
+        // Pack Winner, PRO, MISE_EN_AVANT and extra numbers carry `product`.
+        if (metadata?.originatingService === 'user-service' && metadata?.product) {
+            try {
+                await handleProductPayment(sessionId, metadata);
+                res.status(200).json({ success: true, message: 'Product applied.' });
+            } catch (error: any) {
+                this.log.error(`Error applying product payment ${sessionId}:`, error);
+                res.status(error?.status === 400 ? 400 : 500).json({ success: false, message: error?.message || 'Failed to apply product' });
+            }
             return;
         }
 

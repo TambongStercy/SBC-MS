@@ -7,6 +7,7 @@ import { requireActiveSubscription } from '../middleware/requireActiveSubscripti
 import { authorize } from '../middleware/rbac.middleware';
 import { updateLastIp } from '../middleware/ip-update.middleware';
 import { UserRole } from '../../database/models/user.model';
+import { getExtraNumbers, initiateExtraNumberPurchase, addExtraNumber, removeExtraNumber } from '../../services/products.service';
 import logger from '../../utils/logger'; // Import logger
 import { uploadAvatar } from '../middleware/upload.middleware'; // Corrected import path
 import { strictLimiter, mediumLimiter, generalLimiter, uploadLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
@@ -144,6 +145,25 @@ router.get('/me', (req, res) => userController.getMe(req as AuthenticatedRequest
 router.post('/logout', (req, res) => userController.logout(req as AuthenticatedRequest, res));
 router.get('/affiliator', (req, res) => userController.getAffiliator(req as AuthenticatedRequest, res));
 router.put('/me', (req, res) => userController.modify(req as AuthenticatedRequest, res));
+
+// --- Extra WhatsApp numbers (Rufus: 500 F per number, 3 with Pack Winner) ---
+// They go into the SBC contacts file beside the member's main number.
+const extraNumbers = (fn: (userId: string, req: Request) => Promise<unknown>) => async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user?.userId;
+    if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+    try {
+        res.status(200).json({ success: true, data: await fn(userId, req) });
+    } catch (err: any) {
+        const status = err?.status && err.status < 500 ? err.status : 500;
+        if (status === 500) logger.getLogger('ExtraNumbers').error(`Extra numbers request failed for ${userId}: ${err?.message ?? err}`);
+        res.status(status).json({ success: false, message: status === 500 ? 'Une erreur est survenue. Réessayez.' : err.message });
+    }
+};
+router.get('/me/extra-numbers', extraNumbers(userId => getExtraNumbers(userId)));
+router.post('/me/extra-numbers/purchase', extraNumbers((userId, req) =>
+    initiateExtraNumberPurchase(userId, req.body?.paymentMethod === 'crypto' ? 'crypto' : 'traditional')));
+router.post('/me/extra-numbers', extraNumbers((userId, req) => addExtraNumber(userId, req.body?.number)));
+router.delete('/me/extra-numbers/:id', extraNumbers((userId, req) => removeExtraNumber(userId, req.params.id)));
 
 // --- Avatar Upload Route ---
 // Apply upload limiter before the upload middleware

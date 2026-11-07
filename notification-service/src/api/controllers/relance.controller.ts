@@ -7,7 +7,7 @@ import RelanceSmsTemplateModel from '../../database/models/relance-sms-template.
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../../database/models/relance-target.model';
 import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
-import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, isCameroon } from '../../config/relance-packs';
+import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, findSellablePack, isCameroon } from '../../config/relance-packs';
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { pushFilleulPaid } from '../../services/relance-alerts.service';
 import { creditRelancePack } from '../../services/relance-credit.service';
@@ -695,7 +695,7 @@ class RelanceController {
             if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
 
             const { packId } = req.body;
-            const pack = findPack(packId);
+            const pack = findSellablePack(packId);
             if (!pack) { res.status(400).json({ success: false, message: 'Invalid packId' }); return; }
 
             // Rufus: SMS relance is for Cameroonian parrains (and their +237 filleuls) only.
