@@ -65,6 +65,8 @@ interface IConfig {
         lockHoursAfterContactChange: number;
     };
     selfBaseUrl: string;
+    contactsApp: { webhookUrl: string; webhookSecret: string };
+    winnerVipGroupLink: string;
     /**
      * Monthly leaderboard bonus (see leaderboard-bonus.service).
      *
@@ -144,6 +146,18 @@ const config: IConfig = {
     },
 
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3001',
+
+    /**
+     * SBC Contacts app: it reads PRO / MISE_EN_AVANT from SBC. Every subscription
+     * change is POSTed to it, signed with the shared secret. Off until both are set.
+     */
+    contactsApp: {
+        webhookUrl: process.env.CONTACTS_WEBHOOK_URL || '',
+        webhookSecret: process.env.SBC_WEBHOOK_SECRET || '',
+    },
+
+    /** WhatsApp group link shown to Pack Winner members ("Accès groupe VIP SBC"). Hidden while empty. */
+    winnerVipGroupLink: process.env.WINNER_VIP_GROUP_LINK || '',
 
     leaderboardBonus: {
         // Off by default: turning it on is a deliberate act, because the first

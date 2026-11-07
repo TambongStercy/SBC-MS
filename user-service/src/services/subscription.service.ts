@@ -590,6 +590,12 @@ export class SubscriptionService {
         }
         // --- End Commission Distribution ---
 
+        // Tell the SBC Contacts app (it reads subscriptionTypes and the dates).
+        if (!satisfiedByExisting) {
+            const { emitContactsEvent } = await import('./contacts-webhook.service');
+            emitContactsEvent(userId, isUpgrade ? 'subscription.updated' : 'subscription.activated').catch(() => undefined);
+        }
+
         // --- 4. Exit user from relance loop if they were in one ---
         const { notificationService } = await import('./clients/notification.service.client');
         notificationService.exitUserFromRelanceLoop(userId)

@@ -14,6 +14,13 @@ const router = Router();
 router.get('/plans', (req, res) => subscriptionController.getAvailablePlans(req, res));
 
 /**
+ * @route   GET /api/subscriptions/offers?paymentMethod=traditional|crypto
+ * @desc    Packs (CLASSIQUE, CIBLE, WINNER) and add-ons (PRO, MISE_EN_AVANT) priced for this member
+ * @access  Private
+ */
+router.get('/offers', authenticate as any, generalLimiter, (req, res) => subscriptionController.getOffers(req as any, res));
+
+/**
  * @route   POST /api/subscriptions/purchase
  * @desc    Initiate purchase for a specific subscription plan type (CLASSIQUE, CIBLE, or RELANCE)
  * @access  Private

@@ -678,10 +678,10 @@ export class NotificationController {
             }
 
             // Validate subscriptionType
-            if (!['CLASSIQUE', 'CIBLE', 'UPGRADE'].includes(subscriptionType)) {
+            if (!['CLASSIQUE', 'CIBLE', 'UPGRADE', 'WINNER'].includes(subscriptionType)) {
                 res.status(400).json({
                     success: false,
-                    message: 'Invalid subscriptionType. Must be CLASSIQUE, CIBLE, or UPGRADE'
+                    message: 'Invalid subscriptionType. Must be CLASSIQUE, CIBLE, UPGRADE or WINNER'
                 });
                 return;
             }

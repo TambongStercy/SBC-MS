@@ -589,6 +589,9 @@ export class ActivationBalanceService {
             // Non-critical, continue
         }
 
+        const { emitContactsEvent } = await import('./contacts-webhook.service');
+        emitContactsEvent(String(beneficiaryId), subscriptionType === 'UPGRADE' ? 'subscription.updated' : 'subscription.activated').catch(() => undefined);
+
         // 11. Send activation email to the beneficiary
         try {
             const { notificationService } = await import('./clients/notification.service.client');

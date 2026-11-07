@@ -1175,7 +1175,7 @@ class EmailService {
     async sendAccountActivationEmail(data: {
         email: string;
         name: string;
-        subscriptionType: 'CLASSIQUE' | 'CIBLE' | 'UPGRADE';
+        subscriptionType: 'CLASSIQUE' | 'CIBLE' | 'UPGRADE' | 'WINNER';
         sponsorName?: string; // If sponsored by someone
         language?: 'fr' | 'en'; // Language preference
     }): Promise<boolean> {
@@ -1199,6 +1199,11 @@ class EmailService {
                 displayName: isFrench ? 'Pack Ciblé' : 'Targeted Pack',
                 color: '#22c55e',
                 icon: '⬆️',
+            },
+            WINNER: {
+                displayName: 'Pack Winner',
+                color: '#F68F0F',
+                icon: '🏆',
             }
         };
 

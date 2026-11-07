@@ -5,7 +5,6 @@ import { Types } from 'mongoose';
 import { SsoClient, ISsoClient } from '../database/models/sso-client.model';
 import { SsoAuthCode } from '../database/models/sso-auth-code.model';
 import { userRepository } from '../database/repositories/user.repository';
-import { subscriptionService } from './subscription.service';
 import { referralRepository } from '../database/repositories/referral.repository';
 import { AppError } from '../utils/errors';
 import config from '../config';
@@ -43,8 +42,13 @@ export interface SsoUserInfo {
      * must not disagree. Feature subs (RELANCE, VISIBILITE_MAX) do NOT count here.
      */
     directReferralCount: number;
-    /** Convenience flag — true if any active subscription. */
+    /** True when the member has paid a pack (CLASSIQUE or CIBLE; Pack Winner includes CIBLE). Add-ons alone do not count. */
     isActivated: boolean;
+    /**
+     * One entry per subscription the SBC Contacts app knows (CLASSIQUE, CIBLE,
+     * PRO, MISE_EN_AVANT), with dates; `expiresAt` is null for a lifetime pack.
+     */
+    subscriptions: import('./subscription-state.service').SubscriptionEntry[];
     /**
      * Creator earnings from SBC Live (75% of paid-live revenue after 25% SBC
      * commission). Read-only here — payment-service writes via
@@ -583,7 +587,9 @@ class SsoService {
         if (!user) {
             throw new AppError('User not found', 404);
         }
-        const activeSubs = await subscriptionService.getActiveSubscriptionTypes(userId);
+        const { getSubscriptionState, isMembershipType } = await import('./subscription-state.service');
+        const state = await getSubscriptionState(userId);
+        const activeSubs = state.subscriptionTypes;
         // Same source as GET /api/sso/referrals/stats so the SBC Live header and the
         // ≥25 creation gate can't disagree. Counts direct filleuls with an active
         // CLASSIQUE or CIBLE — feature subs (RELANCE, VISIBILITE_MAX) don't count here.
@@ -602,7 +608,8 @@ class SsoService {
             avatarUrl: this.buildAvatarUrl((user as any).avatar),
             subscriptionTypes: Array.isArray(activeSubs) ? activeSubs.map(String) : [],
             directReferralCount: referralStats?.directSubscribedReferrals ?? 0,
-            isActivated: Array.isArray(activeSubs) && activeSubs.length > 0,
+            isActivated: activeSubs.some(isMembershipType),
+            subscriptions: state.subscriptions,
             sbcLiveBalance: (user as any).sbcLiveBalance ?? 0,
         };
     }

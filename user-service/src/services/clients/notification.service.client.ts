@@ -352,6 +352,22 @@ class NotificationService {
     }
 
     /**
+     * Credits relance credits that come with a purchase (Pack Winner). The
+     * reference makes it a one-time credit: a repeat returns "already credited".
+     */
+    async grantRelanceCredits(userId: string, reference: string, packId: string): Promise<boolean> {
+        try {
+            const response = await this.apiClient.post('/relance/internal/credit-pack', {
+                sessionId: reference, status: 'SUCCEEDED', userId, metadata: { packId },
+            });
+            return response.status === 200 && response.data?.success === true;
+        } catch (error: any) {
+            log.error(`Relance credit grant ${reference} for ${userId} failed: ${error.response?.data?.message ?? error.message}`);
+            return false;
+        }
+    }
+
+    /**
      * Send account activation email to user
      * Called when a user's subscription is activated (either self-paid or sponsored)
      */
@@ -364,7 +380,7 @@ class NotificationService {
     }: {
         email: string;
         name: string;
-        subscriptionType: 'CLASSIQUE' | 'CIBLE' | 'UPGRADE';
+        subscriptionType: 'CLASSIQUE' | 'CIBLE' | 'UPGRADE' | 'WINNER';
         sponsorName?: string;
         language?: 'fr' | 'en';
     }): Promise<boolean> {
