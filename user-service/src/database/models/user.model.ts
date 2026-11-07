@@ -64,6 +64,12 @@ export interface IUser extends Document {
     extraWhatsappNumbers?: { _id?: Types.ObjectId; number: string; addedAt: Date }[];
     /** Slots for extra numbers: bought at 500 F each, 3 come with Pack Winner. */
     extraNumberSlots?: number;
+    /**
+     * The WhatsApp number the member wants shown (SBC Network, sales page, first
+     * on their contact card): one of extraWhatsappNumbers. Unset = phoneNumber.
+     * For members whose main number is banned on WhatsApp.
+     */
+    featuredWhatsappNumber?: string;
     email: string;
     password?: string; // Exists in DB but often excluded from responses
     token?: string;
@@ -159,6 +165,7 @@ const UserSchema = new Schema<IUser>(
             default: undefined,
         },
         extraNumberSlots: { type: Number, default: 0 },
+        featuredWhatsappNumber: { type: String },
         email: {
             type: String,
             required: true,

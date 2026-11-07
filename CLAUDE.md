@@ -534,6 +534,14 @@ Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
   `sessionId`, claimed first and released if applying fails. Monthly products
   extend from the end date, so a replayed callback would otherwise give a free
   month.
+- **Sales page** (`GET /api/users/sales-page/:referralCode`, public; web `/p/<code>`):
+  Winner members only, 404 for anyone else. It sends prospects to
+  `/signup?affiliationCode=` and to the member's WhatsApp.
+- **Featured number** (`featuredWhatsappNumber`, `PUT /me/extra-numbers/featured`):
+  - It is the number shown on SBC Network (SSO `whatsappNumber`) and on the
+    sales page, and comes first on the contact card.
+  - It exists for members whose main number is banned on WhatsApp (Rufus).
+  - It never changes the login number.
 - **Extra WhatsApp numbers:**
   - Stored in `users.extraWhatsappNumbers`; slots in `extraNumberSlots`
     (500 F each).
