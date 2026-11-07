@@ -56,7 +56,7 @@ export interface ContactSearchResponse {
         /**
          * Public URL for the member's avatar, or null if they have none. Built via
          * `buildAvatarUrl` so absolute URLs (older GCS-backed migrations) and bare
-         * file identifiers both resolve. SBC Contacts consumes this; SBC Live
+         * file identifiers both resolve. SBC Network consumes this; SBC Live
          * consumes the same shape on `/api/sso/userinfo`.
          */
         avatarUrl?: string | null;

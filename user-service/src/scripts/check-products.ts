@@ -15,7 +15,7 @@ import { deliverDueContactsEvents, expireEndedAddons, signContactsBody } from '.
 
 /**
  * Asserts Pack Winner, the PRO / MISE_EN_AVANT add-ons, extra WhatsApp
- * numbers and the SBC Contacts webhook (2026-11-07).
+ * numbers and the SBC Network webhook (2026-11-07).
  *
  * Needs a Mongo instance; uses its own database and drops it. Payment,
  * notification and referral calls are replaced by recorders, and the Contacts
@@ -101,6 +101,7 @@ const main = async () => {
     const has = (t: string) => subs.filter(s => s.subscriptionType === t);
     check('Winner: Classique became Ciblé, one Winner marker', has('CIBLE').length === 1 && has('CLASSIQUE').length === 0 && has('WINNER').length === 1);
     check('Winner: one year of PRO', has('PRO').length === 1 && days(has('PRO')[0].endDate) >= 360);
+    check('Winner: one month of Mise en avant', has('MISE_EN_AVANT').length === 1 && days(has('MISE_EN_AVANT')[0].endDate) >= 28 && days(has('MISE_EN_AVANT')[0].endDate) <= 31);
     const wu = await UserModel.findById(classique).lean() as any;
     check('Winner: 3 extra number slots, once', wu.extraNumberSlots === 3);
     check('Winner: 1 000 relance credits granted once, by payment reference', grants.length === 1 && grants[0][1] === `winner:${w.paymentDetails.sessionId}` && grants[0][2] === 'winner_email_1k');

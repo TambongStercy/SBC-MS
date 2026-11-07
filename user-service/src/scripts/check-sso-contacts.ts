@@ -2,7 +2,7 @@
  * Asserts an SSO client reaches the contacts API only as the user who authorised
  * it, and only as far as that user's own entitlements go.
  *
- * SBC Contacts (Slade, 2026-09-05) asked for "un endpoint que je peux avoir ça,
+ * SBC Network (Slade, 2026-09-05) asked for "un endpoint que je peux avoir ça,
  * and updates everytime". The risk in answering that with a bulk feed is that a
  * partner app becomes a way around the paywall the contact list exists behind —
  * a CLASSIQUE member could get CIBLE data, or a lapsed member could keep pulling

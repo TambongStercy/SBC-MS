@@ -45,7 +45,7 @@ export interface SsoUserInfo {
     /** True when the member has paid a pack (CLASSIQUE or CIBLE; Pack Winner includes CIBLE). Add-ons alone do not count. */
     isActivated: boolean;
     /**
-     * One entry per subscription the SBC Contacts app knows (CLASSIQUE, CIBLE,
+     * One entry per subscription the SBC Network app knows (CLASSIQUE, CIBLE,
      * PRO, MISE_EN_AVANT), with dates; `expiresAt` is null for a lifetime pack.
      */
     subscriptions: import('./subscription-state.service').SubscriptionEntry[];
