@@ -7,7 +7,7 @@ import { requireActiveSubscription } from '../middleware/requireActiveSubscripti
 import { authorize } from '../middleware/rbac.middleware';
 import { updateLastIp } from '../middleware/ip-update.middleware';
 import { UserRole } from '../../database/models/user.model';
-import { getExtraNumbers, initiateExtraNumberPurchase, addExtraNumber, removeExtraNumber } from '../../services/products.service';
+import { getExtraNumbers, initiateExtraNumberPurchase, addExtraNumber, removeExtraNumber, setFeaturedNumber, getSalesPage } from '../../services/products.service';
 import logger from '../../utils/logger'; // Import logger
 import { uploadAvatar } from '../middleware/upload.middleware'; // Corrected import path
 import { strictLimiter, mediumLimiter, generalLimiter, uploadLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
@@ -131,6 +131,17 @@ router.post('/reset-password', strictLimiter, (req, res, next) => userController
 // Get user information by affiliation code
 router.get('/get-affiliation', (req, res) => userController.getAffiliation(req, res));
 
+// Pack Winner sales page (/p/<referralCode>), public. 404 for anyone without Pack Winner.
+router.get('/sales-page/:code', generalLimiter, async (req: Request, res: Response) => {
+    try {
+        res.status(200).json({ success: true, data: await getSalesPage(req.params.code) });
+    } catch (err: any) {
+        const status = err?.status === 404 ? 404 : 500;
+        if (status === 500) log.error(`Sales page ${req.params.code} failed: ${err?.message ?? err}`);
+        res.status(status).json({ success: false, message: status === 404 ? 'Page introuvable.' : 'Une erreur est survenue.' });
+    }
+});
+
 // --- Avatar Proxy Route (Public) ---
 router.get('/avatar/:fileId', (req, res, next) => userController.getAvatar(req, res, next));
 // --- End Avatar Proxy ---
@@ -164,6 +175,8 @@ router.post('/me/extra-numbers/purchase', extraNumbers((userId, req) =>
     initiateExtraNumberPurchase(userId, req.body?.paymentMethod === 'crypto' ? 'crypto' : 'traditional')));
 router.post('/me/extra-numbers', extraNumbers((userId, req) => addExtraNumber(userId, req.body?.number)));
 router.delete('/me/extra-numbers/:id', extraNumbers((userId, req) => removeExtraNumber(userId, req.params.id)));
+// Which number is shown on SBC Network and the sales page: { number } (an extra) or { number: null } (the main one).
+router.put('/me/extra-numbers/featured', extraNumbers((userId, req) => setFeaturedNumber(userId, req.body?.number ?? null)));
 
 // --- Avatar Upload Route ---
 // Apply upload limiter before the upload middleware

@@ -15,6 +15,7 @@ import { notificationService } from './clients/notification.service.client';
 import { emitContactsEvent } from './contacts-webhook.service';
 import { pushCommission } from './push-notify';
 import { isSamePhoneNumber } from '../utils/phone.utils';
+import { displayWhatsappNumber } from '../utils/whatsapp-numbers';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('ProductsService');
@@ -303,9 +304,12 @@ export async function handleProductPayment(sessionId: string, metadata: any): Pr
 // ─── Extra WhatsApp numbers ─────────────────────────────────────────────────
 
 export async function getExtraNumbers(userId: string) {
-    const user = await UserModel.findById(userId).select('extraWhatsappNumbers extraNumberSlots').lean() as any;
+    const user = await UserModel.findById(userId).select('phoneNumber extraWhatsappNumbers extraNumberSlots featuredWhatsappNumber').lean() as any;
     if (!user) throw httpError(404, 'Utilisateur introuvable.');
     return {
+        mainNumber: String(user.phoneNumber ?? ''),
+        /** The number shown on SBC Network and the sales page; null = the main number. */
+        featured: user.featuredWhatsappNumber ?? null,
         slots: user.extraNumberSlots ?? 0,
         numbers: (user.extraWhatsappNumbers ?? []).map((n: any) => ({ _id: String(n._id), number: n.number, addedAt: n.addedAt })),
         pricePerSlot: EXTRA_NUMBER.xaf,
@@ -345,6 +349,64 @@ export async function addExtraNumber(userId: string, raw: string) {
 
 export async function removeExtraNumber(userId: string, numberId: string) {
     if (!Types.ObjectId.isValid(numberId)) throw httpError(400, 'Numéro introuvable.');
-    await UserModel.updateOne({ _id: userId }, { $pull: { extraWhatsappNumbers: { _id: new Types.ObjectId(numberId) } } });
+    const user = await UserModel.findById(userId).select('extraWhatsappNumbers featuredWhatsappNumber').lean() as any;
+    const removed = (user?.extraWhatsappNumbers ?? []).find((n: any) => String(n._id) === numberId);
+    await UserModel.updateOne({ _id: userId }, {
+        $pull: { extraWhatsappNumbers: { _id: new Types.ObjectId(numberId) } },
+        // A removed number can no longer be the one shown: back to the main number.
+        ...(removed && removed.number === user?.featuredWhatsappNumber ? { $unset: { featuredWhatsappNumber: '' } } : {}),
+    });
     return getExtraNumbers(userId);
+}
+
+/**
+ * Chooses which WhatsApp number is shown (SBC Network, sales page, first on
+ * the contact card): the main number (null) or one of the member's extras.
+ * Rufus 2026-11-07: members whose main number is banned want the new one shown.
+ */
+export async function setFeaturedNumber(userId: string, raw: string | null | undefined) {
+    const user = await UserModel.findById(userId).select('phoneNumber extraWhatsappNumbers').lean() as any;
+    if (!user) throw httpError(404, 'Utilisateur introuvable.');
+    const number = String(raw ?? '').replace(/\D/g, '');
+    if (!number || isSamePhoneNumber(user.phoneNumber, number)) {
+        await UserModel.updateOne({ _id: userId }, { $unset: { featuredWhatsappNumber: '' } });
+        return getExtraNumbers(userId);
+    }
+    const extra = (user.extraWhatsappNumbers ?? []).find((n: any) => isSamePhoneNumber(n.number, number));
+    if (!extra) throw httpError(400, 'Ajoutez d\'abord ce numéro à vos numéros supplémentaires.');
+    await UserModel.updateOne({ _id: userId }, { $set: { featuredWhatsappNumber: extra.number } });
+    return getExtraNumbers(userId);
+}
+
+// ─── Pack Winner sales page ─────────────────────────────────────────────────
+
+/**
+ * Public data for a Winner member's sales page (/p/<referralCode>): who invites,
+ * how to reach them on WhatsApp, and the packs. Only Pack Winner members have
+ * one; any other code gets a 404, and the page falls back to a plain sign-up link.
+ */
+export async function getSalesPage(code: string) {
+    const referralCode = String(code ?? '').trim();
+    if (!referralCode) throw httpError(404, 'Page introuvable.');
+    const user = await UserModel.findOne({ referralCode, deleted: { $ne: true }, blocked: { $ne: true } })
+        .select('name avatar phoneNumber featuredWhatsappNumber country referralCode').lean() as any;
+    if (!user) throw httpError(404, 'Page introuvable.');
+    const isWinner = await SubscriptionModel.exists({
+        user: user._id, subscriptionType: SubscriptionType.WINNER, status: SubscriptionStatus.ACTIVE, endDate: { $gt: new Date() },
+    });
+    if (!isWinner) throw httpError(404, 'Page introuvable.');
+    const avatar: string | undefined = user.avatar;
+    return {
+        name: user.name ?? '',
+        firstName: String(user.name ?? '').trim().split(/\s+/)[0] || '',
+        avatarUrl: !avatar ? null : /^https?:\/\//i.test(avatar) ? avatar : `/api/users/avatar/${avatar}`,
+        whatsappNumber: displayWhatsappNumber(user) || null,
+        country: user.country ?? null,
+        referralCode: user.referralCode,
+        packs: [
+            { id: 'CLASSIQUE', name: 'Pack Classique', price: 2150, currency: 'XAF', features: PACK_FEATURES.CLASSIQUE },
+            { id: 'CIBLE', name: 'Pack Ciblé', price: 5300, currency: 'XAF', features: PACK_FEATURES.CIBLE },
+            { id: 'WINNER', name: WINNER.name, price: WINNER.price.NONE.xaf, currency: 'XAF', features: WINNER.features },
+        ],
+    };
 }

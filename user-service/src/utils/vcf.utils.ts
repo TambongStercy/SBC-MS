@@ -1,4 +1,5 @@
 import { IUser } from '../database/models/user.model';
+import { contactNumbers } from './whatsapp-numbers';
 
 /**
  * Escapes special characters in vCard fields according to RFC 6350
@@ -22,7 +23,7 @@ export const escapeVCardField = (value: string | number | undefined): string => 
  */
 export const generateVCard = (user: IUser): string => {
     const { name, email, phoneNumber, region } = user;
-    const extraNumbers = (user.extraWhatsappNumbers ?? []).map(n => n.number);
+    const numbers = contactNumbers(user);
 
     // Append "SBC" to the contact name for all exported contacts
     const displayName = name ? `${name} SBC` : 'SBC';
@@ -34,8 +35,7 @@ export const generateVCard = (user: IUser): string => {
         `FN:${escapeVCardField(displayName)}`,
         `N:${escapeVCardField(displayName)};;;`,
         email ? `EMAIL:${escapeVCardField(email)}` : '',
-        phoneNumber ? `TEL;TYPE=CELL:${escapeVCardField(phoneNumber)}` : '',
-        ...extraNumbers.map(n => `TEL;TYPE=CELL:${escapeVCardField(n)}`),
+        ...numbers.map(n => `TEL;TYPE=CELL:${escapeVCardField(n)}`),
         region ? `ADR;TYPE=HOME:;;${escapeVCardField(region)};;;` : '',
         `REV:${new Date().toISOString()}`,
         'END:VCARD'
@@ -55,6 +55,7 @@ export const generateVCFFile = (users: Array<{
     email: string;
     phoneNumber?: string;
     extraWhatsappNumbers?: { number: string }[];
+    featuredWhatsappNumber?: string;
     region?: string;
     shareContactInfo?: boolean;
 }>): Buffer => {

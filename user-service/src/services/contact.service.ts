@@ -135,6 +135,7 @@ export class ContactService {
                 email: user.email!,
                 phoneNumber: user.phoneNumber,
                 extraWhatsappNumbers: user.extraWhatsappNumbers,
+                featuredWhatsappNumber: user.featuredWhatsappNumber,
                 region: user.region,
                 shareContactInfo: user.shareContactInfo
             }));

@@ -128,6 +128,26 @@ const main = async () => {
     await handleProductPayment(buy.sessionId, intents[e].metadata);
     check('a bought slot is added once (500 F)', intents[e].amount === 500 && (await getExtraNumbers(classique)).slots === 4);
 
+    // Featured number (shown on SBC Network and the sales page)
+    const { setFeaturedNumber, getSalesPage } = await import('../services/products.service');
+    const { contactNumbers } = await import('../utils/whatsapp-numbers');
+    const list = (await getExtraNumbers(classique)).numbers;
+    const pick = list[0].number;
+    check('an unknown number cannot be featured', (await refusal(() => setFeaturedNumber(classique, '22997999999')))?.status === 400);
+    const feat = await setFeaturedNumber(classique, pick);
+    check('an extra number can be featured', feat.featured === pick);
+    const card = contactNumbers(await UserModel.findById(classique).lean() as any);
+    check('featured number is first on the contact card, main kept', card[0] === pick && card.includes(own.phoneNumber));
+    await removeExtraNumber(classique, list[0]._id);
+    check('removing the featured number falls back to the main one', (await getExtraNumbers(classique)).featured === null);
+
+    // Sales page
+    const cibleCode = String((await UserModel.findById(cible).lean() as any).referralCode ?? 'none');
+    check('no sales page without Pack Winner (404)', (await refusal(() => getSalesPage(cibleCode)))?.status === 404);
+    await UserModel.updateOne({ _id: classique }, { $set: { referralCode: 'winner01' } });
+    const page = await getSalesPage('winner01');
+    check('Winner sales page: name, WhatsApp number, 3 packs', page.firstName === (own.name as string).split(' ')[0] && page.whatsappNumber === own.phoneNumber && page.packs.length === 3);
+
     // SSO state
     const st = await getSubscriptionState(classique);
     check('SSO: subscriptionTypes lists active types incl. WINNER and PRO', ['CIBLE', 'WINNER', 'PRO'].every(t => st.subscriptionTypes.includes(t)));

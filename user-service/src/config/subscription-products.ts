@@ -74,11 +74,12 @@ export const WINNER = {
     relanceCredits: 1000,
     extraNumberSlots: 3,
     features: [
-        'Tout le Pack Ciblé, à vie',
+        'Tout le Pack Ciblé, à vie, avec ses 6 formations',
         'Recevez les demandes de clients pendant 1 an (Espace Pro offert)',
         'Mise en avant pendant 1 mois sur SBC Network',
         '3 numéros WhatsApp en plus dans le fichier de contacts SBC',
         '1 000 crédits de relance prospects',
+        'Page de vente pour convertir vos prospects automatiquement',
         'Accès au groupe VIP SBC',
     ],
 };
@@ -86,17 +87,21 @@ export const WINNER = {
 /** One more WhatsApp number in the SBC contacts file (Rufus: 500 F par numéro). */
 export const EXTRA_NUMBER = { xaf: 500, usd: 1.2 };
 
+/** Rufus's wording from the membership page as it was before the 2026-11-07 redesign: keep it word for word. */
+export const TRAININGS = ['Trading', 'Achat en Chine', 'Art oratoire', 'Marketing digital', 'Bots WhatsApp'];
+
 export const PACK_FEATURES = {
     CLASSIQUE: [
-        'Accès à vie à SBC',
-        'Fichier de contacts SBC, ciblé par pays',
-        'Commissions sur 3 niveaux de filleuls',
-        'Gagnez avec vos statuts WhatsApp (SBC Ads Network)',
+        'Possibilité de gagner entre 5 000 et 10 000 FCFA par jour',
+        'Vente de produits digitaux',
+        'Contacts WhatsApp ciblés par pays',
+        'Accès à la marketplace SBC',
+        `${TRAININGS.length} formations incluses : ${TRAININGS.join(', ')}`,
     ],
     CIBLE: [
         'Tout le Pack Classique',
-        'Ciblage avancé : sexe, âge, ville, profession, centres d\'intérêt',
-        'Plus de commissions sur 3 niveaux',
-        'Gagnez plus avec vos statuts WhatsApp',
+        'Ciblage avancé : pays, sexe, âge, profession, ville et centres d\'intérêt',
+        'Commissions sur 3 niveaux',
+        `${TRAININGS.length + 1} formations incluses : ${TRAININGS.join(', ')}, SBC IA Creator`,
     ],
 };
