@@ -15,7 +15,7 @@ import { deliverDueContactsEvents, expireEndedAddons, signContactsBody } from '.
 
 /**
  * Asserts Pack Winner, the PRO / MISE_EN_AVANT add-ons, extra WhatsApp
- * numbers and the SBC Contacts webhook (2026-11-07).
+ * numbers and the SBC Network webhook (2026-11-07).
  *
  * Needs a Mongo instance; uses its own database and drops it. Payment,
  * notification and referral calls are replaced by recorders, and the Contacts

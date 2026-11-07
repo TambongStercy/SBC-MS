@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import SubscriptionModel, { SubscriptionStatus, SubscriptionType } from '../database/models/subscription.model';
 
-/** Types the SBC Contacts app knows (Kersten's note, 2026-11-05). */
+/** Types the SBC Network app knows (Kersten's note, 2026-11-05). */
 const CONTACTS_APP_TYPES = [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE, SubscriptionType.PRO, SubscriptionType.MISE_EN_AVANT];
 
 export interface SubscriptionEntry {

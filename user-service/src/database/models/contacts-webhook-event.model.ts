@@ -8,7 +8,7 @@ export type ContactsEventType =
     | 'subscription.cancelled';
 
 /**
- * Outbox for the SBC Contacts webhook. The body is stored exactly as sent,
+ * Outbox for the SBC Network webhook. The body is stored exactly as sent,
  * because the signature covers the raw bytes and retries must resend the same
  * event (same id) for the app to apply it once.
  */

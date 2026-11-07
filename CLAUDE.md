@@ -539,7 +539,7 @@ Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
     (500 F each).
   - Added as more `TEL` lines on the member's card in both contact exports.
   - Routes: `/api/users/me/extra-numbers`.
-- **SBC Contacts app:**
+- **SBC Network app:**
   - SSO `userinfo` and `token` carry `subscriptions: [{type, status,
     startedAt, expiresAt}]` (CLASSIQUE, CIBLE, PRO, MISE_EN_AVANT; lifetime has
     `expiresAt: null`).

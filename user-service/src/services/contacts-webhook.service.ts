@@ -18,7 +18,7 @@ export const signContactsBody = (body: string, secret: string) =>
     crypto.createHmac('sha256', secret).update(body).digest('hex');
 
 /**
- * Tells the SBC Contacts app that a member's subscriptions changed. data.user
+ * Tells the SBC Network app that a member's subscriptions changed. data.user
  * always carries the member's full state, not just the subscription that
  * changed. Never throws: a webhook problem must not undo a paid activation.
  */

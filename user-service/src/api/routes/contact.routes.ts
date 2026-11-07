@@ -29,7 +29,7 @@ router.get('/export', authenticate as any, requireActiveSubscription as any, gen
 /**
  * The same two endpoints, for an SSO client acting on behalf of its user.
  *
- * SBC Contacts (Slade, 2026-09-05) needs a live contact list rather than a
+ * SBC Network (Slade, 2026-09-05) needs a live contact list rather than a
  * one-off export. Going through SSO means each SBC member authorises the app
  * themselves and the app sees exactly what that member is entitled to —
  * requireActiveSubscription and the CIBLE/CLASSIQUE filter rules are the same
