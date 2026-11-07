@@ -2490,7 +2490,7 @@ export class UserService {
                 skip: skip,
                 limit: batchSize,
                 sort: { _id: 1 }, // Consistent sort order for pagination (use _id for performance)
-                select: '_id name email phoneNumber extraWhatsappNumbers country region city birthDate sex language profession interests avatar createdAt'
+                select: '_id name email phoneNumber extraWhatsappNumbers featuredWhatsappNumber country region city birthDate sex language profession interests avatar createdAt'
             });
 
             if (users.length > 0) {
@@ -2598,7 +2598,7 @@ export class UserService {
                 // No skip/limit
                 sort: { createdAt: -1 },
                 // Include city
-                select: '_id name email phoneNumber extraWhatsappNumbers country region city birthDate sex language profession interests avatar createdAt'
+                select: '_id name email phoneNumber extraWhatsappNumbers featuredWhatsappNumber country region city birthDate sex language profession interests avatar createdAt'
             });
 
             // Specify type for user parameter in map

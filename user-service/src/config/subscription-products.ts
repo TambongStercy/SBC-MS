@@ -79,6 +79,7 @@ export const WINNER = {
         'Mise en avant pendant 1 mois sur SBC Network',
         '3 numéros WhatsApp en plus dans le fichier de contacts SBC',
         '1 000 crédits de relance prospects',
+        'Page de vente pour convertir vos prospects automatiquement',
         'Accès au groupe VIP SBC',
     ],
 };

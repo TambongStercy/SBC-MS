@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { displayWhatsappNumber } from '../utils/whatsapp-numbers';
 import bcrypt from 'bcrypt';
 import jwt, { SignOptions, Secret } from 'jsonwebtoken';
 import { Types } from 'mongoose';
@@ -49,6 +50,10 @@ export interface SsoUserInfo {
      * PRO, MISE_EN_AVANT), with dates; `expiresAt` is null for a lifetime pack.
      */
     subscriptions: import('./subscription-state.service').SubscriptionEntry[];
+    /** The WhatsApp number the member chose to show (SBC Network); their phoneNumber unless they picked another. */
+    whatsappNumber: string | null;
+    /** Their other WhatsApp numbers (paid extra numbers), main number excluded. */
+    extraWhatsappNumbers: string[];
     /**
      * Creator earnings from SBC Live (75% of paid-live revenue after 25% SBC
      * commission). Read-only here — payment-service writes via
@@ -610,6 +615,8 @@ class SsoService {
             directReferralCount: referralStats?.directSubscribedReferrals ?? 0,
             isActivated: activeSubs.some(isMembershipType),
             subscriptions: state.subscriptions,
+            whatsappNumber: displayWhatsappNumber(user as any) || null,
+            extraWhatsappNumbers: ((user as any).extraWhatsappNumbers ?? []).map((n: any) => String(n.number)),
             sbcLiveBalance: (user as any).sbcLiveBalance ?? 0,
         };
     }
