@@ -101,6 +101,7 @@ export const PACK_FEATURES = {
     CIBLE: [
         'Tout le Pack Classique',
         'Ciblage avancé : pays, sexe, âge, profession, ville et centres d\'intérêt',
+        'Commissions sur 3 niveaux',
         `${TRAININGS.length + 1} formations incluses : ${TRAININGS.join(', ')}, SBC IA Creator`,
     ],
 };
