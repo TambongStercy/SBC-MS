@@ -1,4 +1,5 @@
 import { pushNewFilleul } from './push-notify';
+import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import bcrypt from 'bcrypt';
 import { IUser, UserRole } from '../database/models/user.model';
 import { userRepository } from '../database/repositories/user.repository';
@@ -240,6 +241,16 @@ export class UserService {
 
         if (!userToCreate.email || !userToCreate.password || !userToCreate.name || !userToCreate.country || !userToCreate.phoneNumber) {
             throw new Error('Missing required registration fields');
+        }
+
+        // Consents given on the sign-up form (APDP Benin): recorded with their date and the policy version.
+        const consentInput = (registrationData as any).consents;
+        if (consentInput?.privacy === true || consentInput?.dataTransfer === true) {
+            const at = { acceptedAt: new Date(), version: PRIVACY_POLICY_VERSION, ...(ipAddress ? { ip: ipAddress } : {}) };
+            userToCreate.consents = {
+                ...(consentInput.privacy === true ? { privacy: at } : {}),
+                ...(consentInput.dataTransfer === true ? { dataTransfer: at } : {}),
+            };
         }
 
         // Normalize country name (e.g., "Cameroun" or "Cameroon" -> "CM")
@@ -2490,7 +2501,7 @@ export class UserService {
                 skip: skip,
                 limit: batchSize,
                 sort: { _id: 1 }, // Consistent sort order for pagination (use _id for performance)
-                select: '_id name email phoneNumber extraWhatsappNumbers featuredWhatsappNumber country region city birthDate sex language profession interests avatar createdAt'
+                select: '_id name email phoneNumber extraWhatsappNumbers featuredWhatsappNumber shareContactInfo country region city birthDate sex language profession interests avatar createdAt'
             });
 
             if (users.length > 0) {
@@ -2598,7 +2609,7 @@ export class UserService {
                 // No skip/limit
                 sort: { createdAt: -1 },
                 // Include city
-                select: '_id name email phoneNumber extraWhatsappNumbers featuredWhatsappNumber country region city birthDate sex language profession interests avatar createdAt'
+                select: '_id name email phoneNumber extraWhatsappNumbers featuredWhatsappNumber shareContactInfo country region city birthDate sex language profession interests avatar createdAt'
             });
 
             // Specify type for user parameter in map

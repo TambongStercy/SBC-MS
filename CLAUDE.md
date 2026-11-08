@@ -562,6 +562,40 @@ Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
 - **Crypto:** user-service puts the USD price in `metadata.cryptoUsdAmount`,
   and payment-service uses it instead of guessing from the XAF amount.
 
+### Data protection: APDP Benin authorisation (deliberation 2026-523, 27 Aug 2026)
+
+APDP authorised SBC's processing under the Code du numérique, **on condition**
+that within 2 months of notification (received ~2026-11-08) the site:
+- asks for consent;
+- updates its legal notices and privacy policy (rights, the authorisation
+  reference, consent to the transfer of data);
+- informs users about cookies, which may last 60 days at most;
+- lets members exercise access, portability, objection, rectification and
+  erasure.
+
+Otherwise the authorisation is void. The data controller is Mme Adèle
+AGONGNON, Directrice of ETS SNIPER BUSINESS CENTER (Bénin, RCCM
+RB/PNO/25/A/113290). Servers (app, DBs, mail) are at Contabo, Germany, so the
+data leaves Benin and that transfer needs consent.
+
+- **Consents:** `users.consents.{privacy,dataTransfer}` hold `{acceptedAt,
+  version, ip}`.
+  - Recorded at sign-up (`consents` in the register body) or through
+    `POST /api/users/me/consents`.
+  - `config/privacy.ts` `PRIVACY_POLICY_VERSION` must match the web app's: a
+    member whose version differs is asked again.
+- **Member rights:**
+  - Download: `GET /api/users/me/data-export`, JSON with no password, OTP or
+    token.
+  - Erasure: `POST /api/users/me/delete-account {password}`, the same soft
+    delete as the admin one, plus `shareContactInfo:false`.
+  - Objection: `shareContactInfo` (`PUT /me`). The cached contacts file
+    (vcf-cache) now honours it too.
+- **Cookies:** the web app sets none and has no analytics; it uses
+  localStorage only. The cookie banner says so and is shown again after 60
+  days.
+- Assertions: `src/scripts/check-privacy.ts`.
+
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0
 
 Most countries here treat a leading 0 on the national number as a trunk prefix to
