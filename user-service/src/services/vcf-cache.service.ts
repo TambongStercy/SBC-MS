@@ -118,6 +118,8 @@ export class VCFCacheService {
                 500,  // batch size
                 async (batch) => {
                     for (const user of batch) {
+                        // A member who turned off contact sharing is left out (right to object).
+                        if (user.shareContactInfo === false) continue;
                         vcfContent += this.generateUserVCard(user);
                         totalContacts++;
                     }
