@@ -8,6 +8,7 @@ import { authorize } from '../middleware/rbac.middleware';
 import { updateLastIp } from '../middleware/ip-update.middleware';
 import { UserRole } from '../../database/models/user.model';
 import { getExtraNumbers, initiateExtraNumberPurchase, addExtraNumber, removeExtraNumber, setFeaturedNumber, getSalesPage } from '../../services/products.service';
+import { recordConsents, exportUserData, deleteOwnAccount } from '../../services/privacy.service';
 import logger from '../../utils/logger'; // Import logger
 import { uploadAvatar } from '../middleware/upload.middleware'; // Corrected import path
 import { strictLimiter, mediumLimiter, generalLimiter, uploadLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
@@ -177,6 +178,23 @@ router.post('/me/extra-numbers', extraNumbers((userId, req) => addExtraNumber(us
 router.delete('/me/extra-numbers/:id', extraNumbers((userId, req) => removeExtraNumber(userId, req.params.id)));
 // Which number is shown on SBC Network and the sales page: { number } (an extra) or { number: null } (the main one).
 router.put('/me/extra-numbers/featured', extraNumbers((userId, req) => setFeaturedNumber(userId, req.body?.number ?? null)));
+
+// --- Data protection (APDP Benin, deliberation 2026-523): consent, download, erasure ---
+router.post('/me/consents', extraNumbers((userId, req) => recordConsents(userId, req.body ?? {}, req.ip)));
+router.get('/me/data-export', async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user?.userId;
+    if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+    try {
+        const data = await exportUserData(userId);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="mes-donnees-sbc.json"');
+        res.status(200).send(JSON.stringify(data, null, 2));
+    } catch (err: any) {
+        log.error(`Data export failed for ${userId}: ${err?.message ?? err}`);
+        res.status(err?.status === 404 ? 404 : 500).json({ success: false, message: 'Le téléchargement a échoué. Réessayez.' });
+    }
+});
+router.post('/me/delete-account', strictLimiter, extraNumbers((userId, req) => deleteOwnAccount(userId, req.body?.password)));
 
 // --- Avatar Upload Route ---
 // Apply upload limiter before the upload middleware

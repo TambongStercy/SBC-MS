@@ -70,6 +70,15 @@ export interface IUser extends Document {
      * For members whose main number is banned on WhatsApp.
      */
     featuredWhatsappNumber?: string;
+    /**
+     * Consents recorded for the APDP (Benin) authorisation, deliberation
+     * 2026-523 of 27 Aug 2026: the privacy policy, and the hosting of data
+     * outside Benin. `version` is the policy version the member agreed to.
+     */
+    consents?: {
+        privacy?: { acceptedAt: Date; version: string; ip?: string };
+        dataTransfer?: { acceptedAt: Date; version: string; ip?: string };
+    };
     email: string;
     password?: string; // Exists in DB but often excluded from responses
     token?: string;
@@ -166,6 +175,10 @@ const UserSchema = new Schema<IUser>(
         },
         extraNumberSlots: { type: Number, default: 0 },
         featuredWhatsappNumber: { type: String },
+        consents: {
+            privacy: { acceptedAt: Date, version: String, ip: String },
+            dataTransfer: { acceptedAt: Date, version: String, ip: String },
+        },
         email: {
             type: String,
             required: true,
