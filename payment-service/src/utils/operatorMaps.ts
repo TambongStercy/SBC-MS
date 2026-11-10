@@ -42,6 +42,8 @@ export const momoOperatorToCountryCode: { [key: string]: string } = {
     'VODAFONE_GHA': 'GH',
     'TELECEL_GHA': 'GH',
     'AIRTEL_GHA': 'GH',
+    // Guinée-Conakry (GN): Orange is the only network MoneyFusion pays out to
+    'ORANGE_GN': 'GN',
     // Kenya (KE)
     'MPESA_KEN': 'KE',
     // Nigeria (NG)
@@ -202,15 +204,19 @@ export const momoOperatorToCurrency: { [key: string]: string } = {
     // Chad (TD) - XAF
     'AIRTEL_TCD': 'XAF',
     'MOOV_TCD': 'XAF',
-    'VODACOM_MPESA_COD': 'CDF',
-    'AIRTEL_COD': 'CDF',
-    'ORANGE_COD': 'CDF',
+    // RDC (CD) pays out in USD: MoneyFusion's /withdraw/methods lists RDC as
+    // USD. It said CDF here, which matched neither MF nor the app.
+    'VODACOM_MPESA_COD': 'USD',
+    'AIRTEL_COD': 'USD',
+    'ORANGE_COD': 'USD',
     'MPESA_KEN': 'KES',
     // Ghana (GH) - GHS, so withdrawals convert against the live rate like RDC/Guinée
     'MTN_MOMO_GHA': 'GHS',
     'VODAFONE_GHA': 'GHS',
     'TELECEL_GHA': 'GHS',
     'AIRTEL_GHA': 'GHS',
+    // Guinée-Conakry (GN) - GNF
+    'ORANGE_GN': 'GNF',
     'MTN_MOMO_NGA': 'NGN',
     'AIRTEL_NGA': 'NGN',
     'FREE_SEN': 'XOF',

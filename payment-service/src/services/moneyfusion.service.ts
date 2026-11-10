@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
 import * as sandbox from './sandbox.service';
+import { currencyService } from './currency.service';
 
 const log = logger.getLogger('MoneyFusionService');
 
@@ -73,6 +74,40 @@ const MF_PAYIN_CURRENCY: Record<string, string> = {
 export function getMoneyFusionPayinCurrency(countryCode: string): string | undefined {
     if (!countryCode) return undefined;
     return MF_PAYIN_CURRENCY[countryCode.toUpperCase()];
+}
+
+/**
+ * The payout amount MoneyFusion must receive for `netXaf` (our books are XAF).
+ * MF pays each country in the currency /withdraw/methods lists for it (the
+ * same table as MF_PAYIN_CURRENCY) and reads `amount` literally in it.
+ *
+ * Strict: throws when the rate is unavailable or the country is unknown, so
+ * an unconverted figure can never reach MF. Rounds DOWN to the currency's
+ * unit (cents for USD, whole units otherwise) so we never pay out more than
+ * the wallet is debited.
+ */
+export async function toMoneyFusionPayoutAmount(
+    netXaf: number,
+    countryCode: string,
+): Promise<{ amount: number; currency: string; rate: number }> {
+    const currency = getMoneyFusionPayinCurrency(countryCode);
+    if (!currency) {
+        throw new Error(`No MoneyFusion currency known for ${countryCode}; refusing to send an unconverted payout`);
+    }
+    if (currency === 'XAF' || currency === 'XOF') {
+        return { amount: netXaf, currency, rate: 1 };
+    }
+    const rate = await currencyService.getRate('XAF', currency);
+    if (!rate || rate <= 0) {
+        throw new Error(`Currency conversion failed: XAF->${currency} rate unavailable; payout not sent`);
+    }
+    const unit = currency === 'USD' ? 100 : 1;
+    // The epsilon keeps 17.86 from flooring to 17.85 through float error.
+    const amount = Math.floor(netXaf * rate * unit + 1e-6) / unit;
+    if (!(amount > 0)) {
+        throw new Error(`Payout of ${netXaf} XAF converts to ${amount} ${currency}; refusing to send`);
+    }
+    return { amount, currency, rate };
 }
 
 // --- Withdraw mode mapping per country ---
