@@ -253,10 +253,10 @@ export class ActivationBalanceController {
                 return;
             }
 
-            if (!subscriptionType || !['CLASSIQUE', 'CIBLE', 'UPGRADE'].includes(subscriptionType)) {
+            if (!subscriptionType || !['CLASSIQUE', 'CIBLE', 'UPGRADE', 'WINNER'].includes(subscriptionType)) {
                 res.status(400).json({
                     success: false,
-                    message: 'Valid subscription type is required (CLASSIQUE, CIBLE, or UPGRADE)'
+                    message: 'Valid subscription type is required (CLASSIQUE, CIBLE, UPGRADE or WINNER)'
                 });
                 return;
             }

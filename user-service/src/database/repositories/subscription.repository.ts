@@ -628,7 +628,7 @@ export class SubscriptionRepository {
         const query: mongoose.FilterQuery<ISubscription> = {
             user: { $in: userIds },
             status: SubscriptionStatus.ACTIVE,
-            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE, SubscriptionType.WINNER] },
             endDate: { $gt: now },
         };
         // Select only necessary fields: user and subscriptionType

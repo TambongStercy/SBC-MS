@@ -33,6 +33,7 @@ export interface ActivatableReferral {
     hasActiveSubscription: boolean;
     currentSubscriptionType?: SubscriptionType;
     canUpgrade: boolean; // Has CLASSIQUE but not CIBLE
+    canUpgradeToWinner: boolean; // Has a pack but not Pack Winner
     createdAt: Date;
 }
 
@@ -406,6 +407,7 @@ export class ActivationBalanceService {
             hasActiveSubscription: r.hasActiveSubscription,
             currentSubscriptionType: r.currentSubscriptionType as SubscriptionType | undefined,
             canUpgrade: r.canUpgrade,
+            canUpgradeToWinner: r.canUpgradeToWinner,
             createdAt: r.createdAt
         }));
 
@@ -433,6 +435,11 @@ export class ActivationBalanceService {
         newActivationBalance: number;
     }> {
         log.info(`Sponsor ${sponsorId} activating ${subscriptionType} for beneficiary ${beneficiaryId}`);
+
+        // Pack Winner has its own price (by the filleul's current pack) and activation.
+        if (subscriptionType === 'WINNER') {
+            return this.sponsorWinnerActivation(sponsorId, beneficiaryId, ipAddress);
+        }
 
         const sponsorObjectId = new Types.ObjectId(sponsorId);
         const beneficiaryObjectId = new Types.ObjectId(beneficiaryId);
@@ -791,6 +798,90 @@ export class ActivationBalanceService {
             page,
             pages: Math.ceil(total / limit)
         };
+    }
+
+    /**
+     * A sponsor activates Pack Winner for a filleul from their activation
+     * balance (Rufus, 2026-11-12): same price as by Mobile Money for the
+     * filleul's current pack, same activation and commissions as a paid Winner
+     * (products.service handleProductPayment, applied once per reference).
+     * The balance is given back if the activation fails.
+     */
+    private async sponsorWinnerActivation(sponsorId: string, beneficiaryId: string, ipAddress?: string) {
+        const sponsorObjectId = new Types.ObjectId(sponsorId);
+        const beneficiaryObjectId = new Types.ObjectId(beneficiaryId);
+        const [sponsor, beneficiary] = await Promise.all([
+            this.userRepository.findById(sponsorObjectId),
+            this.userRepository.findById(beneficiaryObjectId),
+        ]);
+        if (!sponsor) throw new AppError('Sponsor not found', 404);
+        if (!beneficiary) throw new AppError('Beneficiary not found', 404);
+        if (!(await this.verifyIsReferral(sponsorId, beneficiaryId))) {
+            throw new AppError('User is not in your referral network. You can only sponsor accounts of users you referred.', 403);
+        }
+
+        const [hasWinner, hasCible, hasClassique] = await Promise.all([
+            this.subscriptionRepository.findActiveSubscriptionByType(beneficiaryObjectId, SubscriptionType.WINNER),
+            this.subscriptionRepository.findActiveSubscriptionByType(beneficiaryObjectId, SubscriptionType.CIBLE),
+            this.subscriptionRepository.findActiveSubscriptionByType(beneficiaryObjectId, SubscriptionType.CLASSIQUE),
+        ]);
+        if (hasWinner) throw new AppError('Ce filleul a déjà le Pack Winner.', 400);
+        const from: 'NONE' | 'CLASSIQUE' | 'CIBLE' = hasCible ? 'CIBLE' : hasClassique ? 'CLASSIQUE' : 'NONE';
+        const price = from === 'CIBLE' ? ACTIVATION_PRICES.WINNER_FROM_CIBLE
+            : from === 'CLASSIQUE' ? ACTIVATION_PRICES.WINNER_FROM_CLASSIQUE : ACTIVATION_PRICES.WINNER;
+        if ((sponsor.activationBalance || 0) < price) {
+            throw new AppError(`Insufficient activation balance. Required: ${price} XAF, Available: ${sponsor.activationBalance || 0} XAF`, 400);
+        }
+
+        const updatedSponsor = await this.userRepository.updateActivationBalance(sponsorId, -price);
+        if (!updatedSponsor) throw new AppError('Failed to deduct activation balance. Please try again.', 500);
+
+        // The reference makes the activation (and its commissions) happen once.
+        const reference = `sponsored_winner_${new Types.ObjectId().toHexString()}`;
+        try {
+            const { handleProductPayment } = await import('./products.service');
+            await handleProductPayment(reference, {
+                userId: beneficiaryId, product: 'WINNER', offerId: 'WINNER', winnerFrom: from,
+                paymentMethod: 'activation_balance', sponsoredBy: sponsorId,
+            });
+        } catch (error: any) {
+            await this.userRepository.updateActivationBalance(sponsorId, price);
+            log.error(`Sponsored Winner for ${beneficiaryId} failed, sponsor ${sponsorId} refunded ${price}: ${error.message}`);
+            throw new AppError(`Failed to activate subscription: ${error.message}`, 500);
+        }
+        const winner = await this.subscriptionRepository.findActiveSubscriptionByType(beneficiaryObjectId, SubscriptionType.WINNER);
+
+        let transactionId = '';
+        try {
+            const txResult = await paymentService.recordActivationTransaction({
+                userId: sponsorId,
+                type: 'sponsor_activation',
+                amount: price,
+                description: `Activation WINNER sponsorisée pour ${beneficiary.name}`,
+                metadata: {
+                    beneficiaryId, beneficiaryName: beneficiary.name, beneficiaryEmail: beneficiary.email,
+                    subscriptionType: 'WINNER', winnerFrom: from, reference,
+                    subscriptionId: winner?._id?.toString(),
+                    previousActivationBalance: sponsor.activationBalance || 0,
+                    newActivationBalance: updatedSponsor.activationBalance,
+                },
+                recipientId: beneficiaryId,
+                ipAddress,
+            });
+            transactionId = txResult.transactionId;
+        } catch (error: any) {
+            log.error(`Failed to record sponsored Winner transaction: ${error.message}`);
+        }
+        try {
+            await SponsoredActivationModel.create({
+                sponsor: sponsorObjectId, beneficiary: beneficiaryObjectId, subscriptionType: SubscriptionType.WINNER,
+                amount: price, subscription: winner?._id, transactionId,
+            });
+        } catch (error: any) {
+            log.error(`Failed to create SponsoredActivation record for Winner: ${error.message}`);
+        }
+        log.info(`Sponsor ${sponsorId} activated Pack Winner (from ${from}, ${price} XAF) for ${beneficiaryId}`);
+        return { success: true, subscription: winner, transactionId, newActivationBalance: updatedSponsor.activationBalance };
     }
 
     /**
