@@ -1267,7 +1267,7 @@ export class UserController {
             let subType: string | undefined = undefined;
             if (subTypeQuery) {
                 // Use spread operator to correctly combine string literals with enum values
-                const validSubTypes: string[] = [...Object.values(SubscriptionType), 'all', 'none'];
+                const validSubTypes: string[] = [...Object.values(SubscriptionType), 'all', 'none', 'upgradable'];
                 if (!validSubTypes.includes(subTypeQuery as string)) {
                     res.status(400).json({ success: false, message: `Invalid subType parameter. Must be one of: ${validSubTypes.join(', ')}.` });
                     return;

@@ -42,6 +42,7 @@ const activationTx: any[] = [];
 const L1 = new Types.ObjectId().toString(), L2 = new Types.ObjectId().toString(), L3 = new Types.ObjectId().toString();
 (userService as any).getReferrerIds = async () => ({ level1: L1, level2: L2, level3: L3 });
 
+
 let n = 0;
 const member = async (types: SubscriptionType[] = [], activationBalance = 0) => {
     const u = await UserModel.create({ name: `M${n}`, email: `m${n}@x.test`, phoneNumber: `23767710${String(n++).padStart(4, '0')}`, password: 'x', region: 'Centre', country: 'CM', activationBalance } as any);
@@ -77,6 +78,14 @@ const main = async () => {
     const act = await activationBalanceService.getReferralsForActivation(sponsor, 1, 20, 'activatable');
     check('"À activer" holds only the filleul without a pack', act.total === 1 && !!byId(act.referrals, fresh), `total ${act.total}`);
     check('filtered list carries the Winner flag', byId(up.referrals, cible)?.canUpgradeToWinner === true);
+
+    // The list the web page actually reads (/users/get-refered-users)
+    const page = await userService.getReferredUsersInfoPaginated(sponsor, undefined, undefined, 1, 20, 'upgradable', 'direct');
+    const ids = page.referredUsers.map((u: any) => String(u._id));
+    check('get-refered-users "upgradable": Classique and Ciblé, not Winner nor none', page.totalCount === 2 && ids.includes(classique) && ids.includes(cible), `total ${page.totalCount}`);
+    const allPage = await userService.getReferredUsersInfoPaginated(sponsor, undefined, undefined, 1, 20, undefined, 'direct');
+    const w = allPage.referredUsers.find((u: any) => String(u._id) === winner) as any;
+    check('get-refered-users lists WINNER in activeSubscriptionTypes', !!w?.activeSubscriptionTypes?.includes('WINNER'));
 
     // Prices by current pack
     let before = await balanceOf(sponsor);
