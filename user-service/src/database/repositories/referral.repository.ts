@@ -1181,7 +1181,7 @@ export class ReferralRepository {
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
-                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE, SubscriptionType.WINNER] },
                 endDate: { $gt: new Date() }
             };
 
@@ -1222,6 +1222,14 @@ export class ReferralRepository {
                 pipeline.push({
                     $match: {
                         $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else if (subType === 'upgradable') {
+                // Has a pack that can still go up: Classique, or Ciblé without Pack Winner
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.0': { $exists: true },
+                        'activeSubscriptions.subscriptionType': { $ne: SubscriptionType.WINNER }
                     }
                 });
             } else {
@@ -1338,7 +1346,7 @@ export class ReferralRepository {
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
-                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE, SubscriptionType.WINNER] },
                 endDate: { $gt: new Date() }
             };
 
@@ -1379,6 +1387,14 @@ export class ReferralRepository {
                 pipeline.push({
                     $match: {
                         $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else if (subType === 'upgradable') {
+                // Has a pack that can still go up: Classique, or Ciblé without Pack Winner
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.0': { $exists: true },
+                        'activeSubscriptions.subscriptionType': { $ne: SubscriptionType.WINNER }
                     }
                 });
             } else {
@@ -1474,7 +1490,7 @@ export class ReferralRepository {
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
-                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE, SubscriptionType.WINNER] },
                 endDate: { $gt: new Date() }
             };
 
@@ -1515,6 +1531,14 @@ export class ReferralRepository {
                 pipeline.push({
                     $match: {
                         $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else if (subType === 'upgradable') {
+                // Has a pack that can still go up: Classique, or Ciblé without Pack Winner
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.0': { $exists: true },
+                        'activeSubscriptions.subscriptionType': { $ne: SubscriptionType.WINNER }
                     }
                 });
             } else {
@@ -1603,7 +1627,7 @@ export class ReferralRepository {
             const subscriptionMatchCriteria: any = {
                 $expr: { $eq: ['$user', '$$userId'] },
                 status: SubscriptionStatus.ACTIVE,
-                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE, SubscriptionType.WINNER] },
                 endDate: { $gt: new Date() }
             };
 
@@ -1644,6 +1668,14 @@ export class ReferralRepository {
                 pipeline.push({
                     $match: {
                         $expr: { $gt: [{ $size: '$activeSubscriptions' }, 0] }
+                    }
+                });
+            } else if (subType === 'upgradable') {
+                // Has a pack that can still go up: Classique, or Ciblé without Pack Winner
+                pipeline.push({
+                    $match: {
+                        'activeSubscriptions.0': { $exists: true },
+                        'activeSubscriptions.subscriptionType': { $ne: SubscriptionType.WINNER }
                     }
                 });
             } else {
@@ -1804,6 +1836,8 @@ export class ReferralRepository {
             hasActiveSubscription: boolean;
             currentSubscriptionType?: string;
             canUpgrade: boolean;
+            /** Has a pack (Classique or Ciblé) but not Pack Winner. */
+            canUpgradeToWinner: boolean;
             createdAt: Date;
         }>;
         total: number;
@@ -1846,6 +1880,8 @@ export class ReferralRepository {
             hasActiveSubscription: boolean;
             currentSubscriptionType?: string;
             canUpgrade: boolean;
+            /** Has a pack (Classique or Ciblé) but not Pack Winner. */
+            canUpgradeToWinner: boolean;
             createdAt: Date;
         }>;
         total: number;
@@ -1898,7 +1934,7 @@ export class ReferralRepository {
             user: { $in: referredUserIds },
             status: SubscriptionStatus.ACTIVE,
             endDate: { $gt: now },
-            subscriptionType: { $in: ['CLASSIQUE', 'CIBLE'] }
+            subscriptionType: { $in: ['CLASSIQUE', 'CIBLE', 'WINNER'] }
         })
             .select('user subscriptionType')
             .lean();
@@ -1924,6 +1960,8 @@ export class ReferralRepository {
             hasActiveSubscription: boolean;
             currentSubscriptionType?: string;
             canUpgrade: boolean;
+            /** Has a pack (Classique or Ciblé) but not Pack Winner. */
+            canUpgradeToWinner: boolean;
             createdAt: Date;
         }> = [];
 
@@ -1937,9 +1975,11 @@ export class ReferralRepository {
             const userSubs = subscriptionMap.get(userId) || new Set();
             const hasClassique = userSubs.has('CLASSIQUE');
             const hasCible = userSubs.has('CIBLE');
+            const hasWinner = userSubs.has('WINNER');
             const hasActiveSubscription = hasClassique || hasCible;
-            const currentSubscriptionType = hasCible ? 'CIBLE' : (hasClassique ? 'CLASSIQUE' : undefined);
+            const currentSubscriptionType = hasWinner ? 'WINNER' : hasCible ? 'CIBLE' : (hasClassique ? 'CLASSIQUE' : undefined);
             const canUpgrade = hasClassique && !hasCible;
+            const canUpgradeToWinner = hasActiveSubscription && !hasWinner;
 
             formattedReferrals.push({
                 _id: userId,
@@ -1951,6 +1991,7 @@ export class ReferralRepository {
                 hasActiveSubscription,
                 currentSubscriptionType,
                 canUpgrade,
+                canUpgradeToWinner,
                 createdAt: referral.createdAt
             });
         }
@@ -1984,6 +2025,8 @@ export class ReferralRepository {
             hasActiveSubscription: boolean;
             currentSubscriptionType?: string;
             canUpgrade: boolean;
+            /** Has a pack (Classique or Ciblé) but not Pack Winner. */
+            canUpgradeToWinner: boolean;
             createdAt: Date;
         }>;
         total: number;
@@ -2026,7 +2069,7 @@ export class ReferralRepository {
                         {
                             $match: {
                                 $expr: { $eq: ['$user', '$$userId'] },
-                                subscriptionType: { $in: ['CLASSIQUE', 'CIBLE'] },
+                                subscriptionType: { $in: ['CLASSIQUE', 'CIBLE', 'WINNER'] },
                                 status: SubscriptionStatus.ACTIVE,
                                 endDate: { $gt: now }
                             }
@@ -2049,6 +2092,12 @@ export class ReferralRepository {
                             { $size: { $filter: { input: '$subscriptions', cond: { $eq: ['$$this.subscriptionType', 'CIBLE'] } } } },
                             0
                         ]
+                    },
+                    hasWinner: {
+                        $gt: [
+                            { $size: { $filter: { input: '$subscriptions', cond: { $eq: ['$$this.subscriptionType', 'WINNER'] } } } },
+                            0
+                        ]
                     }
                 }
             },
@@ -2057,12 +2106,13 @@ export class ReferralRepository {
                     hasActiveSubscription: { $or: ['$hasClassique', '$hasCible'] },
                     currentSubscriptionType: {
                         $cond: {
-                            if: '$hasCible',
-                            then: 'CIBLE',
-                            else: { $cond: { if: '$hasClassique', then: 'CLASSIQUE', else: null } }
+                            if: '$hasWinner',
+                            then: 'WINNER',
+                            else: { $cond: { if: '$hasCible', then: 'CIBLE', else: { $cond: { if: '$hasClassique', then: 'CLASSIQUE', else: null } } } }
                         }
                     },
-                    canUpgrade: { $and: ['$hasClassique', { $not: '$hasCible' }] }
+                    canUpgrade: { $and: ['$hasClassique', { $not: '$hasCible' }] },
+                    canUpgradeToWinner: { $and: [{ $or: ['$hasClassique', '$hasCible'] }, { $not: '$hasWinner' }] }
                 }
             }
         ];
@@ -2071,7 +2121,8 @@ export class ReferralRepository {
         if (filter === 'activatable') {
             pipeline.push({ $match: { hasActiveSubscription: false } });
         } else if (filter === 'upgradable') {
-            pipeline.push({ $match: { canUpgrade: true } });
+            // Classique -> Ciblé, or any pack -> Winner
+            pipeline.push({ $match: { $or: [{ canUpgrade: true }, { canUpgradeToWinner: true }] } });
         }
 
         // Paginate
@@ -2092,6 +2143,7 @@ export class ReferralRepository {
                             hasActiveSubscription: 1,
                             currentSubscriptionType: 1,
                             canUpgrade: 1,
+                            canUpgradeToWinner: 1,
                             createdAt: 1
                         }
                     }

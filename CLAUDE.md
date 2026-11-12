@@ -561,6 +561,14 @@ Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
     would send test events to the real app.
 - **Crypto:** user-service puts the USD price in `metadata.cryptoUsdAmount`,
   and payment-service uses it instead of guessing from the XAF amount.
+- **Activation balance (2026-11-12):** a sponsor can activate Winner for a
+  filleul (`POST /activation-balance/sponsor {subscriptionType:'WINNER'}`) at
+  the Mobile Money price for the filleul's current pack (`ACTIVATION_PRICES.WINNER*`).
+  It runs the same `handleProductPayment` as a paid Winner under a
+  `sponsored_winner_<id>` reference, so grants and commissions are identical and
+  applied once; the balance is given back if it fails. The referral list carries
+  `canUpgradeToWinner`, and "À upgrader" includes Ciblé filleuls without Winner.
+  `src/scripts/check-activation-winner.ts`.
 
 ### Data protection: APDP Benin authorisation (deliberation 2026-523, 27 Aug 2026)
 
