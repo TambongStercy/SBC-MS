@@ -570,6 +570,19 @@ Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
   `canUpgradeToWinner`, and "À upgrader" includes Ciblé filleuls without Winner.
   `src/scripts/check-activation-winner.ts`.
 
+### Advertisers need no SBC pack (2026-11-13, Rufus)
+
+Rufus: requiring the SBC pack to run an Ads Network campaign meant fewer
+campaigns. An account opened with `signupIntent: 'annonceur'` (register body;
+any other value is ignored) may have no parrain (a member's code is still used
+when given, and a wrong code is still refused) and runs campaigns without a
+pack: the Ads backend only ever checked the login, the paywall was the web
+app's `RequireSubscription`. Advertisers are left out of both relance
+endpoints (`unpaid-referrals`, `referrals-for-campaign`, via the sparse
+`signupIntent` index). Sign-up still accepts personal email domains only
+(`isValidEmailDomain`), so a company address is refused.
+`src/scripts/check-annonceur-signup.ts`.
+
 ### Data protection: APDP Benin authorisation (deliberation 2026-523, 27 Aug 2026)
 
 APDP authorised SBC's processing under the Code du numérique, **on condition**

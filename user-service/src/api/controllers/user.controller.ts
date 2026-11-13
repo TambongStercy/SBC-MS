@@ -10,7 +10,7 @@ import { isValidObjectId, Types } from 'mongoose';
 import { NextFunction, Request as ExpressRequest } from 'express';
 import { AppError, OtpThrottledError } from '../../utils/errors';
 import { normalizePhoneNumber } from '../../utils/phone.utils';
-import { UserRole } from '../../database/models/user.model';
+import UserModel, { UserRole } from '../../database/models/user.model';
 import { authorize } from '../middleware/rbac.middleware';
 import { notificationService, DeliveryChannel } from '../../services/clients/notification.service.client';
 import config from '../../config';
@@ -58,6 +58,16 @@ interface ITargetCriteria {
     professions?: string[];
     language?: string[];
     city?: string[];
+}
+
+/**
+ * Accounts opened to advertise only (signupIntent 'annonceur'). They signed up
+ * to run campaigns, not to buy a pack, so relance never mails them. A small
+ * set (sparse index), cheaper than matching up to 50,000 referrals by id.
+ */
+async function annonceurIds(): Promise<Set<string>> {
+    const rows = await UserModel.find({ signupIntent: 'annonceur' }).select('_id').lean();
+    return new Set(rows.map((u: any) => String(u._id)));
 }
 
 export class UserController {
@@ -2838,7 +2848,8 @@ export class UserController {
                 sinceDate  // since - only referrals created after this date
             );
 
-            const unpaidReferrals = result.referredUsers.map(user => ({
+            const annonceurs = await annonceurIds();
+            const unpaidReferrals = result.referredUsers.filter(user => !annonceurs.has(String(user._id))).map(user => ({
                 _id: user._id,
                 name: user.name,
                 email: user.email,
@@ -2912,7 +2923,8 @@ export class UserController {
                 untilDate  // until - filter by registration date (new parameter)
             );
 
-            const allReferrals = result.referredUsers.map(user => ({
+            const annonceurs = await annonceurIds();
+            const allReferrals = result.referredUsers.filter(user => !annonceurs.has(String(user._id))).map(user => ({
                 _id: user._id,
                 name: user.name,
                 email: user.email,
