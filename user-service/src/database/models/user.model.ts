@@ -79,6 +79,12 @@ export interface IUser extends Document {
         privacy?: { acceptedAt: Date; version: string; ip?: string };
         dataTransfer?: { acceptedAt: Date; version: string; ip?: string };
     };
+    /**
+     * 'annonceur': signed up to advertise on SBC Ads Network only (Rufus,
+     * 2026-11-13). Such an account needs no SBC pack to run campaigns, may
+     * have no parrain, and gets no "relance des nouveaux" reminders.
+     */
+    signupIntent?: 'annonceur';
     email: string;
     password?: string; // Exists in DB but often excluded from responses
     token?: string;
@@ -179,6 +185,7 @@ const UserSchema = new Schema<IUser>(
             privacy: { acceptedAt: Date, version: String, ip: String },
             dataTransfer: { acceptedAt: Date, version: String, ip: String },
         },
+        signupIntent: { type: String, enum: ['annonceur'], index: { sparse: true } },
         email: {
             type: String,
             required: true,

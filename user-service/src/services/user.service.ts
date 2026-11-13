@@ -259,7 +259,11 @@ export class UserService {
             log.info(`Country normalized during registration: ${registrationData.country} -> ${userToCreate.country}`);
         }
 
-        if (!actualReferrerCode) {
+        // An advertiser may sign up without a parrain; a member's code is still
+        // kept when they came through a member's link.
+        const isAnnonceur = (registrationData as any).signupIntent === 'annonceur';
+        if (isAnnonceur) userToCreate.signupIntent = 'annonceur';
+        if (!actualReferrerCode && !isAnnonceur) {
             throw new Error('Vous ne pouvez pas vous inscrire sans un code de parrainage');
         }
 
@@ -297,7 +301,7 @@ export class UserService {
         //     console.log(`Using default affiliator: ${defaultAffiliator}`);
         //     referrer = await userRepository.findById(defaultAffiliator);
         // }
-        else {
+        else if (!isAnnonceur) {
             throw new Error('No referrer code provided');
         }
 
