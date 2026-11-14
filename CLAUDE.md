@@ -742,6 +742,25 @@ all use `userRepository.findByIdentifier` (`phoneLookupCandidates` in
 dialling code is treated as not found. Replaying the 1,366 identifiers refused
 over 3 days found 571 accounts. `src/scripts/check-reset-lookup.ts`.
 
+### Email / phone change codes are bound to the change (2026-11-14)
+
+Until 2026-11-14 changing the email never sent a code to the new address: the
+web page called `/users/request-email-change`, a route that does not exist
+(the real one is `/users/request-change-email`), ignored the 404 and opened
+the code screen anyway. Its "password check" was a full sign-in, which emailed
+a sign-in code to the OLD address, and confirm accepted any live code on the
+account, so the few changes that went through were confirmed with a sign-in
+code. Now:
+- `request-change-email` takes `{ newEmail, password }` and checks the
+  password itself (strictLimiter). A resend with no password is allowed only
+  while a code for that same address is live.
+- Change codes carry `purpose` (`changeEmail`/`changePhone`) and `target` (the
+  lowercased new email / normalized number). Confirm matches both; sign-in,
+  password reset and the sign-in resend ignore tagged codes.
+- Phone change still mails its code to the account email while WhatsApp OTP
+  is off (proves control of the account, not of the new number).
+`src/scripts/check-contact-change-otp.ts`.
+
 ### OTP delivery: what the codes look like, and what "sent" means
 
 Investigated 2026-09-19 after Rufus reported "les mails OTP dérangent". Two

@@ -1,7 +1,7 @@
 import { pushNewFilleul } from './push-notify';
 import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import bcrypt from 'bcrypt';
-import { IUser, UserRole } from '../database/models/user.model';
+import { IUser, UserRole, OtpPurpose } from '../database/models/user.model';
 import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
@@ -625,7 +625,8 @@ export class UserService {
     async generateAndStoreOtp(
         userId: string | Types.ObjectId,
         otpType: 'otps' | 'contactsOtps',
-        minutesToExpire = 10
+        minutesToExpire = 10,
+        tag?: { purpose: OtpPurpose; target: string }
     ): Promise<string> {
         const user = await userRepository.findById(userId);
         if (!user) {
@@ -637,7 +638,7 @@ export class UserService {
         const otpCode = generateSecureOTP(); // Generate 6-digit OTP
         const expiration = getOtpExpiration(minutesToExpire);
 
-        await userRepository.addOtp(userId, otpType, { code: otpCode, expiration });
+        await userRepository.addOtp(userId, otpType, { code: otpCode, expiration, ...(tag ?? {}) });
 
         // For debugging only - remove in production
         log.info(`Generated OTP ${otpCode} for user ${user.email}, type: ${otpType}`);
@@ -682,8 +683,9 @@ export class UserService {
         let isValid = false;
         let newToken: string | undefined = undefined;
 
+        // A code that proves a new email or number confirms only that change.
         const matchingOtp = otps.find(otp => {
-            return otpMatches(otp.code, providedCode) && otp.expiration > now;
+            return !otp.purpose && otpMatches(otp.code, providedCode) && otp.expiration > now;
         });
 
         if (matchingOtp) {
@@ -741,7 +743,7 @@ export class UserService {
         }
 
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => !otp.purpose && otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired password reset OTP provided for email: ${email}`);
@@ -1616,7 +1618,7 @@ export class UserService {
 
             // Find matching OTP in user's OTPs
             const matchingOTP = user.otps.find((otp: any) =>
-                otpMatches(otp.code, code) && otp.expiration > new Date()
+                !otp.purpose && otpMatches(otp.code, code) && otp.expiration > new Date()
             );
 
             if (!matchingOTP) {
@@ -4030,7 +4032,7 @@ export class UserService {
         }
 
         const reusable = (user.otps || [])
-            .filter(o => new Date(o.expiration).getTime() - now.getTime() >= OTP_REUSE_MIN_REMAINING_MS)
+            .filter(o => !o.purpose && new Date(o.expiration).getTime() - now.getTime() >= OTP_REUSE_MIN_REMAINING_MS)
             .sort((a, b) => new Date(b.expiration).getTime() - new Date(a.expiration).getTime())[0];
 
         let code: string;
@@ -4054,30 +4056,41 @@ export class UserService {
      * @param newEmail - The new email address to verify.
      * @returns Promise<void>
      */
-    async requestChangeEmailOtp(userId: string | Types.ObjectId, newEmail: string): Promise<void> {
+    async requestChangeEmailOtp(userId: string | Types.ObjectId, rawNewEmail: string, password?: string): Promise<void> {
         const purpose = 'changeEmail';
+        const newEmail = typeof rawNewEmail === 'string' ? rawNewEmail.trim().toLowerCase() : '';
         log.info(`Change email OTP requested for user ${userId} to new email: ${newEmail}`);
 
         // 1. Validate new email format
-        if (!newEmail || typeof newEmail !== 'string' || !this.isValidEmailDomain(newEmail)) {
-            throw new AppError('Invalid new email address format or domain.', 400);
+        if (!newEmail || !this.isValidEmailDomain(newEmail)) {
+            throw new AppError('Adresse e-mail invalide. Utilisez une adresse Gmail, Yahoo, Outlook, Hotmail ou iCloud.', 400);
         }
 
-        // 2. Check if new email is already in use by *another* user
-        const existingUserWithNewEmail = await userRepository.findByEmail(newEmail);
-        if (existingUserWithNewEmail && existingUserWithNewEmail._id.toString() !== userId.toString()) {
-            throw new AppError('This email address is already associated with another account.', 409); // 409 Conflict
-        }
-
-        // 3. Get current user details (for username in notification)
-        const currentUser = await userRepository.findById(userId);
+        // 2. The account password, checked here. The page used to check it by
+        // signing in again, which emailed a sign-in code to the OLD address.
+        const currentUser = await UserModel.findById(userId).select('+password');
         if (!currentUser || currentUser.blocked || currentUser.deleted) {
-            // This shouldn't happen if the user is authenticated, but check anyway.
             throw new AppError('User account is inactive or not found.', 403);
         }
+        // "Renvoyer le code" on the code screen sends no password: allowed while
+        // a code for this same address, issued after a password check, is live.
+        const isResend = !password && (currentUser.otps || []).some(o =>
+            o.purpose === 'changeEmail' && o.target === newEmail && new Date(o.expiration) > new Date());
+        if (!isResend && (!password || !currentUser.password || !(await bcrypt.compare(password, currentUser.password)))) {
+            throw new AppError(password ? 'Mot de passe incorrect.' : 'Votre code a expiré : recommencez le changement d’adresse.', 400);
+        }
+        if (newEmail === (currentUser.email || '').toLowerCase()) {
+            throw new AppError('C’est déjà l’adresse e-mail de votre compte.', 400);
+        }
 
-        // 4. Generate and store OTP for the *current* user
-        const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps');
+        // 3. Check if new email is already in use by *another* user
+        const existingUserWithNewEmail = await userRepository.findByEmail(newEmail);
+        if (existingUserWithNewEmail && existingUserWithNewEmail._id.toString() !== userId.toString()) {
+            throw new AppError('Cette adresse e-mail est déjà utilisée par un autre compte.', 409);
+        }
+
+        // 4. A code that confirms only this change, to this address.
+        const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps', 10, { purpose: 'changeEmail', target: newEmail });
 
         // 5. Send OTP to the *new* email address
         await notificationService.sendOtp({
@@ -4141,7 +4154,7 @@ export class UserService {
             }
         } else if (otpCode) {
             // 3. Fallback to validating the OTP if no passwordResetToken is provided
-            const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
+            const matchingOtp = user.otps.find(otp => !otp.purpose && otpMatches(otp.code, otpCode) && otp.expiration > now);
             if (matchingOtp) {
                 log.info(`OTP validated successfully for user ${user.email}.`);
                 validationSuccess = true;
@@ -4185,7 +4198,8 @@ export class UserService {
      * @param otpCode - The OTP code received at the new email address.
      * @returns Promise<void>
      */
-    async confirmChangeEmail(userId: string | Types.ObjectId, newEmail: string, otpCode: string): Promise<void> {
+    async confirmChangeEmail(userId: string | Types.ObjectId, rawNewEmail: string, otpCode: string): Promise<void> {
+        const newEmail = typeof rawNewEmail === 'string' ? rawNewEmail.trim().toLowerCase() : '';
         log.info(`Confirming email change for user ${userId} to new email: ${newEmail}`);
 
         if (!newEmail || !otpCode) {
@@ -4200,11 +4214,13 @@ export class UserService {
 
         // 2. Validate the OTP stored against the *current* user
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
+        // Only the code sent to this new address: a sign-in code proves nothing about it.
+        const matchingOtp = user.otps.find(otp => otp.purpose === 'changeEmail' && otp.target === newEmail
+            && otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired email change OTP for user: ${userId}`);
-            throw new AppError('Invalid or expired OTP.', 400);
+            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu sur votre nouvelle adresse.', 400);
         }
 
         // 3. Check *again* if the new email is already in use by *another* user (race condition check)
@@ -4215,7 +4231,7 @@ export class UserService {
         if (existingUserWithNewEmail && existingUserWithNewEmail._id.toString() !== userId.toString()) {
             // Clear the OTP even if the email is taken now, to prevent reuse
             await userRepository.clearOtps(user._id, 'otps');
-            throw new AppError('This email address has been taken by another account since the request was made.', 409);
+            throw new AppError('Cette adresse e-mail est déjà utilisée par un autre compte.', 409);
         }
 
         // 4. OTP is valid and email is available. Clear *all* general OTPs.
@@ -4273,8 +4289,8 @@ export class UserService {
             throw new AppError('User account is inactive or not found.', 403);
         }
 
-        // 4. Generate and store OTP for the *current* user
-        const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps');
+        // 4. A code that confirms only this change, to this number.
+        const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps', 10, { purpose: 'changePhone', target: normalizedPhoneNumber });
 
         // 5. Send OTP to the *new* phone number via WhatsApp. While WhatsApp OTP
         // is off (templates rejected by Meta) no code can reach the new number,
@@ -4325,11 +4341,12 @@ export class UserService {
 
         // 2. Validate the OTP stored against the *current* user
         const now = new Date();
-        const matchingOtp = user.otps.find(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
+        const matchingOtp = user.otps.find(otp => otp.purpose === 'changePhone' && otp.target === normalizedPhoneNumber
+            && otpMatches(otp.code, otpCode) && otp.expiration > now);
 
         if (!matchingOtp) {
             log.warn(`Invalid or expired phone change OTP for user: ${userId}`);
-            throw new AppError('Invalid or expired OTP.', 400);
+            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu.', 400);
         }
 
         // 3. Check *again* if the new phone number is already in use by *another* user (race condition check)
