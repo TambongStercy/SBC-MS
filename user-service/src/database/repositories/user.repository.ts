@@ -1,4 +1,4 @@
-import UserModel, { IUser } from '../models/user.model';
+import UserModel, { IUser, OtpPurpose } from '../models/user.model';
 import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType } from '../models/subscription.model';
 import mongoose, { Types, FilterQuery } from 'mongoose';
 import { ContactSearchFilters, ContactSearchResponse } from '../../types/contact.types';
@@ -19,6 +19,8 @@ export interface UserDetails {
 interface IOtpData {
     code: string;
     expiration: Date;
+    purpose?: OtpPurpose;
+    target?: string;
 }
 
 // Interface for IP data structure

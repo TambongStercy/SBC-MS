@@ -47,7 +47,16 @@ const countryDialingCodesMap: { [key: string]: string } = {
 interface IOtp extends Document {
     code: string;
     expiration: Date;
+    /**
+     * Set on the codes that prove control of a new email or number. Such a
+     * code confirms only that change, to that `target`; sign-in and password
+     * reset ignore it, and a sign-in code can never confirm a change.
+     */
+    purpose?: OtpPurpose;
+    target?: string;
 }
+
+export type OtpPurpose = 'changeEmail' | 'changePhone';
 
 // Interface defining the User document structure (FIELDS ONLY)
 export interface IUser extends Document {
@@ -155,6 +164,8 @@ export interface IUser extends Document {
 const otpSchema = new Schema<IOtp>({
     code: { type: String, required: true },
     expiration: { type: Date, required: true },
+    purpose: { type: String, enum: ['changeEmail', 'changePhone'] },
+    target: { type: String },
 }, { _id: false });
 
 const UserSchema = new Schema<IUser>(

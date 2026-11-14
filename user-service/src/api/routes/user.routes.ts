@@ -238,7 +238,8 @@ router.get('/:userId', (req, res, next) => userController.viewUserProfile(req, r
 // --- End Public Profile View ---
 
 // Request OTP for Email Change (Authenticated)
-router.post('/request-change-email', (req, res, next) => userController.requestChangeEmailOtp(req as AuthenticatedRequest, res, next));
+// Checks the account password, so it is limited like sign-in.
+router.post('/request-change-email', strictLimiter, (req, res, next) => userController.requestChangeEmailOtp(req as AuthenticatedRequest, res, next));
 // COMPLETE Email Change (Authenticated, rate limited)
 router.post('/confirm-change-email', mediumLimiter, (req, res, next) => userController.confirmChangeEmail(req as AuthenticatedRequest, res, next));
 

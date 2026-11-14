@@ -2388,7 +2388,7 @@ export class UserController {
                 return;
             }
 
-            await this.userService.requestChangeEmailOtp(userId, newEmail);
+            await this.userService.requestChangeEmailOtp(userId, newEmail, req.body?.password);
 
             // Return success message indicating OTP sent to the NEW email
             res.status(200).json({ success: true, message: `An OTP has been sent to ${newEmail} to verify the change.` });
