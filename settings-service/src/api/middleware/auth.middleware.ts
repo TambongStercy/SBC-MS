@@ -37,6 +37,28 @@ const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFuncti
     }
 };
 
+/** True when the request carries a valid token of an admin (role 'admin'). */
+export const isAdminRequest = (req: Request): boolean => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return false;
+    try {
+        const decoded = jwt.verify(authHeader.split(' ')[1], config.jwt.secret) as { role?: string };
+        return decoded.role === 'admin';
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Admin-only writes. Runs after `authenticate`: until 2026-11-15 any signed-in
+ * member could PUT /settings and rewrite the community group links.
+ */
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+    if (isAdminRequest(req)) return next();
+    log.warn('Settings write refused: not an admin.');
+    return res.status(403).json({ success: false, message: 'Admin access required.' });
+};
+
 /**
  * Middleware for service-to-service authentication
  * This middleware checks for a service token (shared secret) and optional service name

@@ -11,6 +11,7 @@ import {
 import apiClient from '../api/apiClient'; // <--- Import apiClient
 import { useDropzone, FileRejection } from 'react-dropzone';
 import toast from 'react-hot-toast'; // USE react-hot-toast
+import WinnerVipLinkCard from '../components/settings/WinnerVipLinkCard';
 import { getFileUrl, getAbsoluteProxyUrl, getStorageType } from '../utils/fileUtils';
 import { ImageDisplay } from '../components/common/ImageDisplay';
 
@@ -684,6 +685,7 @@ const SettingsManagementPage: React.FC = () => {
             <div>
                 {/* General Settings Tab - Now for Formations */}
                 <div hidden={tabValue !== 'general'}>
+                    <WinnerVipLinkCard value={settings?.winnerVipGroupUrl} onSaved={setSettings} />
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Formation Form (Create/Update) */}
                         <div className="lg:col-span-1">

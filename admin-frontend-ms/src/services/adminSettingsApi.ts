@@ -28,6 +28,8 @@ export interface ISettings {
     whatsappGroupUrl?: string;
     telegramGroupUrl?: string;
     discordGroupUrl?: string;
+    /** Pack Winner VIP WhatsApp group, shown to Winner members only. */
+    winnerVipGroupUrl?: string;
     companyLogo?: IFileReference;
     termsAndConditionsPdf?: IFileReference;
     presentationVideo?: IFileReference;
@@ -88,7 +90,7 @@ export const getSettings = async (): Promise<ISettings | null> => {
 };
 
 // Update non-file settings
-export const updateSettings = async (settingsData: Partial<Pick<ISettings, 'whatsappGroupUrl' | 'telegramGroupUrl' | 'discordGroupUrl'>>): Promise<ISettings> => {
+export const updateSettings = async (settingsData: Partial<Pick<ISettings, 'whatsappGroupUrl' | 'telegramGroupUrl' | 'discordGroupUrl' | 'winnerVipGroupUrl'>>): Promise<ISettings> => {
     try {
         const response = await apiClient.put<SettingsResponse>(`${SETTINGS_API_URL}/`, settingsData);
         if (!response.data.data) throw new Error('No settings data returned after update.');
