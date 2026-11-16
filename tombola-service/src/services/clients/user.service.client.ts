@@ -120,6 +120,22 @@ class UserServiceClient {
             return [];
         }
     }
+
+    /**
+     * Every member id (hex strings) whose country is `country` (ISO-2), deleted
+     * members included — backs the admin `?country=` filter. Throws on failure:
+     * an empty list here would silently read as "nobody from that country".
+     */
+    async getUserIdsByCountry(country: string): Promise<string[]> {
+        const response = await this.client.get<{ success: boolean; data: string[] }>(
+            '/users/internal/ids-by-country',
+            { params: { country }, timeout: 30_000 },
+        );
+        if (!response.data?.success || !Array.isArray(response.data.data)) {
+            throw new Error('User Service ids-by-country responded with an unexpected shape.');
+        }
+        return response.data.data;
+    }
 }
 
-export const userServiceClient = new UserServiceClient(); 
+export const userServiceClient = new UserServiceClient();

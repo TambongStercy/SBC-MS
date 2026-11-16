@@ -460,6 +460,29 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Ids (hex strings) of every member of a country, deleted members included
+     * (their records still belong to their country). Unknown code → [].
+     * Throws on any failure: an admin country filter must never silently turn
+     * into "no filter". Callers go through utils/country-members.ts (cached).
+     */
+    async getUserIdsByCountry(country: string): Promise<string[]> {
+        if (!this.baseUrl) {
+            throw new AppError('User service is not configured.', 503);
+        }
+        const headers: Record<string, string> = { 'x-service-name': 'payment-service' };
+        if (this.serviceSecret) headers['Authorization'] = `Bearer ${this.serviceSecret}`;
+        const response = await axios.get(`${this.baseUrl}/users/internal/ids-by-country`, {
+            params: { country },
+            headers,
+            timeout: 30000,
+        });
+        if (!response.data?.success || !Array.isArray(response.data.data)) {
+            throw new AppError('Unexpected response from user-service ids-by-country.', 502);
+        }
+        return response.data.data.map((id: unknown) => String(id));
+    }
+
     async getUserActiveSubscriptions(userId: string): Promise<SubscriptionType[]> {
         if (!this.baseUrl) {
             log.error('Cannot get active subscriptions: User service URL not configured.');

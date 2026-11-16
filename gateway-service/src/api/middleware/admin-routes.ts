@@ -60,6 +60,7 @@ const RULES: Rule[] = [
     { pattern: /^\/api\/relance\/admin(\/|$)/, module: 'relance' },
     { pattern: /^\/api\/notifications\/push\/admin(\/|$)/, module: 'notifications' },
     { pattern: /^\/api\/notifications\/(custom|templated|follow-up)(\/|$)/, module: 'notifications' },
+    { pattern: /^\/api\/webhook\/(bounce-stats|cleanup-bounces)$/, module: 'notifications' },
     { pattern: /^\/api\/whatsapp(\/|$)/, module: 'whatsapp' },
     { pattern: /^\/api\/notifications\/whatsapp(\/|$)/, module: 'whatsapp' },
 

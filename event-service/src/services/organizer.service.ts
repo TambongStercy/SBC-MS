@@ -39,9 +39,15 @@ export const listOrganizers = async (params: {
     status?: OrganizerStatus;
     limit?: number;
     skip?: number;
+    /** Admin country filter: only these organizers. */
+    ids?: Types.ObjectId[];
+    /** Admin date filter on createdAt (`{ $gte, $lte }`). */
+    createdAt?: { $gte?: Date; $lte?: Date };
 }) => {
     const filter: any = {};
     if (params.status) filter.status = params.status;
+    if (params.ids) filter._id = { $in: params.ids };
+    if (params.createdAt) filter.createdAt = params.createdAt;
     const [items, total] = await Promise.all([
         Organizer.find(filter).sort({ createdAt: -1 }).limit(params.limit ?? 50).skip(params.skip ?? 0).lean(),
         Organizer.countDocuments(filter),

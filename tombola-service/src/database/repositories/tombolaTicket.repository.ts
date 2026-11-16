@@ -111,6 +111,12 @@ export class TombolaTicketRepository {
         }
     }
 
+    /** The distinct buyers (hex ids) of the tickets matching `query` (admin country filter). */
+    async distinctUserIds(query: FilterQuery<ITombolaTicket>): Promise<string[]> {
+        const ids = await TombolaTicketModel.distinct('userId', query);
+        return ids.map((id: unknown) => String(id));
+    }
+
     /**
      * Counts the number of tickets a specific user purchased for a specific month.
      */
@@ -131,8 +137,8 @@ export class TombolaTicketRepository {
      * @param tombolaMonthId The ID of the tombola month.
      * @returns A promise resolving to an array of objects containing only { ticketNumber: number }.
      */
-    async findAllTicketNumbersByMonthId(tombolaMonthId: string | Types.ObjectId): Promise<{ ticketNumber: number }[]> {
-        const query: FilterQuery<ITombolaTicket> = { tombolaMonthId: new Types.ObjectId(tombolaMonthId) };
+    async findAllTicketNumbersByMonthId(tombolaMonthId: string | Types.ObjectId, extra: FilterQuery<ITombolaTicket> = {}): Promise<{ ticketNumber: number }[]> {
+        const query: FilterQuery<ITombolaTicket> = { ...extra, tombolaMonthId: new Types.ObjectId(tombolaMonthId) };
         return TombolaTicketModel.find(query)
             .select({ ticketNumber: 1, _id: 0 }) // Select only ticketNumber, exclude _id
             .lean()

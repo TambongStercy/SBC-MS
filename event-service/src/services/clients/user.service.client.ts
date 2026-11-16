@@ -148,3 +148,19 @@ export const lookupEventMember = async (contact: string): Promise<EventMemberLoo
         throw new AppError('Recherche du membre momentanément indisponible.', 502);
     }
 };
+
+/**
+ * Every member id (hex strings) whose country is `country` (ISO-2), deleted
+ * members included — used by the admin `?country=` filter. Throws on any
+ * failure: the caller must never read "no answer" as "no filter".
+ */
+export const getUserIdsByCountry = async (country: string): Promise<string[]> => {
+    const { data } = await client.get('/users/internal/ids-by-country', {
+        params: { country },
+        timeout: 30000,
+    });
+    if (!data?.success || !Array.isArray(data.data)) {
+        throw new Error(data?.message || 'user-service refused ids-by-country');
+    }
+    return (data.data as unknown[]).map(String);
+};

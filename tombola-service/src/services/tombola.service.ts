@@ -14,6 +14,8 @@ import { nanoid } from 'nanoid';
 import { PopulatedTombolaTicket, tombolaTicketRepository as ticketRepository } from '../database/repositories/tombolaTicket.repository';
 import { userServiceClient, UserDetails } from './clients/user.service.client'; // <-- Import UserDetails
 import { FilterQuery } from 'mongoose';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { keepMembersOfCountry } from '../utils/country-members';
 
 const log = logger.getLogger('TombolaService');
 
@@ -423,10 +425,12 @@ class TombolaService {
      * Retrieves a list of all Tombola months for admin purposes.
      * Includes pagination.
      */
-    async listAllTombolasAdmin(limit: number = 20, skip: number = 0): Promise<{ tombolas: ITombolaMonth[], totalCount: number }> {
+    async listAllTombolasAdmin(limit: number = 20, skip: number = 0, filters: AdminFilters = {}): Promise<{ tombolas: ITombolaMonth[], totalCount: number }> {
         log.info(`Admin request: Fetching all tombola months (limit: ${limit}, skip: ${skip})`);
         try {
-            const query = {}; // No filter for admin view
+            // ?from/?to bound the month's startDate (ticket sales opening). A
+            // month belongs to no country, so ?country does not apply here.
+            const query: FilterQuery<ITombolaMonth> = { ...dateMatch('startDate', filters) };
             const sort = { year: -1 as SortOrder, month: -1 as SortOrder };
             const tombolas = await tombolaMonthRepository.find(query, limit, skip, sort);
             const totalCount = await tombolaMonthRepository.count(query);
@@ -447,7 +451,8 @@ class TombolaService {
         tombolaMonthId: string,
         limit: number = 50,
         skip: number = 0,
-        searchQuery?: string // Add searchQuery parameter
+        searchQuery?: string, // Add searchQuery parameter
+        filters: AdminFilters = {}
     ): Promise<{ tickets: EnrichedTombolaTicket[], totalCount: number }> {
         log.info(`Admin request: Fetching tickets for month ${tombolaMonthId} (limit: ${limit}, skip: ${skip}, search: ${searchQuery || 'none'})`);
         try {
@@ -474,6 +479,14 @@ class TombolaService {
                 }
             }
             // --- End User Search ---
+
+            // ?from/?to bound purchaseTimestamp; ?country is the buyer's.
+            Object.assign(query, dateMatch('purchaseTimestamp', filters));
+            if (filters.country) {
+                const allowed = await this.ticketBuyersInCountry(query, filters.country, matchingUserIds);
+                if (allowed.length === 0) return { tickets: [], totalCount: 0 };
+                query.userId = { $in: allowed };
+            }
 
             // Fetch total count *using the final query* (including user filter if applied)
             const totalCount = await tombolaTicketRepository.count(query);
@@ -522,6 +535,17 @@ class TombolaService {
             }
             throw new AppError('Could not retrieve ticket list for admin.', 500);
         }
+    }
+
+    /**
+     * The buyers of the tickets matching `query` (or the `among` ids a search
+     * already found) who are members of `country`. The month's distinct buyers
+     * are intersected in memory with the country's member list, so the ticket
+     * query carries only the buyers present, not ~50–70k ids.
+     */
+    private async ticketBuyersInCountry(query: FilterQuery<ITombolaTicket>, country: string, among: string[] | null): Promise<Types.ObjectId[]> {
+        const candidates = among ?? await tombolaTicketRepository.distinctUserIds(query);
+        return keepMembersOfCountry(candidates, country);
     }
 
     /**
@@ -768,15 +792,24 @@ class TombolaService {
      * @param tombolaMonthId - The ID of the TombolaMonth.
      * @returns A promise that resolves to an array of numbers (ticket numbers).
      */
-    async getAllTicketNumbersForMonth(tombolaMonthId: string): Promise<number[]> {
+    async getAllTicketNumbersForMonth(tombolaMonthId: string, filters: AdminFilters = {}): Promise<number[]> {
         log.info(`Service: Fetching all ticket numbers for TombolaMonth ID: ${tombolaMonthId}`);
         try {
-            const tickets = await tombolaTicketRepository.findAllTicketNumbersByMonthId(tombolaMonthId);
+            // Same filters as the ticket list: purchaseTimestamp, buyer's country.
+            const extra: FilterQuery<ITombolaTicket> = { ...dateMatch('purchaseTimestamp', filters) };
+            if (filters.country) {
+                const allowed = await this.ticketBuyersInCountry(
+                    { ...extra, tombolaMonthId: new Types.ObjectId(tombolaMonthId) }, filters.country, null);
+                if (allowed.length === 0) return [];
+                extra.userId = { $in: allowed };
+            }
+            const tickets = await tombolaTicketRepository.findAllTicketNumbersByMonthId(tombolaMonthId, extra);
             const ticketNumbers = tickets.map(ticket => ticket.ticketNumber);
             log.info(`Service: Found ${ticketNumbers.length} ticket numbers for month ${tombolaMonthId}.`);
             return ticketNumbers;
         } catch (error) {
             log.error(`Service: Error fetching ticket numbers for month ${tombolaMonthId}:`, error);
+            if (error instanceof AppError) throw error;
             throw new AppError('Database error while fetching ticket numbers.', 500);
         }
     }

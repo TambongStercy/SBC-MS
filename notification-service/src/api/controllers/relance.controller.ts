@@ -13,7 +13,9 @@ import { userServiceClient } from '../../services/clients/user.service.client';
 import { pushFilleulPaid } from '../../services/relance-alerts.service';
 import { creditRelancePack } from '../../services/relance-credit.service';
 import { buyPackWithBalance } from '../../services/relance-balance-purchase.service';
-import { adminOverview, adminParrains } from '../../services/relance-admin.service';
+import { adminOverview, adminParrains, ownerMatch, windowMatch } from '../../services/relance-admin.service';
+import { readAdminFilters, dateMatch } from '../../utils/admin-filters';
+import { CountryMembersUnavailableError, answerCountryUnavailable } from '../../utils/country-members';
 import config from '../../config';
 
 const log = logger.getLogger('RelanceController');
@@ -373,9 +375,20 @@ class RelanceController {
      * Get relance statistics
      */
     async getStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Filters: country = the parrain's (target referrerUserId / config userId).
+        // Dates: target counts on `enteredLoopAt`; messages on their own `sentAt`;
+        // "today" figures keep their day (∩ range); enabled configs are a current
+        // state (country only).
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
             const now = new Date();
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const [tOwners, cOwners] = await Promise.all([
+                ownerMatch(RelanceTargetModel, 'referrerUserId', f),
+                ownerMatch(RelanceConfigModel, 'userId', f),
+            ]);
+            const targets = { ...tOwners, ...dateMatch('enteredLoopAt', f) };
+            const sentAt = dateMatch('messagesDelivered.sentAt', f);
 
             const [
                 totalActiveTargets,
@@ -389,22 +402,25 @@ class RelanceController {
                 exitReasonsExpired,
                 exitReasonsManual
             ] = await Promise.all([
-                RelanceTargetModel.countDocuments({ status: TargetStatus.ACTIVE }),
-                RelanceTargetModel.countDocuments({ status: TargetStatus.COMPLETED }),
-                RelanceConfigModel.countDocuments({ enabled: true }),
-                RelanceTargetModel.countDocuments({ enteredLoopAt: { $gte: todayStart } }),
+                RelanceTargetModel.countDocuments({ ...targets, status: TargetStatus.ACTIVE }),
+                RelanceTargetModel.countDocuments({ ...targets, status: TargetStatus.COMPLETED }),
+                RelanceConfigModel.countDocuments({ ...cOwners, enabled: true }),
+                RelanceTargetModel.countDocuments({ ...tOwners, ...windowMatch('enteredLoopAt', todayStart, f) }),
+                // messagesSentToday is a per-config counter of today: country only.
                 RelanceConfigModel.aggregate([
-                    { $match: { lastResetDate: { $gte: todayStart } } },
+                    { $match: { ...cOwners, lastResetDate: { $gte: todayStart } } },
                     { $group: { _id: null, total: { $sum: '$messagesSentToday' } } }
                 ]),
                 RelanceTargetModel.aggregate([
+                    { $match: { ...tOwners, ...sentAt } },
                     { $unwind: '$messagesDelivered' },
+                    ...(Object.keys(sentAt).length ? [{ $match: sentAt }] : []),
                     { $group: { _id: null, total: { $sum: 1 }, successful: { $sum: { $cond: ['$messagesDelivered.success', 1, 0] } } } }
                 ]),
-                RelanceTargetModel.countDocuments({ exitReason: ExitReason.PAID }),
-                RelanceTargetModel.countDocuments({ exitReason: ExitReason.COMPLETED_7_DAYS }),
-                RelanceTargetModel.countDocuments({ exitReason: ExitReason.REFERRER_INACTIVE }),
-                RelanceTargetModel.countDocuments({ exitReason: ExitReason.MANUAL })
+                RelanceTargetModel.countDocuments({ ...targets, exitReason: ExitReason.PAID }),
+                RelanceTargetModel.countDocuments({ ...targets, exitReason: ExitReason.COMPLETED_7_DAYS }),
+                RelanceTargetModel.countDocuments({ ...targets, exitReason: ExitReason.REFERRER_INACTIVE }),
+                RelanceTargetModel.countDocuments({ ...targets, exitReason: ExitReason.MANUAL })
             ]);
 
             const totalMessagesSent = allTargets[0]?.total || 0;
@@ -430,6 +446,7 @@ class RelanceController {
                 }
             });
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error in getStats:', error);
             res.status(500).json({
                 success: false,
@@ -442,10 +459,13 @@ class RelanceController {
      * GET /api/relance/admin/overview
      * Admin home for relance: the two products counted apart, sends, credits, packs.
      */
-    async getAdminOverview(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    async getAdminOverview(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Filters: see adminOverview (country = parrain's; dates per figure).
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            res.status(200).json({ success: true, data: await adminOverview() });
+            res.status(200).json({ success: true, data: await adminOverview(new Date(), f) });
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error in getAdminOverview:', error);
             res.status(500).json({ success: false, message: 'Failed to get relance overview' });
         }
@@ -456,13 +476,16 @@ class RelanceController {
      * Parrains' relance settings and credits, with names, for support.
      */
     async getAdminParrains(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Filters: country = the parrain's; dates = config createdAt (see adminParrains).
+        const filters = readAdminFilters(req, res); if (!filters) return;
         try {
             const page = Math.max(parseInt(req.query.page as string) || 1, 1);
             const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
             const withCredits = req.query.withCredits !== 'false';
             const userId = (req.query.userId as string) || undefined;
-            res.status(200).json({ success: true, data: await adminParrains({ page, limit, withCredits, userId }) });
+            res.status(200).json({ success: true, data: await adminParrains({ page, limit, withCredits, userId, filters }) });
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error in getAdminParrains:', error);
             res.status(500).json({ success: false, message: 'Failed to get parrains' });
         }
@@ -473,18 +496,22 @@ class RelanceController {
      * Get relance logs (recent targets)
      */
     async getLogs(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Filters: country = the parrain's (referrerUserId); dates = target createdAt
+        // (the list's sort; within seconds of enteredLoopAt).
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 50;
             const skip = (page - 1) * limit;
+            const query = { ...(await ownerMatch(RelanceTargetModel, 'referrerUserId', f)), ...dateMatch('createdAt', f) };
 
             const [logs, total] = await Promise.all([
-                RelanceTargetModel.find()
+                RelanceTargetModel.find(query)
                     .sort({ createdAt: -1 })
                     .skip(skip)
                     .limit(limit)
                     .lean(),
-                RelanceTargetModel.countDocuments()
+                RelanceTargetModel.countDocuments(query)
             ]);
 
             res.status(200).json({
@@ -498,6 +525,7 @@ class RelanceController {
                 }
             });
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error in getLogs:', error);
             res.status(500).json({
                 success: false,
@@ -511,19 +539,22 @@ class RelanceController {
      * Get active targets with pagination
      */
     async getActiveTargets(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Filters: country = the parrain's (referrerUserId); dates = enteredLoopAt (the list's sort).
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 20;
             const status = req.query.status as string || TargetStatus.ACTIVE;
             const skip = (page - 1) * limit;
+            const query = { status, ...(await ownerMatch(RelanceTargetModel, 'referrerUserId', f)), ...dateMatch('enteredLoopAt', f) };
 
             const [targets, total] = await Promise.all([
-                RelanceTargetModel.find({ status })
+                RelanceTargetModel.find(query)
                     .sort({ enteredLoopAt: -1 })
                     .skip(skip)
                     .limit(limit)
                     .lean(),
-                RelanceTargetModel.countDocuments({ status })
+                RelanceTargetModel.countDocuments(query)
             ]);
 
             res.status(200).json({
@@ -536,6 +567,7 @@ class RelanceController {
                 }
             });
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error in getActiveTargets:', error);
             res.status(500).json({
                 success: false,
@@ -549,8 +581,11 @@ class RelanceController {
      * Get all active relance configs
      */
     async getActiveConfigs(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Filters: country = the parrain's (userId); dates = config createdAt.
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const configs = await RelanceConfigModel.find({ enabled: true })
+            const query = { enabled: true, ...(await ownerMatch(RelanceConfigModel, 'userId', f)), ...dateMatch('createdAt', f) };
+            const configs = await RelanceConfigModel.find(query)
                 .sort({ updatedAt: -1 })
                 .lean();
 
@@ -559,6 +594,7 @@ class RelanceController {
                 data: configs
             });
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error in getActiveConfigs:', error);
             res.status(500).json({
                 success: false,

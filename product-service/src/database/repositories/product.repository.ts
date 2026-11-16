@@ -24,7 +24,11 @@ export interface ProductSearchFilters {
 export interface AdminProductSearchFilters extends Omit<ProductSearchFilters, 'status'> { // Omit base status to redefine
     status?: ProductStatus | 'all' | 'deleted'; // Allow specific status, all, or deleted
     hasActiveFlashSale?: boolean | string; // <-- Add this filter option
-    // Add any other admin-specific filters here
+    /** Admin `?country=`: the sellers of that country (resolved by the caller). */
+    sellerIdsIn?: Types.ObjectId[];
+    /** Admin `?from=&to=`, on the product's `createdAt`. */
+    createdFrom?: Date;
+    createdTo?: Date;
 }
 
 export interface ProductSearchResponse {
@@ -195,6 +199,9 @@ export class ProductRepository {
             priceMin,
             priceMax,
             hasActiveFlashSale,
+            sellerIdsIn,
+            createdFrom,
+            createdTo,
             ...otherFilters
         } = filters;
         const skip = (page - 1) * limit;
@@ -230,6 +237,14 @@ export class ProductRepository {
             initialMatch.$or = [
                 { name: regex }, { description: regex }, { category: regex }, { subcategory: regex }
             ];
+        }
+        // In an $and so it composes with an explicit ?userId= (both must hold).
+        if (sellerIdsIn) initialMatch.$and = [{ userId: { $in: sellerIdsIn } }];
+        if (createdFrom || createdTo) {
+            initialMatch.createdAt = {
+                ...(createdFrom ? { $gte: createdFrom } : {}),
+                ...(createdTo ? { $lte: createdTo } : {}),
+            };
         }
 
 

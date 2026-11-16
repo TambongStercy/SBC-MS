@@ -149,7 +149,8 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
     /**
      * Get recovery statistics
      */
-    async getRecoveryStats(): Promise<{
+    /** `scope`: admin filters (country, createdAt range) applied to every figure. */
+    async getRecoveryStats(scope: Record<string, any> = {}): Promise<{
         total: number;
         notRestored: number;
         restored: number;
@@ -157,13 +158,15 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
         byTransactionType: Record<string, number>;
     }> {
         const [total, notRestored, restored, byProvider, byTransactionType] = await Promise.all([
-            RecoverUserTransactionModel.countDocuments(),
-            RecoverUserTransactionModel.countDocuments({ recoveryStatus: RecoveryStatus.NOT_RESTORED }),
-            RecoverUserTransactionModel.countDocuments({ recoveryStatus: RecoveryStatus.RESTORED }),
+            RecoverUserTransactionModel.countDocuments(scope),
+            RecoverUserTransactionModel.countDocuments({ ...scope, recoveryStatus: RecoveryStatus.NOT_RESTORED }),
+            RecoverUserTransactionModel.countDocuments({ ...scope, recoveryStatus: RecoveryStatus.RESTORED }),
             RecoverUserTransactionModel.aggregate([
+                { $match: scope },
                 { $group: { _id: '$provider', count: { $sum: 1 } } }
             ]),
             RecoverUserTransactionModel.aggregate([
+                { $match: scope },
                 { $group: { _id: '$transactionType', count: { $sum: 1 } } }
             ])
         ]);
@@ -231,7 +234,9 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
             limit: number;
             sortBy?: string;
             sortOrder?: 'asc' | 'desc';
-        }
+        },
+        /** Admin filters (country, createdAt range), ANDed with the rest. */
+        scope: Record<string, any> = {}
     ): Promise<{ records: IRecoverUserTransaction[]; total: number; page: number; totalPages: number }> {
         const query: any = {};
 
@@ -243,6 +248,8 @@ export class RecoverUserTransactionRepository extends BaseRepository<IRecoverUse
             const phoneConditions = generatePhoneMatchQuery(filters.userPhoneNumber);
             query.$or = (query.$or || []).concat(phoneConditions);
         }
+
+        if (Object.keys(scope).length) query.$and = [...(query.$and || []), scope];
 
         const sortBy = options.sortBy || 'createdAt';
         const sortOrder = options.sortOrder === 'asc' ? 1 : -1;

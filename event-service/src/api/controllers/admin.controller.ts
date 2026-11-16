@@ -18,6 +18,8 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import Dispute, { DisputeStatus } from '../../database/models/dispute.model';
 import { getCommissionConfig, invalidateCommissionCache } from '../../services/clients/settings.service.client';
 import logger from '../../utils/logger';
+import { AdminFilters, dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { andIn, eventCountryMatch, eventScope, organizerIdsForCountry } from '../../utils/event-country';
 
 const log = logger.getLogger('AdminController');
 
@@ -51,24 +53,64 @@ const notifyUserByLookup = async (
     }
 };
 
-/** Admin global stats (spec §26). */
-export const dashboard = async (_req: Request, res: Response, next: NextFunction) => {
+/** `{ eventId: { $in } }` when a country scope is set, `{}` otherwise. */
+const inEvents = (ids: Types.ObjectId[] | undefined, field = 'eventId') => (ids ? { [field]: { $in: ids } } : {});
+
+/** Event filter for `?country=` (free-text `events.country`, any spelling) + dates on `startsAt`. */
+const eventFilterFor = async (f: AdminFilters) => ({
+    ...(f.country ? await eventCountryMatch(f.country) : {}),
+    ...dateMatch('startsAt', f),
+});
+
+/**
+ * Admin global stats (spec §26). Admin filters (?country, ?from, ?to) apply to
+ * every figure, each on its own natural date:
+ *   organizers createdAt · events startsAt · paid orders paidAt · tickets createdAt
+ *   commissions sbcRevenueBookedAt · resale listings listedAt · refunds createdAt.
+ * Country: through the event (organizers: see organizerIdsForCountry; refunds:
+ * through their order's event).
+ */
+export const dashboard = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        const f = readAdminFilters(req, res); if (!f) return;
+        const [eventIds, orgIds, eventFilter] = await Promise.all([
+            eventScope(f.country),
+            f.country ? organizerIdsForCountry(f.country) : Promise.resolve(undefined),
+            eventFilterFor(f),
+        ]);
         const [organizerAgg, eventAgg, orderAgg, ticketAgg, commissionAgg, resaleAgg, refundAgg] = await Promise.all([
-            Organizer.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-            Event.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
+            Organizer.aggregate([
+                { $match: { ...inEvents(orgIds, '_id'), ...dateMatch('createdAt', f) } },
+                { $group: { _id: '$status', n: { $sum: 1 } } },
+            ]),
+            Event.aggregate([{ $match: eventFilter }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
             // Grouped by kind so primary ticketing and marketplace volume can be
             // told apart (spec §26) — the legacy `orders.*` keys stay the sum of both.
             Order.aggregate([
-                { $match: { status: OrderStatus.PAID } },
+                { $match: { status: OrderStatus.PAID, ...inEvents(eventIds), ...dateMatch('paidAt', f) } },
                 { $group: { _id: '$kind', gross: { $sum: '$subtotal' }, volume: { $sum: '$total' }, orderCount: { $sum: 1 } } },
             ]),
-            Ticket.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
+            Ticket.aggregate([
+                { $match: { ...inEvents(eventIds), ...dateMatch('createdAt', f) } },
+                { $group: { _id: '$status', n: { $sum: 1 } } },
+            ]),
             Commission.aggregate([
+                { $match: { ...inEvents(eventIds), ...dateMatch('sbcRevenueBookedAt', f) } },
                 { $group: { _id: '$kind', total: { $sum: '$amount' }, n: { $sum: 1 } } },
             ]),
-            ResaleListing.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-            Refund.aggregate([{ $group: { _id: '$status', total: { $sum: '$amount' }, n: { $sum: 1 } } }]),
+            ResaleListing.aggregate([
+                { $match: { ...inEvents(eventIds), ...dateMatch('listedAt', f) } },
+                { $group: { _id: '$status', n: { $sum: 1 } } },
+            ]),
+            // Refunds carry no eventId: country goes through their order.
+            Refund.aggregate([
+                { $match: dateMatch('createdAt', f) },
+                ...(eventIds ? [
+                    { $lookup: { from: Order.collection.name, localField: 'orderId', foreignField: '_id', as: 'order' } },
+                    { $match: { 'order.eventId': { $in: eventIds } } },
+                ] : []),
+                { $group: { _id: '$status', total: { $sum: '$amount' }, n: { $sum: 1 } } },
+            ]),
         ]);
 
         const orgCounts = Object.fromEntries(organizerAgg.map((r: any) => [r._id, r.n]));
@@ -141,13 +183,22 @@ export const dashboard = async (_req: Request, res: Response, next: NextFunction
     } catch (err) { next(err); }
 };
 
+/**
+ * GET /admin/organizers. ?country: where the organizer's events take place, or
+ * its member account's country when it has no event yet. Dates: createdAt.
+ */
 export const listOrganizers = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        const f = readAdminFilters(req, res); if (!f) return;
         const { status, limit, skip } = req.query;
+        const ids = f.country ? await organizerIdsForCountry(f.country) : undefined;
+        if (ids && ids.length === 0) { res.json({ success: true, data: { items: [], total: 0 } }); return; }
         const result = await organizerService.listOrganizers({
             status: status as OrganizerStatus | undefined,
             limit: limit ? parseInt(String(limit), 10) : undefined,
             skip: skip ? parseInt(String(skip), 10) : undefined,
+            ids,
+            createdAt: dateMatch('createdAt', f).createdAt,
         });
         res.json({ success: true, data: result });
     } catch (err) { next(err); }
@@ -160,9 +211,11 @@ export const approveOrganizer = async (req: Request, res: Response, next: NextFu
     } catch (err) { next(err); }
 };
 
+/** GET /admin/events. ?country on `events.country` (code or name); dates on `startsAt` (when it takes place). */
 export const listEvents = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const filter: any = {};
+        const f = readAdminFilters(req, res); if (!f) return;
+        const filter: any = await eventFilterFor(f);
         if (req.query.status) filter.status = req.query.status;
         if (req.query.organizerId) filter.organizerId = new Types.ObjectId(String(req.query.organizerId));
         if (req.query.q) {
@@ -273,10 +326,14 @@ export const refundOrder = async (req: Request, res: Response, next: NextFunctio
 
 // ---------- admin orders / tickets / marketplace / disputes / commissions ----------
 
-/** GET /admin/orders — paginated list, filter by status/kind/eventId */
+/** GET /admin/orders — paginated list, filter by status/kind/eventId. ?country via the event; dates on createdAt. */
 export const listOrders = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const filter: any = {};
+        const f = readAdminFilters(req, res); if (!f) return;
+        const filter: any = dateMatch('createdAt', f);
+        const ids = await eventScope(f.country);
+        if (ids && ids.length === 0) { res.json({ success: true, data: { items: [], total: 0 } }); return; }
+        andIn(filter, 'eventId', ids);
         if (req.query.status) filter.status = req.query.status;
         if (req.query.kind) filter.kind = req.query.kind;
         if (req.query.eventId) filter.eventId = new Types.ObjectId(String(req.query.eventId));
@@ -291,10 +348,14 @@ export const listOrders = async (req: Request, res: Response, next: NextFunction
     } catch (err) { next(err); }
 };
 
-/** GET /admin/tickets — search by serial/holder/event */
+/** GET /admin/tickets — search by serial/holder/event. ?country via the event; dates on createdAt (issue). */
 export const listTickets = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const filter: any = {};
+        const f = readAdminFilters(req, res); if (!f) return;
+        const filter: any = dateMatch('createdAt', f);
+        const ids = await eventScope(f.country);
+        if (ids && ids.length === 0) { res.json({ success: true, data: { items: [], total: 0 } }); return; }
+        andIn(filter, 'eventId', ids);
         if (req.query.status) filter.status = req.query.status;
         if (req.query.eventId) filter.eventId = new Types.ObjectId(String(req.query.eventId));
         if (req.query.serial) filter.serial = String(req.query.serial).toUpperCase();
@@ -316,10 +377,14 @@ export const listTickets = async (req: Request, res: Response, next: NextFunctio
     } catch (err) { next(err); }
 };
 
-/** GET /admin/resale-listings — marketplace moderation list */
+/** GET /admin/resale-listings — marketplace moderation list. ?country via the event; dates on listedAt. */
 export const listResaleListings = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const filter: any = {};
+        const f = readAdminFilters(req, res); if (!f) return;
+        const filter: any = dateMatch('listedAt', f);
+        const ids = await eventScope(f.country);
+        if (ids && ids.length === 0) { res.json({ success: true, data: { items: [], total: 0 } }); return; }
+        andIn(filter, 'eventId', ids);
         if (req.query.status) filter.status = req.query.status;
         if (req.query.eventId) filter.eventId = new Types.ObjectId(String(req.query.eventId));
         const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
@@ -391,10 +456,18 @@ export const removeResaleListing = async (req: Request, res: Response, next: Nex
     } catch (err) { next(err); }
 };
 
-/** GET /admin/disputes — moderation queue */
+/**
+ * GET /admin/disputes — moderation queue. ?country via the dispute's event
+ * (set at opening from the ticket / resale order; a dispute without one is
+ * left out under a country filter). Dates on createdAt.
+ */
 export const listDisputes = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const filter: any = {};
+        const f = readAdminFilters(req, res); if (!f) return;
+        const filter: any = dateMatch('createdAt', f);
+        const ids = await eventScope(f.country);
+        if (ids && ids.length === 0) { res.json({ success: true, data: { items: [], total: 0 } }); return; }
+        andIn(filter, 'eventId', ids);
         if (req.query.status) filter.status = req.query.status;
         const limit = Math.min(parseInt(String(req.query.limit || 50), 10), 200);
         const skip = parseInt(String(req.query.skip || 0), 10);

@@ -9,6 +9,8 @@ import {
 import { userRepository } from '../database/repositories/user.repository';
 import config from '../config';
 import logger from '../utils/logger';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { countryMemberIn } from '../utils/country-filter';
 
 const log = logger.getLogger('LeaderboardBonusService');
 
@@ -198,10 +200,16 @@ class LeaderboardBonusService {
     }
 
     /** The ledger for a month, for the admin console. */
-    async listBonuses(month: string, limit = 100, skip = 0) {
+    async listBonuses(month: string, limit = 100, skip = 0, f: AdminFilters = {}) {
+        // Admin filters: the member's country; from/to on the row's createdAt (when the run booked it).
+        const query: Record<string, unknown> = {
+            month,
+            ...(f.country ? { userId: await countryMemberIn(LeaderboardBonusModel, 'userId', f.country, { month }) } : {}),
+            ...dateMatch('createdAt', f),
+        };
         const [items, total] = await Promise.all([
-            LeaderboardBonusModel.find({ month }).sort({ amount: -1, createdAt: 1 }).skip(skip).limit(limit).lean(),
-            LeaderboardBonusModel.countDocuments({ month }),
+            LeaderboardBonusModel.find(query).sort({ amount: -1, createdAt: 1 }).skip(skip).limit(limit).lean(),
+            LeaderboardBonusModel.countDocuments(query),
         ]);
         return { items, total };
     }

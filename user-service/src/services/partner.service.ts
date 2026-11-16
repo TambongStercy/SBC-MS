@@ -9,6 +9,8 @@ import { paymentService } from './clients/payment.service.client'; // To record 
 import { SubscriptionType } from '../database/models/subscription.model';
 import { UserRole, IUser, ADMIN_CAPABLE_ROLES } from '../database/models/user.model'; // Import UserRole and IUser
 import logger from '../utils/logger';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { countryMemberIn } from '../utils/country-filter';
 
 const log = logger.getLogger('PartnerService');
 
@@ -184,22 +186,32 @@ export class PartnerService {
      */
     async adminListPartners(
         page: number = 1,
-        limit: number = 10
+        limit: number = 10,
+        f: AdminFilters = {}
     ): Promise<PaginatedResponse<IPartner>> {
         log.info(`Admin request: Listing partners. Page: ${page}, Limit: ${limit}`);
-        return this.partnerRepository.findAllWithPagination(page, limit);
+        return this.partnerRepository.findAllWithPagination(page, limit, await this.adminPartnerMatch(f));
+    }
+
+    /** Admin filters on partners: the member's country, became partner (createdAt) in the range. */
+    private async adminPartnerMatch(f: AdminFilters): Promise<Record<string, unknown>> {
+        return {
+            ...(f.country ? { user: await countryMemberIn(PartnerModel, 'user', f.country) } : {}),
+            ...dateMatch('createdAt', f),
+        };
     }
 
     /**
      * [Admin] Retrieves summary statistics for active partners.
      * @returns An object containing total active, active silver, and active gold partner counts.
      */
-    async getPartnerSummaryStats(): Promise<PartnerSummaryStats> {
+    async getPartnerSummaryStats(f: AdminFilters = {}): Promise<PartnerSummaryStats> {
         log.info('Admin request: Fetching partner summary stats.');
         try {
-            const totalActivePartners = await PartnerModel.countDocuments({ isActive: true }).exec();
-            const activeSilverPartners = await PartnerModel.countDocuments({ isActive: true, pack: 'silver' }).exec();
-            const activeGoldPartners = await PartnerModel.countDocuments({ isActive: true, pack: 'gold' }).exec();
+            const match = await this.adminPartnerMatch(f);
+            const totalActivePartners = await PartnerModel.countDocuments({ ...match, isActive: true }).exec();
+            const activeSilverPartners = await PartnerModel.countDocuments({ ...match, isActive: true, pack: 'silver' }).exec();
+            const activeGoldPartners = await PartnerModel.countDocuments({ ...match, isActive: true, pack: 'gold' }).exec();
 
             return {
                 totalActivePartners,

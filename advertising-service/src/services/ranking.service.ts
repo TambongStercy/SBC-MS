@@ -142,11 +142,13 @@ export const getLeaderboard = async (opts: {
     limit?: number;
     sortBy?: 'views' | 'clicks' | 'trust';
     measuredOnly?: boolean;
+    /** Extra profile conditions (the admin's country / date filters). */
+    match?: Record<string, unknown>;
 } = {}): Promise<{ entries: LeaderboardEntry[]; total: number }> => {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(100, opts.limit ?? 50);
 
-    const filter: Record<string, unknown> = { isActive: true };
+    const filter: Record<string, unknown> = { ...opts.match, isActive: true };
     if (opts.measuredOnly) filter.hasCompletedTestCampaign = true;
 
     const sort: Record<string, 1 | -1> =
