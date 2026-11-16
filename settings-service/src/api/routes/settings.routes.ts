@@ -3,6 +3,7 @@ import cors from 'cors';
 import config from '../../config';
 import {
     getSettings,
+    getWinnerVipLink,
     updateSettings,
     uploadCompanyLogo,
     uploadTermsPdf,
@@ -33,7 +34,7 @@ import {
 } from '../controllers/settings.controller';
 import { upload } from '../middleware/multer.config'; // Import the configured Multer instance
 import authenticate from '../middleware/auth.middleware'; // Standard auth for settings management
-import { authenticateServiceRequest } from '../middleware/auth.middleware'; // Assume it's exported from the main auth file
+import { authenticateServiceRequest, requireAdmin } from '../middleware/auth.middleware'; // Assume it's exported from the main auth file
 
 const router = express.Router();
 const internalRouter = express.Router(); // Router for internal service calls
@@ -97,6 +98,9 @@ internalRouter.post('/signed-urls', internalGetSignedUrls);
 internalRouter.delete('/file-private', internalDeleteFilePrivate);
 internalRouter.delete('/file', internalDeleteFile);
 
+// GET /settings/internal/winner-vip-link - the Pack Winner VIP WhatsApp group link
+internalRouter.get('/winner-vip-link', getWinnerVipLink);
+
 // Mount the internal router
 router.use('/internal', internalRouter);
 
@@ -104,7 +108,7 @@ router.use('/internal', internalRouter);
 router.use(authenticate);
 
 // PUT /settings - Update non-file settings (URLs, etc.)
-router.put('/', updateSettings);
+router.put('/', requireAdmin, updateSettings);
 
 // POST /settings/logo - Upload/Update company logo
 // Multer middleware processes the 'companyLogo' field from the form-data

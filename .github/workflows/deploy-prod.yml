@@ -90,7 +90,7 @@ jobs:
               curl -sf --max-time 5 "http://localhost:$1/api/health" > /dev/null 2>&1 \
                 || curl -sf --max-time 5 "http://localhost:$1/health" > /dev/null 2>&1
             }
-            for PORT in 3001 3002 3003 3004 3006 3007 3008 3010; do
+            for PORT in 3001 3002 3003 3004 3006 3007 3008 3009 3010; do
               OK=0
               for TRY in $(seq 1 12); do
                 if healthy $PORT; then OK=1; break; fi

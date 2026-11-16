@@ -43,6 +43,8 @@ export interface ISettings extends Document {
     whatsappGroupUrl?: string;
     telegramGroupUrl?: string;
     discordGroupUrl?: string;
+    // Pack Winner VIP WhatsApp group. Members-only: never in the public GET.
+    winnerVipGroupUrl?: string;
 
     // File Links (using IFileReference)
     companyLogo?: IFileReference;
@@ -91,6 +93,7 @@ const SettingsSchema: Schema = new Schema(
         whatsappGroupUrl: { type: String, trim: true },
         telegramGroupUrl: { type: String, trim: true },
         discordGroupUrl: { type: String, trim: true },
+        winnerVipGroupUrl: { type: String, trim: true },
 
         // File Links
         companyLogo: { type: FileReferenceSchema, required: false },

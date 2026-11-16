@@ -208,6 +208,27 @@ class SettingsServiceClient {
         }
     }
 
+    private vipLinkCache: { value: string | null; expiresAt: number } | null = null;
+
+    /**
+     * The Pack Winner VIP WhatsApp group link the admin set in Settings, or null.
+     * Cached a minute (it is read on every /subscriptions/offers); on an error
+     * the last known value is kept, else null so the caller falls back to env.
+     */
+    async getWinnerVipLink(): Promise<string | null> {
+        if (this.vipLinkCache && this.vipLinkCache.expiresAt > Date.now()) return this.vipLinkCache.value;
+        if (!this.apiClient.defaults.baseURL) return null;
+        try {
+            const response = await this.apiClient.get('/settings/internal/winner-vip-link', { timeout: 5000 });
+            const value = (response.data?.data?.link as string | null) || null;
+            this.vipLinkCache = { value, expiresAt: Date.now() + 60 * 1000 };
+            return value;
+        } catch (error: any) {
+            log.error(`Error fetching the Winner VIP link: ${error.message}`);
+            return this.vipLinkCache?.value ?? null;
+        }
+    }
+
     // Add other methods to interact with settings-service as needed
 }
 
