@@ -7,9 +7,11 @@
  * The route is mounted for real and called over HTTP; who the buyer is and
  * payment-service are mocked.
  */
-const getMemberCountry = jest.fn();
+// The purchase reads the buyer's country through getRelanceDetails.
+const getRelanceDetails = jest.fn();
+const asCountry = (country: string | null) => (country === null ? null : { _id: 'buyer', country });
 jest.mock('../services/clients/user.service.client', () => ({
-    userServiceClient: { getMemberCountry: (...a: unknown[]) => getMemberCountry(...a) },
+    userServiceClient: { getRelanceDetails: (...a: unknown[]) => getRelanceDetails(...a) },
 }));
 const axiosPost = jest.fn();
 jest.mock('axios', () => {
@@ -46,14 +48,14 @@ beforeAll(() => {
 });
 afterAll(() => { server?.close(); });
 beforeEach(() => {
-    getMemberCountry.mockReset();
+    getRelanceDetails.mockReset();
     axiosPost.mockReset();
     axiosPost.mockResolvedValue({ data: { success: true, data: { sessionId: 'S1', checkoutUrl: 'https://pay.example/S1' } } });
 });
 
 describe('buying an SMS pack', () => {
     it('is refused outside Cameroon, before any payment is created', async () => {
-        getMemberCountry.mockResolvedValue('BJ');
+        getRelanceDetails.mockResolvedValue(asCountry('BJ'));
         const r = await buy('sms_250');
         expect(r.status).toBe(403);
         expect(r.json.message).toMatch(/réservés aux membres du Cameroun/);
@@ -62,7 +64,7 @@ describe('buying an SMS pack', () => {
 
     it('goes ahead for a Cameroonian parrain (country stored as CM or a legacy name)', async () => {
         for (const country of ['CM', 'Cameroun', 'cameroon']) {
-            getMemberCountry.mockResolvedValueOnce(country);
+            getRelanceDetails.mockResolvedValueOnce(asCountry(country));
             const r = await buy('sms_250');
             expect(r.status).not.toBe(403);
         }
@@ -70,7 +72,7 @@ describe('buying an SMS pack', () => {
     });
 
     it('waits when the country cannot be checked, rather than guessing', async () => {
-        getMemberCountry.mockResolvedValue(null);
+        getRelanceDetails.mockResolvedValue(null);
         const r = await buy('sms_1k');
         expect(r.status).toBe(503);
         expect(axiosPost).not.toHaveBeenCalled();
@@ -78,7 +80,7 @@ describe('buying an SMS pack', () => {
 
     it('never asks for the country of an email pack', async () => {
         await buy('email_3k');
-        expect(getMemberCountry).not.toHaveBeenCalled();
+        expect(getRelanceDetails).not.toHaveBeenCalled();
         expect(axiosPost).toHaveBeenCalledTimes(1);
     });
 });
