@@ -257,10 +257,10 @@ const RelanceDashboardPage: React.FC = () => {
                     ) : (
                         <div className="space-y-3 max-h-96 overflow-y-auto">
                             {activeTargets.map((target) => (
-                                <div key={target._id} className="p-3 bg-gray-700 rounded border border-gray-600">
+                                <div key={target._id} className="p-3 bg-gray-700 rounded-sm border border-gray-600">
                                     <div className="flex items-center justify-between mb-2">
                                         <span className="text-sm font-medium text-gray-200">Day {target.currentDay}/7</span>
-                                        <span className={`text-xs px-2 py-1 rounded ${getStatusBadge(target.status)}`}>{target.status}</span>
+                                        <span className={`text-xs px-2 py-1 rounded-sm ${getStatusBadge(target.status)}`}>{target.status}</span>
                                     </div>
                                     <div className="text-xs text-gray-400 space-y-1">
                                         <p>Entered: {formatDate(target.enteredLoopAt)}</p>
@@ -284,9 +284,9 @@ const RelanceDashboardPage: React.FC = () => {
                     ) : (
                         <div className="space-y-3 max-h-96 overflow-y-auto">
                             {activeConfigs.map((config) => (
-                                <div key={config._id} className="p-3 bg-gray-700 rounded border border-gray-600">
+                                <div key={config._id} className="p-3 bg-gray-700 rounded-sm border border-gray-600">
                                     <div className="flex items-center justify-between mb-2">
-                                        <span className={`text-xs px-2 py-1 rounded ${getWhatsAppStatusBadge(config.whatsappStatus)}`}>
+                                        <span className={`text-xs px-2 py-1 rounded-sm ${getWhatsAppStatusBadge(config.whatsappStatus)}`}>
                                             {config.whatsappStatus}
                                         </span>
                                         <div className="flex gap-2">
@@ -300,10 +300,10 @@ const RelanceDashboardPage: React.FC = () => {
                                         {config.lastQrScanDate && <p>Last scan: {formatDate(config.lastQrScanDate)}</p>}
                                         <div className="flex gap-2 mt-2">
                                             {config.enrollmentPaused && (
-                                                <span className="px-2 py-1 bg-yellow-900 text-yellow-300 rounded text-xs">Enrollment Paused</span>
+                                                <span className="px-2 py-1 bg-yellow-900 text-yellow-300 rounded-sm text-xs">Enrollment Paused</span>
                                             )}
                                             {config.sendingPaused && (
-                                                <span className="px-2 py-1 bg-red-900 text-red-300 rounded text-xs">Sending Paused</span>
+                                                <span className="px-2 py-1 bg-red-900 text-red-300 rounded-sm text-xs">Sending Paused</span>
                                             )}
                                         </div>
                                     </div>

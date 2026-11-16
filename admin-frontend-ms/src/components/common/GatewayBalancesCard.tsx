@@ -153,7 +153,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
     if (isLoading) {
         return (
             <motion.div
-                className="bg-gray-800 bg-opacity-50 backdrop-blur-md overflow-hidden shadow-lg rounded-xl border border-gray-700 p-6"
+                className="bg-gray-800/50 backdrop-blur-md overflow-hidden shadow-lg rounded-xl border border-gray-700 p-6"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
             >
@@ -167,7 +167,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
 
     return (
         <motion.div
-            className="bg-gray-800 bg-opacity-50 backdrop-blur-md overflow-hidden shadow-lg rounded-xl border border-gray-700"
+            className="bg-gray-800/50 backdrop-blur-md overflow-hidden shadow-lg rounded-xl border border-gray-700"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -263,7 +263,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                 NOWPayments (USD)
                             </div>
                             {showLiveBalances && liveBalances?.nowpayments.available && (
-                                <span className="text-xs bg-green-600/30 text-green-300 px-2 py-0.5 rounded">LIVE</span>
+                                <span className="text-xs bg-green-600/30 text-green-300 px-2 py-0.5 rounded-sm">LIVE</span>
                             )}
                         </div>
                         {isEditing ? (
@@ -271,7 +271,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                 type="number"
                                 value={editForm.nowpaymentsBalanceUSD}
                                 onChange={(e) => setEditForm({ ...editForm, nowpaymentsBalanceUSD: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-gray-600 text-gray-100 rounded px-3 py-2 text-xl font-semibold"
+                                className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2 text-xl font-semibold"
                                 step="0.01"
                                 min="0"
                             />
@@ -314,14 +314,14 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                 <Wallet size={16} className="mr-1 text-orange-400" />
                                 FeexPay (XAF)
                             </div>
-                            <span className="text-xs bg-gray-600/50 text-gray-300 px-2 py-0.5 rounded">MANUEL</span>
+                            <span className="text-xs bg-gray-600/50 text-gray-300 px-2 py-0.5 rounded-sm">MANUEL</span>
                         </div>
                         {isEditing ? (
                             <input
                                 type="number"
                                 value={editForm.feexpayBalanceXAF}
                                 onChange={(e) => setEditForm({ ...editForm, feexpayBalanceXAF: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-gray-600 text-gray-100 rounded px-3 py-2 text-xl font-semibold"
+                                className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2 text-xl font-semibold"
                                 step="1"
                                 min="0"
                             />
@@ -345,7 +345,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                 CinetPay (XAF)
                             </div>
                             {showLiveBalances && liveBalances?.cinetpay.available && (
-                                <span className="text-xs bg-green-600/30 text-green-300 px-2 py-0.5 rounded">LIVE</span>
+                                <span className="text-xs bg-green-600/30 text-green-300 px-2 py-0.5 rounded-sm">LIVE</span>
                             )}
                         </div>
                         {isEditing ? (
@@ -353,7 +353,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                 type="number"
                                 value={editForm.cinetpayBalanceXAF}
                                 onChange={(e) => setEditForm({ ...editForm, cinetpayBalanceXAF: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-gray-600 text-gray-100 rounded px-3 py-2 text-xl font-semibold"
+                                className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2 text-xl font-semibold"
                                 step="1"
                                 min="0"
                             />
@@ -389,7 +389,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                             value={editForm.notes}
                             onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
                             placeholder="Ex: Mise a jour du 26/12/2025"
-                            className="w-full bg-gray-600 text-gray-100 rounded px-3 py-2"
+                            className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2"
                         />
                     </div>
                 )}

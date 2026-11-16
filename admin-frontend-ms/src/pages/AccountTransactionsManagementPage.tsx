@@ -137,7 +137,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
         <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white">
             <Header title="Account Transaction Management" />
             <main className="max-w-full mx-auto py-6 px-4 lg:px-8">
-                <div className="mb-6 p-4 bg-gray-800 rounded-lg shadow">
+                <div className="mb-6 p-4 bg-gray-800 rounded-lg shadow-sm">
                     <h3 className="text-lg font-semibold mb-3">Filters</h3>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
@@ -149,7 +149,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 value={filters.userSearchTerm}
                                 onChange={handleFilterChange}
                                 placeholder="Enter Name, Email or Phone"
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         <div>
@@ -159,7 +159,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 name="type"
                                 value={filters.type}
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             >
                                 <option value="">All Types</option>
                                 {Object.values(TransactionType).map((type) => (
@@ -174,7 +174,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 name="status"
                                 value={filters.status}
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             >
                                 <option value="">All Statuses</option>
                                 {Object.values(TransactionStatus).map((status) => (
@@ -189,7 +189,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 name="currency"
                                 value={filters.currency}
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             >
                                 <option value="">All Currencies</option>
                                 {Object.values(Currency).map((curr) => (
@@ -205,7 +205,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 name="startDate"
                                 value={filters.startDate}
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         <div>
@@ -216,7 +216,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 name="endDate"
                                 value={filters.endDate}
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                                 min={filters.startDate || undefined}
                             />
                         </div>
@@ -229,7 +229,7 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 value={filters.minAmount}
                                 onChange={handleFilterChange}
                                 placeholder="e.g., 100"
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         <div>
@@ -241,13 +241,13 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                 value={filters.maxAmount}
                                 onChange={handleFilterChange}
                                 placeholder="e.g., 5000"
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         <div className="md:col-span-4 flex items-end justify-end pt-4">
                             <button
                                 onClick={handleSearch}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150 disabled:opacity-50"
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150 disabled:opacity-50"
                                 disabled={loading}
                             >
                                 {loading ? 'Searching...' : 'Search'}
@@ -259,10 +259,10 @@ const AccountTransactionsManagementPage: React.FC = () => {
                 {loading ? (
                     <div className="text-center py-4">Loading transactions...</div>
                 ) : error ? (
-                    <div className="bg-red-800 text-white p-3 rounded mb-4">Error: {error}</div>
+                    <div className="bg-red-800 text-white p-3 rounded-sm mb-4">Error: {error}</div>
                 ) : (
                     <>
-                        <div className="shadow overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
+                        <div className="shadow-sm overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-700">
                                 <thead className="bg-gray-700">
                                     <tr>
@@ -303,14 +303,14 @@ const AccountTransactionsManagementPage: React.FC = () => {
                                                     <button
                                                         onClick={() => handleViewUser(tx.userId)}
                                                         title="View User Details"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
                                                     >
                                                         User
                                                     </button>
                                                     <button
                                                         onClick={() => handleViewMetadata(tx.metadata)}
                                                         title="View Metadata"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-purple-500 transition ease-in-out duration-150 disabled:opacity-50"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-purple-500 transition ease-in-out duration-150 disabled:opacity-50"
                                                         disabled={!tx.metadata}
                                                     >
                                                         Metadata

@@ -145,7 +145,7 @@ const AdsNetworkDashboardPage: React.FC = () => {
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <motion.div
-                                className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700"
+                                className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700"
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                             >
@@ -169,7 +169,7 @@ const AdsNetworkDashboardPage: React.FC = () => {
                             </motion.div>
 
                             <motion.div
-                                className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700"
+                                className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700"
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                             >
@@ -190,7 +190,7 @@ const AdsNetworkDashboardPage: React.FC = () => {
                             </motion.div>
 
                             <motion.div
-                                className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 lg:col-span-2"
+                                className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 lg:col-span-2"
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                             >

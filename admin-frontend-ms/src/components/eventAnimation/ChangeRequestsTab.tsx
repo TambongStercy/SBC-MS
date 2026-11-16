@@ -66,8 +66,8 @@ export default function ChangeRequestsTab() {
                             {open.diff.map((d, i) => (
                                 <li key={i} className="px-3 py-2.5 text-sm space-y-1">
                                     <p className="font-semibold text-gray-100">{fieldLabel(d.path)}</p>
-                                    <p className="break-words"><span className="text-gray-400">Avant : </span><span className="text-red-300 line-through">{showValue(d.from, d.path, open.valueNames)}</span></p>
-                                    <p className="break-words"><span className="text-gray-400">Après : </span><span className="text-emerald-300 font-semibold">{showValue(d.to, d.path, open.valueNames)}</span></p>
+                                    <p className="wrap-break-word"><span className="text-gray-400">Avant : </span><span className="text-red-300 line-through">{showValue(d.from, d.path, open.valueNames)}</span></p>
+                                    <p className="wrap-break-word"><span className="text-gray-400">Après : </span><span className="text-emerald-300 font-semibold">{showValue(d.to, d.path, open.valueNames)}</span></p>
                                 </li>
                             ))}
                         </ul>

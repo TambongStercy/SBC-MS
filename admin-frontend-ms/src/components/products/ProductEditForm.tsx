@@ -126,7 +126,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-20 p-4">
+        <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-20 p-4">
             <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-semibold text-white mb-6">{product?._id ? 'Edit Product' : 'Create New Product'}</h2>
                 <form onSubmit={handleSubmit}>
@@ -139,7 +139,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                                 id="name"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 required
                             />
@@ -152,7 +152,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                                 id="price"
                                 value={price}
                                 onChange={(e) => setPrice(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 required
                                 min="0"
@@ -166,7 +166,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                                 id="category"
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 required
                             />
@@ -179,7 +179,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                                 id="subcategory"
                                 value={subcategory}
                                 onChange={(e) => setSubcategory(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                             />
                         </div>
@@ -191,7 +191,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                                 id="stock"
                                 value={stock}
                                 onChange={(e) => setStock(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 min="0"
                             />
@@ -204,7 +204,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                                 type="checkbox"
                                 checked={isActive}
                                 onChange={(e) => setIsActive(e.target.checked)}
-                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-500 rounded bg-gray-700"
+                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-500 rounded-sm bg-gray-700"
                                 disabled={isLoading}
                             />
                             <label htmlFor="isActive" className="ml-2 block text-sm text-gray-300">
@@ -221,7 +221,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                             rows={4}
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                             disabled={isLoading}
                         />
                     </div>
@@ -274,14 +274,14 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                             type="button"
                             onClick={onCancel}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                         >
                             {isLoading ? 'Saving...' : 'Save Product'}
                         </button>

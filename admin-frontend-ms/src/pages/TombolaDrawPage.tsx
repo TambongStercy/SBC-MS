@@ -419,7 +419,7 @@ function TombolaDrawPage() {
         return (
             <div className="flex-1 p-6 bg-gray-900 text-white">
                 <Header title="Tombola Draw" />
-                <div className="bg-red-800 text-white p-3 rounded mb-4">Error loading details: {error}</div>
+                <div className="bg-red-800 text-white p-3 rounded-sm mb-4">Error loading details: {error}</div>
                 <button onClick={() => navigate('/tombola')} className="text-indigo-400 hover:text-indigo-300">Back to Tombola List</button>
             </div>
         );
@@ -430,7 +430,7 @@ function TombolaDrawPage() {
             <div className="flex-1 p-6 bg-gray-900 text-white">
                 <Header title="Tombola Draw" />
                 <p>Tombola details are not available or still loading.</p>
-                {error && <div className="bg-red-800 text-white p-3 rounded mb-4">Error: {error}</div>}
+                {error && <div className="bg-red-800 text-white p-3 rounded-sm mb-4">Error: {error}</div>}
                 <button onClick={() => navigate('/tombola')} className="text-indigo-400 hover:text-indigo-300">Back to Tombola List</button>
             </div>
         );
@@ -491,7 +491,7 @@ function TombolaDrawPage() {
                                 <button
                                     onClick={openConfirmation}
                                     disabled={isDrawButtonDisabled} // Use the calculated disabled state
-                                    className="w-full px-6 py-3 bg-green-600 rounded hover:bg-green-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full px-6 py-3 bg-green-600 rounded-sm hover:bg-green-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     Confirm & Start Draw
                                 </button>
@@ -637,7 +637,7 @@ function TombolaDrawPage() {
                                                     animate={{ opacity: 1, x: 0 }}
                                                     exit={{ opacity: 0 }} // Optional exit animation if list changes dynamically
                                                     transition={{ duration: 0.5, delay: index * 0.1 }} // Stagger appearance slightly
-                                                    className="p-3 bg-gray-700 rounded-md shadow flex items-center space-x-4"
+                                                    className="p-3 bg-gray-700 rounded-md shadow-sm flex items-center space-x-4"
                                                 >
                                                     <span className={`text-lg font-bold ${winner.rank === 1 ? 'text-yellow-400' : winner.rank === 2 ? 'text-gray-300' : 'text-orange-400'}`}>
                                                         Rank #{winner.rank}
@@ -664,9 +664,9 @@ function TombolaDrawPage() {
                                                     </span>
                                                     {/* Add the ejected ball display here */}
                                                     {drawingState === 'done' && revealedEjectedBalls[index] !== undefined && (
-                                                        <div className="ml-2 flex items-center flex-shrink-0" title={`Visually Ejected Ball: ${revealedEjectedBalls[index]}`}>
+                                                        <div className="ml-2 flex items-center shrink-0" title={`Visually Ejected Ball: ${revealedEjectedBalls[index]}`}>
                                                             <span className="text-xs text-gray-400 mr-1">(Ball:</span>
-                                                            <div className={`w-5 h-5 ${ballColors[allTicketNumbers.indexOf(revealedEjectedBalls[index]) % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold shadow-sm`}>
+                                                            <div className={`w-5 h-5 ${ballColors[allTicketNumbers.indexOf(revealedEjectedBalls[index]) % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold shadow-xs`}>
                                                                 <span className="w-3 h-3 bg-white rounded-full flex items-center justify-center text-black text-[8px] font-bold">
                                                                     {revealedEjectedBalls[index]}
                                                                 </span>

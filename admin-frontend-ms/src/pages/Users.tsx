@@ -132,7 +132,7 @@ const PaginationPlaceholder: React.FC<{
     <button
       onClick={() => onPageChange(currentPage - 1)}
       disabled={currentPage <= 1}
-      className="px-4 py-2 bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+      className="px-4 py-2 bg-gray-700 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
     >
       Previous
     </button>
@@ -140,7 +140,7 @@ const PaginationPlaceholder: React.FC<{
     <button
       onClick={() => onPageChange(currentPage + 1)}
       disabled={currentPage >= totalPages}
-      className="px-4 py-2 bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+      className="px-4 py-2 bg-gray-700 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
     >
       Next
     </button>
@@ -179,20 +179,20 @@ const UserFiltersPlaceholder: React.FC<{
   };
 
   return (
-    <form onSubmit={handleApplyFilters} className="mb-4 flex flex-wrap gap-4 items-center bg-gray-800 p-4 rounded-lg shadow">
+    <form onSubmit={handleApplyFilters} className="mb-4 flex flex-wrap gap-4 items-center bg-gray-800 p-4 rounded-lg shadow-sm">
       <input
         type="text"
         name="search"
         placeholder="Search name, email..."
         value={searchInput}
         onChange={handleLocalInputChange}
-        className="px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 flex-grow"
+        className="px-3 py-2 bg-gray-700 rounded-sm border border-gray-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 grow"
       />
       <select
         name="status"
         value={statusInput}
         onChange={handleLocalInputChange}
-        className="px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        className="px-3 py-2 bg-gray-700 rounded-sm border border-gray-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
       >
         <option value="">All Statuses</option>
         <option value="active">Active</option>
@@ -202,7 +202,7 @@ const UserFiltersPlaceholder: React.FC<{
       </select>
       <button
         type="submit"
-        className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+        className="px-4 py-2 bg-indigo-600 text-white rounded-sm hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800"
       >
         Search
       </button>

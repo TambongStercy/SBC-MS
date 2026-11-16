@@ -153,7 +153,7 @@ const StorageMonitoringPage: React.FC = () => {
                             type="checkbox"
                             checked={autoRefresh}
                             onChange={(e) => setAutoRefresh(e.target.checked)}
-                            className="rounded"
+                            className="rounded-sm"
                         />
                         <span>Auto-refresh</span>
                     </label>
@@ -303,7 +303,7 @@ const StorageMonitoringPage: React.FC = () => {
                     <div className="flex items-start space-x-3">
                         <AlertTriangle className={`w-6 h-6 mt-0.5 ${data.alert.level === 'critical' ? 'text-red-400' : 'text-yellow-400'
                             }`} />
-                        <div className="flex-grow">
+                        <div className="grow">
                             <h3 className={`font-semibold mb-2 ${data.alert.level === 'critical' ? 'text-red-300' : 'text-yellow-300'
                                 }`}>
                                 {data.alert.level.toUpperCase()} - Cost Alert
@@ -348,7 +348,7 @@ const StorageMonitoringPage: React.FC = () => {
                             <span className="text-yellow-400 font-medium">{data.protectionPolicy.temporaryFiles}</span>
                         </div>
                     </div>
-                    <div className="mt-4 p-3 bg-green-900/20 rounded border border-green-500/30">
+                    <div className="mt-4 p-3 bg-green-900/20 rounded-sm border border-green-500/30">
                         <p className="text-sm text-green-300">
                             🛡️ User content is automatically protected from cleanup operations
                         </p>
@@ -398,7 +398,7 @@ const StorageMonitoringPage: React.FC = () => {
                             <div className="text-sm text-gray-400">Days Old</div>
                         </div>
                     </div>
-                    <div className="p-3 bg-yellow-900/20 rounded border border-yellow-500/30">
+                    <div className="p-3 bg-yellow-900/20 rounded-sm border border-yellow-500/30">
                         <p className="text-sm text-yellow-300">
                             ⚠️ {data.cleanupCandidates.note}
                         </p>

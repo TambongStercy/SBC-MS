@@ -48,7 +48,7 @@ const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({ transac
                 const formattedAmount = `${tx.amount > 0 ? '+' : ''}${tx.amount.toLocaleString()} ${tx.currency}`;
 
                 return (
-                    <li key={tx._id} className="flex items-center space-x-3 p-2 rounded hover:bg-gray-700/50 transition-colors duration-150">
+                    <li key={tx._id} className="flex items-center space-x-3 p-2 rounded-sm hover:bg-gray-700/50 transition-colors duration-150">
                         <Icon className={`w-5 h-5 ${color}`} />
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-200 truncate">{tx.description}</p>

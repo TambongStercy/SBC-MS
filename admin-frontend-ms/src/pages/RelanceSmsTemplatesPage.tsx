@@ -100,7 +100,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                     Templates SMS Relance
                 </h1>
                 <p className="text-gray-400 mt-1 text-sm">
-                    Messages prédéfinis — les utilisateurs ajoutent uniquement leur lien via <code className="bg-gray-700 px-1 rounded">{'{{link}}'}</code>
+                    Messages prédéfinis — les utilisateurs ajoutent uniquement leur lien via <code className="bg-gray-700 px-1 rounded-sm">{'{{link}}'}</code>
                 </p>
             </div>
 
@@ -123,12 +123,12 @@ const RelanceSmsTemplatesPage: React.FC = () => {
 
             {/* Preview link input */}
             <div className="bg-gray-800 rounded-lg p-4 mb-4 flex items-center gap-3">
-                <Eye className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <Eye className="w-4 h-4 text-gray-400 shrink-0" />
                 <span className="text-gray-400 text-sm">Lien pour prévisualisation :</span>
                 <input
                     value={previewLink}
                     onChange={e => setPreviewLink(e.target.value)}
-                    className="flex-1 bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
+                    className="flex-1 bg-gray-700 text-white text-sm rounded-sm px-3 py-1.5 border border-gray-600 focus:outline-hidden focus:border-blue-500"
                     placeholder="https://..."
                 />
             </div>
@@ -139,24 +139,24 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                     <div key={tpl._id} className={`bg-gray-800 rounded-xl border ${tpl.active ? 'border-gray-700' : 'border-gray-700 opacity-60'}`}>
                         <div className="flex items-center justify-between p-4 pb-2">
                             <div className="flex items-center gap-3">
-                                <span className="bg-blue-600/20 text-blue-400 text-xs font-bold px-2 py-1 rounded">
+                                <span className="bg-blue-600/20 text-blue-400 text-xs font-bold px-2 py-1 rounded-sm">
                                     {dayLabel(tpl.type, tpl.dayNumber)}
                                 </span>
                                 {!tpl.active && (
-                                    <span className="text-xs text-gray-500 bg-gray-700 px-2 py-0.5 rounded">Inactif</span>
+                                    <span className="text-xs text-gray-500 bg-gray-700 px-2 py-0.5 rounded-sm">Inactif</span>
                                 )}
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => handlePreview(tpl)}
-                                    className="p-1.5 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"
+                                    className="p-1.5 rounded-sm text-gray-400 hover:text-blue-400 hover:bg-gray-700"
                                     title="Prévisualiser"
                                 >
                                     <Eye className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => toggleActive(tpl)}
-                                    className="p-1.5 rounded text-gray-400 hover:text-yellow-400 hover:bg-gray-700"
+                                    className="p-1.5 rounded-sm text-gray-400 hover:text-yellow-400 hover:bg-gray-700"
                                     title={tpl.active ? 'Désactiver' : 'Activer'}
                                 >
                                     {tpl.active
@@ -166,7 +166,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                                 {editingId !== tpl._id && (
                                     <button
                                         onClick={() => startEdit(tpl)}
-                                        className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"
+                                        className="p-1.5 rounded-sm text-gray-400 hover:text-white hover:bg-gray-700"
                                         title="Modifier"
                                     >
                                         <Edit2 className="w-4 h-4" />
@@ -182,7 +182,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                                         value={editText}
                                         onChange={e => setEditText(e.target.value)}
                                         rows={5}
-                                        className="w-full bg-gray-900 text-white text-sm rounded-lg p-3 border border-blue-500 focus:outline-none resize-none font-mono"
+                                        className="w-full bg-gray-900 text-white text-sm rounded-lg p-3 border border-blue-500 focus:outline-hidden resize-none font-mono"
                                     />
                                     <div className="flex items-center justify-between">
                                         <span className={`text-xs ${charCount(editText) > 160 ? 'text-orange-400' : 'text-gray-400'}`}>

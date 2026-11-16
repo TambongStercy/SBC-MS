@@ -249,7 +249,7 @@ const PushAnnouncementsPage: React.FC = () => {
                                 role="radio"
                                 aria-checked={targeted === o.value}
                                 onClick={() => setTargeted(o.value)}
-                                className={`py-1.5 rounded text-sm font-semibold ${targeted === o.value ? 'bg-gray-900 text-white' : 'text-gray-300'}`}
+                                className={`py-1.5 rounded-sm text-sm font-semibold ${targeted === o.value ? 'bg-gray-900 text-white' : 'text-gray-300'}`}
                             >
                                 {o.label}
                             </button>

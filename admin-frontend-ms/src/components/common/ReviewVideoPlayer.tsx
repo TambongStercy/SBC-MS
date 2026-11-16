@@ -118,7 +118,7 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                 <button
                     onClick={cycleSpeed}
                     title="Vitesse de lecture"
-                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+                    className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
                 >
                     <Gauge size={14} /> {speed}×
                 </button>

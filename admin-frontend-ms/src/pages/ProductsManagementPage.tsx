@@ -341,7 +341,7 @@ const ProductsManagementPage: React.FC = () => {
         <div className="relative z-10 p-6 bg-gray-800 text-white rounded-lg shadow-lg w-full"> {/* Removed container, mx-auto. Kept w-full for now */}
             <h1 className="text-2xl font-bold mb-6">Product Management</h1>
 
-            {error && <div className="bg-red-500 text-white p-3 rounded mb-4">Error: {error}</div>}
+            {error && <div className="bg-red-500 text-white p-3 rounded-sm mb-4">Error: {error}</div>}
 
             {/* --- Filter Controls --- */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 items-end">
@@ -354,7 +354,7 @@ const ProductsManagementPage: React.FC = () => {
                         value={searchTerm}
                         onChange={handleSearchChange}
                         placeholder="Search by name, category..."
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                     />
                 </div>
                 {/* Status Filter */}
@@ -364,7 +364,7 @@ const ProductsManagementPage: React.FC = () => {
                         id="statusFilter"
                         value={statusFilter}
                         onChange={handleStatusFilterChange}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                     >
                         <option value="all">All Statuses</option>
                         <option value="pending">Pending</option>
@@ -381,7 +381,7 @@ const ProductsManagementPage: React.FC = () => {
                         id="flashSaleFilter"
                         value={flashSaleFilter}
                         onChange={handleFlashSaleFilterChange}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                     >
                         <option value="all">All</option>
                         <option value="yes">Yes</option>
@@ -392,7 +392,7 @@ const ProductsManagementPage: React.FC = () => {
                 <div>
                     <button
                         onClick={handleApplyFilters}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-sm disabled:opacity-50"
                         disabled={isLoading}
                     >
                         Apply Filters
@@ -404,7 +404,7 @@ const ProductsManagementPage: React.FC = () => {
             <div className="mb-4">
                 <button
                     onClick={handleCreateProduct}
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-sm disabled:opacity-50"
                     disabled={isLoading}
                 >
                     Add New Product

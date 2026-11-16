@@ -106,7 +106,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
     const isMobileMoneyWithdrawal = withdrawal.metadata?.withdrawalType === 'mobile_money';
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
                 {/* Header */}
                 <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center">
@@ -159,7 +159,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                     </div>
 
                     {/* Amount Info */}
-                    <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-4">
+                    <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4">
                         <div className="grid grid-cols-3 gap-4">
                             <div>
                                 <p className="text-sm text-gray-400">Amount</p>
@@ -208,7 +208,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                     {/* User Balance */}
                     <div>
                         <h3 className="text-lg font-semibold mb-3 text-white">💰 Current User Balance</h3>
-                        <div className="bg-green-900 bg-opacity-30 border border-green-700 rounded-lg p-4">
+                        <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
                             {withdrawal.userBalance !== undefined && withdrawal.userBalance !== null ? (
                                 typeof withdrawal.userBalance === 'number' ? (
                                     // Handle number format (single balance in withdrawal currency)
@@ -243,7 +243,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
                     {withdrawal.referralStats && (
                         <div>
                             <h3 className="text-lg font-semibold mb-3 text-white">Referral Statistics</h3>
-                            <div className="bg-purple-900 bg-opacity-30 border border-purple-700 rounded-lg p-4">
+                            <div className="bg-purple-900/30 border border-purple-700 rounded-lg p-4">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
                                         <p className="text-sm text-gray-400">Direct Referrals</p>
@@ -374,7 +374,7 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
 
                     {/* Rejection Info (if rejected) */}
                     {isRejected && withdrawal.rejectionReason && (
-                        <div className="bg-red-900 bg-opacity-30 border border-red-700 rounded-lg p-4">
+                        <div className="bg-red-900/30 border border-red-700 rounded-lg p-4">
                             <h3 className="text-lg font-semibold text-red-400 mb-2">Rejection Details</h3>
                             <div className="space-y-2">
                                 <div>

@@ -161,7 +161,7 @@ const UserRolesManagement = () => {
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                                    className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                                 />
                             </div>
                         </div>
@@ -174,7 +174,7 @@ const UserRolesManagement = () => {
                                     setRoleFilter(e.target.value);
                                     setCurrentPage(1);
                                 }}
-                                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             >
                                 <option value="">All Roles</option>
                                 <option value="user">👤 Utilisateur</option>
@@ -192,7 +192,7 @@ const UserRolesManagement = () => {
                                     setStatusFilter(e.target.value);
                                     setCurrentPage(1);
                                 }}
-                                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             >
                                 <option value="">All Status</option>
                                 <option value="active">Active</option>
@@ -217,7 +217,7 @@ const UserRolesManagement = () => {
                 </div>
 
                 {/* Users Table */}
-                <div className="bg-gray-800 rounded-lg shadow overflow-hidden">
+                <div className="bg-gray-800 rounded-lg shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-700">
                             <thead className="bg-gray-700">
@@ -241,7 +241,7 @@ const UserRolesManagement = () => {
                                         <tr key={user._id} className="hover:bg-gray-700">
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
-                                                    <div className="flex-shrink-0 h-10 w-10">
+                                                    <div className="shrink-0 h-10 w-10">
                                                         <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
                                                             {user.name.charAt(0).toUpperCase()}
                                                         </div>
@@ -274,7 +274,7 @@ const UserRolesManagement = () => {
                                                 <select
                                                     value={user.role || 'user'}
                                                     onChange={(e) => handleRoleChange(user, e.target.value)}
-                                                    className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    className="px-3 py-1 bg-gray-700 border border-gray-600 rounded-sm text-sm text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                                                 >
                                                     <option value="user">👤 Utilisateur</option>
                                                     <option value="tester">🧪 Testeur</option>
@@ -296,7 +296,7 @@ const UserRolesManagement = () => {
                         <button
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             disabled={currentPage === 1}
-                            className="px-4 py-2 bg-gray-700 text-white rounded disabled:opacity-50 hover:bg-gray-600"
+                            className="px-4 py-2 bg-gray-700 text-white rounded-sm disabled:opacity-50 hover:bg-gray-600"
                         >
                             Previous
                         </button>
@@ -306,7 +306,7 @@ const UserRolesManagement = () => {
                         <button
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             disabled={currentPage === totalPages}
-                            className="px-4 py-2 bg-gray-700 text-white rounded disabled:opacity-50 hover:bg-gray-600"
+                            className="px-4 py-2 bg-gray-700 text-white rounded-sm disabled:opacity-50 hover:bg-gray-600"
                         >
                             Next
                         </button>

@@ -65,17 +65,17 @@ const ProductList: React.FC<ProductListProps> = ({
                                             <img
                                                 src={product.imagesUrl[0]}
                                                 alt={product.name}
-                                                className="w-16 h-16 object-cover rounded"
+                                                className="w-16 h-16 object-cover rounded-sm"
                                             />
                                         ) : (
                                             <ImageDisplay
                                                 fileId={product.imagesUrl[0]}
                                                 alt={product.name}
-                                                className="w-16 h-16 object-cover rounded"
+                                                className="w-16 h-16 object-cover rounded-sm"
                                             />
                                         )
                                     ) : (
-                                        <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-500">
+                                        <div className="w-16 h-16 bg-gray-700 rounded-sm flex items-center justify-center text-xs text-gray-500">
                                             No Image
                                         </div>
                                     )}
@@ -90,19 +90,19 @@ const ProductList: React.FC<ProductListProps> = ({
                                     {formatCurrency(product.price)}
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor}`}>
+                                    <span className={`px-2 py-1 rounded-sm text-xs font-medium ${statusColor}`}>
                                         {statusText}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded text-xs font-medium ${product.hasActiveFlashSale ? 'bg-yellow-700 text-yellow-200' : 'bg-gray-700 text-gray-300'}`}>
+                                    <span className={`px-2 py-1 rounded-sm text-xs font-medium ${product.hasActiveFlashSale ? 'bg-yellow-700 text-yellow-200' : 'bg-gray-700 text-gray-300'}`}>
                                         {product.hasActiveFlashSale ? 'Yes' : 'No'}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 space-x-2 whitespace-nowrap">
-                                    <button onClick={() => onEdit(product)} className="p-1 rounded text-blue-400 hover:bg-gray-700" title="Edit Product"><Edit size={16} /></button>
-                                    <button onClick={() => onManageFlashSale(product)} className="p-1 rounded text-yellow-400 hover:bg-gray-700" title="Manage Flash Sale"><Zap size={16} /></button>
-                                    <button onClick={() => onDelete(product._id)} className="p-1 rounded text-red-500 hover:bg-gray-700" title="Delete Product"><Trash2 size={16} /></button>
+                                    <button onClick={() => onEdit(product)} className="p-1 rounded-sm text-blue-400 hover:bg-gray-700" title="Edit Product"><Edit size={16} /></button>
+                                    <button onClick={() => onManageFlashSale(product)} className="p-1 rounded-sm text-yellow-400 hover:bg-gray-700" title="Manage Flash Sale"><Zap size={16} /></button>
+                                    <button onClick={() => onDelete(product._id)} className="p-1 rounded-sm text-red-500 hover:bg-gray-700" title="Delete Product"><Trash2 size={16} /></button>
                                 </td>
                             </tr>
                         );

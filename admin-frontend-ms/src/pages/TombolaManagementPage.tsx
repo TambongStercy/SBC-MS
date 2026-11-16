@@ -275,7 +275,7 @@ function TombolaManagementPage() {
                     <button
                         onClick={handleOpenCreateModal}
                         // Apply standard button styling
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150"
                     >
                         Create New Tombola
                     </button>
@@ -284,11 +284,11 @@ function TombolaManagementPage() {
                 {isLoading ? (
                     <p>Loading tombolas...</p>
                 ) : error ? (
-                    <div className="bg-red-800 text-white p-3 rounded">Error: {error}</div>
+                    <div className="bg-red-800 text-white p-3 rounded-sm">Error: {error}</div>
                 ) : (
                     <>
                         {/* Wrap the table container with overflow-x-auto */}
-                        <div className="shadow overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
+                        <div className="shadow-sm overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-700">
                                 <thead className="bg-gray-700">
                                     <tr>
@@ -315,7 +315,7 @@ function TombolaManagementPage() {
                                                 <button
                                                     onClick={() => handleViewTickets(tombola)}
                                                     title="View Tickets"
-                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
+                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
                                                 >
                                                     View Tickets
                                                 </button>
@@ -325,7 +325,7 @@ function TombolaManagementPage() {
                                                     <button
                                                         onClick={() => handleGoToDrawPage(tombola._id)}
                                                         title="Perform Draw"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 transition ease-in-out duration-150"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 transition ease-in-out duration-150"
                                                         disabled={tombola.lastTicketNumber === 0} // Disable if no tickets
                                                     >
                                                         {tombola.lastTicketNumber === 0 ? 'Draw (No Tickets)' : 'Perform Draw'}
@@ -337,7 +337,7 @@ function TombolaManagementPage() {
                                                     <button
                                                         onClick={() => handleGoToDrawPage(tombola._id)}
                                                         title="View Draw Results"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 transition ease-in-out duration-150"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 transition ease-in-out duration-150"
                                                     >
                                                         View Draw
                                                     </button>
@@ -348,7 +348,7 @@ function TombolaManagementPage() {
                                                     <button
                                                         onClick={() => openStatusConfirmation(tombola, TombolaStatus.CLOSED)}
                                                         title="Close Tombola"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-gray-500 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-400 transition ease-in-out duration-150"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-gray-500 hover:bg-gray-600 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-400 transition ease-in-out duration-150"
                                                     >
                                                         Set Closed
                                                     </button>
@@ -357,7 +357,7 @@ function TombolaManagementPage() {
                                                     <button
                                                         onClick={() => openStatusConfirmation(tombola, TombolaStatus.OPEN)}
                                                         title="Re-open Tombola"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-yellow-400 transition ease-in-out duration-150"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-yellow-400 transition ease-in-out duration-150"
                                                     >
                                                         Set Open
                                                     </button>
@@ -367,7 +367,7 @@ function TombolaManagementPage() {
                                                 {/* <button
                                                     // onClick={() => handleDeleteTombola(tombola._id)} // Need delete handler
                                                     title="Delete Tombola"
-                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 transition ease-in-out duration-150"
+                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 transition ease-in-out duration-150"
                                                 >
                                                     Delete
                                                 </button> */}

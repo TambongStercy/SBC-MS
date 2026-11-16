@@ -123,7 +123,7 @@ const SbcAccountPicker: React.FC<{
                                         <p className="text-xs text-gray-400 truncate">{describe(u)}</p>
                                     </div>
                                     <button type="button" onClick={() => pick(u)} disabled={u._id === value}
-                                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-600 shrink-0">
+                                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded-sm hover:bg-blue-700 disabled:bg-gray-600 shrink-0">
                                         {u._id === value ? 'Lié' : 'Lier'}
                                     </button>
                                 </li>

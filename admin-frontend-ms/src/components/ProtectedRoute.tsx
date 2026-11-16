@@ -10,7 +10,7 @@ const ProtectedRoute: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
+      <div className="flex h-dvh w-full items-center justify-center overflow-auto bg-background">
         <Loader name="Authentication" />
       </div>
     );

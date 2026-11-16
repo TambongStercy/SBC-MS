@@ -316,13 +316,13 @@ const OverViewPage = () => {
 
           {/* DYNAMIC COUNTRY BALANCE DISPLAY */}
           {dashboardData?.balancesByCountry && Object.keys(dashboardData.balancesByCountry).length > 0 && (
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow flex flex-col justify-between col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-4"> {/* Updated: Container spans remaining width */}
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm flex flex-col justify-between col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-4"> {/* Updated: Container spans remaining width */}
               {/* Country Selection Dropdown */}
               <div className="relative">
                 <select
                   value={selectedCountryCode || ''}
                   onChange={(e) => setSelectedCountryCode(e.target.value)}
-                  className="block w-full appearance-none bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 py-2 px-3 pr-8 rounded leading-tight focus:outline-none focus:bg-white dark:focus:bg-gray-600 focus:border-gray-500 dark:focus:border-gray-400 text-sm mb-2" // Added text-sm and mb-2
+                  className="block w-full appearance-none bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 py-2 px-3 pr-8 rounded-sm leading-tight focus:outline-hidden focus:bg-white dark:focus:bg-gray-600 focus:border-gray-500 dark:focus:border-gray-400 text-sm mb-2" // Added text-sm and mb-2
                 >
                   {Object.keys(dashboardData.balancesByCountry).map((countryCode) => (
                     <option key={countryCode} value={countryCode}>
@@ -363,7 +363,7 @@ const OverViewPage = () => {
             <UsersOverViewCahrt data={monthlyData} />
 
             {/* Monthly Revenue Chart */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow md:col-span-1">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm md:col-span-1">
               <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
                 Revenu Mensuel
               </h3>
@@ -371,7 +371,7 @@ const OverViewPage = () => {
             </div>
 
             {/* Activity Overview Chart */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow md:col-span-1">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm md:col-span-1">
               <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
                 Aperçu de l'Activité Mensuelle
               </h3>
@@ -384,7 +384,7 @@ const OverViewPage = () => {
             {/* Comparison Charts */}
             {dashboardData && (
               <>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow h-64"> {/* Fixed height */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm h-64"> {/* Fixed height */}
                   <ComparisonChart
                     title="Utilisateurs vs Abonnés"
                     data={[
@@ -397,7 +397,7 @@ const OverViewPage = () => {
                   />
                 </div>
 
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow h-64"> {/* Fixed height */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm h-64"> {/* Fixed height */}
                   <ComparisonChart
                     title="Revenu vs Retraits"
                     data={[
@@ -408,7 +408,7 @@ const OverViewPage = () => {
                   />
                 </div>
 
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow h-64"> {/* Fixed height */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm h-64"> {/* Fixed height */}
                   <ComparisonChart
                     title="Transactions vs Utilisateurs"
                     data={[
@@ -422,7 +422,7 @@ const OverViewPage = () => {
             )}
 
             {/* Recent Transactions List */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
                 Transactions Récentes
               </h3>
@@ -430,7 +430,7 @@ const OverViewPage = () => {
             </div>
 
             {/* Recent Withdrawals List */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
                 Retraits Récents
               </h3>

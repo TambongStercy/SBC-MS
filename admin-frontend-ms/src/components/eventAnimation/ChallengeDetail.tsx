@@ -72,7 +72,7 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
                         <StatusBadge status={c.status} labels={CHALLENGE_STATUS} />
                         {c.suspendedAt && <Badge tone="danger">Suspendu le {fmtDate(c.suspendedAt)}</Badge>}
                         {openFlags.length > 0 && <Badge tone="warning">{openFlags.length} {plural(openFlags.length, 'signalement ouvert', 'signalements ouverts')}</Badge>}
-                        <button onClick={q.reload} className="ml-auto text-xs text-gray-300 hover:text-white border border-gray-600 rounded px-2 py-1">{q.loading ? 'Chargement…' : 'Recharger'}</button>
+                        <button onClick={q.reload} className="ml-auto text-xs text-gray-300 hover:text-white border border-gray-600 rounded-sm px-2 py-1">{q.loading ? 'Chargement…' : 'Recharger'}</button>
                     </div>
                     {c.suspendedAt && c.suspendedReason && (
                         <p className="text-sm rounded-lg bg-red-900/30 border border-red-800 text-red-100 px-3 py-2"><b>Motif de suspension :</b> {c.suspendedReason}</p>

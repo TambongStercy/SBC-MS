@@ -379,7 +379,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               type="text"
               name="name"
               placeholder="Entrer le nouveau nom..."
-              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={isSubmitting}
@@ -387,7 +387,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
           </div>
 
           <motion.button
-            className="text-white rounded pt-0 flex items-center mt-6"
+            className="text-white rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -406,7 +406,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               type="text"
               name="phoneNumber"
               placeholder="Entrer le nouveau numero..."
-              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               disabled={isSubmitting}
@@ -414,7 +414,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
           </div>
 
           <motion.button
-            className="text-white rounded pt-0 flex items-center mt-6"
+            className="text-white rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -433,7 +433,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               type="text"
               name="region"
               placeholder="Entrer la région..."
-              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
               value={region}
               onChange={(e) => {
                 const upperValue = e.target.value.toUpperCase();
@@ -445,7 +445,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             />
           </div>
           <motion.button
-            className="text-white rounded pt-0 flex items-center mt-6"
+            className="text-white rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -469,7 +469,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               value={country} // Bind to state
               onChange={(e) => setCountry(e.target.value)} // Update state on change
               disabled={isSubmitting}
-              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-8 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
+              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-8 w-full focus:outline-hidden focus:ring-2 focus:ring-indigo-500 appearance-none"
               style={{ backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="white" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em' }}
             >
               <option value="" disabled>-- Select Country --</option>
@@ -479,7 +479,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             </select>
           </div>
           <motion.button
-            className="text-white rounded pt-0 flex items-center mt-6"
+            className="text-white rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -499,7 +499,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             <select
               id="subscription"
               name="subscription"
-              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors 
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors 
                 ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
               onChange={handleSubscriptionSelect}
               value={selectedSubscription}
@@ -519,7 +519,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             <select
               id="partnerPack"
               name="partnerPack"
-              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors
+              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors
                 ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
               onChange={handlePartnerPackSelect}
               value={selectedPartnerPack}
@@ -544,7 +544,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
                 selectedRole === 'admin' ? 'border-red-500' :
                 selectedRole === 'withdrawal_admin' ? 'border-yellow-500' :
                 selectedRole === 'tester' ? 'border-purple-500' : 'border-gray-600'
-              } focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors
+              } focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors
                 ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
               onChange={handleRoleSelect}
               value={selectedRole}
@@ -560,7 +560,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
 
         {/* Role Confirmation Dialog */}
         {showRoleConfirmDialog && pendingRole && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-red-500">
               <div className="flex items-center gap-2 mb-4">
                 <ShieldAlert className="text-red-500" size={24} />
@@ -600,14 +600,14 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               type="text"
               name="momoNumber"
               placeholder="Entrer le nouveau numéro Momo..."
-              className="bg-gray-700 bg-opacity-20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
               value={momoNumber}
               onChange={(e) => setMomoNumber(e.target.value)}
               disabled={isSubmitting}
             />
           </div>
           <motion.button
-            className="text-white rounded pt-0 flex items-center mt-6"
+            className="text-white rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -630,7 +630,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             />
           </div>
           <motion.button
-            className="text-white rounded pt-0 flex items-center mt-6"
+            className="text-white rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}

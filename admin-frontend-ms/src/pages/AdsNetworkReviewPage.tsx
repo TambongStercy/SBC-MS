@@ -149,7 +149,7 @@ const AdsNetworkReviewPage: React.FC = () => {
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <MediaChangeQueue showSuccess={showSuccess} showError={showError} />
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
@@ -186,7 +186,7 @@ const AdsNetworkReviewPage: React.FC = () => {
                 {loading ? (
                     <div className="p-12 flex justify-center"><Loader name="Chargement des campagnes…" /></div>
                 ) : campaigns.length === 0 ? (
-                    <div className="bg-gray-800 bg-opacity-50 backdrop-blur-md rounded-xl border border-gray-700 p-12 text-center text-gray-400">
+                    <div className="bg-gray-800/50 backdrop-blur-md rounded-xl border border-gray-700 p-12 text-center text-gray-400">
                         <ShieldCheck className="w-12 h-12 mx-auto mb-3 text-gray-600" />
                         <p>Aucune campagne en attente.</p>
                         <p className="text-xs mt-2">Les campagnes soumises par les annonceurs apparaîtront ici.</p>
@@ -198,7 +198,7 @@ const AdsNetworkReviewPage: React.FC = () => {
                             return (
                                 <motion.div
                                     key={c._id}
-                                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                 >
@@ -237,7 +237,7 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                     />
                                                     <div className="min-w-0">
                                                         <h3 className="text-xl font-semibold text-gray-100">{c.title}</h3>
-                                                        <p className="text-sm text-gray-400 mt-1 break-words">
+                                                        <p className="text-sm text-gray-400 mt-1 wrap-break-word">
                                                             {c.advertiser?.name || 'Annonceur inconnu'}
                                                             {c.advertiser?.phoneNumber ? ` · ${c.advertiser.phoneNumber}` : ''}
                                                             {c.advertiser?.email ? ` · ${c.advertiser.email}` : ''}

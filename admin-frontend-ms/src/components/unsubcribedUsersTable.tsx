@@ -44,7 +44,7 @@ const UnsubcribedUsersTable: React.FC<UnsubcribedUsersTableProps> = ({ users, mo
   return (
     <>
       <motion.div
-        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 mt-2"
+        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 mt-2"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: 'easeInOut' }}
@@ -55,7 +55,7 @@ const UnsubcribedUsersTable: React.FC<UnsubcribedUsersTableProps> = ({ users, mo
           </h2>
           <div className="relative w-full sm:w-auto">
             <motion.button
-              className="bg-gray-700 bg-opacity-50 text-white rounded py-1 px-2 flex items-center gap-2"
+              className="bg-gray-700/50 text-white rounded-sm py-1 px-2 flex items-center gap-2"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1.2, ease: 'easeInOut' }}
@@ -66,7 +66,7 @@ const UnsubcribedUsersTable: React.FC<UnsubcribedUsersTableProps> = ({ users, mo
             </motion.button>
 
             <motion.button
-              className="bg-gray-700 bg-opacity-50 text-white rounded py-1 px-2 flex items-center gap-2 mt-5"
+              className="bg-gray-700/50 text-white rounded-sm py-1 px-2 flex items-center gap-2 mt-5"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1.2, ease: 'easeInOut' }}

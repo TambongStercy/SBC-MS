@@ -1,7 +1,7 @@
 const btnClass =
-    "bg-transparent hover:bg-blue-500 text-blue-700 font-semibold hover:text-white py-2 px-4 border border-blue-500 hover:border-transparent rounded m-2";
+    "bg-transparent hover:bg-blue-500 text-blue-700 font-semibold hover:text-white py-2 px-4 border border-blue-500 hover:border-transparent rounded-sm m-2";
 const btnClassBlue =
-    "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded m-2";
+    "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-sm m-2";
 
 
 const Pagination = ({ postsPerPage, totalPosts, currentPage, setCurrentPage }: any) => {

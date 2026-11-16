@@ -290,7 +290,7 @@ const RelanceMessagesPage: React.FC = () => {
                                     type="checkbox"
                                     checked={active}
                                     onChange={(e) => setActive(e.target.checked)}
-                                    className="rounded"
+                                    className="rounded-sm"
                                 />
                                 Active
                             </label>
@@ -306,7 +306,7 @@ const RelanceMessagesPage: React.FC = () => {
                             type="text"
                             value={subject}
                             onChange={(e) => setSubject(e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             placeholder="Custom subject line... Leave empty for auto-generated"
                         />
                     </div>
@@ -320,7 +320,7 @@ const RelanceMessagesPage: React.FC = () => {
                             value={messageFr}
                             onChange={(e) => setMessageFr(e.target.value)}
                             rows={5}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter French message... Use {{name}}, {{referrerName}}, {{day}} as variables"
                         />
                     </div>
@@ -334,7 +334,7 @@ const RelanceMessagesPage: React.FC = () => {
                             value={messageEn}
                             onChange={(e) => setMessageEn(e.target.value)}
                             rows={5}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter English message... Use {{name}}, {{referrerName}}, {{day}} as variables"
                         />
                     </div>
@@ -366,7 +366,7 @@ const RelanceMessagesPage: React.FC = () => {
                                                         value={btn.label}
                                                         onChange={(e) => handleButtonChange(index, 'label', e.target.value)}
                                                         placeholder="e.g. Pay Now"
-                                                        className="w-full px-3 py-1.5 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                        className="w-full px-3 py-1.5 bg-gray-600 border border-gray-500 rounded-sm text-gray-100 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                                                     />
                                                 </div>
                                             </div>
@@ -378,7 +378,7 @@ const RelanceMessagesPage: React.FC = () => {
                                                         value={btn.url}
                                                         onChange={(e) => handleButtonChange(index, 'url', e.target.value)}
                                                         placeholder="https://..."
-                                                        className="w-full px-3 py-1.5 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                        className="w-full px-3 py-1.5 bg-gray-600 border border-gray-500 rounded-sm text-gray-100 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                                                     />
                                                 </div>
                                             </div>
@@ -389,13 +389,13 @@ const RelanceMessagesPage: React.FC = () => {
                                                         type="color"
                                                         value={btn.color || '#F59E0B'}
                                                         onChange={(e) => handleButtonChange(index, 'color', e.target.value)}
-                                                        className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
+                                                        className="w-8 h-8 rounded-sm cursor-pointer border-0 bg-transparent"
                                                     />
                                                     <input
                                                         type="text"
                                                         value={btn.color || '#F59E0B'}
                                                         onChange={(e) => handleButtonChange(index, 'color', e.target.value)}
-                                                        className="flex-1 px-3 py-1.5 bg-gray-600 border border-gray-500 rounded text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                        className="flex-1 px-3 py-1.5 bg-gray-600 border border-gray-500 rounded-sm text-gray-100 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                                                     />
                                                 </div>
                                             </div>
@@ -436,7 +436,7 @@ const RelanceMessagesPage: React.FC = () => {
                         {mediaUrls.length > 0 && (
                             <div className="space-y-2 mb-3">
                                 {mediaUrls.map((media, index) => (
-                                    <div key={index} className="flex items-center gap-2 p-2 bg-gray-700 rounded border border-gray-600">
+                                    <div key={index} className="flex items-center gap-2 p-2 bg-gray-700 rounded-sm border border-gray-600">
                                         {getMediaIcon(media.type)}
                                         <span className="flex-1 text-sm text-gray-300 truncate">{media.url}</span>
                                         <span className="text-xs text-gray-500">{media.type}</span>
@@ -471,12 +471,12 @@ const RelanceMessagesPage: React.FC = () => {
                     </div>
 
                     {/* Available Variables */}
-                    <div className="mb-6 p-3 bg-gray-700 rounded border border-gray-600">
+                    <div className="mb-6 p-3 bg-gray-700 rounded-sm border border-gray-600">
                         <p className="text-xs text-gray-400 mb-1">Available variables:</p>
                         <div className="flex gap-2 flex-wrap">
-                            <code className="text-xs bg-gray-800 px-2 py-1 rounded text-blue-400">{'{{name}}'}</code>
-                            <code className="text-xs bg-gray-800 px-2 py-1 rounded text-blue-400">{'{{referrerName}}'}</code>
-                            <code className="text-xs bg-gray-800 px-2 py-1 rounded text-blue-400">{'{{day}}'}</code>
+                            <code className="text-xs bg-gray-800 px-2 py-1 rounded-sm text-blue-400">{'{{name}}'}</code>
+                            <code className="text-xs bg-gray-800 px-2 py-1 rounded-sm text-blue-400">{'{{referrerName}}'}</code>
+                            <code className="text-xs bg-gray-800 px-2 py-1 rounded-sm text-blue-400">{'{{day}}'}</code>
                         </div>
                     </div>
 
@@ -506,7 +506,7 @@ const RelanceMessagesPage: React.FC = () => {
 
             {/* Email Preview Modal */}
             {showPreview && previewHtml && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60" onClick={() => setShowPreview(false)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowPreview(false)}>
                     <div className="bg-gray-800 rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col m-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between p-4 border-b border-gray-700">
                             <h2 className="text-lg font-semibold text-gray-100 flex items-center gap-2">

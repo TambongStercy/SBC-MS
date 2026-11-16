@@ -130,7 +130,7 @@ export default function EventListPage() {
     });
 
     const actions = (ev: AdminEvent, small = true) => {
-        const cls = small ? 'text-xs px-2 py-1 rounded' : 'text-sm px-3 py-2 rounded-lg';
+        const cls = small ? 'text-xs px-2 py-1 rounded-sm' : 'text-sm px-3 py-2 rounded-lg';
         return (
             <>
                 {ev.status === 'PENDING_REVIEW' && <>
@@ -210,7 +210,7 @@ export default function EventListPage() {
                                             {ev.totals?.ticketsSold ?? 0} billets · {(ev.totals?.grossRevenue ?? 0).toLocaleString('fr-FR')} XAF
                                         </td>
                                         <td className="px-4 py-2 space-x-2 whitespace-nowrap">
-                                            <button onClick={() => setDetail(ev)} className="text-xs bg-gray-600 text-white px-2 py-1 rounded">Détails</button>
+                                            <button onClick={() => setDetail(ev)} className="text-xs bg-gray-600 text-white px-2 py-1 rounded-sm">Détails</button>
                                             {actions(ev)}
                                         </td>
                                     </tr>
@@ -245,7 +245,7 @@ export default function EventListPage() {
                                 ['Ventes', `${detail.totals?.ticketsSold ?? 0} billets · ${(detail.totals?.grossRevenue ?? 0).toLocaleString('fr-FR')} XAF`],
                                 ['Créé le', fmt(detail.createdAt)],
                             ].filter(Boolean) as [string, ReactNode][]).map(([k, v]) => (
-                                <div key={k} className="flex gap-3"><dt className="w-44 shrink-0 text-gray-400">{k}</dt><dd className="text-gray-100 min-w-0 break-words">{v}</dd></div>
+                                <div key={k} className="flex gap-3"><dt className="w-44 shrink-0 text-gray-400">{k}</dt><dd className="text-gray-100 min-w-0 wrap-break-word">{v}</dd></div>
                             ))}
                         </dl>
                         <div className="px-5 py-3 border-t border-gray-700 flex flex-wrap justify-end gap-2">{actions(detail, false)}</div>

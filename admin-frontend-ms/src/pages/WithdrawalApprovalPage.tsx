@@ -187,7 +187,7 @@ const WithdrawalApprovalPage: React.FC = () => {
                                 type="checkbox"
                                 checked={autoRefresh}
                                 onChange={(e) => setAutoRefresh(e.target.checked)}
-                                className="rounded bg-gray-700 border-gray-600"
+                                className="rounded-sm bg-gray-700 border-gray-600"
                             />
                             Auto-refresh (30s)
                         </label>
@@ -300,7 +300,7 @@ const WithdrawalApprovalPage: React.FC = () => {
                 </div>
 
                 {/* Withdrawals Table */}
-                <div className="shadow overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
+                <div className="shadow-sm overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-700">
                             <tr>
@@ -309,7 +309,7 @@ const WithdrawalApprovalPage: React.FC = () => {
                                         type="checkbox"
                                         checked={withdrawals.length > 0 && selectedIds.length === withdrawals.length}
                                         onChange={handleSelectAll}
-                                        className="rounded bg-gray-600 border-gray-500"
+                                        className="rounded-sm bg-gray-600 border-gray-500"
                                     />
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
@@ -350,7 +350,7 @@ const WithdrawalApprovalPage: React.FC = () => {
                                                 type="checkbox"
                                                 checked={selectedIds.includes(withdrawal.transactionId)}
                                                 onChange={() => handleSelectOne(withdrawal.transactionId)}
-                                                className="rounded bg-gray-600 border-gray-500"
+                                                className="rounded-sm bg-gray-600 border-gray-500"
                                             />
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -384,7 +384,7 @@ const WithdrawalApprovalPage: React.FC = () => {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                             <button
                                                 onClick={() => handleViewDetails(withdrawal)}
-                                                className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition"
+                                                className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition"
                                             >
                                                 View Details
                                             </button>

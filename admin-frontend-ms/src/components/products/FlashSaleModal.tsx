@@ -104,7 +104,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
     const currentSale = existingSales.find(fs => fs.status === 'active' || fs.status === 'scheduled');
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-30 p-4">
+        <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-30 p-4">
             {/* Make modal content scrollable */}
             <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-semibold text-white mb-4">Manage Flash Sale for <span className="text-indigo-400">{product.name}</span></h2>
@@ -123,7 +123,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                             id="discountedPrice"
                             value={discountedPrice}
                             onChange={(e) => setDiscountedPrice(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         placeholder="e.g., 4500"
                             min="0"
                         step="any"
@@ -138,7 +138,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                             id="startDate"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                             disabled={isLoading}
                         />
@@ -150,7 +150,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                             id="endDate"
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                             disabled={isLoading}
                         />
@@ -178,7 +178,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                                     console.log(`Rendering Sale ID: ${sale._id}, Start: ${sale.startTime}, End: ${sale.endTime}, Typeof Start: ${typeof sale.startTime}`); // Use startTime/endTime in log
 
                                     return (
-                                        <div key={sale._id} className="text-sm p-3 rounded-lg bg-gray-600 border border-gray-500 shadow-lg w-64 flex-shrink-0"> {/* Updated card styling: darker bg, more rounded, bigger shadow */}
+                                        <div key={sale._id} className="text-sm p-3 rounded-lg bg-gray-600 border border-gray-500 shadow-lg w-64 shrink-0"> {/* Updated card styling: darker bg, more rounded, bigger shadow */}
                                             <p><span className="font-semibold">Status:</span> <span className={`font-bold ${statusColor}`}>{sale.status?.replace('_', ' ').toUpperCase() || 'N/A'}</span></p>
                                             {sale.discountedPrice && <p><span className="font-semibold">Sale Price:</span> {formatCurrency(sale.discountedPrice)}</p>}
                                             <p><span className="font-semibold">Starts:</span> {formatDate(sale.startTime)}</p> {/* Use startTime */}
@@ -201,7 +201,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                                 type="button"
                                 onClick={handleDeleteClick}
                                 disabled={isLoading}
-                                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
                             >
                                 {isLoading ? 'Removing...' : 'Remove Current Sale'}
                             </button>
@@ -214,7 +214,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                             type="button"
                             onClick={onClose}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
                         >
                             Cancel
                         </button>
@@ -222,7 +222,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                             type="button"
                             onClick={handleSaveClick}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                         >
                             {isLoading ? 'Saving...' : (currentSale ? 'Replace Sale' : 'Create Sale')}
                         </button>

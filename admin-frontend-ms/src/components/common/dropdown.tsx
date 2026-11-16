@@ -51,7 +51,7 @@ const Dropdown: React.FC<DropdownProps> = ({ label, items, onSelect, disabled = 
                     type="button"
                     onClick={handleToggle}
                     disabled={disabled}
-                    className={`inline-flex justify-between items-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`inline-flex justify-between items-center w-full rounded-md border border-gray-300 shadow-xs px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                     aria-haspopup="true"
                     aria-expanded={isOpen}
                 >
@@ -73,7 +73,7 @@ const Dropdown: React.FC<DropdownProps> = ({ label, items, onSelect, disabled = 
 
                 {/* Dropdown menu - only render if open AND not disabled */}
                 {isOpen && !disabled && (
-                    <div className="absolute right-0 mt-2 w-full rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
+                    <div className="absolute right-0 mt-2 w-full rounded-md shadow-lg bg-white ring-1 ring-black/5 focus:outline-hidden z-10">
                         <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
                             {items.map((item, index) => (
                                 <button

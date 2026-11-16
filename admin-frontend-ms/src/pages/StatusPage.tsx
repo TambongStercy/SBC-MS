@@ -370,7 +370,7 @@ const StatusPage: React.FC = () => {
                     {/* Add Your Story */}
                     <button
                         onClick={() => setShowComposer(true)}
-                        className="flex-shrink-0 flex flex-col items-center gap-2 group"
+                        className="shrink-0 flex flex-col items-center gap-2 group"
                     >
                         <div className="relative">
                             <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center border-2 border-gray-600 group-hover:border-indigo-500 transition-colors">
@@ -394,10 +394,10 @@ const StatusPage: React.FC = () => {
                             <button
                                 key={group.authorId}
                                 onClick={() => openStoryViewer(group)}
-                                className="flex-shrink-0 flex flex-col items-center gap-2 group"
+                                className="shrink-0 flex flex-col items-center gap-2 group"
                             >
                                 <div className="relative">
-                                    <div className={`w-16 h-16 rounded-full p-0.5 ${group.hasUnviewed ? 'bg-gradient-to-tr from-yellow-400 to-pink-600' : 'bg-gray-600'}`}>
+                                    <div className={`w-16 h-16 rounded-full p-0.5 ${group.hasUnviewed ? 'bg-linear-to-tr from-yellow-400 to-pink-600' : 'bg-gray-600'}`}>
                                         <div className="w-full h-full rounded-full bg-gray-800 p-0.5">
                                             {group.authorAvatar ? (
                                                 <img
@@ -482,7 +482,7 @@ const StatusPage: React.FC = () => {
                             {/* Navigation Areas */}
                             <button
                                 onClick={handlePrevStory}
-                                className="absolute left-0 top-0 bottom-0 w-1/3 z-10 hover:bg-gradient-to-r hover:from-black/20"
+                                className="absolute left-0 top-0 bottom-0 w-1/3 z-10 hover:bg-linear-to-r hover:from-black/20"
                             >
                                 {currentStoryIndex > 0 && (
                                     <ChevronLeft className="w-8 h-8 text-white/50 absolute left-4 top-1/2 -translate-y-1/2" />
@@ -490,7 +490,7 @@ const StatusPage: React.FC = () => {
                             </button>
                             <button
                                 onClick={handleNextStory}
-                                className="absolute right-0 top-0 bottom-0 w-1/3 z-10 hover:bg-gradient-to-l hover:from-black/20"
+                                className="absolute right-0 top-0 bottom-0 w-1/3 z-10 hover:bg-linear-to-l hover:from-black/20"
                             >
                                 <ChevronRight className="w-8 h-8 text-white/50 absolute right-4 top-1/2 -translate-y-1/2" />
                             </button>
@@ -531,7 +531,7 @@ const StatusPage: React.FC = () => {
                             {/* Content Overlay (for media stories) */}
                             {currentStory.mediaUrl && (
                                 <div className="absolute bottom-20 left-0 right-0 px-4">
-                                    <div className="bg-gradient-to-t from-black/80 to-transparent p-4 rounded-lg">
+                                    <div className="bg-linear-to-t from-black/80 to-transparent p-4 rounded-lg">
                                         <p className="text-white text-sm leading-relaxed">{currentStory.content}</p>
                                         {currentStory.country && (
                                             <div className="flex items-center gap-1 text-gray-300 mt-2">
@@ -545,7 +545,7 @@ const StatusPage: React.FC = () => {
                         </div>
 
                         {/* Bottom Actions */}
-                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-black/80 to-transparent">
                             <div className="flex items-center gap-4">
                                 <button
                                     onClick={handleLikeCurrentStory}
@@ -596,11 +596,11 @@ const StatusPage: React.FC = () => {
                             )
                         ) : (
                             // Gradient background for text-only stories
-                            <div className="w-full h-full bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600" />
+                            <div className="w-full h-full bg-linear-to-br from-indigo-600 via-purple-600 to-pink-600" />
                         )}
 
                         {/* Top Bar - Close and Category */}
-                        <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent">
+                        <div className="absolute top-0 left-0 right-0 p-4 bg-linear-to-b from-black/60 to-transparent">
                             <div className="flex items-center justify-between">
                                 <button
                                     onClick={() => {
@@ -617,7 +617,7 @@ const StatusPage: React.FC = () => {
                                     <select
                                         value={newStatus.category}
                                         onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value })}
-                                        className="w-full max-w-xs px-3 py-2 bg-black/40 text-white rounded-full text-sm border border-white/20 focus:outline-none focus:border-white/40"
+                                        className="w-full max-w-xs px-3 py-2 bg-black/40 text-white rounded-full text-sm border border-white/20 focus:outline-hidden focus:border-white/40"
                                     >
                                         <option value="">Select Category...</option>
                                         {categories.filter(c => !c.adminOnly).map(cat => (
@@ -640,7 +640,7 @@ const StatusPage: React.FC = () => {
                         </div>
 
                         {/* Bottom Controls */}
-                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent pointer-events-auto">
+                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-black/80 to-transparent pointer-events-auto">
                             <div className="max-w-2xl mx-auto space-y-3">
                                 {/* Text Input */}
                                 <div className="relative">
@@ -650,7 +650,7 @@ const StatusPage: React.FC = () => {
                                         placeholder="Add text to your story..."
                                         rows={2}
                                         maxLength={2000}
-                                        className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:border-white/40 resize-none"
+                                        className="w-full px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-hidden focus:border-white/40 resize-none"
                                     />
                                     <div className="absolute bottom-2 right-2 text-xs text-white/60">
                                         {newStatus.content.length}/2000
@@ -662,7 +662,7 @@ const StatusPage: React.FC = () => {
                                     {/* Media Upload Buttons */}
                                     {!newStatus.media && (
                                         <>
-                                            <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-white hover:bg-white/20 cursor-pointer transition-colors">
+                                            <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white hover:bg-white/20 cursor-pointer transition-colors">
                                                 <Image className="w-5 h-5" />
                                                 <span className="text-sm font-medium">Photo</span>
                                                 <input
@@ -672,7 +672,7 @@ const StatusPage: React.FC = () => {
                                                     onChange={(e) => setNewStatus({ ...newStatus, media: e.target.files?.[0] || null })}
                                                 />
                                             </label>
-                                            <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-white hover:bg-white/20 cursor-pointer transition-colors">
+                                            <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white hover:bg-white/20 cursor-pointer transition-colors">
                                                 <Video className="w-5 h-5" />
                                                 <span className="text-sm font-medium">Video</span>
                                                 <input
@@ -690,7 +690,7 @@ const StatusPage: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={() => setNewStatus({ ...newStatus, media: null })}
-                                            className="px-4 py-3 bg-red-500/80 backdrop-blur-sm rounded-lg text-white hover:bg-red-600/80 transition-colors flex items-center gap-2"
+                                            className="px-4 py-3 bg-red-500/80 backdrop-blur-xs rounded-lg text-white hover:bg-red-600/80 transition-colors flex items-center gap-2"
                                         >
                                             <X className="w-5 h-5" />
                                             <span className="text-sm font-medium">Remove</span>

@@ -50,7 +50,7 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
     const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - i);
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/75 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm">
                 <h2 className="text-xl font-semibold text-white mb-4">Create New Tombola</h2>
 
@@ -65,7 +65,7 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
                         onChange={(e) => setMonth(parseInt(e.target.value, 10) || 1)}
                         min="1"
                         max="12"
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                         disabled={isLoading}
                     />
@@ -77,7 +77,7 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
                         id="year"
                         value={year}
                         onChange={(e) => setYear(parseInt(e.target.value, 10))}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                         disabled={isLoading}
                     >
@@ -91,14 +91,14 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
                     <button
                         onClick={onClose}
                         disabled={isLoading}
-                        className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 focus:ring-offset-gray-800 disabled:opacity-50"
+                        className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 focus:ring-offset-gray-800 disabled:opacity-50"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={isLoading}
-                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-800 disabled:opacity-50"
+                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-800 disabled:opacity-50"
                     >
                         {isLoading ? 'Creating...' : 'Create Tombola'}
                     </button>

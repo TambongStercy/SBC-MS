@@ -45,7 +45,7 @@ const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
     }
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/75 flex justify-center items-center z-50 p-4">
             {/* Wider modal for ticket list */}
             <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
@@ -64,7 +64,7 @@ const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
                         placeholder="Search by Name, Email, Phone..."
                         value={searchTerm}
                         onChange={onSearchChange}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-600 rounded-md leading-5 bg-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        className="block w-full pl-10 pr-3 py-2 border border-gray-600 rounded-md leading-5 bg-gray-700 text-gray-100 placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     />
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <i className="fas fa-search text-gray-400"></i>
@@ -72,7 +72,7 @@ const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
                 </div>
 
                 {/* Ticket Table Container */}
-                <div className="overflow-y-auto flex-grow mb-4">
+                <div className="overflow-y-auto grow mb-4">
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-700 sticky top-0"> {/* Sticky header */}
                             <tr>

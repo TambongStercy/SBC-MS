@@ -115,7 +115,7 @@ export default function UserFinancialAnalyticsPage() {
             <Header title="Analyse Financière Utilisateurs" />
 
             {/* Filters */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6">
                 <div className="flex flex-wrap gap-4 items-end">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pays</label>
@@ -164,7 +164,7 @@ export default function UserFinancialAnalyticsPage() {
 
             {/* Summary Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
                             <Users size={20} className="text-indigo-600 dark:text-indigo-400" />
@@ -175,7 +175,7 @@ export default function UserFinancialAnalyticsPage() {
                         </div>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
                             <TrendingUp size={20} className="text-red-600 dark:text-red-400" />
@@ -186,7 +186,7 @@ export default function UserFinancialAnalyticsPage() {
                         </div>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-emerald-100 dark:bg-emerald-900 rounded-lg">
                             <TrendingUp size={20} className="text-emerald-600 dark:text-emerald-400" />
@@ -200,7 +200,7 @@ export default function UserFinancialAnalyticsPage() {
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden">
                 {loading ? (
                     <div className="flex justify-center items-center py-20">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -291,14 +291,14 @@ export default function UserFinancialAnalyticsPage() {
                             <button
                                 onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) - 1 }))}
                                 disabled={pagination.page <= 1}
-                                className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                className="px-3 py-1 rounded-sm border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
                             >
                                 Précédent
                             </button>
                             <button
                                 onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) + 1 }))}
                                 disabled={pagination.page >= pagination.totalPages}
-                                className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                className="px-3 py-1 rounded-sm border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
                             >
                                 Suivant
                             </button>

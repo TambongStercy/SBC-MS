@@ -166,7 +166,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
             <Header title="SBC Ads Network — Campagne test" />
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6 grid lg:grid-cols-3 gap-5 items-start"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6 grid lg:grid-cols-3 gap-5 items-start"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
@@ -218,7 +218,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                     <div className="p-12 flex justify-center"><Loader name="Chargement…" /></div>
                 ) : (
                     <motion.div
-                        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 grid lg:grid-cols-5 gap-x-8 gap-y-5"
+                        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 grid lg:grid-cols-5 gap-x-8 gap-y-5"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                     >
@@ -262,7 +262,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                                 <a href={getFileUrl(form.mediaFileId)} target="_blank" rel="noreferrer"
                                     title="Ouvrir en taille réelle">
                                     <img src={getFileUrl(form.mediaFileId)} alt="Créative"
-                                        className="w-full max-h-[26rem] rounded-xl bg-black object-contain mb-3 border border-gray-700 hover:border-gray-500 transition-colors" />
+                                        className="w-full max-h-104 rounded-xl bg-black object-contain mb-3 border border-gray-700 hover:border-gray-500 transition-colors" />
                                 </a>
                             )}
                             <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
@@ -284,7 +284,7 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             </p>
                             {form.landingVideoFileId && (
                                 <video src={getFileUrl(form.landingVideoFileId)} controls
-                                    className="w-full max-h-[26rem] rounded-xl bg-black mb-3 border border-gray-700" />
+                                    className="w-full max-h-104 rounded-xl bg-black mb-3 border border-gray-700" />
                             )}
                             <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
                                 <Upload className="w-4 h-4" />

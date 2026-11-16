@@ -119,7 +119,7 @@ export default function AdsNetworkManualVerifyPage() {
                     <AlertTriangle size={18} /> {error}
                 </div>
             ) : items.length === 0 ? (
-                <div className="rounded-2xl border border-gray-700 bg-gray-800 bg-opacity-50 backdrop-blur-md p-10 text-center text-gray-400">
+                <div className="rounded-2xl border border-gray-700 bg-gray-800/50 backdrop-blur-md p-10 text-center text-gray-400">
                     <Video className="mx-auto mb-3 text-gray-600" size={40} />
                     Aucune vérification vidéo en attente.
                 </div>
@@ -130,7 +130,7 @@ export default function AdsNetworkManualVerifyPage() {
                             key={mv.manualVerificationId}
                             initial={{ opacity: 0, y: 8 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="rounded-2xl border border-gray-700 bg-gray-800 bg-opacity-50 backdrop-blur-md p-4 shadow-lg"
+                            className="rounded-2xl border border-gray-700 bg-gray-800/50 backdrop-blur-md p-4 shadow-lg"
                         >
                             <div className="mb-2 flex items-start justify-between gap-2">
                                 <div>
@@ -179,7 +179,7 @@ export default function AdsNetworkManualVerifyPage() {
                                         onChange={(e) => setRejectReason(e.target.value)}
                                         placeholder="Motif du refus (visible par le diffuseur)"
                                         rows={2}
-                                        className="w-full rounded-xl border border-gray-600 bg-gray-900 p-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-400"
+                                        className="w-full rounded-xl border border-gray-600 bg-gray-900 p-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-hidden focus:ring-2 focus:ring-red-400"
                                     />
                                     <div className="mt-2 flex gap-2">
                                         <button
@@ -221,7 +221,7 @@ export default function AdsNetworkManualVerifyPage() {
                                         value={views[mv.manualVerificationId] ?? ''}
                                         onChange={(e) => setViews((v) => ({ ...v, [mv.manualVerificationId]: e.target.value }))}
                                         placeholder="ex. 262"
-                                        className="w-full rounded-xl border border-gray-600 bg-gray-900 p-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#115CF6]"
+                                        className="w-full rounded-xl border border-gray-600 bg-gray-900 p-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-hidden focus:ring-2 focus:ring-[#115CF6]"
                                     />
                                     <div className="mt-2 flex gap-2">
                                         <button

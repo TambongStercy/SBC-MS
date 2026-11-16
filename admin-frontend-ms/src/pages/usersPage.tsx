@@ -160,7 +160,7 @@ function UsersPage() {
       <div className="flex-1 overflow-auto relative z-10">
         <Header title={`User Details: ${userData?.name || userId}`} />
         <motion.div
-          className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 m-3"
+          className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 m-3"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeInOut" }}
@@ -193,7 +193,7 @@ function UsersPage() {
 
         {/* Account Status */}
         <motion.div
-          className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 m-3"
+          className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 m-3"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeInOut" }}
@@ -203,11 +203,11 @@ function UsersPage() {
             <div className="flex gap-2 items-center text-sm text-gray-400">
               <span>Status:</span>
               {userData.deleted ? (
-                <span className="px-2 py-0.5 bg-red-900 text-red-300 rounded text-xs font-semibold">Deleted</span>
+                <span className="px-2 py-0.5 bg-red-900 text-red-300 rounded-sm text-xs font-semibold">Deleted</span>
               ) : userData.blocked ? (
-                <span className="px-2 py-0.5 bg-orange-900 text-orange-300 rounded text-xs font-semibold">Blocked</span>
+                <span className="px-2 py-0.5 bg-orange-900 text-orange-300 rounded-sm text-xs font-semibold">Blocked</span>
               ) : (
-                <span className="px-2 py-0.5 bg-green-900 text-green-300 rounded text-xs font-semibold">Active</span>
+                <span className="px-2 py-0.5 bg-green-900 text-green-300 rounded-sm text-xs font-semibold">Active</span>
               )}
             </div>
             <div className="flex gap-2 ml-auto">
@@ -215,7 +215,7 @@ function UsersPage() {
                 <button
                   onClick={() => handleAccountAction('restore')}
                   disabled={accountActionLoading}
-                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                 >
                   Restore
                 </button>
@@ -225,7 +225,7 @@ function UsersPage() {
                     <button
                       onClick={() => handleAccountAction('unblock')}
                       disabled={accountActionLoading}
-                      className="px-4 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                      className="px-4 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                     >
                       Unblock
                     </button>
@@ -233,7 +233,7 @@ function UsersPage() {
                     <button
                       onClick={() => handleAccountAction('block')}
                       disabled={accountActionLoading}
-                      className="px-4 py-1.5 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                      className="px-4 py-1.5 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                     >
                       Block
                     </button>
@@ -241,7 +241,7 @@ function UsersPage() {
                   <button
                     onClick={() => handleAccountAction('delete')}
                     disabled={accountActionLoading}
-                    className="px-4 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded text-sm font-semibold transition-colors"
+                    className="px-4 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                   >
                     Delete
                   </button>

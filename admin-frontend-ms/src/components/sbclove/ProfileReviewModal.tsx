@@ -68,7 +68,7 @@ export default function ProfileReviewModal({
 
                 <div className="p-6 space-y-5">
                     {!profile.meetsPhotoRequirement && (
-                        <p className="bg-yellow-900/40 border border-yellow-700 text-yellow-200 text-sm rounded px-3 py-2">
+                        <p className="bg-yellow-900/40 border border-yellow-700 text-yellow-200 text-sm rounded-sm px-3 py-2">
                             {profile.photoCount}/{profile.minPhotos} photo(s) — l'approbation sera refusée tant que le
                             minimum n'est pas atteint. Rejetez avec un motif pour que le membre complète son profil.
                         </p>
@@ -79,7 +79,7 @@ export default function ProfileReviewModal({
                             <p className="text-sm text-gray-500 italic col-span-full">Aucune photo envoyée.</p>
                         )}
                         {profile.photos.map((photo, i) => (
-                            <figure key={photo.fileId} className="bg-gray-900 rounded overflow-hidden">
+                            <figure key={photo.fileId} className="bg-gray-900 rounded-sm overflow-hidden">
                                 {/* Opened in a new tab rather than a lightbox: an admin
                                     checking a face wants the full-resolution file. */}
                                 <a href={photo.url} target="_blank" rel="noreferrer">
@@ -115,7 +115,7 @@ export default function ProfileReviewModal({
 
                     <div>
                         <dt className="text-xs uppercase tracking-wide text-gray-500 mb-1">Description</dt>
-                        <p className="text-sm text-gray-200 bg-gray-900 rounded p-3 whitespace-pre-line">
+                        <p className="text-sm text-gray-200 bg-gray-900 rounded-sm p-3 whitespace-pre-line">
                             {profile.description || <span className="text-gray-500 italic">—</span>}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
@@ -135,17 +135,17 @@ export default function ProfileReviewModal({
                                 onChange={e => setReason(e.target.value)}
                                 rows={3}
                                 autoFocus
-                                className="w-full bg-gray-700 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                className="w-full bg-gray-700 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                                 placeholder="Ex : la photo en pied manque, le visage n'est pas visible…"
                             />
                             <div className="flex justify-end gap-3 mt-3">
-                                <button onClick={() => setRejecting(false)} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded">
+                                <button onClick={() => setRejecting(false)} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-sm">
                                     Retour
                                 </button>
                                 <button
                                     onClick={() => onReject(reason)}
                                     disabled={isBusy}
-                                    className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded disabled:opacity-50"
+                                    className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded-sm disabled:opacity-50"
                                 >
                                     Confirmer le rejet
                                 </button>
@@ -153,16 +153,16 @@ export default function ProfileReviewModal({
                         </div>
                     ) : (
                         <div className="flex justify-end gap-3 border-t border-gray-700 pt-4">
-                            <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded">
+                            <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-sm">
                                 Fermer
                             </button>
-                            <button onClick={() => setRejecting(true)} className="px-4 py-2 text-sm bg-red-700 hover:bg-red-600 text-white rounded">
+                            <button onClick={() => setRejecting(true)} className="px-4 py-2 text-sm bg-red-700 hover:bg-red-600 text-white rounded-sm">
                                 Rejeter
                             </button>
                             <button
                                 onClick={onApprove}
                                 disabled={isBusy || !profile.meetsPhotoRequirement || profile.status === ProfileStatus.APPROVED}
-                                className="px-4 py-2 text-sm bg-green-700 hover:bg-green-600 text-white rounded disabled:opacity-40"
+                                className="px-4 py-2 text-sm bg-green-700 hover:bg-green-600 text-white rounded-sm disabled:opacity-40"
                                 title={!profile.meetsPhotoRequirement ? `${profile.minPhotos} photos minimum` : undefined}
                             >
                                 Approuver

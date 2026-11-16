@@ -67,7 +67,7 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
                 value={value}
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
-                className="w-full bg-gray-700 text-gray-200 rounded px-3 py-1.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                className="w-full bg-gray-700 text-gray-200 rounded-sm px-3 py-1.5 text-sm placeholder-gray-400 focus:outline-hidden focus:ring-1 focus:ring-pink-500"
             />
             {value && (
                 <button type="button" onClick={() => onChange('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-sm" aria-label="Effacer">×</button>
@@ -232,7 +232,7 @@ function ProfilesTab() {
                     <button
                         key={s}
                         onClick={() => setStatusFilter(s)}
-                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                     >
                         {s === '' ? 'Tous' : s === ProfileStatus.PENDING ? 'À valider' : s.charAt(0).toUpperCase() + s.slice(1)}
                     </button>
@@ -277,8 +277,8 @@ function ProfilesTab() {
                                             photos, and the count says whether approval is even possible. */}
                                         <div className="flex items-center gap-2">
                                             {p.photos[0]?.url
-                                                ? <img src={p.photos[0].url} alt="" className="w-9 h-9 rounded object-cover" />
-                                                : <span className="w-9 h-9 rounded bg-gray-700 grid place-items-center text-gray-500 text-xs">—</span>}
+                                                ? <img src={p.photos[0].url} alt="" className="w-9 h-9 rounded-sm object-cover" />
+                                                : <span className="w-9 h-9 rounded-sm bg-gray-700 grid place-items-center text-gray-500 text-xs">—</span>}
                                             <span className={p.meetsPhotoRequirement ? 'text-gray-300' : 'text-yellow-400'}>
                                                 {p.photoCount}/{p.minPhotos}
                                             </span>
@@ -290,7 +290,7 @@ function ProfilesTab() {
                                     <td className="px-4 py-3 text-sm text-gray-400">{new Date(p.createdAt).toLocaleDateString('fr-FR')}</td>
                                     <td className="px-4 py-3">
                                         <div className="flex gap-2 flex-wrap">
-                                            <button onClick={() => setReviewing(p)} className="px-2 py-1 text-xs bg-pink-700 hover:bg-pink-600 text-white rounded">Examiner</button>
+                                            <button onClick={() => setReviewing(p)} className="px-2 py-1 text-xs bg-pink-700 hover:bg-pink-600 text-white rounded-sm">Examiner</button>
                                             {p.status === ProfileStatus.PENDING && (
                                                 <>
                                                     {/* Disabled below the photo minimum, like the review modal:
@@ -300,25 +300,25 @@ function ProfilesTab() {
                                                         onClick={() => handleApprove(p)}
                                                         disabled={!p.meetsPhotoRequirement}
                                                         title={!p.meetsPhotoRequirement ? `${p.minPhotos} photos minimum` : undefined}
-                                                        className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                                        className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
                                                     >
                                                         Approuver
                                                     </button>
-                                                    <button onClick={() => openReject(p)} className="px-2 py-1 text-xs bg-red-700 hover:bg-red-600 text-white rounded">Rejeter</button>
+                                                    <button onClick={() => openReject(p)} className="px-2 py-1 text-xs bg-red-700 hover:bg-red-600 text-white rounded-sm">Rejeter</button>
                                                 </>
                                             )}
                                             {p.status === ProfileStatus.APPROVED && (
-                                                <button onClick={() => handleSuspend(p)} className="px-2 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 text-white rounded">Suspendre</button>
+                                                <button onClick={() => handleSuspend(p)} className="px-2 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 text-white rounded-sm">Suspendre</button>
                                             )}
                                             {p.status === ProfileStatus.SUSPENDED && (
-                                                <button onClick={() => handleSuspend(p)} className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded">Réintégrer</button>
+                                                <button onClick={() => handleSuspend(p)} className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded-sm">Réintégrer</button>
                                             )}
                                             {p.status === ProfileStatus.REJECTED && (
                                                 <button
                                                     onClick={() => handleApprove(p)}
                                                     disabled={!p.meetsPhotoRequirement}
                                                     title={!p.meetsPhotoRequirement ? `${p.minPhotos} photos minimum` : undefined}
-                                                    className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
                                                 >
                                                     Approuver
                                                 </button>
@@ -368,12 +368,12 @@ function ProfilesTab() {
                             value={rejectReason}
                             onChange={e => setRejectReason(e.target.value)}
                             rows={3}
-                            className="w-full bg-gray-700 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-gray-700 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             placeholder="Ex : contenu inapproprié…"
                         />
                         <div className="flex justify-end gap-3 mt-4">
-                            <button onClick={() => setRejectModalOpen(false)} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded">Annuler</button>
-                            <button onClick={handleRejectSubmit} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded">Rejeter</button>
+                            <button onClick={() => setRejectModalOpen(false)} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-sm">Annuler</button>
+                            <button onClick={handleRejectSubmit} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded-sm">Rejeter</button>
                         </div>
                     </div>
                 </div>
@@ -459,7 +459,7 @@ function MembersTab() {
                     <button
                         key={st}
                         onClick={() => setStatusFilter(st)}
-                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${statusFilter === st ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === st ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                     >
                         {st === '' ? 'Tous' : st.charAt(0).toUpperCase() + st.slice(1)}
                     </button>
@@ -470,7 +470,7 @@ function MembersTab() {
                     <select
                         value={limit}
                         onChange={e => setLimit(Number(e.target.value))}
-                        className="bg-gray-700 text-gray-200 rounded px-2 py-1 text-sm"
+                        className="bg-gray-700 text-gray-200 rounded-sm px-2 py-1 text-sm"
                     >
                         {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
                     </select>
@@ -497,8 +497,8 @@ function MembersTab() {
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-3">
                                             {r.photoUrl
-                                                ? <img src={r.photoUrl} alt="" className="w-9 h-9 rounded object-cover" />
-                                                : <span className="w-9 h-9 rounded bg-gray-700 grid place-items-center text-gray-500 text-xs">—</span>}
+                                                ? <img src={r.photoUrl} alt="" className="w-9 h-9 rounded-sm object-cover" />
+                                                : <span className="w-9 h-9 rounded-sm bg-gray-700 grid place-items-center text-gray-500 text-xs">—</span>}
                                             <div className="min-w-0">
                                                 <p className="text-sm text-gray-200 truncate">{r.displayName}</p>
                                                 <p className="text-xs text-gray-500 truncate">{r.memberEmail ?? r.memberName ?? r.userId}</p>
@@ -590,7 +590,7 @@ function ReportsTab() {
                     <button
                         key={s}
                         onClick={() => setStatusFilter(s)}
-                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                     >
                         {s === '' ? 'Tous' : s.charAt(0).toUpperCase() + s.slice(1)}
                     </button>
@@ -635,8 +635,8 @@ function ReportsTab() {
                                     <td className="px-4 py-3">
                                         {r.status === ReportStatus.OPEN && (
                                             <div className="flex gap-2">
-                                                <button onClick={() => handleReview(r, ReportStatus.REVIEWED)} className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded">Traiter</button>
-                                                <button onClick={() => handleReview(r, ReportStatus.DISMISSED)} className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded">Ignorer</button>
+                                                <button onClick={() => handleReview(r, ReportStatus.REVIEWED)} className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded-sm">Traiter</button>
+                                                <button onClick={() => handleReview(r, ReportStatus.DISMISSED)} className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded-sm">Ignorer</button>
                                             </div>
                                         )}
                                     </td>
@@ -744,7 +744,7 @@ function ConfigTab() {
                         <select
                             value={draft.activeWeekday ?? config.activeWeekday}
                             onChange={e => set('activeWeekday', Number(e.target.value))}
-                            className="w-full bg-gray-600 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                         >
                             {WEEKDAY_LABELS.map((d, i) => <option key={i} value={i}>{d}</option>)}
                         </select>
@@ -757,7 +757,7 @@ function ConfigTab() {
                                 type="number" min={0} max={23}
                                 value={draft.openHour ?? config.openHour}
                                 onChange={e => set('openHour', Number(e.target.value))}
-                                className="w-full bg-gray-600 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             />
                         </div>
                         <div>
@@ -766,7 +766,7 @@ function ConfigTab() {
                                 type="number" min={0} max={23}
                                 value={draft.closeHour ?? config.closeHour}
                                 onChange={e => set('closeHour', Number(e.target.value))}
-                                className="w-full bg-gray-600 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             />
                         </div>
                     </div>
@@ -777,7 +777,7 @@ function ConfigTab() {
                             type="text"
                             value={draft.timezone ?? config.timezone}
                             onChange={e => set('timezone', e.target.value)}
-                            className="w-full bg-gray-600 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             placeholder="Africa/Douala"
                         />
                     </div>
@@ -793,7 +793,7 @@ function ConfigTab() {
                             type="number" min={1}
                             value={draft.maxInterestsPerWeek ?? config.maxInterestsPerWeek}
                             onChange={e => set('maxInterestsPerWeek', Number(e.target.value))}
-                            className="w-full bg-gray-600 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                         />
                     </div>
 
@@ -803,7 +803,7 @@ function ConfigTab() {
                             type="number" min={1}
                             value={draft.autoSuspendThreshold ?? config.autoSuspendThreshold}
                             onChange={e => set('autoSuspendThreshold', Number(e.target.value))}
-                            className="w-full bg-gray-600 text-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                         />
                     </div>
                 </div>

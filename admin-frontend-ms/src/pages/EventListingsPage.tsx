@@ -98,8 +98,8 @@ export default function EventListingsPage() {
                                         <td className="px-4 py-2 space-x-2">
                                             {l.status === 'ACTIVE' && (
                                                 <>
-                                                    <button onClick={() => doSuspend(l)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded">Suspendre</button>
-                                                    <button onClick={() => doRemove(l)} className="text-xs bg-red-600 text-white px-2 py-1 rounded">Retirer</button>
+                                                    <button onClick={() => doSuspend(l)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded-sm">Suspendre</button>
+                                                    <button onClick={() => doRemove(l)} className="text-xs bg-red-600 text-white px-2 py-1 rounded-sm">Retirer</button>
                                                 </>
                                             )}
                                         </td>

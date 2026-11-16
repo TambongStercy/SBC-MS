@@ -79,17 +79,17 @@ function Partners() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
             >
-                <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg shadow-lg border border-gray-700">
+                <div className="bg-gray-800/70 p-4 rounded-lg shadow-lg border border-gray-700">
                     <h3 className="text-lg font-medium text-gray-200">Total Active Partners</h3>
                     <p className="text-2xl font-bold text-white">{summaryStats?.totalActivePartners ?? 'N/A'}</p>
                 </div>
-                <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg shadow-lg border border-gray-700">
+                <div className="bg-gray-800/70 p-4 rounded-lg shadow-lg border border-gray-700">
                     <h3 className="text-lg font-medium text-gray-200">Active Silver Partners</h3>
                     <p className="text-2xl font-bold text-white">
                         {summaryStats?.activeSilverPartners ?? 'N/A'}
                     </p>
                 </div>
-                <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg shadow-lg border border-gray-700">
+                <div className="bg-gray-800/70 p-4 rounded-lg shadow-lg border border-gray-700">
                     <h3 className="text-lg font-medium text-gray-200">Active Gold Partners</h3>
                     <p className="text-2xl font-bold text-white">
                         {summaryStats?.activeGoldPartners ?? 'N/A'}
@@ -99,14 +99,14 @@ function Partners() {
 
             {/* Partners Table */}
             <motion.div
-                className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
             >
                 <div className="overflow-x-auto">
                     <table className="w-full">
-                        <thead className="bg-gray-900 bg-opacity-70">
+                        <thead className="bg-gray-900/70">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                                     Partner
@@ -131,10 +131,10 @@ function Partners() {
                         <tbody className="divide-y divide-gray-700">
                             {partners.length > 0 ? (
                                 partners.map((partner) => (
-                                    <tr key={partner._id} className="hover:bg-gray-700 hover:bg-opacity-50 transition-colors">
+                                    <tr key={partner._id} className="hover:bg-gray-700/50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center">
-                                                <div className="flex-shrink-0 h-10 w-10">
+                                                <div className="shrink-0 h-10 w-10">
                                                     <img
                                                         className="h-10 w-10 rounded-full"
                                                         src={partner.user?.avatar ? getAvatarUrl(partner.user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(partner.user?.name || 'Partner')}&background=random`}
@@ -153,7 +153,7 @@ function Partners() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${partner.pack === 'gold' ? 'bg-yellow-500 bg-opacity-20 text-yellow-300' : 'bg-gray-500 bg-opacity-20 text-gray-300'}`}>
+                        ${partner.pack === 'gold' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-gray-500/20 text-gray-300'}`}>
                                                 {partner.pack.toUpperCase()}
                                             </span>
                                         </td>
@@ -162,7 +162,7 @@ function Partners() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${partner.isActive ? 'bg-green-500 bg-opacity-20 text-green-300' : 'bg-red-500 bg-opacity-20 text-red-300'}`}>
+                        ${partner.isActive ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
                                                 {partner.isActive ? 'Active' : 'Inactive'}
                                             </span>
                                         </td>
@@ -191,7 +191,7 @@ function Partners() {
                 </div>
 
                 {/* Pagination */}
-                <div className="bg-gray-900 bg-opacity-50 px-4 py-3 flex items-center justify-between border-t border-gray-700">
+                <div className="bg-gray-900/50 px-4 py-3 flex items-center justify-between border-t border-gray-700">
                     <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                         <div>
                             <p className="text-sm text-gray-400">
@@ -203,7 +203,7 @@ function Partners() {
                             </p>
                         </div>
                         <div>
-                            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                            <nav className="relative z-0 inline-flex rounded-md shadow-xs -space-x-px" aria-label="Pagination">
                                 <button
                                     onClick={() => handlePageChange(pagination.currentPage - 1)}
                                     disabled={pagination.currentPage === 1}
@@ -218,7 +218,7 @@ function Partners() {
                                         key={index}
                                         onClick={() => handlePageChange(index + 1)}
                                         className={`relative inline-flex items-center px-4 py-2 border ${pagination.currentPage === index + 1
-                                            ? 'border-indigo-500 bg-indigo-800 bg-opacity-20 text-indigo-300'
+                                            ? 'border-indigo-500 bg-indigo-800/20 text-indigo-300'
                                             : 'border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700'
                                             } text-sm font-medium`}
                                     >

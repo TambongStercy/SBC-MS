@@ -78,8 +78,8 @@ export default function EventDisputesPage() {
                                 </div>
                                 {d.status === 'OPEN' && (
                                     <div className="mt-3 flex gap-2">
-                                        <button onClick={() => setModal({ dispute: d, outcome: 'resolve', note: '' })} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded">Résoudre</button>
-                                        <button onClick={() => setModal({ dispute: d, outcome: 'reject', note: '' })} className="text-xs bg-red-600 text-white px-3 py-1.5 rounded">Rejeter</button>
+                                        <button onClick={() => setModal({ dispute: d, outcome: 'resolve', note: '' })} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-sm">Résoudre</button>
+                                        <button onClick={() => setModal({ dispute: d, outcome: 'reject', note: '' })} className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-sm">Rejeter</button>
                                     </div>
                                 )}
                                 {d.resolutionNote && (

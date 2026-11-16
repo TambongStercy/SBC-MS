@@ -170,7 +170,7 @@ function StuckRefunds({ name }: { name: (id?: string | null) => string }) {
                         <td className={`${tdCls} text-gray-300`}>{name(r.challengeId)}</td>
                         <td className={`${tdCls} text-right font-semibold whitespace-nowrap`}>{xaf(r.amount)}</td>
                         <td className={tdCls}><StatusBadge status={r.status} labels={REFUND_STATUS} /><div className="text-xs text-gray-400 mt-0.5">{r.attempts} {plural(r.attempts, 'essai')} · {progress(r)}</div></td>
-                        <td className={`${tdCls} text-xs text-red-300 break-words max-w-xs`}>{r.lastError || '—'}</td>
+                        <td className={`${tdCls} text-xs text-red-300 wrap-break-word max-w-xs`}>{r.lastError || '—'}</td>
                         <td className={tdCls}>
                             <Button small disabled={retrying !== null} onClick={() => retry(r)}>{retrying === r.voteTransactionId ? 'Essai…' : 'Réessayer'}</Button>
                         </td>

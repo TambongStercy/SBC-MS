@@ -42,7 +42,7 @@ const AdsNetworkDiffuseursPage: React.FC = () => {
             <Header title="SBC Ads Network — Diffuseurs" />
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
@@ -66,7 +66,7 @@ const AdsNetworkDiffuseursPage: React.FC = () => {
                                 type="checkbox"
                                 checked={measuredOnly}
                                 onChange={(e) => { setMeasuredOnly(e.target.checked); setPage(1); }}
-                                className="rounded bg-gray-700 border-gray-600"
+                                className="rounded-sm bg-gray-700 border-gray-600"
                             />
                             Moyennes mesurées uniquement
                         </label>
@@ -87,7 +87,7 @@ const AdsNetworkDiffuseursPage: React.FC = () => {
                 </motion.div>
 
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >

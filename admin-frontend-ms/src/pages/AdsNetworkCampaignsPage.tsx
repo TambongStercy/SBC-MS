@@ -88,7 +88,7 @@ const AdsNetworkCampaignsPage: React.FC = () => {
             <Header title="SBC Ads Network — Campagnes" />
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
@@ -120,7 +120,7 @@ const AdsNetworkCampaignsPage: React.FC = () => {
                 </motion.div>
 
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
@@ -178,7 +178,7 @@ const AdsNetworkCampaignsPage: React.FC = () => {
             </main>
 
             {detail && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-start z-50 p-4 overflow-auto">
+                <div className="fixed inset-0 bg-black/75 flex justify-center items-start z-50 p-4 overflow-auto">
                     <div className="bg-gray-800 rounded-xl shadow-xl w-full max-w-5xl my-8 border border-gray-700">
                         <div className="flex items-start justify-between p-6 border-b border-gray-700">
                             <div>

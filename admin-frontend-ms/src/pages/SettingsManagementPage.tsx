@@ -128,7 +128,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
     }
 
     return (
-        <div className="bg-gray-800 shadow rounded-lg p-6 mb-6">
+        <div className="bg-gray-800 shadow-sm rounded-lg p-6 mb-6">
             <h3 className="text-lg font-semibold mb-1 text-white">{title}</h3>
             {description && <p className="text-sm text-gray-400 mb-4">{description}</p>}
 
@@ -136,22 +136,22 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
             <div className="mb-4">
                 <p className="text-sm font-medium text-gray-300 mb-2">Current File:</p>
                 {currentFileUrl ? (
-                    <div className="flex items-start space-x-4 p-3 bg-gray-700 rounded">
+                    <div className="flex items-start space-x-4 p-3 bg-gray-700 rounded-sm">
                         {currentFileType === 'image' && currentFile?.fileId && (
                             <ImageDisplay
                                 fileId={currentFile.fileId}
                                 alt={`Current ${title}`}
-                                className="h-20 w-auto object-contain rounded"
+                                className="h-20 w-auto object-contain rounded-sm"
                                 showDebugInfo={title === 'Company Logo'}
                             />
                         )}
                         {currentFileType === 'video' && (
-                            <video src={currentFileUrl} controls className="h-24 w-auto rounded" />
+                            <video src={currentFileUrl} controls className="h-24 w-auto rounded-sm" />
                         )}
                         {(currentFileType === 'pdf' || currentFileType === 'other') && (
-                            <FileIcon className="h-10 w-10 text-gray-400 flex-shrink-0 mt-1" />
+                            <FileIcon className="h-10 w-10 text-gray-400 shrink-0 mt-1" />
                         )}
-                        <div className="flex-grow text-sm">
+                        <div className="grow text-sm">
                             <a href={currentFileUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-400 hover:text-indigo-300 break-all" title={currentFile?.fileName || 'View File'}>
                                 {currentFile?.fileName || 'View File'}
                                 <ExternalLink className="inline h-3 w-3 ml-1" />
@@ -188,17 +188,17 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
             {selectedFile && (
                 <div className="mb-4">
                     <p className="text-sm font-medium text-gray-300 mb-2">Preview:</p>
-                    <div className="flex items-start space-x-4 p-3 bg-gray-700 rounded">
+                    <div className="flex items-start space-x-4 p-3 bg-gray-700 rounded-sm">
                         {previewSrc && selectedFile.type.startsWith('image/') && (
-                            <img src={previewSrc} alt="Selected preview" className="h-20 w-auto object-contain rounded" />
+                            <img src={previewSrc} alt="Selected preview" className="h-20 w-auto object-contain rounded-sm" />
                         )}
                         {previewSrc && selectedFile.type.startsWith('video/') && (
-                            <video src={previewSrc} controls className="h-24 w-auto rounded" />
+                            <video src={previewSrc} controls className="h-24 w-auto rounded-sm" />
                         )}
                         {selectedFile.type === 'application/pdf' && (
-                            <FileIcon className="h-10 w-10 text-gray-400 flex-shrink-0 mt-1" />
+                            <FileIcon className="h-10 w-10 text-gray-400 shrink-0 mt-1" />
                         )}
-                        <div className="flex-grow text-sm">
+                        <div className="grow text-sm">
                             <p className="font-medium text-white break-all">{selectedFile.name}</p>
                             <p className="text-gray-400 mt-1">Size: {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
                             <p className="text-gray-400">Type: {selectedFile.type}</p>
@@ -209,7 +209,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
 
             {uploadError && (
                 <div className="mt-4 p-3 bg-red-900 border border-red-700 rounded-md text-red-100 text-sm flex items-center">
-                    <AlertTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
+                    <AlertTriangle className="h-4 w-4 mr-2 shrink-0" />
                     <span>{uploadError}</span>
                 </div>
             )}
@@ -218,7 +218,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ title, descriptio
                 <button
                     onClick={handleUpload}
                     disabled={!selectedFile || isUploading}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-xs text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isUploading ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -689,7 +689,7 @@ const SettingsManagementPage: React.FC = () => {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Formation Form (Create/Update) */}
                         <div className="lg:col-span-1">
-                            <form onSubmit={handleFormationFormSubmit} className="bg-gray-800 shadow rounded-lg p-6 space-y-4">
+                            <form onSubmit={handleFormationFormSubmit} className="bg-gray-800 shadow-sm rounded-lg p-6 space-y-4">
                                 <h3 className="text-lg font-semibold mb-4 text-white">
                                     {isEditingFormation ? 'Update Formation' : 'Create New Formation'}
                                 </h3>
@@ -700,7 +700,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <input
                                         type="text"
                                         id="formationTitle"
-                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
                                         value={newFormationTitle}
                                         onChange={(e) => setNewFormationTitle(e.target.value)}
                                         required
@@ -713,7 +713,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <input
                                         type="url"
                                         id="formationLink"
-                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
                                         value={newFormationLink}
                                         onChange={(e) => setNewFormationLink(e.target.value)}
                                         required
@@ -725,7 +725,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <label htmlFor="formationTier" className="block text-sm font-medium text-gray-300 mb-1">Access Restriction</label>
                                     <select
                                         id="formationTier"
-                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                                         value={newFormationTier}
                                         onChange={(e) => setNewFormationTier(e.target.value as '' | 'CLASSIQUE' | 'CIBLE')}
                                     >
@@ -741,7 +741,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <label htmlFor="formationDecoration" className="block text-sm font-medium text-gray-300 mb-1">Decoration (optional)</label>
                                     <select
                                         id="formationDecoration"
-                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                                         value={newFormationDecoration}
                                         onChange={(e) => setNewFormationDecoration(e.target.value)}
                                     >
@@ -764,7 +764,7 @@ const SettingsManagementPage: React.FC = () => {
                                 <button
                                     type="submit"
                                     disabled={isCreatingOrUpdatingFormation}
-                                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 disabled:opacity-50"
+                                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-xs text-white bg-green-600 hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 disabled:opacity-50"
                                 >
                                     {isCreatingOrUpdatingFormation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                     {isEditingFormation ? 'Update Formation' : 'Create Formation'}
@@ -774,7 +774,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <button
                                         type="button"
                                         onClick={handleCancelEditFormation}
-                                        className="w-full mt-2 inline-flex justify-center items-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
+                                        className="w-full mt-2 inline-flex justify-center items-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md shadow-xs text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
                                     >
                                         Cancel Edit
                                     </button>
@@ -784,7 +784,7 @@ const SettingsManagementPage: React.FC = () => {
 
                         {/* Formation List */}
                         <div className="lg:col-span-2">
-                            <div className="bg-gray-800 shadow rounded-lg p-6">
+                            <div className="bg-gray-800 shadow-sm rounded-lg p-6">
                                 <h3 className="text-lg font-semibold mb-4 text-white">Existing Formations</h3>
                                 {isLoadingFormations ? (
                                     <div className="flex justify-center items-center p-8">
@@ -796,7 +796,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <div className="space-y-4">
                                         {formations.map((formation) => (
                                             <div key={formation._id} className="flex items-start space-x-4 p-4 bg-gray-700 rounded-md">
-                                                <div className="flex-grow">
+                                                <div className="grow">
                                                     <div className="flex flex-wrap items-center gap-2 mb-1">
                                                         <p className="text-md font-semibold text-white line-clamp-2">{formation.title}</p>
                                                         {formation.requiredSubscriptionType && (
@@ -815,17 +815,17 @@ const SettingsManagementPage: React.FC = () => {
                                                         <ExternalLink className="inline h-3 w-3 ml-1" />
                                                     </a>
                                                 </div>
-                                                <div className="flex flex-col space-y-1 flex-shrink-0">
+                                                <div className="flex flex-col space-y-1 shrink-0">
                                                     <button
                                                         onClick={() => handleEditFormationClick(formation)}
-                                                        className="p-1 text-blue-400 hover:text-blue-300 focus:outline-none"
+                                                        className="p-1 text-blue-400 hover:text-blue-300 focus:outline-hidden"
                                                         title="Edit Formation"
                                                     >
                                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeleteFormationClick(formation._id)}
-                                                        className="p-1 text-red-400 hover:text-red-300 focus:outline-none"
+                                                        className="p-1 text-red-400 hover:text-red-300 focus:outline-hidden"
                                                         title="Delete Formation"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -886,7 +886,7 @@ const SettingsManagementPage: React.FC = () => {
                         {/* Event Form (Create/Update) */}
                         <div className="lg:col-span-1">
                             {/* Use handleEventFormSubmit for both create/update */}
-                            <form onSubmit={handleEventFormSubmit} className="bg-gray-800 shadow rounded-lg p-6 space-y-4">
+                            <form onSubmit={handleEventFormSubmit} className="bg-gray-800 shadow-sm rounded-lg p-6 space-y-4">
                                 {/* Change title based on mode */}
                                 <h3 className="text-lg font-semibold mb-4 text-white">
                                     {isEditing ? 'Update Event' : 'Create New Event'}
@@ -898,7 +898,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <input
                                         type="text"
                                         id="eventTitle"
-                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
+                                        className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
                                         value={newEventTitle}
                                         onChange={(e) => setNewEventTitle(e.target.value)}
                                         required
@@ -911,7 +911,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <textarea
                                         id="eventDesc"
                                         rows={3}
-                                        className="block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
+                                        className="block w-full bg-gray-700 border-gray-600 rounded-md shadow-xs focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white placeholder-gray-400"
                                         value={newEventDesc}
                                         onChange={(e) => setNewEventDesc(e.target.value)}
                                         required
@@ -937,7 +937,7 @@ const SettingsManagementPage: React.FC = () => {
                                     {newEventImagePreview && (
                                         <div className="mt-2">
                                             <p className="text-xs text-gray-400 mb-1">{isEditing && !newEventImage ? 'Current Image Preview:' : 'New Image Preview:'}</p>
-                                            <img src={newEventImagePreview} alt="Event image preview" className="max-h-32 w-auto rounded border border-gray-600" />
+                                            <img src={newEventImagePreview} alt="Event image preview" className="max-h-32 w-auto rounded-sm border border-gray-600" />
                                         </div>
                                     )}
                                 </div>
@@ -961,7 +961,7 @@ const SettingsManagementPage: React.FC = () => {
                                     {newEventVideoPreview && (
                                         <div className="mt-2">
                                             <p className="text-xs text-gray-400 mb-1">{isEditing && !newEventVideo ? 'Current Video Preview:' : 'New Video Preview:'}</p>
-                                            <video src={newEventVideoPreview} controls className="max-h-32 w-auto rounded border border-gray-600" />
+                                            <video src={newEventVideoPreview} controls className="max-h-32 w-auto rounded-sm border border-gray-600" />
                                         </div>
                                     )}
                                 </div>
@@ -977,7 +977,7 @@ const SettingsManagementPage: React.FC = () => {
                                 <button
                                     type="submit"
                                     disabled={isCreatingOrUpdatingEvent}
-                                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 disabled:opacity-50"
+                                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-xs text-white bg-green-600 hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 disabled:opacity-50"
                                 >
                                     {isCreatingOrUpdatingEvent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (isEditing ? <UploadCloud className="mr-2 h-4 w-4" /> : <UploadCloud className="mr-2 h-4 w-4" />)}
                                     {isEditing ? 'Update Event' : 'Create Event'}
@@ -987,7 +987,7 @@ const SettingsManagementPage: React.FC = () => {
                                     <button
                                         type="button" // Important: type=button to prevent form submission
                                         onClick={handleCancelEdit}
-                                        className="w-full mt-2 inline-flex justify-center items-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
+                                        className="w-full mt-2 inline-flex justify-center items-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md shadow-xs text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
                                     >
                                         Cancel Edit
                                     </button>
@@ -997,7 +997,7 @@ const SettingsManagementPage: React.FC = () => {
 
                         {/* Event List */}
                         <div className="lg:col-span-2">
-                            <div className="bg-gray-800 shadow rounded-lg p-6">
+                            <div className="bg-gray-800 shadow-sm rounded-lg p-6">
                                 <h3 className="text-lg font-semibold mb-4 text-white">Existing Events</h3>
                                 {isLoadingEvents ? (
                                     <div className="flex justify-center items-center p-8">
@@ -1014,26 +1014,26 @@ const SettingsManagementPage: React.FC = () => {
                                             return (
                                                 <div key={event._id} className="flex items-start space-x-4 p-4 bg-gray-700 rounded-md">
                                                     {/* Event Previews Container */}
-                                                    <div className="flex space-x-2 flex-shrink-0">
+                                                    <div className="flex space-x-2 shrink-0">
                                                         {/* Event Image Preview - Use new file system */}
                                                         {event.image?.fileId && (
                                                             <ImageDisplay
                                                                 fileId={event.image.fileId}
                                                                 alt={`Event ${event._id} image`}
-                                                                className="h-16 w-16 object-cover rounded bg-gray-600"
+                                                                className="h-16 w-16 object-cover rounded-sm bg-gray-600"
                                                             />
                                                         )}
                                                         {/* Optional Event Video Preview - Use absolute URL */}
                                                         {videoUrl && (
                                                             <video
                                                                 src={videoUrl}
-                                                                className="h-16 w-auto rounded bg-gray-600"
+                                                                className="h-16 w-auto rounded-sm bg-gray-600"
                                                                 preload="metadata"
                                                             />
                                                         )}
                                                     </div>
 
-                                                    <div className="flex-grow">
+                                                    <div className="grow">
                                                         {/* Display Event Title */}
                                                         <p className="text-md font-semibold text-white mb-1 line-clamp-2">{event.title}</p>
                                                         <p className="text-sm text-gray-300 mb-1 line-clamp-3">{event.description}</p>
@@ -1041,11 +1041,11 @@ const SettingsManagementPage: React.FC = () => {
                                                             Posted: {new Date(event.timestamp || event.createdAt).toLocaleString()}
                                                         </p>
                                                     </div>
-                                                    <div className="flex flex-col space-y-1 flex-shrink-0">
+                                                    <div className="flex flex-col space-y-1 shrink-0">
                                                         {/* Edit Button */}
                                                         <button
                                                             onClick={() => handleEditClick(event)}
-                                                            className="p-1 text-blue-400 hover:text-blue-300 focus:outline-none"
+                                                            className="p-1 text-blue-400 hover:text-blue-300 focus:outline-hidden"
                                                             title="Edit Event"
                                                         >
                                                             {/* Use an appropriate edit icon if available */}
@@ -1054,7 +1054,7 @@ const SettingsManagementPage: React.FC = () => {
                                                         {/* Delete Button - Now triggers modal */}
                                                         <button
                                                             onClick={() => handleDeleteClick(event._id)} // Use new handler
-                                                            className="p-1 text-red-400 hover:text-red-300 focus:outline-none"
+                                                            className="p-1 text-red-400 hover:text-red-300 focus:outline-hidden"
                                                             title="Delete Event"
                                                         >
                                                             <Trash2 className="h-4 w-4" />
@@ -1071,7 +1071,7 @@ const SettingsManagementPage: React.FC = () => {
                                         <button
                                             onClick={() => handleEventPageChange(eventPage - 1)}
                                             disabled={eventPage <= 1 || isLoadingEvents}
-                                            className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="px-3 py-1 rounded-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             Previous
                                         </button>
@@ -1079,7 +1079,7 @@ const SettingsManagementPage: React.FC = () => {
                                         <button
                                             onClick={() => handleEventPageChange(eventPage + 1)}
                                             disabled={eventPage >= eventTotalPages || isLoadingEvents}
-                                            className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="px-3 py-1 rounded-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             Next
                                         </button>
@@ -1093,11 +1093,11 @@ const SettingsManagementPage: React.FC = () => {
 
             {/* Delete Confirmation Modal (Events) */}
             {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
                     <div className="relative bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
                         <div className="bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                             <div className="sm:flex sm:items-start">
-                                <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-900 sm:mx-0 sm:h-10 sm:w-10">
+                                <div className="mx-auto shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-900 sm:mx-0 sm:h-10 sm:w-10">
                                     <AlertTriangle className="h-6 w-6 text-red-400" aria-hidden="true" />
                                 </div>
                                 <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
@@ -1116,7 +1116,7 @@ const SettingsManagementPage: React.FC = () => {
                             <button
                                 type="button"
                                 disabled={isDeletingEvent}
-                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-xs px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                                 onClick={confirmDeleteHandler}
                             >
                                 {isDeletingEvent ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : null}
@@ -1124,7 +1124,7 @@ const SettingsManagementPage: React.FC = () => {
                             </button>
                             <button
                                 type="button"
-                                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-600 shadow-sm px-4 py-2 bg-gray-800 text-base font-medium text-gray-300 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-600 shadow-xs px-4 py-2 bg-gray-800 text-base font-medium text-gray-300 hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                                 onClick={closeDeleteModal}
                             >
                                 Cancel
@@ -1136,11 +1136,11 @@ const SettingsManagementPage: React.FC = () => {
 
             {/* NEW: Delete Confirmation Modal (Formations) */}
             {isFormationDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 transition-opacity duration-300 ease-in-out" aria-labelledby="formation-modal-title" role="dialog" aria-modal="true">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 transition-opacity duration-300 ease-in-out" aria-labelledby="formation-modal-title" role="dialog" aria-modal="true">
                     <div className="relative bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
                         <div className="bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                             <div className="sm:flex sm:items-start">
-                                <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-900 sm:mx-0 sm:h-10 sm:w-10">
+                                <div className="mx-auto shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-900 sm:mx-0 sm:h-10 sm:w-10">
                                     <AlertTriangle className="h-6 w-6 text-red-400" aria-hidden="true" />
                                 </div>
                                 <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
@@ -1159,7 +1159,7 @@ const SettingsManagementPage: React.FC = () => {
                             <button
                                 type="button"
                                 disabled={isDeletingFormation}
-                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-xs px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                                 onClick={confirmDeleteFormationHandler}
                             >
                                 {isDeletingFormation ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : null}
@@ -1167,7 +1167,7 @@ const SettingsManagementPage: React.FC = () => {
                             </button>
                             <button
                                 type="button"
-                                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-600 shadow-sm px-4 py-2 bg-gray-800 text-base font-medium text-gray-300 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-600 shadow-xs px-4 py-2 bg-gray-800 text-base font-medium text-gray-300 hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                                 onClick={closeFormationDeleteModal}
                             >
                                 Cancel

@@ -301,7 +301,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                 </div>
 
                 {/* Withdrawals Table */}
-                <div className="shadow overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
+                <div className="shadow-sm overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-700">
                             <tr>
@@ -369,7 +369,7 @@ const WithdrawalHistoryPage: React.FC = () => {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                             <button
                                                 onClick={() => handleViewDetails(withdrawal)}
-                                                className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition"
+                                                className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition"
                                             >
                                                 View Details
                                             </button>

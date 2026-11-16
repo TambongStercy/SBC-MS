@@ -86,7 +86,7 @@ const MediaChangeQueue: React.FC<Props> = ({ showSuccess, showError }) => {
     if (items.length === 0) return null;
 
     return (
-        <div className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-indigo-700 mb-6">
+        <div className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-indigo-700 mb-6">
             <div className="flex items-center gap-2 mb-4">
                 <ImageUp className="text-indigo-400" size={20} />
                 <h2 className="text-lg font-semibold text-gray-100">Nouveaux visuels à valider ({items.length})</h2>

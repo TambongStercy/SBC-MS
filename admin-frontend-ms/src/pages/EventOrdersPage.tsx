@@ -130,7 +130,7 @@ export default function EventOrdersPage() {
                                         <td className="px-4 py-2 text-xs">{fmt(o.paidAt)}</td>
                                         <td className="px-4 py-2">
                                             {o.status === 'PAID' && o.kind === 'PRIMARY' && (
-                                                <button onClick={() => doRefund(o)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded">Rembourser</button>
+                                                <button onClick={() => doRefund(o)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded-sm">Rembourser</button>
                                             )}
                                         </td>
                                     </tr>

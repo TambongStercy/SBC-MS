@@ -102,7 +102,7 @@ export default function EventOrganizersPage() {
                                         <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[o.status]}`}>{STATUS_LABELS[o.status] ?? o.status}</span></td>
                                         <td className="px-4 py-2 text-xs">{o.stats?.eventsPublished ?? 0}</td>
                                         <td className="px-4 py-2 space-x-2">
-                                            {o.status !== 'APPROVED' && <button onClick={() => doApprove(o)} className="text-xs bg-emerald-600 text-white px-2 py-1 rounded">{o.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'}</button>}
+                                            {o.status !== 'APPROVED' && <button onClick={() => doApprove(o)} className="text-xs bg-emerald-600 text-white px-2 py-1 rounded-sm">{o.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'}</button>}
                                         </td>
                                     </tr>
                                 ))}

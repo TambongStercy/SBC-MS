@@ -292,7 +292,7 @@ const RelanceCampaignsPage: React.FC = () => {
                         <select
                             value={statusFilter}
                             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-hidden focus:border-blue-500"
                         >
                             <option value="all">All</option>
                             <option value="draft">Draft</option>
@@ -308,7 +308,7 @@ const RelanceCampaignsPage: React.FC = () => {
                         <select
                             value={typeFilter}
                             onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-hidden focus:border-blue-500"
                         >
                             <option value="all">All</option>
                             <option value="default">Default</option>
@@ -320,7 +320,7 @@ const RelanceCampaignsPage: React.FC = () => {
                         <select
                             value={channelFilter}
                             onChange={(e) => { setChannelFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-hidden focus:border-blue-500"
                         >
                             <option value="all">Tous</option>
                             <option value="email">Email</option>
@@ -341,7 +341,7 @@ const RelanceCampaignsPage: React.FC = () => {
                                 }
                             }}
                             placeholder="Enter user ID..."
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-hidden focus:border-blue-500"
                         />
                     </div>
                 </div>
@@ -366,19 +366,19 @@ const RelanceCampaignsPage: React.FC = () => {
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                                             <h3 className="text-xl font-semibold text-gray-100">{campaign.name}</h3>
-                                            <span className={`text-xs px-2 py-1 rounded ${getStatusBadge(campaign.status)}`}>
+                                            <span className={`text-xs px-2 py-1 rounded-sm ${getStatusBadge(campaign.status)}`}>
                                                 {campaign.status}
                                             </span>
-                                            <span className={`text-xs px-2 py-1 rounded ${getTypeBadge(campaign.type)}`}>
+                                            <span className={`text-xs px-2 py-1 rounded-sm ${getTypeBadge(campaign.type)}`}>
                                                 {campaign.type}
                                             </span>
                                             {(campaign as any).channel && (
-                                                <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${getChannelBadge((campaign as any).channel)}`}>
+                                                <span className={`text-xs px-2 py-1 rounded-sm flex items-center gap-1 ${getChannelBadge((campaign as any).channel)}`}>
                                                     {channelIcon((campaign as any).channel)} {(campaign as any).channel}
                                                 </span>
                                             )}
                                             {(campaign as any).contactBatch && (
-                                                <span className="text-xs px-2 py-1 rounded bg-gray-600 text-gray-300">
+                                                <span className="text-xs px-2 py-1 rounded-sm bg-gray-600 text-gray-300">
                                                     Lot: {(campaign as any).contactBatch.offset}–{(campaign as any).contactBatch.offset + (campaign as any).contactBatch.limit - 1}
                                                 </span>
                                             )}
@@ -477,37 +477,37 @@ const RelanceCampaignsPage: React.FC = () => {
                                         <p className="text-xs text-gray-400 mb-2">Filter Criteria:</p>
                                         <div className="flex flex-wrap gap-2">
                                             {campaign.targetFilter.countries && (
-                                                <span className="text-xs px-2 py-1 bg-blue-900 text-blue-300 rounded">
+                                                <span className="text-xs px-2 py-1 bg-blue-900 text-blue-300 rounded-sm">
                                                     Countries: {campaign.targetFilter.countries.join(', ')}
                                                 </span>
                                             )}
                                             {campaign.targetFilter.gender && campaign.targetFilter.gender !== 'all' && (
-                                                <span className="text-xs px-2 py-1 bg-pink-900 text-pink-300 rounded">
+                                                <span className="text-xs px-2 py-1 bg-pink-900 text-pink-300 rounded-sm">
                                                     Gender: {campaign.targetFilter.gender}
                                                 </span>
                                             )}
                                             {campaign.targetFilter.professions && (
-                                                <span className="text-xs px-2 py-1 bg-purple-900 text-purple-300 rounded">
+                                                <span className="text-xs px-2 py-1 bg-purple-900 text-purple-300 rounded-sm">
                                                     Professions: {campaign.targetFilter.professions.length}
                                                 </span>
                                             )}
                                             {campaign.targetFilter.minAge && (
-                                                <span className="text-xs px-2 py-1 bg-green-900 text-green-300 rounded">
+                                                <span className="text-xs px-2 py-1 bg-green-900 text-green-300 rounded-sm">
                                                     Min Age: {campaign.targetFilter.minAge}
                                                 </span>
                                             )}
                                             {campaign.targetFilter.maxAge && (
-                                                <span className="text-xs px-2 py-1 bg-green-900 text-green-300 rounded">
+                                                <span className="text-xs px-2 py-1 bg-green-900 text-green-300 rounded-sm">
                                                     Max Age: {campaign.targetFilter.maxAge}
                                                 </span>
                                             )}
                                             {campaign.targetFilter.registrationDateFrom && (
-                                                <span className="text-xs px-2 py-1 bg-yellow-900 text-yellow-300 rounded">
+                                                <span className="text-xs px-2 py-1 bg-yellow-900 text-yellow-300 rounded-sm">
                                                     Reg From: {new Date(campaign.targetFilter.registrationDateFrom).toLocaleDateString()}
                                                 </span>
                                             )}
                                             {campaign.targetFilter.registrationDateTo && (
-                                                <span className="text-xs px-2 py-1 bg-yellow-900 text-yellow-300 rounded">
+                                                <span className="text-xs px-2 py-1 bg-yellow-900 text-yellow-300 rounded-sm">
                                                     Reg To: {new Date(campaign.targetFilter.registrationDateTo).toLocaleDateString()}
                                                 </span>
                                             )}
@@ -558,7 +558,7 @@ const RelanceCampaignsPage: React.FC = () => {
 
             {/* Campaign Details Modal */}
             {showDetailsModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setShowDetailsModal(false)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowDetailsModal(false)}>
                     <div className="bg-gray-800 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-2xl font-bold text-gray-100">Campaign Details</h2>
@@ -579,13 +579,13 @@ const RelanceCampaignsPage: React.FC = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-sm text-gray-400">Status</p>
-                                    <span className={`inline-block text-sm px-3 py-1 rounded mt-1 ${getStatusBadge(selectedCampaign.status)}`}>
+                                    <span className={`inline-block text-sm px-3 py-1 rounded-sm mt-1 ${getStatusBadge(selectedCampaign.status)}`}>
                                         {selectedCampaign.status}
                                     </span>
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-400">Type</p>
-                                    <span className={`inline-block text-sm px-3 py-1 rounded mt-1 ${getTypeBadge(selectedCampaign.type)}`}>
+                                    <span className={`inline-block text-sm px-3 py-1 rounded-sm mt-1 ${getTypeBadge(selectedCampaign.type)}`}>
                                         {selectedCampaign.type}
                                     </span>
                                 </div>
@@ -599,7 +599,7 @@ const RelanceCampaignsPage: React.FC = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-sm text-gray-400">Canal d'envoi</p>
-                                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded mt-1 ${getChannelBadge((selectedCampaign as any).channel)}`}>
+                                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-sm mt-1 ${getChannelBadge((selectedCampaign as any).channel)}`}>
                                         {channelIcon((selectedCampaign as any).channel)} {(selectedCampaign as any).channel || 'email'}
                                     </span>
                                 </div>
@@ -681,7 +681,7 @@ const RelanceCampaignsPage: React.FC = () => {
 
             {/* Campaign Analytics Modal */}
             {showStatsModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setShowStatsModal(false)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowStatsModal(false)}>
                     <div className="bg-gray-800 rounded-lg p-6 max-w-4xl w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-2xl font-bold text-gray-100 flex items-center gap-2">
@@ -705,10 +705,10 @@ const RelanceCampaignsPage: React.FC = () => {
                                 {/* Campaign Info */}
                                 <div className="flex items-center gap-3">
                                     <h3 className="text-xl font-semibold text-gray-100">{campaignStats.campaign.name}</h3>
-                                    <span className={`text-xs px-2 py-1 rounded ${getStatusBadge(campaignStats.campaign.status)}`}>
+                                    <span className={`text-xs px-2 py-1 rounded-sm ${getStatusBadge(campaignStats.campaign.status)}`}>
                                         {campaignStats.campaign.status}
                                     </span>
-                                    <span className={`text-xs px-2 py-1 rounded ${getTypeBadge(campaignStats.campaign.type)}`}>
+                                    <span className={`text-xs px-2 py-1 rounded-sm ${getTypeBadge(campaignStats.campaign.type)}`}>
                                         {campaignStats.campaign.type}
                                     </span>
                                 </div>
@@ -843,7 +843,7 @@ const RelanceCampaignsPage: React.FC = () => {
 
             {/* Recent Messages Modal */}
             {showMessagesModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={() => { setShowMessagesModal(false); setViewingEmailHtml(null); }}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowMessagesModal(false); setViewingEmailHtml(null); }}>
                     <div className="bg-gray-800 rounded-lg p-6 max-w-4xl w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-2xl font-bold text-gray-100 flex items-center gap-2">
@@ -919,7 +919,7 @@ const RelanceCampaignsPage: React.FC = () => {
                                                 {msg.renderedHtml && (
                                                     <button
                                                         onClick={() => setViewingEmailHtml(msg.renderedHtml!)}
-                                                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs flex items-center gap-1 transition-colors"
+                                                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-sm text-xs flex items-center gap-1 transition-colors"
                                                     >
                                                         <Eye size={12} />
                                                         View Email
@@ -953,7 +953,7 @@ const RelanceCampaignsPage: React.FC = () => {
                                             </div>
                                         </div>
                                         {msg.errorMessage && (
-                                            <div className="mt-2 text-xs text-red-400 bg-red-900/30 px-3 py-1 rounded">
+                                            <div className="mt-2 text-xs text-red-400 bg-red-900/30 px-3 py-1 rounded-sm">
                                                 Error: {msg.errorMessage}
                                             </div>
                                         )}
@@ -967,7 +967,7 @@ const RelanceCampaignsPage: React.FC = () => {
 
             {/* Campaign Targets Modal */}
             {showTargetsModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setShowTargetsModal(false)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowTargetsModal(false)}>
                     <div className="bg-gray-800 rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-2xl font-bold text-gray-100 flex items-center gap-2">
@@ -992,7 +992,7 @@ const RelanceCampaignsPage: React.FC = () => {
                                             <span className="text-sm font-medium text-gray-200">
                                                 Day {target.currentDay}/7
                                             </span>
-                                            <span className={`text-xs px-2 py-1 rounded ${getStatusBadge(target.status)}`}>
+                                            <span className={`text-xs px-2 py-1 rounded-sm ${getStatusBadge(target.status)}`}>
                                                 {target.status}
                                             </span>
                                         </div>
@@ -1044,7 +1044,7 @@ const RelanceCampaignsPage: React.FC = () => {
                             value={cancellationReason}
                             onChange={(e) => setCancellationReason(e.target.value)}
                             placeholder="Enter reason for cancellation..."
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             rows={3}
                         />
                     </div>

@@ -96,7 +96,7 @@ const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({
             {!embedded && <Header title="Fix CinetPay Withdrawals" />}
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
@@ -131,7 +131,7 @@ const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({
                 </motion.div>
 
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
@@ -179,7 +179,7 @@ const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({
                                                 <button
                                                     onClick={() => handleVerifyAndApply(tx)}
                                                     disabled={isActing}
-                                                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
+                                                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-sm hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
                                                 >
                                                     {isActing ? 'Verifying…' : '🔍 Verify & Apply'}
                                                 </button>

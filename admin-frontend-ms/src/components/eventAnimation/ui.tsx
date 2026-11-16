@@ -64,7 +64,7 @@ export function KV({ items }: { items: KVItem[] }) {
             {rows.map(([k, v], i) => (
                 <div key={i} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 px-3 py-2">
                     <dt className="sm:w-56 shrink-0 text-gray-400">{k}</dt>
-                    <dd className="text-gray-100 break-words min-w-0">{v}</dd>
+                    <dd className="text-gray-100 wrap-break-word min-w-0">{v}</dd>
                 </div>
             ))}
         </dl>

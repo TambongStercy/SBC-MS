@@ -158,7 +158,7 @@ function TransactionManagementPage() {
             <Header title="Payment Transaction Management" />
             <main className="max-w-full mx-auto py-6 px-4 lg:px-8">
                 {/* --- Filter Section --- */}
-                <div className="mb-6 p-4 bg-gray-800 rounded-lg shadow">
+                <div className="mb-6 p-4 bg-gray-800 rounded-lg shadow-sm">
                     <h3 className="text-lg font-semibold mb-3">Filters</h3>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         {/* Status Filter */}
@@ -169,7 +169,7 @@ function TransactionManagementPage() {
                                 name="status"
                                 value={filters.status || ''} // Controlled component
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             >
                                 <option value="">All Statuses</option>
                                 {Object.values(PaymentStatus).map(status => (
@@ -187,7 +187,7 @@ function TransactionManagementPage() {
                                 value={filters.userSearchTerm || ''}
                                 onChange={handleFilterChange}
                                 placeholder="Enter ID, Name or Phone"
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         {/* Min Amount Filter */}
@@ -200,7 +200,7 @@ function TransactionManagementPage() {
                                 value={filters.minAmount || ''} // Controlled component
                                 onChange={handleFilterChange}
                                 placeholder="e.g., 100"
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         {/* Max Amount Filter */}
@@ -213,7 +213,7 @@ function TransactionManagementPage() {
                                 value={filters.maxAmount || ''} // Controlled component
                                 onChange={handleFilterChange}
                                 placeholder="e.g., 5000"
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         {/* Currency Filter */}
@@ -224,7 +224,7 @@ function TransactionManagementPage() {
                                 name="currency"
                                 value={filters.currency || ''} // Controlled component
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             >
                                 <option value="">All Currencies</option>
                                 {CURRENCIES.map(curr => (
@@ -244,7 +244,7 @@ function TransactionManagementPage() {
                                 name="startDate"
                                 value={filters.startDate || ''} // Controlled component
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
                         {/* End Date Filter */}
@@ -256,7 +256,7 @@ function TransactionManagementPage() {
                                 name="endDate"
                                 value={filters.endDate || ''} // Controlled component
                                 onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-xs focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
                             />
                         </div>
 
@@ -264,7 +264,7 @@ function TransactionManagementPage() {
                         <div className="md:col-start-4 flex items-end justify-end pt-4">
                             <button
                                 onClick={handleSearch}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150 disabled:opacity-50"
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150 disabled:opacity-50"
                                 disabled={isLoading}
                             >
                                 {isLoading ? 'Searching...' : 'Search'}
@@ -277,10 +277,10 @@ function TransactionManagementPage() {
                 {isLoading ? (
                     <p>Loading transactions...</p>
                 ) : error ? (
-                    <div className="bg-red-800 text-white p-3 rounded">Error: {error}</div>
+                    <div className="bg-red-800 text-white p-3 rounded-sm">Error: {error}</div>
                 ) : (
                     <>
-                        <div className="shadow overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
+                        <div className="shadow-sm overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-700">
                                 <thead className="bg-gray-700">
                                     <tr>
@@ -331,7 +331,7 @@ function TransactionManagementPage() {
                                                     <button
                                                         onClick={() => handleViewUser(tx.userId)}
                                                         title="View User Details"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
                                                     >
                                                         View User
                                                     </button>
@@ -339,7 +339,7 @@ function TransactionManagementPage() {
                                                     <button
                                                         onClick={() => handleViewMetadata(tx.metadata)}
                                                         title="View Metadata"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-purple-500 transition ease-in-out duration-150 disabled:opacity-50"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-purple-500 transition ease-in-out duration-150 disabled:opacity-50"
                                                         disabled={!tx.metadata} // Disable if no metadata
                                                     >
                                                         View Metadata

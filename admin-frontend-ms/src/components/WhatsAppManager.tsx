@@ -306,7 +306,7 @@ const WhatsAppManager: React.FC = () => {
                                         <button
                                             onClick={handleForceReconnect}
                                             disabled={isReconnecting || status.isInitializing}
-                                            className="inline-flex items-center px-3 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-400 bg-transparent hover:bg-blue-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            className="inline-flex items-center px-3 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-400 bg-transparent hover:bg-blue-600 hover:text-white focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
                                             {isReconnecting ? (
                                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -321,7 +321,7 @@ const WhatsAppManager: React.FC = () => {
                                         <button
                                             onClick={handleLogout}
                                             disabled={isLoggingOut}
-                                            className="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-transparent hover:bg-red-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            className="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-transparent hover:bg-red-600 hover:text-white focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
                                             {isLoggingOut ? (
                                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -421,7 +421,7 @@ const WhatsAppManager: React.FC = () => {
                                     <button
                                         onClick={handleForceReconnect}
                                         disabled={isReconnecting}
-                                        className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-100 bg-red-800 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-900 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-100 bg-red-800 hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-900 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     >
                                         {isReconnecting ? (
                                             <Loader2 className="h-4 w-4 animate-spin mr-2" />

@@ -326,7 +326,7 @@ function ManualPaymentRecoveryPage() {
 
                 {/* Recovery Mode Toggle */}
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 1, ease: "easeInOut" }}
@@ -367,7 +367,7 @@ function ManualPaymentRecoveryPage() {
                 {/* Payment Intent Search Section - Only shown in 'find' mode */}
                 {recoveryMode === 'find' && (
                     <motion.div
-                        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
+                        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 1, ease: "easeInOut" }}
@@ -381,7 +381,7 @@ function ManualPaymentRecoveryPage() {
                                 <input
                                     type="text"
                                     placeholder="Session ID ou Gateway Payment ID..."
-                                    className="bg-gray-700 text-white placeholder-gray-400 rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-green-500"
+                                    className="bg-gray-700 text-white placeholder-gray-400 rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-green-500"
                                     value={searchReference}
                                     onChange={(e) => setSearchReference(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && handleSearchPaymentIntent()}
@@ -408,7 +408,7 @@ function ManualPaymentRecoveryPage() {
 
                         {/* Found Payment Intent Display */}
                         {foundPaymentIntent && (
-                            <div className="bg-gray-700 bg-opacity-50 rounded-lg p-4 mb-4">
+                            <div className="bg-gray-700/50 rounded-lg p-4 mb-4">
                                 <h3 className="text-lg font-semibold text-gray-100 mb-3 flex items-center">
                                     <CheckCircle className="mr-2 text-green-400" size={20} />
                                     Intention de Paiement Trouvée
@@ -492,7 +492,7 @@ function ManualPaymentRecoveryPage() {
                 {/* User Search Section - Only shown in 'create' mode */}
                 {recoveryMode === 'create' && (
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 1, ease: "easeInOut" }}
@@ -502,7 +502,7 @@ function ManualPaymentRecoveryPage() {
                     </h2>
                     
                     {selectedUser ? (
-                        <div className="flex items-center justify-between bg-gray-700 bg-opacity-50 rounded-lg p-4">
+                        <div className="flex items-center justify-between bg-gray-700/50 rounded-lg p-4">
                             <div className="flex items-center space-x-4">
                                 <img
                                     src={getAvatarUrl(selectedUser.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedUser.name || 'User')}&background=random`}
@@ -531,7 +531,7 @@ function ManualPaymentRecoveryPage() {
                                 <input
                                     type="text"
                                     placeholder="Rechercher par nom, email, ou numéro de téléphone..."
-                                    className="bg-gray-700 text-white placeholder-gray-400 rounded-lg pl-10 pr-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="bg-gray-700 text-white placeholder-gray-400 rounded-lg pl-10 pr-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                                     value={searchTerm}
                                     onChange={handleSearchChange}
                                 />
@@ -591,7 +591,7 @@ function ManualPaymentRecoveryPage() {
                 {/* Payment Intent Creation Form - Only shown in 'create' mode */}
                 {recoveryMode === 'create' && selectedUser && (
                     <motion.div
-                        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
+                        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 1, ease: "easeInOut" }}
@@ -599,7 +599,7 @@ function ManualPaymentRecoveryPage() {
                         <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-6">Créer Intention de Paiement</h2>
                         
                         {/* Pricing Information */}
-                        <div className="bg-blue-900 bg-opacity-30 border border-blue-500 rounded-lg p-4 mb-6">
+                        <div className="bg-blue-900/30 border border-blue-500 rounded-lg p-4 mb-6">
                             <div className="flex items-center mb-2">
                                 <DollarSign className="mr-2 text-blue-400" size={20} />
                                 <h3 className="text-lg font-semibold text-blue-100">Détails du Paiement</h3>
@@ -627,7 +627,7 @@ function ManualPaymentRecoveryPage() {
                                 <select
                                     value={formData.provider}
                                     onChange={(e) => handleFormChange('provider', e.target.value)}
-                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                                 >
                                     <option value="cinetpay">CinetPay (XAF)</option>
                                     <option value="feexpay">FeexPay (XAF)</option>
@@ -641,7 +641,7 @@ function ManualPaymentRecoveryPage() {
                                 <select
                                     value={formData.subscriptionType}
                                     onChange={(e) => handleFormChange('subscriptionType', e.target.value)}
-                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                                 >
                                     {getAvailableSubscriptionOptions(selectedUser?.activeSubscriptionTypes || []).map(option => (
                                         <option 
@@ -673,7 +673,7 @@ function ManualPaymentRecoveryPage() {
                                     type="text"
                                     value={formData.externalReference}
                                     onChange={(e) => handleFormChange('externalReference', e.target.value)}
-                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                                     placeholder="Original payment reference from provider (optional)"
                                 />
                             </div>
@@ -685,7 +685,7 @@ function ManualPaymentRecoveryPage() {
                             <textarea
                                 value={formData.adminNote}
                                 onChange={(e) => handleFormChange('adminNote', e.target.value)}
-                                className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                                 placeholder={`Example: User paid via ${formData.provider} but registration failed. Recovered payment with reference: ${formData.externalReference || 'ABC123'}`}
                                 rows={3}
                             />
@@ -698,7 +698,7 @@ function ManualPaymentRecoveryPage() {
                                     type="checkbox"
                                     checked={formData.autoMarkSucceeded}
                                     onChange={(e) => handleFormChange('autoMarkSucceeded', e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-sm"
                                 />
                                 <label className="ml-2 text-sm text-gray-300">
                                     Auto-mark as succeeded (recommended)
@@ -710,7 +710,7 @@ function ManualPaymentRecoveryPage() {
                                     type="checkbox"
                                     checked={formData.triggerWebhook}
                                     onChange={(e) => handleFormChange('triggerWebhook', e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-sm"
                                 />
                                 <label className="ml-2 text-sm text-gray-300">
                                     Activate lifetime subscription & process commissions (recommended)
@@ -744,7 +744,7 @@ function ManualPaymentRecoveryPage() {
                 {/* Results Section */}
                 {creationResult && (
                     <motion.div
-                        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700"
+                        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 1, ease: "easeInOut" }}
@@ -754,7 +754,7 @@ function ManualPaymentRecoveryPage() {
                             Payment Intent Created Successfully
                         </h2>
                         
-                        <div className="bg-gray-700 bg-opacity-50 rounded-lg p-4 space-y-3">
+                        <div className="bg-gray-700/50 rounded-lg p-4 space-y-3">
                             <div className="flex justify-between">
                                 <span className="text-gray-400">Session ID:</span>
                                 <span className="text-white font-mono">{creationResult.data.sessionId}</span>

@@ -27,7 +27,7 @@ export const FormModal: React.FC<{
     children: React.ReactNode;
     wide?: boolean;
 }> = ({ title, onClose, busy = false, footer, children, wide = false }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-start sm:items-center z-50 p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/75 flex justify-center items-start sm:items-center z-50 p-4 overflow-y-auto">
         <div className={`bg-gray-800 rounded-lg shadow-xl w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} my-auto`}>
             <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-700">
                 <h2 className="text-xl font-semibold text-white">{title}</h2>

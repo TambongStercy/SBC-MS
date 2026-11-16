@@ -8,7 +8,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ title, avatar, name }) => {
   return (
-    <header className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg border-b border-gray-700">
+    <header className="bg-gray-800/50 backdrop-blur-md shadow-lg border-b border-gray-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center py-4">
         {avatar && (
           <img

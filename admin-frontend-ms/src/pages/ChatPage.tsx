@@ -139,7 +139,7 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
             <div className="bg-gray-800 rounded-lg w-full max-w-sm mx-4 overflow-hidden max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 {loading ? (
                     <div className="p-8 flex flex-col items-center justify-center">
@@ -155,7 +155,7 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
                     </div>
                 ) : user ? (
                     <>
-                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-center">
+                        <div className="bg-linear-to-r from-indigo-600 to-purple-600 p-6 text-center">
                             <div className="w-24 h-24 mx-auto rounded-full border-4 border-white overflow-hidden bg-indigo-700">
                                 {user.avatar ? (
                                     <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
@@ -184,25 +184,25 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
                         <div className="p-4 space-y-3">
                             {user.email && (
                                 <div className="flex items-center gap-3 text-gray-300">
-                                    <Mail className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                                    <Mail className="w-5 h-5 text-gray-500 shrink-0" />
                                     <span className="truncate">{user.email}</span>
                                 </div>
                             )}
                             {formatPhone(user.phoneNumber) && (
                                 <div className="flex items-center gap-3 text-gray-300">
-                                    <Phone className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                                    <Phone className="w-5 h-5 text-gray-500 shrink-0" />
                                     <span>{formatPhone(user.phoneNumber)}</span>
                                 </div>
                             )}
                             {(user.city || user.country) && (
                                 <div className="flex items-center gap-3 text-gray-300">
-                                    <MapPin className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                                    <MapPin className="w-5 h-5 text-gray-500 shrink-0" />
                                     <span>{[user.city, user.country].filter(Boolean).join(', ')}</span>
                                 </div>
                             )}
                             {formatSubscriptions(user.activeSubscriptionTypes) && (
                                 <div className="flex items-start gap-3 text-gray-300">
-                                    <Star className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                    <Star className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
                                     <div>
                                         <p className="text-xs text-gray-500 mb-1">Active Subscriptions</p>
                                         <span className="text-green-400">{formatSubscriptions(user.activeSubscriptionTypes)}</span>
@@ -211,7 +211,7 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
                             )}
                             {user.balance !== undefined && (
                                 <div className="flex items-start gap-3 text-gray-300">
-                                    <Wallet className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
+                                    <Wallet className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
                                     <div>
                                         <p className="text-xs text-gray-500 mb-1">Balance</p>
                                         <span>{formatBalance(user.balance)}</span>
@@ -223,13 +223,13 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
                             )}
                             {user.createdAt && (
                                 <div className="flex items-center gap-3 text-gray-300">
-                                    <Calendar className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                                    <Calendar className="w-5 h-5 text-gray-500 shrink-0" />
                                     <span>Joined {new Date(user.createdAt).toLocaleDateString()}</span>
                                 </div>
                             )}
                             {(!user.activeSubscriptionTypes || user.activeSubscriptionTypes.length === 0) && (
                                 <div className="flex items-center gap-3 text-gray-500">
-                                    <Star className="w-5 h-5 flex-shrink-0" />
+                                    <Star className="w-5 h-5 shrink-0" />
                                     <span className="italic">No active subscriptions</span>
                                 </div>
                             )}
@@ -292,7 +292,7 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, conversati
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-800 rounded-lg w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
                 <div className="p-4 border-b border-gray-700 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-white">Forward {messageCount} message{messageCount > 1 ? 's' : ''}</h2>
@@ -308,7 +308,7 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, conversati
                             placeholder="Search conversations..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-indigo-500"
+                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
                         />
                     </div>
                 </div>
@@ -322,10 +322,10 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, conversati
                                 onClick={() => toggleConversation(conv._id)}
                                 className={`w-full flex items-center gap-3 p-4 hover:bg-gray-700 transition-colors text-left ${isSelected ? 'bg-gray-700' : ''}`}
                             >
-                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}>
+                                <div className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}>
                                     {isSelected && <Check className="w-3 h-3 text-white" />}
                                 </div>
-                                <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0 overflow-hidden">
+                                <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold shrink-0 overflow-hidden">
                                     {participant?.avatar ? (
                                         <img src={participant.avatar} alt={participant.name} className="w-full h-full rounded-full object-cover" />
                                     ) : (
@@ -381,7 +381,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-800 rounded-lg w-full max-w-sm mx-4 overflow-hidden">
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-4">
@@ -1252,7 +1252,7 @@ const ChatPage: React.FC = () => {
                             placeholder="Search conversations..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-indigo-500"
+                            className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
                         />
                     </div>
                     {conversationSelectMode && selectedConversationsSet.size > 0 && (
@@ -1311,7 +1311,7 @@ const ChatPage: React.FC = () => {
                                     {conversationSelectMode && (
                                         <button
                                             onClick={(e) => toggleConversationSelection(conversation._id, e)}
-                                            className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${isChecked ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}
+                                            className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 ${isChecked ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}
                                         >
                                             {isChecked && <Check className="w-3 h-3 text-white" />}
                                         </button>
@@ -1480,11 +1480,11 @@ const ChatPage: React.FC = () => {
                                             onLongPress={handleLongPressMessage}
                                             onClick={handleMessageClick}
                                             onContextMenu={(e) => !messageSelectMode && handleMessageContextMenu(e, message._id)}
-                                            className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${isMessageSelected ? 'bg-indigo-900/20 -mx-4 px-4 py-1 rounded' : ''}`}
+                                            className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${isMessageSelected ? 'bg-indigo-900/20 -mx-4 px-4 py-1 rounded-sm' : ''}`}
                                             selectMode={messageSelectMode}
                                         >
                                             {messageSelectMode && (
-                                                <button className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mr-2 self-center ${isMessageSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}>
+                                                <button className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 mr-2 self-center ${isMessageSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}>
                                                     {isMessageSelected && <Check className="w-3 h-3 text-white" />}
                                                 </button>
                                             )}
@@ -1562,7 +1562,7 @@ const ChatPage: React.FC = () => {
                                     value={newMessage}
                                     onChange={handleTyping}
                                     placeholder="Type a message..."
-                                    className="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded-full text-white placeholder-gray-400 focus:outline-none focus:border-indigo-500"
+                                    className="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded-full text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
                                 />
                                 <button
                                     type="submit"
@@ -1627,7 +1627,7 @@ const ChatPage: React.FC = () => {
 
             {/* New Conversation Modal */}
             {showNewChatModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-gray-800 rounded-lg w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
                         <div className="p-4 border-b border-gray-700 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-white">New Conversation</h2>
@@ -1644,7 +1644,7 @@ const ChatPage: React.FC = () => {
                                     placeholder="Search users by name or email..."
                                     value={userSearchQuery}
                                     onChange={(e) => handleUserSearch(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-indigo-500"
+                                    className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
                                     autoFocus
                                 />
                             </div>
@@ -1700,7 +1700,7 @@ const ChatPage: React.FC = () => {
                                             placeholder="e.g., CM, Cameroon..."
                                             value={countryFilter}
                                             onChange={(e) => handleAdvancedFilterChange(e.target.value, professionFilter, interestsFilter)}
-                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-sm text-white text-sm placeholder-gray-500 focus:outline-hidden focus:border-indigo-500"
                                         />
                                     </div>
 
@@ -1714,7 +1714,7 @@ const ChatPage: React.FC = () => {
                                             placeholder="e.g., Engineer, Teacher..."
                                             value={professionFilter}
                                             onChange={(e) => handleAdvancedFilterChange(countryFilter, e.target.value, interestsFilter)}
-                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-sm text-white text-sm placeholder-gray-500 focus:outline-hidden focus:border-indigo-500"
                                         />
                                     </div>
 
@@ -1728,7 +1728,7 @@ const ChatPage: React.FC = () => {
                                             placeholder="e.g., Football, Music, Tech..."
                                             value={interestsFilter}
                                             onChange={(e) => handleAdvancedFilterChange(countryFilter, professionFilter, e.target.value)}
-                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-sm text-white text-sm placeholder-gray-500 focus:outline-hidden focus:border-indigo-500"
                                         />
                                     </div>
 
@@ -1768,7 +1768,7 @@ const ChatPage: React.FC = () => {
                                         onClick={() => handleStartConversation(user)}
                                         className="w-full flex items-center gap-3 p-4 hover:bg-gray-700 transition-colors text-left"
                                     >
-                                        <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0 overflow-hidden">
+                                        <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold shrink-0 overflow-hidden">
                                             {user.avatar ? <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover" /> : <User className="w-5 h-5" />}
                                         </div>
                                         <div className="flex-1 min-w-0">

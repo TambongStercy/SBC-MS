@@ -114,7 +114,7 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
             {!embedded && <Header title="Fix MoneyFusion Withdrawals" />}
             <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
@@ -149,7 +149,7 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
                 </motion.div>
 
                 <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
@@ -197,14 +197,14 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
                                                         <button
                                                             onClick={() => setConfirmComplete(tx)}
                                                             disabled={isActing}
-                                                            className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
+                                                            className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-sm hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
                                                         >
                                                             {isActing ? 'Working…' : '✓ Mark Completed'}
                                                         </button>
                                                         <button
                                                             onClick={() => setShowFailFormFor(tx.transactionId)}
                                                             disabled={isActing}
-                                                            className="px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
+                                                            className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-sm hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
                                                         >
                                                             ✗ Mark Failed
                                                         </button>
@@ -216,7 +216,7 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
                                                             value={failReasonByTx[tx.transactionId] || ''}
                                                             onChange={(e) => setFailReasonByTx((m) => ({ ...m, [tx.transactionId]: e.target.value }))}
                                                             placeholder="Reason (required)"
-                                                            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white placeholder-gray-400"
+                                                            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded-sm text-xs text-white placeholder-gray-400"
                                                         />
                                                         <div className="flex gap-2">
                                                             <button
@@ -224,14 +224,14 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
                                                                     setShowFailFormFor(null);
                                                                     setFailReasonByTx((m) => ({ ...m, [tx.transactionId]: '' }));
                                                                 }}
-                                                                className="px-3 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600"
+                                                                className="px-3 py-1 text-xs bg-gray-700 text-gray-300 rounded-sm hover:bg-gray-600"
                                                             >
                                                                 Cancel
                                                             </button>
                                                             <button
                                                                 onClick={() => handleMarkFailed(tx)}
                                                                 disabled={isActing || !(failReasonByTx[tx.transactionId] || '').trim()}
-                                                                className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                                                className="px-3 py-1 text-xs bg-red-600 text-white rounded-sm hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
                                                             >
                                                                 {isActing ? 'Working…' : 'Confirm Fail'}
                                                             </button>
