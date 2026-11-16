@@ -27,15 +27,40 @@ apiClient.interceptors.request.use(
     }
 );
 
+const isUserServiceUrl = (url?: string) => /^\/?users(\/|$|\?)/.test(url || '');
+
+/**
+ * Only user-service decides that the admin's session is over. A 401 from any
+ * other service (sbclove-service running with a different JWT_SECRET did this
+ * on prod) used to sign the admin out of the whole panel the moment the page
+ * opened; now the token is checked with user-service first, and if it is still
+ * good the page just shows its own error.
+ */
+const sessionStillValid = async (): Promise<boolean> => {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return false;
+    try {
+        await axios.get(`${apiClient.defaults.baseURL}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 // Add response interceptor to handle global errors
 apiClient.interceptors.response.use(
     response => {
         console.log('API Response:', response.config.url, response.status, response.data);
         return response;
     },
-    error => {
+    async error => {
         if (error.response) {
             console.error('API Error Response:', error.config?.url, error.response.status, error.response.data);
+
+            if (error.response.status === 401 && !isUserServiceUrl(error.config?.url) && await sessionStillValid()) {
+                console.error('401 from a service other than user-service while the session is valid:', error.config?.url);
+                return Promise.reject(error);
+            }
 
             // Handle unauthorized access — clear creds, redirect cleanly to /login.
             // We return a non-resolving promise so downstream `.catch()` handlers in

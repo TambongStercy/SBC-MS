@@ -113,7 +113,10 @@ const config: IConfig = {
     },
 
     jwt: {
-        secret: process.env.JWT_SECRET || 'your_jwt_secret',
+        // No fallback: a secret other than user-service's makes every member and
+        // admin token a 401 (members see "fermé", the admin is signed out), so a
+        // missing JWT_SECRET must stop the service at boot instead.
+        secret: process.env.JWT_SECRET || '',
         expiresIn: process.env.JWT_EXPIRATION || '1d'
     },
 
