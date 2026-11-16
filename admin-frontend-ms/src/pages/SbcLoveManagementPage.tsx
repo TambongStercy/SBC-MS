@@ -51,14 +51,43 @@ function statusBadge(status: string) {
     return `px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${map[status] ?? 'bg-gray-700 text-gray-200'}`;
 }
 
+/** `value` once it has stopped changing for `ms` — so a search box doesn't fire a request per keystroke. */
+function useDebounced(value: string, ms = 350) {
+    const [v, setV] = useState(value);
+    useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
+    return v;
+}
+
+/** Server-side search: pseudo, name, e-mail, phone, city or id, across every profile (not just the page on screen). */
+function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+    return (
+        <div className="relative flex-1 min-w-[16rem] max-w-md">
+            <input
+                type="search"
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                placeholder={placeholder}
+                className="w-full bg-gray-700 text-gray-200 rounded px-3 py-1.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-pink-500"
+            />
+            {value && (
+                <button type="button" onClick={() => onChange('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-sm" aria-label="Effacer">×</button>
+            )}
+        </div>
+    );
+}
+
 // ─── Profiles Tab ────────────────────────────────────────────────────────────
 
 function ProfilesTab() {
     const { toasts, removeToast, showSuccess, showError } = useToast();
     const [profiles, setProfiles] = useState<LoveProfile[]>([]);
-    const [statusFilter, setStatusFilter] = useState<ProfileStatus | ''>('');
+    // Opens on the validation queue: new and edited profiles wait here.
+    const [statusFilter, setStatusFilter] = useState<ProfileStatus | ''>(ProfileStatus.PENDING);
+    const [search, setSearch] = useState('');
+    const term = useDebounced(search.trim());
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
 
     const [confirmModal, setConfirmModal] = useState<{
@@ -84,21 +113,23 @@ function ProfilesTab() {
         try {
             const res = await listProfiles({
                 status: statusFilter || undefined,
+                search: term || undefined,
                 page,
                 limit: 15,
             });
             setProfiles(res.data);
             setTotalPages(res.pagination.totalPages);
+            setTotal(res.pagination.total);
         } catch (err) {
             showError(handleError(err));
             setProfiles([]);
         } finally {
             setIsLoading(false);
         }
-    }, [statusFilter, page]);
+    }, [statusFilter, term, page, showError]);
 
     useEffect(() => { fetchProfiles(); }, [fetchProfiles]);
-    useEffect(() => { setPage(1); }, [statusFilter]);
+    useEffect(() => { setPage(1); }, [statusFilter, term]);
 
     function openConfirm(title: string, message: string, action: () => Promise<void>) {
         setConfirmModal({ title, message, onConfirm: action });
@@ -196,22 +227,32 @@ function ProfilesTab() {
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
             {/* Filters */}
-            <div className="flex gap-3 mb-4 flex-wrap">
+            <div className="flex gap-3 mb-4 flex-wrap items-center">
                 {(['', ProfileStatus.PENDING, ProfileStatus.APPROVED, ProfileStatus.REJECTED, ProfileStatus.SUSPENDED] as const).map(s => (
                     <button
                         key={s}
                         onClick={() => setStatusFilter(s)}
                         className={`px-3 py-1 rounded text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                     >
-                        {s === '' ? 'Tous' : s.charAt(0).toUpperCase() + s.slice(1)}
+                        {s === '' ? 'Tous' : s === ProfileStatus.PENDING ? 'À valider' : s.charAt(0).toUpperCase() + s.slice(1)}
                     </button>
                 ))}
+                <SearchBox value={search} onChange={setSearch} placeholder="Chercher : pseudo, nom, e-mail, téléphone, ville" />
+                {!isLoading && <span className="text-sm text-gray-400">{total} profil(s)</span>}
             </div>
 
             {isLoading ? (
                 <p className="text-gray-400 py-8 text-center">Chargement…</p>
             ) : profiles.length === 0 ? (
-                <p className="text-gray-400 py-8 text-center">Aucun profil trouvé.</p>
+                <p className="text-gray-400 py-8 text-center">
+                    {term
+                        ? (statusFilter === ProfileStatus.PENDING
+                            ? 'Aucun profil à valider ne correspond. Vérifie l’orthographe, ou cherche dans « Tous » (tous les statuts).'
+                            : 'Aucun profil ne correspond.')
+                        : statusFilter === ProfileStatus.PENDING
+                            ? 'Aucun profil à valider. Les nouveaux profils et les profils modifiés arrivent ici.'
+                            : 'Aucun profil trouvé.'}
+                </p>
             ) : (
                 <div className="overflow-x-auto rounded-lg">
                     <table className="min-w-full divide-y divide-gray-700">
@@ -369,6 +410,8 @@ function MembersTab() {
     const [rows, setRows] = useState<MemberRow[]>([]);
     const [stats, setStats] = useState<SbcLoveStats | null>(null);
     const [statusFilter, setStatusFilter] = useState<ProfileStatus | ''>('');
+    const [search, setSearch] = useState('');
+    const term = useDebounced(search.trim());
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(25);
     const [totalPages, setTotalPages] = useState(1);
@@ -378,7 +421,7 @@ function MembersTab() {
     const fetchRows = useCallback(async () => {
         setIsLoading(true);
         try {
-            const res = await listMembers({ status: statusFilter || undefined, page, limit });
+            const res = await listMembers({ status: statusFilter || undefined, search: term || undefined, page, limit });
             setRows(res.data);
             setTotalPages(res.pagination.totalPages);
             setTotal(res.pagination.total);
@@ -388,10 +431,10 @@ function MembersTab() {
         } finally {
             setIsLoading(false);
         }
-    }, [statusFilter, page, limit]);
+    }, [statusFilter, term, page, limit, showError]);
 
     useEffect(() => { fetchRows(); }, [fetchRows]);
-    useEffect(() => { setPage(1); }, [statusFilter, limit]);
+    useEffect(() => { setPage(1); }, [statusFilter, term, limit]);
     useEffect(() => { getStats().then(setStats).catch(() => setStats(null)); }, []);
 
     return (
@@ -421,6 +464,7 @@ function MembersTab() {
                         {st === '' ? 'Tous' : st.charAt(0).toUpperCase() + st.slice(1)}
                     </button>
                 ))}
+                <SearchBox value={search} onChange={setSearch} placeholder="Pseudo, nom, e-mail, téléphone, ville" />
                 <span className="ml-auto flex items-center gap-2 text-sm text-gray-400">
                     {total} membre(s)
                     <select
@@ -436,7 +480,7 @@ function MembersTab() {
             {isLoading ? (
                 <p className="text-gray-400 py-8 text-center">Chargement…</p>
             ) : rows.length === 0 ? (
-                <p className="text-gray-400 py-8 text-center">Aucun membre trouvé.</p>
+                <p className="text-gray-400 py-8 text-center">{term ? 'Aucun profil ne correspond.' : 'Aucun membre trouvé.'}</p>
             ) : (
                 <div className="overflow-x-auto rounded-lg">
                     <table className="min-w-full divide-y divide-gray-700">

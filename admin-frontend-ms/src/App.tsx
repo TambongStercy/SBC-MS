@@ -48,6 +48,7 @@ import EventListingsPage from './pages/EventListingsPage';
 import EventDisputesPage from './pages/EventDisputesPage';
 import EventCommissionsPage from './pages/EventCommissionsPage';
 import EventTicketsPage from './pages/EventTicketsPage';
+import EventAnimationPage from './pages/EventAnimationPage';
 import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from './contexts/SocketContext';
 
@@ -135,6 +136,8 @@ function App() {
             <Route path="/event/listings" element={<EventListingsPage />} />
             <Route path="/event/disputes" element={<EventDisputesPage />} />
             <Route path="/event/commissions" element={<EventCommissionsPage />} />
+            {/* Animation & Engagement (challenges, votes): ?tab=apercu|defis|a-verifier|demandes|votes|journal|exports */}
+            <Route path="/event/animation" element={<EventAnimationPage />} />
           </Route>
 
           <Route path="*" element={<Login />} />

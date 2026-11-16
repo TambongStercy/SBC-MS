@@ -33,7 +33,8 @@ import {
   ShieldCheck,
   FlaskConical,
   Video,
-  Percent
+  Percent,
+  PartyPopper
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -175,6 +176,7 @@ const SIDEBAR_GROUPS = [
       { name: "Billets", icon: Ticket, color: "#6366f1", path: "/event/tickets" },
       { name: "Marketplace revente", icon: TrendingUp, color: "#8b5cf6", path: "/event/listings" },
       { name: "Litiges", icon: MessageSquare, color: "#ef4444", path: "/event/disputes" },
+      { name: "Animation & votes", icon: PartyPopper, color: "#f472b6", path: "/event/animation" },
       { name: "Commissions", icon: Percent, color: "#0ea5e9", path: "/event/commissions" },
     ]
   },
@@ -343,7 +345,7 @@ function Sidebar() {
     );
   };
 
-  const isGroupActive = (groupItems: any[]) => {
+  const isGroupActive = (groupItems: { path: string }[]) => {
     return groupItems.some((item) => location.pathname === item.path);
   };
 
