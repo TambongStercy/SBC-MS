@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Logout01Icon, PanelLeftCloseIcon, PanelLeftOpenIcon } from '@hugeicons/core-free-icons';
 import { LOGOUT, type MenuGroup, type MenuItem } from '../navigation/menu';
-import { HOME_FOR } from '../lib/roles';
 import { Tooltip } from '../components/ui';
 import { cn } from '../lib/cn';
 import { BRAND_NAME, BrandLogo } from './BrandMark';
@@ -72,9 +71,8 @@ export function MenuSections({ groups, activePath, collapsed, onNavigate, large 
  * icons (248px / 64px; the choice is remembered by AppShell).
  */
 export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { groups, activePath, role } = useMenu();
-  // A limited role's home is its own page, not the dashboard it cannot open.
-  const home = (role && HOME_FOR[role]) || '/';
+  // A limited account's home is its first readable page, not a dashboard it cannot open.
+  const { groups, activePath, home } = useMenu();
   const toggleLabel = open ? 'Réduire le menu' : 'Agrandir le menu';
 
   const logout = (

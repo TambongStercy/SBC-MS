@@ -40,6 +40,8 @@ const RULES: Rule[] = [
     { pattern: /^\/api\/users\/admin\/users(\/|$)/, module: 'members' },
     { pattern: /^\/api\/users\/admin\/partners(\/|$)/, module: 'partners' },
     { pattern: /^\/api\/users\/admin\/leaderboard(-bonus)?(\/|$)/, module: 'leaderboard' },
+    // The Utilisateurs page's own counters.
+    { pattern: /^\/api\/users\/admin\/stats\/user-summary$/, module: 'members' },
     { pattern: /^\/api\/users\/admin\/(dashboard|stats)(\/|$)/, module: 'dashboard' },
 
     // --- payment-service ---

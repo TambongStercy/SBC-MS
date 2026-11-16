@@ -29,6 +29,7 @@ import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
 import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
 import UserFinancialAnalyticsPage from './pages/UserFinancialAnalyticsPage';
 import UserRolesManagement from './pages/UserRolesManagement';
+import TeamPage from './pages/TeamPage';
 import ChatPage from './pages/ChatPage';
 import StatusPage from './pages/StatusPage';
 import ImpactChallengePage from './pages/ImpactChallengePage';
@@ -89,6 +90,7 @@ function App() {
             <Route path="/withdrawals/history" element={<WithdrawalHistoryPage />} />
             <Route path="/user-analytics" element={<UserFinancialAnalyticsPage />} />
             <Route path="/user-roles" element={<UserRolesManagement />} />
+            <Route path="/equipe" element={<TeamPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/statuses" element={<StatusPage />} />
             <Route path="/impact-challenges" element={<ImpactChallengePage />} />

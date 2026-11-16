@@ -1,13 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { ComputerIcon, Download01Icon, Logout01Icon, Menu01Icon, Moon02Icon, Search01Icon, Sun03Icon } from '@hugeicons/core-free-icons';
+import { ComputerIcon, Download01Icon, Logout01Icon, Menu01Icon, Moon02Icon, Search01Icon, Sun03Icon, ViewIcon } from '@hugeicons/core-free-icons';
+import { useCurrentAccess } from '../hooks/usePermission';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, type ThemePreference } from '../contexts/theme';
 import { ROLE_LABEL } from '../lib/roles';
 import { LOGOUT } from '../navigation/menu';
 import { useInstallApp } from '../pwa/InstallApp';
 import {
-  Avatar, Button, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Tooltip,
+  Avatar, Badge, Button, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Tooltip,
 } from '../components/ui';
 import { BrandLogo } from './BrandMark';
 import { openCommandPalette } from './events';
@@ -44,9 +45,27 @@ function ThemeMenu() {
   );
 }
 
+/** "Lecture seule" when the current screen's module is readable but not changeable. */
+function ReadOnlyBadge() {
+  const { access } = useCurrentAccess();
+  if (access !== 'read') return null;
+  return (
+    <Tooltip content="Vous pouvez consulter cet espace, sans rien y changer.">
+      {/* A plain span takes the tooltip's ref (Badge does not forward one). */}
+      <span tabIndex={0} className="inline-flex shrink-0 cursor-default rounded-md focus-visible:outline-2 focus-visible:outline-primary" aria-label="Lecture seule : vous pouvez consulter cet espace, sans rien y changer.">
+        <Badge tone="warning" className="py-1" aria-hidden="true">
+          <HugeiconsIcon icon={ViewIcon} size={14} aria-hidden="true" />
+          Lecture seule
+        </Badge>
+      </span>
+    </Tooltip>
+  );
+}
+
 /**
  * Top bar: phone menu button and logo (phones), search / go to (Ctrl+K),
- * theme, and the account menu (name, role, install, log out).
+ * the "Lecture seule" badge on a read-only screen, theme, and the account
+ * menu (name, role, install, log out).
  */
 export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
   const navigate = useNavigate();
@@ -82,6 +101,8 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
         <span className="hidden flex-1 text-left md:inline">Rechercher ou aller à…</span>
         <span className="hidden items-center gap-1 md:flex"><Kbd>{isMac ? '⌘' : 'Ctrl'}</Kbd><Kbd>K</Kbd></span>
       </button>
+
+      <ReadOnlyBadge />
 
       <div className="flex items-center gap-1 md:ml-auto">
         <ThemeMenu />

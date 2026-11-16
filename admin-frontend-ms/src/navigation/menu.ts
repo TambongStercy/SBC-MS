@@ -34,12 +34,13 @@ import {
   Ticket02Icon,
   UserGroupIcon,
   UserMultipleIcon,
+  UserShield01Icon,
   UserSettings01Icon,
   Video01Icon,
   Wallet01Icon,
   Wrench01Icon,
 } from '@hugeicons/core-free-icons';
-import { canOpen } from '../lib/roles';
+import { canOpenPath, type Permissions } from '../lib/permissions';
 
 export interface MenuItem {
   label: string;
@@ -71,6 +72,7 @@ export const MENU: MenuGroup[] = [
     id: 'admin-tools',
     label: 'Outils admin',
     items: [
+      { label: 'Équipe', path: '/equipe', icon: UserShield01Icon },
       { label: 'Rôles', path: '/user-roles', icon: UserSettings01Icon },
       // One page with three tabs (FeexPay payins, MoneyFusion and CinetPay
       // withdrawals); the old per-provider paths still work by direct link.
@@ -158,17 +160,17 @@ export const MENU: MenuGroup[] = [
   },
 ];
 
-/** Not in a group: always last in the menus, open to every role. */
+/** Not in a group: always last in the menus, open to every account. */
 export const LOGOUT = { label: 'Déconnexion', path: '/logout' } as const;
 
 /**
- * The menu as this role may use it. Uses the same rule as the route guard
- * (lib/roles canOpen, role read from the session token), so a limited role
- * only sees pages it can actually open. Empty groups are dropped.
+ * The menu as this account may use it: an entry shows when its module is
+ * readable (lib/permissions, the same rule as the route guard). Empty groups
+ * are dropped.
  */
-export function menuFor(role: string | null): MenuGroup[] {
+export function menuFor(permissions: Permissions | null): MenuGroup[] {
   return MENU
-    .map(g => ({ ...g, items: g.items.filter(i => canOpen(role, i.path)) }))
+    .map(g => ({ ...g, items: g.items.filter(i => canOpenPath(permissions, i.path)) }))
     .filter(g => g.items.length > 0);
 }
 
@@ -181,16 +183,36 @@ export function activePathFor(groups: MenuGroup[], pathname: string): string | u
 }
 
 /**
- * Phone bottom bar, in order of preference; each role gets the first three it
- * can open, then "Menu". admin: Accueil, Utilisateurs, Retraits à valider;
- * withdrawal_admin: its two withdrawal pages; moderator: Vérifications vidéo.
+ * Phone bottom bar, in order of preference; each account gets the first three
+ * it can read, then "Menu". Super admin: Accueil, Utilisateurs, Retraits à
+ * valider; a withdrawals-only account: its two withdrawal pages; a video
+ * checker: Vérifications vidéo.
  */
-const SHORTCUT_PATHS = ['/', '/users', '/withdrawals/approvals', '/withdrawals/history', '/ads-network/manual-verifications'];
+const SHORTCUT_PATHS = [
+  '/',
+  '/users',
+  '/withdrawals/approvals',
+  '/ads-network/manual-verifications',
+  '/event/events',
+  '/withdrawals/history',
+  '/transactions',
+  '/partners',
+  '/products',
+  '/tombola',
+  '/impact-challenges',
+  '/sbclove',
+  '/ads-network',
+  '/relance/dashboard',
+  '/notifications',
+  '/chat',
+  '/settings',
+  '/equipe',
+];
 
-export function shortcutsFor(role: string | null): MenuItem[] {
+export function shortcutsFor(permissions: Permissions | null): MenuItem[] {
   const all = MENU.flatMap(g => g.items);
   return SHORTCUT_PATHS
-    .filter(p => canOpen(role, p))
+    .filter(p => canOpenPath(permissions, p))
     .map(p => all.find(i => i.path === p))
     .filter((i): i is MenuItem => !!i)
     .slice(0, 3);

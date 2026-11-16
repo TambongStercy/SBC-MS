@@ -31,6 +31,8 @@ is('PUT', '/api/users/admin/users/abc', 'members', 'write');
 is('PATCH', '/api/users/admin/users/abc/role', 'staff', 'write');
 is('POST', '/api/users/admin/users/abc/adjust-balance', 'finance', 'write');
 is('GET', '/api/users/admin/me/access', 'self', 'read');
+is('GET', '/api/users/admin/stats/user-summary', 'members', 'read');
+is('GET', '/api/users/admin/stats/monthly-activity', 'dashboard', 'read');
 is('PUT', '/api/users/admin/staff/abc', 'staff', 'write');
 is('POST', '/api/users/sub-admins', 'staff', 'write');
 is('GET', '/api/payments/admin/withdrawals/pending', 'withdrawals', 'read');

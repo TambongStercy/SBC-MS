@@ -12,13 +12,16 @@ export interface SegmentedOption<T extends string> {
  * A small set of mutually exclusive choices shown side by side (a view
  * switch, a period, a difficulty). Arrow keys move between choices.
  */
-export function Segmented<T extends string>({ value, onValueChange, options, label, size = 'md', className }: {
+export function Segmented<T extends string>({ value, onValueChange, options, label, size = 'md', fill = false, className }: {
   value: T;
   onValueChange: (v: T) => void;
   options: SegmentedOption<T>[];
   /** What is being chosen, for screen readers. */
   label: string;
-  size?: 'sm' | 'md';
+  /** 'lg' = 44px touch targets (choices in a form on phones). */
+  size?: 'sm' | 'md' | 'lg';
+  /** Choices share the whole width. */
+  fill?: boolean;
   className?: string;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -31,10 +34,10 @@ export function Segmented<T extends string>({ value, onValueChange, options, lab
     refs.current[next]?.focus();
   };
   return (
-    <div role="radiogroup" aria-label={label} className={cn('inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-control border border-line bg-surface-2 p-0.5', className)}>
+    <div role="radiogroup" aria-label={label} className={cn('inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-control border border-line bg-surface-2 p-0.5', fill && 'flex w-full', className)}>
       {options.map((o, i) => {
         const on = o.value === value;
-                return (
+        return (
           <button
             key={o.value}
             ref={el => { refs.current[i] = el; }}
@@ -47,7 +50,8 @@ export function Segmented<T extends string>({ value, onValueChange, options, lab
             className={cn(
               'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors',
               'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
-              size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-sm',
+              size === 'sm' ? 'h-7 px-2.5 text-xs' : size === 'lg' ? 'h-11 px-3 text-sm' : 'h-8 px-3 text-sm',
+              fill && 'min-w-0 flex-1 shrink',
               on ? 'bg-surface text-fg shadow-panel' : 'text-fg-muted hover:text-fg',
             )}
           >
