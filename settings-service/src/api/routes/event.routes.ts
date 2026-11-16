@@ -1,7 +1,7 @@
 import express from 'express';
 import { eventController } from '../controllers/event.controller';
 import { upload } from '../middleware/multer.config'; // Import the shared Multer instance
-import authenticate from '../middleware/auth.middleware';
+import authenticate, { requireAdmin } from '../middleware/auth.middleware';
 
 const router = express.Router();
 
@@ -21,7 +21,9 @@ router.get('/:id', eventController.getEventById);
 
 // --- Authenticated Event Routes (Admin Only?) ---
 // Apply authentication middleware for creating and deleting events
-router.use(authenticate); // Consider adding role-based authorization (e.g., authorize(['admin'])) if needed
+// Creating, editing and deleting community events is for the admin (any signed-in
+// member could until 2026-11-16).
+router.use(authenticate, requireAdmin);
 
 // POST /events - Create a new event
 // Uses multer.fields to handle multiple file fields

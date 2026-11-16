@@ -7,7 +7,7 @@ import { IPartnerTransaction, PartnerTransactionType } from '../database/models/
 import { UserRepository } from '../database/repositories/user.repository'; // To check if user exists
 import { paymentService } from './clients/payment.service.client'; // To record actual deposits
 import { SubscriptionType } from '../database/models/subscription.model';
-import { UserRole, IUser } from '../database/models/user.model'; // Import UserRole and IUser
+import { UserRole, IUser, ADMIN_CAPABLE_ROLES } from '../database/models/user.model'; // Import UserRole and IUser
 import logger from '../utils/logger';
 
 const log = logger.getLogger('PartnerService');
@@ -49,7 +49,7 @@ export class PartnerService {
     ): Promise<IPartner> {
         log.info(`Admin action: Attempting to set user ${targetUserIdString} as partner with pack ${pack}.`);
 
-        if (actingUserRole !== UserRole.ADMIN) {
+        if (!ADMIN_CAPABLE_ROLES.includes(actingUserRole)) {
             log.warn('Non-admin user attempted to set a user as partner. Denied.');
             throw new Error('Unauthorized: Only admins can set users as partners.');
         }
@@ -98,7 +98,7 @@ export class PartnerService {
     ): Promise<IPartner | null> {
         log.info(`Admin action: Attempting to remove partner status for user ${targetUserIdString}.`);
 
-        if (actingUserRole !== UserRole.ADMIN) {
+        if (!ADMIN_CAPABLE_ROLES.includes(actingUserRole)) {
             log.warn('Non-admin user attempted to remove partner status. Denied.');
             throw new Error('Unauthorized: Only admins can remove partner status.');
         }

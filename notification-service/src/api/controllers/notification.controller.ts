@@ -184,7 +184,7 @@ export class NotificationController {
         log.info('Received custom notification request:', req.body);
         try {
             // Check admin permissions
-            if (!req.user?.role || req.user.role !== 'ADMIN') {
+            if (!req.user?.role || !['admin', 'staff'].includes(req.user.role.toLowerCase())) { // routes also run requireAdmin
                 res.status(403).json({
                     success: false,
                     message: 'Permission denied. Admin access required.'
@@ -286,7 +286,7 @@ export class NotificationController {
         log.info('Received templated notification request:', req.body);
         try {
             // Check admin permissions
-            if (!req.user?.role || req.user.role !== 'ADMIN') {
+            if (!req.user?.role || !['admin', 'staff'].includes(req.user.role.toLowerCase())) { // routes also run requireAdmin
                 res.status(403).json({
                     success: false,
                     message: 'Permission denied. Admin access required.'
@@ -432,7 +432,7 @@ export class NotificationController {
         log.info('Received follow-up notification request');
         try {
             // Check admin permissions
-            if (req.user?.role !== 'ADMIN') { // Adjust role check as needed
+            if (!['admin', 'staff'].includes(String(req.user?.role).toLowerCase())) { // routes also run requireAdmin
                 res.status(403).json({ success: false, message: 'Permission denied. Admin access required.' });
                 return;
             }

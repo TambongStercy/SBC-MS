@@ -8,7 +8,7 @@ const adminRouter = Router(); // Create a separate router for admin routes
 // --- Admin Routes --- 
 // Apply authentication and admin authorization to the admin router
 adminRouter.use(authenticate); // Ensure user is logged in
-adminRouter.use(authorize(['admin'])); // Use authorize with the admin role
+adminRouter.use(authorize(['admin', 'staff'])); // Use authorize with the admin role
 
 // GET /api/flash-sales/admin - List all flash sales with pagination/filtering
 adminRouter.get('/', flashSaleController.adminListFlashSales);

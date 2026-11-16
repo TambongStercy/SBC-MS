@@ -1,7 +1,8 @@
 import { pushNewFilleul } from './push-notify';
 import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import bcrypt from 'bcrypt';
-import { IUser, UserRole, OtpPurpose } from '../database/models/user.model';
+import { IUser, UserRole, OtpPurpose, ADMIN_CAPABLE_ROLES } from '../database/models/user.model';
+import { effectivePermissions } from '../config/admin-modules';
 import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
@@ -207,6 +208,10 @@ const COMMISSION_RATES = {
 
 // Define partner commission rates (aligned with distributeSubscriptionCommission)
 const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
+
+/** adminPermissions comes back as a Map from a document, a plain object from lean(). */
+export const toPlainPermissions = (p: unknown): Record<string, unknown> =>
+    p instanceof Map ? Object.fromEntries(p) : ((p as Record<string, unknown>) || {});
 
 export class UserService {
     private subscriptionRepository = subscriptionRepository; // Inject repository
@@ -2134,7 +2139,7 @@ export class UserService {
         // --- Role Check ---
         // Staff roles sign in to the admin; each service still decides what a
         // role may call (user-service admin routes stay ADMIN-only).
-        const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
+        const STAFF_ROLES: string[] = ADMIN_CAPABLE_ROLES;
         if (!STAFF_ROLES.includes(user.role)) {
             log.warn(`Admin login attempt failed: User ${email} has no staff role.`);
             throw new Error('Access Denied: Not an admin user');
@@ -2192,7 +2197,7 @@ export class UserService {
             throw new Error('Invalid code');
         }
         const user = await userRepository.findById(userId);
-        const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
+        const STAFF_ROLES: string[] = ADMIN_CAPABLE_ROLES;
         if (!user || !STAFF_ROLES.includes(user.role) || user.blocked || user.deleted) {
             log.warn(`Admin login code refused for ${userId}: not an active staff account.`);
             throw new Error('Invalid code');
@@ -2214,7 +2219,10 @@ export class UserService {
         await userRepository.updateById(user._id, { token });
 
         log.info(`Admin user ${user.email} logged in successfully (ip ${ipAddress || 'unknown'}).`);
-        return { token, user: this.mapUserToResponse(user) };
+        // The admin shows only the modules the account may open; the gateway
+        // enforces the same map on every call (GET /users/admin/me/access refreshes it).
+        const permissions = effectivePermissions(user.role, toPlainPermissions(user.adminPermissions));
+        return { token, user: { ...this.mapUserToResponse(user), adminPermissions: permissions } as any };
     }
 
     /**

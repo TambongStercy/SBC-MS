@@ -241,6 +241,58 @@ removal (#314). Facts found while rebuilding — still true of the backend:
   UTC midnight and would end voting at the START of the last day, so the
   admin sends start/end of day in local time.
 
+### Admin access per module (2026-11-16)
+
+Rufus: staff accounts get, per module, no access / read-only / write.
+- **Modules:** `user-service/src/config/admin-modules.ts` (dashboard, members,
+  partners, leaderboard, finance, payments, withdrawals, payouts, boutique,
+  tombola, impactChallenge, sbclove, ads, adsProofs, events, relance,
+  notifications, communication, settings, whatsapp, staff).
+  - `admin` = super admin: every module in write, plus `staff` (the team),
+    which is never delegated.
+  - `staff` = `users.adminPermissions` `{ module: 'read'|'write' }`; a missing
+    module is not visible.
+  - The two older roles keep what they had through `effectivePermissions`:
+    withdrawal_admin → withdrawals, moderator → adsProofs.
+    `scripts/convert-staff-roles.ts` (dry run, `--apply`) moves them to `staff`.
+- **Enforced at the gateway**, `admin-allowlist.middleware.ts` + `admin-routes.ts`:
+  - The table maps path → module. GET = read, anything else = write, except the
+    read-only POSTs listed there (audience, previews).
+  - The path is normalised first (decoded, lowercased, `//` and `..` resolved),
+    because Express routes case-insensitively.
+  - Rights come from `GET /users/internal/:id/admin-access`, cached 60 s, and a
+    failed lookup refuses (503). A revoked account therefore keeps access for at
+    most a minute; tokens are not revocable.
+  - `ADMIN_ALLOWLIST` still applies to every admin call, staff included.
+  - An admin path missing from the table is super-admin only, so a new route
+    stays closed to staff until it is mapped.
+  - The table also covers admin routes without "/admin" in their path:
+    sub-admins, withdrawals, payouts (webhooks stay public), WhatsApp, settings
+    writes, storage, community events, notifications custom/templated/follow-up.
+- **Services** only check that the caller is admin-capable (`admin`/`staff`,
+  plus their older roles where they were accepted).
+  - Role changes stay super-admin only in user-service too: `PATCH
+    /users/admin/users/:id/role`, `/users/admin/staff*`, and a `role` field
+    sent to `PUT /users/admin/users/:id`.
+  - Mixed routes (members and admins on the same path, e.g. chat status
+    delete/admin categories) cannot be told apart at the gateway; their admin
+    actions stay `admin` only.
+- **Holes closed at the same time:**
+  - `/api/whatsapp/*` and `/api/notifications/whatsapp/qr*` had no authentication.
+  - `/api/notifications/send-email-attachment` had none either: anyone could
+    mail any attachment through our server. It now requires the service secret.
+  - Settings logo/CGU/presentation/formations/gateway-balances/admin-balance/
+    event-commissions writes, storage, and community-event writes were open to
+    any signed-in member.
+  - payment-service `/admin/recovery/*` was login-only.
+  - custom/templated/follow-up compared the role with `'ADMIN'` and refused
+    everyone.
+- **Checks:** `gateway-service/src/scripts/check-admin-permissions.ts` (route
+  table, path tricks, read-only/no-access/super admin, cache, fail-closed).
+- **Team API (super admin):** `GET /users/admin/staff`, `PUT /users/admin/staff/:id
+  {permissions}` (makes the member `staff`), `DELETE /users/admin/staff/:id`
+  (back to member); `GET /users/admin/me/access` for the signed-in account.
+
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
 
@@ -1545,7 +1597,7 @@ Gotchas:
 
 ### User model quick-reference (`sbc_users.users`)
 
-- `role`: `'user' | 'admin' | 'withdrawal_admin' | 'tester'` (single string, not array). Enum defined in `user-service/src/database/models/user.model.ts` as `UserRole`.
+- `role`: `'user' | 'admin' | 'staff' | 'withdrawal_admin' | 'moderator' | 'tester'` (single string, not array). Enum defined in `user-service/src/database/models/user.model.ts` as `UserRole`. `staff` carries `adminPermissions` (see "Admin access per module").
 - JWT payload shape (signed in user-service): `{ userId, id, email, role }` — both `userId` and `id` are the same ObjectId string. Callers should read `req.user.userId` (canonical) with `req.user.id` as fallback.
 - Admin panel bypasses various tier gates by checking `role === 'admin' || 'tester'` in JWT — e.g. the formation subscription filter in `settings-service/src/api/controllers/settings.controller.ts`.
 - Test a subscription-gated feature as a real non-admin user. Admin accounts falsely appear to "see everything" because bypass is intentional.

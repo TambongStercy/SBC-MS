@@ -9,7 +9,7 @@ const adminRouter = Router();
 // --- Admin Product Routes --- 
 // Define and mount admin routes FIRST
 adminRouter.use(authenticate);
-adminRouter.use(authorize(['admin']));
+adminRouter.use(authorize(['admin', 'staff']));
 
 adminRouter.get('/', productController.adminListProducts); // GET /api/products/admin
 adminRouter.patch('/:productId/status', productController.updateProductStatus); // PATCH /api/products/admin/:productId/status

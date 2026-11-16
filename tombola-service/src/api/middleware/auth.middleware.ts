@@ -71,7 +71,8 @@ export const optionalAuthenticate = (req: Request, _res: Response, next: NextFun
  */
 export const authorizeAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     // @ts-ignore Check if user exists and has the admin role
-    if (req.user && req.user.role === 'admin') {
+    // 'staff' = admin team member; the gateway checks its module and read/write (admin-routes.ts).
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'staff')) {
         log.debug(`Admin authorization successful for user: ${req.user.userId}`);
         next(); // User has the required role, proceed
     } else {

@@ -219,7 +219,15 @@ class AdminController {
             res.status(400).json({ success: false, message: 'Invalid User ID format' });
             return;
         }
-        const updateData = req.body;
+        const updateData = { ...req.body };
+        // Roles and admin rights change only through the super-admin routes
+        // (PATCH /users/:id/role, /staff/:id): a staff account with write on
+        // members must not be able to make anyone an admin, itself included.
+        delete updateData.adminPermissions;
+        if (updateData.role !== undefined && req.user?.role !== UserRole.ADMIN) {
+            res.status(403).json({ success: false, message: 'Seul un super admin peut changer un rôle.' });
+            return;
+        }
         log.info(`Admin request to update user: ${userId} with data:`, updateData);
         try {
             const updatedUser = await userService.adminUpdateUser(userId, updateData);

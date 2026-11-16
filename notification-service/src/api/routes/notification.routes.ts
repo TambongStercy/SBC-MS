@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { notificationController } from '../controllers/notification.controller';
-import { authenticate, authenticateServiceRequest } from '../middleware/auth.middleware';
+import { authenticate, authenticateServiceRequest, requireAdmin } from '../middleware/auth.middleware';
 import whatsappServiceFactory from '../../services/whatsapp-service-factory';
 import config from '../../config';
 
@@ -28,14 +28,16 @@ router.post('/contact-export-email', authenticateServiceRequest, (req, res, next
 // --- END NEW EMAIL ROUTES ---
 
 // Admin-only routes
-router.post('/custom', authenticate, (req, res) => notificationController.sendCustomNotification(req, res));
-router.post('/templated', authenticate, (req, res) => notificationController.sendTemplatedNotification(req, res));
+router.post('/custom', authenticate, requireAdmin, (req, res) => notificationController.sendCustomNotification(req, res));
+router.post('/templated', authenticate, requireAdmin, (req, res) => notificationController.sendTemplatedNotification(req, res));
 
 // Route for initiating follow-up campaigns (Admin only)
-router.post('/follow-up', authenticate, (req, res) => notificationController.sendFollowUpNotifications(req, res));
+router.post('/follow-up', authenticate, requireAdmin, (req, res) => notificationController.sendFollowUpNotifications(req, res));
 
 // NEW ROUTE: Send email with attachment
-router.post('/send-email-attachment', (req: Request, res: Response, next: NextFunction) =>
+// Service only (user-service's contact exports). It had no authentication: anyone
+// could have mailed any attachment through our server.
+router.post('/send-email-attachment', authenticateServiceRequest, (req: Request, res: Response, next: NextFunction) =>
     notificationController.sendEmailWithAttachment(req, res, next)
 );
 
@@ -43,7 +45,7 @@ router.post('/send-email-attachment', (req: Request, res: Response, next: NextFu
 router.get('/queue/stats', authenticateServiceRequest, (req, res) => notificationController.getQueueStats(req, res));
 
 // WhatsApp QR code endpoint
-router.get('/whatsapp/qr', (req, res) => {
+router.get('/whatsapp/qr', authenticate, requireAdmin, (req, res) => {
     // QR code functionality is only available for Bailey implementation
     if (config.whatsapp.enableCloudApi) {
         return res.status(404).json({
@@ -76,7 +78,7 @@ router.get('/whatsapp/qr', (req, res) => {
 });
 
 // WhatsApp QR code SSE stream
-router.get('/whatsapp/qr/stream', (req, res) => {
+router.get('/whatsapp/qr/stream', authenticate, requireAdmin, (req, res) => {
     // QR code functionality is only available for Bailey implementation
     if (config.whatsapp.enableCloudApi) {
         return res.status(404).json({

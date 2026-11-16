@@ -20,6 +20,7 @@ export enum UserRole {
     USER = 'user',
     ADMIN = 'admin', // Super admin with full access
     WITHDRAWAL_ADMIN = 'withdrawal_admin', // Sub-admin for managing withdrawals only
+    STAFF = 'staff', // Admin team member; the gateway checks its module (read/write)
 }
 
 // Define the expected structure of the JWT payload
@@ -166,7 +167,8 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction) =>
         });
     }
 
-    if (req.user.role !== 'admin') {
+    // 'staff' = admin team member; the gateway checks its module and read/write (admin-routes.ts).
+    if (req.user.role !== UserRole.ADMIN && req.user.role !== UserRole.STAFF) {
         return res.status(403).json({
             success: false,
             message: 'Admin access required'
@@ -189,7 +191,7 @@ export const requireWithdrawalAccess = (req: Request, res: Response, next: NextF
         });
     }
 
-    const allowedRoles = ['admin', 'withdrawal_admin'];
+    const allowedRoles = ['admin', 'withdrawal_admin', 'staff']; // 'staff' = admin team member; the gateway checks its module and read/write (admin-routes.ts).
 
     if (!allowedRoles.includes(req.user.role)) {
         log.warn(`Access denied for role '${req.user.role}' to withdrawal route. User: ${req.user.email}`);

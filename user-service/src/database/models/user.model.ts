@@ -8,7 +8,11 @@ export enum UserRole {
     WITHDRAWAL_ADMIN = 'withdrawal_admin', // Sub-admin for managing withdrawals only
     TESTER = 'tester', // Tester role for testing features
     MODERATOR = 'moderator', // Reviews the Ads video-proof queue only; no money pages
+    STAFF = 'staff', // Admin team member: per-module access in adminPermissions (config/admin-modules.ts)
 }
+
+/** Roles that may sign in to the admin. What each may do comes from config/admin-modules.ts. */
+export const ADMIN_CAPABLE_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.STAFF, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
 
 // Define User Sex options
 export enum UserSex {
@@ -106,6 +110,8 @@ export interface IUser extends Document {
     forceFlagged: boolean;
     isVerified: boolean;
     role: UserRole;
+    /** Per-module admin access for role 'staff': { module: 'read' | 'write' }. */
+    adminPermissions?: Record<string, 'read' | 'write'>;
     deleted: boolean;
     deletedAt?: Date;
     deletionReason?: string;
@@ -221,6 +227,7 @@ const UserSchema = new Schema<IUser>(
             default: UserRole.USER,
             required: true
         },
+        adminPermissions: { type: Map, of: { type: String, enum: ['read', 'write'] }, default: undefined },
         deleted: { type: Boolean, default: false, index: true },
         deletedAt: { type: Date },
         deletionReason: { type: String },

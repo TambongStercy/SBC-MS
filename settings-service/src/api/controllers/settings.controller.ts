@@ -446,7 +446,7 @@ export const getAdminBalance = async (req: Request, res: Response, next: NextFun
 
 // --- Formations Controllers ---
 
-const ADMIN_ROLES = new Set(['admin', 'tester']);
+const ADMIN_ROLES = new Set(['admin', 'staff', 'tester']);
 
 const isAdminCaller = (req: Request): boolean => {
     const user = (req as any).user;

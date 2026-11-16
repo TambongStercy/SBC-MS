@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { adminController } from '../controllers/admin.controller'; // Import admin controller
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { authorize } from '../middleware/rbac.middleware'; // Assuming RBAC middleware exists
-import { UserRole } from '../../database/models/user.model'; // Import UserRole enum
+import { UserRole, ADMIN_CAPABLE_ROLES } from '../../database/models/user.model'; // Import UserRole enum
+import { adminAccessController } from '../controllers/admin-access.controller';
 import { adminLimiter, strictLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
 
 const router = Router();
@@ -16,8 +17,18 @@ router.post('/login/verify-otp', strictLimiter, adminController.verifyAdminLogin
 // Apply authentication and admin authorization middleware AFTER public routes
 // Cast middleware to any to resolve potential type conflicts
 router.use(authenticate as any);
-router.use(authorize([UserRole.ADMIN]) as any);
+// Every account that signs in to the admin; the gateway decides which module
+// and whether read or write (config/admin-modules.ts). Team and role changes
+// below stay super-admin only here too.
+router.use(authorize(ADMIN_CAPABLE_ROLES) as any);
 router.use(adminLimiter); // Apply general admin limiter to all subsequent routes
+const superAdminOnly = authorize([UserRole.ADMIN]) as any;
+
+// --- Admin access (per-module rights) ---
+router.get('/me/access', adminAccessController.getMyAccess as any);
+router.get('/staff', superAdminOnly, adminAccessController.listStaff as any);
+router.put('/staff/:userId', superAdminOnly, adminAccessController.setStaffAccess as any);
+router.delete('/staff/:userId', superAdminOnly, adminAccessController.revokeStaff as any);
 
 // --- Dashboard Route ---
 router.get('/dashboard', adminController.getDashboardData as any); // GET /api/admin/dashboard
@@ -45,7 +56,7 @@ router.post('/users/:userId/cancel-activation-transfer', adminController.cancelA
 router.patch('/users/:userId/subscription', adminController.adminSetUserSubscription as any); // PATCH /api/admin/users/:userId/subscription
 
 // Route to set/update user role (e.g., assign tester role)
-router.patch('/users/:userId/role', adminController.setUserRole as any); // PATCH /api/admin/users/:userId/role
+router.patch('/users/:userId/role', superAdminOnly, adminController.setUserRole as any); // PATCH /api/admin/users/:userId/role
 
 // --- Subscription Management (Related to Users) ---
 router.get('/users/:userId/subscriptions', adminController.getUserSubscriptions as any); // GET /api/admin/users/:userId/subscriptions

@@ -1,3 +1,4 @@
+import { adminAccessController } from '../controllers/admin-access.controller';
 import { Router, Request, Response, NextFunction } from 'express';
 import {
     userController
@@ -6,7 +7,7 @@ import { authenticate, AuthenticatedRequest, authenticateServiceRequest } from '
 import { requireActiveSubscription } from '../middleware/requireActiveSubscription.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { updateLastIp } from '../middleware/ip-update.middleware';
-import { UserRole } from '../../database/models/user.model';
+import { UserRole, ADMIN_CAPABLE_ROLES } from '../../database/models/user.model';
 import { getExtraNumbers, initiateExtraNumberPurchase, addExtraNumber, removeExtraNumber, setFeaturedNumber, getSalesPage } from '../../services/products.service';
 import { recordConsents, exportUserData, deleteOwnAccount } from '../../services/privacy.service';
 import logger from '../../utils/logger'; // Import logger
@@ -54,6 +55,8 @@ serviceRouter.post('/:userId/withdrawal/success', (req, res) => userController.p
 
 // Withdrawals blocked after an email/phone change (payment-service checks it before every payout)
 serviceRouter.get('/:userId/withdrawal-lock', (req, res) => userController.getWithdrawalLock(req, res));
+// Gateway: per-module admin rights of a staff account (config/admin-modules.ts).
+serviceRouter.get('/:userId/admin-access', (req, res) => adminAccessController.getInternalAccess(req, res));
 
 // Internal route to get referrer IDs for commission
 serviceRouter.get('/:userId/referrers', (req, res) => userController.getReferrerIdsForCommission(req, res));
@@ -221,7 +224,7 @@ router.get('/leaderboard', requireActiveSubscription as any, (req, res) => userC
 router.get('/leaderboard/countries', requireActiveSubscription as any, (req, res) => userController.getCountryLeaderboard(req as AuthenticatedRequest, res));
 router.get('/leaderboard/filleuls', requireActiveSubscription as any, (req, res) => userController.getMyFilleulsLeaderboard(req as AuthenticatedRequest, res));
 // Admin-only past-month board. Registered above '/:userId' like its sibling.
-router.get('/admin/leaderboard', authorize([UserRole.ADMIN]) as any, (req, res) => userController.getLeaderboardForMonthAdmin(req as AuthenticatedRequest, res));
+router.get('/admin/leaderboard', authorize(ADMIN_CAPABLE_ROLES) as any, (req, res) => userController.getLeaderboardForMonthAdmin(req as AuthenticatedRequest, res));
 router.get('/get-products', requireActiveSubscription as any, (req, res) => userController.getUserProducts(req as AuthenticatedRequest, res));
 router.get('/get-product', requireActiveSubscription as any, (req, res) => userController.getUserProduct(req as AuthenticatedRequest, res));
 
