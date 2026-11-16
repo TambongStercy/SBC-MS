@@ -521,8 +521,13 @@ Sold beside CLASSIQUE/CIBLE; prices and commissions live in one file,
     `findSellablePack`).
   - Commissions: 5,000/2,500/1,250; from Ciblé 2,500/1,250/625; from Classique
     4,000/2,000/1,000 (USD at 500 F/$).
-  - The VIP group link is `WINNER_VIP_GROUP_LINK` (user-service `.env`),
-    hidden while empty.
+  - The VIP group link is set by the admin in Settings → General
+    (`settings.winnerVipGroupUrl`, WhatsApp links only, read by user-service via
+    `GET /settings/internal/winner-vip-link`, cached 1 min).
+    `WINNER_VIP_GROUP_LINK` (user-service `.env`) is only the fallback. The
+    button is hidden while both are empty. The public `GET /settings` leaves the
+    link out (admins only), and `PUT /settings` is admin-only since 2026-11-15:
+    before that, any signed-in member could rewrite the community group links.
 - **PRO and MISE_EN_AVANT** are for members only (an active CLASSIQUE/CIBLE),
   so the "any active subscription" gates can't be opened by an add-on alone.
   - Prices: PRO 2,000/month or 12,000/year; MISE_EN_AVANT 3,000/month.
@@ -1177,6 +1182,23 @@ Fastest sanity check after any new-service deploy: `curl localhost:<port>/health
 (direct, proves the process) AND `curl https://<domain>/api/<prefix>/...`
 (proves the gateway var + nginx). Different failures, same-looking symptom.
 
+### SBC Love on prod was outside the deploy (found 2026-11-15)
+
+`sbclove-service` answered on prod (`/api/sbclove/*`) but was in neither
+`ecosystem.config.js` nor `scripts/deploy-prod.sh`: it had been started by hand
+and was never rebuilt. Reported symptoms: the admin was signed out as soon as
+they opened SBC Love, and members saw « La session est fermée » on a Wednesday
+at 18h. A sbclove-service whose `JWT_SECRET` differs from user-service's causes
+both (every token gets a 401; the admin client logged out on any 401, and the
+member page took a failed status for "closed"), and reproduced them locally.
+Now: sbclove is in both deploy files (port 3009, health `/api/health`), boots
+only with a `JWT_SECRET` (no default), the admin logs out only when
+user-service also refuses the token, and the member page says it cannot check
+the session instead of "fermé". **First deploy:** check `pm2 ls` for the
+hand-started process (it holds port 3009) and stop it, make sure
+`sbclove-service/.env` has the same `JWT_SECRET` as `user-service/.env`, and run
+`npm install` there if `node_modules` is missing (see the section above).
+
 ### CinetPay per-country accounts
 
 CinetPay's new platform (which we use, at `api.cinetpay.co` with OAuth) issues
@@ -1513,7 +1535,7 @@ auto-runs as a no-op). The prod environment is at `/var/www/SBC-MS/`, preprod at
 | settings | `sbc_settings` | `sbc_settings_preprod` |
 | tombola | `sbc_tombola` | `sbc_tombola_preprod` |
 | chat | `sbc_chat` | `sbc_chat_preprod` |
-| sbclove | (not yet on prod) | `sbc_sbclove_preprod` |
+| sbclove | (runs on prod, DB name unverified) | `sbc_sbclove_preprod` |
 | advertising | `sbc_advertising` | (n/a) |
 
 Gotchas:

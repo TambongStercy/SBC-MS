@@ -9,6 +9,7 @@ const PENDING_GIVE_UP_MS = 15 * 60 * 1000;
 import logger from '../../utils/logger';
 import { NotFoundError, AppError, BadRequestError, ForbiddenError } from '../../utils/errors'; // Assuming custom error classes
 import axios from 'axios';
+import { isAdminRequest } from '../middleware/auth.middleware';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
@@ -30,7 +31,11 @@ export const getSettings = async (req: Request, res: Response, next: NextFunctio
             return res.status(200).json({ success: true, data: null, message: 'No settings configured yet.' });
         }
         log.info('Settings retrieved successfully');
-        res.status(200).json({ success: true, data: settings });
+        // GET /settings takes no login: the Winner VIP group link goes to admins only
+        // (Winner members get it from user-service's offers).
+        const data: Record<string, any> = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : { ...settings };
+        if (!isAdminRequest(req)) delete data.winnerVipGroupUrl;
+        res.status(200).json({ success: true, data });
     } catch (error) {
         log.error('Error fetching settings:', error);
         next(new AppError('Failed to retrieve settings', 500));
@@ -41,8 +46,18 @@ export const getSettings = async (req: Request, res: Response, next: NextFunctio
 export const updateSettings = async (req: Request, res: Response, next: NextFunction) => {
     log.info('Handling PUT /settings request', req.body);
     // Explicitly pick allowed fields to prevent unwanted updates
-    const { whatsappGroupUrl, telegramGroupUrl, discordGroupUrl } = req.body;
-    const updateData = { whatsappGroupUrl, telegramGroupUrl, discordGroupUrl };
+    const { whatsappGroupUrl, telegramGroupUrl, discordGroupUrl, winnerVipGroupUrl } = req.body;
+    const updateData = { whatsappGroupUrl, telegramGroupUrl, discordGroupUrl, winnerVipGroupUrl };
+
+    // An empty string clears the VIP link (the button disappears); anything else
+    // must be a WhatsApp link, since it is opened as-is from the member's pack card.
+    if (winnerVipGroupUrl !== undefined) {
+        const vip = String(winnerVipGroupUrl ?? '').trim();
+        if (vip && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|(www\.)?whatsapp\.com)\//i.test(vip)) {
+            return next(new BadRequestError('Le lien du groupe VIP doit être un lien WhatsApp (https://chat.whatsapp.com/…).'));
+        }
+        updateData.winnerVipGroupUrl = vip;
+    }
 
     // Remove undefined fields so they don't overwrite existing values with null
     Object.keys(updateData).forEach(key => updateData[key as keyof typeof updateData] === undefined && delete updateData[key as keyof typeof updateData]);
@@ -59,6 +74,17 @@ export const updateSettings = async (req: Request, res: Response, next: NextFunc
     } catch (error) {
         log.error('Error updating settings:', error);
         next(new AppError('Failed to update settings', 500));
+    }
+};
+
+// GET /settings/internal/winner-vip-link (service secret) — user-service shows it to Pack Winner members.
+export const getWinnerVipLink = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const settings = await settingsService.getSettings();
+        res.status(200).json({ success: true, data: { link: settings?.winnerVipGroupUrl || null } });
+    } catch (error) {
+        log.error('Error fetching the Winner VIP link:', error);
+        next(new AppError('Failed to retrieve the Winner VIP link', 500));
     }
 };
 

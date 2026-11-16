@@ -89,6 +89,15 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3011
       }
+    },
+    {
+      name: 'sbclove-service',
+      cwd: './sbclove-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3009
+      }
     }
   ]
 };

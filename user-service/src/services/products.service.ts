@@ -12,6 +12,7 @@ import {
 import { CRYPTO_SUBSCRIPTION_PRICING } from '../config/crypto-pricing';
 import { paymentService } from './clients/payment.service.client';
 import { notificationService } from './clients/notification.service.client';
+import { settingsService } from './clients/settings.service.client';
 import { emitContactsEvent } from './contacts-webhook.service';
 import { pushCommission } from './push-notify';
 import { isSamePhoneNumber } from '../utils/phone.utils';
@@ -106,11 +107,13 @@ export async function getOffers(userId: string, paymentMethod: PaymentMethod = '
     });
 
     const user = await UserModel.findById(userId).select('extraNumberSlots').lean();
+    // The admin sets the VIP group in Settings; WINNER_VIP_GROUP_LINK stays as the fallback.
+    const vipGroupLink = hasWinner ? ((await settingsService.getWinnerVipLink()) || config.winnerVipGroupLink || null) : null;
     return {
         paymentMethod, currency, active: own.types, packs, addons,
         winner: {
             owned: hasWinner,
-            vipGroupLink: hasWinner ? (config.winnerVipGroupLink || null) : null,
+            vipGroupLink,
             extraNumberSlots: (user as any)?.extraNumberSlots ?? 0,
         },
     };
