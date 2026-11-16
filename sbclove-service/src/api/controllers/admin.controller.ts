@@ -19,7 +19,8 @@ class AdminController {
         try {
             const { limit, skip, page } = pagination(req);
             const status = req.query.status as ProfileStatus | undefined;
-            const { items, total } = await adminService.listProfiles(status, limit, skip);
+            const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+            const { items, total } = await adminService.listProfiles(status, limit, skip, search);
             res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
         } catch (error) {
             this.handle(error, res, next);
@@ -57,7 +58,8 @@ class AdminController {
         try {
             const { limit, skip, page } = pagination(req);
             const status = req.query.status as ProfileStatus | undefined;
-            const { items, total } = await adminService.listMembers(status, limit, skip);
+            const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+            const { items, total } = await adminService.listMembers(status, limit, skip, search);
             res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
         } catch (error) {
             this.handle(error, res, next);

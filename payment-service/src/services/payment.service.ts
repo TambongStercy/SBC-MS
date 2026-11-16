@@ -27,6 +27,7 @@ import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.s
 import { currencyService } from './currency.service';
 import { ssoWebhookService } from './sso-webhook.service';
 import { buildCinetPayPayer } from '../utils/cinetpay-payer';
+import { checkCallbackUrl, callbackAllowlistEnforced } from '../utils/callback-allowlist';
 import * as sandbox from './sandbox.service';
 
 const host = 'https://sniperbuisnesscenter.com';
@@ -2871,6 +2872,16 @@ class PaymentService {
         if (!originatingService || !callbackUrl || typeof originatingService !== 'string' || typeof callbackUrl !== 'string') {
             log.warn(`Cannot notify originating service for PaymentIntent ${sessionId}: missing/invalid originatingService or callbackPath in metadata.`);
             return;
+        }
+
+        // The request below carries our service secret: never send it off-platform.
+        const verdict = checkCallbackUrl(callbackUrl);
+        if (!verdict.allowed) {
+            if (callbackAllowlistEnforced()) {
+                log.error(`Callback for PaymentIntent ${sessionId} NOT sent: ${verdict.reason} (${callbackUrl})`);
+                return;
+            }
+            log.warn(`Callback for PaymentIntent ${sessionId} would be blocked by the allowlist: ${verdict.reason} (${callbackUrl})`);
         }
 
         const callbackPayload = {

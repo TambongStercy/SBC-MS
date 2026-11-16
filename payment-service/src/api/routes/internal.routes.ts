@@ -15,6 +15,13 @@ router.use(authenticateServiceRequest);
 router.post('/deposit', (req, res, next) => paymentController.recordInternalDeposit(req, res, next));
 
 /**
+ * @route   GET /api/internal/intents/:sessionId
+ * @desc    Authoritative status + amount of a payment intent (callback verification)
+ * @access  Private (Service-to-Service)
+ */
+router.get('/intents/:sessionId', (req, res) => paymentController.getInternalIntent(req, res));
+
+/**
  * @route   POST /api/internal/withdrawal
  * @desc    Record an internal withdrawal (e.g., fee, chargeback, reversal)
  * @access  Private (Service-to-Service)

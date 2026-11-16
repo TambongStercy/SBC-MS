@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as adminController from '../controllers/admin.controller';
+import { adminRouter as animationAdminRoutes } from '../../modules/animation/routes';
 
 const router = Router();
 
@@ -7,10 +8,11 @@ router.get('/dashboard', adminController.dashboard);
 
 router.get('/organizers', adminController.listOrganizers);
 router.post('/organizers/:id/approve', adminController.approveOrganizer);
-router.post('/organizers/:id/suspend', adminController.suspendOrganizer);
 
 router.get('/events', adminController.listEvents);
 router.get('/events/:id', adminController.getEvent);
+router.post('/events/:id/approve', adminController.approveEvent);
+router.post('/events/:id/reject', adminController.rejectEvent);
 router.post('/events/:id/suspend', adminController.suspendEvent);
 router.post('/events/:id/cancel', adminController.cancelEvent);
 
@@ -28,5 +30,8 @@ router.post('/disputes/:id/resolve', adminController.resolveDispute);
 
 router.get('/commission-config', adminController.getCommissionConfigController);
 router.patch('/commission-config', adminController.bustCommissionConfigCache);
+
+// Animation & Engagement administration (stats, fraud review, change requests, refunds, audit).
+router.use('/animation', animationAdminRoutes);
 
 export default router;
