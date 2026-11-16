@@ -66,9 +66,9 @@ export default function EventOrdersPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Commandes" />
-            <div className="p-6 space-y-4">
+            <div className="space-y-4">
                 <div className="flex items-center gap-3 flex-wrap">
-                    <select value={status} onChange={(e) => setStatus(e.target.value as OrderStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as OrderStatus | '')} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">
                         <option value="">Tous les statuts</option>
                         <option value="PAID">Payées</option>
                         <option value="PENDING">En attente</option>
@@ -76,7 +76,7 @@ export default function EventOrdersPage() {
                         <option value="CANCELLED">Annulées</option>
                         <option value="REFUNDED">Remboursées</option>
                     </select>
-                    <select value={kind} onChange={(e) => setKind(e.target.value as OrderKind | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={kind} onChange={(e) => setKind(e.target.value as OrderKind | '')} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">
                         <option value="">Toutes les commandes</option>
                         <option value="PRIMARY">Vente primaire</option>
                         <option value="RESALE">Revente</option>
@@ -85,21 +85,21 @@ export default function EventOrdersPage() {
                         value={eventId}
                         onChange={(e) => setEventId(e.target.value)}
                         placeholder="ID événement"
-                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-56 font-mono bg-gray-700 text-white"
+                        className="border border-line-strong rounded-lg px-3 py-2 text-sm w-56 font-mono bg-surface text-fg"
                     />
                     <input
                         value={userId}
                         onChange={(e) => setUserId(e.target.value)}
                         placeholder="ID acheteur"
-                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-56 font-mono bg-gray-700 text-white"
+                        className="border border-line-strong rounded-lg px-3 py-2 text-sm w-56 font-mono bg-surface text-fg"
                     />
-                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
+                    <button onClick={load} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">Actualiser</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
+                    <div className="overflow-x-auto bg-surface rounded-xl border border-line">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-900/50 text-gray-300">
+                            <thead className="bg-background/50 text-fg-muted">
                                 <tr>
                                     <th className="px-4 py-2 text-left">Commande</th>
                                     <th className="px-4 py-2 text-left">Acheteur</th>
@@ -112,15 +112,15 @@ export default function EventOrdersPage() {
                             </thead>
                             <tbody>
                                 {items.length === 0 && (
-                                    <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Aucune commande.</td></tr>
+                                    <tr><td colSpan={7} className="px-4 py-6 text-center text-fg-muted">Aucune commande.</td></tr>
                                 )}
                                 {items.map((o) => (
-                                    <tr key={o._id} className="border-t border-gray-700">
+                                    <tr key={o._id} className="border-t border-line">
                                         <td className="px-4 py-2 text-xs font-mono">{o._id.slice(-8)}</td>
                                         <td className="px-4 py-2">
                                             <div className="font-medium">{o.holder.firstName} {o.holder.lastName}</div>
-                                            <div className="text-xs text-gray-400">{o.holder.phone}</div>
-                                            {o.holder.email && <div className="text-xs text-gray-400">{o.holder.email}</div>}
+                                            <div className="text-xs text-fg-muted">{o.holder.phone}</div>
+                                            {o.holder.email && <div className="text-xs text-fg-muted">{o.holder.email}</div>}
                                         </td>
                                         <td className="px-4 py-2 text-xs">
                                             <span className={`px-2 py-1 rounded-full ${o.kind === 'RESALE' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>{o.kind}</span>

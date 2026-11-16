@@ -10,16 +10,18 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import { ActivityOverviewData } from '../../pages/overViewPage'; // Adjust path if necessary
+import { useChartTheme } from '../../hooks/useChartTheme';
 
 interface ActivityOverviewChartProps {
     data: ActivityOverviewData[];
 }
 
 const ActivityOverviewChart: React.FC<ActivityOverviewChartProps> = ({ data }) => {
+    const chart = useChartTheme();
     if (!data || data.length === 0) {
         return (
-            <div className="text-gray-500 flex items-center justify-center h-full">
-                No activity data available.
+            <div className="text-fg-subtle flex items-center justify-center h-full">
+                Aucune donnée d'activité.
             </div>
         );
     }
@@ -28,7 +30,7 @@ const ActivityOverviewChart: React.FC<ActivityOverviewChartProps> = ({ data }) =
     const formattedData = data.map(item => {
         const [year, month] = item.month.split('-');
         const date = new Date(parseInt(year), parseInt(month) - 1);
-        const monthName = date.toLocaleString('default', { month: 'short' });
+        const monthName = date.toLocaleString('fr-FR', { month: 'short' });
         const shortYear = year.substring(2);
         return {
             ...item,
@@ -48,15 +50,16 @@ const ActivityOverviewChart: React.FC<ActivityOverviewChartProps> = ({ data }) =
                     bottom: 5,
                 }}
             >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="monthLabel" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chart.grid} />
+                <XAxis dataKey="monthLabel" tick={{ fontSize: 12, fill: chart.axis }} stroke={chart.grid} />
+                <YAxis tick={{ fontSize: 12, fill: chart.axis }} stroke={chart.grid} />
                 <Tooltip
-                    contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '4px' }}
-                    labelStyle={{ color: '#cbd5e1' }}
-                    itemStyle={{ color: '#9ca3af' }}
+                    contentStyle={chart.tooltip.contentStyle}
+                    labelStyle={chart.tooltip.labelStyle}
+                    itemStyle={chart.tooltip.itemStyle}
+                    cursor={{ fill: chart.cursor }}
                 />
-                <Legend wrapperStyle={{ fontSize: '14px' }} />
+                <Legend wrapperStyle={{ fontSize: '14px', color: chart.text }} />
                 <Bar dataKey="deposits" name="Dépôts" fill="#34d399" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="withdrawals" name="Retraits" fill="#f87171" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="payments" name="Paiements" fill="#60a5fa" radius={[4, 4, 0, 0]} />

@@ -53,22 +53,22 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/75 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm">
-                <h2 className="text-xl font-semibold text-white mb-4">{title}</h2>
-                <div className="text-gray-300 mb-6">{message}</div>
+            <div className="bg-surface p-6 rounded-lg w-full max-w-sm border border-line">
+                <h2 className="text-xl font-semibold text-fg mb-4">{title}</h2>
+                <div className="text-fg-muted mb-6">{message}</div>
                 {children}
                 <div className="flex justify-end gap-3">
                     <button
                         onClick={onCancel}
                         disabled={busy}
-                        className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 focus:ring-offset-gray-800 disabled:opacity-50"
+                        className="px-4 py-2 bg-surface-3 text-fg text-sm font-medium rounded-md hover:bg-surface-2 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-fg-subtle focus:ring-offset-surface disabled:opacity-50"
                     >
                         {cancelText}
                     </button>
                     <button
                         onClick={confirm}
                         disabled={busy}
-                        className={`px-4 py-2 text-white text-sm font-medium rounded-md shadow-xs focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 ${CONFIRM_STYLES[variant]}`}
+                        className={`px-4 py-2 text-white text-sm font-medium rounded-md focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 ${CONFIRM_STYLES[variant]}`}
                     >
                         {busy ? 'Traitement…' : confirmText}
                     </button>

@@ -61,7 +61,7 @@ const AnnonceurAvatar: React.FC<{ avatar?: string; name?: string }> = ({ avatar,
 
     if (!avatar || failed) {
         return (
-            <div className="w-11 h-11 rounded-full shrink-0 bg-gray-700 grid place-items-center text-sm font-semibold text-gray-300">
+            <div className="w-11 h-11 rounded-full shrink-0 bg-surface-2 grid place-items-center text-sm font-semibold text-fg-muted">
                 {initials}
             </div>
         );
@@ -72,7 +72,7 @@ const AnnonceurAvatar: React.FC<{ avatar?: string; name?: string }> = ({ avatar,
             src={getFileUrl(avatar)}
             alt=""
             onError={() => setFailed(true)}
-            className="w-11 h-11 rounded-full shrink-0 object-cover bg-gray-700"
+            className="w-11 h-11 rounded-full shrink-0 object-cover bg-surface-2"
         />
     );
 };
@@ -146,15 +146,15 @@ const AdsNetworkReviewPage: React.FC = () => {
     return (
         <div className="flex-1 overflow-auto relative z-10">
             <Header title="SBC Ads Network — Validation des campagnes" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+            <main>
                 <MediaChangeQueue showSuccess={showSuccess} showError={showError} />
                 <motion.div
-                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-surface rounded-xl p-6 border border-line mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
-                    <div className="bg-amber-900/20 border border-amber-700 rounded-lg p-4 mb-4">
-                        <p className="text-sm text-amber-100">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4 mb-4">
+                        <p className="text-sm text-amber-800 dark:text-amber-100">
                             <strong>Ce que vous validez.</strong> Une campagne approuvée est publiée
                             sur le statut WhatsApp personnel de centaines de diffuseurs, sous leur
                             propre nom. Vérifiez la créative, la légende et les coordonnées de contact
@@ -164,30 +164,30 @@ const AdsNetworkReviewPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-between">
-                        <div className="text-sm text-gray-400">
+                        <div className="text-sm text-fg-muted">
                             {loading
                                 ? 'Chargement…'
                                 : `${total} campagne${total === 1 ? '' : 's'} en attente de validation`}
                         </div>
                         <button
                             onClick={fetchData}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600"
+                            className="flex items-center gap-2 px-4 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3"
                         >
                             <RefreshCw className="w-4 h-4" />
-                            Rafraîchir
+                            Actualiser
                         </button>
                     </div>
 
                     {error && (
-                        <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-200 mt-4">{error}</div>
+                        <div className="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-3 text-red-800 dark:text-red-200 mt-4">{error}</div>
                     )}
                 </motion.div>
 
                 {loading ? (
                     <div className="p-12 flex justify-center"><Loader name="Chargement des campagnes…" /></div>
                 ) : campaigns.length === 0 ? (
-                    <div className="bg-gray-800/50 backdrop-blur-md rounded-xl border border-gray-700 p-12 text-center text-gray-400">
-                        <ShieldCheck className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                    <div className="bg-surface rounded-xl border border-line p-12 text-center text-fg-muted">
+                        <ShieldCheck className="w-12 h-12 mx-auto mb-3 text-fg-subtle" />
                         <p>Aucune campagne en attente.</p>
                         <p className="text-xs mt-2">Les campagnes soumises par les annonceurs apparaîtront ici.</p>
                     </div>
@@ -198,7 +198,7 @@ const AdsNetworkReviewPage: React.FC = () => {
                             return (
                                 <motion.div
                                     key={c._id}
-                                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                                    className="bg-surface rounded-xl border border-line overflow-hidden"
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                 >
@@ -221,7 +221,7 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                 href={c.previewUrl ?? c.landingPageUrl}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="mt-3 inline-flex items-center gap-1 text-xs text-blue-300 hover:text-blue-200"
+                                                className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200"
                                             >
                                                 <ExternalLink className="w-3 h-3" />
                                                 Voir la page d'atterrissage
@@ -236,8 +236,8 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                         name={c.advertiser?.name}
                                                     />
                                                     <div className="min-w-0">
-                                                        <h3 className="text-xl font-semibold text-gray-100">{c.title}</h3>
-                                                        <p className="text-sm text-gray-400 mt-1 wrap-break-word">
+                                                        <h3 className="text-xl font-semibold text-fg">{c.title}</h3>
+                                                        <p className="text-sm text-fg-muted mt-1 wrap-break-word">
                                                             {c.advertiser?.name || 'Annonceur inconnu'}
                                                             {c.advertiser?.phoneNumber ? ` · ${c.advertiser.phoneNumber}` : ''}
                                                             {c.advertiser?.email ? ` · ${c.advertiser.email}` : ''}
@@ -245,57 +245,57 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                     </div>
                                                 </div>
                                                 {c.isFirstCampaign ? (
-                                                    <span className="flex items-center gap-1 shrink-0 px-3 py-1 rounded-full text-xs bg-amber-900/40 text-amber-200 border border-amber-700">
+                                                    <span className="flex items-center gap-1 shrink-0 px-3 py-1 rounded-full text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
                                                         <AlertTriangle className="w-3 h-3" />
                                                         Première campagne
                                                     </span>
                                                 ) : (
-                                                    <span className="shrink-0 px-3 py-1 rounded-full text-xs bg-gray-700 text-gray-300">
+                                                    <span className="shrink-0 px-3 py-1 rounded-full text-xs bg-surface-2 text-fg-muted">
                                                         {c.priorApprovedCampaigns} campagne(s) déjà validée(s)
                                                     </span>
                                                 )}
                                             </div>
 
                                             {c.description && (
-                                                <p className="text-sm text-gray-300 mt-3 whitespace-pre-wrap">{c.description}</p>
+                                                <p className="text-sm text-fg-muted mt-3 whitespace-pre-wrap">{c.description}</p>
                                             )}
 
                                             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                                                 <div>
-                                                    <div className="text-gray-500 text-xs">Budget</div>
-                                                    <div className="text-gray-100">{formatXaf(c.amountPaid)}</div>
+                                                    <div className="text-fg-subtle text-xs">Budget</div>
+                                                    <div className="text-fg">{formatXaf(c.amountPaid)}</div>
                                                 </div>
                                                 <div>
-                                                    <div className="text-gray-500 text-xs">Vues uniques visées</div>
-                                                    <div className="text-gray-100">{c.targetUniqueViews.toLocaleString('fr-FR')}</div>
+                                                    <div className="text-fg-subtle text-xs">Vues uniques visées</div>
+                                                    <div className="text-fg">{c.targetUniqueViews.toLocaleString('fr-FR')}</div>
                                                 </div>
                                                 <div className="col-span-2">
-                                                    <div className="text-gray-500 text-xs">Ciblage</div>
-                                                    <div className="text-gray-100">{targetingSummary(c)}</div>
+                                                    <div className="text-fg-subtle text-xs">Ciblage</div>
+                                                    <div className="text-fg">{targetingSummary(c)}</div>
                                                 </div>
                                                 {/* Whether this targeting can actually deliver what was
                                                     bought. Rufus: an admin must see the shortfall BEFORE
                                                     approving, so they can tell the annonceur to widen it
                                                     instead of validating a campaign that will sit at zero. */}
                                                 <div className="col-span-2">
-                                                    <div className="text-gray-500 text-xs">Audience disponible</div>
+                                                    <div className="text-fg-subtle text-xs">Audience disponible</div>
                                                     {c.reach === null ? (
-                                                        <div className="text-gray-400">Inconnue — l'estimation a échoué</div>
+                                                        <div className="text-fg-muted">Inconnue — l'estimation a échoué</div>
                                                     ) : c.reach.matching === 0 ? (
-                                                        <div className="rounded-md bg-red-500/10 border border-red-500/40 px-2 py-1.5 text-red-300">
+                                                        <div className="rounded-md bg-red-500/10 border border-red-500/40 px-2 py-1.5 text-red-700 dark:text-red-300">
                                                             Aucun diffuseur ne correspond à ce ciblage. La campagne ne
                                                             pourra être proposée à personne — demandez à l'annonceur
                                                             d'élargir ses critères avant de valider.
                                                         </div>
                                                     ) : c.reach.sufficient === false ? (
-                                                        <div className="rounded-md bg-amber-500/10 border border-amber-500/40 px-2 py-1.5 text-amber-300">
+                                                        <div className="rounded-md bg-amber-500/10 border border-amber-500/40 px-2 py-1.5 text-amber-800 dark:text-amber-300">
                                                             {c.reach.matching} diffuseur(s), soit environ{' '}
                                                             {c.reach.projectedUniqueViews.toLocaleString('fr-FR')} vues —
                                                             insuffisant pour les {c.targetUniqueViews.toLocaleString('fr-FR')}{' '}
                                                             vues achetées. Demandez-lui d'élargir le ciblage.
                                                         </div>
                                                     ) : (
-                                                        <div className="text-green-300">
+                                                        <div className="text-green-600 dark:text-green-300">
                                                             {c.reach.matching} diffuseur(s), soit environ{' '}
                                                             {c.reach.projectedUniqueViews.toLocaleString('fr-FR')} vues
                                                             disponibles.
@@ -303,8 +303,8 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                     )}
                                                 </div>
                                                 <div className="col-span-2">
-                                                    <div className="text-gray-500 text-xs">Contact affiché aux prospects</div>
-                                                    <div className="text-gray-100">
+                                                    <div className="text-fg-subtle text-xs">Contact affiché aux prospects</div>
+                                                    <div className="text-fg">
                                                         {[c.contactWhatsapp && `WhatsApp ${c.contactWhatsapp}`,
                                                         c.contactPhone && `Tél ${c.contactPhone}`,
                                                         c.websiteUrl].filter(Boolean).join(' · ') || '—'}
@@ -314,10 +314,10 @@ const AdsNetworkReviewPage: React.FC = () => {
 
                                             {c.suggestedCaption && (
                                                 <div className="mt-4">
-                                                    <div className="text-gray-500 text-xs mb-1">
+                                                    <div className="text-fg-subtle text-xs mb-1">
                                                         Légende proposée aux diffuseurs (le lien de suivi y sera ajouté)
                                                     </div>
-                                                    <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3 text-sm text-gray-200 whitespace-pre-wrap">
+                                                    <div className="bg-background/60 border border-line rounded-lg p-3 text-sm text-fg whitespace-pre-wrap">
                                                         {c.suggestedCaption}
                                                     </div>
                                                 </div>
@@ -331,19 +331,19 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                         rows={3}
                                                         autoFocus
                                                         placeholder="Motif du refus — il est envoyé tel quel à l'annonceur. Soyez précis sur ce qu'il doit corriger."
-                                                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                                     />
                                                     <div className="flex gap-2 mt-2">
                                                         <button
                                                             onClick={() => handleReject(c)}
                                                             disabled={isActing || !rejectReason.trim()}
-                                                            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                                            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
                                                         >
                                                             {isActing ? 'Envoi…' : 'Confirmer le refus'}
                                                         </button>
                                                         <button
                                                             onClick={() => { setRejectingId(null); setRejectReason(''); }}
-                                                            className="px-4 py-2 text-sm bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600"
+                                                            className="px-4 py-2 text-sm bg-surface-2 text-fg rounded-lg hover:bg-surface-3"
                                                         >
                                                             Annuler
                                                         </button>
@@ -354,14 +354,14 @@ const AdsNetworkReviewPage: React.FC = () => {
                                                     <button
                                                         onClick={() => setConfirmApprove(c)}
                                                         disabled={isActing}
-                                                        className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-600"
+                                                        className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600"
                                                     >
                                                         {isActing ? 'Traitement…' : 'Approuver'}
                                                     </button>
                                                     <button
                                                         onClick={() => { setRejectingId(c._id); setRejectReason(''); }}
                                                         disabled={isActing}
-                                                        className="px-4 py-2 text-sm bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 disabled:opacity-50"
+                                                        className="px-4 py-2 text-sm bg-surface-2 text-fg rounded-lg hover:bg-surface-3 disabled:opacity-50"
                                                     >
                                                         Refuser
                                                     </button>

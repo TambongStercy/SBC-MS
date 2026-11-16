@@ -31,7 +31,7 @@ export default function ExportsTab() {
                 </select>
             </div>
             <Card>
-                <p className="text-xs text-gray-400 mb-2">
+                <p className="text-xs text-fg-muted mb-2">
                     {challengeId ? 'Exports du défi choisi.' : eventId ? 'Exports de l’événement choisi.' : 'Exports de tout le module.'}
                     {!challengeId && ' Le classement en direct demande de choisir un défi.'}
                 </p>

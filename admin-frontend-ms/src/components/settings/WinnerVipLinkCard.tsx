@@ -30,21 +30,21 @@ const WinnerVipLinkCard: React.FC<{ value?: string; onSaved: (settings: ISetting
     };
 
     return (
-        <form onSubmit={save} className="bg-gray-800 shadow-sm rounded-lg p-6 space-y-3 mb-8">
+        <form onSubmit={save} className="bg-surface border border-line rounded-lg p-6 space-y-3 mb-8">
             <div>
-                <h3 className="text-lg font-semibold text-white">Pack Winner : groupe WhatsApp VIP</h3>
-                <p className="text-sm text-gray-400">
+                <h3 className="text-lg font-semibold text-fg">Pack Winner : groupe WhatsApp VIP</h3>
+                <p className="text-sm text-fg-muted">
                     Les abonnés Winner voient le bouton « Rejoindre le groupe VIP » sur leur pack et dans leur profil dès que ce lien est enregistré. Videz le champ pour retirer le bouton.
                 </p>
             </div>
-            <label htmlFor="winnerVipGroupUrl" className="block text-sm font-medium text-gray-300">Lien d'invitation du groupe</label>
+            <label htmlFor="winnerVipGroupUrl" className="block text-sm font-medium text-fg-muted">Lien d'invitation du groupe</label>
             <input
                 id="winnerVipGroupUrl"
                 type="url"
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
                 placeholder="https://chat.whatsapp.com/…"
-                className="w-full rounded-md border border-gray-600 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-indigo-500 focus:outline-hidden"
+                className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-fg placeholder-fg-subtle focus:border-indigo-500 focus:outline-hidden"
             />
             <button
                 type="submit"

@@ -63,7 +63,7 @@ export function AppShell() {
             initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="shell-content mx-auto w-full max-w-[1400px] overflow-x-auto px-4 py-6 md:px-8 md:py-8"
+            className="shell-content w-full overflow-x-auto px-3 py-4 md:px-6 md:py-6"
           >
             <Outlet />
           </motion.div>

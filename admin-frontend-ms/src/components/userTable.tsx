@@ -41,7 +41,7 @@ function UserTable() {
         console.log("Fetch aborted");
       } else {
         console.error("Error fetching data:", err);
-        setError("Failed to load data");
+        setError("Impossible de charger les données");
       }
     } finally {
       setLoading(false);
@@ -68,64 +68,64 @@ function UserTable() {
 
   return (
     <motion.div
-      className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
+      className="bg-surface rounded-xl p-6 border border-line mb-8"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 1, ease: "easeInOut" }}
     >
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4 sm:mb-0">
+        <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4 sm:mb-0">
           Liste d'utilisateurs
         </h2>
         <div className="relative w-full sm:w-auto">
           <input
             type="text"
             placeholder="Rechercher..."
-            className="bg-gray-700 text-white placeholder-gray-400 rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             onChange={handleSearch}
             value={searchTerm}
           />
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+          <Search className="absolute left-3 top-2.5 text-fg-muted" size={18} />
         </div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-700">
+        <table className="min-w-full divide-y divide-line">
           <thead>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                 Avatar
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                 Noms
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Email
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
+                E-mail
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                 Tel
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                 Solde FCFA
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                 Solde USD
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                 Code
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Status
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
+                Statut
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                 Action
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700">
+          <tbody className="divide-y divide-line">
             {loading ? (
               <div className="flex justify-center items-center h-500 m-500 overflow-auto relative z-10">
-                <Loader name={searchTerm ?? "Table"} />
+                <Loader name={searchTerm || "Utilisateurs"} />
               </div>
             ) : null}
 
@@ -143,28 +143,28 @@ function UserTable() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, ease: "easeInOut" }}
                 >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100 flex gap-2 items-center">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-fg flex gap-2 items-center">
                     <img
-                      src={getAvatarUrl(user.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
-                      alt={`${user.name}'s avatar`}
+                      src={getAvatarUrl(user.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'Utilisateur')}&background=random`}
+                      alt={`Avatar de ${user.name}`}
                       className="size-8 rounded-full object-cover"
                       loading="lazy"
                     />
                     {user.name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                     {user.email}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                     {user.phoneNumber}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                     {user.balance ? user.balance.toLocaleString('fr-FR') : '0'} FCFA
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
-                    {user.usdBalance ? user.usdBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'} USD
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
+                    {user.usdBalance ? user.usdBalance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0,00'} USD
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                     {user.referralCode}
                   </td>
                   <td
@@ -177,7 +177,7 @@ function UserTable() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <Link key={user._id} to={`/userpage/${user._id}`}>
-                      <button className="bg-gray-700/50 backdrop-blur-10 text-white rounded-lg px-4 py-2">
+                      <button className="bg-surface-2/50 backdrop-blur-10 text-fg rounded-lg px-4 py-2">
                         <Pencil size={18} />
                       </button>
                     </Link>

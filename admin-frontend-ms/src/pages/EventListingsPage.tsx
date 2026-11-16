@@ -13,8 +13,8 @@ const STATUS_STYLES: Record<ResaleListingStatus, string> = {
     DRAFT: 'bg-gray-100 text-gray-700',
     ACTIVE: 'bg-emerald-100 text-emerald-800',
     SOLD: 'bg-blue-100 text-blue-800',
-    CANCELLED: 'bg-gray-100 text-gray-500',
-    EXPIRED: 'bg-gray-100 text-gray-500',
+    CANCELLED: 'bg-gray-100 text-fg-subtle',
+    EXPIRED: 'bg-gray-100 text-fg-subtle',
     SUSPENDED: 'bg-red-100 text-red-800',
 };
 
@@ -59,22 +59,22 @@ export default function EventListingsPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Marketplace revente" />
-            <div className="p-6 space-y-4">
+            <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                    <select value={status} onChange={(e) => setStatus(e.target.value as ResaleListingStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as ResaleListingStatus | '')} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">
                         <option value="">Tous les statuts</option>
                         <option value="ACTIVE">En vente</option>
                         <option value="SOLD">Vendues</option>
                         <option value="CANCELLED">Annulées</option>
                         <option value="SUSPENDED">Suspendues</option>
                     </select>
-                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
+                    <button onClick={load} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">Actualiser</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
+                    <div className="overflow-x-auto bg-surface rounded-xl border border-line">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-900/50 text-gray-300">
+                            <thead className="bg-background/50 text-fg-muted">
                                 <tr>
                                     <th className="px-4 py-2 text-left">Annonce</th>
                                     <th className="px-4 py-2 text-left">Statut</th>
@@ -86,10 +86,10 @@ export default function EventListingsPage() {
                             </thead>
                             <tbody>
                                 {items.length === 0 && (
-                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Aucune annonce.</td></tr>
+                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-fg-muted">Aucune annonce.</td></tr>
                                 )}
                                 {items.map((l) => (
-                                    <tr key={l._id} className="border-t border-gray-700">
+                                    <tr key={l._id} className="border-t border-line">
                                         <td className="px-4 py-2 text-xs font-mono">{l._id.slice(-8)}</td>
                                         <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[l.status]}`}>{l.status}</span></td>
                                         <td className="px-4 py-2 text-right text-sm">{l.originalPrice.toLocaleString('fr-FR')}</td>

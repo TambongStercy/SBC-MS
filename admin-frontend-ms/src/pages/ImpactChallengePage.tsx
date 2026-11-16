@@ -99,7 +99,7 @@ const ImpactChallengePage: React.FC = () => {
                 message: (
                     <div className="space-y-2 text-sm">
                         <p>« {c.campaignName} » apparaît dans l’app : les membres paient pour voter, et chaque vote leur donne aussi des tickets de la tombola du mois.</p>
-                        <p className="text-gray-400">Il faut au moins un entrepreneur approuvé, et aucun autre challenge ne doit avoir ses votes ouverts.</p>
+                        <p className="text-fg-muted">Il faut au moins un entrepreneur approuvé, et aucun autre challenge ne doit avoir ses votes ouverts.</p>
                     </div>
                 ),
             };
@@ -123,7 +123,7 @@ const ImpactChallengePage: React.FC = () => {
     return (
         <div className="flex-1 overflow-auto relative z-10">
             <Header title="Impact Challenge" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+            <main>
                 <motion.div
                     className={`${panelClass} p-6 mb-6`}
                     initial={{ opacity: 0, y: 20 }}
@@ -132,10 +132,10 @@ const ImpactChallengePage: React.FC = () => {
                 >
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div>
-                            <h2 className="text-xl font-semibold text-gray-100 flex items-center gap-2">
-                                <Trophy className="w-5 h-5 text-amber-400" /> Challenges du mois
+                            <h2 className="text-xl font-semibold text-fg flex items-center gap-2">
+                                <Trophy className="w-5 h-5 text-amber-700 dark:text-amber-400" /> Challenges du mois
                             </h2>
-                            <p className="text-sm text-gray-400 mt-1">
+                            <p className="text-sm text-fg-muted mt-1">
                                 Chaque mois, jusqu’à 3 entrepreneurs présentent leur projet en vidéo. Les membres paient pour voter, le plus voté gagne.
                                 L’argent collecté est réparti : 50 % au gagnant, 30 % à la cagnotte de la tombola, 20 % à SBC.
                             </p>
@@ -144,7 +144,7 @@ const ImpactChallengePage: React.FC = () => {
                             <select
                                 value={statusFilter}
                                 onChange={e => { setStatusFilter(e.target.value as ChallengeStatus | ''); setPage(1); }}
-                                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:ring-2 focus:ring-blue-500"
+                                className="px-3 py-2 bg-surface border border-line-strong rounded-lg text-sm text-fg focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="">Tous les statuts</option>
                                 {(Object.keys(STATUS_LABELS) as ChallengeStatus[]).map(s => (
@@ -159,7 +159,7 @@ const ImpactChallengePage: React.FC = () => {
                             </button>
                         </div>
                     </div>
-                    {error && <div className="mt-4 bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-200 text-sm">{error}</div>}
+                    {error && <div className="mt-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-3 text-red-800 dark:text-red-200 text-sm">{error}</div>}
                 </motion.div>
 
                 <motion.div
@@ -171,15 +171,15 @@ const ImpactChallengePage: React.FC = () => {
                     {loading ? (
                         <div className="p-12 flex justify-center"><Loader name="Chargement…" /></div>
                     ) : challenges.length === 0 ? (
-                        <div className="p-12 text-center text-gray-400">
-                            <Trophy className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                        <div className="p-12 text-center text-fg-muted">
+                            <Trophy className="w-12 h-12 mx-auto mb-3 text-fg-subtle" />
                             <p>{statusFilter ? 'Aucun challenge avec ce statut.' : 'Aucun challenge pour l’instant.'}</p>
                             {!statusFilter && <p className="text-xs mt-2">Crée le challenge du mois avec « Nouveau challenge ».</p>}
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead className="bg-gray-900/50 text-gray-300">
+                                <thead className="bg-background/50 text-fg-muted">
                                     <tr>
                                         <th className="px-4 py-3 text-left">Challenge</th>
                                         <th className="px-4 py-3 text-left">Votes ouverts</th>
@@ -191,26 +191,26 @@ const ImpactChallengePage: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     {challenges.map(c => (
-                                        <tr key={c._id} className="border-t border-gray-700 hover:bg-gray-700/30">
+                                        <tr key={c._id} className="border-t border-line hover:bg-surface-2/30">
                                             <td className="px-4 py-3">
                                                 <button onClick={() => navigate(`/impact-challenges/${c._id}`)} className="text-left">
-                                                    <span className="block text-white font-medium hover:text-blue-300">{c.campaignName}</span>
-                                                    <span className="block text-xs text-gray-400">{monthLabel(c.month, c.year)}</span>
+                                                    <span className="block text-fg font-medium hover:text-blue-700 dark:hover:text-blue-300">{c.campaignName}</span>
+                                                    <span className="block text-xs text-fg-muted">{monthLabel(c.month, c.year)}</span>
                                                 </button>
                                             </td>
-                                            <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                                                {formatDay(c.startDate)} <span className="text-gray-500">→</span> {formatDay(c.endDate)}
+                                            <td className="px-4 py-3 text-fg-muted whitespace-nowrap">
+                                                {formatDay(c.startDate)} <span className="text-fg-subtle">→</span> {formatDay(c.endDate)}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-col items-start gap-1">
                                                     <StatusBadge status={c.status} />
                                                     {c.status === 'voting_closed' && (
-                                                        <span className="text-xs text-amber-300">{c.distributionInProgress ? 'Versement en cours' : 'Fonds à distribuer'}</span>
+                                                        <span className="text-xs text-amber-700 dark:text-amber-300">{c.distributionInProgress ? 'Versement en cours' : 'Fonds à distribuer'}</span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-right text-gray-200 tabular-nums">{(c.totalVoteCount ?? 0).toLocaleString('fr-FR')}</td>
-                                            <td className="px-4 py-3 text-right text-white font-mono whitespace-nowrap">{formatXaf(c.totalCollected)}</td>
+                                            <td className="px-4 py-3 text-right text-fg tabular-nums">{(c.totalVoteCount ?? 0).toLocaleString('fr-FR')}</td>
+                                            <td className="px-4 py-3 text-right text-fg font-mono whitespace-nowrap">{formatXaf(c.totalCollected)}</td>
                                             <td className="px-4 py-3">
                                                 <div className="flex justify-end flex-wrap gap-2">
                                                     <button onClick={() => navigate(`/impact-challenges/${c._id}`)} className={btn.smallPrimary}>Gérer</button>

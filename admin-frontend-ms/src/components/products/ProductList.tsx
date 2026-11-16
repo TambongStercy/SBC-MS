@@ -4,6 +4,13 @@ import { Edit, Trash2, Zap } from 'lucide-react'; // Icons for actions
 import { ImageDisplay } from '../common/ImageDisplay';
 import { getFileUrl } from '../../utils/fileUtils';
 
+const STATUS_LABELS: Record<string, string> = {
+    pending: 'En attente',
+    approved: 'Approuvé',
+    rejected: 'Rejeté',
+    deleted: 'Supprimé',
+};
+
 interface ProductListProps {
     products: Product[];
     isLoading: boolean;
@@ -29,35 +36,35 @@ const ProductList: React.FC<ProductListProps> = ({
     console.log("Rendering product in list:", products); // Keep this log for now
 
     if (isLoading) {
-        return <div className="text-center p-4">Loading products...</div>;
+        return <div className="text-center p-4">Chargement des produits…</div>;
     }
 
     if (!products || products.length === 0) {
-        return <div className="text-center p-4 text-gray-500">No products found.</div>;
+        return <div className="text-center p-4 text-fg-subtle">Aucun produit trouvé.</div>;
     }
 
     return (
-        <div className="overflow-x-auto shadow-md rounded-lg">
-            <table className="w-full text-sm text-left text-gray-400">
-                <thead className="text-xs uppercase bg-gray-700 text-gray-300">
+        <div className="overflow-x-auto rounded-lg">
+            <table className="w-full text-sm text-left text-fg-muted">
+                <thead className="text-xs uppercase bg-surface-2 text-fg-muted">
                     <tr>
                         <th scope="col" className="px-6 py-3">Image</th>
-                        <th scope="col" className="px-6 py-3">Name</th>
-                        <th scope="col" className="px-6 py-3">Category</th>
-                        <th scope="col" className="px-6 py-3">Price</th>
-                        <th scope="col" className="px-6 py-3">Status</th>
-                        <th scope="col" className="px-6 py-3">Active Flash Sale</th>
+                        <th scope="col" className="px-6 py-3">Nom</th>
+                        <th scope="col" className="px-6 py-3">Catégorie</th>
+                        <th scope="col" className="px-6 py-3">Prix</th>
+                        <th scope="col" className="px-6 py-3">Statut</th>
+                        <th scope="col" className="px-6 py-3">Vente flash active</th>
                         <th scope="col" className="px-6 py-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {products.map((product) => {
                         // Use product.status from backend if available, otherwise fallback
-                        const statusText = product.status ? product.status.charAt(0).toUpperCase() + product.status.slice(1) : 'Unknown';
-                        const statusColor = product.status === 'approved' ? 'bg-green-900 text-green-300' : product.status === 'pending' ? 'bg-yellow-900 text-yellow-300' : product.status === 'rejected' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300';
+                        const statusText = product.status ? (STATUS_LABELS[product.status] ?? product.status) : 'Inconnu';
+                        const statusColor = product.status === 'approved' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' : product.status === 'pending' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300' : product.status === 'rejected' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' : 'bg-surface-2 text-fg-muted';
 
                         return (
-                            <tr key={product._id} className="border-b bg-gray-800 border-gray-700 hover:bg-gray-600">
+                            <tr key={product._id} className="border-b bg-surface border-line hover:bg-surface-3">
                                 <td className="px-6 py-4">
                                     {product.imagesUrl && product.imagesUrl.length > 0 ? (
                                         // Check if it's already a full URL or needs processing
@@ -75,12 +82,12 @@ const ProductList: React.FC<ProductListProps> = ({
                                             />
                                         )
                                     ) : (
-                                        <div className="w-16 h-16 bg-gray-700 rounded-sm flex items-center justify-center text-xs text-gray-500">
-                                            No Image
+                                        <div className="w-16 h-16 bg-surface-2 rounded-sm flex items-center justify-center text-xs text-fg-subtle">
+                                            Pas d’image
                                         </div>
                                     )}
                                 </td>
-                                <th scope="row" className="px-6 py-4 font-medium whitespace-nowrap text-white">
+                                <th scope="row" className="px-6 py-4 font-medium whitespace-nowrap text-fg">
                                     {product.name}
                                 </th>
                                 <td className="px-6 py-4">
@@ -95,14 +102,14 @@ const ProductList: React.FC<ProductListProps> = ({
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-sm text-xs font-medium ${product.hasActiveFlashSale ? 'bg-yellow-700 text-yellow-200' : 'bg-gray-700 text-gray-300'}`}>
-                                        {product.hasActiveFlashSale ? 'Yes' : 'No'}
+                                    <span className={`px-2 py-1 rounded-sm text-xs font-medium ${product.hasActiveFlashSale ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-200' : 'bg-surface-2 text-fg-muted'}`}>
+                                        {product.hasActiveFlashSale ? 'Oui' : 'Non'}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 space-x-2 whitespace-nowrap">
-                                    <button onClick={() => onEdit(product)} className="p-1 rounded-sm text-blue-400 hover:bg-gray-700" title="Edit Product"><Edit size={16} /></button>
-                                    <button onClick={() => onManageFlashSale(product)} className="p-1 rounded-sm text-yellow-400 hover:bg-gray-700" title="Manage Flash Sale"><Zap size={16} /></button>
-                                    <button onClick={() => onDelete(product._id)} className="p-1 rounded-sm text-red-500 hover:bg-gray-700" title="Delete Product"><Trash2 size={16} /></button>
+                                    <button onClick={() => onEdit(product)} className="p-1 rounded-sm text-blue-600 dark:text-blue-400 hover:bg-surface-2" title="Modifier le produit"><Edit size={16} /></button>
+                                    <button onClick={() => onManageFlashSale(product)} className="p-1 rounded-sm text-yellow-700 dark:text-yellow-400 hover:bg-surface-2" title="Gérer la vente flash"><Zap size={16} /></button>
+                                    <button onClick={() => onDelete(product._id)} className="p-1 rounded-sm text-red-500 hover:bg-surface-2" title="Supprimer le produit"><Trash2 size={16} /></button>
                                 </td>
                             </tr>
                         );

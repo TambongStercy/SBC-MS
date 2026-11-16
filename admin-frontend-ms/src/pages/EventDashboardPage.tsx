@@ -20,10 +20,10 @@ interface Dashboard {
 const xaf = (n?: number) => typeof n === 'number' ? `${n.toLocaleString('fr-FR')} XAF` : '—';
 
 const StatCard = ({ label, value, sub }: { label: string; value: string | number; sub?: string }) => (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-        <div className="text-xs text-gray-400 uppercase">{label}</div>
+    <div className="bg-surface border border-line rounded-xl p-4">
+        <div className="text-xs text-fg-muted uppercase">{label}</div>
         <div className="text-2xl font-bold mt-1">{value}</div>
-        {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+        {sub && <div className="text-xs text-fg-muted mt-1">{sub}</div>}
     </div>
 );
 
@@ -33,12 +33,12 @@ interface Queues { disputes?: number; fraud?: number; changes?: number }
 /** One pending-work tile: highlighted when something waits, links to where it is handled. */
 const TodoCard = ({ label, value, to, sub, tone = 'warning' }: { label: string; value?: number; to: string; sub?: string; tone?: 'warning' | 'danger' }) => {
     const waiting = !!value;
-    const border = waiting ? (tone === 'danger' ? 'border-red-600' : 'border-amber-600') : 'border-gray-700';
+    const border = waiting ? (tone === 'danger' ? 'border-red-600' : 'border-amber-600') : 'border-line';
     return (
-        <Link to={to} className={`block bg-gray-800 border ${border} rounded-xl p-4 hover:bg-gray-700/60 transition-colors`}>
-            <div className="text-xs text-gray-400 uppercase">{label}</div>
-            <div className={`text-2xl font-bold mt-1 ${waiting ? (tone === 'danger' ? 'text-red-300' : 'text-amber-300') : ''}`}>{value ?? '—'}</div>
-            <div className="text-xs text-gray-400 mt-1">{sub ?? (waiting ? 'À traiter' : 'Rien en attente')}</div>
+        <Link to={to} className={`block bg-surface border ${border} rounded-xl p-4 hover:bg-surface-2/60 transition-colors`}>
+            <div className="text-xs text-fg-muted uppercase">{label}</div>
+            <div className={`text-2xl font-bold mt-1 ${waiting ? (tone === 'danger' ? 'text-red-600 dark:text-red-300' : 'text-amber-700 dark:text-amber-300') : ''}`}>{value ?? '—'}</div>
+            <div className="text-xs text-fg-muted mt-1">{sub ?? (waiting ? 'À traiter' : 'Rien en attente')}</div>
         </Link>
     );
 };
@@ -73,13 +73,13 @@ export default function EventDashboardPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Tableau de bord" />
-            <div className="p-6 space-y-4">
+            <div className="space-y-4">
                 {loading && <Loader name="Chargement..." />}
-                {error && <div className="bg-red-900/30 border border-red-800 text-red-300 rounded-xl p-4">{error}</div>}
+                {error && <div className="bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl p-4">{error}</div>}
                 {data && (
                     <>
                         <section className="space-y-2">
-                            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">À traiter</h2>
+                            <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-muted">À traiter</h2>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                                 <TodoCard label="Événements à valider" value={data.events.pendingReview} to="/event/events?status=PENDING_REVIEW"
                                     sub={data.events.rejected ? `${data.events.rejected} refusé(s) en attente de correction` : undefined} />

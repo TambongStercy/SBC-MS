@@ -196,25 +196,25 @@ const EntrepreneurFormModal: React.FC<{
                 {video && (
                     <div className="mb-2">
                         <video src={video.url} controls playsInline preload="metadata"
-                            className="w-full max-h-64 rounded-xl bg-black border border-gray-700" />
-                        <p className="text-xs text-gray-400 mt-1">
+                            className="w-full max-h-64 rounded-xl bg-black border border-line" />
+                        <p className="text-xs text-fg-muted mt-1">
                             {video.filename}{video.duration !== undefined ? ` · ${video.duration} s` : ''}
                         </p>
                     </div>
                 )}
-                <label className={`inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg text-sm ${uploading ? 'opacity-60 cursor-wait' : 'hover:bg-gray-600 cursor-pointer'}`}>
+                <label className={`inline-flex items-center gap-2 px-3 py-2 bg-surface-2 text-fg rounded-lg text-sm ${uploading ? 'opacity-60 cursor-wait' : 'hover:bg-surface-3 cursor-pointer'}`}>
                     <Upload className="w-4 h-4" />
                     {checkingVideo ? 'Vérification de la durée…' : progress !== null ? `Envoi… ${progress} %` : video ? 'Remplacer la vidéo' : 'Choisir la vidéo'}
                     <input type="file" accept="video/*" className="hidden" disabled={uploading}
                         onChange={ev => { const file = ev.target.files?.[0]; ev.target.value = ''; if (file) pickVideo(file); }} />
                 </label>
-                <p className="text-xs text-gray-500 mt-1">La durée est vérifiée avant l’envoi. {VIDEO_MAX_MB} Mo au maximum.</p>
+                <p className="text-xs text-fg-subtle mt-1">La durée est vérifiée avant l’envoi. {VIDEO_MAX_MB} Mo au maximum.</p>
             </div>
 
             <div>
                 <label className={labelClass}>Compte SBC de l’entrepreneur</label>
                 <SbcAccountPicker value={userId} onChange={setUserId} suggestion={f.email.trim() || undefined} />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-fg-subtle mt-1">
                     Indispensable pour lui verser ses gains s’il gagne : sa part est créditée sur le solde de ce compte. Sans compte lié, le versement est refusé.
                 </p>
             </div>

@@ -78,7 +78,7 @@ const StatusPage: React.FC = () => {
                 setCategories(cats);
             } catch (error) {
                 console.error('Failed to load categories:', error);
-                showError('Failed to load categories');
+                showError('Impossible de charger les catégories');
             }
         };
         loadCategories();
@@ -93,7 +93,7 @@ const StatusPage: React.FC = () => {
             setStatuses(response.data);
         } catch (error) {
             console.error('Failed to load statuses:', error);
-            showError('Failed to load stories');
+            showError('Impossible de charger les stories');
         } finally {
             setLoading(false);
         }
@@ -289,7 +289,7 @@ const StatusPage: React.FC = () => {
             }
         } catch (error) {
             console.error('Failed to toggle like:', error);
-            showError('Failed to like story');
+            showError("Impossible d'aimer la story");
         }
     };
 
@@ -298,18 +298,18 @@ const StatusPage: React.FC = () => {
         const status = viewingGroup.statuses[currentStoryIndex];
 
         setConfirmAction({
-            title: 'Delete Story',
-            message: 'Are you sure you want to delete this story? This action cannot be undone.',
+            title: 'Supprimer la story',
+            message: 'Voulez-vous vraiment supprimer cette story ? Cette action est irréversible.',
             onConfirm: async () => {
                 try {
                     await deleteStatus(status._id);
                     setStatuses(prev => prev.filter(s => s._id !== status._id));
-                    showSuccess('Story deleted successfully');
+                    showSuccess('Story supprimée');
                     setShowConfirmModal(false);
                     handleNextStory();
                 } catch (error) {
                     console.error('Failed to delete status:', error);
-                    showError('Failed to delete story');
+                    showError('Impossible de supprimer la story');
                 }
             }
         });
@@ -331,10 +331,10 @@ const StatusPage: React.FC = () => {
             setStatuses(prev => [status, ...prev]);
             setNewStatus({ category: '', content: '', media: null });
             setShowComposer(false);
-            showSuccess('Story posted successfully!');
+            showSuccess('Story publiée');
         } catch (error) {
             console.error('Failed to create status:', error);
-            showError('Failed to post story');
+            showError('Impossible de publier la story');
         } finally {
             setComposerLoading(false);
         }
@@ -346,38 +346,34 @@ const StatusPage: React.FC = () => {
         const diffMs = now.getTime() - date.getTime();
         const diffHours = Math.floor(diffMs / 3600000);
 
-        if (diffHours < 1) return 'Just now';
-        if (diffHours < 24) return `${diffHours}h ago`;
-        return `${Math.floor(diffHours / 24)}d ago`;
+        if (diffHours < 1) return "À l'instant";
+        if (diffHours < 24) return `Il y a ${diffHours} h`;
+        return `Il y a ${Math.floor(diffHours / 24)} j`;
     };
 
     const currentStory = viewingGroup?.statuses[currentStoryIndex];
 
     return (
-        <div className="min-h-screen bg-gray-900">
+        <div>
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
             {/* Header */}
-            <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <h1 className="text-xl font-bold text-white">Stories</h1>
-                </div>
-            </div>
+            <h1 className="mb-6 text-2xl font-semibold tracking-tight text-fg">Stories</h1>
 
             {/* Stories Bar */}
-            <div className="bg-gray-800 border-b border-gray-700 px-4 py-4 overflow-x-auto">
-                <div className="max-w-7xl mx-auto flex gap-4">
+            <div className="bg-surface border border-line rounded-lg px-4 py-4 overflow-x-auto">
+                <div className="flex gap-4">
                     {/* Add Your Story */}
                     <button
                         onClick={() => setShowComposer(true)}
                         className="shrink-0 flex flex-col items-center gap-2 group"
                     >
                         <div className="relative">
-                            <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center border-2 border-gray-600 group-hover:border-indigo-500 transition-colors">
-                                <Plus className="w-6 h-6 text-gray-400 group-hover:text-indigo-500" />
+                            <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center border-2 border-line-strong group-hover:border-indigo-500 transition-colors">
+                                <Plus className="w-6 h-6 text-fg-muted group-hover:text-indigo-500" />
                             </div>
                         </div>
-                        <span className="text-xs text-gray-400 group-hover:text-white">Your Story</span>
+                        <span className="text-xs text-fg-muted group-hover:text-fg">Votre story</span>
                     </button>
 
                     {/* User Stories */}
@@ -386,8 +382,8 @@ const StatusPage: React.FC = () => {
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
                         </div>
                     ) : groupedStatuses.length === 0 ? (
-                        <div className="flex-1 text-center text-gray-400 py-4">
-                            No stories yet. Be the first to share!
+                        <div className="flex-1 text-center text-fg-muted py-4">
+                            Aucune story pour le moment. Publiez la première !
                         </div>
                     ) : (
                         groupedStatuses.map(group => (
@@ -397,8 +393,8 @@ const StatusPage: React.FC = () => {
                                 className="shrink-0 flex flex-col items-center gap-2 group"
                             >
                                 <div className="relative">
-                                    <div className={`w-16 h-16 rounded-full p-0.5 ${group.hasUnviewed ? 'bg-linear-to-tr from-yellow-400 to-pink-600' : 'bg-gray-600'}`}>
-                                        <div className="w-full h-full rounded-full bg-gray-800 p-0.5">
+                                    <div className={`w-16 h-16 rounded-full p-0.5 ${group.hasUnviewed ? 'bg-linear-to-tr from-yellow-400 to-pink-600' : 'bg-surface-3'}`}>
+                                        <div className="w-full h-full rounded-full bg-surface p-0.5">
                                             {group.authorAvatar ? (
                                                 <img
                                                     src={group.authorAvatar}
@@ -412,11 +408,11 @@ const StatusPage: React.FC = () => {
                                             )}
                                         </div>
                                     </div>
-                                    <div className="absolute bottom-0 right-0 bg-gray-900 rounded-full px-1.5 py-0.5 text-xs text-white border border-gray-700">
+                                    <div className="absolute bottom-0 right-0 bg-background rounded-full px-1.5 py-0.5 text-xs text-fg border border-line">
                                         {group.statuses.length}
                                     </div>
                                 </div>
-                                <span className="text-xs text-gray-300 max-w-[64px] truncate group-hover:text-white">
+                                <span className="text-xs text-fg-muted max-w-[64px] truncate group-hover:text-fg">
                                     {group.authorName}
                                 </span>
                             </button>
@@ -470,6 +466,7 @@ const StatusPage: React.FC = () => {
                                 </div>
                                 <button
                                     onClick={closeStoryViewer}
+                                    aria-label="Fermer"
                                     className="text-white hover:bg-white/10 rounded-full p-1 transition-colors"
                                 >
                                     <X className="w-6 h-6" />
@@ -482,6 +479,7 @@ const StatusPage: React.FC = () => {
                             {/* Navigation Areas */}
                             <button
                                 onClick={handlePrevStory}
+                                aria-label="Story précédente"
                                 className="absolute left-0 top-0 bottom-0 w-1/3 z-10 hover:bg-linear-to-r hover:from-black/20"
                             >
                                 {currentStoryIndex > 0 && (
@@ -490,6 +488,7 @@ const StatusPage: React.FC = () => {
                             </button>
                             <button
                                 onClick={handleNextStory}
+                                aria-label="Story suivante"
                                 className="absolute right-0 top-0 bottom-0 w-1/3 z-10 hover:bg-linear-to-l hover:from-black/20"
                             >
                                 <ChevronRight className="w-8 h-8 text-white/50 absolute right-4 top-1/2 -translate-y-1/2" />
@@ -549,6 +548,7 @@ const StatusPage: React.FC = () => {
                             <div className="flex items-center gap-4">
                                 <button
                                     onClick={handleLikeCurrentStory}
+                                    aria-label="J'aime"
                                     className={`flex items-center gap-2 ${currentStory.isLiked ? 'text-red-500' : 'text-white'}`}
                                 >
                                     <Heart className={`w-6 h-6 ${currentStory.isLiked ? 'fill-current' : ''}`} />
@@ -561,6 +561,7 @@ const StatusPage: React.FC = () => {
                                 <div className="flex-1" />
                                 <button
                                     onClick={handleDeleteCurrentStory}
+                                    aria-label="Supprimer la story"
                                     className="text-white hover:text-red-500 transition-colors"
                                 >
                                     <Trash2 className="w-5 h-5" />
@@ -590,7 +591,7 @@ const StatusPage: React.FC = () => {
                             ) : (
                                 <img
                                     src={URL.createObjectURL(newStatus.media)}
-                                    alt="Story preview"
+                                    alt="Aperçu de la story"
                                     className="w-full h-full object-contain"
                                 />
                             )
@@ -607,6 +608,7 @@ const StatusPage: React.FC = () => {
                                         setShowComposer(false);
                                         setNewStatus({ category: '', content: '', media: null });
                                     }}
+                                    aria-label="Fermer"
                                     className="text-white hover:bg-white/10 rounded-full p-2 transition-colors"
                                 >
                                     <X className="w-6 h-6" />
@@ -619,9 +621,9 @@ const StatusPage: React.FC = () => {
                                         onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value })}
                                         className="w-full max-w-xs px-3 py-2 bg-black/40 text-white rounded-full text-sm border border-white/20 focus:outline-hidden focus:border-white/40"
                                     >
-                                        <option value="">Select Category...</option>
+                                        <option value="">Choisir une catégorie…</option>
                                         {categories.filter(c => !c.adminOnly).map(cat => (
-                                            <option key={cat.key} value={cat.key}>{cat.nameEn}</option>
+                                            <option key={cat.key} value={cat.key}>{cat.nameFr || cat.nameEn}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -632,7 +634,7 @@ const StatusPage: React.FC = () => {
                         <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none">
                             <div className="w-full max-w-lg text-center">
                                 {newStatus.content && (
-                                    <p className="text-white text-xl md:text-2xl font-semibold leading-relaxed drop-shadow-lg">
+                                    <p className="text-white text-xl md:text-2xl font-semibold leading-relaxed">
                                         {newStatus.content}
                                     </p>
                                 )}
@@ -647,7 +649,7 @@ const StatusPage: React.FC = () => {
                                     <textarea
                                         value={newStatus.content}
                                         onChange={(e) => setNewStatus({ ...newStatus, content: e.target.value })}
-                                        placeholder="Add text to your story..."
+                                        placeholder="Ajoutez un texte à votre story…"
                                         rows={2}
                                         maxLength={2000}
                                         className="w-full px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-hidden focus:border-white/40 resize-none"
@@ -674,7 +676,7 @@ const StatusPage: React.FC = () => {
                                             </label>
                                             <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white hover:bg-white/20 cursor-pointer transition-colors">
                                                 <Video className="w-5 h-5" />
-                                                <span className="text-sm font-medium">Video</span>
+                                                <span className="text-sm font-medium">Vidéo</span>
                                                 <input
                                                     type="file"
                                                     accept="video/*"
@@ -693,7 +695,7 @@ const StatusPage: React.FC = () => {
                                             className="px-4 py-3 bg-red-500/80 backdrop-blur-xs rounded-lg text-white hover:bg-red-600/80 transition-colors flex items-center gap-2"
                                         >
                                             <X className="w-5 h-5" />
-                                            <span className="text-sm font-medium">Remove</span>
+                                            <span className="text-sm font-medium">Retirer</span>
                                         </button>
                                     )}
 
@@ -708,7 +710,7 @@ const StatusPage: React.FC = () => {
                                         ) : (
                                             <>
                                                 <Send className="w-5 h-5" />
-                                                Share Story
+                                                Publier la story
                                             </>
                                         )}
                                     </button>
@@ -725,8 +727,8 @@ const StatusPage: React.FC = () => {
                     isOpen={showConfirmModal}
                     title={confirmAction.title}
                     message={confirmAction.message}
-                    confirmText="Delete"
-                    cancelText="Cancel"
+                    confirmText="Supprimer"
+                    cancelText="Annuler"
                     onConfirm={confirmAction.onConfirm}
                     onCancel={() => setShowConfirmModal(false)}
                 />

@@ -6,6 +6,7 @@ import ProductEditForm from '../components/products/ProductEditForm';
 import FlashSaleModal from '../components/products/FlashSaleModal';
 import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import Header from '../components/common/Header';
 
 // Import API functions
 import {
@@ -110,7 +111,7 @@ const ProductsManagementPage: React.FC = () => {
             console.log("Products fetched:", response.data, "Pagination:", response.pagination);
         } catch (err) {
             console.error("Failed to fetch products:", err);
-            setError(err instanceof Error ? err.message : 'Failed to load products');
+            setError(err instanceof Error ? err.message : 'Impossible de charger les produits.');
             setProducts([]);
             setTotalPages(1);
         } finally {
@@ -166,8 +167,8 @@ const ProductsManagementPage: React.FC = () => {
     const handleDeleteProduct = (productId: string, productName?: string) => {
         setItemIdToDelete(productId);
         setConfirmAction('deleteProduct');
-        setConfirmTitle('Delete Product?');
-        setConfirmMessage(`Are you sure you want to delete the product "${productName || 'this product'}"? This action cannot be undone if it proceeds.`);
+        setConfirmTitle('Supprimer le produit ?');
+        setConfirmMessage(`Supprimer le produit « ${productName || 'ce produit'} » ? Cette action est définitive.`);
         setIsConfirmModalOpen(true);
         // Original logic moved to confirmProductDelete
     };
@@ -180,11 +181,11 @@ const ProductsManagementPage: React.FC = () => {
         try {
             await deleteProduct(itemIdToDelete);
             fetchProducts(); // Refresh list
-            toast.success('Product deleted successfully.'); // Use toast for feedback
+            toast.success('Produit supprimé.'); // Use toast for feedback
         } catch (err) { // Type assertion for err
             console.error("Failed to delete product:", err);
-            setError(err instanceof Error ? err.message : 'Failed to delete product');
-            toast.error(err instanceof Error ? err.message : 'Failed to delete product');
+            setError(err instanceof Error ? err.message : 'Impossible de supprimer le produit.');
+            toast.error(err instanceof Error ? err.message : 'Impossible de supprimer le produit.');
         } finally {
             setIsLoading(false);
             closeConfirmationModal();
@@ -213,7 +214,7 @@ const ProductsManagementPage: React.FC = () => {
             // Optionally show success toast/message
         } catch (err) {
             console.error("Failed to save product:", err);
-            setError(err instanceof Error ? err.message : 'Failed to save product');
+            setError(err instanceof Error ? err.message : 'Impossible d’enregistrer le produit.');
             // Keep form open on error for correction?
             // setIsEditFormVisible(true); 
         } finally {
@@ -234,7 +235,7 @@ const ProductsManagementPage: React.FC = () => {
             setCurrentFlashSales(sales || []); // Update state with fetched sales (ensure array)
         } catch (err) {
             console.error("Failed to fetch flash sales for modal:", err);
-            setError(err instanceof Error ? err.message : 'Failed to load existing flash sales for this product.');
+            setError(err instanceof Error ? err.message : 'Impossible de charger les ventes flash de ce produit.');
             // Optionally close modal or show error within modal?
             // setIsFlashSaleModalVisible(false);
         } finally {
@@ -264,7 +265,7 @@ const ProductsManagementPage: React.FC = () => {
 
         } catch (err) {
             console.error("Failed to save flash sale:", err);
-            setError(err instanceof Error ? err.message : 'Failed to save flash sale');
+            setError(err instanceof Error ? err.message : 'Impossible d’enregistrer la vente flash.');
         } finally {
             setIsLoading(false);
         }
@@ -274,14 +275,14 @@ const ProductsManagementPage: React.FC = () => {
     const handleDeleteFlashSale = (flashSaleId: string) => {
         if (!flashSaleId) {
             console.error("handleDeleteFlashSale called without flashSaleId");
-            setError('Cannot delete sale: Missing Flash Sale ID.');
-            toast.error('Cannot delete sale: Missing Flash Sale ID.'); // Toast feedback
+            setError('Suppression impossible : identifiant de la vente flash manquant.');
+            toast.error('Suppression impossible : identifiant de la vente flash manquant.'); // Toast feedback
             return;
         }
         setItemIdToDelete(flashSaleId);
         setConfirmAction('deleteFlashSale');
-        setConfirmTitle('Remove Flash Sale?');
-        setConfirmMessage(`Are you sure you want to remove this flash sale (ID: ${flashSaleId})? This will cancel or deactivate it.`);
+        setConfirmTitle('Retirer la vente flash ?');
+        setConfirmMessage(`Retirer cette vente flash (ID : ${flashSaleId}) ? Elle sera annulée ou désactivée.`);
         setIsConfirmModalOpen(true);
         // Original logic moved to confirmFlashSaleDelete
     };
@@ -296,11 +297,11 @@ const ProductsManagementPage: React.FC = () => {
             console.log("Delete flash sale response:", response);
             fetchProducts(); // Refresh list to see changes
             setIsFlashSaleModalVisible(false); // Close the main flash sale modal too
-            toast.success(response.message || 'Flash sale removed successfully.'); // Toast feedback
+            toast.success(response.message || 'Vente flash retirée.'); // Toast feedback
         } catch (err) { // Type assertion for err
             console.error("Failed to delete flash sale:", err);
-            setError(err instanceof Error ? err.message : 'Failed to delete flash sale');
-            toast.error(err instanceof Error ? err.message : 'Failed to delete flash sale');
+            setError(err instanceof Error ? err.message : 'Impossible de retirer la vente flash.');
+            toast.error(err instanceof Error ? err.message : 'Impossible de retirer la vente flash.');
         } finally {
             setIsLoading(false);
             closeConfirmationModal();
@@ -338,54 +339,54 @@ const ProductsManagementPage: React.FC = () => {
 
     // Restore original return, but omit container and mx-auto
     return (
-        <div className="relative z-10 p-6 bg-gray-800 text-white rounded-lg shadow-lg w-full"> {/* Removed container, mx-auto. Kept w-full for now */}
-            <h1 className="text-2xl font-bold mb-6">Product Management</h1>
+        <div className="relative w-full text-fg">
+            <Header title="Gestion des produits" />
 
-            {error && <div className="bg-red-500 text-white p-3 rounded-sm mb-4">Error: {error}</div>}
+            {error && <div className="bg-red-500 text-white p-3 rounded-sm mb-4">Erreur : {error}</div>}
 
             {/* --- Filter Controls --- */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 items-end">
                 {/* Search Input */}
                 <div className="md:col-span-2">
-                    <label htmlFor="search" className="block text-sm font-medium text-gray-300 mb-1">Search Products</label>
+                    <label htmlFor="search" className="block text-sm font-medium text-fg-muted mb-1">Rechercher des produits</label>
                     <input
                         type="text"
                         id="search"
                         value={searchTerm}
                         onChange={handleSearchChange}
-                        placeholder="Search by name, category..."
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="Rechercher par nom, catégorie…"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                     />
                 </div>
                 {/* Status Filter */}
                 <div>
-                    <label htmlFor="statusFilter" className="block text-sm font-medium text-gray-300 mb-1">Status</label>
+                    <label htmlFor="statusFilter" className="block text-sm font-medium text-fg-muted mb-1">Statut</label>
                     <select
                         id="statusFilter"
                         value={statusFilter}
                         onChange={handleStatusFilterChange}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                     >
-                        <option value="all">All Statuses</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
+                        <option value="all">Tous les statuts</option>
+                        <option value="pending">En attente</option>
+                        <option value="approved">Approuvé</option>
+                        <option value="rejected">Rejeté</option>
                         {/* Add 'deleted' if backend supports it for admin view */}
                         {/* <option value="deleted">Deleted</option> */}
                     </select>
                 </div>
                 {/* Flash Sale Filter */}
                 <div>
-                    <label htmlFor="flashSaleFilter" className="block text-sm font-medium text-gray-300 mb-1">Active Flash Sale</label>
+                    <label htmlFor="flashSaleFilter" className="block text-sm font-medium text-fg-muted mb-1">Vente flash active</label>
                     <select
                         id="flashSaleFilter"
                         value={flashSaleFilter}
                         onChange={handleFlashSaleFilterChange}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                     >
-                        <option value="all">All</option>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
+                        <option value="all">Tous</option>
+                        <option value="yes">Oui</option>
+                        <option value="no">Non</option>
                     </select>
                 </div>
                 {/* Apply Filters Button */}
@@ -395,7 +396,7 @@ const ProductsManagementPage: React.FC = () => {
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-sm disabled:opacity-50"
                         disabled={isLoading}
                     >
-                        Apply Filters
+                        Appliquer les filtres
                     </button>
                 </div>
             </div>
@@ -407,7 +408,7 @@ const ProductsManagementPage: React.FC = () => {
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-sm disabled:opacity-50"
                     disabled={isLoading}
                 >
-                    Add New Product
+                    Ajouter un produit
                 </button>
             </div>
 
@@ -455,7 +456,7 @@ const ProductsManagementPage: React.FC = () => {
                 onConfirm={handleConfirm}
                 onCancel={closeConfirmationModal}
                 isLoading={isLoading} // Use main loading state for now
-                confirmText={confirmAction === 'deleteProduct' ? 'Delete Product' : 'Remove Sale'}
+                confirmText={confirmAction === 'deleteProduct' ? 'Supprimer le produit' : 'Retirer la vente'}
             />
         </div>
     );

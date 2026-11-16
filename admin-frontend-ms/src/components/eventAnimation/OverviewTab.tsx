@@ -28,29 +28,29 @@ export default function OverviewTab() {
         <div className="space-y-6">
             <Card className="space-y-3">
                 <div className="flex flex-wrap items-end gap-3">
-                    <label className="text-sm text-gray-300">Du<input type="date" value={from} onChange={e => setFrom(e.target.value)} className={`${inputCls} block mt-1`} /></label>
-                    <label className="text-sm text-gray-300">Au (inclus)<input type="date" value={to} onChange={e => setTo(e.target.value)} className={`${inputCls} block mt-1`} /></label>
+                    <label className="text-sm text-fg-muted">Du<input type="date" value={from} onChange={e => setFrom(e.target.value)} className={`${inputCls} block mt-1`} /></label>
+                    <label className="text-sm text-fg-muted">Au (inclus)<input type="date" value={to} onChange={e => setTo(e.target.value)} className={`${inputCls} block mt-1`} /></label>
                     {(from || to) && <Button onClick={() => { setFrom(''); setTo(''); }}>Toute la période</Button>}
                 </div>
-                {rangeInvalid && <p className="text-sm text-red-400">La date de début est après la date de fin.</p>}
-                <p className="text-xs text-gray-400">
+                {rangeInvalid && <p className="text-sm text-red-600 dark:text-red-400">La date de début est après la date de fin.</p>}
+                <p className="text-xs text-fg-muted">
                     La période filtre les défis, candidats, transactions et récompenses par date de création.
                     Les signalements ouverts sont toujours comptés en totalité.
                 </p>
             </Card>
 
             {q.error && !s ? (
-                <div className="bg-red-900/30 border border-red-800 text-red-300 rounded-xl p-4">
+                <div className="bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl p-4">
                     {q.error} <button onClick={q.reload} className="underline ml-2">Réessayer</button>
                 </div>
             ) : (
                 <div className={`space-y-6 ${q.loading && s ? 'opacity-60 transition-opacity' : ''}`}>
                     {!!s?.openFraudFlags && (
                         <button type="button" onClick={() => setParams({ tab: 'a-verifier' })}
-                            className="w-full text-left rounded-xl border border-amber-600 bg-amber-900/30 p-4 text-sm text-amber-100 hover:bg-amber-900/50">
+                            className="w-full text-left rounded-xl border border-amber-600 bg-amber-100 dark:bg-amber-900/30 p-4 text-sm text-amber-800 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-900/50">
                             <b>{num(s.openFraudFlags)} {plural(s.openFraudFlags, 'signalement')} de fraude à vérifier.</b>{' '}
                             Tant qu’un signalement à score élevé est ouvert, le résultat du défi concerné ne peut pas être figé.
-                            <span className="block mt-1 font-semibold text-blue-300">Ouvrir « À vérifier »</span>
+                            <span className="block mt-1 font-semibold text-blue-600 dark:text-blue-300">Ouvrir « À vérifier »</span>
                         </button>
                     )}
 
@@ -78,19 +78,19 @@ export default function OverviewTab() {
 
                     <Section title="Récompenses par statut">
                         <Card>
-                            {!s ? <p className="text-sm text-gray-400">Chargement…</p> : Object.keys(s.rewards).length === 0 ? (
-                                <p className="text-sm text-gray-400">Aucune récompense attribuée.</p>
+                            {!s ? <p className="text-sm text-fg-muted">Chargement…</p> : Object.keys(s.rewards).length === 0 ? (
+                                <p className="text-sm text-fg-muted">Aucune récompense attribuée.</p>
                             ) : (
                                 <div className="flex flex-wrap gap-x-5 gap-y-2">
                                     {Object.entries(s.rewards).map(([k, n]) => (
-                                        <span key={k} className="text-sm"><b>{num(n)}</b> <span className="text-gray-400">{REWARD_WINNER_STATUS_LABELS[k] ?? 'Autres'}</span></span>
+                                        <span key={k} className="text-sm"><b>{num(n)}</b> <span className="text-fg-muted">{REWARD_WINNER_STATUS_LABELS[k] ?? 'Autres'}</span></span>
                                     ))}
                                 </div>
                             )}
                         </Card>
                     </Section>
 
-                    <Section title="Défis par statut" action={<button onClick={() => setParams({ tab: 'defis' })} className="text-sm font-semibold text-blue-300">Voir les défis</button>}>
+                    <Section title="Défis par statut" action={<button onClick={() => setParams({ tab: 'defis' })} className="text-sm font-semibold text-blue-600 dark:text-blue-300">Voir les défis</button>}>
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                             {CHALLENGE_STATUSES.map(st => (
                                 <Stat key={st} label={CHALLENGE_STATUS_LABELS[st]} value={v(s?.challenges.byStatus[st])}
@@ -116,7 +116,7 @@ function RankList({ title, firstCol, rows, loading }: { title: string; firstCol:
         <Section title={title}>
             <Table headers={[firstCol, 'Défis', 'Votes', 'Revenus votes']} loading={loading} empty={rows && rows.length === 0 ? 'Aucune donnée' : undefined}>
                 {rows?.map(r => (
-                    <tr key={r.id} className="border-t border-gray-700">
+                    <tr key={r.id} className="border-t border-line">
                         <td className={`${tdCls} font-medium`}>{r.name}</td>
                         <td className={`${tdCls} text-right`}>{num(r.challenges)}</td>
                         <td className={`${tdCls} text-right`}>{num(r.votes)}</td>

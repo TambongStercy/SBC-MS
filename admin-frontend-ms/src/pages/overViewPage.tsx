@@ -153,9 +153,9 @@ const OverViewPage = () => {
             const cibleMonth = actualDashboardData.monthlyCibleSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
             const relanceMonth = actualDashboardData.monthlyRelanceSubs?.find((s: MonthlyCountData) => s.month === allUserMonth.month);
 
-            // Convert month format from "2024-02" to "Feb 24"
+            // Convert month format from "2024-02" to "févr. 24"
             const [year, month] = allUserMonth.month.split('-');
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthNames = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
             const monthLabel = `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`;
 
             return {
@@ -171,7 +171,7 @@ const OverViewPage = () => {
         setLoading(false);
       } catch (err) {
         console.error("Error fetching data:", err);
-        setError("Failed to load data");
+        setError("Impossible de charger les données");
         setLoading(false);
       }
     };
@@ -181,7 +181,7 @@ const OverViewPage = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
+      <div className="flex justify-center items-center min-h-[60vh]">
         <Loader name={"Admin"} />
       </div>
     );
@@ -189,17 +189,17 @@ const OverViewPage = () => {
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
+      <div className="flex justify-center items-center min-h-[60vh] text-danger">
         {error}
       </div>
     );
   }
 
   return (
-    <div className="flex-1 relative z-10">
+    <div>
       <Header title="Tableau de bord" />
 
-      <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+      <main>
         <motion.div
           className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 mb-8"
           initial={{ opacity: 0, y: 20 }}
@@ -210,7 +210,7 @@ const OverViewPage = () => {
           <StatCard
             name="Solde Admin (XAF)"
             icon={BadgeSwissFranc}
-            value={dashboardData?.adminBalance != null ? `${Math.round(dashboardData.adminBalance).toLocaleString('en-US')} F` : "N/A"}
+            value={dashboardData?.adminBalance != null ? `${Math.round(dashboardData.adminBalance).toLocaleString('fr-FR')} F` : "—"}
             color="#6366f1"
           />
           <StatCard
@@ -220,73 +220,73 @@ const OverViewPage = () => {
             color="#10b981"
           />
           <StatCard
-            name="Total Utilisateurs"
+            name="Total membres"
             icon={UserRound}
-            value={dashboardData?.count || "N/A"}
+            value={dashboardData?.count || "—"}
             color="#ec4899"
           />
           <StatCard
             name="Abonnés Classique"
             icon={UserRoundCheck}
-            value={dashboardData?.classiqueSubCount || "N/A"}
+            value={dashboardData?.classiqueSubCount || "—"}
             color="#f59e0b"
           />
           <StatCard
             name="Abonnés Cible"
             icon={UserRoundCheck}
-            value={dashboardData?.cibleSubCount || "N/A"}
+            value={dashboardData?.cibleSubCount || "—"}
             color="#8b5cf6"
           />
           <StatCard
             name="Abonnés Relance"
             icon={UserRoundCheck}
-            value={dashboardData?.relanceSubCount || "N/A"}
+            value={dashboardData?.relanceSubCount || "—"}
             color="#ef4444"
           />
 
           {/* USER BALANCES SECTION */}
           <StatCard
-            name="Soldes Users (XAF)"
+            name="Soldes membres (XAF)"
             icon={Wallet}
-            value={dashboardData?.totalUserBalanceXAF != null ? `${Math.round(dashboardData.totalUserBalanceXAF).toLocaleString('en-US')} F` : "N/A"}
+            value={dashboardData?.totalUserBalanceXAF != null ? `${Math.round(dashboardData.totalUserBalanceXAF).toLocaleString('fr-FR')} F` : "—"}
             color="#3b82f6"
           />
           <StatCard
-            name="Soldes Users (USD)"
+            name="Soldes membres (USD)"
             icon={DollarSign}
             value={dashboardData?.totalUserBalanceUSD != null ? `$${dashboardData.totalUserBalanceUSD.toFixed(2)}` : "$0.00"}
             color="#059669"
           />
           <StatCard
-            name="Soldes Activation"
+            name="Soldes d'activation"
             icon={Users}
-            value={dashboardData?.totalUserActivationBalance != null ? `${Math.round(dashboardData.totalUserActivationBalance).toLocaleString('en-US')} F` : "N/A"}
+            value={dashboardData?.totalUserActivationBalance != null ? `${Math.round(dashboardData.totalUserActivationBalance).toLocaleString('fr-FR')} F` : "—"}
             color="#7c3aed"
           />
 
           {/* TRANSACTION STATS */}
           <StatCard
-            name="Revenu Total"
+            name="Revenu total"
             icon={BadgeSwissFranc}
-            value={dashboardData?.totalRevenue != null ? `${Math.round(dashboardData.totalRevenue).toLocaleString('en-US')} F` : "N/A"}
+            value={dashboardData?.totalRevenue != null ? `${Math.round(dashboardData.totalRevenue).toLocaleString('fr-FR')} F` : "—"}
             color="#14b8a6"
           />
           <StatCard
-            name="Total Retraits"
+            name="Total retraits"
             icon={BadgeSwissFranc}
-            value={dashboardData?.totalWithdrawals != null ? `${Math.round(dashboardData.totalWithdrawals).toLocaleString('en-US')} F` : "N/A"}
+            value={dashboardData?.totalWithdrawals != null ? `${Math.round(dashboardData.totalWithdrawals).toLocaleString('fr-FR')} F` : "—"}
             color="#ef4444"
           />
           <StatCard
-            name="Total Transactions"
+            name="Total transactions"
             icon={ListChecks}
-            value={dashboardData?.totalTransactions || "N/A"}
+            value={dashboardData?.totalTransactions || "—"}
             color="#10b981"
           />
           <StatCard
-            name="Total Dépôts"
+            name="Total dépôts"
             icon={BadgeSwissFranc}
-            value={dashboardData?.totalDeposits != null ? `${Math.round(dashboardData.totalDeposits).toLocaleString('en-US')} F` : "N/A"}
+            value={dashboardData?.totalDeposits != null ? `${Math.round(dashboardData.totalDeposits).toLocaleString('fr-FR')} F` : "—"}
             color="#16a34a"
           />
 
@@ -294,19 +294,19 @@ const OverViewPage = () => {
           {relanceStats && (
             <>
               <StatCard
-                name="Campagnes Actives"
+                name="Campagnes actives"
                 icon={Target}
                 value={relanceStats.activeCampaigns || 0}
                 color="#a855f7"
               />
               <StatCard
-                name="Messages Envoyés"
+                name="Messages envoyés"
                 icon={MessageSquare}
                 value={relanceStats.totalMessagesSent || 0}
                 color="#06b6d4"
               />
               <StatCard
-                name="Taux de Livraison"
+                name="Taux de livraison"
                 icon={TrendingUp}
                 value={`${(relanceStats.averageDeliveryRate || 0).toFixed(1)}%`}
                 color="#f59e0b"
@@ -316,13 +316,13 @@ const OverViewPage = () => {
 
           {/* DYNAMIC COUNTRY BALANCE DISPLAY */}
           {dashboardData?.balancesByCountry && Object.keys(dashboardData.balancesByCountry).length > 0 && (
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm flex flex-col justify-between col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-4"> {/* Updated: Container spans remaining width */}
+            <div className="bg-surface border border-line p-4 rounded-lg flex flex-col justify-between col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-4"> {/* Updated: Container spans remaining width */}
               {/* Country Selection Dropdown */}
               <div className="relative">
                 <select
                   value={selectedCountryCode || ''}
                   onChange={(e) => setSelectedCountryCode(e.target.value)}
-                  className="block w-full appearance-none bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 py-2 px-3 pr-8 rounded-sm leading-tight focus:outline-hidden focus:bg-white dark:focus:bg-gray-600 focus:border-gray-500 dark:focus:border-gray-400 text-sm mb-2" // Added text-sm and mb-2
+                  className="block w-full appearance-none bg-surface border border-line-strong text-fg py-2 px-3 pr-8 rounded-sm leading-tight focus:outline-hidden focus:bg-surface focus:border-fg-subtle text-sm mb-2" // Added text-sm and mb-2
                 >
                   {Object.keys(dashboardData.balancesByCountry).map((countryCode) => (
                     <option key={countryCode} value={countryCode}>
@@ -330,7 +330,7 @@ const OverViewPage = () => {
                     </option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-fg-muted">
                   <ChevronDown size={18} />
                 </div>
               </div>
@@ -341,7 +341,7 @@ const OverViewPage = () => {
                   key={selectedCountryCode} // Ensure re-render on change
                   name={`Solde ${getCountryName(selectedCountryCode)}`}
                   icon={Landmark}
-                  value={dashboardData.balancesByCountry[selectedCountryCode] != null ? `${Math.round(dashboardData.balancesByCountry[selectedCountryCode]).toLocaleString('en-US')} F` : "N/A"}
+                  value={dashboardData.balancesByCountry[selectedCountryCode] != null ? `${Math.round(dashboardData.balancesByCountry[selectedCountryCode]).toLocaleString('fr-FR')} F` : "—"}
                   color={getColorForCountry(selectedCountryCode)}
                 />
               )}
@@ -363,17 +363,17 @@ const OverViewPage = () => {
             <UsersOverViewCahrt data={monthlyData} />
 
             {/* Monthly Revenue Chart */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm md:col-span-1">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Revenu Mensuel
+            <div className="bg-surface border border-line p-6 rounded-lg md:col-span-1">
+              <h3 className="text-lg font-semibold mb-4 text-fg">
+                Revenu mensuel
               </h3>
               <MonthlyRevenueChart data={dashboardData?.monthlyRevenue || []} />
             </div>
 
             {/* Activity Overview Chart */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm md:col-span-1">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Aperçu de l'Activité Mensuelle
+            <div className="bg-surface border border-line p-6 rounded-lg md:col-span-1">
+              <h3 className="text-lg font-semibold mb-4 text-fg">
+                Activité mensuelle
               </h3>
               <ActivityOverviewChart data={dashboardData?.activityOverview || []} />
             </div>
@@ -384,11 +384,11 @@ const OverViewPage = () => {
             {/* Comparison Charts */}
             {dashboardData && (
               <>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm h-64"> {/* Fixed height */}
+                <div className="bg-surface border border-line p-4 rounded-lg h-64"> {/* Fixed height */}
                   <ComparisonChart
-                    title="Utilisateurs vs Abonnés"
+                    title="Membres et abonnés"
                     data={[
-                      { name: "Autres Utilisateurs", value: dashboardData.count - (dashboardData.classiqueSubCount + dashboardData.cibleSubCount + (dashboardData.relanceSubCount || 0)) },
+                      { name: "Autres membres", value: dashboardData.count - (dashboardData.classiqueSubCount + dashboardData.cibleSubCount + (dashboardData.relanceSubCount || 0)) },
                       { name: "Abonnés Classique", value: dashboardData.classiqueSubCount },
                       { name: "Abonnés Cible", value: dashboardData.cibleSubCount },
                       { name: "Abonnés Relance", value: dashboardData.relanceSubCount || 0 },
@@ -397,23 +397,23 @@ const OverViewPage = () => {
                   />
                 </div>
 
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm h-64"> {/* Fixed height */}
+                <div className="bg-surface border border-line p-4 rounded-lg h-64"> {/* Fixed height */}
                   <ComparisonChart
-                    title="Revenu vs Retraits"
+                    title="Revenu et retraits"
                     data={[
-                      { name: "Revenu Total", value: dashboardData.totalRevenue },
-                      { name: "Retraits Totals", value: dashboardData.totalWithdrawals },
+                      { name: "Revenu total", value: dashboardData.totalRevenue },
+                      { name: "Retraits totaux", value: dashboardData.totalWithdrawals },
                     ]}
                     colors={['#14b8a6', '#ef4444']} // teal, red
                   />
                 </div>
 
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm h-64"> {/* Fixed height */}
+                <div className="bg-surface border border-line p-4 rounded-lg h-64"> {/* Fixed height */}
                   <ComparisonChart
-                    title="Transactions vs Utilisateurs"
+                    title="Transactions et membres"
                     data={[
                       { name: "Transactions", value: dashboardData.totalTransactions },
-                      { name: "Utilisateurs", value: dashboardData.count },
+                      { name: "Membres", value: dashboardData.count },
                     ]}
                     colors={['#10b981', '#ec4899']} // emerald, pink
                   />
@@ -422,17 +422,17 @@ const OverViewPage = () => {
             )}
 
             {/* Recent Transactions List */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Transactions Récentes
+            <div className="bg-surface border border-line p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 text-fg">
+                Transactions récentes
               </h3>
               <RecentTransactionsList transactions={recentTransactions} />
             </div>
 
             {/* Recent Withdrawals List */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Retraits Récents
+            <div className="bg-surface border border-line p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 text-fg">
+                Retraits récents
               </h3>
               <RecentWithdrawalsList withdrawals={recentWithdrawals} />
             </div>

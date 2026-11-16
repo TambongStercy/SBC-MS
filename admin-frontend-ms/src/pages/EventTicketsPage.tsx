@@ -14,7 +14,7 @@ const STATUS_STYLES: Record<TicketStatus, string> = {
     CHECKED_IN: 'bg-blue-100 text-blue-800',
     CANCELLED: 'bg-red-100 text-red-800',
     REFUNDED: 'bg-amber-100 text-amber-800',
-    EXPIRED: 'bg-gray-100 text-gray-500',
+    EXPIRED: 'bg-gray-100 text-fg-subtle',
 };
 
 const fmt = (iso?: string) => iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -59,15 +59,15 @@ export default function EventTicketsPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Billets" />
-            <div className="p-6 space-y-4">
+            <div className="space-y-4">
                 <div className="flex items-center gap-3 flex-wrap">
                     <input
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
                         placeholder="N° de billet, nom ou téléphone"
-                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-72 bg-gray-700 text-white"
+                        className="border border-line-strong rounded-lg px-3 py-2 text-sm w-72 bg-surface text-fg"
                     />
-                    <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus | '')} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">
                         <option value="">Tous les statuts</option>
                         <option value="PENDING">En attente</option>
                         <option value="ISSUED">Émis</option>
@@ -76,18 +76,18 @@ export default function EventTicketsPage() {
                         <option value="REFUNDED">Remboursés</option>
                         <option value="EXPIRED">Expirés</option>
                     </select>
-                    <select value={eventId} onChange={(e) => setEventId(e.target.value)} className="border border-gray-600 rounded-lg px-3 py-2 text-sm max-w-xs bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={eventId} onChange={(e) => setEventId(e.target.value)} className="border border-line-strong rounded-lg px-3 py-2 text-sm max-w-xs bg-surface text-fg hover:bg-surface-2">
                         <option value="">Tous les événements</option>
                         {events.map((ev) => <option key={ev._id} value={ev._id}>{ev.title}</option>)}
                     </select>
-                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
+                    <button onClick={load} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">Actualiser</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
                     <>
-                        <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
+                        <div className="overflow-x-auto bg-surface rounded-xl border border-line">
                             <table className="min-w-full text-sm">
-                                <thead className="bg-gray-900/50 text-gray-300">
+                                <thead className="bg-background/50 text-fg-muted">
                                     <tr>
                                         <th className="px-4 py-2 text-left">N° de billet</th>
                                         <th className="px-4 py-2 text-left">Participant</th>
@@ -99,20 +99,20 @@ export default function EventTicketsPage() {
                                 </thead>
                                 <tbody>
                                     {items.length === 0 && (
-                                        <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Aucun billet.</td></tr>
+                                        <tr><td colSpan={6} className="px-4 py-6 text-center text-fg-muted">Aucun billet.</td></tr>
                                     )}
                                     {items.map((t) => (
-                                        <tr key={t._id} className="border-t border-gray-700">
+                                        <tr key={t._id} className="border-t border-line">
                                             <td className="px-4 py-2 text-xs font-mono">{t.serial}</td>
                                             <td className="px-4 py-2">
                                                 <div className="font-medium">{t.holderName}</div>
-                                                <div className="text-xs text-gray-400">{t.holderPhone}</div>
-                                                {t.holderEmail && <div className="text-xs text-gray-400">{t.holderEmail}</div>}
+                                                <div className="text-xs text-fg-muted">{t.holderPhone}</div>
+                                                {t.holderEmail && <div className="text-xs text-fg-muted">{t.holderEmail}</div>}
                                             </td>
                                             <td className="px-4 py-2 text-xs">
-                                                {eventTitle(t.eventId) || <span className="font-mono text-gray-400">{t.eventId.slice(-8)}</span>}
+                                                {eventTitle(t.eventId) || <span className="font-mono text-fg-muted">{t.eventId.slice(-8)}</span>}
                                             </td>
-                                            <td className="px-4 py-2 text-xs font-mono text-gray-400">{(t as any).ticketTypeId?.slice(-8) || '—'}</td>
+                                            <td className="px-4 py-2 text-xs font-mono text-fg-muted">{(t as any).ticketTypeId?.slice(-8) || '—'}</td>
                                             <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[t.status]}`}>{t.status}</span></td>
                                             <td className="px-4 py-2 text-xs">{fmt(t.createdAt)}</td>
                                         </tr>
@@ -121,7 +121,7 @@ export default function EventTicketsPage() {
                             </table>
                         </div>
                         {total > items.length && (
-                            <div className="text-xs text-gray-400">{items.length} billets affichés sur {total.toLocaleString('fr-FR')} — affinez la recherche.</div>
+                            <div className="text-xs text-fg-muted">{items.length} billets affichés sur {total.toLocaleString('fr-FR')} — affinez la recherche.</div>
                         )}
                     </>
                 )}

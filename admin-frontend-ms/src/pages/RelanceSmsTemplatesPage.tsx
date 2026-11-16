@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Edit2, Eye, Save, X, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Robot01Icon, PencilEdit01Icon } from '@hugeicons/core-free-icons';
 import { getSmsTemplates, updateSmsTemplate, previewSmsTemplate, SmsTemplate } from '../services/adminRelanceApi';
 
 const RelanceSmsTemplatesPage: React.FC = () => {
@@ -24,7 +26,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
             const data = await getSmsTemplates();
             setTemplates(data);
         } catch {
-            toast.error('Erreur lors du chargement des templates SMS');
+            toast.error('Erreur lors du chargement des modèles SMS');
         } finally {
             setLoading(false);
         }
@@ -51,7 +53,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
             const updated = await updateSmsTemplate(tpl.type, tpl.dayNumber, { templateText: editText });
             setTemplates(prev => prev.map(t => t._id === updated._id ? updated : t));
             setEditingId(null);
-            toast.success('Template mis à jour');
+            toast.success('Modèle mis à jour');
         } catch {
             toast.error('Erreur lors de la sauvegarde');
         } finally {
@@ -63,7 +65,7 @@ const RelanceSmsTemplatesPage: React.FC = () => {
         try {
             const updated = await updateSmsTemplate(tpl.type, tpl.dayNumber, { active: !tpl.active });
             setTemplates(prev => prev.map(t => t._id === updated._id ? updated : t));
-            toast.success(updated.active ? 'Template activé' : 'Template désactivé');
+            toast.success(updated.active ? 'Modèle activé' : 'Modèle désactivé');
         } catch {
             toast.error('Erreur lors de la mise à jour');
         }
@@ -93,14 +95,14 @@ const RelanceSmsTemplatesPage: React.FC = () => {
     }
 
     return (
-        <div className="p-6 max-w-4xl mx-auto">
+        <div>
             <div className="mb-6">
-                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                    <MessageSquare className="w-7 h-7 text-blue-400" />
-                    Templates SMS Relance
+                <h1 className="text-2xl font-bold text-fg flex items-center gap-2">
+                    <MessageSquare className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+                    Modèles SMS de relance
                 </h1>
-                <p className="text-gray-400 mt-1 text-sm">
-                    Messages prédéfinis — les utilisateurs ajoutent uniquement leur lien via <code className="bg-gray-700 px-1 rounded-sm">{'{{link}}'}</code>
+                <p className="text-fg-muted mt-1 text-sm">
+                    Messages prédéfinis — les utilisateurs ajoutent uniquement leur lien via <code className="bg-surface-2 px-1 rounded-sm">{'{{link}}'}</code>
                 </p>
             </div>
 
@@ -110,25 +112,26 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                             activeTab === tab
                                 ? 'bg-blue-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                : 'bg-surface-2 text-fg-muted hover:bg-surface-3'
                         }`}
                     >
-                        {tab === 'auto' ? '🤖 Automatique (J0–J7)' : '✍️ Manuel (Jour 1–7)'}
+                        <HugeiconsIcon icon={tab === 'auto' ? Robot01Icon : PencilEdit01Icon} size={16} />
+                        {tab === 'auto' ? 'Automatique (J0–J7)' : 'Manuel (Jour 1–7)'}
                     </button>
                 ))}
             </div>
 
             {/* Preview link input */}
-            <div className="bg-gray-800 rounded-lg p-4 mb-4 flex items-center gap-3">
-                <Eye className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="text-gray-400 text-sm">Lien pour prévisualisation :</span>
+            <div className="bg-surface border border-line rounded-lg p-4 mb-4 flex items-center gap-3">
+                <Eye className="w-4 h-4 text-fg-muted shrink-0" />
+                <span className="text-fg-muted text-sm">Lien pour prévisualisation :</span>
                 <input
                     value={previewLink}
                     onChange={e => setPreviewLink(e.target.value)}
-                    className="flex-1 bg-gray-700 text-white text-sm rounded-sm px-3 py-1.5 border border-gray-600 focus:outline-hidden focus:border-blue-500"
+                    className="flex-1 bg-surface text-fg text-sm rounded-sm px-3 py-1.5 border border-line-strong focus:outline-hidden focus:border-blue-500"
                     placeholder="https://..."
                 />
             </div>
@@ -136,37 +139,37 @@ const RelanceSmsTemplatesPage: React.FC = () => {
             {/* Template list */}
             <div className="space-y-4">
                 {filtered.map(tpl => (
-                    <div key={tpl._id} className={`bg-gray-800 rounded-xl border ${tpl.active ? 'border-gray-700' : 'border-gray-700 opacity-60'}`}>
+                    <div key={tpl._id} className={`bg-surface rounded-xl border ${tpl.active ? 'border-line' : 'border-line opacity-60'}`}>
                         <div className="flex items-center justify-between p-4 pb-2">
                             <div className="flex items-center gap-3">
-                                <span className="bg-blue-600/20 text-blue-400 text-xs font-bold px-2 py-1 rounded-sm">
+                                <span className="bg-blue-600/20 text-blue-700 dark:text-blue-400 text-xs font-bold px-2 py-1 rounded-sm">
                                     {dayLabel(tpl.type, tpl.dayNumber)}
                                 </span>
                                 {!tpl.active && (
-                                    <span className="text-xs text-gray-500 bg-gray-700 px-2 py-0.5 rounded-sm">Inactif</span>
+                                    <span className="text-xs text-fg-subtle bg-surface-2 px-2 py-0.5 rounded-sm">Inactif</span>
                                 )}
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => handlePreview(tpl)}
-                                    className="p-1.5 rounded-sm text-gray-400 hover:text-blue-400 hover:bg-gray-700"
+                                    className="p-1.5 rounded-sm text-fg-muted hover:text-blue-700 dark:hover:text-blue-400 hover:bg-surface-2"
                                     title="Prévisualiser"
                                 >
                                     <Eye className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => toggleActive(tpl)}
-                                    className="p-1.5 rounded-sm text-gray-400 hover:text-yellow-400 hover:bg-gray-700"
+                                    className="p-1.5 rounded-sm text-fg-muted hover:text-yellow-800 dark:hover:text-yellow-400 hover:bg-surface-2"
                                     title={tpl.active ? 'Désactiver' : 'Activer'}
                                 >
                                     {tpl.active
-                                        ? <ToggleRight className="w-5 h-5 text-green-400" />
-                                        : <ToggleLeft className="w-5 h-5 text-gray-500" />}
+                                        ? <ToggleRight className="w-5 h-5 text-green-600 dark:text-green-400" />
+                                        : <ToggleLeft className="w-5 h-5 text-fg-subtle" />}
                                 </button>
                                 {editingId !== tpl._id && (
                                     <button
                                         onClick={() => startEdit(tpl)}
-                                        className="p-1.5 rounded-sm text-gray-400 hover:text-white hover:bg-gray-700"
+                                        className="p-1.5 rounded-sm text-fg-muted hover:text-fg hover:bg-surface-2"
                                         title="Modifier"
                                     >
                                         <Edit2 className="w-4 h-4" />
@@ -182,16 +185,16 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                                         value={editText}
                                         onChange={e => setEditText(e.target.value)}
                                         rows={5}
-                                        className="w-full bg-gray-900 text-white text-sm rounded-lg p-3 border border-blue-500 focus:outline-hidden resize-none font-mono"
+                                        className="w-full bg-surface text-fg text-sm rounded-lg p-3 border border-blue-500 focus:outline-hidden resize-none font-mono"
                                     />
                                     <div className="flex items-center justify-between">
-                                        <span className={`text-xs ${charCount(editText) > 160 ? 'text-orange-400' : 'text-gray-400'}`}>
+                                        <span className={`text-xs ${charCount(editText) > 160 ? 'text-orange-600 dark:text-orange-400' : 'text-fg-muted'}`}>
                                             {charCount(editText)} caractères ({Math.ceil(charCount(editText) / 160)} SMS)
                                         </span>
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={cancelEdit}
-                                                className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600"
+                                                className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-surface-2 text-fg-muted hover:bg-surface-3"
                                             >
                                                 <X className="w-3.5 h-3.5" /> Annuler
                                             </button>
@@ -201,22 +204,22 @@ const RelanceSmsTemplatesPage: React.FC = () => {
                                                 className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                                             >
                                                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                                                Sauvegarder
+                                                Enregistrer
                                             </button>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                <pre className="text-gray-300 text-sm whitespace-pre-wrap font-sans leading-relaxed">
+                                <pre className="text-fg-muted text-sm whitespace-pre-wrap font-sans leading-relaxed">
                                     {tpl.templateText}
                                 </pre>
                             )}
 
                             {/* Preview panel */}
                             {previewTarget?._id === tpl._id && previewData && (
-                                <div className="mt-3 p-3 bg-gray-900 rounded-lg border border-gray-700">
-                                    <p className="text-xs text-gray-500 mb-1">Prévisualisation ({previewData.characterCount} car.)</p>
-                                    <pre className="text-green-300 text-sm whitespace-pre-wrap font-sans">
+                                <div className="mt-3 p-3 bg-background rounded-lg border border-line">
+                                    <p className="text-xs text-fg-subtle mb-1">Prévisualisation ({previewData.characterCount} car.)</p>
+                                    <pre className="text-green-600 dark:text-green-300 text-sm whitespace-pre-wrap font-sans">
                                         {previewData.rendered}
                                     </pre>
                                 </div>

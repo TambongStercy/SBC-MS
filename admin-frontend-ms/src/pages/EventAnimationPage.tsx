@@ -61,22 +61,22 @@ export default function EventAnimationPage() {
     return (
         <AnimContext.Provider value={ctx}>
             <div className="flex-1 overflow-y-auto">
-                <Header title="SBC Event — Animation & Engagement" />
-                <div className="p-6 space-y-4">
+                <Header title="SBC Event — Animation et engagement" />
+                <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-sm text-gray-400">Défis et votes des événements : activité, fraude, demandes de modification, votes payants et journal.</p>
-                        <button onClick={refresh} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
+                        <p className="text-sm text-fg-muted">Défis et votes des événements : activité, fraude, demandes de modification, votes payants et journal.</p>
+                        <button onClick={refresh} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">Actualiser</button>
                     </div>
 
-                    <div className="border-b border-gray-700 overflow-x-auto">
+                    <div className="border-b border-line overflow-x-auto">
                         <nav className="flex gap-1">
                             {TABS.map(t => {
                                 const n = badge(t.id);
                                 return (
                                     <button key={t.id} onClick={() => setParams({ tab: t.id })}
                                         className={`px-4 py-2.5 text-sm font-medium rounded-t-lg whitespace-nowrap transition-colors ${tab === t.id
-                                            ? 'bg-gray-800 text-purple-300 border-b-2 border-purple-500'
-                                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}>
+                                            ? 'bg-surface text-purple-600 dark:text-purple-300 border-b-2 border-purple-500'
+                                            : 'text-fg-muted hover:text-fg hover:bg-surface'}`}>
                                         {t.label}
                                         {!!n && <span className="ml-2 px-1.5 py-0.5 rounded-full text-xs bg-amber-500 text-gray-900 font-semibold">{n}</span>}
                                     </button>

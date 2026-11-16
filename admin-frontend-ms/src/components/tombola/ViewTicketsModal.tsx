@@ -2,6 +2,9 @@ import React from 'react';
 import { TombolaTicket, TombolaMonth } from '../../services/adminTombolaApi'; // Assuming interfaces are here or adjust path
 import Pagination from '../common/Pagination'; // Reuse pagination
 import { format, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Search01Icon } from '@hugeicons/core-free-icons';
 
 interface ViewTicketsModalProps {
     isOpen: boolean;
@@ -19,11 +22,11 @@ interface ViewTicketsModalProps {
 
 // Helper to format date strings (or import from parent/utils)
 const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '—';
     try {
-        return format(parseISO(dateString), 'MMM dd, yyyy, hh:mm a');
+        return format(parseISO(dateString), 'dd MMM yyyy, HH:mm', { locale: fr });
     } catch (error) {
-        return 'Invalid Date';
+        return 'Date invalide';
     }
 };
 
@@ -47,12 +50,12 @@ const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
     return (
         <div className="fixed inset-0 bg-black/75 flex justify-center items-center z-50 p-4">
             {/* Wider modal for ticket list */}
-            <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                    <h2 className="text-xl font-semibold text-white">
-                        Tickets for Tombola: {`${String(tombolaMonth.month).padStart(2, '0')}/${tombolaMonth.year}`}
+            <div className="bg-surface p-6 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col border border-line">
+                <div className="flex justify-between items-center mb-4 border-b border-line pb-3">
+                    <h2 className="text-xl font-semibold text-fg">
+                        Tickets de la tombola {`${String(tombolaMonth.month).padStart(2, '0')}/${tombolaMonth.year}`}
                     </h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white">
+                    <button onClick={onClose} className="text-fg-muted hover:text-fg" aria-label="Fermer">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
@@ -61,48 +64,48 @@ const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
                 <div className="mb-4 relative">
                     <input
                         type="text"
-                        placeholder="Search by Name, Email, Phone..."
+                        placeholder="Rechercher par nom, e-mail ou téléphone"
                         value={searchTerm}
                         onChange={onSearchChange}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-600 rounded-md leading-5 bg-gray-700 text-gray-100 placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        className="block w-full pl-10 pr-3 py-2 border border-line-strong rounded-md leading-5 bg-surface text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     />
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i className="fas fa-search text-gray-400"></i>
+                        <HugeiconsIcon icon={Search01Icon} size={16} className="text-fg-muted" />
                     </div>
                 </div>
 
                 {/* Ticket Table Container */}
                 <div className="overflow-y-auto grow mb-4">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700 sticky top-0"> {/* Sticky header */}
+                    <table className="min-w-full divide-y divide-line">
+                        <thead className="bg-surface-2 sticky top-0"> {/* Sticky header */}
                             <tr>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticket ID</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticket No.</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User Name</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User Phone</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User ID</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Purchase Date</th>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">ID du ticket</th>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">N° du ticket</th>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Nom</th>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Téléphone</th>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">ID utilisateur</th>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Date d’achat</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-600">
+                        <tbody className="divide-y divide-line-strong">
                             {isLoading && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-400">Loading tickets...</td>
+                                    <td colSpan={6} className="px-4 py-4 text-center text-sm text-fg-muted">Chargement des tickets…</td>
                                 </tr>
                             )}
                             {!isLoading && tickets.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-400">No tickets found for this tombola month.</td>
+                                    <td colSpan={6} className="px-4 py-4 text-center text-sm text-fg-muted">Aucun ticket pour cette tombola.</td>
                                 </tr>
                             )}
                             {!isLoading && tickets.map((ticket) => (
-                                <tr key={ticket._id} className="hover:bg-gray-700">
-                                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono text-gray-400">{ticket.ticketId}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-gray-100">{ticket.ticketNumber}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{ticket.userName || 'N/A'}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{ticket.userPhoneNumber || 'N/A'}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono text-gray-400">{ticket.userId}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{formatDate(ticket.purchaseTimestamp)}</td>
+                                <tr key={ticket._id} className="hover:bg-surface-2">
+                                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono text-fg-muted">{ticket.ticketId}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-fg">{ticket.ticketNumber}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-fg-muted">{ticket.userName || '—'}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-fg-muted">{ticket.userPhoneNumber || '—'}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono text-fg-muted">{ticket.userId}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-fg-muted">{formatDate(ticket.purchaseTimestamp)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -110,7 +113,7 @@ const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
                 </div>
 
                 {/* Footer with Pagination */}
-                <div className="pt-4 border-t border-gray-700">
+                <div className="pt-4 border-t border-line">
                     {totalTickets > 0 && totalPages > 1 && (
                         <Pagination
                             currentPage={currentPage}
@@ -118,7 +121,7 @@ const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
                             onPageChange={onPageChange}
                         />
                     )}
-                    <div className="text-sm text-gray-400 mt-2 text-center">Total tickets found: {totalTickets}</div>
+                    <div className="text-sm text-fg-muted mt-2 text-center">Tickets trouvés : {totalTickets.toLocaleString('fr-FR')}</div>
                 </div>
             </div>
         </div>

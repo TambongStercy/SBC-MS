@@ -15,18 +15,19 @@ import CreateTombolaModal from '../components/tombola/CreateTombolaModal'; // <-
 import ViewTicketsModal from '../components/tombola/ViewTicketsModal'; // <-- Import ViewTicketsModal
 import ConfirmationModal from '../components/common/ConfirmationModal'; // Import ConfirmationModal
 import { format, parseISO } from 'date-fns'; // For date formatting
+import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import { debounce } from 'lodash'; // Import debounce
 import { useNavigate } from 'react-router-dom'; // Import useNavigate
 
 // Helper to format date strings
 const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '—';
     try {
-        return format(parseISO(dateString), 'MMM dd, yyyy, hh:mm a'); // Example format
+        return format(parseISO(dateString), 'dd MMM yyyy, HH:mm', { locale: fr });
     } catch (error) {
         console.error("Error formatting date:", dateString, error);
-        return 'Invalid Date';
+        return 'Date invalide';
     }
 };
 
@@ -34,13 +35,13 @@ const formatDate = (dateString?: string) => {
 const getStatusBadge = (status: TombolaStatus) => {
     switch (status) {
         case TombolaStatus.OPEN:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">OPEN</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">OUVERTE</span>;
         case TombolaStatus.CLOSED:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">CLOSED</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-surface-2 text-fg-muted">FERMÉE</span>;
         case TombolaStatus.DRAWING:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">DRAWING</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300">TIRAGE EN COURS</span>;
         default:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">UNKNOWN</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300">INCONNU</span>;
     }
 };
 
@@ -90,9 +91,9 @@ function TombolaManagementPage() {
                 setPagination(prev => ({ ...prev, page: response.pagination.page }));
             }
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
+            const message = err instanceof Error ? err.message : 'Erreur inconnue';
             setError(message);
-            toast.error(`Failed to load tombolas: ${message}`);
+            toast.error(`Impossible de charger les tombolas : ${message}`);
             setTombolas([]);
             setTotalPages(1);
         } finally {
@@ -121,17 +122,17 @@ function TombolaManagementPage() {
 
     const handleCreateTombola = async (month: number, year: number) => {
         setIsSubmitting(true);
-        const loadingToastId = toast.loading('Creating new tombola...');
+        const loadingToastId = toast.loading('Création de la tombola…');
         try {
             const newTombola = await createTombolaMonth(month, year);
             console.log(newTombola);
-            toast.success(`Successfully created tombola for ${String(month).padStart(2, '0')}/${year}.`, { id: loadingToastId });
+            toast.success(`Tombola ${String(month).padStart(2, '0')}/${year} créée.`, { id: loadingToastId });
             handleCloseCreateModal();
             fetchTombolas(); // Refresh the list
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
+            const message = err instanceof Error ? err.message : 'Erreur inconnue';
             console.error("Failed to create tombola:", err);
-            toast.error(`Failed to create tombola: ${message}`, { id: loadingToastId });
+            toast.error(`La tombola n’a pas pu être créée : ${message}`, { id: loadingToastId });
             // Re-throw error so modal can display it if needed
             throw err;
         } finally {
@@ -162,12 +163,12 @@ function TombolaManagementPage() {
                 }
             } else {
                 // Handle case where response might be missing expected fields even if successful
-                throw new Error(response.message || 'Failed to fetch tickets: Invalid response structure');
+                throw new Error(response.message || 'Réponse inattendue du serveur pour les tickets.');
             }
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
+            const message = err instanceof Error ? err.message : 'Erreur inconnue';
             console.error("Failed to fetch tickets:", err);
-            toast.error(`Failed to load tickets: ${message}`);
+            toast.error(`Impossible de charger les tickets : ${message}`);
             setTickets([]);
             setTicketsTotalPages(1);
             setTicketsTotalCount(0);
@@ -246,16 +247,16 @@ function TombolaManagementPage() {
         if (!tombolaToChangeStatus || targetStatus === null) return;
 
         setIsUpdatingStatus(true);
-        const loadingToastId = toast.loading(`Updating status to ${targetStatus}...`);
+        const loadingToastId = toast.loading('Mise à jour du statut…');
         try {
             await updateTombolaStatus(tombolaToChangeStatus._id, targetStatus);
-            toast.success('Tombola status updated successfully.', { id: loadingToastId });
+            toast.success('Statut de la tombola mis à jour.', { id: loadingToastId });
             closeStatusConfirmation();
             fetchTombolas(); // Refresh the list
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
+            const message = err instanceof Error ? err.message : 'Erreur inconnue';
             console.error("Failed to update status:", err);
-            toast.error(`Failed to update status: ${message}`, { id: loadingToastId });
+            toast.error(`Le statut n’a pas pu être mis à jour : ${message}`, { id: loadingToastId });
             // Keep modal open on error?
             // closeStatusConfirmation(); // Optionally close even on error
         } finally {
@@ -267,68 +268,68 @@ function TombolaManagementPage() {
     // TODO: Add handlers for Delete
 
     return (
-        <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white">
-            <Header title="Tombola Management" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+        <div className="relative text-fg">
+            <Header title="Gestion des tombolas" />
+            <main>
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-semibold">All Tombola Months</h2>
+                    <h2 className="text-xl font-semibold">Toutes les tombolas</h2>
                     <button
                         onClick={handleOpenCreateModal}
                         // Apply standard button styling
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-surface transition ease-in-out duration-150"
                     >
-                        Create New Tombola
+                        Nouvelle tombola
                     </button>
                 </div>
 
                 {isLoading ? (
-                    <p>Loading tombolas...</p>
+                    <p>Chargement des tombolas…</p>
                 ) : error ? (
-                    <div className="bg-red-800 text-white p-3 rounded-sm">Error: {error}</div>
+                    <div className="bg-red-800 text-white p-3 rounded-sm">Erreur : {error}</div>
                 ) : (
                     <>
                         {/* Wrap the table container with overflow-x-auto */}
-                        <div className="shadow-sm overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-700">
-                                <thead className="bg-gray-700">
+                        <div className="overflow-hidden border-b border-line sm:rounded-lg mb-6 overflow-x-auto">
+                            <table className="min-w-full divide-y divide-line">
+                                <thead className="bg-surface-2">
                                     <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Month/Year</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Start Date</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Draw Date</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Tickets Sold</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Winners</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Mois/Année</th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Statut</th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Début</th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Date du tirage</th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Tickets vendus</th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Gagnants</th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-gray-800 divide-y divide-gray-600">
+                                <tbody className="bg-surface divide-y divide-line-strong">
                                     {tombolas.map((tombola) => (
                                         <tr key={tombola._id}>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{`${String(tombola.month).padStart(2, '0')}/${tombola.year}`}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-fg">{`${String(tombola.month).padStart(2, '0')}/${tombola.year}`}</td>
                                             <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(tombola.status)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatDate(tombola.startDate)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatDate(tombola.drawDate)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{tombola.lastTicketNumber ?? 0}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{tombola.winners?.length ?? 0}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{formatDate(tombola.startDate)}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{formatDate(tombola.drawDate)}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{tombola.lastTicketNumber ?? 0}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{tombola.winners?.length ?? 0}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                                 {/* --- ACTION BUTTONS --- */}
                                                 <button
                                                     onClick={() => handleViewTickets(tombola)}
-                                                    title="View Tickets"
-                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
+                                                    title="Voir les tickets"
+                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-blue-500 transition ease-in-out duration-150"
                                                 >
-                                                    View Tickets
+                                                    Voir les tickets
                                                 </button>
 
                                                 {/* Conditional Draw Button */}
                                                 {(tombola.status === TombolaStatus.OPEN || tombola.status === TombolaStatus.DRAWING) && (
                                                     <button
                                                         onClick={() => handleGoToDrawPage(tombola._id)}
-                                                        title="Perform Draw"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 transition ease-in-out duration-150"
+                                                        title="Effectuer le tirage"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-green-500 transition ease-in-out duration-150"
                                                         disabled={tombola.lastTicketNumber === 0} // Disable if no tickets
                                                     >
-                                                        {tombola.lastTicketNumber === 0 ? 'Draw (No Tickets)' : 'Perform Draw'}
+                                                        {tombola.lastTicketNumber === 0 ? 'Tirage (aucun ticket)' : 'Effectuer le tirage'}
                                                     </button>
                                                 )}
 
@@ -336,10 +337,10 @@ function TombolaManagementPage() {
                                                 {tombola.status === TombolaStatus.CLOSED && (
                                                     <button
                                                         onClick={() => handleGoToDrawPage(tombola._id)}
-                                                        title="View Draw Results"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 transition ease-in-out duration-150"
+                                                        title="Voir les résultats du tirage"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-indigo-500 transition ease-in-out duration-150"
                                                     >
-                                                        View Draw
+                                                        Voir le tirage
                                                     </button>
                                                 )}
 
@@ -347,19 +348,19 @@ function TombolaManagementPage() {
                                                 {tombola.status === TombolaStatus.OPEN && (
                                                     <button
                                                         onClick={() => openStatusConfirmation(tombola, TombolaStatus.CLOSED)}
-                                                        title="Close Tombola"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-gray-500 hover:bg-gray-600 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-400 transition ease-in-out duration-150"
+                                                        title="Fermer la tombola"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-fg bg-surface-3 hover:bg-line-strong focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-fg-subtle transition ease-in-out duration-150"
                                                     >
-                                                        Set Closed
+                                                        Fermer
                                                     </button>
                                                 )}
                                                 {tombola.status === TombolaStatus.CLOSED && (
                                                     <button
                                                         onClick={() => openStatusConfirmation(tombola, TombolaStatus.OPEN)}
-                                                        title="Re-open Tombola"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-yellow-400 transition ease-in-out duration-150"
+                                                        title="Rouvrir la tombola"
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-yellow-400 transition ease-in-out duration-150"
                                                     >
-                                                        Set Open
+                                                        Rouvrir
                                                     </button>
                                                 )}
 
@@ -408,11 +409,11 @@ function TombolaManagementPage() {
             />
             <ConfirmationModal
                 isOpen={isConfirmStatusModalOpen}
-                title={`Confirm Status Change`}
-                message={`Are you sure you want to set the status of Tombola ${tombolaToChangeStatus ? `${String(tombolaToChangeStatus.month).padStart(2, '0')}/${tombolaToChangeStatus.year}` : ''} to ${targetStatus?.toUpperCase()}? ${targetStatus === TombolaStatus.OPEN ? 'This will close any other currently open tombola.' : ''}`}
+                title="Changer le statut ?"
+                message={`${targetStatus === TombolaStatus.OPEN ? 'Rouvrir' : 'Fermer'} la tombola ${tombolaToChangeStatus ? `${String(tombolaToChangeStatus.month).padStart(2, '0')}/${tombolaToChangeStatus.year}` : ''} ? ${targetStatus === TombolaStatus.OPEN ? 'Toute autre tombola ouverte sera fermée.' : ''}`}
                 onConfirm={confirmStatusUpdate}
                 onCancel={closeStatusConfirmation}
-                confirmText={`Yes, Set to ${targetStatus?.toUpperCase()}`}
+                confirmText={targetStatus === TombolaStatus.OPEN ? 'Oui, rouvrir' : 'Oui, fermer'}
                 isLoading={isUpdatingStatus}
             />
         </div>

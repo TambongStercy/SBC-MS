@@ -77,7 +77,7 @@ function Login() {
       <div className="pointer-events-none fixed inset-0 bg-black/30" aria-hidden="true" />
 
       <motion.div
-        className="relative w-full max-w-sm rounded-panel border border-line bg-surface/85 p-6 shadow-overlay backdrop-blur-md sm:p-8"
+        className="relative w-full max-w-sm rounded-panel border border-line bg-surface/85 p-6 backdrop-blur-md sm:p-8"
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6, ease }}
@@ -88,7 +88,7 @@ function Login() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.15, ease }}
         >
-          <img className="h-16 w-16 shrink-0 rounded-full object-cover shadow-panel" src={logoSbc} alt="Logo SBC" />
+          <img className="h-16 w-16 shrink-0 rounded-full object-cover" src={logoSbc} alt="Logo SBC" />
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-primary">Administration</p>
             <h1 className="text-lg font-semibold leading-snug text-fg">Sniper Business Center</h1>
@@ -157,7 +157,7 @@ function Login() {
                 exit={{ opacity: 0, x: 16 }}
                 transition={{ duration: 0.25, ease }}
               >
-                <Field label="Email">
+                <Field label="E-mail">
                   <Input
                     type="email"
                     autoComplete="username"

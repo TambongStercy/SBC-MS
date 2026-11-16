@@ -22,38 +22,39 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 5000 }
     const getIcon = () => {
         switch (type) {
             case 'success':
-                return <CheckCircle className="w-5 h-5 text-green-400" />;
+                return <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />;
             case 'error':
-                return <XCircle className="w-5 h-5 text-red-400" />;
+                return <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />;
             case 'warning':
-                return <AlertTriangle className="w-5 h-5 text-yellow-400" />;
+                return <AlertTriangle className="w-5 h-5 text-yellow-700 dark:text-yellow-400" />;
             case 'info':
-                return <Info className="w-5 h-5 text-blue-400" />;
+                return <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />;
         }
     };
 
     const getBackgroundColor = () => {
         switch (type) {
             case 'success':
-                return 'bg-green-900 border-green-500';
+                return 'bg-green-100 dark:bg-green-900 border-green-500';
             case 'error':
-                return 'bg-red-900 border-red-500';
+                return 'bg-red-100 dark:bg-red-900 border-red-500';
             case 'warning':
-                return 'bg-yellow-900 border-yellow-500';
+                return 'bg-yellow-100 dark:bg-yellow-900 border-yellow-500';
             case 'info':
-                return 'bg-blue-900 border-blue-500';
+                return 'bg-blue-100 dark:bg-blue-900 border-blue-500';
         }
     };
 
     return (
         <div
-            className={`${getBackgroundColor()} border-l-4 p-4 rounded-lg shadow-lg flex items-start gap-3 min-w-[300px] max-w-md animate-slide-in`}
+            className={`${getBackgroundColor()} border-l-4 p-4 rounded-lg flex items-start gap-3 min-w-[300px] max-w-md animate-slide-in`}
         >
             {getIcon()}
-            <p className="text-white text-sm flex-1">{message}</p>
+            <p className="text-fg text-sm flex-1">{message}</p>
             <button
                 onClick={onClose}
-                className="text-gray-400 hover:text-white transition-colors"
+                aria-label="Fermer"
+                className="text-fg-muted hover:text-fg transition-colors"
             >
                 <X className="w-4 h-4" />
             </button>

@@ -35,24 +35,24 @@ const Pagination: React.FC<PaginationProps> = ({
     }
 
     return (
-        <nav className="flex items-center justify-between border-t border-gray-700 px-4 py-3 sm:px-6 mt-6" aria-label="Pagination">
+        <nav className="flex items-center justify-between border-t border-line px-4 py-3 sm:px-6 mt-6" aria-label="Pagination">
             <div className="flex flex-1 justify-between sm:justify-end">
                 <button
                     onClick={handlePrevious}
                     disabled={currentPage === 1}
-                    className="relative inline-flex items-center rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-300 ring-1 ring-inset ring-gray-600 hover:bg-gray-600 focus-visible:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="relative inline-flex items-center rounded-md bg-surface-2 px-3 py-2 text-sm font-semibold text-fg-muted ring-1 ring-inset ring-line-strong hover:bg-surface-3 focus-visible:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    Previous
+                    Précédent
                 </button>
-                <span className="text-sm text-gray-400 mx-4 self-center hidden sm:inline">
-                    Page {currentPage} of {totalPages}
+                <span className="text-sm text-fg-muted mx-4 self-center hidden sm:inline">
+                    Page {currentPage} sur {totalPages}
                 </span>
                 <button
                     onClick={handleNext}
                     disabled={currentPage === totalPages}
-                    className="relative ml-3 inline-flex items-center rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-300 ring-1 ring-inset ring-gray-600 hover:bg-gray-600 focus-visible:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="relative ml-3 inline-flex items-center rounded-md bg-surface-2 px-3 py-2 text-sm font-semibold text-fg-muted ring-1 ring-inset ring-line-strong hover:bg-surface-3 focus-visible:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    Next
+                    Suivant
                 </button>
             </div>
             {/* Optional: Add detailed page number links here if needed */}

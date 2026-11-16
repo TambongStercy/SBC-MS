@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Product, FlashSale } from '../../pages/ProductsManagementPage'; // Assuming interfaces are here
 
+const SALE_STATUS_LABELS: Record<string, string> = {
+    active: 'Active',
+    scheduled: 'Programmée',
+    expired: 'Terminée',
+    cancelled: 'Annulée',
+    pending_payment: 'Paiement en attente',
+};
+
 interface FlashSaleModalProps {
     isOpen: boolean;
     product: Product | null;
@@ -43,20 +51,20 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
     const handleSaveClick = () => {
         // Basic validation
         if (discountedPrice === '' || !startDate || !endDate) {
-            alert('Please fill in all flash sale details.');
+            alert('Renseigne tous les champs de la vente flash.');
             return;
         }
         const finalPrice = Number(discountedPrice);
         if (isNaN(finalPrice) || finalPrice < 0) {
-            alert('Please enter a valid discounted price (must be 0 or greater).');
+            alert('Indique un prix réduit valide (0 ou plus).');
             return;
         }
         if (product && finalPrice >= product.price) {
-            alert(`Discounted price must be less than the original price (${formatCurrency(product.price)}).`);
+            alert(`Le prix réduit doit être inférieur au prix d’origine (${formatCurrency(product.price)}).`);
             return;
         }
         if (new Date(startDate) >= new Date(endDate)) {
-            alert('End date must be after start date.');
+            alert('La date de fin doit venir après la date de début.');
             return;
         }
 
@@ -76,7 +84,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
             onDelete(saleToDelete._id);
         } else {
             console.warn('No active or scheduled flash sale found to delete in existingSales:', existingSales);
-            alert('Could not find an active/scheduled flash sale to remove.');
+            alert('Aucune vente flash active ou programmée à retirer.');
         }
     };
 
@@ -88,11 +96,11 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
 
     // Helper to format dates for display
     const formatDate = (dateInput: Date | string | undefined): string => {
-        if (!dateInput) return 'N/A';
+        if (!dateInput) return '—';
         try {
-            return new Date(dateInput).toLocaleString(); // Adjust format as needed
+            return new Date(dateInput).toLocaleString('fr-FR');
         } catch (e) {
-            return 'Invalid Date';
+            return 'Date invalide';
         }
     };
 
@@ -106,25 +114,25 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-30 p-4">
             {/* Make modal content scrollable */}
-            <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
-                <h2 className="text-xl font-semibold text-white mb-4">Manage Flash Sale for <span className="text-indigo-400">{product.name}</span></h2>
+            <div className="bg-surface p-6 rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto border border-line">
+                <h2 className="text-xl font-semibold text-fg mb-4">Vente flash : <span className="text-indigo-600 dark:text-indigo-400">{product.name}</span></h2>
 
                 {/* --- Form for New/Editing Sale --- */}
                 {/* Conditionally show form - maybe only if no active/scheduled sale exists? Or always show? */}
                 {/* For now, always show the form to create a new one */}
-                <h3 className="text-lg font-medium text-gray-300 mb-3 border-t border-gray-600 pt-3 mt-4">
-                    {currentSale ? 'Replace Current Sale' : 'Create New Sale'}
-                    <span className="text-sm text-gray-400 ml-2">(Original Price: {formatCurrency(product.price)})</span>
+                <h3 className="text-lg font-medium text-fg-muted mb-3 border-t border-line-strong pt-3 mt-4">
+                    {currentSale ? 'Remplacer la vente en cours' : 'Nouvelle vente flash'}
+                    <span className="text-sm text-fg-muted ml-2">(prix d’origine : {formatCurrency(product.price)})</span>
                 </h3>
                 <div className="mb-4">
-                    <label htmlFor="discountedPrice" className="block text-sm font-medium text-gray-300 mb-1">Discounted Price (XAF)</label>
+                    <label htmlFor="discountedPrice" className="block text-sm font-medium text-fg-muted mb-1">Prix réduit (XAF)</label>
                         <input
                             type="number"
                             id="discountedPrice"
                             value={discountedPrice}
                             onChange={(e) => setDiscountedPrice(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="e.g., 4500"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="ex. 4500"
                             min="0"
                         step="any"
                             required
@@ -132,36 +140,36 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                         />
                     </div>
                 <div className="mb-4">
-                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-300 mb-1">Start Date & Time</label>
+                    <label htmlFor="startDate" className="block text-sm font-medium text-fg-muted mb-1">Début (date et heure)</label>
                         <input
                             type="datetime-local"
                             id="startDate"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                             disabled={isLoading}
                         />
                     </div>
                 <div className="mb-4">
-                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-300 mb-1">End Date & Time</label>
+                    <label htmlFor="endDate" className="block text-sm font-medium text-fg-muted mb-1">Fin (date et heure)</label>
                         <input
                             type="datetime-local"
                             id="endDate"
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                             disabled={isLoading}
                         />
                 </div>
 
                 {/* --- Existing Sales / History Section --- */}
-                <div className="mt-6 pt-4 border-t border-gray-700">
-                    <h3 className="text-lg font-medium text-gray-300 mb-3">Sale History / Status</h3>
-                    {isLoading && <p className="text-center text-gray-400 my-2">Loading sale details...</p>} {/* Use specific loading state */}
+                <div className="mt-6 pt-4 border-t border-line">
+                    <h3 className="text-lg font-medium text-fg-muted mb-3">Historique et statut</h3>
+                    {isLoading && <p className="text-center text-fg-muted my-2">Chargement des ventes…</p>} {/* Use specific loading state */}
                     {!isLoading && existingSales.length === 0 && (
-                        <p className="text-sm text-gray-400 italic text-center">No flash sales found for this product.</p>
+                        <p className="text-sm text-fg-muted italic text-center">Aucune vente flash pour ce produit.</p>
                     )}
                     {!isLoading && existingSales.length > 0 && (
                         <div className="flex space-x-4 overflow-x-auto pb-4 pr-4 [&::-webkit-scrollbar]:hidden"> {/* Horizontal scroll, hidden scrollbar, increased right padding */}
@@ -171,20 +179,20 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                                     const isActive = sale.status === 'active';
                                     const isScheduled = sale.status === 'scheduled';
                                     const isPast = !isActive && !isScheduled; // Simple check for past/other statuses
-                                    let statusColor = 'text-gray-400';
-                                    if (isActive) statusColor = 'text-green-400';
-                                    if (isScheduled) statusColor = 'text-yellow-400';
+                                    let statusColor = 'text-fg-muted';
+                                    if (isActive) statusColor = 'text-green-600 dark:text-green-400';
+                                    if (isScheduled) statusColor = 'text-yellow-700 dark:text-yellow-400';
 
                                     console.log(`Rendering Sale ID: ${sale._id}, Start: ${sale.startTime}, End: ${sale.endTime}, Typeof Start: ${typeof sale.startTime}`); // Use startTime/endTime in log
 
                                     return (
-                                        <div key={sale._id} className="text-sm p-3 rounded-lg bg-gray-600 border border-gray-500 shadow-lg w-64 shrink-0"> {/* Updated card styling: darker bg, more rounded, bigger shadow */}
-                                            <p><span className="font-semibold">Status:</span> <span className={`font-bold ${statusColor}`}>{sale.status?.replace('_', ' ').toUpperCase() || 'N/A'}</span></p>
-                                            {sale.discountedPrice && <p><span className="font-semibold">Sale Price:</span> {formatCurrency(sale.discountedPrice)}</p>}
-                                            <p><span className="font-semibold">Starts:</span> {formatDate(sale.startTime)}</p> {/* Use startTime */}
-                                            <p><span className="font-semibold">Ends:</span> {formatDate(sale.endTime)}</p>   {/* Use endTime */}
-                                            {sale.viewCount !== undefined && <p><span className="font-semibold">Views:</span> {sale.viewCount}</p>}
-                                            {sale.whatsappClickCount !== undefined && <p><span className="font-semibold">WhatsApp Clicks:</span> {sale.whatsappClickCount}</p>}
+                                        <div key={sale._id} className="text-sm p-3 rounded-lg bg-surface-2 border border-line-strong w-64 shrink-0">
+                                            <p><span className="font-semibold">Statut :</span> <span className={`font-bold ${statusColor}`}>{sale.status ? (SALE_STATUS_LABELS[sale.status] ?? sale.status.replace('_', ' ')) : '—'}</span></p>
+                                            {sale.discountedPrice && <p><span className="font-semibold">Prix réduit :</span> {formatCurrency(sale.discountedPrice)}</p>}
+                                            <p><span className="font-semibold">Début :</span> {formatDate(sale.startTime)}</p> {/* Use startTime */}
+                                            <p><span className="font-semibold">Fin :</span> {formatDate(sale.endTime)}</p>   {/* Use endTime */}
+                                            {sale.viewCount !== undefined && <p><span className="font-semibold">Vues :</span> {sale.viewCount}</p>}
+                                            {sale.whatsappClickCount !== undefined && <p><span className="font-semibold">Clics WhatsApp :</span> {sale.whatsappClickCount}</p>}
                                         </div>
                                     );
                                 })}
@@ -193,7 +201,7 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                 </div>
 
                 {/* --- Action Buttons --- */}
-                <div className="flex justify-between items-center border-t border-gray-700 pt-4 mt-4">
+                <div className="flex justify-between items-center border-t border-line pt-4 mt-4">
                     {/* Delete Button (only show if there's an active/scheduled sale to remove) */}
                     <div>
                         {currentSale && (
@@ -201,9 +209,9 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                                 type="button"
                                 onClick={handleDeleteClick}
                                 disabled={isLoading}
-                                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
                             >
-                                {isLoading ? 'Removing...' : 'Remove Current Sale'}
+                                {isLoading ? 'Retrait…' : 'Retirer la vente en cours'}
                             </button>
                         )}
                     </div>
@@ -214,17 +222,17 @@ const FlashSaleModal: React.FC<FlashSaleModalProps> = ({
                             type="button"
                             onClick={onClose}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-surface-3 text-fg text-sm font-medium rounded-md hover:bg-surface-2 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-fg-subtle disabled:opacity-50"
                         >
-                            Cancel
+                            Annuler
                         </button>
                         <button
                             type="button"
                             onClick={handleSaveClick}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                         >
-                            {isLoading ? 'Saving...' : (currentSale ? 'Replace Sale' : 'Create Sale')}
+                            {isLoading ? 'Enregistrement…' : (currentSale ? 'Remplacer la vente' : 'Créer la vente')}
                         </button>
                     </div>
                 </div>

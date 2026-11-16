@@ -96,17 +96,17 @@ export default function AdsNetworkManualVerifyPage() {
     };
 
     return (
-        <div className="p-4 md:p-6">
+        <div>
             <Header title="Vérifications vidéo" />
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
             <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-fg-muted">
                     {items.length} vérification{items.length !== 1 ? 's' : ''} en attente
                 </p>
                 <button
                     onClick={fetchData}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700"
+                    className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-surface-2"
                 >
                     <RefreshCw size={16} /> Actualiser
                 </button>
@@ -115,12 +115,12 @@ export default function AdsNetworkManualVerifyPage() {
             {loading ? (
                 <Loader name="Chargement des vérifications…" />
             ) : error ? (
-                <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-300">
+                <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-700 dark:text-red-300">
                     <AlertTriangle size={18} /> {error}
                 </div>
             ) : items.length === 0 ? (
-                <div className="rounded-2xl border border-gray-700 bg-gray-800/50 backdrop-blur-md p-10 text-center text-gray-400">
-                    <Video className="mx-auto mb-3 text-gray-600" size={40} />
+                <div className="rounded-2xl border border-line bg-surface p-10 text-center text-fg-muted">
+                    <Video className="mx-auto mb-3 text-fg-subtle" size={40} />
                     Aucune vérification vidéo en attente.
                 </div>
             ) : (
@@ -130,19 +130,19 @@ export default function AdsNetworkManualVerifyPage() {
                             key={mv.manualVerificationId}
                             initial={{ opacity: 0, y: 8 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="rounded-2xl border border-gray-700 bg-gray-800/50 backdrop-blur-md p-4 shadow-lg"
+                            className="rounded-2xl border border-line bg-surface p-4"
                         >
                             <div className="mb-2 flex items-start justify-between gap-2">
                                 <div>
-                                    <p className="font-semibold text-gray-100">{mv.diffuseurName}</p>
-                                    <p className="text-xs text-gray-400">
+                                    <p className="font-semibold text-fg">{mv.diffuseurName}</p>
+                                    <p className="text-xs text-fg-muted">
                                         {mv.diffuseurPhone ?? '—'} · Jour {mv.day} ·{' '}
                                         {mv.isTestCampaign ? 'Campagne test' : mv.campaignTitle}
                                     </p>
                                 </div>
                                 <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-center">
-                                    <p className="text-[10px] uppercase text-gray-400">Code attendu</p>
-                                    <p className="text-lg font-extrabold tracking-widest text-blue-400">{mv.code}</p>
+                                    <p className="text-[10px] uppercase text-fg-muted">Code attendu</p>
+                                    <p className="text-lg font-extrabold tracking-widest text-blue-600 dark:text-blue-400">{mv.code}</p>
                                 </div>
                             </div>
 
@@ -156,18 +156,18 @@ export default function AdsNetworkManualVerifyPage() {
                                         href={mv.videoUrl}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="mt-2 inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 hover:underline"
+                                        className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
                                     >
                                         <ExternalLink size={12} /> La vidéo ne se lance pas ? Ouvrir dans un nouvel onglet
                                     </a>
                                 </>
                             ) : (
-                                <div className="rounded-xl border border-gray-700 bg-gray-900/60 p-6 text-center text-sm text-gray-400">
+                                <div className="rounded-xl border border-line bg-background/60 p-6 text-center text-sm text-fg-muted">
                                     Vidéo indisponible
                                 </div>
                             )}
 
-                            <p className="mt-2 text-xs text-gray-500">
+                            <p className="mt-2 text-xs text-fg-subtle">
                                 Code émis {new Date(mv.codeIssuedAt).toLocaleString('fr-FR')}
                                 {mv.uploadedAt && ` · reçue ${new Date(mv.uploadedAt).toLocaleString('fr-FR')}`}
                             </p>
@@ -179,19 +179,19 @@ export default function AdsNetworkManualVerifyPage() {
                                         onChange={(e) => setRejectReason(e.target.value)}
                                         placeholder="Motif du refus (visible par le diffuseur)"
                                         rows={2}
-                                        className="w-full rounded-xl border border-gray-600 bg-gray-900 p-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-hidden focus:ring-2 focus:ring-red-400"
+                                        className="w-full rounded-xl border border-line-strong bg-background p-2 text-sm text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-2 focus:ring-red-400"
                                     />
                                     <div className="mt-2 flex gap-2">
                                         <button
                                             onClick={() => doReject(mv)}
                                             disabled={actingOn === mv.manualVerificationId}
-                                            className="flex-1 rounded-xl bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:bg-gray-600"
+                                            className="flex-1 rounded-xl bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:bg-gray-400 dark:disabled:bg-gray-600"
                                         >
                                             Confirmer le refus
                                         </button>
                                         <button
                                             onClick={() => { setRejectingId(null); setRejectReason(''); }}
-                                            className="flex-1 rounded-xl border border-gray-600 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700"
+                                            className="flex-1 rounded-xl border border-line-strong py-2 text-sm font-medium text-fg-muted hover:bg-surface-2"
                                         >
                                             Annuler
                                         </button>
@@ -203,7 +203,7 @@ export default function AdsNetworkManualVerifyPage() {
                                         <button
                                             onClick={() => setConfirmBan(mv)}
                                             disabled={actingOn === mv.manualVerificationId}
-                                            className="w-full rounded-xl border border-red-500/60 bg-red-500/10 py-2 text-xs font-medium text-red-300 hover:bg-red-500/20"
+                                            className="w-full rounded-xl border border-red-500/60 bg-red-500/10 py-2 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-500/20"
                                         >
                                             Refuser et bannir ce diffuseur du réseau
                                         </button>
@@ -211,7 +211,7 @@ export default function AdsNetworkManualVerifyPage() {
                                 </div>
                             ) : (
                                 <div className="mt-3">
-                                    <label className="mb-1 block text-xs font-medium text-gray-400">
+                                    <label className="mb-1 block text-xs font-medium text-fg-muted">
                                         Nombre de vues lu sur la vidéo
                                     </label>
                                     <input
@@ -221,19 +221,19 @@ export default function AdsNetworkManualVerifyPage() {
                                         value={views[mv.manualVerificationId] ?? ''}
                                         onChange={(e) => setViews((v) => ({ ...v, [mv.manualVerificationId]: e.target.value }))}
                                         placeholder="ex. 262"
-                                        className="w-full rounded-xl border border-gray-600 bg-gray-900 p-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-hidden focus:ring-2 focus:ring-[#115CF6]"
+                                        className="w-full rounded-xl border border-line-strong bg-background p-2 text-sm text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-2 focus:ring-[#115CF6]"
                                     />
                                     <div className="mt-2 flex gap-2">
                                         <button
                                             onClick={() => setConfirmApprove(mv)}
                                             disabled={actingOn === mv.manualVerificationId}
-                                            className="flex-1 rounded-xl bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-500 disabled:bg-gray-600"
+                                            className="flex-1 rounded-xl bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-500 disabled:bg-gray-400 dark:disabled:bg-gray-600"
                                         >
                                             Valider
                                         </button>
                                         <button
                                             onClick={() => { setRejectingId(mv.manualVerificationId); setRejectReason(''); }}
-                                            className="flex-1 rounded-xl border border-red-500/40 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10"
+                                            className="flex-1 rounded-xl border border-red-500/40 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
                                         >
                                             Refuser
                                         </button>

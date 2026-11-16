@@ -1,6 +1,8 @@
 import React from 'react';
 import { RecentWithdrawal } from '../../services/adminDashboardApi';
 import { Link } from 'react-router-dom';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowRight01Icon } from '@hugeicons/core-free-icons';
 
 interface RecentWithdrawalsListProps {
     withdrawals: RecentWithdrawal[];
@@ -19,7 +21,7 @@ const RecentWithdrawalsList: React.FC<RecentWithdrawalsListProps> = ({ withdrawa
             case 'failed':
                 return 'bg-red-500';
             default:
-                return 'bg-gray-500';
+                return 'bg-fg-subtle';
         }
     };
 
@@ -56,7 +58,7 @@ const RecentWithdrawalsList: React.FC<RecentWithdrawalsListProps> = ({ withdrawa
 
     if (withdrawals.length === 0) {
         return (
-            <div className="text-center text-gray-500 dark:text-gray-400 py-4">
+            <div className="text-center text-fg-muted py-4">
                 Aucun retrait récent
             </div>
         );
@@ -67,7 +69,7 @@ const RecentWithdrawalsList: React.FC<RecentWithdrawalsListProps> = ({ withdrawa
             {withdrawals.map((withdrawal) => (
                 <div
                     key={withdrawal._id}
-                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                    className="flex items-center justify-between p-3 bg-surface-2 rounded-lg hover:bg-surface-3 transition-colors"
                 >
                     <div className="flex items-center flex-1">
                         {/* Status Indicator */}
@@ -75,12 +77,12 @@ const RecentWithdrawalsList: React.FC<RecentWithdrawalsListProps> = ({ withdrawa
 
                         <div className="flex-1 min-w-0">
                             {/* User Name */}
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                            <p className="text-sm font-medium text-fg truncate">
                                 {withdrawal.userName || 'Utilisateur inconnu'}
                             </p>
 
                             {/* Transaction ID & Date */}
-                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <div className="flex items-center gap-2 text-xs text-fg-muted">
                                 <span className="font-mono">{withdrawal.transactionId.substring(0, 12)}...</span>
                                 <span>•</span>
                                 <span>{formatDate(withdrawal.createdAt)}</span>
@@ -94,7 +96,7 @@ const RecentWithdrawalsList: React.FC<RecentWithdrawalsListProps> = ({ withdrawa
                             <p className="text-sm font-semibold text-red-600 dark:text-red-400">
                                 -{formatCurrency(withdrawal.amount, withdrawal.currency)}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-xs text-fg-muted">
                                 {getStatusLabel(withdrawal.status)}
                             </p>
                         </div>
@@ -105,9 +107,10 @@ const RecentWithdrawalsList: React.FC<RecentWithdrawalsListProps> = ({ withdrawa
             {/* View All Link */}
             <Link
                 to="/withdrawals/approvals"
-                className="block text-center text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium mt-4"
+                className="flex items-center justify-center gap-1 text-center text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium mt-4"
             >
-                Voir tous les retraits →
+                Voir tous les retraits
+                <HugeiconsIcon icon={ArrowRight01Icon} size={16} />
             </Link>
         </div>
     );

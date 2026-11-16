@@ -29,72 +29,72 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
   onToggleBlock,
   blockingId,
 }) => (
-  <div className="overflow-x-auto shadow-md rounded-lg">
-    <table className="min-w-full divide-y divide-gray-700">
-      <thead className="bg-gray-800">
+  <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+    <table className="min-w-full divide-y divide-line">
+      <thead className="bg-surface-2">
         <tr>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Avatar</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Phone Number</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Subscription</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Relance</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance FCFA</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance USD</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Country</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-          <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Avatar</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Nom</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">E-mail</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Téléphone</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Abonnement</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Relance</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Solde FCFA</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Solde USD</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Pays</th>
+          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Statut</th>
+          <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-fg-muted uppercase tracking-wider">Action</th>
         </tr>
       </thead>
-      <tbody className="bg-gray-900 divide-y divide-gray-700">
+      <tbody className="bg-surface divide-y divide-line">
         {users.map((user) => (
-          <tr key={user._id} className="hover:bg-gray-800">
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+          <tr key={user._id} className="hover:bg-surface-2">
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
               <img
-                src={user.avatar ? getAvatarUrl(user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
-                alt={`${user.name}'s avatar`}
+                src={user.avatar ? getAvatarUrl(user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'Utilisateur')}&background=random`}
+                alt={`Avatar de ${user.name}`}
                 className="h-10 w-10 rounded-full object-cover"
               />
             </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100">{user.name}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.email}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.phoneNumber || 'N/A'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-fg">{user.name}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{user.email}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{user.phoneNumber || '—'}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm">
               {user.activeSubscriptionTypes && user.activeSubscriptionTypes.length > 0 ? (
                 <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                   user.activeSubscriptionTypes.includes(SubscriptionType.CIBLE) ? 'bg-amber-500 text-amber-100' :
-                  user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'bg-green-500 text-green-100' :
-                  'bg-gray-500 text-gray-100'
+                  user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'bg-success-soft text-success' :
+                  'bg-surface-3 text-fg-muted'
                 }`}>
                   {user.activeSubscriptionTypes.includes(SubscriptionType.CIBLE) ? 'Cible' :
-                   user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'Classique' : 'None'}
+                   user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'Classique' : 'Aucun'}
                 </span>
               ) : (
-                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">None</span>
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-surface-3 text-fg-muted">Aucun</span>
               )}
             </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm">
               {user.activeSubscriptionTypes && user.activeSubscriptionTypes.includes(SubscriptionType.RELANCE) ? (
-                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-500 text-blue-100">Active</span>
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-primary-soft text-primary">Actif</span>
               ) : (
-                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">Inactive</span>
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-surface-3 text-fg-muted">Inactif</span>
               )}
             </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.balance !== undefined ? user.balance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' FCFA' : 'N/A'}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.usdBalance !== undefined ? user.usdBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : '0.00 USD'}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.country || 'N/A'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{user.balance !== undefined ? user.balance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' FCFA' : '—'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{user.usdBalance !== undefined ? user.usdBalance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : '0,00 USD'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{user.country || '—'}</td>
             <td className="px-6 py-4 whitespace-nowrap text-sm">
-              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.blocked ? 'bg-red-500 text-red-100' : user.deleted ? 'bg-gray-500 text-gray-100' : 'bg-green-500 text-green-100'}`}>
-                {user.deleted ? 'Deleted' : user.blocked ? 'Blocked' : 'Active'}
+              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.blocked ? 'bg-danger-soft text-danger' : user.deleted ? 'bg-surface-3 text-fg-muted' : 'bg-success-soft text-success'}`}>
+                {user.deleted ? 'Supprimé' : user.blocked ? 'Bloqué' : 'Actif'}
               </span>
             </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center">
               <div className="flex items-center justify-center gap-2">
                 <button
                   onClick={() => onViewUser(user._id)}
-                  className="text-indigo-400 hover:text-indigo-300"
+                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
                 >
-                  View
+                  Voir
                 </button>
                 {!user.deleted && (
                   <button
@@ -106,7 +106,7 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
                         : 'bg-red-700 text-red-100 hover:bg-red-600'
                     }`}
                   >
-                    {blockingId === user._id ? '...' : user.blocked ? 'Unblock' : 'Block'}
+                    {blockingId === user._id ? '...' : user.blocked ? 'Débloquer' : 'Bloquer'}
                   </button>
                 )}
               </div>
@@ -115,7 +115,7 @@ const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
         ))}
         {users.length === 0 && (
           <tr>
-            <td colSpan={11} className="px-6 py-4 text-center text-sm text-gray-400">No users match the current filters.</td>
+            <td colSpan={11} className="px-6 py-4 text-center text-sm text-fg-muted">Aucun utilisateur ne correspond aux filtres.</td>
           </tr>
         )}
       </tbody>
@@ -132,17 +132,17 @@ const PaginationPlaceholder: React.FC<{
     <button
       onClick={() => onPageChange(currentPage - 1)}
       disabled={currentPage <= 1}
-      className="px-4 py-2 bg-gray-700 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
+      className="px-4 py-2 bg-surface-2 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      Previous
+      Précédent
     </button>
-    <span>Page {currentPage} of {totalPages}</span>
+    <span className="text-sm text-fg-muted">Page {currentPage} sur {totalPages}</span>
     <button
       onClick={() => onPageChange(currentPage + 1)}
       disabled={currentPage >= totalPages}
-      className="px-4 py-2 bg-gray-700 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
+      className="px-4 py-2 bg-surface-2 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      Next
+      Suivant
     </button>
   </div>
 );
@@ -179,32 +179,32 @@ const UserFiltersPlaceholder: React.FC<{
   };
 
   return (
-    <form onSubmit={handleApplyFilters} className="mb-4 flex flex-wrap gap-4 items-center bg-gray-800 p-4 rounded-lg shadow-sm">
+    <form onSubmit={handleApplyFilters} className="mb-4 flex flex-wrap gap-4 items-center bg-surface border border-line p-4 rounded-lg">
       <input
         type="text"
         name="search"
-        placeholder="Search name, email..."
+        placeholder="Rechercher par nom ou e-mail"
         value={searchInput}
         onChange={handleLocalInputChange}
-        className="px-3 py-2 bg-gray-700 rounded-sm border border-gray-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 grow"
+        className="px-3 py-2 bg-surface text-fg rounded-sm border border-line-strong focus:outline-hidden focus:ring-1 focus:ring-indigo-500 grow"
       />
       <select
         name="status"
         value={statusInput}
         onChange={handleLocalInputChange}
-        className="px-3 py-2 bg-gray-700 rounded-sm border border-gray-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+        className="px-3 py-2 bg-surface text-fg rounded-sm border border-line-strong focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
       >
-        <option value="">All Statuses</option>
-        <option value="active">Active</option>
-        <option value="inactive">Inactive</option> {/* Assuming inactive exists */}
-        <option value="blocked">Blocked</option>
-        <option value="deleted">Deleted</option> {/* Assuming deleted exists */}
+        <option value="">Tous les statuts</option>
+        <option value="active">Actif</option>
+        <option value="inactive">Inactif</option> {/* Assuming inactive exists */}
+        <option value="blocked">Bloqué</option>
+        <option value="deleted">Supprimé</option> {/* Assuming deleted exists */}
       </select>
       <button
         type="submit"
-        className="px-4 py-2 bg-indigo-600 text-white rounded-sm hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+        className="px-4 py-2 bg-indigo-600 text-white rounded-sm hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-surface"
       >
-        Search
+        Rechercher
       </button>
     </form>
   );
@@ -223,7 +223,7 @@ function Users() {
 
   const fetchUsersList = useCallback(async () => {
     setIsLoading(true);
-    const loadingToastId = toast.loading('Fetching users list...');
+    const loadingToastId = toast.loading('Chargement des utilisateurs…');
     try {
       console.log('Fetching users with filters:', filters, 'and pagination:', pagination);
       const response: AdminUserListResponse = await listUsers(filters, pagination);
@@ -239,7 +239,7 @@ function Users() {
       toast.dismiss(loadingToastId);
     } catch (err: any) {
       console.error("Failed to fetch users:", err);
-      toast.error(`Failed to load users list: ${err.message}`);
+      toast.error(`Impossible de charger les utilisateurs : ${err.message}`);
       toast.dismiss(loadingToastId);
     } finally {
       setIsLoading(false);
@@ -253,7 +253,7 @@ function Users() {
       setSummaryStats(stats);
     } catch (err: any) {
       console.error("Failed to fetch summary stats:", err);
-      toast.error(`Failed to load summary stats: ${err.message}`);
+      toast.error(`Impossible de charger les statistiques : ${err.message}`);
       setSummaryStats(null);
     } finally {
       setIsLoadingStats(false);
@@ -289,14 +289,14 @@ function Users() {
     try {
       if (user.blocked) {
         await unblockUser(user._id);
-        toast.success(`${user.name} unblocked`);
+        toast.success(`${user.name} débloqué`);
       } else {
         await blockUser(user._id);
-        toast.success(`${user.name} blocked`);
+        toast.success(`${user.name} bloqué`);
       }
       setUsers(prev => prev.map(u => u._id === user._id ? { ...u, blocked: !u.blocked } : u));
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Action failed');
+      toast.error(err.response?.data?.message || 'Échec de l’action');
     } finally {
       setBlockingId(null);
     }
@@ -304,8 +304,8 @@ function Users() {
 
   if ((isLoading || isLoadingStats) && users.length === 0 && !summaryStats) {
     return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
-        <Loader name={"Users Data"} />
+      <div className="flex justify-center items-center h-96">
+        <Loader name={"Utilisateurs"} />
       </div>
     );
   }
@@ -313,9 +313,9 @@ function Users() {
   // const totalSubscribers = summaryStats ? summaryStats.activeClassique + summaryStats.activeCible : 0;
 
   return (
-    <div className="flex-1 overflow-auto relative z-10">
+    <div>
       <Header title="Utilisateurs" />
-      <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+      <main>
         <motion.div
           className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8"
           initial={{ opacity: 0, y: 20 }}
@@ -323,7 +323,7 @@ function Users() {
           transition={{ duration: 1, ease: "easeInOut" }}
         >
           <StatCard
-            name="Total Users"
+            name="Utilisateurs"
             icon={UsersRound}
             value={(totalCount > 0 ? totalCount : (summaryStats?.totalUsers ?? 0)).toString()}
             color="#6366F1"
@@ -343,10 +343,10 @@ function Users() {
         </motion.div>
         <UserFiltersPlaceholder filters={filters} onFilterChange={handleFilterChange} />
 
-        {isLoading && users.length === 0 && <div className="text-center py-4 text-gray-400">Loading users list...</div>}
+        {isLoading && users.length === 0 && <div className="text-center py-4 text-fg-muted">Chargement des utilisateurs…</div>}
 
         {!isLoading && users.length === 0 && (
-          <div className="text-center py-4 text-gray-400">No users found matching the criteria.</div>
+          <div className="text-center py-4 text-fg-muted">Aucun utilisateur trouvé.</div>
         )}
 
         {users.length > 0 && (
@@ -365,7 +365,7 @@ function Users() {
             onPageChange={handlePageChange}
           />
         )}
-        <div className="text-sm text-gray-400 mt-2">Total users found: {totalCount}</div>
+        <div className="text-sm text-fg-muted mt-2">Utilisateurs trouvés : {totalCount}</div>
       </main>
       <ConfirmationModal
         isOpen={!!confirmBlock}

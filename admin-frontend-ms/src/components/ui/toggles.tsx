@@ -29,7 +29,7 @@ export function Switch({ className, ...props }: ComponentPropsWithoutRef<typeof 
       )}
       {...props}
     >
-      <Sw.Thumb className="block h-4 w-4 translate-x-0.5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-[18px]" />
+      <Sw.Thumb className="block h-4 w-4 translate-x-0.5 rounded-full bg-surface transition-transform data-[state=checked]:translate-x-[18px]" />
     </Sw.Root>
   );
 }

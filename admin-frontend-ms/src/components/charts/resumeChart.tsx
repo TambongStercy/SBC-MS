@@ -2,6 +2,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { BookAudio } from 'lucide-react'
+import { useChartTheme } from '../../hooks/useChartTheme'
 
 // const recap = [
 //     {name: "Chiffre d'affaire", value: 400},
@@ -16,15 +17,15 @@ interface ResumeChartProps {
   }
   
   const ResumeChart: React.FC<ResumeChartProps> = ({ data }) =>  {
-    console.log(data)
+    const chart = useChartTheme()
   return (
     <motion.div
-    className='bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700'
+    className='bg-surface rounded-xl p-6 border border-line'
     initial={{opacity:0, y:20}}
     animate={{opacity:1, y:0}}
     transition={{duration:1, ease:"easeInOut"}}
     >
-        <h2 className='text-lg font-medium mb-4 text-gray-400 pb-4 flex gap-2' ><BookAudio color='#6366f1'/>Résume</h2>
+        <h2 className='text-lg font-medium mb-4 text-fg-muted pb-4 flex gap-2' ><BookAudio color='#6366f1'/>Résumé</h2>
         <div className="h-80">
             <ResponsiveContainer
             width={"100%"}
@@ -46,13 +47,11 @@ interface ResumeChartProps {
                         ))}
                     </Pie>
                     <Tooltip 
-                    contentStyle={{
-                        backgroundColor: "rgba(31, 41, 55, 0.7)",
-                        borderColor:"#4b5563"
-                    }}
-                    itemStyle={{color: "#E5E7EB"}}
+                    contentStyle={chart.tooltip.contentStyle}
+                    labelStyle={chart.tooltip.labelStyle}
+                    itemStyle={chart.tooltip.itemStyle}
                     />
-                    <Legend />
+                    <Legend wrapperStyle={{ color: chart.text }} />
                 </PieChart>
             </ResponsiveContainer>
         </div>

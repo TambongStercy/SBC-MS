@@ -47,13 +47,13 @@ export default function ChallengesTab() {
                 empty={list.data && items.length === 0 ? (q ? `Aucun défi ne correspond à « ${q} »` : 'Aucun défi') : undefined}>
                 {items.map(c => (
                     <tr key={c._id} className={trCls} onClick={() => setOpenId(c._id)}>
-                        <td className={tdCls}><div className="font-medium">{c.name}</div><div className="text-xs text-gray-400">{c.event?.title ?? 'Événement'}</div></td>
+                        <td className={tdCls}><div className="font-medium">{c.name}</div><div className="text-xs text-fg-muted">{c.event?.title ?? 'Événement'}</div></td>
                         <td className={tdCls}><Status c={c} /></td>
                         <td className={`${tdCls} text-right`}>{num(c.counters?.candidates)}</td>
                         <td className={`${tdCls} text-right`}>{num(c.counters?.freeVotes)}</td>
                         <td className={`${tdCls} text-right`}>{num(c.counters?.paidVotes)}</td>
                         <td className={`${tdCls} text-right whitespace-nowrap`}>{xaf(c.counters?.paidRevenue)}</td>
-                        <td className={`${tdCls} text-xs text-gray-400 whitespace-nowrap`}>{fmtDate(c.updatedAt)}</td>
+                        <td className={`${tdCls} text-xs text-fg-muted whitespace-nowrap`}>{fmtDate(c.updatedAt)}</td>
                     </tr>
                 ))}
             </Table>

@@ -17,11 +17,11 @@ interface Props {
 
 const Creative: React.FC<{ fileId: string; type: 'image' | 'video'; label: string }> = ({ fileId, type, label }) => (
     <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-400 mb-1">{label}</p>
+        <p className="text-xs text-fg-muted mb-1">{label}</p>
         {type === 'video' ? (
             <video src={getFileUrl(fileId)} controls preload="metadata" className="w-full max-h-72 rounded-lg bg-black" />
         ) : (
-            <img src={getFileUrl(fileId)} alt={label} className="w-full max-h-72 object-contain rounded-lg bg-gray-900" />
+            <img src={getFileUrl(fileId)} alt={label} className="w-full max-h-72 object-contain rounded-lg bg-background" />
         )}
     </div>
 );
@@ -86,20 +86,20 @@ const MediaChangeQueue: React.FC<Props> = ({ showSuccess, showError }) => {
     if (items.length === 0) return null;
 
     return (
-        <div className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-indigo-700 mb-6">
+        <div className="bg-surface rounded-xl p-6 border border-indigo-300 dark:border-indigo-700 mb-6">
             <div className="flex items-center gap-2 mb-4">
-                <ImageUp className="text-indigo-400" size={20} />
-                <h2 className="text-lg font-semibold text-gray-100">Nouveaux visuels à valider ({items.length})</h2>
+                <ImageUp className="text-indigo-600 dark:text-indigo-400" size={20} />
+                <h2 className="text-lg font-semibold text-fg">Nouveaux visuels à valider ({items.length})</h2>
             </div>
-            <p className="text-sm text-gray-400 mb-4">
+            <p className="text-sm text-fg-muted mb-4">
                 Campagnes déjà en diffusion dont l'annonceur propose un nouveau visuel. Le visuel actuel reste en ligne tant que vous n'avez pas validé.
             </p>
             <div className="space-y-4">
                 {items.map(item => (
-                    <div key={item._id} className="border border-gray-700 rounded-lg p-4">
+                    <div key={item._id} className="border border-line rounded-lg p-4">
                         <div className="flex items-center justify-between gap-2 mb-3">
-                            <p className="font-medium text-gray-100 truncate">{item.title}</p>
-                            <span className="text-xs text-gray-400 shrink-0">
+                            <p className="font-medium text-fg truncate">{item.title}</p>
+                            <span className="text-xs text-fg-muted shrink-0">
                                 Proposé le {new Date(item.pendingMedia.submittedAt).toLocaleString('fr-FR')}
                             </span>
                         </div>
@@ -113,7 +113,7 @@ const MediaChangeQueue: React.FC<Props> = ({ showSuccess, showError }) => {
                                     value={rejectReason}
                                     onChange={e => setRejectReason(e.target.value)}
                                     placeholder="Motif du refus (envoyé à l'annonceur)"
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm text-gray-100"
+                                    className="w-full bg-background border border-line rounded-lg p-2 text-sm text-fg"
                                     rows={2}
                                 />
                                 <div className="flex gap-2">
@@ -126,7 +126,7 @@ const MediaChangeQueue: React.FC<Props> = ({ showSuccess, showError }) => {
                                     </button>
                                     <button
                                         onClick={() => { setRejectingId(null); setRejectReason(''); }}
-                                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm"
+                                        className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-fg rounded-lg text-sm"
                                     >
                                         Annuler
                                     </button>

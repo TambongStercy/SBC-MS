@@ -46,40 +46,40 @@ const UserProductsTable: React.FC<UserProductsProps> = ({ data }) => {
   return (
     <>
       <motion.div
-        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 mt-2"
+        className="bg-surface rounded-xl p-6 border border-line mb-8 mt-2"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: "easeInOut" }}
       >
         <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4 sm:mb-0">
+          <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4 sm:mb-0">
             Produits/Service
           </h2>
           <div className="relative w-full sm:w-auto"></div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-700">
+          <table className="min-w-full divide-y divide-line">
             <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                   Produit/service
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                   Ville
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                   Tel
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Email
+                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
+                  E-mail
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                   Action
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700">
+            <tbody className="divide-y divide-line">
               {/* Add check for product array existence before mapping */}
               {filteredData.product && Array.isArray(filteredData.product) && filteredData.product.length > 0 ? (
                 filteredData.product.map((prdt) => (
@@ -89,7 +89,7 @@ const UserProductsTable: React.FC<UserProductsProps> = ({ data }) => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, ease: "easeInOut" }}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100 flex gap-2 items-center">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-fg flex gap-2 items-center">
                       <img
                         src={prdt.imagesUrl[0]}
                         alt={prdt.name}
@@ -97,16 +97,16 @@ const UserProductsTable: React.FC<UserProductsProps> = ({ data }) => {
                       />
                       {prdt.name}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                       {filteredData.town}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                       {filteredData.phone}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                       {filteredData.email}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                       <button onClick={() => handleDelete(prdt.id)}>
                         <Trash2 color="#ec4899" />
                       </button>
@@ -115,7 +115,7 @@ const UserProductsTable: React.FC<UserProductsProps> = ({ data }) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-400">No products/services found for this user.</td>
+                  <td colSpan={5} className="px-6 py-4 text-center text-sm text-fg-muted">Aucun produit ou service pour cet utilisateur.</td>
                 </tr>
               )}
             </tbody>

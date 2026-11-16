@@ -27,7 +27,7 @@ function UsersPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!userId) {
-        toast.error("User ID is missing from URL.");
+        toast.error("Identifiant de l’utilisateur absent de l’URL.");
         setLoading(false);
         return;
       }
@@ -39,7 +39,7 @@ function UsersPage() {
         setLoading(false);  // Set loading to false after data is fetched
       } catch (err: any) {
         console.error("Failed to fetch user details:", err);
-        toast.error(err.message || "Failed to fetch user data");
+        toast.error(err.message || "Impossible de charger l’utilisateur");
         setLoading(false);
       }
     };
@@ -57,15 +57,15 @@ function UsersPage() {
     // Optimistically update local state? (Optional)
     // setUserData(prev => prev ? ({ ...prev, role: newType === 'NONE' ? 'USER' : newType }) : null);
 
-    const toastId = toast.loading('Updating subscription...');
+    const toastId = toast.loading('Mise à jour de l’abonnement…');
     try {
       await adminUpdateUserSubscription(targetUserId, newType);
-      toast.success('Subscription updated successfully!', { id: toastId });
+      toast.success('Abonnement mis à jour', { id: toastId });
       // Optionally re-fetch user data to confirm change
       // fetchData(); 
     } catch (error: any) {
       console.error("Subscription update failed:", error);
-      toast.error(`Failed to update subscription: ${error.message}`, { id: toastId });
+      toast.error(`Échec de la mise à jour de l’abonnement : ${error.message}`, { id: toastId });
       // Revert optimistic update if done
       setUserData(originalUserData as AdminUserData);
     }
@@ -76,10 +76,10 @@ function UsersPage() {
     console.log(`Handling partner pack change for ${targetUserId} to ${newPack}`);
     const originalUserData = { ...userData }; // Keep backup in case of error
 
-    const toastId = toast.loading('Updating partner status...');
+    const toastId = toast.loading('Mise à jour du statut partenaire…');
     try {
       await adminUpdateUserPartner(targetUserId, newPack);
-      toast.success('Partner status updated successfully!', { id: toastId });
+      toast.success('Statut partenaire mis à jour', { id: toastId });
 
       // Update local state to reflect the change
       if (userData) {
@@ -91,7 +91,7 @@ function UsersPage() {
       }
     } catch (error: any) {
       console.error("Partner update failed:", error);
-      toast.error(`Failed to update partner status: ${error.message}`, { id: toastId });
+      toast.error(`Échec de la mise à jour du statut partenaire : ${error.message}`, { id: toastId });
       // Revert local state
       setUserData(originalUserData as AdminUserData);
     }
@@ -99,17 +99,17 @@ function UsersPage() {
 
   const handleAccountAction = (action: 'block' | 'unblock' | 'delete' | 'restore') => {
     const messages = {
-      block: { title: 'Block User', message: `Block ${userData?.name}? They will no longer be able to log in.` },
-      unblock: { title: 'Unblock User', message: `Unblock ${userData?.name}? They will regain access.` },
-      delete: { title: 'Delete User', message: `Soft-delete ${userData?.name}? This can be reversed.` },
-      restore: { title: 'Restore User', message: `Restore ${userData?.name}? Their account will be reactivated.` },
+      block: { title: 'Bloquer l’utilisateur', message: `Bloquer ${userData?.name} ? Il ne pourra plus se connecter.` },
+      unblock: { title: 'Débloquer l’utilisateur', message: `Débloquer ${userData?.name} ? Il retrouvera l’accès à son compte.` },
+      delete: { title: 'Supprimer l’utilisateur', message: `Supprimer ${userData?.name} ? Cette suppression est réversible.` },
+      restore: { title: 'Restaurer l’utilisateur', message: `Restaurer ${userData?.name} ? Son compte sera réactivé.` },
     };
     setConfirmModal({
       ...messages[action],
       onConfirm: async () => {
         setConfirmModal(null);
         setAccountActionLoading(true);
-        const toastId = toast.loading('Processing...');
+        const toastId = toast.loading('Traitement…');
         try {
           if (action === 'block') await blockUser(userData!._id);
           else if (action === 'unblock') await unblockUser(userData!._id);
@@ -124,9 +124,9 @@ function UsersPage() {
             if (action === 'restore') return { ...prev, deleted: false };
             return prev;
           });
-          toast.success('Done', { id: toastId });
+          toast.success('Terminé', { id: toastId });
         } catch (err: any) {
-          toast.error(err.response?.data?.message || 'Action failed', { id: toastId });
+          toast.error(err.response?.data?.message || 'Échec de l’action', { id: toastId });
         } finally {
           setAccountActionLoading(false);
         }
@@ -136,8 +136,8 @@ function UsersPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
-        <Loader name={'User'} />
+      <div className="flex justify-center items-center h-96">
+        <Loader name={'Utilisateur'} />
       </div>
     );
   }
@@ -146,9 +146,9 @@ function UsersPage() {
   if (!userData) {
     console.log("Rendering 'Could not load user data' message");
     return (
-      <div className="flex flex-col justify-center items-center h-screen w-screen overflow-auto relative z-10 text-red-400">
-        <Header title="Error" />
-        <p>Could not load user data. Please check the ID or go back.</p>
+      <div className="text-danger">
+        <Header title="Erreur" />
+        <p>Impossible de charger cet utilisateur. Vérifiez l’identifiant ou revenez en arrière.</p>
       </div>
     )
   }
@@ -157,10 +157,10 @@ function UsersPage() {
 
   return (
     <>
-      <div className="flex-1 overflow-auto relative z-10">
-        <Header title={`User Details: ${userData?.name || userId}`} />
+      <div>
+        <Header title={`Détails de l’utilisateur : ${userData?.name || userId}`} />
         <motion.div
-          className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 m-3"
+          className="bg-surface rounded-xl p-6 border border-line mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeInOut" }}
@@ -169,12 +169,12 @@ function UsersPage() {
             data={{
               _id: userData._id,
               id: userData._id,
-              name: userData.name || 'Unknown Name',
+              name: userData.name || 'Nom inconnu',
               email: userData.email || 'N/A',
               role: userData.role || 'USER',
               phoneNumber: userData.phoneNumber?.toString() || 'N/A',
-              registeredAt: new Date(userData.createdAt || Date.now()).toLocaleDateString(),
-              avatar: userData.avatar ? getAvatarUrl(userData.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || 'User')}&background=random`,
+              registeredAt: new Date(userData.createdAt || Date.now()).toLocaleDateString('fr-FR'),
+              avatar: userData.avatar ? getAvatarUrl(userData.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || 'Utilisateur')}&background=random`,
               momoNumber: userData.momoNumber?.toString() || 'N/A',
               momoOperator: userData.momoOperator || 'N/A',
               city: userData.city || 'N/A',
@@ -193,21 +193,21 @@ function UsersPage() {
 
         {/* Account Status */}
         <motion.div
-          className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8 m-3"
+          className="bg-surface rounded-xl p-6 border border-line mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeInOut" }}
         >
-          <h3 className="text-lg font-semibold text-gray-100 mb-4">Account Status</h3>
+          <h3 className="text-lg font-semibold text-fg mb-4">Statut du compte</h3>
           <div className="flex flex-wrap gap-3 items-center">
-            <div className="flex gap-2 items-center text-sm text-gray-400">
-              <span>Status:</span>
+            <div className="flex gap-2 items-center text-sm text-fg-muted">
+              <span>Statut :</span>
               {userData.deleted ? (
-                <span className="px-2 py-0.5 bg-red-900 text-red-300 rounded-sm text-xs font-semibold">Deleted</span>
+                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-sm text-xs font-semibold">Supprimé</span>
               ) : userData.blocked ? (
-                <span className="px-2 py-0.5 bg-orange-900 text-orange-300 rounded-sm text-xs font-semibold">Blocked</span>
+                <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 rounded-sm text-xs font-semibold">Bloqué</span>
               ) : (
-                <span className="px-2 py-0.5 bg-green-900 text-green-300 rounded-sm text-xs font-semibold">Active</span>
+                <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-sm text-xs font-semibold">Actif</span>
               )}
             </div>
             <div className="flex gap-2 ml-auto">
@@ -217,7 +217,7 @@ function UsersPage() {
                   disabled={accountActionLoading}
                   className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                 >
-                  Restore
+                  Restaurer
                 </button>
               ) : (
                 <>
@@ -227,7 +227,7 @@ function UsersPage() {
                       disabled={accountActionLoading}
                       className="px-4 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                     >
-                      Unblock
+                      Débloquer
                     </button>
                   ) : (
                     <button
@@ -235,7 +235,7 @@ function UsersPage() {
                       disabled={accountActionLoading}
                       className="px-4 py-1.5 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                     >
-                      Block
+                      Bloquer
                     </button>
                   )}
                   <button
@@ -243,7 +243,7 @@ function UsersPage() {
                     disabled={accountActionLoading}
                     className="px-4 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
                   >
-                    Delete
+                    Supprimer
                   </button>
                 </>
               )}
@@ -252,7 +252,7 @@ function UsersPage() {
         </motion.div>
 
         <motion.div
-          className=" backdrop-blur-md shadow-lg rounded-xl p-0  mb-8 m-3"
+          className="rounded-xl mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeInOut" }}
@@ -275,8 +275,8 @@ function UsersPage() {
           isOpen={true}
           title={confirmModal.title}
           message={confirmModal.message}
-          confirmText="Confirm"
-          cancelText="Cancel"
+          confirmText="Confirmer"
+          cancelText="Annuler"
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal(null)}
         />

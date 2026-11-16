@@ -111,18 +111,18 @@ export default function UserFinancialAnalyticsPage() {
     const totalEarned = data.reduce((sum, d) => sum + d.totalEarned, 0);
 
     return (
-        <div className="p-4 md:p-6">
+        <div>
             <Header title="Analyse Financière Utilisateurs" />
 
             {/* Filters */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6">
+            <div className="bg-surface border border-line rounded-lg p-4 mb-6">
                 <div className="flex flex-wrap gap-4 items-end">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pays</label>
+                        <label className="block text-sm font-medium text-fg-muted mb-1">Pays</label>
                         <select
                             value={filters.country || ''}
                             onChange={(e) => setFilters(prev => ({ ...prev, country: e.target.value, page: 1 }))}
-                            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                            className="border border-line-strong rounded-lg px-3 py-2 bg-surface text-fg"
                         >
                             {COUNTRY_OPTIONS.map(opt => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -130,20 +130,20 @@ export default function UserFinancialAnalyticsPage() {
                         </select>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Montant minimum (FCFA)</label>
+                        <label className="block text-sm font-medium text-fg-muted mb-1">Montant minimum (FCFA)</label>
                         <input
                             type="number"
                             value={filters.minAmount || 0}
                             onChange={(e) => setFilters(prev => ({ ...prev, minAmount: parseInt(e.target.value) || 0, page: 1 }))}
-                            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 w-40"
+                            className="border border-line-strong rounded-lg px-3 py-2 bg-surface text-fg w-40"
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Par page</label>
+                        <label className="block text-sm font-medium text-fg-muted mb-1">Par page</label>
                         <select
                             value={filters.limit || 50}
                             onChange={(e) => setFilters(prev => ({ ...prev, limit: parseInt(e.target.value), page: 1 }))}
-                            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                            className="border border-line-strong rounded-lg px-3 py-2 bg-surface text-fg"
                         >
                             <option value={25}>25</option>
                             <option value={50}>50</option>
@@ -164,58 +164,58 @@ export default function UserFinancialAnalyticsPage() {
 
             {/* Summary Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                <div className="bg-surface border border-line rounded-lg p-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
                             <Users size={20} className="text-indigo-600 dark:text-indigo-400" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Utilisateurs trouvés</p>
-                            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{pagination.total}</p>
+                            <p className="text-sm text-fg-muted">Utilisateurs trouvés</p>
+                            <p className="text-xl font-bold text-fg">{pagination.total}</p>
                         </div>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                <div className="bg-surface border border-line rounded-lg p-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
                             <TrendingUp size={20} className="text-red-600 dark:text-red-400" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Total Retiré (page)</p>
-                            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatAmount(totalWithdrawn)} FCFA</p>
+                            <p className="text-sm text-fg-muted">Total Retiré (page)</p>
+                            <p className="text-xl font-bold text-fg">{formatAmount(totalWithdrawn)} FCFA</p>
                         </div>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                <div className="bg-surface border border-line rounded-lg p-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-emerald-100 dark:bg-emerald-900 rounded-lg">
                             <TrendingUp size={20} className="text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Total Gagné (page)</p>
-                            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatAmount(totalEarned)} FCFA</p>
+                            <p className="text-sm text-fg-muted">Total Gagné (page)</p>
+                            <p className="text-xl font-bold text-fg">{formatAmount(totalEarned)} FCFA</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-surface border border-line rounded-lg overflow-hidden">
                 {loading ? (
                     <div className="flex justify-center items-center py-20">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
+                        <table className="min-w-full divide-y divide-line">
+                            <thead className="bg-surface-2">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">#</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Utilisateur</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Pays</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Solde</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase">#</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase">Utilisateur</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase">Pays</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase">Solde</th>
                                     <th
-                                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer hover:text-indigo-600"
+                                        className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase cursor-pointer hover:text-indigo-600"
                                         onClick={() => handleSort('totalWithdrawn')}
                                     >
                                         <span className="flex items-center gap-1">
@@ -223,7 +223,7 @@ export default function UserFinancialAnalyticsPage() {
                                         </span>
                                     </th>
                                     <th
-                                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer hover:text-indigo-600"
+                                        className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase cursor-pointer hover:text-indigo-600"
                                         onClick={() => handleSort('totalEarned')}
                                     >
                                         <span className="flex items-center gap-1">
@@ -231,7 +231,7 @@ export default function UserFinancialAnalyticsPage() {
                                         </span>
                                     </th>
                                     <th
-                                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer hover:text-indigo-600"
+                                        className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase cursor-pointer hover:text-indigo-600"
                                         onClick={() => handleSort('total')}
                                     >
                                         <span className="flex items-center gap-1">
@@ -240,28 +240,28 @@ export default function UserFinancialAnalyticsPage() {
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody className="bg-surface divide-y divide-line">
                                 {data.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                                        <td colSpan={7} className="px-4 py-8 text-center text-fg-muted">
                                             Aucun résultat trouvé
                                         </td>
                                     </tr>
                                 ) : (
                                     data.map((item, index) => (
-                                        <tr key={item.userId} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                            <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                                        <tr key={item.userId} className="hover:bg-surface-2">
+                                            <td className="px-4 py-3 text-sm text-fg-muted">
                                                 {((filters.page || 1) - 1) * (filters.limit || 50) + index + 1}
                                             </td>
                                             <td className="px-4 py-3">
-                                                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">{item.email}</div>
-                                                <div className="text-xs text-gray-400 dark:text-gray-500">{item.phoneNumber}</div>
+                                                <div className="text-sm font-medium text-fg">{item.name}</div>
+                                                <div className="text-xs text-fg-muted">{item.email}</div>
+                                                <div className="text-xs text-fg-subtle">{item.phoneNumber}</div>
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                                            <td className="px-4 py-3 text-sm text-fg">
                                                 {getCountryName(item.country)}
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                                            <td className="px-4 py-3 text-sm text-fg">
                                                 {formatAmount(item.balance)}
                                             </td>
                                             <td className="px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400">
@@ -270,7 +270,7 @@ export default function UserFinancialAnalyticsPage() {
                                             <td className="px-4 py-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">
                                                 {formatAmount(item.totalEarned)}
                                             </td>
-                                            <td className="px-4 py-3 text-sm font-bold text-gray-900 dark:text-gray-100">
+                                            <td className="px-4 py-3 text-sm font-bold text-fg">
                                                 {formatAmount(item.total)}
                                             </td>
                                         </tr>
@@ -283,22 +283,22 @@ export default function UserFinancialAnalyticsPage() {
 
                 {/* Pagination */}
                 {pagination.totalPages > 1 && (
-                    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-line">
+                        <p className="text-sm text-fg-muted">
                             Page {pagination.page} sur {pagination.totalPages} ({pagination.total} résultats)
                         </p>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) - 1 }))}
                                 disabled={pagination.page <= 1}
-                                className="px-3 py-1 rounded-sm border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                className="px-3 py-1 rounded-sm border border-line-strong text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-3"
                             >
                                 Précédent
                             </button>
                             <button
                                 onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) + 1 }))}
                                 disabled={pagination.page >= pagination.totalPages}
-                                className="px-3 py-1 rounded-sm border border-gray-300 dark:border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                className="px-3 py-1 rounded-sm border border-line-strong text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-3"
                             >
                                 Suivant
                             </button>

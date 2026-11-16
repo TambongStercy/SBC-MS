@@ -21,7 +21,7 @@ export function ThemedToaster() {
             background: 'var(--surface)',
             color: 'var(--fg)',
             border: '1px solid var(--line)',
-            boxShadow: 'var(--shadow-overlay)',
+            boxShadow: 'none',
             fontFamily: 'var(--font-sans)',
             fontSize: '14px',
           },

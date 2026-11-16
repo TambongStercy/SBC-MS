@@ -90,7 +90,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
 
         // Basic validation (can be expanded)
         if (!name || !category || price === '' || isNaN(Number(price))) {
-            alert('Please fill in Name, Category, and a valid Price.');
+            alert('Renseigne le nom, la catégorie et un prix valide.');
             return;
         }
 
@@ -127,32 +127,32 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-20 p-4">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                <h2 className="text-xl font-semibold text-white mb-6">{product?._id ? 'Edit Product' : 'Create New Product'}</h2>
+            <div className="bg-surface p-6 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto border border-line">
+                <h2 className="text-xl font-semibold text-fg mb-6">{product?._id ? 'Modifier le produit' : 'Nouveau produit'}</h2>
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         {/* Name */}
                         <div>
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">Name *</label>
+                            <label htmlFor="name" className="block text-sm font-medium text-fg-muted mb-1">Nom *</label>
                             <input
                                 type="text"
                                 id="name"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 required
                             />
                         </div>
                         {/* Price */}
                         <div>
-                            <label htmlFor="price" className="block text-sm font-medium text-gray-300 mb-1">Price (XAF) *</label>
+                            <label htmlFor="price" className="block text-sm font-medium text-fg-muted mb-1">Prix (XAF) *</label>
                             <input
                                 type="number"
                                 id="price"
                                 value={price}
                                 onChange={(e) => setPrice(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 required
                                 min="0"
@@ -160,38 +160,38 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                         </div>
                         {/* Category */}
                         <div>
-                            <label htmlFor="category" className="block text-sm font-medium text-gray-300 mb-1">Category *</label>
+                            <label htmlFor="category" className="block text-sm font-medium text-fg-muted mb-1">Catégorie *</label>
                             <input
                                 type="text" // Consider changing to select if categories are fixed
                                 id="category"
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 required
                             />
                         </div>
                         {/* Subcategory */}
                         <div>
-                            <label htmlFor="subcategory" className="block text-sm font-medium text-gray-300 mb-1">Subcategory</label>
+                            <label htmlFor="subcategory" className="block text-sm font-medium text-fg-muted mb-1">Sous-catégorie</label>
                             <input
                                 type="text"
                                 id="subcategory"
                                 value={subcategory}
                                 onChange={(e) => setSubcategory(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                             />
                         </div>
                         {/* Stock */}
                         <div>
-                            <label htmlFor="stock" className="block text-sm font-medium text-gray-300 mb-1">Stock Quantity</label>
+                            <label htmlFor="stock" className="block text-sm font-medium text-fg-muted mb-1">Quantité en stock</label>
                             <input
                                 type="number"
                                 id="stock"
                                 value={stock}
                                 onChange={(e) => setStock(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 disabled={isLoading}
                                 min="0"
                             />
@@ -204,41 +204,41 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                                 type="checkbox"
                                 checked={isActive}
                                 onChange={(e) => setIsActive(e.target.checked)}
-                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-500 rounded-sm bg-gray-700"
+                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-line-strong rounded-sm bg-surface"
                                 disabled={isLoading}
                             />
-                            <label htmlFor="isActive" className="ml-2 block text-sm text-gray-300">
-                                Product Active
+                            <label htmlFor="isActive" className="ml-2 block text-sm text-fg-muted">
+                                Produit actif
                             </label>
                         </div>
                     </div>
 
                     {/* Description */}
                     <div className="mb-4">
-                        <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                        <label htmlFor="description" className="block text-sm font-medium text-fg-muted mb-1">Description</label>
                         <textarea
                             id="description"
                             rows={4}
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                             disabled={isLoading}
                         />
                     </div>
 
                     {/* Image Upload/Management Section */}
                     <div className="mb-4">
-                        <label htmlFor="images" className="block text-sm font-medium text-gray-300 mb-1">Product Images</label>
+                        <label htmlFor="images" className="block text-sm font-medium text-fg-muted mb-1">Images du produit</label>
                         <input
                             type="file"
                             id="images"
                             multiple
                             accept="image/*" // Accept only image files
                             onChange={handleImageChange}
-                            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"
+                            className="block w-full text-sm text-fg-muted file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/40 dark:file:text-indigo-300 disabled:opacity-50"
                             disabled={isLoading}
                         />
-                        <p className="mt-1 text-xs text-gray-400">Select one or more images.</p>
+                        <p className="mt-1 text-xs text-fg-muted">Choisis une ou plusieurs images.</p>
                     </div>
 
                     {/* Image Previews */}
@@ -248,12 +248,12 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                             <div key={`existing-${index}`} className="relative group">
                                 {/* Handle both full URLs and file IDs */}
                                 {url.startsWith('http') ? (
-                                    <img src={url} alt={`Existing product image ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-gray-600" />
+                                    <img src={url} alt={`Image actuelle du produit ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-line-strong" />
                                 ) : (
                                     <ImageDisplay
                                         fileId={url}
-                                        alt={`Existing product image ${index + 1}`}
-                                        className="w-full h-20 object-cover rounded-md border border-gray-600"
+                                        alt={`Image actuelle du produit ${index + 1}`}
+                                        className="w-full h-20 object-cover rounded-md border border-line-strong"
                                     />
                                 )}
                                 {/* TODO: Add a button to remove existing image */}
@@ -263,7 +263,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                         {/* New Image Previews */}
                         {imagePreviews.map((previewUrl, index) => (
                             <div key={`new-${index}`} className="relative group">
-                                <img src={previewUrl} alt={`New preview ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-indigo-500" />
+                                <img src={previewUrl} alt={`Aperçu de la nouvelle image ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-indigo-500" />
                             </div>
                         ))}
                     </div>
@@ -274,16 +274,16 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
                             type="button"
                             onClick={onCancel}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-surface-3 text-fg text-sm font-medium rounded-md hover:bg-surface-2 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-fg-subtle disabled:opacity-50"
                         >
-                            Cancel
+                            Annuler
                         </button>
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                         >
-                            {isLoading ? 'Saving...' : 'Save Product'}
+                            {isLoading ? 'Enregistrement…' : 'Enregistrer le produit'}
                         </button>
                     </div>
                 </form>

@@ -2,6 +2,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { motion } from 'framer-motion'
 import { User, Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
+import { useChartTheme } from '../../hooks/useChartTheme';
 
 // Define the expected structure of the data items
 interface MonthlyUserSubData {
@@ -17,6 +18,7 @@ interface UsersOverViewChartProps {
 }
 
 const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
+  const chart = useChartTheme();
   // State for toggling line visibility
   const [visibleLines, setVisibleLines] = useState({
     Users: true,
@@ -37,7 +39,7 @@ const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
   const lineConfigs = [
     {
       key: 'Users' as const,
-      name: 'Utilisateurs',
+      name: 'Membres',
       stroke: '#8884d8',
       color: '#8884d8'
     },
@@ -64,14 +66,14 @@ const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
   return (
     <div>
       <motion.div
-        className='bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700'
+        className='bg-surface rounded-xl p-6 border border-line'
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, ease: "easeInOut" }}
       >
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-          <h2 className="text-lg font-medium text-gray-400 flex gap-2 mb-3 sm:mb-0">
-            <User color='#6366F1' />Utilisateurs inscrits
+          <h2 className="text-lg font-medium text-fg-muted flex gap-2 mb-3 sm:mb-0">
+            <User color='#6366F1' />Membres inscrits
           </h2>
 
           {/* Filter Controls */}
@@ -81,19 +83,19 @@ const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
                 key={config.key}
                 onClick={() => toggleLine(config.key)}
                 className={`flex items-center gap-2 px-3 py-1 rounded-lg border transition-all duration-200 ${visibleLines[config.key]
-                    ? 'border-gray-500 bg-gray-700 text-white'
-                    : 'border-gray-600 bg-gray-800 text-gray-400'
+                    ? 'border-line-strong bg-surface-2 text-fg'
+                    : 'border-line-strong bg-surface text-fg-muted'
                   }`}
               >
                 {visibleLines[config.key] ? (
                   <Eye size={16} color={config.color} />
                 ) : (
-                  <EyeOff size={16} className="text-gray-500" />
+                  <EyeOff size={16} className="text-fg-subtle" />
                 )}
                 <span className="text-sm font-medium">{config.name}</span>
                 <div
                   className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: visibleLines[config.key] ? config.color : '#6b7280' }}
+                  style={{ backgroundColor: visibleLines[config.key] ? config.color : chart.axis }}
                 />
               </button>
             ))}
@@ -102,26 +104,22 @@ const UsersOverViewCahrt: React.FC<UsersOverViewChartProps> = ({ data }) => {
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke='#4b5563' />
-              <XAxis dataKey="monthLabel" stroke='#4b5563' tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} stroke='#4b5563' />
+              <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+              <XAxis dataKey="monthLabel" stroke={chart.grid} tick={{ fontSize: 12, fill: chart.axis }} />
+              <YAxis tick={{ fontSize: 12, fill: chart.axis }} stroke={chart.grid} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(31, 41, 55, 0.8)",
-                  borderColor: "#4b5563",
-                  borderRadius: "8px"
-                }}
-                itemStyle={{ color: "#E5E7EB" }}
-                labelStyle={{ color: "#F3F4F6" }}
+                contentStyle={chart.tooltip.contentStyle}
+                itemStyle={chart.tooltip.itemStyle}
+                labelStyle={chart.tooltip.labelStyle}
               />
-              <Legend wrapperStyle={{ fontSize: '14px' }} />
+              <Legend wrapperStyle={{ fontSize: '14px', color: chart.text }} />
               
               {/* Conditionally render lines based on visibility state */}
               {visibleLines.Users && (
                 <Line
                   type='monotone'
                   dataKey='Users'
-                  name='Utilisateurs'
+                  name='Membres'
                   stroke='#8884d8'
                   strokeWidth={3}
                   dot={{ r: 4, fill: '#8884d8' }}

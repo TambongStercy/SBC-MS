@@ -120,18 +120,18 @@ export default function EventCommissionsPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Commissions" />
-            <div className="p-6 space-y-4 max-w-4xl">
+            <div className="space-y-4">
                 {loading ? <Loader name="Chargement..." /> : (
                     <>
-                        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-5">
-                            <p className="text-sm text-gray-400">
+                        <div className="bg-surface border border-line rounded-xl p-5 space-y-5">
+                            <p className="text-sm text-fg-muted">
                                 Ces taux s'appliquent à toutes les nouvelles ventes de billets et de packs de votes. Ce qui est
                                 déjà payé conserve le taux en vigueur au moment de l'achat.
                             </p>
 
                             {FIELDS.map((f) => (
                                 <div key={f.key}>
-                                    <label className="block text-sm font-medium text-gray-300" htmlFor={f.key}>{f.label}</label>
+                                    <label className="block text-sm font-medium text-fg-muted" htmlFor={f.key}>{f.label}</label>
                                     <div className="mt-1 flex items-center gap-2">
                                         <input
                                             id={f.key}
@@ -141,16 +141,16 @@ export default function EventCommissionsPage() {
                                             max={f.max}
                                             value={form[f.key]}
                                             onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                                            className={`w-32 border rounded-lg px-3 py-2 text-sm bg-gray-700 text-white ${errors[f.key] ? 'border-red-400' : 'border-gray-600'}`}
+                                            className={`w-32 border rounded-lg px-3 py-2 text-sm bg-surface text-fg ${errors[f.key] ? 'border-red-400' : 'border-line-strong'}`}
                                         />
-                                        <span className="text-sm text-gray-400">%</span>
+                                        <span className="text-sm text-fg-muted">%</span>
                                     </div>
-                                    <div className="text-xs text-gray-400 mt-1">{f.help}</div>
-                                    {errors[f.key] && <div className="text-xs text-red-400 mt-1">{errors[f.key]}</div>}
+                                    <div className="text-xs text-fg-muted mt-1">{f.help}</div>
+                                    {errors[f.key] && <div className="text-xs text-red-600 dark:text-red-400 mt-1">{errors[f.key]}</div>}
                                 </div>
                             ))}
 
-                            <div className="flex items-center gap-3 pt-2 border-t border-gray-700">
+                            <div className="flex items-center gap-3 pt-2 border-t border-line">
                                 <button
                                     onClick={() => setConfirmOpen(true)}
                                     disabled={!canSave}
@@ -158,41 +158,41 @@ export default function EventCommissionsPage() {
                                 >
                                     {saving ? 'Enregistrement...' : 'Enregistrer'}
                                 </button>
-                                {dirty && <span className="text-xs text-amber-400">Modifications non enregistrées.</span>}
+                                {dirty && <span className="text-xs text-amber-700 dark:text-amber-400">Modifications non enregistrées.</span>}
                             </div>
                         </div>
 
-                        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
+                        <div className="bg-surface border border-line rounded-xl p-5">
                             <div className="flex items-center gap-2 mb-3">
-                                <span className="text-sm font-medium text-gray-300">Exemple pour un billet de</span>
+                                <span className="text-sm font-medium text-fg-muted">Exemple pour un billet de</span>
                                 <input
                                     type="number"
                                     min={0}
                                     step={500}
                                     value={examplePrice}
                                     onChange={(e) => setExamplePrice(e.target.value)}
-                                    className="w-32 border border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-gray-700 text-white"
+                                    className="w-32 border border-line-strong rounded-lg px-3 py-1.5 text-sm bg-surface text-fg"
                                 />
-                                <span className="text-sm text-gray-400">FCFA</span>
+                                <span className="text-sm text-fg-muted">FCFA</span>
                             </div>
                             <div className="grid md:grid-cols-3 gap-4 text-sm">
-                                <div className="bg-gray-900/50 text-gray-300 rounded-lg p-4 space-y-1">
-                                    <div className="font-medium text-gray-300 mb-2">Vente initiale</div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Prix du billet</span><span>{fmt(example.price)} FCFA</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Commission SBC ({form.primaryPct || 0} %)</span><span className="text-red-400">−{fmt(example.primaryFee)} FCFA</span></div>
-                                    <div className="flex justify-between font-semibold border-t border-gray-700 pt-1 mt-1"><span>Reversé à l'organisateur</span><span>{fmt(example.organizerNet)} FCFA</span></div>
+                                <div className="bg-background/50 text-fg-muted rounded-lg p-4 space-y-1">
+                                    <div className="font-medium text-fg-muted mb-2">Vente initiale</div>
+                                    <div className="flex justify-between"><span className="text-fg-muted">Prix du billet</span><span>{fmt(example.price)} FCFA</span></div>
+                                    <div className="flex justify-between"><span className="text-fg-muted">Commission SBC ({form.primaryPct || 0} %)</span><span className="text-red-600 dark:text-red-400">−{fmt(example.primaryFee)} FCFA</span></div>
+                                    <div className="flex justify-between font-semibold border-t border-line pt-1 mt-1"><span>Reversé à l'organisateur</span><span>{fmt(example.organizerNet)} FCFA</span></div>
                                 </div>
-                                <div className="bg-gray-900/50 text-gray-300 rounded-lg p-4 space-y-1">
-                                    <div className="font-medium text-gray-300 mb-2">Revente au prix maximum</div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Prix de revente max ({form.defaultMaxResalePricePct || 0} %)</span><span>{fmt(example.resalePrice)} FCFA</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Commission SBC ({form.resalePct || 0} %)</span><span className="text-red-400">−{fmt(example.resaleFee)} FCFA</span></div>
-                                    <div className="flex justify-between font-semibold border-t border-gray-700 pt-1 mt-1"><span>Reversé au revendeur</span><span>{fmt(example.sellerNet)} FCFA</span></div>
+                                <div className="bg-background/50 text-fg-muted rounded-lg p-4 space-y-1">
+                                    <div className="font-medium text-fg-muted mb-2">Revente au prix maximum</div>
+                                    <div className="flex justify-between"><span className="text-fg-muted">Prix de revente max ({form.defaultMaxResalePricePct || 0} %)</span><span>{fmt(example.resalePrice)} FCFA</span></div>
+                                    <div className="flex justify-between"><span className="text-fg-muted">Commission SBC ({form.resalePct || 0} %)</span><span className="text-red-600 dark:text-red-400">−{fmt(example.resaleFee)} FCFA</span></div>
+                                    <div className="flex justify-between font-semibold border-t border-line pt-1 mt-1"><span>Reversé au revendeur</span><span>{fmt(example.sellerNet)} FCFA</span></div>
                                 </div>
-                                <div className="bg-gray-900/50 text-gray-300 rounded-lg p-4 space-y-1">
-                                    <div className="font-medium text-gray-300 mb-2">Pack de votes au même prix</div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Prix du pack</span><span>{fmt(example.price)} FCFA</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Commission SBC ({form.votePct || 0} %)</span><span className="text-red-400">−{fmt(example.voteFee)} FCFA</span></div>
-                                    <div className="flex justify-between font-semibold border-t border-gray-700 pt-1 mt-1"><span>Reversé à l'organisateur</span><span>{fmt(example.voteOrganizerNet)} FCFA</span></div>
+                                <div className="bg-background/50 text-fg-muted rounded-lg p-4 space-y-1">
+                                    <div className="font-medium text-fg-muted mb-2">Pack de votes au même prix</div>
+                                    <div className="flex justify-between"><span className="text-fg-muted">Prix du pack</span><span>{fmt(example.price)} FCFA</span></div>
+                                    <div className="flex justify-between"><span className="text-fg-muted">Commission SBC ({form.votePct || 0} %)</span><span className="text-red-600 dark:text-red-400">−{fmt(example.voteFee)} FCFA</span></div>
+                                    <div className="flex justify-between font-semibold border-t border-line pt-1 mt-1"><span>Reversé à l'organisateur</span><span>{fmt(example.voteOrganizerNet)} FCFA</span></div>
                                 </div>
                             </div>
                         </div>

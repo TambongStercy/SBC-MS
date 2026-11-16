@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Check, ShieldAlert } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Alert02Icon } from "@hugeicons/core-free-icons";
 import { AdminUserData, updateUser, PartnerPack, updateUserRole } from "../services/adminUserApi"; // <-- Update import to include PartnerPack and updateUserRole
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/common/ToastContainer";
@@ -170,27 +172,27 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
 
   // Define the country list here
   const africanCountries = [
-    { code: 'CM', name: 'Cameroon' }, { code: 'BJ', name: 'Benin' },
-    { code: 'CG', name: 'Congo - Brazzaville' }, { code: 'CD', name: 'Congo - Kinshasa (DRC)' },
+    { code: 'CM', name: 'Cameroun' }, { code: 'BJ', name: 'Bénin' },
+    { code: 'CG', name: 'Congo-Brazzaville' }, { code: 'CD', name: 'Congo-Kinshasa (RDC)' },
     { code: 'GA', name: 'Gabon' }, { code: 'GH', name: 'Ghana' }, { code: 'CI', name: 'Côte d\'Ivoire' },
-    { code: 'SN', name: 'Senegal' }, { code: 'NG', name: 'Nigeria' }, { code: 'BF', name: 'Burkina Faso' },
-    { code: 'KE', name: 'Kenya' }, { code: 'DZ', name: 'Algeria' }, { code: 'AO', name: 'Angola' },
-    { code: 'BW', name: 'Botswana' }, { code: 'BI', name: 'Burundi' }, { code: 'CV', name: 'Cabo Verde' },
-    { code: 'CF', name: 'Central African Republic' }, { code: 'TD', name: 'Chad' }, { code: 'KM', name: 'Comoros' },
-    { code: 'DJ', name: 'Djibouti' }, { code: 'EG', name: 'Egypt' }, { code: 'GQ', name: 'Equatorial Guinea' },
-    { code: 'ER', name: 'Eritrea' }, { code: 'SZ', name: 'Eswatini' }, { code: 'ET', name: 'Ethiopia' },
-    { code: 'GM', name: 'Gambia' }, { code: 'GN', name: 'Guinea' }, { code: 'GW', name: 'Guinea-Bissau' },
-    { code: 'LS', name: 'Lesotho' }, { code: 'LR', name: 'Liberia' }, { code: 'LY', name: 'Libya' },
+    { code: 'SN', name: 'Sénégal' }, { code: 'NG', name: 'Nigeria' }, { code: 'BF', name: 'Burkina Faso' },
+    { code: 'KE', name: 'Kenya' }, { code: 'DZ', name: 'Algérie' }, { code: 'AO', name: 'Angola' },
+    { code: 'BW', name: 'Botswana' }, { code: 'BI', name: 'Burundi' }, { code: 'CV', name: 'Cap-Vert' },
+    { code: 'CF', name: 'République centrafricaine' }, { code: 'TD', name: 'Tchad' }, { code: 'KM', name: 'Comores' },
+    { code: 'DJ', name: 'Djibouti' }, { code: 'EG', name: 'Égypte' }, { code: 'GQ', name: 'Guinée équatoriale' },
+    { code: 'ER', name: 'Érythrée' }, { code: 'SZ', name: 'Eswatini' }, { code: 'ET', name: 'Éthiopie' },
+    { code: 'GM', name: 'Gambie' }, { code: 'GN', name: 'Guinée' }, { code: 'GW', name: 'Guinée-Bissau' },
+    { code: 'LS', name: 'Lesotho' }, { code: 'LR', name: 'Liberia' }, { code: 'LY', name: 'Libye' },
     { code: 'MG', name: 'Madagascar' }, { code: 'MW', name: 'Malawi' }, { code: 'ML', name: 'Mali' },
-    { code: 'MR', name: 'Mauritania' }, { code: 'MU', name: 'Mauritius' }, { code: 'MA', name: 'Morocco' },
-    { code: 'MZ', name: 'Mozambique' }, { code: 'NA', name: 'Namibia' }, { code: 'NE', name: 'Niger' },
-    { code: 'RW', name: 'Rwanda' }, { code: 'ST', name: 'Sao Tome and Principe' }, { code: 'SC', name: 'Seychelles' },
-    { code: 'SL', name: 'Sierra Leone' }, { code: 'SO', name: 'Somalia' }, { code: 'ZA', name: 'South Africa' },
-    { code: 'SS', name: 'South Sudan' }, { code: 'SD', name: 'Sudan' }, { code: 'TZ', name: 'Tanzania' },
-    { code: 'TG', name: 'Togo' }, { code: 'TN', name: 'Tunisia' }, { code: 'UG', name: 'Uganda' },
-    { code: 'ZM', name: 'Zambia' }, { code: 'ZW', name: 'Zimbabwe' },
+    { code: 'MR', name: 'Mauritanie' }, { code: 'MU', name: 'Maurice' }, { code: 'MA', name: 'Maroc' },
+    { code: 'MZ', name: 'Mozambique' }, { code: 'NA', name: 'Namibie' }, { code: 'NE', name: 'Niger' },
+    { code: 'RW', name: 'Rwanda' }, { code: 'ST', name: 'Sao Tomé-et-Principe' }, { code: 'SC', name: 'Seychelles' },
+    { code: 'SL', name: 'Sierra Leone' }, { code: 'SO', name: 'Somalie' }, { code: 'ZA', name: 'Afrique du Sud' },
+    { code: 'SS', name: 'Soudan du Sud' }, { code: 'SD', name: 'Soudan' }, { code: 'TZ', name: 'Tanzanie' },
+    { code: 'TG', name: 'Togo' }, { code: 'TN', name: 'Tunisie' }, { code: 'UG', name: 'Ouganda' },
+    { code: 'ZM', name: 'Zambie' }, { code: 'ZW', name: 'Zimbabwe' },
     // Add other non-African countries if needed
-    { code: 'FR', name: 'France' }, { code: 'US', name: 'United States' },
+    { code: 'FR', name: 'France' }, { code: 'US', name: 'États-Unis' },
     // Add a separator or group non-African countries if the list gets long
   ];
 
@@ -260,10 +262,10 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
     try {
       await updateUserRole(data._id, newRole);
       console.log(`Successfully updated role to ${newRole} for user ${data._id}`);
-      showSuccess(`Rôle mis à jour avec succès: ${getRoleDisplayName(newRole)}`);
+      showSuccess(`Rôle mis à jour : ${getRoleDisplayName(newRole)}`);
     } catch (error: any) {
       console.error("Failed to update role from UserCard", error);
-      showError(`Échec de la mise à jour du rôle: ${error.message}`);
+      showError(`Échec de la mise à jour du rôle : ${error.message}`);
       // Revert local state if the API call fails
       setSelectedRole(originalRole);
     } finally {
@@ -357,8 +359,8 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
         }}
         onCancel={() => setPendingChange(null)}
       />
-      <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4 sm:mb-0">
-        Informations personelles
+      <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4 sm:mb-0">
+        Informations personnelles
       </h2>
       <div className="flex flex-col sm:flex-col items-center justify-between mb-6">
         <img
@@ -366,8 +368,8 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
           alt={name}
           className="rounded-full size-20 object-cover"
         />
-        <p className="text-gray-100">{name}</p>
-        <p className="text-gray-400 opacity-40 font-extralight text-xs">
+        <p className="text-fg">{name}</p>
+        <p className="text-fg-muted opacity-40 font-extralight text-xs">
           Membre depuis le {data.registeredAt}
         </p>
 
@@ -379,7 +381,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               type="text"
               name="name"
               placeholder="Entrer le nouveau nom..."
-              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-3 py-2 pr-4"
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={isSubmitting}
@@ -387,7 +389,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
           </div>
 
           <motion.button
-            className="text-white rounded-sm pt-0 flex items-center mt-6"
+            className="text-fg rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -401,12 +403,12 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
         {/* Phone Number Input */}
         <div className="flex flex-row gap-2 items-center justify-center mb-6">
           <div className="flex-col">
-            <h3 className="mb-1">Tel</h3>
+            <h3 className="mb-1">Téléphone</h3>
             <input
               type="text"
               name="phoneNumber"
               placeholder="Entrer le nouveau numero..."
-              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-3 py-2 pr-4"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               disabled={isSubmitting}
@@ -414,7 +416,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
           </div>
 
           <motion.button
-            className="text-white rounded-sm pt-0 flex items-center mt-6"
+            className="text-fg rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -428,12 +430,12 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
         {/* Region Input */}
         <div className="flex flex-row gap-2 items-center justify-center mb-6">
           <div className="flex-col">
-            <h3 className="mb-1">Region</h3>
+            <h3 className="mb-1">Région</h3>
             <input
               type="text"
               name="region"
               placeholder="Entrer la région..."
-              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-3 py-2 pr-4"
               value={region}
               onChange={(e) => {
                 const upperValue = e.target.value.toUpperCase();
@@ -445,7 +447,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             />
           </div>
           <motion.button
-            className="text-white rounded-sm pt-0 flex items-center mt-6"
+            className="text-fg rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -463,23 +465,23 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
         {/* Country Dropdown (ISO Alpha-2) */}
         <div className="flex flex-row gap-2 items-center justify-center mb-6">
           <div className="flex-col w-full max-w-xs">
-            <h3 className="mb-1 self-start">Country</h3>
+            <h3 className="mb-1 self-start">Pays</h3>
             <select
               name="country"
               value={country} // Bind to state
               onChange={(e) => setCountry(e.target.value)} // Update state on change
               disabled={isSubmitting}
-              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-8 w-full focus:outline-hidden focus:ring-2 focus:ring-indigo-500 appearance-none"
-              style={{ backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="white" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em' }}
+              className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-3 py-2 pr-8 w-full focus:outline-hidden focus:ring-2 focus:ring-indigo-500 appearance-none"
+              style={{ backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="%238592A6" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em' }}
             >
-              <option value="" disabled>-- Select Country --</option>
+              <option value="" disabled>-- Choisir un pays --</option>
               {africanCountries.map(c => (
                 <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
               ))}
             </select>
           </div>
           <motion.button
-            className="text-white rounded-sm pt-0 flex items-center mt-6"
+            className="text-fg rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -493,13 +495,13 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
         {/* Subscription Selector */}
         <div className="flex flex-col sm:flex-row sm:gap-4 mt-4 sm:mt-0 w-full">
           <div className="mb-4 sm:mb-0 flex-1">
-            <label htmlFor="subscription" className="block text-sm font-medium mb-1 text-gray-300">
+            <label htmlFor="subscription" className="block text-sm font-medium mb-1 text-fg-muted">
               Type d'abonnement
             </label>
             <select
               id="subscription"
               name="subscription"
-              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors 
+              className={`w-full px-3 py-2 rounded-lg bg-surface text-fg border border-line-strong focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors 
                 ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
               onChange={handleSubscriptionSelect}
               value={selectedSubscription}
@@ -513,13 +515,13 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
 
           {/* Partner Pack Selector */}
           <div className="mb-4 sm:mb-0 flex-1">
-            <label htmlFor="partnerPack" className="block text-sm font-medium mb-1 text-gray-300">
+            <label htmlFor="partnerPack" className="block text-sm font-medium mb-1 text-fg-muted">
               Pack Partenaire
             </label>
             <select
               id="partnerPack"
               name="partnerPack"
-              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border border-gray-600 focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors
+              className={`w-full px-3 py-2 rounded-lg bg-surface text-fg border border-line-strong focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors
                 ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
               onChange={handlePartnerPackSelect}
               value={selectedPartnerPack}
@@ -533,27 +535,27 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
 
           {/* Role Selector */}
           <div className="mb-4 sm:mb-0 flex-1">
-            <label htmlFor="role" className="flex items-center gap-1 text-sm font-medium mb-1 text-gray-300">
+            <label htmlFor="role" className="flex items-center gap-1 text-sm font-medium mb-1 text-fg-muted">
               <ShieldAlert size={16} />
               Rôle Utilisateur
             </label>
             <select
               id="role"
               name="role"
-              className={`w-full px-3 py-2 rounded-lg bg-gray-700 text-gray-100 border ${
+              className={`w-full px-3 py-2 rounded-lg bg-surface text-fg border ${
                 selectedRole === 'admin' ? 'border-red-500' :
                 selectedRole === 'withdrawal_admin' ? 'border-yellow-500' :
-                selectedRole === 'tester' ? 'border-purple-500' : 'border-gray-600'
+                selectedRole === 'tester' ? 'border-purple-500' : 'border-line-strong'
               } focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors
                 ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
               onChange={handleRoleSelect}
               value={selectedRole}
               disabled={isSubmitting}
             >
-              <option value="user">👤 Utilisateur</option>
-              <option value="tester">🧪 Testeur</option>
-              <option value="withdrawal_admin">💳 Admin Retraits</option>
-              <option value="admin">🛡️ Administrateur</option>
+              <option value="user">Utilisateur</option>
+              <option value="tester">Testeur</option>
+              <option value="withdrawal_admin">Admin Retraits</option>
+              <option value="admin">Administrateur</option>
             </select>
           </div>
         </div>
@@ -561,16 +563,17 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
         {/* Role Confirmation Dialog */}
         {showRoleConfirmDialog && pendingRole && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-red-500">
+            <div className="bg-surface rounded-lg p-6 max-w-md w-full mx-4 border border-red-500">
               <div className="flex items-center gap-2 mb-4">
                 <ShieldAlert className="text-red-500" size={24} />
-                <h3 className="text-xl font-bold text-white">Confirmation Requise</h3>
+                <h3 className="text-xl font-bold text-fg">Confirmation Requise</h3>
               </div>
-              <p className="text-gray-300 mb-4">
-                Vous êtes sur le point de changer le rôle de <strong>{data.name}</strong> en <strong className="text-red-400">{getRoleDisplayName(pendingRole)}</strong>.
+              <p className="text-fg-muted mb-4">
+                Vous êtes sur le point de changer le rôle de <strong>{data.name}</strong> en <strong className="text-red-600 dark:text-red-400">{getRoleDisplayName(pendingRole)}</strong>.
               </p>
-              <p className="text-yellow-400 text-sm mb-6">
-                ⚠️ Cette action donnera des privilèges administratifs à cet utilisateur. Êtes-vous sûr de vouloir continuer ?
+              <p className="flex items-start gap-2 text-yellow-700 dark:text-yellow-400 text-sm mb-6">
+                <HugeiconsIcon icon={Alert02Icon} size={16} className="mt-0.5 shrink-0" />
+                Cette action donnera des privilèges administratifs à cet utilisateur. Êtes-vous sûr de vouloir continuer ?
               </p>
               <div className="flex gap-3">
                 <button
@@ -582,7 +585,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
                 </button>
                 <button
                   onClick={cancelRoleChange}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  className="flex-1 bg-surface-3 hover:bg-surface-2 text-fg font-medium py-2 px-4 rounded-lg transition-colors"
                   disabled={isSubmitting}
                 >
                   Annuler
@@ -600,14 +603,14 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
               type="text"
               name="momoNumber"
               placeholder="Entrer le nouveau numéro Momo..."
-              className="bg-gray-700/20 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4"
+              className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-3 py-2 pr-4"
               value={momoNumber}
               onChange={(e) => setMomoNumber(e.target.value)}
               disabled={isSubmitting}
             />
           </div>
           <motion.button
-            className="text-white rounded-sm pt-0 flex items-center mt-6"
+            className="text-fg rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -630,7 +633,7 @@ const UserCard: React.FC<UserCardProps> = ({ data, onSubscriptionChange, onPartn
             />
           </div>
           <motion.button
-            className="text-white rounded-sm pt-0 flex items-center mt-6"
+            className="text-fg rounded-sm pt-0 flex items-center mt-6"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}

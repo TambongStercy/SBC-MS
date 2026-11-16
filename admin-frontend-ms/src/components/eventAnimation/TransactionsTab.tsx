@@ -18,7 +18,7 @@ function TxStatus({ tx }: { tx: AnimVoteTransaction }) {
             <StatusBadge status={tx.status} labels={TX_STATUS} />
             {tx.lateSettlement && <Badge tone="warning">Hors délai</Badge>}
             {tx.fraud && tx.fraud.review !== 'NONE' && <StatusBadge status={tx.fraud.review} labels={FRAUD_REVIEW} />}
-            {tx.fraud && tx.fraud.flags?.length > 0 && <span className="basis-full text-xs text-gray-400">{signals(tx.fraud.flags)}</span>}
+            {tx.fraud && tx.fraud.flags?.length > 0 && <span className="basis-full text-xs text-fg-muted">{signals(tx.fraud.flags)}</span>}
         </span>
     );
 }
@@ -63,7 +63,7 @@ export default function TransactionsTab() {
             </div>
             {exports && (
                 <Card className="space-y-1">
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-fg-muted">
                         {challengeId ? `Transactions du défi « ${challengeName(challengeId)} ».` : 'Toutes les transactions (aucun défi choisi).'} Les filtres de statut et de vérification ne s’appliquent pas à l’export.
                     </p>
                     <ExportButtons kinds={['transactions']} scope={{ challengeId: challengeId || undefined }} />
@@ -75,11 +75,11 @@ export default function TransactionsTab() {
                 empty={q.data && items.length === 0 ? 'Aucune transaction' : undefined}>
                 {items.map(tx => (
                     <tr key={tx._id} className={trCls} onClick={() => setOpen(tx)}>
-                        <td className={`${tdCls} text-xs text-gray-400 whitespace-nowrap`}>{fmtDate(tx.createdAt)}</td>
-                        <td className={tdCls}><div className="font-medium">{tx.challengeName ?? 'Défi'}</div><div className="text-xs text-gray-400">{[tx.eventTitle, tx.packageSnapshot?.label].filter(Boolean).join(' · ')}</div></td>
+                        <td className={`${tdCls} text-xs text-fg-muted whitespace-nowrap`}>{fmtDate(tx.createdAt)}</td>
+                        <td className={tdCls}><div className="font-medium">{tx.challengeName ?? 'Défi'}</div><div className="text-xs text-fg-muted">{[tx.eventTitle, tx.packageSnapshot?.label].filter(Boolean).join(' · ')}</div></td>
                         <td className={`${tdCls} text-right font-semibold whitespace-nowrap`}>{money(tx.amount, tx.currency)}</td>
                         <td className={`${tdCls} text-right`}>{num(tx.votes)}</td>
-                        <td className={`${tdCls} text-right whitespace-nowrap`}>{money(tx.commissionAmount, tx.currency)}<div className="text-xs text-gray-400">{pct(tx.commissionRate)}</div></td>
+                        <td className={`${tdCls} text-right whitespace-nowrap`}>{money(tx.commissionAmount, tx.currency)}<div className="text-xs text-fg-muted">{pct(tx.commissionRate)}</div></td>
                         <td className={`${tdCls} text-right whitespace-nowrap`}>{money(tx.organizerNet, tx.currency)}</td>
                         <td className={tdCls}><TxStatus tx={tx} /></td>
                     </tr>
@@ -105,12 +105,12 @@ export default function TransactionsTab() {
                         open.paymentMethod ? ['Moyen de paiement', operatorLabel(open.paymentMethod)] : null,
                         open.paymentSessionId ? ['Référence paiement', <span key="ref" className="font-mono text-xs break-all">{open.paymentSessionId}</span>] : null,
                     ]} />
-                    {open.lateSettlement && <p className="text-sm rounded-lg bg-amber-900/30 border border-amber-700 px-3 py-2">Payé après la clôture des votes : remboursé, aucun vote compté.</p>}
+                    {open.lateSettlement && <p className="text-sm rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 px-3 py-2">Payé après la clôture des votes : remboursé, aucun vote compté.</p>}
                     {open.fraud && open.fraud.flags?.length > 0 && (
                         <Section title="Signaux anti-fraude">
                             <ul className="space-y-1.5 text-sm">
                                 {open.fraud.flags.map(f => (
-                                    <li key={f}><b>{FRAUD_SIGNAL_LABELS[f]?.label ?? 'Autre signal'}</b>{FRAUD_SIGNAL_LABELS[f]?.help && <span className="block text-gray-400">{FRAUD_SIGNAL_LABELS[f].help}</span>}</li>
+                                    <li key={f}><b>{FRAUD_SIGNAL_LABELS[f]?.label ?? 'Autre signal'}</b>{FRAUD_SIGNAL_LABELS[f]?.help && <span className="block text-fg-muted">{FRAUD_SIGNAL_LABELS[f].help}</span>}</li>
                                 ))}
                             </ul>
                         </Section>
@@ -158,19 +158,19 @@ function StuckRefunds({ name }: { name: (id?: string | null) => string }) {
     const progress = (r: AnimVoteRefund) => (r.walletCreditedAt ? 'Votant crédité' : 'Votant pas encore crédité') + (r.organizerDebitedAt ? ' · organisateur débité' : '');
 
     return (
-        <section className="rounded-xl border border-amber-600 bg-amber-900/20 p-4 space-y-3">
+        <section className="rounded-xl border border-amber-600 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-3">
             <div>
-                <p className="text-sm font-semibold text-amber-100">{rows.length} {plural(rows.length, 'remboursement')} en attente d’argent</p>
-                <p className="text-xs text-gray-300">Le crédit du votant ou le débit de l’organisateur n’a pas abouti. Ils sont retentés automatiquement ; « Réessayer » force un essai tout de suite.</p>
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-100">{rows.length} {plural(rows.length, 'remboursement')} en attente d’argent</p>
+                <p className="text-xs text-fg-muted">Le crédit du votant ou le débit de l’organisateur n’a pas abouti. Ils sont retentés automatiquement ; « Réessayer » force un essai tout de suite.</p>
             </div>
             <Table headers={['Votant', 'Défi', 'Montant', 'État', 'Dernière erreur', '']}>
                 {rows.map(r => (
-                    <tr key={r._id} className="border-t border-gray-700">
+                    <tr key={r._id} className="border-t border-line">
                         <td className={tdCls}><UserRef id={r.userId} fallback="Votant" /></td>
-                        <td className={`${tdCls} text-gray-300`}>{name(r.challengeId)}</td>
+                        <td className={`${tdCls} text-fg-muted`}>{name(r.challengeId)}</td>
                         <td className={`${tdCls} text-right font-semibold whitespace-nowrap`}>{xaf(r.amount)}</td>
-                        <td className={tdCls}><StatusBadge status={r.status} labels={REFUND_STATUS} /><div className="text-xs text-gray-400 mt-0.5">{r.attempts} {plural(r.attempts, 'essai')} · {progress(r)}</div></td>
-                        <td className={`${tdCls} text-xs text-red-300 wrap-break-word max-w-xs`}>{r.lastError || '—'}</td>
+                        <td className={tdCls}><StatusBadge status={r.status} labels={REFUND_STATUS} /><div className="text-xs text-fg-muted mt-0.5">{r.attempts} {plural(r.attempts, 'essai')} · {progress(r)}</div></td>
+                        <td className={`${tdCls} text-xs text-red-600 dark:text-red-300 wrap-break-word max-w-xs`}>{r.lastError || '—'}</td>
                         <td className={tdCls}>
                             <Button small disabled={retrying !== null} onClick={() => retry(r)}>{retrying === r.voteTransactionId ? 'Essai…' : 'Réessayer'}</Button>
                         </td>

@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon } from '@hugeicons/core-free-icons';
 import ConfirmationModal from '../common/ConfirmationModal';
 import { getUserDetails } from '../../services/adminUserApi';
 import {
@@ -23,7 +25,7 @@ export function Section({ title, action, children }: { title: ReactNode; action?
     return (
         <section className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">{title}</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-fg-muted">{title}</h3>
                 {action}
             </div>
             {children}
@@ -32,10 +34,10 @@ export function Section({ title, action, children }: { title: ReactNode; action?
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-    return <div className={`bg-gray-800 border border-gray-700 rounded-xl p-4 ${className}`}>{children}</div>;
+    return <div className={`bg-surface border border-line rounded-xl p-4 ${className}`}>{children}</div>;
 }
 
-const STAT_TONES: Partial<Record<Tone, string>> = { warning: 'border-amber-600', danger: 'border-red-600', success: 'border-emerald-700' };
+const STAT_TONES: Partial<Record<Tone, string>> = { warning: 'border-amber-600', danger: 'border-red-600', success: 'border-emerald-300 dark:border-emerald-700' };
 
 /** A figure tile; clickable when `to` or `onClick` is given. */
 export function Stat({ label, value, hint, tone, to, onClick }: {
@@ -43,14 +45,14 @@ export function Stat({ label, value, hint, tone, to, onClick }: {
 }) {
     const body = (
         <>
-            <div className="text-xs text-gray-400 uppercase">{label}</div>
+            <div className="text-xs text-fg-muted uppercase">{label}</div>
             <div className="text-2xl font-bold mt-1">{value}</div>
-            {hint && <div className="text-xs text-gray-400 mt-1">{hint}</div>}
+            {hint && <div className="text-xs text-fg-muted mt-1">{hint}</div>}
         </>
     );
-    const cls = `block text-left w-full bg-gray-800 border rounded-xl p-4 ${(tone && STAT_TONES[tone]) || 'border-gray-700'}`;
-    if (to) return <Link to={to} className={`${cls} hover:bg-gray-700/60 transition-colors`}>{body}</Link>;
-    if (onClick) return <button type="button" onClick={onClick} className={`${cls} hover:bg-gray-700/60 transition-colors`}>{body}</button>;
+    const cls = `block text-left w-full bg-surface border rounded-xl p-4 ${(tone && STAT_TONES[tone]) || 'border-line'}`;
+    if (to) return <Link to={to} className={`${cls} hover:bg-surface-2/60 transition-colors`}>{body}</Link>;
+    if (onClick) return <button type="button" onClick={onClick} className={`${cls} hover:bg-surface-2/60 transition-colors`}>{body}</button>;
     return <div className={cls}>{body}</div>;
 }
 
@@ -60,11 +62,11 @@ export type KVItem = [string, ReactNode] | null | false | undefined;
 export function KV({ items }: { items: KVItem[] }) {
     const rows = items.filter(Boolean) as [string, ReactNode][];
     return (
-        <dl className="divide-y divide-gray-700 border border-gray-700 rounded-lg text-sm">
+        <dl className="divide-y divide-line border border-line rounded-lg text-sm">
             {rows.map(([k, v], i) => (
                 <div key={i} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 px-3 py-2">
-                    <dt className="sm:w-56 shrink-0 text-gray-400">{k}</dt>
-                    <dd className="text-gray-100 wrap-break-word min-w-0">{v}</dd>
+                    <dt className="sm:w-56 shrink-0 text-fg-muted">{k}</dt>
+                    <dd className="text-fg wrap-break-word min-w-0">{v}</dd>
                 </div>
             ))}
         </dl>
@@ -82,16 +84,16 @@ export function Modal({ title, subtitle, onClose, footer, children }: {
     }, [onClose]);
     return (
         <div className="fixed inset-0 bg-black/70 z-40 flex justify-center items-start sm:items-center p-2 sm:p-6" onClick={onClose}>
-            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl w-full max-w-4xl max-h-full flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-700">
+            <div className="bg-background border border-line rounded-xl w-full max-w-4xl max-h-full flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
                     <div className="min-w-0">
-                        <h2 className="text-lg font-semibold text-white truncate">{title}</h2>
-                        {subtitle && <div className="text-sm text-gray-400 truncate">{subtitle}</div>}
+                        <h2 className="text-lg font-semibold text-fg truncate">{title}</h2>
+                        {subtitle && <div className="text-sm text-fg-muted truncate">{subtitle}</div>}
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none px-2" aria-label="Fermer">×</button>
+                    <button onClick={onClose} className="text-fg-muted hover:text-fg px-2 py-1" aria-label="Fermer"><HugeiconsIcon icon={Cancel01Icon} size={20} /></button>
                 </div>
                 <div className="overflow-y-auto px-5 py-4 space-y-5">{children}</div>
-                {footer && <div className="px-5 py-3 border-t border-gray-700 flex flex-wrap justify-end gap-2">{footer}</div>}
+                {footer && <div className="px-5 py-3 border-t border-line flex flex-wrap justify-end gap-2">{footer}</div>}
             </div>
         </div>
     );
@@ -102,7 +104,7 @@ const BTN: Record<string, string> = {
     success: 'bg-emerald-600 hover:bg-emerald-700 text-white',
     danger: 'bg-red-600 hover:bg-red-700 text-white',
     warning: 'bg-amber-600 hover:bg-amber-700 text-white',
-    secondary: 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600',
+    secondary: 'bg-surface-2 hover:bg-surface-3 text-fg border border-line-strong',
 };
 
 export function Button({ variant = 'secondary', small, disabled, onClick, children, className = '' }: {
@@ -116,28 +118,28 @@ export function Button({ variant = 'secondary', small, disabled, onClick, childr
     );
 }
 
-export const selectCls = 'border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600';
-export const inputCls = 'border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white';
+export const selectCls = 'border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2';
+export const inputCls = 'border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg';
 
 /** Table frame used by every list on the page. */
 export function Table({ headers, children, empty, loading, error, onRetry }: {
     headers: ReactNode[]; children: ReactNode; empty?: ReactNode; loading?: boolean; error?: string | null; onRetry?: () => void;
 }) {
     return (
-        <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
+        <div className="overflow-x-auto bg-surface rounded-xl border border-line">
             <table className="min-w-full text-sm">
-                <thead className="bg-gray-900/50 text-gray-300">
+                <thead className="bg-background/50 text-fg-muted">
                     <tr>{headers.map((h, i) => <th key={i} className="px-4 py-2 text-left font-medium whitespace-nowrap">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                     {loading ? (
-                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-gray-400">Chargement…</td></tr>
+                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-fg-muted">Chargement…</td></tr>
                     ) : error ? (
-                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-red-300">
+                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-red-600 dark:text-red-300">
                             {error} {onRetry && <button onClick={onRetry} className="underline ml-2">Réessayer</button>}
                         </td></tr>
                     ) : empty ? (
-                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-gray-400">{empty}</td></tr>
+                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-fg-muted">{empty}</td></tr>
                     ) : children}
                 </tbody>
             </table>
@@ -146,16 +148,16 @@ export function Table({ headers, children, empty, loading, error, onRetry }: {
 }
 
 export const tdCls = 'px-4 py-2 align-top';
-export const trCls = 'border-t border-gray-700 hover:bg-gray-700/40 cursor-pointer';
+export const trCls = 'border-t border-line hover:bg-surface-2/40 cursor-pointer';
 
 /** Previous / next with the page count, in French. */
 export function Pager({ page, totalPages, total, onChange }: { page: number; totalPages: number; total?: number; onChange: (p: number) => void }) {
-    if (totalPages <= 1) return total !== undefined ? <p className="text-xs text-gray-400">{total} résultat{total > 1 ? 's' : ''}</p> : null;
+    if (totalPages <= 1) return total !== undefined ? <p className="text-xs text-fg-muted">{total} résultat{total > 1 ? 's' : ''}</p> : null;
     return (
         <div className="flex items-center justify-end gap-3 text-sm">
-            {total !== undefined && <span className="text-gray-400 mr-auto">{total} résultats</span>}
+            {total !== undefined && <span className="text-fg-muted mr-auto">{total} résultats</span>}
             <Button disabled={page <= 1} onClick={() => onChange(page - 1)}>Précédent</Button>
-            <span className="text-gray-400">Page {page} / {totalPages}</span>
+            <span className="text-fg-muted">Page {page} / {totalPages}</span>
             <Button disabled={page >= totalPages} onClick={() => onChange(page + 1)}>Suivant</Button>
         </div>
     );
@@ -198,17 +200,17 @@ export function ReasonConfirm({ open, title, message, label, minLength = 3, sugg
             variant={variant} onCancel={onCancel} onConfirm={() => (invalid ? setTouched(true) : submit())}>
             <div className="mb-5 space-y-2">
                 {children}
-                <label className="block text-sm text-gray-300">{label}</label>
+                <label className="block text-sm text-fg-muted">{label}</label>
                 <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} maxLength={1000}
-                    className="w-full border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white" />
+                    className="w-full border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg" />
                 {suggestions.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                         {suggestions.map(s => (
-                            <button key={s} type="button" onClick={() => setReason(s)} className="text-xs px-2 py-1 rounded-full bg-gray-700 text-gray-200 hover:bg-gray-600">{s}</button>
+                            <button key={s} type="button" onClick={() => setReason(s)} className="text-xs px-2 py-1 rounded-full bg-surface-2 text-fg hover:bg-surface-3">{s}</button>
                         ))}
                     </div>
                 )}
-                {touched && invalid && <p className="text-xs text-red-400">Au moins {minLength} caractères.</p>}
+                {touched && invalid && <p className="text-xs text-red-600 dark:text-red-400">Au moins {minLength} caractères.</p>}
             </div>
         </ConfirmationModal>
     );
@@ -234,7 +236,7 @@ export function SimpleConfirm({ open, title, message, confirmText, variant = 'pr
 export function Toggle({ label, help, checked, onChange }: { label: string; help?: string; checked: boolean; onChange: (v: boolean) => void }) {
     return (
         <label className="flex items-start justify-between gap-3 px-3 py-2.5 cursor-pointer">
-            <span className="min-w-0"><span className="block text-sm font-semibold text-gray-100">{label}</span>{help && <span className="block text-xs text-gray-400">{help}</span>}</span>
+            <span className="min-w-0"><span className="block text-sm font-semibold text-fg">{label}</span>{help && <span className="block text-xs text-fg-muted">{help}</span>}</span>
             <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="mt-1 h-4 w-4 accent-emerald-500" />
         </label>
     );
@@ -259,10 +261,10 @@ export function ExportButtons({ kinds, scope, formats = EXPORT_FORMATS }: { kind
         } finally { setBusy(null); }
     };
     return (
-        <ul className="divide-y divide-gray-700">
+        <ul className="divide-y divide-line">
             {kinds.map(kind => (
                 <li key={kind} className="flex items-center justify-between gap-3 py-2">
-                    <span className="text-sm font-semibold text-gray-100">{EXPORT_KIND_LABELS[kind]}</span>
+                    <span className="text-sm font-semibold text-fg">{EXPORT_KIND_LABELS[kind]}</span>
                     <span className="flex gap-1.5">
                         {formats.map(format => (
                             <Button key={format} small disabled={busy !== null} onClick={() => run(kind, format)}>
@@ -294,12 +296,12 @@ export function UserRef({ id, fallback = 'Membre' }: { id?: string | null; fallb
         loadMember(id).then(r => { if (alive) setM(r); });
         return () => { alive = false; };
     }, [id]);
-    if (!id) return <span className="text-gray-400">{fallback}</span>;
+    if (!id) return <span className="text-fg-muted">{fallback}</span>;
     const contact = m ? [m.phoneNumber ? String(m.phoneNumber) : null, m.email].filter(Boolean).join(' · ') : '';
     return (
         <Link to={`/userpage/${id}`} onClick={e => e.stopPropagation()} className="inline-block min-w-0 hover:underline">
-            <span className="block font-medium text-blue-300 truncate">{m?.name || (m === undefined ? '…' : fallback)}</span>
-            <span className="block text-xs text-gray-400 truncate">{contact || shortId(id)}</span>
+            <span className="block font-medium text-blue-600 dark:text-blue-300 truncate">{m?.name || (m === undefined ? '…' : fallback)}</span>
+            <span className="block text-xs text-fg-muted truncate">{contact || shortId(id)}</span>
         </Link>
     );
 }

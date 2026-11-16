@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon } from '@hugeicons/core-free-icons';
 import Header from '../components/common/Header';
 import Loader from '../components/common/loader';
 import ConfirmationModal from '../components/common/ConfirmationModal';
@@ -147,11 +149,11 @@ export default function EventListPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Événements" />
-            <div className="p-6 space-y-4">
+            <div className="space-y-4">
                 {!!waiting && status !== 'PENDING_REVIEW' && (
-                    <button onClick={() => setStatus('PENDING_REVIEW')} className="w-full text-left rounded-xl border border-amber-600 bg-amber-900/30 p-3 text-sm text-amber-100 hover:bg-amber-900/50">
+                    <button onClick={() => setStatus('PENDING_REVIEW')} className="w-full text-left rounded-xl border border-amber-600 bg-amber-100 dark:bg-amber-900/30 p-3 text-sm text-amber-800 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-900/50">
                         <b>{waiting} événement{waiting > 1 ? 's' : ''} à valider.</b> SBC accepte ou refuse chaque événement envoyé par un organisateur avant sa mise en vente.
-                        <span className="ml-2 font-semibold text-blue-300">Voir</span>
+                        <span className="ml-2 font-semibold text-blue-600 dark:text-blue-300">Voir</span>
                     </button>
                 )}
                 <div className="flex items-center gap-3 flex-wrap">
@@ -159,22 +161,22 @@ export default function EventListPage() {
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
                         placeholder="Rechercher un titre ou une ville"
-                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-72 bg-gray-700 text-white"
+                        className="border border-line-strong rounded-lg px-3 py-2 text-sm w-72 bg-surface text-fg"
                     />
-                    <select value={status ?? ''} onChange={(e) => setStatus(e.target.value as EventStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={status ?? ''} onChange={(e) => setStatus(e.target.value as EventStatus | '')} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">
                         <option value="">Tous les statuts</option>
                         {STATUS_FILTERS.map(f => (
                             <option key={f.value} value={f.value}>{f.label}{f.value === 'PENDING_REVIEW' && waiting ? ` (${waiting})` : ''}</option>
                         ))}
                     </select>
-                    <button onClick={reloadAll} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
-                    {!loading && <span className="text-sm text-gray-400">{total} événement{total > 1 ? 's' : ''}{total > items.length ? ` (${items.length} affichés)` : ''}</span>}
+                    <button onClick={reloadAll} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">Actualiser</button>
+                    {!loading && <span className="text-sm text-fg-muted">{total} événement{total > 1 ? 's' : ''}{total > items.length ? ` (${items.length} affichés)` : ''}</span>}
                 </div>
 
                 {loading || status === null ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
+                    <div className="overflow-x-auto bg-surface rounded-xl border border-line">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-900/50 text-gray-300">
+                            <thead className="bg-background/50 text-fg-muted">
                                 <tr>
                                     <th className="px-4 py-2 text-left">Titre</th>
                                     <th className="px-4 py-2 text-left">Statut</th>
@@ -186,20 +188,20 @@ export default function EventListPage() {
                             </thead>
                             <tbody>
                                 {items.length === 0 && (
-                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">{status === 'PENDING_REVIEW' ? 'Aucun événement à valider.' : 'Aucun événement.'}</td></tr>
+                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-fg-muted">{status === 'PENDING_REVIEW' ? 'Aucun événement à valider.' : 'Aucun événement.'}</td></tr>
                                 )}
                                 {items.map((ev) => (
-                                    <tr key={ev._id} className="border-t border-gray-700">
+                                    <tr key={ev._id} className="border-t border-line">
                                         <td className="px-4 py-2">
                                             <button onClick={() => setDetail(ev)} className="text-left hover:underline">
                                                 <div className="font-medium">{ev.title}</div>
                                             </button>
-                                            <div className="text-xs text-gray-400">{ev.slug}</div>
+                                            <div className="text-xs text-fg-muted">{ev.slug}</div>
                                         </td>
                                         <td className="px-4 py-2">
                                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[ev.status] ?? 'bg-gray-100 text-gray-700'}`}>{STATUS_LABELS[ev.status] ?? ev.status}</span>
-                                            {ev.status === 'PENDING_REVIEW' && ev.submittedAt && <div className="text-xs text-gray-400 mt-1">envoyé le {fmt(ev.submittedAt)}</div>}
-                                            {ev.status === 'REJECTED' && ev.rejectionReason && <div className="text-xs text-red-300 mt-1 max-w-xs truncate" title={ev.rejectionReason}>{ev.rejectionReason}</div>}
+                                            {ev.status === 'PENDING_REVIEW' && ev.submittedAt && <div className="text-xs text-fg-muted mt-1">envoyé le {fmt(ev.submittedAt)}</div>}
+                                            {ev.status === 'REJECTED' && ev.rejectionReason && <div className="text-xs text-red-600 dark:text-red-300 mt-1 max-w-xs truncate" title={ev.rejectionReason}>{ev.rejectionReason}</div>}
                                         </td>
                                         <td className="px-4 py-2 text-xs">{fmt(ev.startsAt)}</td>
                                         <td className="px-4 py-2 text-xs">
@@ -210,7 +212,7 @@ export default function EventListPage() {
                                             {ev.totals?.ticketsSold ?? 0} billets · {(ev.totals?.grossRevenue ?? 0).toLocaleString('fr-FR')} XAF
                                         </td>
                                         <td className="px-4 py-2 space-x-2 whitespace-nowrap">
-                                            <button onClick={() => setDetail(ev)} className="text-xs bg-gray-600 text-white px-2 py-1 rounded-sm">Détails</button>
+                                            <button onClick={() => setDetail(ev)} className="text-xs bg-surface-3 text-fg px-2 py-1 rounded-sm">Détails</button>
                                             {actions(ev)}
                                         </td>
                                     </tr>
@@ -223,20 +225,20 @@ export default function EventListPage() {
 
             {detail && (
                 <div className="fixed inset-0 bg-black/70 z-40 flex justify-center items-center p-4" onClick={() => setDetail(null)}>
-                    <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-xl w-full max-w-lg max-h-full overflow-y-auto" onClick={e => e.stopPropagation()}>
-                        <div className="px-5 py-4 border-b border-gray-700 flex items-start justify-between gap-3">
+                    <div className="bg-surface border border-line rounded-xl w-full max-w-lg max-h-full overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-3">
                             <div>
-                                <h2 className="text-lg font-semibold text-white">{detail.title}</h2>
+                                <h2 className="text-lg font-semibold text-fg">{detail.title}</h2>
                                 <span className={`inline-block mt-1 px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[detail.status]}`}>{STATUS_LABELS[detail.status] ?? detail.status}</span>
                             </div>
-                            <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-white text-xl leading-none" aria-label="Fermer">×</button>
+                            <button onClick={() => setDetail(null)} className="text-fg-muted hover:text-fg p-1" aria-label="Fermer"><HugeiconsIcon icon={Cancel01Icon} size={20} /></button>
                         </div>
                         <dl className="px-5 py-4 space-y-2 text-sm">
                             {([
                                 ['Lieu', eventPlace(detail) || '—'],
                                 isWebinaire(detail) && ['Lien WhatsApp', detail.accessLink
-                                    ? <a href={detail.accessLink} target="_blank" rel="noopener noreferrer" className="text-blue-300 underline break-all">{detail.accessLink}</a>
-                                    : <span className="text-red-400">Pas encore renseigné</span>],
+                                    ? <a href={detail.accessLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-300 underline break-all">{detail.accessLink}</a>
+                                    : <span className="text-red-600 dark:text-red-400">Pas encore renseigné</span>],
                                 ['Début', fmt(detail.startsAt)],
                                 ['Fin', fmt(detail.endsAt)],
                                 !!detail.submittedAt && ['Envoyé pour validation', fmt(detail.submittedAt)],
@@ -245,10 +247,10 @@ export default function EventListPage() {
                                 ['Ventes', `${detail.totals?.ticketsSold ?? 0} billets · ${(detail.totals?.grossRevenue ?? 0).toLocaleString('fr-FR')} XAF`],
                                 ['Créé le', fmt(detail.createdAt)],
                             ].filter(Boolean) as [string, ReactNode][]).map(([k, v]) => (
-                                <div key={k} className="flex gap-3"><dt className="w-44 shrink-0 text-gray-400">{k}</dt><dd className="text-gray-100 min-w-0 wrap-break-word">{v}</dd></div>
+                                <div key={k} className="flex gap-3"><dt className="w-44 shrink-0 text-fg-muted">{k}</dt><dd className="text-fg min-w-0 wrap-break-word">{v}</dd></div>
                             ))}
                         </dl>
-                        <div className="px-5 py-3 border-t border-gray-700 flex flex-wrap justify-end gap-2">{actions(detail, false)}</div>
+                        <div className="px-5 py-3 border-t border-line flex flex-wrap justify-end gap-2">{actions(detail, false)}</div>
                     </div>
                 </div>
             )}
@@ -300,15 +302,15 @@ function RejectModal({ event, onCancel, onConfirm }: { event: AdminEvent; onCanc
             onConfirm={() => { setTouched(true); if (!invalid) return onConfirm(reason.trim()); }}
         >
             <div className="mb-5 space-y-2">
-                <label className="block text-sm text-gray-300">Motif (envoyé à l’organisateur)</label>
+                <label className="block text-sm text-fg-muted">Motif (envoyé à l’organisateur)</label>
                 <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} maxLength={1000}
-                    className="w-full border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white" />
+                    className="w-full border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg" />
                 <div className="flex flex-wrap gap-1.5">
                     {REJECT_SUGGESTIONS.map(s => (
-                        <button key={s} type="button" onClick={() => setReason(s)} className="text-xs px-2 py-1 rounded-full bg-gray-700 text-gray-200 hover:bg-gray-600">{s}</button>
+                        <button key={s} type="button" onClick={() => setReason(s)} className="text-xs px-2 py-1 rounded-full bg-surface-2 text-fg hover:bg-surface-3">{s}</button>
                     ))}
                 </div>
-                {touched && invalid && <p className="text-xs text-red-400">Au moins {REJECT_MIN} caractères.</p>}
+                {touched && invalid && <p className="text-xs text-red-600 dark:text-red-400">Au moins {REJECT_MIN} caractères.</p>}
             </div>
         </ConfirmationModal>
     );

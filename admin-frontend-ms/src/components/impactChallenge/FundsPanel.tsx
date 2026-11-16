@@ -8,20 +8,20 @@ import { btn, panelClass } from './styles';
 const LegState: React.FC<{ leg: PayoutLeg }> = ({ leg }) => {
     if (leg.state === 'paid') {
         return (
-            <span className="inline-flex items-center gap-1 text-green-300 text-xs">
+            <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-300 text-xs">
                 <CheckCircle2 className="w-4 h-4" /> Versé
             </span>
         );
     }
     if (leg.state === 'nothing') {
         return (
-            <span className="inline-flex items-center gap-1 text-gray-400 text-xs">
+            <span className="inline-flex items-center gap-1 text-fg-muted text-xs">
                 <MinusCircle className="w-4 h-4" /> Rien à verser
             </span>
         );
     }
     return (
-        <span className="inline-flex items-center gap-1 text-amber-300 text-xs">
+        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300 text-xs">
             <Circle className="w-4 h-4" /> À verser
         </span>
     );
@@ -53,11 +53,11 @@ const FundsPanel: React.FC<{
         <div className={`${panelClass} p-6 mb-6`}>
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
                 <div>
-                    <h3 className="text-lg font-semibold text-gray-100 flex items-center gap-2">
-                        <Wallet className="w-5 h-5 text-green-400" />
+                    <h3 className="text-lg font-semibold text-fg flex items-center gap-2">
+                        <Wallet className="w-5 h-5 text-green-600 dark:text-green-400" />
                         {isDone ? 'Fonds distribués' : isClosed ? 'Distribution des fonds' : 'Répartition prévue'}
                     </h3>
-                    <p className="text-sm text-gray-400 mt-1">
+                    <p className="text-sm text-fg-muted mt-1">
                         {isDone
                             ? `Versé le ${formatDateTime(c.distributionDate)}, sur ${formatXaf(total)} collectés.`
                             : isClosed
@@ -79,7 +79,7 @@ const FundsPanel: React.FC<{
 
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                    <thead className="bg-gray-900/50 text-gray-300">
+                    <thead className="bg-background/50 text-fg-muted">
                         <tr>
                             <th className="px-4 py-2 text-left">Part</th>
                             <th className="px-4 py-2 text-left">Pourcentage</th>
@@ -90,13 +90,13 @@ const FundsPanel: React.FC<{
                     </thead>
                     <tbody>
                         {legs.map(l => (
-                            <tr key={l.key} className="border-t border-gray-700">
-                                <td className="px-4 py-2 text-gray-200">{l.label}</td>
-                                <td className="px-4 py-2 text-gray-400">{l.share}</td>
-                                <td className="px-4 py-2 text-right text-white font-mono whitespace-nowrap">{formatXaf(l.amount)}</td>
+                            <tr key={l.key} className="border-t border-line">
+                                <td className="px-4 py-2 text-fg">{l.label}</td>
+                                <td className="px-4 py-2 text-fg-muted">{l.share}</td>
+                                <td className="px-4 py-2 text-right text-fg font-mono whitespace-nowrap">{formatXaf(l.amount)}</td>
                                 {(isClosed || isDone) && <td className="px-4 py-2"><LegState leg={l} /></td>}
                                 {(isClosed || isDone) && (
-                                    <td className="px-4 py-2 font-mono text-xs text-gray-400 break-all">{l.transactionId || '—'}</td>
+                                    <td className="px-4 py-2 font-mono text-xs text-fg-muted break-all">{l.transactionId || '—'}</td>
                                 )}
                             </tr>
                         ))}
@@ -134,7 +134,7 @@ const FundsPanel: React.FC<{
                         </Notice>
                     )}
                     {!blocked && (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-fg-subtle">
                             La part du gagnant est créditée sur le solde de son compte SBC ; la cagnotte et la commission sur les comptes SBC prévus pour cela.
                         </p>
                     )}

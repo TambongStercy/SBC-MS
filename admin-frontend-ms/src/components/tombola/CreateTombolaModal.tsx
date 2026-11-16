@@ -22,12 +22,12 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
         setError(null); // Clear previous errors
         // Basic validation
         if (month < 1 || month > 12) {
-            setError('Month must be between 1 and 12.');
+            setError('Le mois doit être compris entre 1 et 12.');
             return;
         }
         // Add year validation if needed (e.g., must be current year or past N years)
         if (year > currentYear) {
-            setError('Cannot create a tombola for a future year.');
+            setError('Impossible de créer une tombola pour une année future.');
             return;
         }
         // Consider adding check for future month in current year if needed
@@ -37,7 +37,7 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
             // onClose(); // Let the parent handle closing on success
         } catch (err) {
             // Error is handled by the parent via toast, but we can set local error too
-            setError(err instanceof Error ? err.message : 'Failed to create tombola');
+            setError(err instanceof Error ? err.message : 'La tombola n’a pas pu être créée.');
             console.error("Error in modal save:", err);
         }
     };
@@ -51,13 +51,13 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/75 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm">
-                <h2 className="text-xl font-semibold text-white mb-4">Create New Tombola</h2>
+            <div className="bg-surface p-6 rounded-lg w-full max-w-sm border border-line">
+                <h2 className="text-xl font-semibold text-fg mb-4">Nouvelle tombola</h2>
 
-                {error && <p className="text-red-400 text-sm mb-3">Error: {error}</p>}
+                {error && <p className="text-red-600 dark:text-red-400 text-sm mb-3">Erreur : {error}</p>}
 
                 <div className="mb-4">
-                    <label htmlFor="month" className="block text-sm font-medium text-gray-300 mb-1">Month (1-12)</label>
+                    <label htmlFor="month" className="block text-sm font-medium text-fg-muted mb-1">Mois (1-12)</label>
                     <input
                         type="number"
                         id="month"
@@ -65,19 +65,19 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
                         onChange={(e) => setMonth(parseInt(e.target.value, 10) || 1)}
                         min="1"
                         max="12"
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                         disabled={isLoading}
                     />
                 </div>
 
                 <div className="mb-6">
-                    <label htmlFor="year" className="block text-sm font-medium text-gray-300 mb-1">Year</label>
+                    <label htmlFor="year" className="block text-sm font-medium text-fg-muted mb-1">Année</label>
                     <select
                         id="year"
                         value={year}
                         onChange={(e) => setYear(parseInt(e.target.value, 10))}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
                         required
                         disabled={isLoading}
                     >
@@ -91,16 +91,16 @@ const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
                     <button
                         onClick={onClose}
                         disabled={isLoading}
-                        className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 focus:ring-offset-gray-800 disabled:opacity-50"
+                        className="px-4 py-2 bg-surface-3 text-fg text-sm font-medium rounded-md hover:bg-surface-2 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-fg-subtle focus:ring-offset-surface disabled:opacity-50"
                     >
-                        Cancel
+                        Annuler
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={isLoading}
-                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md shadow-xs hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-800 disabled:opacity-50"
+                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-surface disabled:opacity-50"
                     >
-                        {isLoading ? 'Creating...' : 'Create Tombola'}
+                        {isLoading ? 'Création…' : 'Créer la tombola'}
                     </button>
                 </div>
             </div>

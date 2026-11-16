@@ -130,8 +130,21 @@
 
   --radius-control: 8px;
   --radius-panel: 12px;
-  --shadow-panel: 0 1px 2px hsl(var(--shadow-color) / 0.06), 0 4px 16px hsl(var(--shadow-color) / 0.06);
-  --shadow-overlay: 0 8px 24px hsl(var(--shadow-color) / 0.14), 0 2px 6px hsl(var(--shadow-color) / 0.08);
+  /* Flat design (owner, 2026-11-16): no shadows anywhere. Panels, menus and
+     dialogs are told apart by their border and surface colour. */
+  --shadow-panel: none;
+  --shadow-overlay: none;
+}
+
+/*
+ * No shadows, whatever class a page still carries (shadow-lg, hover:shadow-xl…).
+ * Tailwind 4 builds box-shadow from several variables; only the shadow one is
+ * emptied, so focus rings (ring-*) keep working for keyboard users.
+ */
+*, *::before, *::after {
+  --tw-shadow: 0 0 #0000 !important;
+  --tw-inset-shadow: 0 0 #0000 !important;
+  --tw-drop-shadow: !important;
 }
 
 /*

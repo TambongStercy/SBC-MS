@@ -9,16 +9,18 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import { MonthlyRevenueData } from '../../pages/overViewPage'; // Adjust path if necessary
+import { useChartTheme } from '../../hooks/useChartTheme';
 
 interface MonthlyRevenueChartProps {
     data: MonthlyRevenueData[];
 }
 
 const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({ data }) => {
+    const chart = useChartTheme();
     if (!data || data.length === 0) {
         return (
-            <div className="text-gray-500 flex items-center justify-center h-full">
-                No revenue data available.
+            <div className="text-fg-subtle flex items-center justify-center h-full">
+                Aucune donnée de revenu.
             </div>
         );
     }
@@ -27,7 +29,7 @@ const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({ data }) => {
     const formattedData = data.map(item => {
         const [year, month] = item.month.split('-');
         const date = new Date(parseInt(year), parseInt(month) - 1);
-        const monthName = date.toLocaleString('default', { month: 'short' });
+        const monthName = date.toLocaleString('fr-FR', { month: 'short' });
         const shortYear = year.substring(2);
         return {
             ...item,
@@ -60,14 +62,14 @@ const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({ data }) => {
                         <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
                     </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="monthLabel" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chart.grid} />
+                <XAxis dataKey="monthLabel" tick={{ fontSize: 12, fill: chart.axis }} stroke={chart.grid} />
+                <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 12, fill: chart.axis }} stroke={chart.grid} />
                 <Tooltip
-                    formatter={(value: number) => [`${value.toLocaleString()} F`, 'Revenu']}
-                    contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '4px' }}
-                    labelStyle={{ color: '#cbd5e1' }}
-                    itemStyle={{ color: '#9ca3af' }}
+                    formatter={(value: number) => [`${value.toLocaleString('fr-FR')} F`, 'Revenu']}
+                    contentStyle={chart.tooltip.contentStyle}
+                    labelStyle={chart.tooltip.labelStyle}
+                    itemStyle={chart.tooltip.itemStyle}
                 />
                 <Area
                     type="monotone"

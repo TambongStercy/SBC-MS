@@ -11,7 +11,7 @@ const measure = (v: number | undefined, code: string) => (v === undefined || v =
 
 function Subject({ f }: { f: AnimFraudFlag }) {
     const name = f.subjectLabel || (f.subjectType === 'IP' ? shortRef(f.subjectId) : 'Inconnu');
-    return <span className="min-w-0"><span className="block text-xs text-gray-400">{flagSubjectKind(f)}</span><span className="block font-medium">{name}</span></span>;
+    return <span className="min-w-0"><span className="block text-xs text-fg-muted">{flagSubjectKind(f)}</span><span className="block font-medium">{name}</span></span>;
 }
 
 function Score({ f }: { f: AnimFraudFlag }) {
@@ -42,7 +42,7 @@ export default function FraudTab() {
 
     return (
         <div className="space-y-3">
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-fg-muted">
                 Les signaux anti-fraude ne suppriment jamais rien automatiquement : ils placent un compte, un achat, un candidat, une adresse
                 réseau ou un appareil « à vérifier ». Un signalement ouvert de score {FREEZE_BLOCK_SCORE} ou plus empêche de figer le résultat du défi.
             </p>
@@ -55,7 +55,7 @@ export default function FraudTab() {
             {legend && (
                 <Card className="grid md:grid-cols-2 gap-3">
                     {Object.entries(FRAUD_SIGNAL_LABELS).map(([code, s]) => (
-                        <div key={code} className="text-sm"><p className="font-semibold text-gray-100">{s.label}</p><p className="text-gray-400">{s.help}</p></div>
+                        <div key={code} className="text-sm"><p className="font-semibold text-fg">{s.label}</p><p className="text-fg-muted">{s.help}</p></div>
                     ))}
                 </Card>
             )}
@@ -66,10 +66,10 @@ export default function FraudTab() {
                 {items.map(f => (
                     <tr key={f._id} className={trCls} onClick={() => setOpen(f)}>
                         <td className={tdCls}><Subject f={f} /></td>
-                        <td className={`${tdCls} text-gray-300`}>{f.challenge?.name ?? 'Défi'}</td>
-                        <td className={`${tdCls} text-gray-300`}>{f.signals.map(s => signalName(s.code)).join(', ')}</td>
+                        <td className={`${tdCls} text-fg-muted`}>{f.challenge?.name ?? 'Défi'}</td>
+                        <td className={`${tdCls} text-fg-muted`}>{f.signals.map(s => signalName(s.code)).join(', ')}</td>
                         <td className={tdCls}><Score f={f} /></td>
-                        <td className={`${tdCls} text-xs text-gray-400 whitespace-nowrap`}>{fmtDate(f.createdAt)}</td>
+                        <td className={`${tdCls} text-xs text-fg-muted whitespace-nowrap`}>{fmtDate(f.createdAt)}</td>
                         <td className={tdCls}><StatusBadge status={f.status} labels={FLAG_STATUS} /></td>
                         <td className={`${tdCls} whitespace-nowrap space-x-2`} onClick={e => e.stopPropagation()}>
                             {f.status === 'OPEN' && <>
@@ -105,11 +105,11 @@ export default function FraudTab() {
                     <Section title="Signaux">
                         <ul className="space-y-2">
                             {open.signals.map((s, i) => (
-                                <li key={i} className="rounded-lg bg-gray-800 border border-gray-700 p-3 text-sm space-y-1">
+                                <li key={i} className="rounded-lg bg-surface border border-line p-3 text-sm space-y-1">
                                     <p className="font-semibold">{signalName(s.code)}</p>
-                                    {FRAUD_SIGNAL_LABELS[s.code]?.help && <p className="text-gray-400">{FRAUD_SIGNAL_LABELS[s.code].help}</p>}
-                                    <p><span className="text-gray-400">Mesuré :</span> <b>{measure(s.value, s.code)}</b> <span className="text-gray-400">· seuil {measure(s.threshold, s.code)}</span></p>
-                                    {s.note && <p className="text-gray-400">{s.note}</p>}
+                                    {FRAUD_SIGNAL_LABELS[s.code]?.help && <p className="text-fg-muted">{FRAUD_SIGNAL_LABELS[s.code].help}</p>}
+                                    <p><span className="text-fg-muted">Mesuré :</span> <b>{measure(s.value, s.code)}</b> <span className="text-fg-muted">· seuil {measure(s.threshold, s.code)}</span></p>
+                                    {s.note && <p className="text-fg-muted">{s.note}</p>}
                                 </li>
                             ))}
                         </ul>
@@ -144,7 +144,7 @@ export default function FraudTab() {
                             notifySuccess(`Fraude confirmée${parts.length ? ` : ${parts.join(', ')}` : ''}.`);
                             setOpen(null); refresh();
                         }}>
-                        <div className="divide-y divide-gray-700 border border-gray-700 rounded-lg mb-3">
+                        <div className="divide-y divide-line border border-line rounded-lg mb-3">
                             <Toggle label="Annuler les votes gratuits" checked={opts.voidVotes} onChange={v => setOpts({ ...opts, voidVotes: v })}
                                 help={review.flag.subjectType === 'TRANSACTION' ? 'Sans effet pour un achat (aucun vote gratuit associé).' : undefined} />
                             <Toggle label="Rembourser les achats" checked={opts.refund} onChange={v => setOpts({ ...opts, refund: v })}

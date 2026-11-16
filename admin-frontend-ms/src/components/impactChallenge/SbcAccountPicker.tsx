@@ -66,37 +66,37 @@ const SbcAccountPicker: React.FC<{
     return (
         <div className="space-y-2">
             {value ? (
-                <div className="flex items-start justify-between gap-3 bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2">
+                <div className="flex items-start justify-between gap-3 bg-background/50 border border-line rounded-lg px-3 py-2">
                     <div className="min-w-0 flex items-start gap-2">
-                        <UserCheck className="w-4 h-4 mt-0.5 text-green-400 shrink-0" />
+                        <UserCheck className="w-4 h-4 mt-0.5 text-green-600 dark:text-green-400 shrink-0" />
                         {linked ? (
                             <div className="min-w-0">
-                                <p className="text-sm text-white truncate">{linked.name}</p>
-                                <p className="text-xs text-gray-400 truncate">{describe(linked)}</p>
+                                <p className="text-sm text-fg truncate">{linked.name}</p>
+                                <p className="text-xs text-fg-muted truncate">{describe(linked)}</p>
                             </div>
                         ) : linkedError ? (
                             <div className="min-w-0">
-                                <p className="text-sm text-amber-300">Compte introuvable</p>
-                                <p className="text-xs text-gray-400 break-all">Identifiant {value}</p>
+                                <p className="text-sm text-amber-700 dark:text-amber-300">Compte introuvable</p>
+                                <p className="text-xs text-fg-muted break-all">Identifiant {value}</p>
                             </div>
                         ) : (
-                            <p className="text-sm text-gray-400">Chargement…</p>
+                            <p className="text-sm text-fg-muted">Chargement…</p>
                         )}
                     </div>
                     {!disabled && (
-                        <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-red-300 inline-flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => onChange(null)} className="text-xs text-fg-muted hover:text-red-700 dark:hover:text-red-300 inline-flex items-center gap-1 shrink-0">
                             <X className="w-3.5 h-3.5" /> Retirer
                         </button>
                     )}
                 </div>
             ) : (
-                <p className="text-sm text-amber-300">Aucun compte SBC lié.</p>
+                <p className="text-sm text-amber-700 dark:text-amber-300">Aucun compte SBC lié.</p>
             )}
 
             {!disabled && (
                 <>
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted w-4 h-4" />
                         <input
                             className={`${fieldClass} pl-9`}
                             value={query}
@@ -105,25 +105,25 @@ const SbcAccountPicker: React.FC<{
                         />
                     </div>
                     {suggestion && !query && (
-                        <button type="button" onClick={() => setQuery(suggestion)} className="text-xs text-blue-300 hover:text-blue-200">
+                        <button type="button" onClick={() => setQuery(suggestion)} className="text-xs text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200">
                             Chercher « {suggestion} »
                         </button>
                     )}
-                    {searching && <p className="text-xs text-gray-400">Recherche…</p>}
-                    {searchError && <p className="text-xs text-red-300">{searchError}</p>}
+                    {searching && <p className="text-xs text-fg-muted">Recherche…</p>}
+                    {searchError && <p className="text-xs text-red-600 dark:text-red-300">{searchError}</p>}
                     {!searching && query.trim().length >= 3 && results.length === 0 && !searchError && (
-                        <p className="text-xs text-gray-400">Aucun membre trouvé.</p>
+                        <p className="text-xs text-fg-muted">Aucun membre trouvé.</p>
                     )}
                     {results.length > 0 && (
-                        <ul className="border border-gray-700 rounded-lg divide-y divide-gray-700 overflow-hidden">
+                        <ul className="border border-line rounded-lg divide-y divide-line overflow-hidden">
                             {results.map(u => (
-                                <li key={u._id} className="flex items-center justify-between gap-3 px-3 py-2 bg-gray-900/40">
+                                <li key={u._id} className="flex items-center justify-between gap-3 px-3 py-2 bg-background/40">
                                     <div className="min-w-0">
-                                        <p className="text-sm text-white truncate">{u.name}</p>
-                                        <p className="text-xs text-gray-400 truncate">{describe(u)}</p>
+                                        <p className="text-sm text-fg truncate">{u.name}</p>
+                                        <p className="text-xs text-fg-muted truncate">{describe(u)}</p>
                                     </div>
                                     <button type="button" onClick={() => pick(u)} disabled={u._id === value}
-                                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded-sm hover:bg-blue-700 disabled:bg-gray-600 shrink-0">
+                                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 shrink-0">
                                         {u._id === value ? 'Lié' : 'Lier'}
                                     </button>
                                 </li>

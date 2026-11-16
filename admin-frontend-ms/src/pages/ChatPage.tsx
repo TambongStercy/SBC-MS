@@ -54,6 +54,20 @@ import {
     Heart
 } from 'lucide-react';
 
+const USER_FILTER_LABELS: Record<'all' | 'active' | 'blocked' | 'deleted', string> = {
+    all: 'Tous',
+    active: 'Actifs',
+    blocked: 'Bloqués',
+    deleted: 'Supprimés',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+    user: 'Utilisateur',
+    admin: 'Administrateur',
+    withdrawal_admin: 'Admin Retraits',
+    tester: 'Testeur',
+};
+
 // Interface for pending (not yet created) conversations
 interface PendingConversation {
     isPending: true;
@@ -96,7 +110,7 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
                 })
                 .catch(err => {
                     console.error('Failed to fetch user details:', err);
-                    setError('Failed to load user details');
+                    setError('Impossible de charger les informations de l’utilisateur');
                     setLoading(false);
                 });
         } else if (!isOpen) {
@@ -127,8 +141,8 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
     const formatPartnerPack = (pack: PartnerPack | undefined) => {
         if (!pack || pack === PartnerPack.NONE) return null;
         switch (pack) {
-            case PartnerPack.SILVER: return 'Silver Partner';
-            case PartnerPack.GOLD: return 'Gold Partner';
+            case PartnerPack.SILVER: return 'Partenaire Silver';
+            case PartnerPack.GOLD: return 'Partenaire Gold';
             default: return pack;
         }
     };
@@ -140,17 +154,17 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-gray-800 rounded-lg w-full max-w-sm mx-4 overflow-hidden max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-surface rounded-lg w-full max-w-sm mx-4 overflow-hidden max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 {loading ? (
                     <div className="p-8 flex flex-col items-center justify-center">
                         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                        <p className="text-gray-400 mt-2">Loading user info...</p>
+                        <p className="text-fg-muted mt-2">Chargement…</p>
                     </div>
                 ) : error ? (
                     <div className="p-8 text-center">
-                        <p className="text-red-400">{error}</p>
-                        <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors">
-                            Close
+                        <p className="text-red-600 dark:text-red-400">{error}</p>
+                        <button onClick={onClose} className="mt-4 px-4 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 transition-colors">
+                            Fermer
                         </button>
                     </div>
                 ) : user ? (
@@ -170,11 +184,11 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
                                 {user.role && (
                                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-white/20 rounded-full text-white text-sm">
                                         <Shield className="w-3 h-3" />
-                                        {user.role}
+                                        {ROLE_LABELS[user.role] ?? user.role}
                                     </span>
                                 )}
                                 {formatPartnerPack(user.partnerPack) && (
-                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm ${user.partnerPack === PartnerPack.GOLD ? 'bg-yellow-500/30 text-yellow-300' : 'bg-gray-400/30 text-gray-300'}`}>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm ${user.partnerPack === PartnerPack.GOLD ? 'bg-yellow-500/30 text-yellow-200' : 'bg-white/20 text-white'}`}>
                                         <Crown className="w-3 h-3" />
                                         {formatPartnerPack(user.partnerPack)}
                                     </span>
@@ -183,60 +197,60 @@ const UserInfoModal: React.FC<UserInfoModalProps> = ({ userId, isOpen, onClose }
                         </div>
                         <div className="p-4 space-y-3">
                             {user.email && (
-                                <div className="flex items-center gap-3 text-gray-300">
-                                    <Mail className="w-5 h-5 text-gray-500 shrink-0" />
+                                <div className="flex items-center gap-3 text-fg-muted">
+                                    <Mail className="w-5 h-5 text-fg-subtle shrink-0" />
                                     <span className="truncate">{user.email}</span>
                                 </div>
                             )}
                             {formatPhone(user.phoneNumber) && (
-                                <div className="flex items-center gap-3 text-gray-300">
-                                    <Phone className="w-5 h-5 text-gray-500 shrink-0" />
+                                <div className="flex items-center gap-3 text-fg-muted">
+                                    <Phone className="w-5 h-5 text-fg-subtle shrink-0" />
                                     <span>{formatPhone(user.phoneNumber)}</span>
                                 </div>
                             )}
                             {(user.city || user.country) && (
-                                <div className="flex items-center gap-3 text-gray-300">
-                                    <MapPin className="w-5 h-5 text-gray-500 shrink-0" />
+                                <div className="flex items-center gap-3 text-fg-muted">
+                                    <MapPin className="w-5 h-5 text-fg-subtle shrink-0" />
                                     <span>{[user.city, user.country].filter(Boolean).join(', ')}</span>
                                 </div>
                             )}
                             {formatSubscriptions(user.activeSubscriptionTypes) && (
-                                <div className="flex items-start gap-3 text-gray-300">
-                                    <Star className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
+                                <div className="flex items-start gap-3 text-fg-muted">
+                                    <Star className="w-5 h-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="text-xs text-gray-500 mb-1">Active Subscriptions</p>
-                                        <span className="text-green-400">{formatSubscriptions(user.activeSubscriptionTypes)}</span>
+                                        <p className="text-xs text-fg-subtle mb-1">Abonnements actifs</p>
+                                        <span className="text-green-600 dark:text-green-400">{formatSubscriptions(user.activeSubscriptionTypes)}</span>
                                     </div>
                                 </div>
                             )}
                             {user.balance !== undefined && (
-                                <div className="flex items-start gap-3 text-gray-300">
-                                    <Wallet className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                                <div className="flex items-start gap-3 text-fg-muted">
+                                    <Wallet className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="text-xs text-gray-500 mb-1">Balance</p>
+                                        <p className="text-xs text-fg-subtle mb-1">Solde</p>
                                         <span>{formatBalance(user.balance)}</span>
                                         {user.usdBalance !== undefined && user.usdBalance > 0 && (
-                                            <span className="ml-2 text-green-400">(${user.usdBalance.toFixed(2)} USD)</span>
+                                            <span className="ml-2 text-green-600 dark:text-green-400">({user.usdBalance.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)</span>
                                         )}
                                     </div>
                                 </div>
                             )}
                             {user.createdAt && (
-                                <div className="flex items-center gap-3 text-gray-300">
-                                    <Calendar className="w-5 h-5 text-gray-500 shrink-0" />
-                                    <span>Joined {new Date(user.createdAt).toLocaleDateString()}</span>
+                                <div className="flex items-center gap-3 text-fg-muted">
+                                    <Calendar className="w-5 h-5 text-fg-subtle shrink-0" />
+                                    <span>Inscrit le {new Date(user.createdAt).toLocaleDateString('fr-FR')}</span>
                                 </div>
                             )}
                             {(!user.activeSubscriptionTypes || user.activeSubscriptionTypes.length === 0) && (
-                                <div className="flex items-center gap-3 text-gray-500">
+                                <div className="flex items-center gap-3 text-fg-subtle">
                                     <Star className="w-5 h-5 shrink-0" />
-                                    <span className="italic">No active subscriptions</span>
+                                    <span className="italic">Aucun abonnement actif</span>
                                 </div>
                             )}
                         </div>
-                        <div className="p-4 border-t border-gray-700">
-                            <button onClick={onClose} className="w-full py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors">
-                                Close
+                        <div className="p-4 border-t border-line">
+                            <button onClick={onClose} className="w-full py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 transition-colors">
+                                Fermer
                             </button>
                         </div>
                     </>
@@ -293,22 +307,22 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, conversati
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-gray-800 rounded-lg w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
-                <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-white">Forward {messageCount} message{messageCount > 1 ? 's' : ''}</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <div className="bg-surface rounded-lg w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b border-line flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-fg">Transférer {messageCount} message{messageCount > 1 ? 's' : ''}</h2>
+                    <button onClick={onClose} className="text-fg-muted hover:text-fg">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
-                <div className="p-4 border-b border-gray-700">
+                <div className="p-4 border-b border-line">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-fg-muted" />
                         <input
                             type="text"
-                            placeholder="Search conversations..."
+                            placeholder="Rechercher une conversation"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
+                            className="w-full pl-10 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:outline-hidden focus:border-indigo-500"
                         />
                     </div>
                 </div>
@@ -320,9 +334,9 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, conversati
                             <button
                                 key={conv._id}
                                 onClick={() => toggleConversation(conv._id)}
-                                className={`w-full flex items-center gap-3 p-4 hover:bg-gray-700 transition-colors text-left ${isSelected ? 'bg-gray-700' : ''}`}
+                                className={`w-full flex items-center gap-3 p-4 hover:bg-surface-2 transition-colors text-left ${isSelected ? 'bg-surface-2' : ''}`}
                             >
-                                <div className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}>
+                                <div className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-line-strong'}`}>
                                     {isSelected && <Check className="w-3 h-3 text-white" />}
                                 </div>
                                 <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold shrink-0 overflow-hidden">
@@ -333,20 +347,20 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, conversati
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-white truncate">{participant?.name || 'Unknown'}</p>
+                                    <p className="font-medium text-fg truncate">{participant?.name || 'Inconnu'}</p>
                                 </div>
                             </button>
                         );
                     })}
                 </div>
-                <div className="p-4 border-t border-gray-700">
+                <div className="p-4 border-t border-line">
                     <button
                         onClick={handleForward}
                         disabled={selectedConversations.size === 0}
                         className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                     >
                         <Forward className="w-4 h-4" />
-                        Forward to {selectedConversations.size} conversation{selectedConversations.size !== 1 ? 's' : ''}
+                        Transférer vers {selectedConversations.size} conversation{selectedConversations.size > 1 ? 's' : ''}
                     </button>
                 </div>
             </div>
@@ -372,8 +386,8 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     title,
     message,
     warningMessage,
-    confirmText = 'Delete',
-    cancelText = 'Cancel',
+    confirmText = 'Supprimer',
+    cancelText = 'Annuler',
     confirmButtonClass = 'bg-red-600 hover:bg-red-700',
     onConfirm,
     onCancel
@@ -382,25 +396,25 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-gray-800 rounded-lg w-full max-w-sm mx-4 overflow-hidden">
+            <div className="bg-surface rounded-lg w-full max-w-sm mx-4 overflow-hidden">
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                             <AlertTriangle className="w-5 h-5 text-red-500" />
                         </div>
-                        <h2 className="text-lg font-semibold text-white">{title}</h2>
+                        <h2 className="text-lg font-semibold text-fg">{title}</h2>
                     </div>
-                    <p className="text-gray-300 mb-2">{message}</p>
+                    <p className="text-fg-muted mb-2">{message}</p>
                     {warningMessage && (
-                        <p className="text-sm text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg">
+                        <p className="text-sm text-yellow-600 dark:text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg">
                             {warningMessage}
                         </p>
                     )}
                 </div>
-                <div className="flex gap-3 p-4 border-t border-gray-700">
+                <div className="flex gap-3 p-4 border-t border-line">
                     <button
                         onClick={onCancel}
-                        className="flex-1 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                        className="flex-1 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 transition-colors"
                     >
                         {cancelText}
                     </button>
@@ -610,11 +624,11 @@ const ChatPage: React.FC = () => {
 
         let dateLabel: string;
         if (messageDate.getTime() === today.getTime()) {
-            dateLabel = 'Today';
+            dateLabel = 'Aujourd’hui';
         } else if (messageDate.getTime() === yesterday.getTime()) {
-            dateLabel = 'Yesterday';
+            dateLabel = 'Hier';
         } else {
-            dateLabel = messageDate.toLocaleDateString('en-US', {
+            dateLabel = messageDate.toLocaleDateString('fr-FR', {
                 month: 'short',
                 day: 'numeric',
                 year: 'numeric'
@@ -884,13 +898,13 @@ const ChatPage: React.FC = () => {
         const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
 
         if (diffDays === 0) {
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         } else if (diffDays === 1) {
-            return 'Yesterday';
+            return 'Hier';
         } else if (diffDays < 7) {
-            return date.toLocaleDateString([], { weekday: 'short' });
+            return date.toLocaleDateString('fr-FR', { weekday: 'short' });
         }
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' });
     };
 
     const filteredConversations = allConversations.filter(conv => {
@@ -914,9 +928,9 @@ const ChatPage: React.FC = () => {
     const handleDeleteMessage = (messageId: string) => {
         setConfirmModal({
             isOpen: true,
-            title: 'Delete Message',
-            message: 'Are you sure you want to delete this message?',
-            warningMessage: 'This action cannot be undone.',
+            title: 'Supprimer le message',
+            message: 'Voulez-vous vraiment supprimer ce message ?',
+            warningMessage: 'Cette action est irréversible.',
             onConfirm: async () => {
                 try {
                     await deleteMessageApi(messageId);
@@ -938,9 +952,9 @@ const ChatPage: React.FC = () => {
         const count = selectedMessages.size;
         setConfirmModal({
             isOpen: true,
-            title: 'Delete Messages',
-            message: `Are you sure you want to delete ${count} message${count > 1 ? 's' : ''}?`,
-            warningMessage: 'This action cannot be undone. All selected messages will be permanently deleted.',
+            title: 'Supprimer les messages',
+            message: `Voulez-vous vraiment supprimer ${count} message${count > 1 ? 's' : ''} ?`,
+            warningMessage: 'Cette action est irréversible : les messages sélectionnés seront définitivement supprimés.',
             onConfirm: async () => {
                 try {
                     await deleteMessagesApi(Array.from(selectedMessages));
@@ -975,7 +989,7 @@ const ChatPage: React.FC = () => {
     const handleForward = async (targetConversationIds: string[]) => {
         try {
             // Get the content of forwarded messages for updating UI
-            const forwardedMessageContent = messages.find(m => selectedMessages.has(m._id))?.content || 'Forwarded message';
+            const forwardedMessageContent = messages.find(m => selectedMessages.has(m._id))?.content || 'Message transféré';
 
             await forwardMessagesApi(Array.from(selectedMessages), targetConversationIds);
 
@@ -1032,9 +1046,9 @@ const ChatPage: React.FC = () => {
     const handleDeleteConversation = (conversationId: string) => {
         setConfirmModal({
             isOpen: true,
-            title: 'Delete Conversation',
-            message: 'Are you sure you want to delete this conversation?',
-            warningMessage: 'All messages in this conversation will be deleted. This action cannot be undone.',
+            title: 'Supprimer la conversation',
+            message: 'Voulez-vous vraiment supprimer cette conversation ?',
+            warningMessage: 'Tous ses messages seront supprimés. Cette action est irréversible.',
             onConfirm: async () => {
                 try {
                     await deleteConversationApi(conversationId);
@@ -1055,9 +1069,9 @@ const ChatPage: React.FC = () => {
         const count = selectedConversationsSet.size;
         setConfirmModal({
             isOpen: true,
-            title: 'Delete Conversations',
-            message: `Are you sure you want to delete ${count} conversation${count > 1 ? 's' : ''}?`,
-            warningMessage: 'All messages in these conversations will be deleted. This action cannot be undone.',
+            title: 'Supprimer les conversations',
+            message: `Voulez-vous vraiment supprimer ${count} conversation${count > 1 ? 's' : ''} ?`,
+            warningMessage: 'Tous leurs messages seront supprimés. Cette action est irréversible.',
             onConfirm: async () => {
                 try {
                     await deleteConversationsApi(Array.from(selectedConversationsSet));
@@ -1195,16 +1209,16 @@ const ChatPage: React.FC = () => {
     };
 
     return (
-        <div className="flex h-[calc(100vh-80px)] bg-gray-900">
+        <div className="flex h-[calc(100dvh-145px)] md:h-[calc(100dvh-104px)]">
             {/* Conversation List */}
-            <div className={`w-full md:w-80 lg:w-96 border-r border-gray-700 flex flex-col ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
+            <div className={`w-full md:w-80 lg:w-96 border-r border-line flex flex-col ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
                 {/* Header */}
-                <div className="p-4 border-b border-gray-700">
+                <div className="p-4 border-b border-line">
                     <div className="flex items-center justify-between mb-4">
-                        <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                        <h1 className="text-xl font-bold text-fg flex items-center gap-2">
                             <MessageCircle className="w-6 h-6 text-indigo-500" />
                             Messages
-                            {isConnected && <span className="w-2 h-2 bg-green-500 rounded-full ml-2" title="Connected" />}
+                            {isConnected && <span className="w-2 h-2 bg-green-500 rounded-full ml-2" title="Connecté" />}
                         </h1>
                         <div className="flex items-center gap-2">
                             {conversationSelectMode ? (
@@ -1213,14 +1227,14 @@ const ChatPage: React.FC = () => {
                                         onClick={handleDeleteSelectedConversations}
                                         disabled={selectedConversationsSet.size === 0}
                                         className="p-2 bg-red-600 text-white rounded-full hover:bg-red-700 disabled:opacity-50 transition-colors"
-                                        title="Delete selected"
+                                        title="Supprimer la sélection"
                                     >
                                         <Trash2 className="w-5 h-5" />
                                     </button>
                                     <button
                                         onClick={() => { setConversationSelectMode(false); setSelectedConversationsSet(new Set()); }}
-                                        className="p-2 bg-gray-600 text-white rounded-full hover:bg-gray-500 transition-colors"
-                                        title="Cancel"
+                                        className="p-2 bg-surface-3 text-fg rounded-full hover:bg-line-strong transition-colors"
+                                        title="Annuler"
                                     >
                                         <X className="w-5 h-5" />
                                     </button>
@@ -1229,15 +1243,15 @@ const ChatPage: React.FC = () => {
                                 <>
                                     <button
                                         onClick={() => setConversationSelectMode(true)}
-                                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
-                                        title="Select conversations"
+                                        className="p-2 text-fg-muted hover:text-fg hover:bg-surface-2 rounded-full transition-colors"
+                                        title="Sélectionner des conversations"
                                     >
                                         <CheckSquare className="w-5 h-5" />
                                     </button>
                                     <button
                                         onClick={() => setShowNewChatModal(true)}
                                         className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors"
-                                        title="New conversation"
+                                        title="Nouvelle conversation"
                                     >
                                         <Plus className="w-5 h-5" />
                                     </button>
@@ -1246,17 +1260,17 @@ const ChatPage: React.FC = () => {
                         </div>
                     </div>
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-fg-muted" />
                         <input
                             type="text"
-                            placeholder="Search conversations..."
+                            placeholder="Rechercher une conversation"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
+                            className="w-full pl-10 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:outline-hidden focus:border-indigo-500"
                         />
                     </div>
                     {conversationSelectMode && selectedConversationsSet.size > 0 && (
-                        <p className="text-sm text-indigo-400 mt-2">{selectedConversationsSet.size} selected</p>
+                        <p className="text-sm text-indigo-600 dark:text-indigo-400 mt-2">{selectedConversationsSet.size} sélectionnée{selectedConversationsSet.size > 1 ? 's' : ''}</p>
                     )}
                 </div>
 
@@ -1267,7 +1281,7 @@ const ChatPage: React.FC = () => {
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
                         </div>
                     ) : filteredConversations.length === 0 ? (
-                        <div className="text-center text-gray-400 py-8">No conversations yet</div>
+                        <div className="text-center text-fg-muted py-8">Aucune conversation</div>
                     ) : (
                         filteredConversations.map(conversation => {
                             const otherParticipant = getOtherParticipant(conversation);
@@ -1305,13 +1319,13 @@ const ChatPage: React.FC = () => {
                                     key={conversation._id}
                                     onLongPress={handleLongPressConversation}
                                     onClick={handleConversationClick}
-                                    className={`group flex items-center gap-3 p-4 cursor-pointer border-b border-gray-800 hover:bg-gray-800 transition-colors ${isSelected ? 'bg-gray-800' : ''} ${isChecked ? 'bg-indigo-900/30' : ''}`}
+                                    className={`group flex items-center gap-3 p-4 cursor-pointer border-b border-line hover:bg-surface-2 transition-colors ${isSelected ? 'bg-surface-2' : ''} ${isChecked ? 'bg-indigo-100 dark:bg-indigo-900/30' : ''}`}
                                     selectMode={conversationSelectMode}
                                 >
                                     {conversationSelectMode && (
                                         <button
                                             onClick={(e) => toggleConversationSelection(conversation._id, e)}
-                                            className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 ${isChecked ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}
+                                            className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 ${isChecked ? 'bg-indigo-600 border-indigo-600' : 'border-line-strong'}`}
                                         >
                                             {isChecked && <Check className="w-3 h-3 text-white" />}
                                         </button>
@@ -1334,19 +1348,19 @@ const ChatPage: React.FC = () => {
                                                 otherParticipant.name.charAt(0).toUpperCase()
                                             )}
                                         </div>
-                                        {isOnline && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-900" />}
+                                        {isOnline && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-center">
-                                            <span className="font-medium text-white truncate">
+                                            <span className="font-medium text-fg truncate">
                                                 {otherParticipant.name}
-                                                {isPendingConversation(conversation) && <span className="ml-2 text-xs text-gray-500">(Draft)</span>}
+                                                {isPendingConversation(conversation) && <span className="ml-2 text-xs text-fg-subtle">(Brouillon)</span>}
                                             </span>
-                                            {conversation.lastMessageAt && <span className="text-xs text-gray-400">{formatTime(conversation.lastMessageAt)}</span>}
+                                            {conversation.lastMessageAt && <span className="text-xs text-fg-muted">{formatTime(conversation.lastMessageAt)}</span>}
                                         </div>
                                         <div className="flex justify-between items-center mt-1">
-                                            <p className="text-sm text-gray-400 truncate">
-                                                {isPendingConversation(conversation) ? 'Click to start conversation' : (conversation.lastMessage?.content || 'No messages yet')}
+                                            <p className="text-sm text-fg-muted truncate">
+                                                {isPendingConversation(conversation) ? 'Cliquez pour démarrer la conversation' : (conversation.lastMessage?.content || 'Aucun message')}
                                             </p>
                                             {conversation.unreadCount > 0 && (
                                                 <span className="bg-indigo-500 text-white text-xs rounded-full px-2 py-0.5 ml-2">{conversation.unreadCount}</span>
@@ -1356,8 +1370,8 @@ const ChatPage: React.FC = () => {
                                     {!conversationSelectMode && !isPendingConversation(conversation) && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDeleteConversation(conversation._id); }}
-                                            className="p-1 text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            title="Delete conversation"
+                                            className="p-1 text-fg-subtle hover:text-red-700 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Supprimer la conversation"
                                         >
                                             <Trash2 className="w-4 h-4" />
                                         </button>
@@ -1374,8 +1388,8 @@ const ChatPage: React.FC = () => {
                 {selectedConversation ? (
                     <>
                         {/* Chat Header */}
-                        <div className="p-4 border-b border-gray-700 flex items-center gap-3">
-                            <button onClick={() => setSelectedConversation(null)} className="md:hidden text-gray-400 hover:text-white">
+                        <div className="p-4 border-b border-line flex items-center gap-3">
+                            <button onClick={() => setSelectedConversation(null)} className="md:hidden text-fg-muted hover:text-fg">
                                 <ArrowLeft className="w-6 h-6" />
                             </button>
                             <div
@@ -1396,40 +1410,40 @@ const ChatPage: React.FC = () => {
                                     )}
                                 </div>
                                 {onlineUsers.has(getOtherParticipant(selectedConversation)._id) && (
-                                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-900" />
+                                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
                                 )}
                             </div>
                             <div className="flex-1">
-                                <h2 className="font-medium text-white">
+                                <h2 className="font-medium text-fg">
                                     {getOtherParticipant(selectedConversation).name}
-                                    {isPendingConversation(selectedConversation) && <span className="ml-2 text-xs text-gray-500">(Draft)</span>}
+                                    {isPendingConversation(selectedConversation) && <span className="ml-2 text-xs text-fg-subtle">(Brouillon)</span>}
                                 </h2>
-                                <p className="text-sm text-gray-400">
-                                    {isPendingConversation(selectedConversation) ? 'Send a message to start the conversation' : (onlineUsers.has(getOtherParticipant(selectedConversation)._id) ? 'Online' : 'Offline')}
+                                <p className="text-sm text-fg-muted">
+                                    {isPendingConversation(selectedConversation) ? 'Envoyez un message pour démarrer la conversation' : (onlineUsers.has(getOtherParticipant(selectedConversation)._id) ? 'En ligne' : 'Hors ligne')}
                                 </p>
                             </div>
                             {messageSelectMode ? (
                                 <div className="flex items-center gap-2">
-                                    <span className="text-sm text-indigo-400">{selectedMessages.size} selected</span>
-                                    <button onClick={handleCopySelectedMessages} disabled={selectedMessages.size === 0} className="p-2 text-gray-400 hover:text-white disabled:opacity-50" title="Copy">
+                                    <span className="text-sm text-indigo-600 dark:text-indigo-400">{selectedMessages.size} sélectionné{selectedMessages.size > 1 ? 's' : ''}</span>
+                                    <button onClick={handleCopySelectedMessages} disabled={selectedMessages.size === 0} className="p-2 text-fg-muted hover:text-fg disabled:opacity-50" title="Copier">
                                         <Copy className="w-5 h-5" />
                                     </button>
-                                    <button onClick={handleForwardSelectedMessages} disabled={selectedMessages.size === 0} className="p-2 text-gray-400 hover:text-white disabled:opacity-50" title="Forward">
+                                    <button onClick={handleForwardSelectedMessages} disabled={selectedMessages.size === 0} className="p-2 text-fg-muted hover:text-fg disabled:opacity-50" title="Transférer">
                                         <Forward className="w-5 h-5" />
                                     </button>
-                                    <button onClick={handleDeleteSelectedMessages} disabled={selectedMessages.size === 0} className="p-2 text-gray-400 hover:text-red-400 disabled:opacity-50" title="Delete">
+                                    <button onClick={handleDeleteSelectedMessages} disabled={selectedMessages.size === 0} className="p-2 text-fg-muted hover:text-red-700 dark:hover:text-red-400 disabled:opacity-50" title="Supprimer">
                                         <Trash2 className="w-5 h-5" />
                                     </button>
-                                    <button onClick={() => { setMessageSelectMode(false); setSelectedMessages(new Set()); }} className="p-2 text-gray-400 hover:text-white" title="Cancel">
+                                    <button onClick={() => { setMessageSelectMode(false); setSelectedMessages(new Set()); }} className="p-2 text-fg-muted hover:text-fg" title="Annuler">
                                         <X className="w-5 h-5" />
                                     </button>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-2">
-                                    <button onClick={() => setMessageSelectMode(true)} className="p-2 text-gray-400 hover:text-white" title="Select messages">
+                                    <button onClick={() => setMessageSelectMode(true)} className="p-2 text-fg-muted hover:text-fg" title="Sélectionner des messages">
                                         <CheckSquare className="w-5 h-5" />
                                     </button>
-                                    <button className="text-gray-400 hover:text-white">
+                                    <button className="text-fg-muted hover:text-fg" aria-label="Plus d’actions">
                                         <MoreVertical className="w-5 h-5" />
                                     </button>
                                 </div>
@@ -1443,13 +1457,13 @@ const ChatPage: React.FC = () => {
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
                                 </div>
                             ) : messageGroups.length === 0 ? (
-                                <div className="text-center text-gray-400 py-8">No messages yet. Start the conversation!</div>
+                                <div className="text-center text-fg-muted py-8">Aucun message. Démarrez la conversation.</div>
                             ) : (
                                 messageGroups.map(group => (
                                     <div key={group.date}>
                                         {/* Date Separator */}
                                         <div className="flex items-center justify-center my-4">
-                                            <div className="px-3 py-1 bg-gray-700/50 rounded-full text-xs text-gray-300 font-medium">
+                                            <div className="px-3 py-1 bg-surface-2/50 rounded-full text-xs text-fg-muted font-medium">
                                                 {group.dateLabel}
                                             </div>
                                         </div>
@@ -1480,23 +1494,23 @@ const ChatPage: React.FC = () => {
                                             onLongPress={handleLongPressMessage}
                                             onClick={handleMessageClick}
                                             onContextMenu={(e) => !messageSelectMode && handleMessageContextMenu(e, message._id)}
-                                            className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${isMessageSelected ? 'bg-indigo-900/20 -mx-4 px-4 py-1 rounded-sm' : ''}`}
+                                            className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${isMessageSelected ? 'bg-indigo-50 dark:bg-indigo-900/20 -mx-4 px-4 py-1 rounded-sm' : ''}`}
                                             selectMode={messageSelectMode}
                                         >
                                             {messageSelectMode && (
-                                                <button className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 mr-2 self-center ${isMessageSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-500'}`}>
+                                                <button className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 mr-2 self-center ${isMessageSelected ? 'bg-indigo-600 border-indigo-600' : 'border-line-strong'}`}>
                                                     {isMessageSelected && <Check className="w-3 h-3 text-white" />}
                                                 </button>
                                             )}
                                             <div className={`max-w-[70%] ${isMine ? 'order-2' : 'order-1'}`}>
                                                 {/* Reply preview */}
                                                 {message.replyTo && (
-                                                    <div className={`text-xs px-3 py-1 mb-1 rounded-t-lg border-l-2 ${isMine ? 'bg-indigo-700/50 border-indigo-400' : 'bg-gray-600/50 border-gray-400'}`}>
-                                                        <p className="text-gray-400 font-medium">{message.replyTo.senderName || 'User'}</p>
-                                                        <p className="text-gray-300 truncate">{message.replyTo.content}</p>
+                                                    <div className={`text-xs px-3 py-1 mb-1 rounded-t-lg border-l-2 ${isMine ? 'bg-indigo-100 dark:bg-indigo-700/50 border-indigo-400' : 'bg-surface-3/50 border-gray-400'}`}>
+                                                        <p className="text-fg-muted font-medium">{message.replyTo.senderName || 'Utilisateur'}</p>
+                                                        <p className="text-fg-muted truncate">{message.replyTo.content}</p>
                                                     </div>
                                                 )}
-                                                <div className={`px-4 py-2 rounded-2xl ${isMine ? 'bg-indigo-600 text-white rounded-br-md' : 'bg-gray-700 text-white rounded-bl-md'}`}>
+                                                <div className={`px-4 py-2 rounded-2xl ${isMine ? 'bg-indigo-600 text-white rounded-br-md' : 'bg-surface-2 text-fg rounded-bl-md'}`}>
                                                     {message.type === 'document' ? (
                                                         <a href={message.documentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline">
                                                             <Paperclip className="w-4 h-4" />
@@ -1506,10 +1520,10 @@ const ChatPage: React.FC = () => {
                                                         <p>{message.content}</p>
                                                     )}
                                                 </div>
-                                                <div className={`flex items-center gap-1 mt-1 text-xs text-gray-500 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                                <div className={`flex items-center gap-1 mt-1 text-xs text-fg-subtle ${isMine ? 'justify-end' : 'justify-start'}`}>
                                                     <span>{formatTime(message.createdAt)}</span>
                                                     {isMine && (
-                                                        message.status === 'read' ? <CheckCheck className="w-4 h-4 text-blue-400" /> :
+                                                        message.status === 'read' ? <CheckCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" /> :
                                                         message.status === 'delivered' ? <CheckCheck className="w-4 h-4" /> :
                                                         <Check className="w-4 h-4" />
                                                     )}
@@ -1524,13 +1538,13 @@ const ChatPage: React.FC = () => {
 
                             {/* Typing indicator */}
                             {typingUsers.size > 0 && (
-                                <div className="flex items-center gap-2 text-gray-400 text-sm">
+                                <div className="flex items-center gap-2 text-fg-muted text-sm">
                                     <div className="flex gap-1">
                                         <Circle className="w-2 h-2 animate-bounce" style={{ animationDelay: '0ms' }} />
                                         <Circle className="w-2 h-2 animate-bounce" style={{ animationDelay: '150ms' }} />
                                         <Circle className="w-2 h-2 animate-bounce" style={{ animationDelay: '300ms' }} />
                                     </div>
-                                    <span>{Array.from(typingUsers.values()).join(', ')} is typing...</span>
+                                    <span>{Array.from(typingUsers.values()).join(', ')} {typingUsers.size > 1 ? 'écrivent' : 'écrit'}…</span>
                                 </div>
                             )}
 
@@ -1539,21 +1553,21 @@ const ChatPage: React.FC = () => {
 
                         {/* Reply preview */}
                         {replyingTo && (
-                            <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 flex items-center gap-3">
+                            <div className="px-4 py-2 bg-surface border-t border-line flex items-center gap-3">
                                 <div className="flex-1 border-l-2 border-indigo-500 pl-3">
-                                    <p className="text-xs text-indigo-400">Replying to {replyingTo.senderId === currentUserId ? 'yourself' : 'message'}</p>
-                                    <p className="text-sm text-gray-300 truncate">{replyingTo.content}</p>
+                                    <p className="text-xs text-indigo-600 dark:text-indigo-400">{replyingTo.senderId === currentUserId ? 'Réponse à votre message' : 'Réponse au message'}</p>
+                                    <p className="text-sm text-fg-muted truncate">{replyingTo.content}</p>
                                 </div>
-                                <button onClick={() => setReplyingTo(null)} className="text-gray-400 hover:text-white">
+                                <button onClick={() => setReplyingTo(null)} className="text-fg-muted hover:text-fg">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
                         )}
 
                         {/* Message Input */}
-                        <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700">
+                        <form onSubmit={handleSendMessage} className="p-4 border-t border-line">
                             <div className="flex items-center gap-3">
-                                <button type="button" className="text-gray-400 hover:text-white" title="Attach document">
+                                <button type="button" className="text-fg-muted hover:text-fg" title="Joindre un document">
                                     <Paperclip className="w-5 h-5" />
                                 </button>
                                 <input
@@ -1561,8 +1575,8 @@ const ChatPage: React.FC = () => {
                                     type="text"
                                     value={newMessage}
                                     onChange={handleTyping}
-                                    placeholder="Type a message..."
-                                    className="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded-full text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
+                                    placeholder="Écrire un message…"
+                                    className="flex-1 px-4 py-2 bg-surface border border-line-strong rounded-full text-fg placeholder-fg-subtle focus:outline-hidden focus:border-indigo-500"
                                 />
                                 <button
                                     type="submit"
@@ -1575,16 +1589,16 @@ const ChatPage: React.FC = () => {
                         </form>
                     </>
                 ) : (
-                    <div className="flex-1 flex items-center justify-center text-gray-400">
+                    <div className="flex-1 flex items-center justify-center text-fg-muted">
                         <div className="text-center">
                             <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                            <p className="text-lg">Select a conversation to start messaging</p>
+                            <p className="text-lg">Sélectionnez une conversation pour écrire</p>
                             <button
                                 onClick={() => setShowNewChatModal(true)}
                                 className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 mx-auto"
                             >
                                 <Plus className="w-4 h-4" />
-                                Start New Conversation
+                                Nouvelle conversation
                             </button>
                         </div>
                     </div>
@@ -1594,33 +1608,33 @@ const ChatPage: React.FC = () => {
             {/* Context Menu */}
             {contextMenu && (
                 <div
-                    className="fixed bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-1 z-50"
+                    className="fixed bg-surface rounded-lg border border-line py-1 z-50"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onClick={(e) => e.stopPropagation()}
                 >
                     <button
                         onClick={() => { const msg = messages.find(m => m._id === contextMenu.messageId); if (msg) handleReply(msg); }}
-                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
+                        className="w-full px-4 py-2 text-left text-fg hover:bg-surface-2 flex items-center gap-2"
                     >
-                        <Reply className="w-4 h-4" /> Reply
+                        <Reply className="w-4 h-4" /> Répondre
                     </button>
                     <button
                         onClick={() => { const msg = messages.find(m => m._id === contextMenu.messageId); if (msg) handleCopyMessage(msg); }}
-                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
+                        className="w-full px-4 py-2 text-left text-fg hover:bg-surface-2 flex items-center gap-2"
                     >
-                        <Copy className="w-4 h-4" /> Copy
+                        <Copy className="w-4 h-4" /> Copier
                     </button>
                     <button
                         onClick={() => { setSelectedMessages(new Set([contextMenu.messageId])); setShowForwardModal(true); setContextMenu(null); }}
-                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
+                        className="w-full px-4 py-2 text-left text-fg hover:bg-surface-2 flex items-center gap-2"
                     >
-                        <Forward className="w-4 h-4" /> Forward
+                        <Forward className="w-4 h-4" /> Transférer
                     </button>
                     <button
                         onClick={() => handleDeleteMessage(contextMenu.messageId)}
-                        className="w-full px-4 py-2 text-left text-red-400 hover:bg-gray-700 flex items-center gap-2"
+                        className="w-full px-4 py-2 text-left text-red-600 dark:text-red-400 hover:bg-surface-2 flex items-center gap-2"
                     >
-                        <Trash2 className="w-4 h-4" /> Delete
+                        <Trash2 className="w-4 h-4" /> Supprimer
                     </button>
                 </div>
             )}
@@ -1628,31 +1642,31 @@ const ChatPage: React.FC = () => {
             {/* New Conversation Modal */}
             {showNewChatModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-gray-800 rounded-lg w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
-                        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-white">New Conversation</h2>
-                            <button onClick={() => { setShowNewChatModal(false); clearAllFilters(); }} className="text-gray-400 hover:text-white">
+                    <div className="bg-surface rounded-lg w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
+                        <div className="p-4 border-b border-line flex items-center justify-between">
+                            <h2 className="text-lg font-semibold text-fg">Nouvelle conversation</h2>
+                            <button onClick={() => { setShowNewChatModal(false); clearAllFilters(); }} className="text-fg-muted hover:text-fg">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="p-4 border-b border-gray-700">
+                        <div className="p-4 border-b border-line">
                             {/* Search input */}
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-fg-muted" />
                                 <input
                                     type="text"
-                                    placeholder="Search users by name or email..."
+                                    placeholder="Rechercher par nom ou e-mail"
                                     value={userSearchQuery}
                                     onChange={(e) => handleUserSearch(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-hidden focus:border-indigo-500"
+                                    className="w-full pl-10 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:outline-hidden focus:border-indigo-500"
                                     autoFocus
                                 />
                             </div>
 
                             {/* Admin status filters */}
                             <div className="flex flex-wrap gap-2 mt-3">
-                                <span className="text-xs text-gray-500 flex items-center gap-1">
-                                    <Shield className="w-3 h-3" /> Status:
+                                <span className="text-xs text-fg-subtle flex items-center gap-1">
+                                    <Shield className="w-3 h-3" /> Statut :
                                 </span>
                                 {(['all', 'active', 'blocked', 'deleted'] as const).map(filter => (
                                     <button
@@ -1664,10 +1678,10 @@ const ChatPage: React.FC = () => {
                                                   filter === 'active' ? 'bg-green-600 text-white' :
                                                   filter === 'blocked' ? 'bg-red-600 text-white' :
                                                   'bg-gray-500 text-white'
-                                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                                : 'bg-surface-2 text-fg-muted hover:bg-surface-3'
                                         }`}
                                     >
-                                        {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                                        {USER_FILTER_LABELS[filter]}
                                     </button>
                                 ))}
                             </div>
@@ -1675,13 +1689,13 @@ const ChatPage: React.FC = () => {
                             {/* Advanced filters toggle */}
                             <button
                                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                                className="w-full mt-3 flex items-center justify-between py-2 px-3 bg-gray-700/50 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
+                                className="w-full mt-3 flex items-center justify-between py-2 px-3 bg-surface-2/50 rounded-lg text-fg-muted hover:bg-surface-2 transition-colors"
                             >
                                 <span className="flex items-center gap-2 text-sm">
                                     <Filter className="w-4 h-4" />
-                                    User Filters (Country, Profession, Interests)
+                                    Filtres (pays, profession, centres d’intérêt)
                                     {(countryFilter || professionFilter || interestsFilter) && (
-                                        <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-xs rounded-full">Active</span>
+                                        <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-xs rounded-full">Actifs</span>
                                     )}
                                 </span>
                                 {showAdvancedFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -1689,46 +1703,46 @@ const ChatPage: React.FC = () => {
 
                             {/* Advanced filters panel */}
                             {showAdvancedFilters && (
-                                <div className="mt-3 space-y-3 p-3 bg-gray-700/30 rounded-lg">
+                                <div className="mt-3 space-y-3 p-3 bg-surface-2/30 rounded-lg">
                                     {/* Country filter */}
                                     <div>
-                                        <label className="flex items-center gap-2 text-xs text-gray-400 mb-1">
-                                            <Globe className="w-3 h-3" /> Country
+                                        <label className="flex items-center gap-2 text-xs text-fg-muted mb-1">
+                                            <Globe className="w-3 h-3" /> Pays
                                         </label>
                                         <input
                                             type="text"
-                                            placeholder="e.g., CM, Cameroon..."
+                                            placeholder="ex. : CM, Cameroun…"
                                             value={countryFilter}
                                             onChange={(e) => handleAdvancedFilterChange(e.target.value, professionFilter, interestsFilter)}
-                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-sm text-white text-sm placeholder-gray-500 focus:outline-hidden focus:border-indigo-500"
+                                            className="w-full px-3 py-1.5 bg-surface border border-line-strong rounded-sm text-fg text-sm placeholder-fg-subtle focus:outline-hidden focus:border-indigo-500"
                                         />
                                     </div>
 
                                     {/* Profession filter */}
                                     <div>
-                                        <label className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                                        <label className="flex items-center gap-2 text-xs text-fg-muted mb-1">
                                             <Briefcase className="w-3 h-3" /> Profession
                                         </label>
                                         <input
                                             type="text"
-                                            placeholder="e.g., Engineer, Teacher..."
+                                            placeholder="ex. : ingénieur, enseignant…"
                                             value={professionFilter}
                                             onChange={(e) => handleAdvancedFilterChange(countryFilter, e.target.value, interestsFilter)}
-                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-sm text-white text-sm placeholder-gray-500 focus:outline-hidden focus:border-indigo-500"
+                                            className="w-full px-3 py-1.5 bg-surface border border-line-strong rounded-sm text-fg text-sm placeholder-fg-subtle focus:outline-hidden focus:border-indigo-500"
                                         />
                                     </div>
 
                                     {/* Interests filter */}
                                     <div>
-                                        <label className="flex items-center gap-2 text-xs text-gray-400 mb-1">
-                                            <Heart className="w-3 h-3" /> Interests (comma-separated)
+                                        <label className="flex items-center gap-2 text-xs text-fg-muted mb-1">
+                                            <Heart className="w-3 h-3" /> Centres d’intérêt (séparés par des virgules)
                                         </label>
                                         <input
                                             type="text"
-                                            placeholder="e.g., Football, Music, Tech..."
+                                            placeholder="ex. : football, musique, tech…"
                                             value={interestsFilter}
                                             onChange={(e) => handleAdvancedFilterChange(countryFilter, professionFilter, e.target.value)}
-                                            className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-sm text-white text-sm placeholder-gray-500 focus:outline-hidden focus:border-indigo-500"
+                                            className="w-full px-3 py-1.5 bg-surface border border-line-strong rounded-sm text-fg text-sm placeholder-fg-subtle focus:outline-hidden focus:border-indigo-500"
                                         />
                                     </div>
 
@@ -1736,18 +1750,18 @@ const ChatPage: React.FC = () => {
                                     {(countryFilter || professionFilter || interestsFilter) && (
                                         <button
                                             onClick={() => handleAdvancedFilterChange('', '', '')}
-                                            className="w-full py-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
+                                            className="w-full py-1.5 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
                                         >
-                                            Clear user filters
+                                            Effacer les filtres
                                         </button>
                                     )}
                                 </div>
                             )}
 
-                            <p className="text-xs text-gray-500 mt-2">
+                            <p className="text-xs text-fg-subtle mt-2">
                                 {(countryFilter || professionFilter || interestsFilter)
-                                    ? 'Searching with filters...'
-                                    : 'Type at least 2 characters to search, or use filters below'}
+                                    ? 'Recherche avec filtres…'
+                                    : 'Tapez au moins 2 caractères ou utilisez les filtres'}
                             </p>
                         </div>
                         <div className="flex-1 overflow-y-auto">
@@ -1756,27 +1770,27 @@ const ChatPage: React.FC = () => {
                                     <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
                                 </div>
                             ) : userSearchResults.length === 0 ? (
-                                <div className="text-center text-gray-400 py-8">
+                                <div className="text-center text-fg-muted py-8">
                                     {(userSearchQuery.length >= 2 || countryFilter || professionFilter || interestsFilter)
-                                        ? 'No users found'
-                                        : 'Search for a user or apply filters to find users'}
+                                        ? 'Aucun utilisateur trouvé'
+                                        : 'Recherchez un utilisateur ou appliquez des filtres'}
                                 </div>
                             ) : (
                                 userSearchResults.map(user => (
                                     <button
                                         key={user._id}
                                         onClick={() => handleStartConversation(user)}
-                                        className="w-full flex items-center gap-3 p-4 hover:bg-gray-700 transition-colors text-left"
+                                        className="w-full flex items-center gap-3 p-4 hover:bg-surface-2 transition-colors text-left"
                                     >
                                         <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold shrink-0 overflow-hidden">
                                             {user.avatar ? <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover" /> : <User className="w-5 h-5" />}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-white truncate">{user.name}</p>
-                                            <p className="text-sm text-gray-400 truncate">{user.email}</p>
+                                            <p className="font-medium text-fg truncate">{user.name}</p>
+                                            <p className="text-sm text-fg-muted truncate">{user.email}</p>
                                             <div className="flex flex-wrap gap-1 mt-1">
                                                 {user.country && (
-                                                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                                                    <span className="text-xs text-fg-subtle flex items-center gap-1">
                                                         <Globe className="w-3 h-3" /> {user.country}
                                                     </span>
                                                 )}

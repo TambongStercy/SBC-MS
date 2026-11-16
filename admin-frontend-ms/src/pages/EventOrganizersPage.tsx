@@ -61,25 +61,25 @@ export default function EventOrganizersPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Organisateurs" />
-            <div className="p-6 space-y-4">
-                <p className="text-sm text-gray-400">
+            <div className="space-y-4">
+                <p className="text-sm text-fg-muted">
                     Il n'y a plus de suspension d'organisateur : SBC accepte ou refuse chaque événement envoyé
                     (page Événements, filtre « À valider »). Un événement refusé ne bloque pas les autres événements de l'organisateur.
                 </p>
                 <div className="flex items-center gap-3">
-                    <select value={status} onChange={(e) => setStatus(e.target.value as OrganizerStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as OrganizerStatus | '')} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">
                         <option value="">Tous les statuts</option>
                         <option value="PENDING">En attente</option>
                         <option value="APPROVED">Approuvés</option>
                         <option value="SUSPENDED">Suspendus</option>
                     </select>
-                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
+                    <button onClick={load} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">Actualiser</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
+                    <div className="overflow-x-auto bg-surface rounded-xl border border-line">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-900/50 text-gray-300">
+                            <thead className="bg-background/50 text-fg-muted">
                                 <tr>
                                     <th className="px-4 py-2 text-left">Nom</th>
                                     <th className="px-4 py-2 text-left">Contact</th>
@@ -90,14 +90,14 @@ export default function EventOrganizersPage() {
                             </thead>
                             <tbody>
                                 {items.length === 0 && (
-                                    <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Aucun organisateur.</td></tr>
+                                    <tr><td colSpan={5} className="px-4 py-6 text-center text-fg-muted">Aucun organisateur.</td></tr>
                                 )}
                                 {items.map((o) => (
-                                    <tr key={o._id} className="border-t border-gray-700">
+                                    <tr key={o._id} className="border-t border-line">
                                         <td className="px-4 py-2 font-medium">{o.displayName}</td>
                                         <td className="px-4 py-2">
                                             <div className="text-xs">{o.contactEmail}</div>
-                                            <div className="text-xs text-gray-400">{o.contactPhone}</div>
+                                            <div className="text-xs text-fg-muted">{o.contactPhone}</div>
                                         </td>
                                         <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[o.status]}`}>{STATUS_LABELS[o.status] ?? o.status}</span></td>
                                         <td className="px-4 py-2 text-xs">{o.stats?.eventsPublished ?? 0}</td>

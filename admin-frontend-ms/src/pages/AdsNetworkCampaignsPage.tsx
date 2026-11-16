@@ -19,16 +19,26 @@ import {
 const PAGE_SIZE = 20;
 
 const STATUS_STYLES: Record<CampaignStatus, string> = {
-    draft: 'bg-gray-700 text-gray-300',
-    pending_review: 'bg-amber-900/40 text-amber-200',
-    approved: 'bg-blue-900/40 text-blue-200',
-    paid: 'bg-indigo-900/40 text-indigo-200',
-    rejected: 'bg-red-900/40 text-red-200',
-    active: 'bg-green-900/40 text-green-200',
-    paused: 'bg-orange-900/40 text-orange-200',
-    completed: 'bg-purple-900/40 text-purple-200',
-    banked: 'bg-yellow-900/40 text-yellow-200',
-    cancelled: 'bg-gray-700 text-gray-400',
+    draft: 'bg-surface-2 text-fg-muted',
+    pending_review: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200',
+    approved: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200',
+    paid: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200',
+    rejected: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200',
+    active: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200',
+    paused: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200',
+    completed: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200',
+    banked: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200',
+    cancelled: 'bg-surface-2 text-fg-muted',
+};
+
+/** A diffuseur's participation, in words (advertising-service ParticipationStatus). */
+const PARTICIPATION_LABELS: Record<string, string> = {
+    offered: 'Offre envoyée',
+    declined: 'Refusée',
+    expired: 'Expirée',
+    in_progress: 'En cours',
+    completed: 'Terminée',
+    forfeited: 'Abandonnée',
 };
 
 const ALL_STATUSES = Object.keys(CAMPAIGN_STATUS_LABELS) as CampaignStatus[];
@@ -86,9 +96,9 @@ const AdsNetworkCampaignsPage: React.FC = () => {
     return (
         <div className="flex-1 overflow-auto relative z-10">
             <Header title="SBC Ads Network — Campagnes" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+            <main>
                 <motion.div
-                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
+                    className="bg-surface rounded-xl p-6 border border-line mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
@@ -96,7 +106,7 @@ const AdsNetworkCampaignsPage: React.FC = () => {
                         <select
                             value={status}
                             onChange={(e) => { setStatus(e.target.value as CampaignStatus | ''); setPage(1); }}
-                            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+                            className="px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg text-sm"
                         >
                             <option value="">Tous les statuts</option>
                             {ALL_STATUSES.map((s) => (
@@ -105,35 +115,35 @@ const AdsNetworkCampaignsPage: React.FC = () => {
                         </select>
                         <button
                             onClick={fetchData}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm"
+                            className="flex items-center gap-2 px-4 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 text-sm"
                         >
                             <RefreshCw className="w-4 h-4" />
-                            Rafraîchir
+                            Actualiser
                         </button>
-                        <div className="text-sm text-gray-400 ml-auto">
+                        <div className="text-sm text-fg-muted ml-auto">
                             {loading ? 'Chargement…' : `${total} campagne${total === 1 ? '' : 's'}`}
                         </div>
                     </div>
                     {error && (
-                        <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-200 mt-4">{error}</div>
+                        <div className="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-3 text-red-800 dark:text-red-200 mt-4">{error}</div>
                     )}
                 </motion.div>
 
                 <motion.div
-                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
+                    className="bg-surface rounded-xl border border-line overflow-hidden"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
                     {loading ? (
                         <div className="p-12 flex justify-center"><Loader name="Chargement des campagnes…" /></div>
                     ) : campaigns.length === 0 ? (
-                        <div className="p-12 text-center text-gray-400">
-                            <Megaphone className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                        <div className="p-12 text-center text-fg-muted">
+                            <Megaphone className="w-12 h-12 mx-auto mb-3 text-fg-subtle" />
                             <p>Aucune campagne pour ce filtre.</p>
                         </div>
                     ) : (
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-900/50 text-gray-300">
+                            <thead className="bg-background/50 text-fg-muted">
                                 <tr>
                                     <th className="px-4 py-3 text-left">Campagne</th>
                                     <th className="px-4 py-3 text-left">Annonceur</th>
@@ -149,22 +159,22 @@ const AdsNetworkCampaignsPage: React.FC = () => {
                                     <tr
                                         key={c._id}
                                         onClick={() => openDetail(c)}
-                                        className="border-t border-gray-700 hover:bg-gray-700/40 cursor-pointer"
+                                        className="border-t border-line hover:bg-surface-2/40 cursor-pointer"
                                     >
-                                        <td className="px-4 py-3 text-white">{c.title}</td>
-                                        <td className="px-4 py-3 text-gray-300">{c.advertiser?.name || '—'}</td>
+                                        <td className="px-4 py-3 text-fg">{c.title}</td>
+                                        <td className="px-4 py-3 text-fg-muted">{c.advertiser?.name || '—'}</td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 rounded-full text-xs ${STATUS_STYLES[c.status]}`}>
                                                 {CAMPAIGN_STATUS_LABELS[c.status]}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-200 font-mono">{formatXaf(c.amountPaid)}</td>
-                                        <td className="px-4 py-3 text-gray-300">
+                                        <td className="px-4 py-3 text-fg font-mono">{formatXaf(c.amountPaid)}</td>
+                                        <td className="px-4 py-3 text-fg-muted">
                                             {c.progress.uniqueViewsDelivered.toLocaleString('fr-FR')} / {c.progress.targetUniqueViews.toLocaleString('fr-FR')}
-                                            <span className="text-gray-500 text-xs ml-1">({c.progress.percentComplete}%)</span>
+                                            <span className="text-fg-subtle text-xs ml-1">({c.progress.percentComplete}%)</span>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-300">{c.clicksTotal.toLocaleString('fr-FR')}</td>
-                                        <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(c.createdAt)}</td>
+                                        <td className="px-4 py-3 text-fg-muted">{c.clicksTotal.toLocaleString('fr-FR')}</td>
+                                        <td className="px-4 py-3 text-fg-muted text-xs">{formatDate(c.createdAt)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -179,17 +189,17 @@ const AdsNetworkCampaignsPage: React.FC = () => {
 
             {detail && (
                 <div className="fixed inset-0 bg-black/75 flex justify-center items-start z-50 p-4 overflow-auto">
-                    <div className="bg-gray-800 rounded-xl shadow-xl w-full max-w-5xl my-8 border border-gray-700">
-                        <div className="flex items-start justify-between p-6 border-b border-gray-700">
+                    <div className="bg-surface rounded-xl w-full max-w-5xl my-8 border border-line">
+                        <div className="flex items-start justify-between p-6 border-b border-line">
                             <div>
-                                <h2 className="text-xl font-semibold text-white">{detail.campaign.title}</h2>
-                                <p className="text-sm text-gray-400 mt-1">
+                                <h2 className="text-xl font-semibold text-fg">{detail.campaign.title}</h2>
+                                <p className="text-sm text-fg-muted mt-1">
                                     {detail.campaign.advertiser?.name || 'Annonceur inconnu'} ·{' '}
                                     {CAMPAIGN_STATUS_LABELS[detail.campaign.status]} ·{' '}
                                     {formatXaf(detail.campaign.amountPaid)}
                                 </p>
                             </div>
-                            <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-white">
+                            <button onClick={() => setDetail(null)} className="text-fg-muted hover:text-fg" aria-label="Fermer">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
@@ -203,40 +213,40 @@ const AdsNetworkCampaignsPage: React.FC = () => {
                                 )}
                                 <div className="grid grid-cols-2 gap-4 text-sm content-start">
                                     <div>
-                                        <div className="text-gray-500 text-xs">Vues uniques (facturées)</div>
-                                        <div className="text-gray-100">
+                                        <div className="text-fg-subtle text-xs">Vues uniques (facturées)</div>
+                                        <div className="text-fg">
                                             {detail.campaign.progress.uniqueViewsDelivered.toLocaleString('fr-FR')} / {detail.campaign.progress.targetUniqueViews.toLocaleString('fr-FR')}
                                         </div>
                                     </div>
                                     <div>
-                                        <div className="text-gray-500 text-xs">Vues répétées (offertes)</div>
-                                        <div className="text-gray-100">{detail.campaign.progress.repeatViewsDelivered.toLocaleString('fr-FR')}</div>
+                                        <div className="text-fg-subtle text-xs">Vues répétées (offertes)</div>
+                                        <div className="text-fg">{detail.campaign.progress.repeatViewsDelivered.toLocaleString('fr-FR')}</div>
                                     </div>
                                     <div>
-                                        <div className="text-gray-500 text-xs">Activée le</div>
-                                        <div className="text-gray-100">{formatDate(detail.campaign.activatedAt)}</div>
+                                        <div className="text-fg-subtle text-xs">Activée le</div>
+                                        <div className="text-fg">{formatDate(detail.campaign.activatedAt)}</div>
                                     </div>
                                     <div>
-                                        <div className="text-gray-500 text-xs">Terminée le</div>
-                                        <div className="text-gray-100">{formatDate(detail.campaign.completedAt)}</div>
+                                        <div className="text-fg-subtle text-xs">Terminée le</div>
+                                        <div className="text-fg">{formatDate(detail.campaign.completedAt)}</div>
                                     </div>
                                     {detail.campaign.rejectionReason && (
                                         <div className="col-span-2">
-                                            <div className="text-gray-500 text-xs">Motif de refus</div>
-                                            <div className="text-red-200">{detail.campaign.rejectionReason}</div>
+                                            <div className="text-fg-subtle text-xs">Motif de refus</div>
+                                            <div className="text-red-800 dark:text-red-200">{detail.campaign.rejectionReason}</div>
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            <h3 className="text-lg font-medium text-gray-100 mt-8 mb-3">Performance par diffuseur</h3>
+                            <h3 className="text-lg font-medium text-fg mt-8 mb-3">Performance par diffuseur</h3>
                             {detailLoading ? (
                                 <div className="p-8 flex justify-center"><Loader name="Chargement…" /></div>
                             ) : detail.diffuseurs.length === 0 ? (
-                                <p className="text-gray-400 text-sm">Aucun diffuseur n'a encore accepté cette campagne.</p>
+                                <p className="text-fg-muted text-sm">Aucun diffuseur n'a encore accepté cette campagne.</p>
                             ) : (
                                 <table className="w-full text-sm">
-                                    <thead className="bg-gray-900/50 text-gray-300">
+                                    <thead className="bg-background/50 text-fg-muted">
                                         <tr>
                                             <th className="px-3 py-2 text-left">Diffuseur</th>
                                             <th className="px-3 py-2 text-left">Statut</th>
@@ -250,18 +260,18 @@ const AdsNetworkCampaignsPage: React.FC = () => {
                                     </thead>
                                     <tbody>
                                         {detail.diffuseurs.map((d) => (
-                                            <tr key={d.diffuseurUserId} className="border-t border-gray-700">
-                                                <td className="px-3 py-2 text-white">
+                                            <tr key={d.diffuseurUserId} className="border-t border-line">
+                                                <td className="px-3 py-2 text-fg">
                                                     {d.name || d.diffuseurUserId}
-                                                    {d.phoneNumber && <div className="text-xs text-gray-500">{d.phoneNumber}</div>}
+                                                    {d.phoneNumber && <div className="text-xs text-fg-subtle">{d.phoneNumber}</div>}
                                                 </td>
-                                                <td className="px-3 py-2 text-gray-300">{d.status}</td>
-                                                <td className="px-3 py-2 text-gray-200">{d.uniqueViews.toLocaleString('fr-FR')}</td>
-                                                <td className="px-3 py-2 text-gray-200">{d.totalViews.toLocaleString('fr-FR')}</td>
-                                                <td className="px-3 py-2 text-gray-200">{d.clicks.toLocaleString('fr-FR')}</td>
-                                                <td className="px-3 py-2 text-gray-300">{(d.clickThroughRate * 100).toFixed(2)}%</td>
-                                                <td className="px-3 py-2 text-gray-200 font-mono">{formatXaf(d.earned)}</td>
-                                                <td className="px-3 py-2 text-gray-400 text-xs">{formatDate(d.paidAt ?? undefined)}</td>
+                                                <td className="px-3 py-2 text-fg-muted">{PARTICIPATION_LABELS[d.status] ?? d.status}</td>
+                                                <td className="px-3 py-2 text-fg">{d.uniqueViews.toLocaleString('fr-FR')}</td>
+                                                <td className="px-3 py-2 text-fg">{d.totalViews.toLocaleString('fr-FR')}</td>
+                                                <td className="px-3 py-2 text-fg">{d.clicks.toLocaleString('fr-FR')}</td>
+                                                <td className="px-3 py-2 text-fg-muted">{(d.clickThroughRate * 100).toFixed(2)}%</td>
+                                                <td className="px-3 py-2 text-fg font-mono">{formatXaf(d.earned)}</td>
+                                                <td className="px-3 py-2 text-fg-muted text-xs">{formatDate(d.paidAt ?? undefined)}</td>
                                             </tr>
                                         ))}
                                     </tbody>

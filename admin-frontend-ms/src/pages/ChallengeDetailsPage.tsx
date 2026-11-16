@@ -118,8 +118,8 @@ const ChallengeDetailsPage: React.FC = () => {
         return (
             <div className="flex-1 overflow-auto relative z-10">
                 <Header title="Impact Challenge" />
-                <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8 space-y-4">
-                    <Link to="/impact-challenges" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200">
+                <main className="space-y-4">
+                    <Link to="/impact-challenges" className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
                         <ArrowLeft className="w-4 h-4" /> Tous les challenges
                     </Link>
                     <Notice tone="danger">{loadError || 'Challenge introuvable.'}</Notice>
@@ -162,8 +162,8 @@ const ChallengeDetailsPage: React.FC = () => {
                 <div className="space-y-2 text-sm">
                     <p>Le challenge apparaît dans l’app : les membres paient pour voter, et chaque vote leur donne aussi des tickets de la tombola du mois.</p>
                     {approvedCount === 0
-                        ? <p className="text-amber-300">Aucun entrepreneur n’est approuvé : il faut en approuver au moins un avant d’ouvrir les votes.</p>
-                        : <p className="text-gray-400">{approvedCount} entrepreneur{approvedCount > 1 ? 's' : ''} approuvé{approvedCount > 1 ? 's' : ''} sur {entrepreneurs.length}. Ceux qui ne sont pas approuvés n’apparaissent pas.</p>}
+                        ? <p className="text-amber-700 dark:text-amber-300">Aucun entrepreneur n’est approuvé : il faut en approuver au moins un avant d’ouvrir les votes.</p>
+                        : <p className="text-fg-muted">{approvedCount} entrepreneur{approvedCount > 1 ? 's' : ''} approuvé{approvedCount > 1 ? 's' : ''} sur {entrepreneurs.length}. Ceux qui ne sont pas approuvés n’apparaissent pas.</p>}
                 </div>
             ),
             onConfirm: () => run(async () => {
@@ -178,7 +178,7 @@ const ChallengeDetailsPage: React.FC = () => {
             message: (
                 <div className="space-y-2 text-sm">
                     <p>Plus aucun vote n’est accepté. Les entrepreneurs approuvés sont classés par nombre de votes et le premier est désigné gagnant. C’est définitif.</p>
-                    <p className="text-gray-400">Fin prévue : {formatDay(c.endDate)}. Sans action, les votes se ferment tout seuls une heure après.</p>
+                    <p className="text-fg-muted">Fin prévue : {formatDay(c.endDate)}. Sans action, les votes se ferment tout seuls une heure après.</p>
                 </div>
             ),
             onConfirm: () => run(async () => {
@@ -218,16 +218,16 @@ const ChallengeDetailsPage: React.FC = () => {
             message: (
                 <div className="space-y-2 text-sm">
                     <p>{partial ? 'Seules les parts pas encore versées seront payées :' : `Sur ${formatXaf(summary?.totalCollected ?? c.totalCollected)} collectés :`}</p>
-                    <ul className="bg-gray-900/50 rounded-lg divide-y divide-gray-700">
+                    <ul className="bg-background/50 rounded-lg divide-y divide-line">
                         {toPay.map(l => (
                             <li key={l.key} className="flex justify-between gap-3 px-3 py-1.5">
-                                <span className="text-gray-300">{l.label} ({l.share})</span>
-                                <span className="text-white font-mono whitespace-nowrap">{formatXaf(l.amount)}</span>
+                                <span className="text-fg-muted">{l.label} ({l.share})</span>
+                                <span className="text-fg font-mono whitespace-nowrap">{formatXaf(l.amount)}</span>
                             </li>
                         ))}
-                        {toPay.length === 0 && <li className="px-3 py-1.5 text-gray-400">Rien à verser : le challenge sera simplement marqué comme distribué.</li>}
+                        {toPay.length === 0 && <li className="px-3 py-1.5 text-fg-muted">Rien à verser : le challenge sera simplement marqué comme distribué.</li>}
                     </ul>
-                    <p className="text-gray-400">La part du gagnant est créditée sur le solde de son compte SBC. C’est définitif.</p>
+                    <p className="text-fg-muted">La part du gagnant est créditée sur le solde de son compte SBC. C’est définitif.</p>
                 </div>
             ),
             onConfirm: () => run(async () => {
@@ -242,8 +242,8 @@ const ChallengeDetailsPage: React.FC = () => {
     return (
         <div className="flex-1 overflow-auto relative z-10">
             <Header title="Impact Challenge" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
-                <Link to="/impact-challenges" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200 mb-4">
+            <main>
+                <Link to="/impact-challenges" className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg mb-4">
                     <ArrowLeft className="w-4 h-4" /> Tous les challenges
                 </Link>
 
@@ -256,13 +256,13 @@ const ChallengeDetailsPage: React.FC = () => {
                     <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                         <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-3">
-                                <h2 className="text-2xl font-semibold text-gray-100">{c.campaignName}</h2>
+                                <h2 className="text-2xl font-semibold text-fg">{c.campaignName}</h2>
                                 <StatusBadge status={c.status} />
                             </div>
-                            <p className="text-sm text-gray-400 mt-1">
+                            <p className="text-sm text-fg-muted mt-1">
                                 {monthLabel(c.month, c.year)} · votes du {formatDay(c.startDate)} au {formatDay(c.endDate)}
                             </p>
-                            <Link to={`/tombola/draw/${c.tombolaMonthId}`} className="inline-block mt-1 text-sm text-blue-300 hover:text-blue-200">
+                            <Link to={`/tombola/draw/${c.tombolaMonthId}`} className="inline-block mt-1 text-sm text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200">
                                 Voir la tombola du mois
                             </Link>
                         </div>
@@ -280,12 +280,12 @@ const ChallengeDetailsPage: React.FC = () => {
 
                     <div className="grid md:grid-cols-2 gap-4 mt-5">
                         <div>
-                            <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Description (français)</p>
-                            <p className="text-sm text-gray-300 whitespace-pre-line">{c.description?.fr || '—'}</p>
+                            <p className="text-xs uppercase tracking-wide text-fg-subtle mb-1">Description (français)</p>
+                            <p className="text-sm text-fg-muted whitespace-pre-line">{c.description?.fr || '—'}</p>
                         </div>
                         <div>
-                            <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Description (anglais)</p>
-                            <p className="text-sm text-gray-300 whitespace-pre-line">{c.description?.en || '—'}</p>
+                            <p className="text-xs uppercase tracking-wide text-fg-subtle mb-1">Description (anglais)</p>
+                            <p className="text-sm text-fg-muted whitespace-pre-line">{c.description?.en || '—'}</p>
                         </div>
                     </div>
                 </motion.div>
@@ -316,7 +316,7 @@ const ChallengeDetailsPage: React.FC = () => {
                     />
                 )}
 
-                <div className="border-b border-gray-700 flex gap-1 mb-4 overflow-x-auto">
+                <div className="border-b border-line flex gap-1 mb-4 overflow-x-auto">
                     {([
                         ['entrepreneurs', `Entrepreneurs (${entrepreneurs.length})`],
                         ['leaderboard', 'Classement'],
@@ -326,7 +326,7 @@ const ChallengeDetailsPage: React.FC = () => {
                             key={key}
                             onClick={() => setTab(key)}
                             className={`px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-                                tab === key ? 'border-amber-500 text-amber-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+                                tab === key ? 'border-amber-500 text-amber-700 dark:text-amber-400' : 'border-transparent text-fg-muted hover:text-fg hover:border-line-strong'
                             }`}
                         >
                             {label}
@@ -338,7 +338,7 @@ const ChallengeDetailsPage: React.FC = () => {
                     <div className="space-y-4">
                         {isOpenForChanges && (
                             <div className="flex flex-wrap items-center justify-between gap-3">
-                                <p className="text-sm text-gray-400">
+                                <p className="text-sm text-fg-muted">
                                     {MAX_ENTREPRENEURS} entrepreneurs au maximum. Un entrepreneur n’apparaît dans l’app qu’une fois approuvé.
                                 </p>
                                 <button
@@ -352,8 +352,8 @@ const ChallengeDetailsPage: React.FC = () => {
                             </div>
                         )}
                         {sorted.length === 0 ? (
-                            <div className={`${panelClass} p-12 text-center text-gray-400`}>
-                                <Users className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                            <div className={`${panelClass} p-12 text-center text-fg-muted`}>
+                                <Users className="w-12 h-12 mx-auto mb-3 text-fg-subtle" />
                                 <p>Aucun entrepreneur pour l’instant.</p>
                                 {isOpenForChanges && <p className="text-xs mt-2">Ajoute jusqu’à {MAX_ENTREPRENEURS} entrepreneurs, avec leur vidéo de présentation.</p>}
                             </div>
@@ -363,39 +363,39 @@ const ChallengeDetailsPage: React.FC = () => {
                                     <div key={e._id} className={`${panelClass} p-5 flex flex-col gap-3`}>
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0">
-                                                <p className="text-white font-semibold flex items-center gap-1.5">
-                                                    {e.isWinner && <Trophy className="w-4 h-4 text-amber-400 shrink-0" />}
+                                                <p className="text-fg font-semibold flex items-center gap-1.5">
+                                                    {e.isWinner && <Trophy className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0" />}
                                                     <span className="truncate">{e.name}</span>
                                                 </p>
-                                                <p className="text-sm text-gray-300">{e.projectName}</p>
-                                                <p className="text-xs text-gray-400">
+                                                <p className="text-sm text-fg-muted">{e.projectName}</p>
+                                                <p className="text-xs text-fg-muted">
                                                     {e.businessCategory} · {e.city}, {getCountryName(e.country) || e.country}
                                                 </p>
                                             </div>
                                             {e.approved
-                                                ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-900/60 text-green-300 shrink-0">Approuvé</span>
-                                                : <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-900/60 text-yellow-300 shrink-0">À approuver</span>}
+                                                ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/60 text-green-700 dark:text-green-300 shrink-0">Approuvé</span>
+                                                : <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 dark:bg-yellow-900/60 text-yellow-800 dark:text-yellow-300 shrink-0">À approuver</span>}
                                         </div>
 
                                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                                            <span className="text-gray-200"><b className="tabular-nums">{e.voteCount.toLocaleString('fr-FR')}</b> votes</span>
-                                            <span className="text-gray-200 font-mono">{formatXaf(e.totalAmount)}</span>
-                                            {e.rank && <span className="text-gray-400">{e.rank === 1 ? '1er' : `${e.rank}e`}</span>}
+                                            <span className="text-fg"><b className="tabular-nums">{e.voteCount.toLocaleString('fr-FR')}</b> votes</span>
+                                            <span className="text-fg font-mono">{formatXaf(e.totalAmount)}</span>
+                                            {e.rank && <span className="text-fg-muted">{e.rank === 1 ? '1er' : `${e.rank}e`}</span>}
                                         </div>
 
-                                        <div className="text-xs text-gray-400 space-y-0.5">
+                                        <div className="text-xs text-fg-muted space-y-0.5">
                                             <p className="break-all">{e.email} · {e.phoneNumber}</p>
                                             {e.userId
-                                                ? <p className="text-green-300">Compte SBC lié <Link to={`/userpage/${e.userId}`} className="text-blue-300 hover:text-blue-200">(voir)</Link></p>
-                                                : <p className="text-amber-300">Pas de compte SBC lié : s’il gagne, il ne pourra pas être payé.</p>}
+                                                ? <p className="text-green-600 dark:text-green-300">Compte SBC lié <Link to={`/userpage/${e.userId}`} className="text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200">(voir)</Link></p>
+                                                : <p className="text-amber-700 dark:text-amber-300">Pas de compte SBC lié : s’il gagne, il ne pourra pas être payé.</p>}
                                         </div>
 
                                         {e.videoUrl && (
                                             <video src={e.videoUrl} controls playsInline preload="none" poster={e.videoThumbnailUrl}
-                                                className="w-full max-h-60 rounded-xl bg-black border border-gray-700" />
+                                                className="w-full max-h-60 rounded-xl bg-black border border-line" />
                                         )}
                                         {e.projectDescription?.fr && (
-                                            <p className="text-sm text-gray-300 whitespace-pre-line line-clamp-4" title={e.projectDescription.fr}>{e.projectDescription.fr}</p>
+                                            <p className="text-sm text-fg-muted whitespace-pre-line line-clamp-4" title={e.projectDescription.fr}>{e.projectDescription.fr}</p>
                                         )}
 
                                         {canEditEntrepreneurs && (
@@ -420,13 +420,13 @@ const ChallengeDetailsPage: React.FC = () => {
 
                 {tab === 'leaderboard' && (
                     <div className={`${panelClass} p-6`}>
-                        <p className="text-sm text-gray-400 mb-4">
+                        <p className="text-sm text-fg-muted mb-4">
                             Entrepreneurs approuvés, du plus voté au moins voté. {c.status === 'active' ? 'Le classement bouge tant que les votes sont ouverts.' : ''}
                         </p>
                         {!analytics ? (
-                            <p className="text-gray-400 text-sm">Classement indisponible pour l’instant.</p>
+                            <p className="text-fg-muted text-sm">Classement indisponible pour l’instant.</p>
                         ) : analytics.entrepreneurBreakdown.length === 0 ? (
-                            <p className="text-gray-400 text-sm">Aucun entrepreneur approuvé.</p>
+                            <p className="text-fg-muted text-sm">Aucun entrepreneur approuvé.</p>
                         ) : (
                             <ol className="space-y-4">
                                 {analytics.entrepreneurBreakdown.map((row, i) => {
@@ -434,15 +434,15 @@ const ChallengeDetailsPage: React.FC = () => {
                                     return (
                                         <li key={row.entrepreneurId}>
                                             <div className="flex items-baseline justify-between gap-3 mb-1">
-                                                <span className="text-gray-100">
-                                                    <span className="text-gray-500 mr-2">{i + 1}.</span>{row.name}
-                                                    {winner?._id === row.entrepreneurId && <Trophy className="inline w-4 h-4 text-amber-400 ml-1.5 -mt-0.5" />}
+                                                <span className="text-fg">
+                                                    <span className="text-fg-subtle mr-2">{i + 1}.</span>{row.name}
+                                                    {winner?._id === row.entrepreneurId && <Trophy className="inline w-4 h-4 text-amber-700 dark:text-amber-400 ml-1.5 -mt-0.5" />}
                                                 </span>
-                                                <span className="text-sm text-gray-300 whitespace-nowrap">
+                                                <span className="text-sm text-fg-muted whitespace-nowrap">
                                                     {row.voteCount.toLocaleString('fr-FR')} votes · <span className="font-mono">{formatXaf(row.totalAmount)}</span> · {share} %
                                                 </span>
                                             </div>
-                                            <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                                            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
                                                 <div className="h-full bg-amber-500 rounded-full" style={{ width: `${share}%` }} />
                                             </div>
                                         </li>

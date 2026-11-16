@@ -6,8 +6,8 @@ import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { cn } from '../../lib/cn';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control font-medium transition-[background-color,border-color,color,box-shadow,transform] ' +
-    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-px ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control font-medium transition-[background-color,border-color,color] ' +
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ' +
     'disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0',
   {
     variants: {

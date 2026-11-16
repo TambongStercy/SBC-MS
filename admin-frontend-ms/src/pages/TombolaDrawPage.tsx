@@ -12,6 +12,7 @@ import {
 import Header from '../components/common/Header';
 import ConfirmationModal from '../components/common/ConfirmationModal'; // Assuming a reusable confirmation modal exists
 import { format, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 // Import AnimatePresence for exit animations if needed, and Variants
 import { motion, AnimatePresence, Variants } from 'framer-motion';
@@ -19,12 +20,12 @@ import confetti from 'canvas-confetti'; // Import confetti library
 
 // Helper to format date strings (consider moving to a utils file)
 const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '—';
     try {
-        return format(parseISO(dateString), 'MMM dd, yyyy, hh:mm a');
+        return format(parseISO(dateString), 'dd MMM yyyy, HH:mm', { locale: fr });
     } catch (error) {
         console.error("Error formatting date:", dateString, error);
-        return 'Invalid Date';
+        return 'Date invalide';
     }
 };
 
@@ -33,13 +34,13 @@ const getStatusBadge = (status?: TombolaStatus) => {
     if (!status) return null;
     switch (status) {
         case TombolaStatus.OPEN:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">OPEN</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">OUVERTE</span>;
         case TombolaStatus.CLOSED:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">CLOSED</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-surface-2 text-fg-muted">FERMÉE</span>;
         case TombolaStatus.DRAWING: // Handle drawing status if applicable
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">DRAWING</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300">TIRAGE EN COURS</span>;
         default:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">UNKNOWN</span>;
+            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300">INCONNU</span>;
     }
 };
 
@@ -134,7 +135,7 @@ function TombolaDrawPage() {
 
     const fetchTombola = useCallback(async () => {
         if (!monthId) {
-            setError("Tombola Month ID is missing.");
+            setError("Identifiant de la tombola manquant.");
             setDrawingState('error'); // Set error state
             return;
         }
@@ -157,9 +158,9 @@ function TombolaDrawPage() {
             // Always set to idle after fetching details to trigger number fetch
             setDrawingState('idle');
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
-            setError(`Failed to load tombola details: ${message}`);
-            toast.error(`Failed to load tombola details: ${message}`);
+            const message = err instanceof Error ? err.message : 'Erreur inconnue';
+            setError(`Impossible de charger la tombola : ${message}`);
+            toast.error(`Impossible de charger la tombola : ${message}`);
             setTombola(null);
             setDrawingState('error'); // Set error state
         } finally {
@@ -203,9 +204,9 @@ function TombolaDrawPage() {
                     }
 
                 } catch (err) {
-                    const message = err instanceof Error ? err.message : 'Failed to load ticket numbers';
+                    const message = err instanceof Error ? err.message : 'Impossible de charger les numéros de tickets';
                     console.error("Error fetching ticket numbers:", err);
-                    setDrawError(`Failed to load ticket numbers: ${message}`);
+                    setDrawError(`Impossible de charger les numéros de tickets : ${message}`);
                     // Only transition if still in loading_numbers state
                     setDrawingState(prevState => prevState === 'loading_numbers' ? 'error' : prevState);
                     setError(message); // Also set general error display
@@ -309,7 +310,7 @@ function TombolaDrawPage() {
                 console.log('Successfully fetched winner user details.', userMap);
             } catch (err) {
                 console.error("Failed to fetch winner user details:", err);
-                toast.error('Could not load winner details.');
+                toast.error('Impossible de charger les informations des gagnants.');
                 // Optionally clear map on error or leave stale data?
                 // setWinnerUserDetails(new Map()); 
             } finally {
@@ -326,7 +327,7 @@ function TombolaDrawPage() {
         // Guard clause: Only allow draw if numbers loaded and tombola is in correct state
         if (!monthId || drawingState !== 'numbers_loaded' || !tombola || (tombola.status !== TombolaStatus.OPEN && tombola.status !== TombolaStatus.DRAWING)) {
             console.warn('Draw cannot be performed in the current state:', { monthId, drawingState, tombolaStatus: tombola?.status });
-            toast.error('Cannot perform draw. Tombola might be closed or tickets not loaded.');
+            toast.error('Tirage impossible : la tombola est peut-être fermée ou les tickets ne sont pas chargés.');
             return;
         }
 
@@ -336,7 +337,7 @@ function TombolaDrawPage() {
         setAnimatedWinners([]); // Clear previous visual winners if any
         setEjectedBallNumber(null); // Ensure no ball is ejected initially
         setRevealedEjectedBalls([]); // Clear previously ejected balls
-        const loadingToastId = toast.loading('Performing winner draw...');
+        const loadingToastId = toast.loading('Tirage des gagnants…');
 
         // --- Simulate API call delay (REMOVE IN PRODUCTION) ---
         // await new Promise(resolve => setTimeout(resolve, 1500));
@@ -358,21 +359,21 @@ function TombolaDrawPage() {
                 setRevealIndex(0); // Reset the reveal index
                 // *** CRITICAL: Set state to revealing AFTER API call success ***
                 setDrawingState('revealing');
-                toast.success('Draw successful! Revealing winners...', { id: loadingToastId });
+                toast.success('Tirage effectué ! Révélation des gagnants…', { id: loadingToastId });
             } else {
                 // Handle case where draw might be successful but no winners (e.g., no tickets sold)
                 setBackendWinners([]);
                 setDrawingState('done'); // Go straight to 'done' if no winners
-                toast.success('Draw completed. No winners found (perhaps no tickets were sold).', { id: loadingToastId });
+                toast.success('Tirage terminé. Aucun gagnant (aucun ticket vendu ?).', { id: loadingToastId });
                 console.log('Draw completed, but no winners found.');
             }
 
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred during the draw';
+            const message = err instanceof Error ? err.message : 'Erreur inconnue pendant le tirage';
             console.error("Error performing draw:", err);
             setDrawError(message);
             setDrawingState('error'); // Set error state
-            toast.error(`Draw Failed: ${message}`, { id: loadingToastId });
+            toast.error(`Échec du tirage : ${message}`, { id: loadingToastId });
         }
     }, [monthId, drawingState, tombola]); // Updated dependencies
 
@@ -391,7 +392,7 @@ function TombolaDrawPage() {
         if (drawingState === 'numbers_loaded' && tombola && (tombola.status === TombolaStatus.OPEN || tombola.status === TombolaStatus.DRAWING)) {
             setIsConfirmModalOpen(true);
         } else {
-            toast.error("Cannot start draw in the current state.");
+            toast.error("Le tirage ne peut pas démarrer dans l’état actuel.");
         }
     };
 
@@ -408,30 +409,30 @@ function TombolaDrawPage() {
 
     if (drawingState === 'loading') { // Use drawingState for initial loading
         return (
-            <div className="flex-1 p-6 bg-gray-900 text-white">
-                <Header title="Tombola Draw" />
-                <p>Loading Tombola Details...</p>
+            <div className="text-fg">
+                <Header title="Tirage de la tombola" />
+                <p>Chargement de la tombola…</p>
             </div>
         );
     }
 
     if (error && drawingState === 'error' && !tombola) { // Show general error if tombola details failed to load
         return (
-            <div className="flex-1 p-6 bg-gray-900 text-white">
-                <Header title="Tombola Draw" />
-                <div className="bg-red-800 text-white p-3 rounded-sm mb-4">Error loading details: {error}</div>
-                <button onClick={() => navigate('/tombola')} className="text-indigo-400 hover:text-indigo-300">Back to Tombola List</button>
+            <div className="text-fg">
+                <Header title="Tirage de la tombola" />
+                <div className="bg-red-800 text-white p-3 rounded-sm mb-4">Erreur de chargement : {error}</div>
+                <button onClick={() => navigate('/tombola')} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">Retour à la liste des tombolas</button>
             </div>
         );
     }
 
     if (!tombola) { // Simplified check: If tombola is null at this point (after loading attempts), render placeholder
         return (
-            <div className="flex-1 p-6 bg-gray-900 text-white">
-                <Header title="Tombola Draw" />
-                <p>Tombola details are not available or still loading.</p>
-                {error && <div className="bg-red-800 text-white p-3 rounded-sm mb-4">Error: {error}</div>}
-                <button onClick={() => navigate('/tombola')} className="text-indigo-400 hover:text-indigo-300">Back to Tombola List</button>
+            <div className="text-fg">
+                <Header title="Tirage de la tombola" />
+                <p>Les informations de la tombola ne sont pas disponibles ou encore en chargement.</p>
+                {error && <div className="bg-red-800 text-white p-3 rounded-sm mb-4">Erreur : {error}</div>}
+                <button onClick={() => navigate('/tombola')} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">Retour à la liste des tombolas</button>
             </div>
         );
     }
@@ -442,29 +443,29 @@ function TombolaDrawPage() {
 
 
     return (
-        <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white">
-            <Header title={`Tombola Draw - ${String(tombola.month).padStart(2, '0')}/${tombola.year}`} />
-            <main className="max-w-6xl mx-auto py-6 px-4 lg:px-8"> {/* Increased max-width */}
+        <div className="relative text-fg">
+            <Header title={`Tirage de la tombola ${String(tombola.month).padStart(2, '0')}/${tombola.year}`} />
+            <main>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8"> {/* Grid layout */}
 
                     {/* Column 1: Details & Existing Winners */}
-                    <div className="md:col-span-1 bg-gray-800 shadow-md rounded-lg p-6 self-start">
-                        <div className="mb-4 pb-4 border-b border-gray-700">
-                            <h2 className="text-2xl font-semibold mb-2">Tombola Details</h2>
-                            <p><strong>Month/Year:</strong> {`${String(tombola.month).padStart(2, '0')}/${tombola.year}`}</p>
-                            <p><strong>Status:</strong> {getStatusBadge(tombola.status)}</p>
-                            <p><strong>Start Date:</strong> {formatDate(tombola.startDate)}</p>
-                            <p><strong>Tickets Sold (Estimate):</strong> {tombola.lastTicketNumber ?? 0}</p>
-                            {tombola.drawDate && <p><strong>Draw Date:</strong> {formatDate(tombola.drawDate)}</p>}
+                    <div className="md:col-span-1 bg-surface rounded-lg p-6 self-start border border-line">
+                        <div className="mb-4 pb-4 border-b border-line">
+                            <h2 className="text-2xl font-semibold mb-2">Détails de la tombola</h2>
+                            <p><strong>Mois/Année :</strong> {`${String(tombola.month).padStart(2, '0')}/${tombola.year}`}</p>
+                            <p><strong>Statut :</strong> {getStatusBadge(tombola.status)}</p>
+                            <p><strong>Début :</strong> {formatDate(tombola.startDate)}</p>
+                            <p><strong>Tickets vendus (estimation) :</strong> {tombola.lastTicketNumber ?? 0}</p>
+                            {tombola.drawDate && <p><strong>Date du tirage :</strong> {formatDate(tombola.drawDate)}</p>}
                             {drawingState === 'error' && drawError && (
-                                <p className="text-red-400 mt-2"><strong>Error:</strong> {drawError}</p>
+                                <p className="text-red-600 dark:text-red-400 mt-2"><strong>Erreur :</strong> {drawError}</p>
                             )}
                         </div>
 
                         {/* Display final winners from the main tombola state if already drawn */}
                         {alreadyDrawn && (
                             <div className="mb-6">
-                                <h3 className="text-xl font-semibold mb-3 text-green-400">Winners (Final)</h3>
+                                <h3 className="text-xl font-semibold mb-3 text-green-600 dark:text-green-400">Gagnants (définitif)</h3>
                                 <ul className="list-disc pl-5 space-y-2">
                                     {/* Sort winners by rank and display name/country */}
                                     {backendWinners.sort((a, b) => a.rank - b.rank).map((winner) => {
@@ -473,11 +474,11 @@ function TombolaDrawPage() {
                                         // Construct display name: Name (Country) or fallback to ID
                                         const displayName = userDetails
                                             ? `${userDetails.name}${userDetails.country ? ` (${userDetails.country})` : ''}`
-                                            : `User ID: ${winner.userId}`;
-                                        const loadingText = isLoadingUserDetails && !userDetails ? ' (Loading...)' : ''; // Show loading only if details are missing
+                                            : `ID utilisateur : ${winner.userId}`;
+                                        const loadingText = isLoadingUserDetails && !userDetails ? ' (chargement…)' : ''; // Show loading only if details are missing
                                         return (
                                             <li key={`final-${winner.rank}`}>
-                                                <strong>Rank {winner.rank}:</strong> {winner.prize} - <span className="font-semibold text-yellow-300">(Ticket #{winner.winningTicketNumber})</span> - {displayName}{loadingText}
+                                                <strong>Rang {winner.rank} :</strong> {winner.prize} - <span className="font-semibold text-yellow-700 dark:text-yellow-300">(ticket n° {winner.winningTicketNumber})</span> - {displayName}{loadingText}
                                             </li>
                                         );
                                     })}
@@ -493,10 +494,10 @@ function TombolaDrawPage() {
                                     disabled={isDrawButtonDisabled} // Use the calculated disabled state
                                     className="w-full px-6 py-3 bg-green-600 rounded-sm hover:bg-green-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    Confirm & Start Draw
+                                    Confirmer et lancer le tirage
                                 </button>
                                 {tombola.lastTicketNumber === 0 && (
-                                    <p className="text-yellow-400 text-sm mt-2">Warning: No tickets sold. Draw will result in no winners.</p>
+                                    <p className="text-yellow-700 dark:text-yellow-400 text-sm mt-2">Attention : aucun ticket vendu, le tirage ne donnera aucun gagnant.</p>
                                 )}
                             </div>
                         )}
@@ -504,22 +505,22 @@ function TombolaDrawPage() {
                         {/* Message if not ready for draw */}
                         {!alreadyDrawn && (!canDraw || (canDraw && drawingState !== 'numbers_loaded' && drawingState !== 'idle' && drawingState !== 'loading_numbers' && drawingState !== 'error')) && (
                             <div className="mt-6 text-center">
-                                {drawingState === 'loading_numbers' && <p className="text-yellow-400">Loading ticket numbers...</p>}
-                                {drawingState !== 'loading_numbers' && drawingState !== 'error' && <p className="text-yellow-500">Tombola not ready for draw (Status: {tombola.status}, State: {drawingState}).</p>}
-                                {drawingState === 'error' && !drawError && <p className="text-red-500">An error occurred. Cannot proceed.</p>}
+                                {drawingState === 'loading_numbers' && <p className="text-yellow-700 dark:text-yellow-400">Chargement des numéros de tickets…</p>}
+                                {drawingState !== 'loading_numbers' && drawingState !== 'error' && <p className="text-yellow-700 dark:text-yellow-500">La tombola n’est pas prête pour le tirage (statut : {tombola.status}, état : {drawingState}).</p>}
+                                {drawingState === 'error' && !drawError && <p className="text-red-500">Une erreur est survenue. Impossible de continuer.</p>}
                             </div>
                         )}
 
                         {/* Message if already drawn */}
                         {alreadyDrawn && (
                             <div className="mt-6 text-center">
-                                <p className="text-green-500">Winners have already been drawn for this tombola.</p>
+                                <p className="text-green-600 dark:text-green-500">Les gagnants de cette tombola ont déjà été tirés.</p>
                             </div>
                         )}
 
 
-                        <div className="mt-8 text-center border-t border-gray-700 pt-4">
-                            <button onClick={() => navigate('/tombola')} className="text-indigo-400 hover:text-indigo-300">Back to Tombola List</button>
+                        <div className="mt-8 text-center border-t border-line pt-4">
+                            <button onClick={() => navigate('/tombola')} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">Retour à la liste des tombolas</button>
                         </div>
                     </div>
 
@@ -527,20 +528,19 @@ function TombolaDrawPage() {
                     {/* Column 2 & 3: Animation & Revealed Winners */}
                     <div className="md:col-span-2">
                         {/* --- Animation Area --- */}
-                        <div className="flex flex-col items-center bg-gray-800 shadow-md rounded-lg p-6 mb-8">
-                            <h2 className="text-2xl font-semibold mb-4 text-indigo-300">Drawing Machine</h2>
+                        <div className="flex flex-col items-center bg-surface rounded-lg p-6 mb-8 border border-line">
+                            <h2 className="text-2xl font-semibold mb-4 text-indigo-600 dark:text-indigo-300">Machine de tirage</h2>
 
-                            {drawingState === 'loading_numbers' && <p className="text-yellow-400 py-20">Loading tickets...</p>}
-                            {drawingState === 'error' && drawError && <p className="text-red-400 py-20">Error loading tickets: {drawError}</p>}
+                            {drawingState === 'loading_numbers' && <p className="text-yellow-700 dark:text-yellow-400 py-20">Chargement des tickets…</p>}
+                            {drawingState === 'error' && drawError && <p className="text-red-600 dark:text-red-400 py-20">Erreur de chargement des tickets : {drawError}</p>}
 
                             {/* Show the machine only when numbers are loaded or during/after the drawing process */}
                             {(drawingState === 'numbers_loaded' || drawingState === 'drawing' || drawingState === 'revealing' || drawingState === 'done') && (
                                 <motion.div
                                     // Explicitly remove border, border-yellow-400, border-indigo-500 and add filter for simulated border
-                                    className={`relative w-64 h-64 flex items-center justify-center bg-gray-700 shadow-lg overflow-hidden mb-6 ${drawingState === 'drawing' || drawingState === 'revealing' ? 'animate-pulse' : ''}`}
+                                    className={`relative w-64 h-64 flex items-center justify-center bg-surface-2 overflow-hidden mb-6 ${drawingState === 'drawing' || drawingState === 'revealing' ? 'animate-pulse' : ''}`}
                                     style={{
-                                        clipPath: 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)', // Octagon shape
-                                        filter: `drop-shadow(0 0 0 ${drawingState === 'drawing' || drawingState === 'revealing' ? '#FBBF24' : '#6366F1'}) drop-shadow(0 0 0 ${drawingState === 'drawing' || drawingState === 'revealing' ? '#FBBF24' : '#6366F1'}) drop-shadow(0 0 0 ${drawingState === 'drawing' || drawingState === 'revealing' ? '#FBBF24' : '#6366F1'}) drop-shadow(0 0 0 ${drawingState === 'drawing' || drawingState === 'revealing' ? '#FBBF24' : '#6366F1'})` // Simulate ~4px border thickness via multiple shadows
+                                        clipPath: 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)' // Octagon shape
                                     }}
                                 // Optional: Add spinning animation back if desired
                                 // animate={{ rotate: 360 }}
@@ -557,7 +557,7 @@ function TombolaDrawPage() {
                                             return (
                                                 <motion.div
                                                     key={`ball-${num}`}
-                                                    className={`absolute w-8 h-8 ${ballColors[index % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold shadow-md`}
+                                                    className={`absolute w-8 h-8 ${ballColors[index % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold`}
                                                     style={{
                                                         // Revert to random positioning
                                                         top: `${Math.random() * 85 + 7.5}%`,
@@ -579,14 +579,14 @@ function TombolaDrawPage() {
                                         })
                                     ) : (
                                         // Show message inside machine if numbers loaded but array is empty
-                                        drawingState === 'numbers_loaded' && <p className="text-gray-400">No tickets sold</p>
+                                        drawingState === 'numbers_loaded' && <p className="text-fg-muted">Aucun ticket vendu</p>
                                     )}
                                     {/* Render the Ejected Ball - Place it relative to the container above */}
                                     <AnimatePresence>
                                         {ejectedBallNumber !== null && (
                                             <motion.div
                                                 key={`ejected-${ejectedBallNumber}`}
-                                                className={`absolute w-8 h-8 ${ballColors[allTicketNumbers.indexOf(ejectedBallNumber) % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold shadow-md z-20`}
+                                                className={`absolute w-8 h-8 ${ballColors[allTicketNumbers.indexOf(ejectedBallNumber) % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold z-20`}
                                                 style={{ top: '50%', left: '50%' }} // Adjust if container position changes
                                                 variants={ejectedBallVariants}
                                                 initial="initial"
@@ -602,10 +602,10 @@ function TombolaDrawPage() {
                             )}
                             {/* Display state message below machine */}
                             <div className="h-6 mt-2 text-center"> {/* Placeholder for status message */}
-                                {drawingState === 'drawing' && <p className="text-yellow-400 animate-pulse">Drawing winners...</p>}
-                                {drawingState === 'revealing' && <p className="text-blue-400 animate-pulse">Revealing winners...</p>}
-                                {drawingState === 'done' && animatedWinners.length > 0 && <p className="text-green-400">Draw complete!</p>}
-                                {drawingState === 'done' && backendWinners.length === 0 && <p className="text-gray-400">Draw complete. No winners were found.</p>}
+                                {drawingState === 'drawing' && <p className="text-yellow-700 dark:text-yellow-400 animate-pulse">Tirage des gagnants…</p>}
+                                {drawingState === 'revealing' && <p className="text-blue-600 dark:text-blue-400 animate-pulse">Révélation des gagnants…</p>}
+                                {drawingState === 'done' && animatedWinners.length > 0 && <p className="text-green-600 dark:text-green-400">Tirage terminé !</p>}
+                                {drawingState === 'done' && backendWinners.length === 0 && <p className="text-fg-muted">Tirage terminé. Aucun gagnant.</p>}
                                 {/* Error shown in details pane */}
                             </div>
                         </div>
@@ -613,12 +613,12 @@ function TombolaDrawPage() {
 
 
                         {/* --- Winners Display Area (Animated Reveal) --- */}
-                        <div className="bg-gray-800 shadow-md rounded-lg p-6 min-h-[200px]"> {/* Added min-height */}
-                            <h3 className="text-xl font-semibold mb-4 text-indigo-300 border-b border-gray-700 pb-2">
-                                {drawingState === 'revealing' ? 'Revealing Winners...' : (drawingState === 'done' && animatedWinners.length > 0) ? 'Winners Announced' : 'Awaiting Draw...'}
+                        <div className="bg-surface rounded-lg p-6 min-h-[200px] border border-line"> {/* Added min-height */}
+                            <h3 className="text-xl font-semibold mb-4 text-indigo-600 dark:text-indigo-300 border-b border-line pb-2">
+                                {drawingState === 'revealing' ? 'Révélation des gagnants…' : (drawingState === 'done' && animatedWinners.length > 0) ? 'Gagnants annoncés' : 'En attente du tirage…'}
                             </h3>
                             {drawingState !== 'revealing' && drawingState !== 'done' && (
-                                <p className="text-gray-500 text-center pt-8">Winners will appear here after the draw.</p>
+                                <p className="text-fg-subtle text-center pt-8">Les gagnants apparaîtront ici après le tirage.</p>
                             )}
                             {(drawingState === 'revealing' || (drawingState === 'done' && animatedWinners.length > 0)) && (
                                 <motion.ul layout className="space-y-3">
@@ -637,18 +637,18 @@ function TombolaDrawPage() {
                                                     animate={{ opacity: 1, x: 0 }}
                                                     exit={{ opacity: 0 }} // Optional exit animation if list changes dynamically
                                                     transition={{ duration: 0.5, delay: index * 0.1 }} // Stagger appearance slightly
-                                                    className="p-3 bg-gray-700 rounded-md shadow-sm flex items-center space-x-4"
+                                                    className="p-3 bg-surface-2 rounded-md flex items-center space-x-4"
                                                 >
-                                                    <span className={`text-lg font-bold ${winner.rank === 1 ? 'text-yellow-400' : winner.rank === 2 ? 'text-gray-300' : 'text-orange-400'}`}>
-                                                        Rank #{winner.rank}
+                                                    <span className={`text-lg font-bold ${winner.rank === 1 ? 'text-yellow-700 dark:text-yellow-400' : winner.rank === 2 ? 'text-fg-muted' : 'text-orange-600 dark:text-orange-400'}`}>
+                                                        Rang {winner.rank}
                                                     </span>
-                                                    <span className="flex-1 text-lg text-white">
-                                                        {winner.prize} <span className="font-semibold text-yellow-300 text-base">(Ticket #{winner.winningTicketNumber})</span>
+                                                    <span className="flex-1 text-lg text-fg">
+                                                        {winner.prize} <span className="font-semibold text-yellow-700 dark:text-yellow-300 text-base">(ticket n° {winner.winningTicketNumber})</span>
                                                     </span>
                                                     {/* Display Name/Country instead of ID */}
-                                                    <span className="text-sm text-gray-400 min-w-[150px] text-right">
+                                                    <span className="text-sm text-fg-muted min-w-[150px] text-right">
                                                         {isLoadingUserDetails && !winnerUserDetails.has(winner.userId) ? (
-                                                            <span className="italic">Loading...</span>
+                                                            <span className="italic">Chargement…</span>
                                                         ) : winnerUserDetails.has(winner.userId) ? (
                                                             // Display Name and Country if available
                                                             <>
@@ -659,19 +659,19 @@ function TombolaDrawPage() {
                                                             </>
                                                         ) : (
                                                             // Fallback to User ID if details not found
-                                                            <span className="font-mono text-xs">ID: {winner.userId}</span>
+                                                            <span className="font-mono text-xs">ID : {winner.userId}</span>
                                                         )}
                                                     </span>
                                                     {/* Add the ejected ball display here */}
                                                     {drawingState === 'done' && revealedEjectedBalls[index] !== undefined && (
-                                                        <div className="ml-2 flex items-center shrink-0" title={`Visually Ejected Ball: ${revealedEjectedBalls[index]}`}>
-                                                            <span className="text-xs text-gray-400 mr-1">(Ball:</span>
-                                                            <div className={`w-5 h-5 ${ballColors[allTicketNumbers.indexOf(revealedEjectedBalls[index]) % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold shadow-xs`}>
+                                                        <div className="ml-2 flex items-center shrink-0" title={`Boule tirée : ${revealedEjectedBalls[index]}`}>
+                                                            <span className="text-xs text-fg-muted mr-1">(boule :</span>
+                                                            <div className={`w-5 h-5 ${ballColors[allTicketNumbers.indexOf(revealedEjectedBalls[index]) % ballColors.length]} rounded-full flex items-center justify-center text-xs font-bold`}>
                                                                 <span className="w-3 h-3 bg-white rounded-full flex items-center justify-center text-black text-[8px] font-bold">
                                                                     {revealedEjectedBalls[index]}
                                                                 </span>
                                                             </div>
-                                                            <span className="text-xs text-gray-400 ml-1">)</span>
+                                                            <span className="text-xs text-fg-muted ml-1">)</span>
                                                         </div>
                                                     )}
                                                 </motion.li>
@@ -681,7 +681,7 @@ function TombolaDrawPage() {
                                 </motion.ul>
                             )}
                             {drawingState === 'done' && animatedWinners.length === 0 && backendWinners.length === 0 && (
-                                <p className="text-gray-400 text-center pt-8">No winners were found for this tombola.</p>
+                                <p className="text-fg-muted text-center pt-8">Aucun gagnant pour cette tombola.</p>
                             )}
                         </div>
                         {/* --- End Winners Display Area --- */}
@@ -692,11 +692,11 @@ function TombolaDrawPage() {
 
             <ConfirmationModal
                 isOpen={isConfirmModalOpen}
-                title="Confirm Winner Draw"
-                message={`Are you sure you want to perform the winner draw for Tombola ${String(tombola.month).padStart(2, '0')}/${tombola.year}? This action cannot be undone.`}
+                title="Lancer le tirage ?"
+                message={`Lancer le tirage des gagnants de la tombola ${String(tombola.month).padStart(2, '0')}/${tombola.year} ? Cette action est définitive.`}
                 onConfirm={handlePerformDraw} // Use the simplified confirmation handler
                 onCancel={closeConfirmation}
-                confirmText="Yes, Perform Draw"
+                confirmText="Oui, lancer le tirage"
                 isLoading={drawingState === 'drawing'} // Show loading in modal only during the API call phase
             />
         </div>

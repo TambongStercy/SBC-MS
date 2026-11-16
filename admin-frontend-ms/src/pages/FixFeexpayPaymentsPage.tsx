@@ -8,6 +8,8 @@ import { reprocessFeexpayPaymentsForUser, searchUsersForFeexPayFix, ReprocessFee
 import { AdminUserData } from '../services/adminUserApi'; // Reusing the AdminUserData interface
 import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
 
+const RESULT_STATUS_LABELS: Record<string, string> = { SUCCEEDED: 'Réussi', FAILED: 'Échoué', PENDING: 'En attente', PROCESSING: 'En cours' };
+
 interface FixFeexpayPaymentsPageProps {
     embedded?: boolean; // Suppress <Header /> when rendered inside the unified /fix-provider-issues tabbed page.
 }
@@ -42,7 +44,7 @@ function FixFeexpayPaymentsPage({ embedded = false }: FixFeexpayPaymentsPageProp
             const fetchedUsers = await searchUsersForFeexPayFix(query);
             setUsers(fetchedUsers);
         } catch (error) {
-            toast.error("Failed to search users.");
+            toast.error("La recherche de membres a échoué.");
             console.error("Failed to search users:", error);
         } finally {
             setLoadingUsers(false);
@@ -52,16 +54,16 @@ function FixFeexpayPaymentsPage({ embedded = false }: FixFeexpayPaymentsPageProp
     const handleReprocessPayments = useCallback(async (userId: string) => {
         setReprocessingUserId(userId); // Set the user being reprocessed
         setReprocessingResults(prev => ({ ...prev, [userId]: [] })); // Clear previous results for this user
-        const toastId = toast.loading('Initiating payment fix... This might take up to 5 minutes.', { duration: 300000 }); // 5 minutes duration
+        const toastId = toast.loading('Correction des paiements en cours… Cela peut prendre jusqu\'à 5 minutes.', { duration: 300000 }); // 5 minutes duration
 
         try {
             const results = await reprocessFeexpayPaymentsForUser(userId);
             setReprocessingResults(prev => ({ ...prev, [userId]: results }));
-            toast.success('Payment fix initiated. Check results.', { id: toastId }); // Dismiss and show success
+            toast.success('Correction lancée. Consultez les résultats.', { id: toastId }); // Dismiss and show success
         } catch (error) {
             console.error("Error during reprocessing:", error);
-            toast.error("Failed to initiate payment fix.", { id: toastId }); // Dismiss and show error
-            setReprocessingResults(prev => ({ ...prev, [userId]: [{ sessionId: '', status: '', message: 'Failed to reprocess.' }] }));
+            toast.error("Impossible de lancer la correction.", { id: toastId }); // Dismiss and show error
+            setReprocessingResults(prev => ({ ...prev, [userId]: [{ sessionId: '', status: '', message: 'Le retraitement a échoué.' }] }));
         } finally {
             setReprocessingUserId(null); // Reset after completion
             toast.dismiss(toastId); // Ensure the loading toast is always dismissed
@@ -80,58 +82,58 @@ function FixFeexpayPaymentsPage({ embedded = false }: FixFeexpayPaymentsPageProp
     }, []);
 
     return (
-        <div className="flex-1 overflow-auto relative z-10">
-            {!embedded && <Header title="Fix FeexPay Payments" />}
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+        <div>
+            {!embedded && <Header title="Paiements FeexPay à corriger" />}
+            <main>
                 <motion.div
-                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
+                    className="bg-surface rounded-xl p-6 border border-line mb-8"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 1, ease: "easeInOut" }}
                 >
-                    <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4">Search Users</h2>
+                    <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4">Rechercher un membre</h2>
                     <div className="relative w-full mb-6">
                         <input
                             type="text"
-                            placeholder="Search by name, email, or phone number..."
-                            className="bg-gray-700 text-white placeholder-gray-400 rounded-lg pl-10 pr-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                            placeholder="Rechercher par nom, e-mail ou téléphone"
+                            className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-10 pr-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                             value={searchTerm}
                             onChange={handleSearchChange}
                         />
-                        <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                        <Search className="absolute left-3 top-2.5 text-fg-muted" size={18} />
                     </div>
 
                     {loadingUsers ? (
-                        <div className="text-center py-4"><Loader name="Users" /></div>
+                        <div className="text-center py-4"><Loader name="Membres" /></div>
                     ) : users.length === 0 && searchTerm !== '' ? (
-                        <p className="text-center text-gray-400">No users found matching "{searchTerm}".</p>
+                        <p className="text-center text-fg-muted">Aucun membre ne correspond à « {searchTerm} ».</p>
                     ) : users.length === 0 && searchTerm === '' ? (
-                        <p className="text-center text-gray-400">Start typing to search for users.</p>
+                        <p className="text-center text-fg-muted">Commencez à taper pour rechercher un membre.</p>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-700">
+                            <table className="min-w-full divide-y divide-line">
                                 <thead>
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Avatar</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Phone</th>
-                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Action</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Avatar</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Nom</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">E-mail</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Téléphone</th>
+                                        <th className="px-6 py-3 text-center text-xs font-medium text-fg-muted uppercase tracking-wider">Action</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-700">
+                                <tbody className="divide-y divide-line">
                                     {users.map((user) => (
                                         <tr key={user._id}>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
                                                 <img
                                                     src={getAvatarUrl(user.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
-                                                    alt={`${user.name}'s avatar`}
+                                                    alt={`Avatar de ${user.name}`}
                                                     className="h-10 w-10 rounded-full object-cover"
                                                 />
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">{user.name}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">{user.email || 'N/A'}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">{user.phoneNumber || 'N/A'}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.name}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.email || '—'}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.phoneNumber || '—'}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                                                 <button
                                                     onClick={() => handleReprocessPayments(user._id)}
@@ -139,9 +141,9 @@ function FixFeexpayPaymentsPage({ embedded = false }: FixFeexpayPaymentsPageProp
                                                     className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                                                 >
                                                     {reprocessingUserId === user._id ? (
-                                                        <><Hammer size={16} className="animate-spin mr-2" /> Fixing...</>
+                                                        <><Hammer size={16} className="animate-spin mr-2" /> Correction…</>
                                                     ) : (
-                                                        <><Hammer size={16} className="mr-2" /> Fix FeexPay Payments</>
+                                                        <><Hammer size={16} className="mr-2" /> Corriger les paiements FeexPay</>
                                                     )}
                                                 </button>
                                             </td>
@@ -155,24 +157,24 @@ function FixFeexpayPaymentsPage({ embedded = false }: FixFeexpayPaymentsPageProp
 
                 {Object.keys(reprocessingResults).length > 0 && (
                     <motion.div
-                        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mt-8"
+                        className="bg-surface rounded-xl p-6 border border-line mt-8"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 1, ease: "easeInOut" }}
                     >
-                        <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4">Reprocessing Results</h2>
+                        <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4">Résultats du retraitement</h2>
                         {Object.entries(reprocessingResults).map(([userId, results]) => (
-                            <div key={userId} className="mb-6 p-4 border border-gray-700 rounded-lg">
-                                <h3 className="text-md font-medium text-gray-100 mb-2">Results for User ID: {userId}</h3>
+                            <div key={userId} className="mb-6 p-4 border border-line rounded-lg">
+                                <h3 className="text-md font-medium text-fg mb-2">Résultats pour le membre {userId}</h3>
                                 {results.length === 0 ? (
-                                    <p className="text-gray-400">No errors to fix found for this user.</p>
+                                    <p className="text-fg-muted">Aucune erreur à corriger pour ce membre.</p>
                                 ) : (
-                                    <ul className="list-disc list-inside text-gray-300">
+                                    <ul className="list-disc list-inside text-fg-muted">
                                         {results.map((result, index) => (
                                             <li key={index} className="mb-1">
-                                                <span className="font-semibold">Session ID:</span> {result.sessionId} -
-                                                <span className={`font-semibold ${result.status === 'SUCCEEDED' ? 'text-green-400' : result.status === 'FAILED' ? 'text-red-400' : 'text-yellow-400'}`}>Status: {result.status}</span> -
-                                                Message: {result.message}
+                                                <span className="font-semibold">ID de session :</span> {result.sessionId} -
+                                                <span className={`font-semibold ${result.status === 'SUCCEEDED' ? 'text-green-600 dark:text-green-400' : result.status === 'FAILED' ? 'text-red-600 dark:text-red-400' : 'text-yellow-700 dark:text-yellow-400'}`}>Statut : {RESULT_STATUS_LABELS[result.status] ?? result.status}</span> -
+                                                Message : {result.message}
                                             </li>
                                         ))}
                                     </ul>

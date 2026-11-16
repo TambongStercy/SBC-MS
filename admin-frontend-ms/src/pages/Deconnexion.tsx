@@ -31,7 +31,7 @@ function Deconnexion() {
   return (
     <div className="flex min-h-[60dvh] items-center justify-center">
       <motion.div
-        className="w-full max-w-md rounded-panel border border-line bg-surface p-6 text-center shadow-panel sm:p-8"
+        className="w-full max-w-md rounded-panel border border-line bg-surface p-6 text-center sm:p-8"
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.3, ease: "easeOut" }}

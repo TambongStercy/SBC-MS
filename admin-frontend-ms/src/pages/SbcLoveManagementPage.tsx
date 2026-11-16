@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon } from '@hugeicons/core-free-icons';
 import Header from '../components/common/Header';
 import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
@@ -36,6 +38,19 @@ const INTENTION_LABELS: Record<string, string> = {
     autre: 'Autre',
 };
 
+const SEX_LABELS: Record<string, string> = { male: 'Homme', female: 'Femme' };
+
+/** Profile and report statuses as shown to the admin (the API values stay in English). */
+const STATUS_LABELS: Record<string, string> = {
+    pending: 'En attente',
+    approved: 'Approuvé',
+    rejected: 'Rejeté',
+    suspended: 'Suspendu',
+    open: 'Ouvert',
+    reviewed: 'Traité',
+    dismissed: 'Ignoré',
+};
+
 const WEEKDAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
 function statusBadge(status: string) {
@@ -43,12 +58,12 @@ function statusBadge(status: string) {
         pending: 'bg-yellow-700 text-yellow-100',
         approved: 'bg-green-700 text-green-100',
         rejected: 'bg-red-700 text-red-100',
-        suspended: 'bg-gray-600 text-gray-200',
+        suspended: 'bg-surface-3 text-fg',
         open: 'bg-yellow-700 text-yellow-100',
         reviewed: 'bg-blue-700 text-blue-100',
-        dismissed: 'bg-gray-600 text-gray-200',
+        dismissed: 'bg-surface-3 text-fg',
     };
-    return `px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${map[status] ?? 'bg-gray-700 text-gray-200'}`;
+    return `px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${map[status] ?? 'bg-surface-2 text-fg'}`;
 }
 
 /** `value` once it has stopped changing for `ms` — so a search box doesn't fire a request per keystroke. */
@@ -67,10 +82,10 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
                 value={value}
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
-                className="w-full bg-gray-700 text-gray-200 rounded-sm px-3 py-1.5 text-sm placeholder-gray-400 focus:outline-hidden focus:ring-1 focus:ring-pink-500"
+                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-1.5 text-sm placeholder-fg-subtle focus:outline-hidden focus:ring-1 focus:ring-pink-500"
             />
             {value && (
-                <button type="button" onClick={() => onChange('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-sm" aria-label="Effacer">×</button>
+                <button type="button" onClick={() => onChange('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg" aria-label="Effacer"><HugeiconsIcon icon={Cancel01Icon} size={14} /></button>
             )}
         </div>
     );
@@ -232,19 +247,19 @@ function ProfilesTab() {
                     <button
                         key={s}
                         onClick={() => setStatusFilter(s)}
-                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-surface-2 text-fg-muted hover:bg-surface-3'}`}
                     >
-                        {s === '' ? 'Tous' : s === ProfileStatus.PENDING ? 'À valider' : s.charAt(0).toUpperCase() + s.slice(1)}
+                        {s === '' ? 'Tous' : s === ProfileStatus.PENDING ? 'À valider' : STATUS_LABELS[s] ?? s}
                     </button>
                 ))}
                 <SearchBox value={search} onChange={setSearch} placeholder="Chercher : pseudo, nom, e-mail, téléphone, ville" />
-                {!isLoading && <span className="text-sm text-gray-400">{total} profil(s)</span>}
+                {!isLoading && <span className="text-sm text-fg-muted">{total} profil(s)</span>}
             </div>
 
             {isLoading ? (
-                <p className="text-gray-400 py-8 text-center">Chargement…</p>
+                <p className="text-fg-muted py-8 text-center">Chargement…</p>
             ) : profiles.length === 0 ? (
-                <p className="text-gray-400 py-8 text-center">
+                <p className="text-fg-muted py-8 text-center">
                     {term
                         ? (statusFilter === ProfileStatus.PENDING
                             ? 'Aucun profil à valider ne correspond. Vérifie l’orthographe, ou cherche dans « Tous » (tous les statuts).'
@@ -255,21 +270,21 @@ function ProfilesTab() {
                 </p>
             ) : (
                 <div className="overflow-x-auto rounded-lg">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700">
+                    <table className="min-w-full divide-y divide-line">
+                        <thead className="bg-surface-2">
                             <tr>
                                 {['Membre', 'Photos', 'Intention', 'Signalements', 'Statut', 'Créé le', 'Actions'].map(h => (
-                                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{h}</th>
+                                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{h}</th>
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-gray-800 divide-y divide-gray-700">
+                        <tbody className="bg-surface divide-y divide-line">
                             {profiles.map(p => (
-                                <tr key={p._id} className="hover:bg-gray-750">
+                                <tr key={p._id} className="hover:bg-surface-2">
                                     <td className="px-4 py-3 text-sm">
                                         <button onClick={() => setReviewing(p)} className="text-left hover:underline">
-                                            <span className="text-gray-200">{p.displayName || p.memberName || <span className="text-gray-500 italic">—</span>}</span>
-                                            {p.memberName && p.displayName && <span className="block text-xs text-gray-500">{p.memberName}</span>}
+                                            <span className="text-fg">{p.displayName || p.memberName || <span className="text-fg-subtle italic">—</span>}</span>
+                                            {p.memberName && p.displayName && <span className="block text-xs text-fg-subtle">{p.memberName}</span>}
                                         </button>
                                     </td>
                                     <td className="px-4 py-3 text-sm">
@@ -278,16 +293,16 @@ function ProfilesTab() {
                                         <div className="flex items-center gap-2">
                                             {p.photos[0]?.url
                                                 ? <img src={p.photos[0].url} alt="" className="w-9 h-9 rounded-sm object-cover" />
-                                                : <span className="w-9 h-9 rounded-sm bg-gray-700 grid place-items-center text-gray-500 text-xs">—</span>}
-                                            <span className={p.meetsPhotoRequirement ? 'text-gray-300' : 'text-yellow-400'}>
+                                                : <span className="w-9 h-9 rounded-sm bg-surface-2 grid place-items-center text-fg-subtle text-xs">—</span>}
+                                            <span className={p.meetsPhotoRequirement ? 'text-fg-muted' : 'text-yellow-700 dark:text-yellow-400'}>
                                                 {p.photoCount}/{p.minPhotos}
                                             </span>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 text-sm text-gray-300">{INTENTION_LABELS[p.intention] ?? p.intention}</td>
-                                    <td className="px-4 py-3 text-sm text-center text-gray-300">{p.moderation.reportCount}</td>
-                                    <td className="px-4 py-3"><span className={statusBadge(p.status)}>{p.status}</span></td>
-                                    <td className="px-4 py-3 text-sm text-gray-400">{new Date(p.createdAt).toLocaleDateString('fr-FR')}</td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{INTENTION_LABELS[p.intention] ?? p.intention}</td>
+                                    <td className="px-4 py-3 text-sm text-center text-fg-muted">{p.moderation.reportCount}</td>
+                                    <td className="px-4 py-3"><span className={statusBadge(p.status)}>{STATUS_LABELS[p.status] ?? p.status}</span></td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{new Date(p.createdAt).toLocaleDateString('fr-FR')}</td>
                                     <td className="px-4 py-3">
                                         <div className="flex gap-2 flex-wrap">
                                             <button onClick={() => setReviewing(p)} className="px-2 py-1 text-xs bg-pink-700 hover:bg-pink-600 text-white rounded-sm">Examiner</button>
@@ -361,18 +376,18 @@ function ProfilesTab() {
             {/* Reject reason modal */}
             {rejectModalOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-                    <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-xl">
-                        <h3 className="text-lg font-semibold text-white mb-4">Rejeter le profil</h3>
-                        <label className="block text-sm text-gray-300 mb-1">Motif du rejet (optionnel)</label>
+                    <div className="bg-surface rounded-lg p-6 w-full max-w-md border border-line">
+                        <h3 className="text-lg font-semibold text-fg mb-4">Rejeter le profil</h3>
+                        <label className="block text-sm text-fg-muted mb-1">Motif du rejet (optionnel)</label>
                         <textarea
                             value={rejectReason}
                             onChange={e => setRejectReason(e.target.value)}
                             rows={3}
-                            className="w-full bg-gray-700 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             placeholder="Ex : contenu inapproprié…"
                         />
                         <div className="flex justify-end gap-3 mt-4">
-                            <button onClick={() => setRejectModalOpen(false)} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-sm">Annuler</button>
+                            <button onClick={() => setRejectModalOpen(false)} className="px-4 py-2 text-sm bg-surface-3 hover:bg-line-strong text-fg rounded-sm">Annuler</button>
                             <button onClick={handleRejectSubmit} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded-sm">Rejeter</button>
                         </div>
                     </div>
@@ -389,10 +404,10 @@ function StatCard({ label, value, hint, tone = 'default' }: {
     label: string; value: number | string; hint?: string; tone?: 'default' | 'warn';
 }) {
     return (
-        <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
-            <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-            <p className={`text-2xl font-bold ${tone === 'warn' ? 'text-yellow-400' : 'text-white'}`}>{value}</p>
-            {hint && <p className="text-xs text-gray-500 mt-0.5">{hint}</p>}
+        <div className="bg-surface border border-line rounded-lg px-4 py-3">
+            <p className="text-xs uppercase tracking-wide text-fg-subtle">{label}</p>
+            <p className={`text-2xl font-bold ${tone === 'warn' ? 'text-yellow-700 dark:text-yellow-400' : 'text-fg'}`}>{value}</p>
+            {hint && <p className="text-xs text-fg-subtle mt-0.5">{hint}</p>}
         </div>
     );
 }
@@ -459,18 +474,18 @@ function MembersTab() {
                     <button
                         key={st}
                         onClick={() => setStatusFilter(st)}
-                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === st ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === st ? 'bg-pink-600 text-white' : 'bg-surface-2 text-fg-muted hover:bg-surface-3'}`}
                     >
-                        {st === '' ? 'Tous' : st.charAt(0).toUpperCase() + st.slice(1)}
+                        {st === '' ? 'Tous' : STATUS_LABELS[st] ?? st}
                     </button>
                 ))}
                 <SearchBox value={search} onChange={setSearch} placeholder="Pseudo, nom, e-mail, téléphone, ville" />
-                <span className="ml-auto flex items-center gap-2 text-sm text-gray-400">
+                <span className="ml-auto flex items-center gap-2 text-sm text-fg-muted">
                     {total} membre(s)
                     <select
                         value={limit}
                         onChange={e => setLimit(Number(e.target.value))}
-                        className="bg-gray-700 text-gray-200 rounded-sm px-2 py-1 text-sm"
+                        className="bg-surface-2 text-fg rounded-sm px-2 py-1 text-sm"
                     >
                         {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
                     </select>
@@ -478,41 +493,41 @@ function MembersTab() {
             </div>
 
             {isLoading ? (
-                <p className="text-gray-400 py-8 text-center">Chargement…</p>
+                <p className="text-fg-muted py-8 text-center">Chargement…</p>
             ) : rows.length === 0 ? (
-                <p className="text-gray-400 py-8 text-center">{term ? 'Aucun profil ne correspond.' : 'Aucun membre trouvé.'}</p>
+                <p className="text-fg-muted py-8 text-center">{term ? 'Aucun profil ne correspond.' : 'Aucun membre trouvé.'}</p>
             ) : (
                 <div className="overflow-x-auto rounded-lg">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700">
+                    <table className="min-w-full divide-y divide-line">
+                        <thead className="bg-surface-2">
                             <tr>
                                 {['Membre', 'Sexe / Âge', 'Ville', 'Statut', 'Photos', 'Matchs', 'Conversations', 'Signalements', 'Inscrit le'].map(h => (
-                                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{h}</th>
+                                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{h}</th>
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-gray-800 divide-y divide-gray-700">
+                        <tbody className="bg-surface divide-y divide-line">
                             {rows.map(r => (
-                                <tr key={r._id} className="hover:bg-gray-750">
+                                <tr key={r._id} className="hover:bg-surface-2">
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-3">
                                             {r.photoUrl
                                                 ? <img src={r.photoUrl} alt="" className="w-9 h-9 rounded-sm object-cover" />
-                                                : <span className="w-9 h-9 rounded-sm bg-gray-700 grid place-items-center text-gray-500 text-xs">—</span>}
+                                                : <span className="w-9 h-9 rounded-sm bg-surface-2 grid place-items-center text-fg-subtle text-xs">—</span>}
                                             <div className="min-w-0">
-                                                <p className="text-sm text-gray-200 truncate">{r.displayName}</p>
-                                                <p className="text-xs text-gray-500 truncate">{r.memberEmail ?? r.memberName ?? r.userId}</p>
+                                                <p className="text-sm text-fg truncate">{r.displayName}</p>
+                                                <p className="text-xs text-fg-subtle truncate">{r.memberEmail ?? r.memberName ?? r.userId}</p>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 text-sm text-gray-300">{[r.sex, r.ageBracket].filter(Boolean).join(' · ') || '—'}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-300">{r.city ?? '—'}</td>
-                                    <td className="px-4 py-3"><span className={statusBadge(r.status)}>{r.status}</span></td>
-                                    <td className={`px-4 py-3 text-sm ${r.photoCount >= 2 ? 'text-gray-300' : 'text-yellow-400'}`}>{r.photoCount}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-200 font-medium">{r.matches}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-200 font-medium">{r.conversations}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-300">{r.reportCount}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-400">
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{[r.sex && (SEX_LABELS[r.sex] ?? r.sex), r.ageBracket].filter(Boolean).join(' · ') || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{r.city ?? '—'}</td>
+                                    <td className="px-4 py-3"><span className={statusBadge(r.status)}>{STATUS_LABELS[r.status] ?? r.status}</span></td>
+                                    <td className={`px-4 py-3 text-sm ${r.photoCount >= 2 ? 'text-fg-muted' : 'text-yellow-700 dark:text-yellow-400'}`}>{r.photoCount}</td>
+                                    <td className="px-4 py-3 text-sm text-fg font-medium">{r.matches}</td>
+                                    <td className="px-4 py-3 text-sm text-fg font-medium">{r.conversations}</td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{r.reportCount}</td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">
                                         {r.createdAt ? new Date(r.createdAt).toLocaleDateString('fr-FR') : '—'}
                                     </td>
                                 </tr>
@@ -590,53 +605,53 @@ function ReportsTab() {
                     <button
                         key={s}
                         onClick={() => setStatusFilter(s)}
-                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${statusFilter === s ? 'bg-pink-600 text-white' : 'bg-surface-2 text-fg-muted hover:bg-surface-3'}`}
                     >
-                        {s === '' ? 'Tous' : s.charAt(0).toUpperCase() + s.slice(1)}
+                        {s === '' ? 'Tous' : STATUS_LABELS[s] ?? s}
                     </button>
                 ))}
             </div>
 
             {isLoading ? (
-                <p className="text-gray-400 py-8 text-center">Chargement…</p>
+                <p className="text-fg-muted py-8 text-center">Chargement…</p>
             ) : reports.length === 0 ? (
-                <p className="text-gray-400 py-8 text-center">Aucun signalement trouvé.</p>
+                <p className="text-fg-muted py-8 text-center">Aucun signalement trouvé.</p>
             ) : (
                 <div className="overflow-x-auto rounded-lg">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700">
+                    <table className="min-w-full divide-y divide-line">
+                        <thead className="bg-surface-2">
                             <tr>
                                 {['Signalé par', 'Profil signalé', 'Motif', 'Statut', 'Date', 'Actions'].map(h => (
-                                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{h}</th>
+                                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{h}</th>
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-gray-800 divide-y divide-gray-700">
+                        <tbody className="bg-surface divide-y divide-line">
                             {reports.map(r => (
-                                <tr key={r._id} className="hover:bg-gray-750">
+                                <tr key={r._id} className="hover:bg-surface-2">
                                     {/* Names, not ObjectIds: a moderator has to know who
                                         reported whom before deciding anything. */}
                                     <td className="px-4 py-3 text-sm">
-                                        <p className="text-gray-200">{r.reporter?.displayName ?? '—'}</p>
-                                        <p className="text-xs text-gray-500">{r.reporter?.email ?? r.reporterId}</p>
+                                        <p className="text-fg">{r.reporter?.displayName ?? '—'}</p>
+                                        <p className="text-xs text-fg-subtle">{r.reporter?.email ?? r.reporterId}</p>
                                     </td>
                                     <td className="px-4 py-3 text-sm">
-                                        <p className="text-gray-200">{r.reported?.displayName ?? '—'}</p>
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-fg">{r.reported?.displayName ?? '—'}</p>
+                                        <p className="text-xs text-fg-subtle">
                                             {r.reported?.email ?? r.reportedUserId}
                                             {typeof r.reported?.reportCount === 'number' && r.reported.reportCount > 0 && (
-                                                <span className="ml-2 text-yellow-400">{r.reported.reportCount} signalement(s)</span>
+                                                <span className="ml-2 text-yellow-700 dark:text-yellow-400">{r.reported.reportCount} signalement(s)</span>
                                             )}
                                         </p>
                                     </td>
-                                    <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">{r.reason}</td>
-                                    <td className="px-4 py-3"><span className={statusBadge(r.status)}>{r.status}</span></td>
-                                    <td className="px-4 py-3 text-sm text-gray-400">{new Date(r.createdAt).toLocaleDateString('fr-FR')}</td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted max-w-xs truncate">{r.reason}</td>
+                                    <td className="px-4 py-3"><span className={statusBadge(r.status)}>{STATUS_LABELS[r.status] ?? r.status}</span></td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{new Date(r.createdAt).toLocaleDateString('fr-FR')}</td>
                                     <td className="px-4 py-3">
                                         {r.status === ReportStatus.OPEN && (
                                             <div className="flex gap-2">
                                                 <button onClick={() => handleReview(r, ReportStatus.REVIEWED)} className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded-sm">Traiter</button>
-                                                <button onClick={() => handleReview(r, ReportStatus.DISMISSED)} className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded-sm">Ignorer</button>
+                                                <button onClick={() => handleReview(r, ReportStatus.DISMISSED)} className="px-2 py-1 text-xs bg-surface-3 hover:bg-line-strong text-fg rounded-sm">Ignorer</button>
                                             </div>
                                         )}
                                     </td>
@@ -699,8 +714,8 @@ function ConfigTab() {
         }
     }
 
-    if (isLoading) return <p className="text-gray-400 py-8 text-center">Chargement…</p>;
-    if (!config) return <p className="text-red-400 py-8 text-center">Impossible de charger la configuration.</p>;
+    if (isLoading) return <p className="text-fg-muted py-8 text-center">Chargement…</p>;
+    if (!config) return <p className="text-red-600 dark:text-red-400 py-8 text-center">Impossible de charger la configuration.</p>;
 
     return (
         <div>
@@ -708,10 +723,10 @@ function ConfigTab() {
             <div className="max-w-xl space-y-6">
 
                 {/* Enable/disable */}
-                <div className="bg-gray-700 rounded-lg p-4 flex items-center justify-between">
+                <div className="bg-surface border border-line rounded-lg p-4 flex items-center justify-between">
                     <div>
-                        <p className="text-white font-medium">Module actif</p>
-                        <p className="text-gray-400 text-sm">Activer ou désactiver SBC Love globalement</p>
+                        <p className="text-fg font-medium">Module actif</p>
+                        <p className="text-fg-muted text-sm">Activer ou désactiver SBC Love globalement</p>
                     </div>
                     <button
                         onClick={() => set('enabled', !draft.enabled)}
@@ -722,10 +737,10 @@ function ConfigTab() {
                 </div>
 
                 {/* Auto approve */}
-                <div className="bg-gray-700 rounded-lg p-4 flex items-center justify-between">
+                <div className="bg-surface border border-line rounded-lg p-4 flex items-center justify-between">
                     <div>
-                        <p className="text-white font-medium">Approbation automatique</p>
-                        <p className="text-gray-400 text-sm">Approuver les profils sans validation manuelle</p>
+                        <p className="text-fg font-medium">Approbation automatique</p>
+                        <p className="text-fg-muted text-sm">Approuver les profils sans validation manuelle</p>
                     </div>
                     <button
                         onClick={() => set('autoApprove', !draft.autoApprove)}
@@ -736,15 +751,15 @@ function ConfigTab() {
                 </div>
 
                 {/* Window settings */}
-                <div className="bg-gray-700 rounded-lg p-4 space-y-4">
-                    <p className="text-white font-medium">Fenêtre d'activité</p>
+                <div className="bg-surface border border-line rounded-lg p-4 space-y-4">
+                    <p className="text-fg font-medium">Fenêtre d'activité</p>
 
                     <div>
-                        <label className="block text-sm text-gray-300 mb-1">Jour actif</label>
+                        <label className="block text-sm text-fg-muted mb-1">Jour actif</label>
                         <select
                             value={draft.activeWeekday ?? config.activeWeekday}
                             onChange={e => set('activeWeekday', Number(e.target.value))}
-                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                         >
                             {WEEKDAY_LABELS.map((d, i) => <option key={i} value={i}>{d}</option>)}
                         </select>
@@ -752,58 +767,58 @@ function ConfigTab() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">Heure d'ouverture</label>
+                            <label className="block text-sm text-fg-muted mb-1">Heure d'ouverture</label>
                             <input
                                 type="number" min={0} max={23}
                                 value={draft.openHour ?? config.openHour}
                                 onChange={e => set('openHour', Number(e.target.value))}
-                                className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">Heure de fermeture</label>
+                            <label className="block text-sm text-fg-muted mb-1">Heure de fermeture</label>
                             <input
                                 type="number" min={0} max={23}
                                 value={draft.closeHour ?? config.closeHour}
                                 onChange={e => set('closeHour', Number(e.target.value))}
-                                className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-sm text-gray-300 mb-1">Fuseau horaire</label>
+                        <label className="block text-sm text-fg-muted mb-1">Fuseau horaire</label>
                         <input
                             type="text"
                             value={draft.timezone ?? config.timezone}
                             onChange={e => set('timezone', e.target.value)}
-                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                             placeholder="Africa/Douala"
                         />
                     </div>
                 </div>
 
                 {/* Quotas */}
-                <div className="bg-gray-700 rounded-lg p-4 space-y-4">
-                    <p className="text-white font-medium">Quotas & seuils</p>
+                <div className="bg-surface border border-line rounded-lg p-4 space-y-4">
+                    <p className="text-fg font-medium">Quotas & seuils</p>
 
                     <div>
-                        <label className="block text-sm text-gray-300 mb-1">Intérêts max par semaine</label>
+                        <label className="block text-sm text-fg-muted mb-1">Intérêts max par semaine</label>
                         <input
                             type="number" min={1}
                             value={draft.maxInterestsPerWeek ?? config.maxInterestsPerWeek}
                             onChange={e => set('maxInterestsPerWeek', Number(e.target.value))}
-                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                         />
                     </div>
 
                     <div>
-                        <label className="block text-sm text-gray-300 mb-1">Seuil de suspension automatique (signalements)</label>
+                        <label className="block text-sm text-fg-muted mb-1">Seuil de suspension automatique (signalements)</label>
                         <input
                             type="number" min={1}
                             value={draft.autoSuspendThreshold ?? config.autoSuspendThreshold}
                             onChange={e => set('autoSuspendThreshold', Number(e.target.value))}
-                            className="w-full bg-gray-600 text-gray-200 rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                            className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
                         />
                     </div>
                 </div>
@@ -819,7 +834,7 @@ function ConfigTab() {
                 </div>
 
                 {config.updatedAt && (
-                    <p className="text-xs text-gray-500 text-right">
+                    <p className="text-xs text-fg-subtle text-right">
                         Dernière mise à jour : {new Date(config.updatedAt).toLocaleString('fr-FR')}
                         {config.updatedBy ? ` par ${config.updatedBy}` : ''}
                     </p>
@@ -842,22 +857,13 @@ const SbcLoveManagementPage = () => {
     const [activeTab, setActiveTab] = useState<Tab>('members');
 
     return (
-        <div className="min-h-screen bg-gray-900 text-gray-100">
-            <Header title="SBC Love – Administration" />
+        <div className="text-fg">
+            <Header title="SBC Love – Administration" name="Modération des profils, gestion des signalements et configuration du module." />
 
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
-                {/* Page header */}
-                <div className="mb-6">
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                        <span>💗</span> SBC Love
-                    </h2>
-                    <p className="text-gray-400 text-sm mt-1">
-                        Modération des profils, gestion des signalements et configuration du module.
-                    </p>
-                </div>
+            <main>
 
                 {/* Tabs */}
-                <div className="border-b border-gray-700 mb-6">
+                <div className="border-b border-line mb-6">
                     <nav className="flex gap-1">
                         {TABS.map(tab => (
                             <button
@@ -865,8 +871,8 @@ const SbcLoveManagementPage = () => {
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`px-5 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
                                     activeTab === tab.id
-                                        ? 'bg-gray-800 text-pink-400 border-b-2 border-pink-500'
-                                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                                        ? 'bg-surface text-pink-600 dark:text-pink-400 border-b-2 border-pink-500'
+                                        : 'text-fg-muted hover:text-fg hover:bg-surface'
                                 }`}
                             >
                                 {tab.label}

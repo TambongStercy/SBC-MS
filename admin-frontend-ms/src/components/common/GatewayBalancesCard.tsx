@@ -153,13 +153,13 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
     if (isLoading) {
         return (
             <motion.div
-                className="bg-gray-800/50 backdrop-blur-md overflow-hidden shadow-lg rounded-xl border border-gray-700 p-6"
+                className="bg-surface overflow-hidden rounded-xl border border-line p-6"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
             >
                 <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="animate-spin text-gray-400" size={24} />
-                    <span className="ml-2 text-gray-400">Chargement...</span>
+                    <RefreshCw className="animate-spin text-fg-muted" size={24} />
+                    <span className="ml-2 text-fg-muted">Chargement…</span>
                 </div>
             </motion.div>
         );
@@ -167,7 +167,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
 
     return (
         <motion.div
-            className="bg-gray-800/50 backdrop-blur-md overflow-hidden shadow-lg rounded-xl border border-gray-700"
+            className="bg-surface overflow-hidden rounded-xl border border-line"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -176,8 +176,8 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center">
-                        <CreditCard className="text-purple-400 mr-2" size={24} />
-                        <h3 className="text-lg font-semibold text-gray-100">Soldes des Passerelles</h3>
+                        <CreditCard className="text-purple-600 dark:text-purple-400 mr-2" size={24} />
+                        <h3 className="text-lg font-semibold text-fg">Soldes des passerelles</h3>
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Toggle Live/Manual */}
@@ -186,20 +186,20 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                             className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors ${
                                 showLiveBalances
                                     ? 'bg-green-600 hover:bg-green-700 text-white'
-                                    : 'bg-gray-600 hover:bg-gray-700 text-white'
+                                    : 'bg-surface-3 hover:bg-surface-2 text-fg'
                             }`}
                             title={showLiveBalances ? 'Affichage en direct' : 'Affichage manuel'}
                         >
                             {showLiveBalances ? <Zap size={14} /> : <Clock size={14} />}
-                            {showLiveBalances ? 'Live' : 'Manuel'}
+                            {showLiveBalances ? 'En direct' : 'Manuel'}
                         </button>
                         <button
                             onClick={() => {
                                 fetchBalances();
                                 fetchLiveBalances();
                             }}
-                            className="p-2 text-gray-400 hover:text-gray-200 transition-colors"
-                            title="Rafraichir"
+                            className="p-2 text-fg-muted hover:text-fg transition-colors"
+                            title="Actualiser" aria-label="Actualiser"
                             disabled={isLoadingLive}
                         >
                             <RefreshCw size={18} className={isLoadingLive ? 'animate-spin' : ''} />
@@ -216,7 +216,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                             <div className="flex gap-2">
                                 <button
                                     onClick={handleCancel}
-                                    className="flex items-center gap-1 px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors"
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-surface-3 hover:bg-surface-2 text-fg text-sm rounded-lg transition-colors"
                                     disabled={isSaving}
                                 >
                                     <X size={14} />
@@ -236,7 +236,7 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                 </div>
 
                 {error && (
-                    <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-lg flex items-center text-red-300">
+                    <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg flex items-center text-red-700 dark:text-red-300">
                         <AlertCircle size={18} className="mr-2" />
                         {error}
                     </div>
@@ -244,10 +244,10 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
 
                 {/* Live Balance Indicator */}
                 {showLiveBalances && liveBalances && (
-                    <div className="mb-4 p-2 bg-green-900/20 border border-green-700/50 rounded-lg flex items-center text-green-300 text-sm">
+                    <div className="mb-4 p-2 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700/50 rounded-lg flex items-center text-green-700 dark:text-green-300 text-sm">
                         <Zap size={16} className="mr-2" />
                         Soldes en direct depuis les APIs des passerelles
-                        <span className="ml-auto text-xs text-green-400">
+                        <span className="ml-auto text-xs text-green-600 dark:text-green-400">
                             {new Date(liveBalances.timestamp).toLocaleTimeString('fr-FR')}
                         </span>
                     </div>
@@ -256,14 +256,14 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                 {/* Gateway Balances Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     {/* NOWPayments (USD) */}
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                        <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+                    <div className="bg-surface-2/50 rounded-lg p-4">
+                        <div className="flex items-center justify-between text-sm text-fg-muted mb-2">
                             <div className="flex items-center">
-                                <DollarSign size={16} className="mr-1 text-green-400" />
+                                <DollarSign size={16} className="mr-1 text-green-600 dark:text-green-400" />
                                 NOWPayments (USD)
                             </div>
                             {showLiveBalances && liveBalances?.nowpayments.available && (
-                                <span className="text-xs bg-green-600/30 text-green-300 px-2 py-0.5 rounded-sm">LIVE</span>
+                                <span className="text-xs bg-green-600/15 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-sm">EN DIRECT</span>
                             )}
                         </div>
                         {isEditing ? (
@@ -271,28 +271,28 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                 type="number"
                                 value={editForm.nowpaymentsBalanceUSD}
                                 onChange={(e) => setEditForm({ ...editForm, nowpaymentsBalanceUSD: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2 text-xl font-semibold"
+                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-xl font-semibold"
                                 step="0.01"
                                 min="0"
                             />
                         ) : (
                             <>
-                                <p className="text-2xl font-semibold text-green-400">
+                                <p className="text-2xl font-semibold text-green-600 dark:text-green-400">
                                     ${showLiveBalances && liveBalances?.nowpayments.available
                                         ? money(liveBalances.nowpayments.totalUsd).toFixed(2)
                                         : money(balances?.nowpaymentsBalanceUSD).toFixed(2)}
                                 </p>
                                 {showLiveBalances && liveBalances?.nowpayments.available && money(liveBalances.nowpayments.totalPendingUsd) > 0 && (
-                                    <p className="text-xs text-yellow-400 mt-1">
+                                    <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
                                         + ${money(liveBalances.nowpayments.totalPendingUsd).toFixed(2)} en attente
                                     </p>
                                 )}
                                 {showLiveBalances && liveBalances?.nowpayments.error && (
-                                    <p className="text-xs text-red-400 mt-1">Erreur: {liveBalances.nowpayments.error}</p>
+                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">Erreur : {liveBalances.nowpayments.error}</p>
                                 )}
                                 {/* Show crypto breakdown */}
                                 {showLiveBalances && liveBalances?.nowpayments.available && liveBalances.nowpayments.balances.length > 0 && (
-                                    <div className="mt-2 text-xs text-gray-400 max-h-20 overflow-y-auto">
+                                    <div className="mt-2 text-xs text-fg-muted max-h-20 overflow-y-auto">
                                         {liveBalances.nowpayments.balances
                                             .filter(b => b.amount > 0)
                                             .map(b => (
@@ -308,29 +308,29 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                     </div>
 
                     {/* FeexPay (XAF) - Always Manual */}
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                        <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+                    <div className="bg-surface-2/50 rounded-lg p-4">
+                        <div className="flex items-center justify-between text-sm text-fg-muted mb-2">
                             <div className="flex items-center">
-                                <Wallet size={16} className="mr-1 text-orange-400" />
+                                <Wallet size={16} className="mr-1 text-orange-600 dark:text-orange-400" />
                                 FeexPay (XAF)
                             </div>
-                            <span className="text-xs bg-gray-600/50 text-gray-300 px-2 py-0.5 rounded-sm">MANUEL</span>
+                            <span className="text-xs bg-surface-3/50 text-fg-muted px-2 py-0.5 rounded-sm">MANUEL</span>
                         </div>
                         {isEditing ? (
                             <input
                                 type="number"
                                 value={editForm.feexpayBalanceXAF}
                                 onChange={(e) => setEditForm({ ...editForm, feexpayBalanceXAF: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2 text-xl font-semibold"
+                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-xl font-semibold"
                                 step="1"
                                 min="0"
                             />
                         ) : (
                             <>
-                                <p className="text-2xl font-semibold text-orange-400">
-                                    {Math.round(balances?.feexpayBalanceXAF || 0).toLocaleString('en-US')} F
+                                <p className="text-2xl font-semibold text-orange-600 dark:text-orange-400">
+                                    {Math.round(balances?.feexpayBalanceXAF || 0).toLocaleString('fr-FR')} F
                                 </p>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-fg-subtle mt-1">
                                     API non disponible - saisie manuelle
                                 </p>
                             </>
@@ -338,14 +338,14 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                     </div>
 
                     {/* CinetPay (XAF) */}
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                        <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+                    <div className="bg-surface-2/50 rounded-lg p-4">
+                        <div className="flex items-center justify-between text-sm text-fg-muted mb-2">
                             <div className="flex items-center">
-                                <Wallet size={16} className="mr-1 text-blue-400" />
+                                <Wallet size={16} className="mr-1 text-blue-600 dark:text-blue-400" />
                                 CinetPay (XAF)
                             </div>
                             {showLiveBalances && liveBalances?.cinetpay.available && (
-                                <span className="text-xs bg-green-600/30 text-green-300 px-2 py-0.5 rounded-sm">LIVE</span>
+                                <span className="text-xs bg-green-600/15 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-sm">EN DIRECT</span>
                             )}
                         </div>
                         {isEditing ? (
@@ -353,27 +353,27 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                                 type="number"
                                 value={editForm.cinetpayBalanceXAF}
                                 onChange={(e) => setEditForm({ ...editForm, cinetpayBalanceXAF: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2 text-xl font-semibold"
+                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-xl font-semibold"
                                 step="1"
                                 min="0"
                             />
                         ) : (
                             <>
-                                <p className="text-2xl font-semibold text-blue-400">
+                                <p className="text-2xl font-semibold text-blue-600 dark:text-blue-400">
                                     {showLiveBalances && liveBalances?.cinetpay.available
-                                        ? Math.round(liveBalances.cinetpay.available_balance).toLocaleString('en-US')
-                                        : Math.round(balances?.cinetpayBalanceXAF || 0).toLocaleString('en-US')} F
+                                        ? Math.round(liveBalances.cinetpay.available_balance).toLocaleString('fr-FR')
+                                        : Math.round(balances?.cinetpayBalanceXAF || 0).toLocaleString('fr-FR')} F
                                 </p>
                                 {showLiveBalances && liveBalances?.cinetpay.available && (
-                                    <div className="text-xs text-gray-400 mt-1">
-                                        <div>Total: {Math.round(liveBalances.cinetpay.total).toLocaleString('en-US')} F</div>
+                                    <div className="text-xs text-fg-muted mt-1">
+                                        <div>Total : {Math.round(liveBalances.cinetpay.total).toLocaleString('fr-FR')} F</div>
                                         {liveBalances.cinetpay.inUse > 0 && (
-                                            <div className="text-yellow-400">En cours: {Math.round(liveBalances.cinetpay.inUse).toLocaleString('en-US')} F</div>
+                                            <div className="text-yellow-700 dark:text-yellow-400">En cours : {Math.round(liveBalances.cinetpay.inUse).toLocaleString('fr-FR')} F</div>
                                         )}
                                     </div>
                                 )}
                                 {showLiveBalances && liveBalances?.cinetpay.error && (
-                                    <p className="text-xs text-red-400 mt-1">Erreur: {liveBalances.cinetpay.error}</p>
+                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">Erreur : {liveBalances.cinetpay.error}</p>
                                 )}
                             </>
                         )}
@@ -383,46 +383,46 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                 {/* Notes field (only in edit mode) */}
                 {isEditing && (
                     <div className="mb-6">
-                        <label className="block text-sm text-gray-400 mb-2">Notes (optionnel)</label>
+                        <label className="block text-sm text-fg-muted mb-2">Notes (optionnel)</label>
                         <input
                             type="text"
                             value={editForm.notes}
                             onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                            placeholder="Ex: Mise a jour du 26/12/2025"
-                            className="w-full bg-gray-600 text-gray-100 rounded-sm px-3 py-2"
+                            placeholder="Ex. : mise à jour du 26/12/2025"
+                            className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2"
                         />
                     </div>
                 )}
 
                 {/* Summary Section */}
-                <div className="border-t border-gray-700 pt-4">
+                <div className="border-t border-line pt-4">
                     {/* Totals Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         {/* Total External USD */}
-                        <div className="bg-green-900/20 rounded-lg p-4">
-                            <div className="flex items-center text-sm text-green-300 mb-1">
+                        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                            <div className="flex items-center text-sm text-green-600 dark:text-green-300 mb-1">
                                 <DollarSign size={16} className="mr-1" />
-                                Total Externe USD (NOWPayments)
+                                Total externe USD (NOWPayments)
                             </div>
-                            <p className="text-2xl font-bold text-green-400">
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                                 ${revenue.totalExternalUSD.toFixed(2)}
                             </p>
-                            <p className="text-xs text-gray-400 mt-1">
-                                Passif Users USD: ${totalUserBalanceUSD.toFixed(2)}
+                            <p className="text-xs text-fg-muted mt-1">
+                                Passif membres USD : ${totalUserBalanceUSD.toFixed(2)}
                             </p>
                         </div>
 
                         {/* Total External XAF */}
-                        <div className="bg-blue-900/20 rounded-lg p-4">
-                            <div className="flex items-center text-sm text-blue-300 mb-1">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                            <div className="flex items-center text-sm text-blue-600 dark:text-blue-300 mb-1">
                                 <Wallet size={16} className="mr-1" />
-                                Total Externe XAF (CinetPay + FeexPay)
+                                Total externe XAF (CinetPay + FeexPay)
                             </div>
-                            <p className="text-2xl font-bold text-blue-400">
-                                {Math.round(revenue.totalExternalXAF).toLocaleString('en-US')} F
+                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                {Math.round(revenue.totalExternalXAF).toLocaleString('fr-FR')} F
                             </p>
-                            <p className="text-xs text-gray-400 mt-1">
-                                Passif Users XAF: {Math.round(totalUserBalanceXAF).toLocaleString('en-US')} F
+                            <p className="text-xs text-fg-muted mt-1">
+                                Passif membres XAF : {Math.round(totalUserBalanceXAF).toLocaleString('fr-FR')} F
                             </p>
                         </div>
                     </div>
@@ -430,30 +430,30 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                     {/* Revenue Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* USD Revenue */}
-                        <div className={`rounded-lg p-4 ${revenue.revenueUSD >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
-                            <div className="flex items-center text-sm mb-1" style={{ color: revenue.revenueUSD >= 0 ? '#86efac' : '#fca5a5' }}>
+                        <div className={`rounded-lg p-4 ${revenue.revenueUSD >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
+                            <div className={`flex items-center text-sm mb-1 ${revenue.revenueUSD >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
                                 <TrendingUp size={16} className="mr-1" />
                                 Revenu USD (NOWPayments - Passif USD)
                             </div>
-                            <p className={`text-2xl font-bold ${revenue.revenueUSD >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            <p className={`text-2xl font-bold ${revenue.revenueUSD >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                                 ${revenue.revenueUSD.toFixed(2)}
                             </p>
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-fg-muted mt-1">
                                 = ${revenue.totalExternalUSD.toFixed(2)} - ${totalUserBalanceUSD.toFixed(2)}
                             </p>
                         </div>
 
                         {/* XAF Revenue */}
-                        <div className={`rounded-lg p-4 ${revenue.revenueXAF >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
-                            <div className="flex items-center text-sm mb-1" style={{ color: revenue.revenueXAF >= 0 ? '#86efac' : '#fca5a5' }}>
+                        <div className={`rounded-lg p-4 ${revenue.revenueXAF >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
+                            <div className={`flex items-center text-sm mb-1 ${revenue.revenueXAF >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
                                 <TrendingUp size={16} className="mr-1" />
                                 Revenu XAF (CinetPay + FeexPay - Passif XAF)
                             </div>
-                            <p className={`text-2xl font-bold ${revenue.revenueXAF >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {Math.round(revenue.revenueXAF).toLocaleString('en-US')} F
+                            <p className={`text-2xl font-bold ${revenue.revenueXAF >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {Math.round(revenue.revenueXAF).toLocaleString('fr-FR')} F
                             </p>
-                            <p className="text-xs text-gray-400 mt-1">
-                                = {Math.round(revenue.totalExternalXAF).toLocaleString('en-US')} - {Math.round(totalUserBalanceXAF).toLocaleString('en-US')} F
+                            <p className="text-xs text-fg-muted mt-1">
+                                = {Math.round(revenue.totalExternalXAF).toLocaleString('fr-FR')} - {Math.round(totalUserBalanceXAF).toLocaleString('fr-FR')} F
                             </p>
                         </div>
                     </div>
@@ -461,18 +461,18 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                     {/* Combined Totals Row */}
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Combined Total External */}
-                        <div className="bg-purple-900/20 rounded-lg p-3">
+                        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center text-sm text-purple-300">
+                                <div className="flex items-center text-sm text-purple-600 dark:text-purple-300">
                                     <CreditCard size={16} className="mr-1" />
-                                    Total Externe Combine (XAF)
+                                    Total externe combiné (XAF)
                                 </div>
-                                <p className="text-lg font-bold text-purple-400">
-                                    {Math.round(revenue.totalExternalCombinedXAF).toLocaleString('en-US')} F
+                                <p className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                                    {Math.round(revenue.totalExternalCombinedXAF).toLocaleString('fr-FR')} F
                                 </p>
                             </div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                Taux USD/XAF: {USD_TO_XAF_RATE} | USD converti: {Math.round(revenue.totalExternalUSD * USD_TO_XAF_RATE).toLocaleString('en-US')} F
+                            <p className="text-xs text-fg-muted mt-1">
+                                Taux USD/XAF : {USD_TO_XAF_RATE} | USD converti : {Math.round(revenue.totalExternalUSD * USD_TO_XAF_RATE).toLocaleString('fr-FR')} F
                             </p>
                         </div>
 
@@ -481,18 +481,18 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
                             const totalRevenueCombinedXAF = revenue.revenueXAF + (revenue.revenueUSD * USD_TO_XAF_RATE);
                             const isPositive = totalRevenueCombinedXAF >= 0;
                             return (
-                                <div className={`rounded-lg p-3 ${isPositive ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
+                                <div className={`rounded-lg p-3 ${isPositive ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center text-sm" style={{ color: isPositive ? '#86efac' : '#fca5a5' }}>
+                                        <div className={`flex items-center text-sm ${isPositive ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
                                             <TrendingUp size={16} className="mr-1" />
-                                            Revenu Total Combine (XAF)
+                                            Revenu total combiné (XAF)
                                         </div>
-                                        <p className={`text-lg font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                                            {Math.round(totalRevenueCombinedXAF).toLocaleString('en-US')} F
+                                        <p className={`text-lg font-bold ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                            {Math.round(totalRevenueCombinedXAF).toLocaleString('fr-FR')} F
                                         </p>
                                     </div>
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        = {Math.round(revenue.revenueXAF).toLocaleString('en-US')} F + (${revenue.revenueUSD.toFixed(2)} × {USD_TO_XAF_RATE})
+                                    <p className="text-xs text-fg-muted mt-1">
+                                        = {Math.round(revenue.revenueXAF).toLocaleString('fr-FR')} F + (${revenue.revenueUSD.toFixed(2)} × {USD_TO_XAF_RATE})
                                     </p>
                                 </div>
                             );
@@ -502,8 +502,8 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
 
                 {/* Last Updated Info */}
                 {balances?.lastUpdatedAt && (
-                    <div className="mt-4 text-xs text-gray-500 text-right">
-                        Derniere mise a jour manuelle: {new Date(balances.lastUpdatedAt).toLocaleString('fr-FR')}
+                    <div className="mt-4 text-xs text-fg-subtle text-right">
+                        Dernière mise à jour manuelle : {new Date(balances.lastUpdatedAt).toLocaleString('fr-FR')}
                         {balances.notes && <span className="ml-2">- {balances.notes}</span>}
                     </div>
                 )}

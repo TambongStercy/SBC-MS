@@ -159,18 +159,18 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
         }
     };
 
-    const field = 'w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+    const field = 'w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 
     return (
         <div className="flex-1 overflow-auto relative z-10">
             <Header title="SBC Ads Network — Campagne test" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
+            <main>
                 <motion.div
-                    className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6 grid lg:grid-cols-3 gap-5 items-start"
+                    className="bg-surface rounded-xl p-6 border border-line mb-6 grid lg:grid-cols-3 gap-5 items-start"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                 >
-                    <div className="lg:col-span-2 bg-blue-900/20 border border-blue-700 rounded-lg p-4 text-sm text-blue-100">
+                    <div className="lg:col-span-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded-lg p-4 text-sm text-blue-800 dark:text-blue-100">
                         <p>
                             <strong>À quoi elle sert.</strong> Un nouveau diffuseur déclare lui-même
                             son nombre de vues. La campagne test est la première qu'il publie : elle
@@ -192,21 +192,21 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                                     { label: 'En cours', value: campaign.stats.inProgress },
                                     { label: 'Diffuseurs mesurés', value: campaign.stats.measured },
                                 ].map(s => (
-                                    <div key={s.label} className="bg-gray-900/50 rounded-lg px-3 py-2 flex items-baseline justify-between gap-3">
-                                        <span className="text-xs text-gray-400">{s.label}</span>
-                                        <span className="text-xl font-semibold text-gray-100">{s.value}</span>
+                                    <div key={s.label} className="bg-background/50 rounded-lg px-3 py-2 flex items-baseline justify-between gap-3">
+                                        <span className="text-xs text-fg-muted">{s.label}</span>
+                                        <span className="text-xl font-semibold text-fg">{s.value}</span>
                                     </div>
                                 ))}
                             </div>
                         )}
 
                     <div className="flex items-center gap-3">
-                        <button onClick={load} className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm">
-                            <RefreshCw className="w-4 h-4" /> Rafraîchir
+                        <button onClick={load} className="flex items-center gap-2 px-3 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 text-sm">
+                            <RefreshCw className="w-4 h-4" /> Actualiser
                         </button>
                         {campaign?.landingPageUrl && (
                             <a href={campaign.landingPageUrl} target="_blank" rel="noreferrer"
-                                className="flex items-center gap-1 text-sm text-blue-300 hover:text-blue-200">
+                                className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200">
                                 <ExternalLink className="w-3 h-3" /> Voir la page d'atterrissage
                             </a>
                         )}
@@ -218,12 +218,12 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                     <div className="p-12 flex justify-center"><Loader name="Chargement…" /></div>
                 ) : (
                     <motion.div
-                        className="bg-gray-800/50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 grid lg:grid-cols-5 gap-x-8 gap-y-5"
+                        className="bg-surface rounded-xl p-6 border border-line grid lg:grid-cols-5 gap-x-8 gap-y-5"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                     >
                         {!campaign && (
-                            <div className="lg:col-span-5 flex items-center gap-2 text-amber-200 bg-amber-900/20 border border-amber-700 rounded-lg p-3 text-sm">
+                            <div className="lg:col-span-5 flex items-center gap-2 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-3 text-sm">
                                 <FlaskConical className="w-4 h-4 shrink-0" />
                                 Aucune campagne test configurée. Les nouveaux diffuseurs reçoivent
                                 donc directement des campagnes payantes, sur la base de leurs vues
@@ -236,36 +236,36 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                             they were unreadable on the wide screens this panel runs on. */}
                         <div className="lg:col-span-3 space-y-5">
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">Titre</label>
+                            <label className="block text-sm text-fg-muted mb-1">Titre</label>
                             <input className={field} value={form.title} maxLength={300}
                                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                                 placeholder="ex. Découvrez SBC" />
-                            <div className="text-xs text-gray-400 mt-1 text-right">{form.title.length}/300</div>
+                            <div className="text-xs text-fg-muted mt-1 text-right">{form.title.length}/300</div>
                         </div>
 
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">Description</label>
+                            <label className="block text-sm text-fg-muted mb-1">Description</label>
                             <textarea className={field} rows={2} value={form.description} maxLength={2000}
                                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                                 placeholder="Texte affiché sur la page d'atterrissage." />
-                            <div className="text-xs text-gray-400 mt-1 text-right">{form.description.length}/2000</div>
+                            <div className="text-xs text-fg-muted mt-1 text-right">{form.description.length}/2000</div>
                         </div>
 
                         </div>
 
                         <div className="lg:col-span-2 space-y-6">
                         <div>
-                            <label className="block text-sm text-gray-300 mb-2">
+                            <label className="block text-sm text-fg-muted mb-2">
                                 Créative publiée par les diffuseurs
                             </label>
                             {form.mediaFileId && (
                                 <a href={getFileUrl(form.mediaFileId)} target="_blank" rel="noreferrer"
                                     title="Ouvrir en taille réelle">
                                     <img src={getFileUrl(form.mediaFileId)} alt="Créative"
-                                        className="w-full max-h-104 rounded-xl bg-black object-contain mb-3 border border-gray-700 hover:border-gray-500 transition-colors" />
+                                        className="w-full max-h-104 rounded-xl bg-black object-contain mb-3 border border-line hover:border-fg-subtle transition-colors" />
                                 </a>
                             )}
-                            <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
+                            <label className="inline-flex items-center gap-2 px-3 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 text-sm cursor-pointer">
                                 <Upload className="w-4 h-4" />
                                 {uploading === 'media' ? `Envoi… ${uploadPct}%` : form.mediaFileId ? 'Remplacer' : 'Choisir un fichier'}
                                 <input type="file" accept="image/*,video/*" className="hidden"
@@ -274,19 +274,19 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">
+                            <label className="block text-sm text-fg-muted mb-1">
                                 Vidéo de la page d'atterrissage
                             </label>
-                            <p className="text-xs text-gray-500 mb-2">
+                            <p className="text-xs text-fg-subtle mb-2">
                                 Affichée au-dessus du bouton « Je m'inscris » sur la page que voient
                                 les prospects. Maximum 100 Mo — une vidéo de 1 à 2 minutes en 720p
                                 tient largement dedans.
                             </p>
                             {form.landingVideoFileId && (
                                 <video src={getFileUrl(form.landingVideoFileId)} controls
-                                    className="w-full max-h-104 rounded-xl bg-black mb-3 border border-gray-700" />
+                                    className="w-full max-h-104 rounded-xl bg-black mb-3 border border-line" />
                             )}
-                            <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm cursor-pointer">
+                            <label className="inline-flex items-center gap-2 px-3 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 text-sm cursor-pointer">
                                 <Upload className="w-4 h-4" />
                                 {uploading === 'video' ? `Envoi… ${uploadPct}%` : form.landingVideoFileId ? 'Remplacer' : 'Choisir une vidéo'}
                                 <input type="file" accept="video/*" className="hidden"
@@ -298,13 +298,13 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
 
                         <div className="lg:col-span-3 space-y-5">
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">
+                            <label className="block text-sm text-fg-muted mb-1">
                                 Légende proposée aux diffuseurs
                             </label>
                             <textarea className={field} rows={3} value={form.suggestedCaption} maxLength={700}
                                 onChange={e => setForm(f => ({ ...f, suggestedCaption: e.target.value }))}
                                 placeholder="Le lien de suivi de chaque diffuseur y sera ajouté automatiquement." />
-                            <div className="text-xs text-gray-400 mt-1 text-right">{form.suggestedCaption.length}/700</div>
+                            <div className="text-xs text-fg-muted mt-1 text-right">{form.suggestedCaption.length}/700</div>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -321,12 +321,12 @@ const AdsNetworkTestCampaignPage: React.FC = () => {
 
                         <div className="flex flex-wrap gap-3 pt-2">
                             <button onClick={handleSave} disabled={saving || Boolean(uploading)}
-                                className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-600 text-sm font-medium">
+                                className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-sm font-medium">
                                 {saving ? 'Enregistrement…' : campaign ? 'Enregistrer les modifications' : 'Créer la campagne test'}
                             </button>
                             {campaign && (
                                 <button onClick={() => setConfirmRetire(true)}
-                                    className="px-4 py-2.5 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm">
+                                    className="px-4 py-2.5 bg-surface-2 text-fg rounded-lg hover:bg-surface-3 text-sm">
                                     Retirer
                                 </button>
                             )}

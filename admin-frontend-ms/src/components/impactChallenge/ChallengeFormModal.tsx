@@ -104,9 +104,9 @@ const ChallengeFormModal: React.FC<{
             </div>
 
             {challenge ? (
-                <p className="text-sm text-gray-400">
-                    Mois : <span className="text-gray-200">{monthLabel(challenge.month, challenge.year)}</span>
-                    <span className="block text-xs text-gray-500 mt-0.5">
+                <p className="text-sm text-fg-muted">
+                    Mois : <span className="text-fg">{monthLabel(challenge.month, challenge.year)}</span>
+                    <span className="block text-xs text-fg-subtle mt-0.5">
                         Le mois ne se change pas : la tombola du mois est liée à la création.
                         {challenge.status === 'draft' && ' Pour un autre mois, supprime ce brouillon et crée-en un nouveau.'}
                     </span>
@@ -139,7 +139,7 @@ const ChallengeFormModal: React.FC<{
                 </div>
             </div>
             {challenge?.status === 'active' && (
-                <p className="text-xs text-gray-500 -mt-2">
+                <p className="text-xs text-fg-subtle -mt-2">
                     Les votes se ferment tout seuls une heure après la fin du dernier jour. Une date de fin déjà passée les ferme presque tout de suite.
                 </p>
             )}
@@ -152,11 +152,11 @@ const ChallengeFormModal: React.FC<{
             <div>
                 <label className={labelClass}>Description (anglais)</label>
                 <textarea className={fieldClass} rows={3} value={descEn} onChange={e => setDescEn(e.target.value)}
-                    placeholder="Same text, in English." />
+                    placeholder="Le même texte, en anglais." />
             </div>
 
             {!challenge && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-fg-subtle">
                     Le challenge est créé en brouillon, avec la tombola du même mois. Ajoute et approuve les entrepreneurs, puis ouvre les votes.
                 </p>
             )}

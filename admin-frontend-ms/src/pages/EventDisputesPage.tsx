@@ -48,31 +48,31 @@ export default function EventDisputesPage() {
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Litiges" />
-            <div className="p-6 space-y-4">
+            <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                    <select value={status} onChange={(e) => setStatus(e.target.value as DisputeStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
+                    <select value={status} onChange={(e) => setStatus(e.target.value as DisputeStatus | '')} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">
                         <option value="">Tous</option>
                         <option value="OPEN">Ouverts</option>
                         <option value="RESOLVED">Résolus</option>
                         <option value="REJECTED">Rejetés</option>
                     </select>
-                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
+                    <button onClick={load} className="border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2">Actualiser</button>
                 </div>
 
                 {loading ? <Loader name="Chargement..." /> : (
                     <div className="space-y-3">
-                        {items.length === 0 && <div className="text-center text-gray-400 py-8">Aucun litige.</div>}
+                        {items.length === 0 && <div className="text-center text-fg-muted py-8">Aucun litige.</div>}
                         {items.map((d) => (
-                            <div key={d._id} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+                            <div key={d._id} className="bg-surface rounded-xl border border-line p-4">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <div className="text-xs uppercase text-gray-400">{d.kind}</div>
-                                        <div className="text-xs text-gray-400 mt-0.5">{fmt(d.createdAt)}</div>
+                                        <div className="text-xs uppercase text-fg-muted">{d.kind}</div>
+                                        <div className="text-xs text-fg-muted mt-0.5">{fmt(d.createdAt)}</div>
                                     </div>
                                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[d.status]}`}>{d.status}</span>
                                 </div>
-                                <p className="mt-3 text-sm text-gray-300 whitespace-pre-wrap">{d.description}</p>
-                                <div className="text-xs text-gray-400 mt-2">
+                                <p className="mt-3 text-sm text-fg-muted whitespace-pre-wrap">{d.description}</p>
+                                <div className="text-xs text-fg-muted mt-2">
                                     {d.ticketId && <>Billet : <span className="font-mono">{d.ticketId.slice(-8)}</span> · </>}
                                     {d.resaleOrderId && <>Revente : <span className="font-mono">{d.resaleOrderId.slice(-8)}</span></>}
                                 </div>
@@ -83,9 +83,9 @@ export default function EventDisputesPage() {
                                     </div>
                                 )}
                                 {d.resolutionNote && (
-                                    <div className="mt-3 border-t border-gray-700 pt-3 text-xs">
-                                        <div className="text-gray-400">Note de résolution :</div>
-                                        <div className="text-gray-300">{d.resolutionNote}</div>
+                                    <div className="mt-3 border-t border-line pt-3 text-xs">
+                                        <div className="text-fg-muted">Note de résolution :</div>
+                                        <div className="text-fg-muted">{d.resolutionNote}</div>
                                     </div>
                                 )}
                             </div>
@@ -96,24 +96,24 @@ export default function EventDisputesPage() {
 
             {modal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-gray-800 rounded-xl p-5 w-full max-w-md">
+                    <div className="bg-surface rounded-xl p-5 w-full max-w-md">
                         <h3 className="text-base font-semibold mb-2">
                             {modal.outcome === 'resolve' ? 'Résoudre le litige' : 'Rejeter le litige'}
                         </h3>
-                        <p className="text-sm text-gray-400 mb-3">Ajoutez une note décrivant la décision (obligatoire).</p>
+                        <p className="text-sm text-fg-muted mb-3">Ajoutez une note décrivant la décision (obligatoire).</p>
                         <textarea
                             value={modal.note}
                             onChange={(e) => setModal({ ...modal, note: e.target.value })}
                             placeholder="Note de résolution"
                             rows={4}
-                            className="w-full border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white"
+                            className="w-full border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg"
                             autoFocus
                         />
                         <div className="mt-4 flex justify-end gap-2">
-                            <button onClick={() => setModal(null)} className="text-sm bg-gray-700 text-gray-300 px-4 py-2 rounded-lg">Annuler</button>
+                            <button onClick={() => setModal(null)} className="text-sm bg-surface-2 text-fg-muted px-4 py-2 rounded-lg">Annuler</button>
                             <button
                                 onClick={submit}
-                                className={`text-sm text-white px-4 py-2 rounded-lg ${modal.outcome === 'resolve' ? 'bg-emerald-600' : 'bg-red-600'}`}
+                                className={`text-sm text-fg px-4 py-2 rounded-lg ${modal.outcome === 'resolve' ? 'bg-emerald-600' : 'bg-red-600'}`}
                             >
                                 Confirmer
                             </button>

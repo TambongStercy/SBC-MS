@@ -4,9 +4,10 @@ import {
     getValidatedWithdrawals,
     formatCurrency,
     formatDate,
-    getStatusLabel,
-    getStatusColor,
 } from '../services/adminWithdrawalApi';
+import { withdrawalStatusLabel, withdrawalStatusColor } from '../components/withdrawals/withdrawalStatus';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Refresh01Icon, Download01Icon, ChartBarLineIcon, CheckmarkCircle02Icon, CancelCircleIcon, Alert02Icon, MoneyBag02Icon } from '@hugeicons/core-free-icons';
 import WithdrawalDetailsModal from '../components/withdrawals/WithdrawalDetailsModal';
 import Pagination from '../components/common/Pagination';
 import Loader from '../components/common/loader';
@@ -54,7 +55,7 @@ const WithdrawalHistoryPage: React.FC = () => {
             setTotalPages(response.data.pagination.totalPages);
             setTotalCount(response.data.pagination.total);
         } catch (err: any) {
-            setError(err.message || 'Failed to fetch withdrawal history');
+            setError(err.message || "Impossible de charger l'historique des retraits");
         } finally {
             setLoading(false);
         }
@@ -100,12 +101,12 @@ const WithdrawalHistoryPage: React.FC = () => {
 
     const handleExportCSV = () => {
         if (filteredWithdrawals.length === 0) {
-            showWarning('No data to export');
+            showWarning('Aucune donnée à exporter');
             return;
         }
 
         // Prepare CSV data
-        const headers = ['Transaction ID', 'User', 'Email', 'Phone', 'Type', 'Amount', 'Fee', 'Status', 'Date'];
+        const headers = ['ID transaction', 'Membre', 'E-mail', 'Téléphone', 'Type', 'Montant', 'Frais', 'Statut', 'Date'];
         const rows = filteredWithdrawals.map(w => [
             w.transactionId,
             w.userName || 'N/A',
@@ -114,7 +115,7 @@ const WithdrawalHistoryPage: React.FC = () => {
             w.metadata?.withdrawalType === 'crypto' ? 'Crypto' : 'Mobile Money',
             `${w.amount - w.fee} ${w.currency}`,
             `${w.fee} ${w.currency}`,
-            getStatusLabel(w.status),
+            withdrawalStatusLabel(w.status),
             formatDate(w.createdAt)
         ]);
 
@@ -129,13 +130,13 @@ const WithdrawalHistoryPage: React.FC = () => {
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `withdrawal-history-${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `historique-retraits-${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
 
-        showSuccess('CSV exported successfully!');
+        showSuccess('Export CSV terminé');
     };
 
     // Calculate summary stats
@@ -154,224 +155,226 @@ const WithdrawalHistoryPage: React.FC = () => {
 
     if (loading && withdrawals.length === 0) {
         return (
-            <div className="flex-1 overflow-auto relative z-10 bg-gray-900">
-                <Header title="Withdrawal History" />
+            <div>
+                <Header title="Historique des retraits" />
                 <div className="flex items-center justify-center h-96">
-                    <Loader name="Withdrawal History" />
+                    <Loader name="Historique des retraits" />
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white">
-            <Header title="Withdrawal History" />
+        <div className="text-fg">
+            <Header title="Historique des retraits" />
 
-            <main className="max-w-full mx-auto py-6 px-4 lg:px-8">
+            <main>
                 {/* Header Actions */}
-                <div className="flex items-center justify-between mb-6">
-                    <p className="text-gray-400">View history of all validated withdrawal requests</p>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                    <p className="text-fg-muted">Historique de toutes les demandes de retrait traitées</p>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={fetchData}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors"
                         >
-                            🔄 Refresh
+                            <HugeiconsIcon icon={Refresh01Icon} size={16} />
+                            Actualiser
                         </button>
                         <button
                             onClick={handleExportCSV}
                             disabled={filteredWithdrawals.length === 0}
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            📥 Export CSV
+                            <HugeiconsIcon icon={Download01Icon} size={16} />
+                            Exporter en CSV
                         </button>
                     </div>
                 </div>
 
                 {/* Error Message */}
                 {error && (
-                    <div className="mb-6 bg-red-800 border border-red-700 rounded-lg p-4">
-                        <p className="text-red-200">{error}</p>
+                    <div className="mb-6 bg-red-100 dark:bg-red-800 border border-red-300 dark:border-red-700 rounded-lg p-4">
+                        <p className="text-red-800 dark:text-red-200">{error}</p>
                     </div>
                 )}
 
                 {/* Summary Statistics */}
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div className="bg-surface border border-line rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Sur cette page</p>
-                                <p className="text-2xl font-bold text-white">{summaryStats.total}</p>
+                                <p className="text-sm text-fg-muted font-medium">Sur cette page</p>
+                                <p className="text-2xl font-bold text-fg">{summaryStats.total}</p>
                             </div>
-                            <div className="text-3xl">📊</div>
+                            <HugeiconsIcon icon={ChartBarLineIcon} size={28} className="text-fg-muted" />
                         </div>
                     </div>
 
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div className="bg-surface border border-line rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Payés (page)</p>
-                                <p className="text-2xl font-bold text-green-500">{summaryStats.completed}</p>
+                                <p className="text-sm text-fg-muted font-medium">Payés (page)</p>
+                                <p className="text-2xl font-bold text-green-600 dark:text-green-500">{summaryStats.completed}</p>
                             </div>
-                            <div className="text-3xl">✓</div>
+                            <HugeiconsIcon icon={CheckmarkCircle02Icon} size={28} className="text-green-600 dark:text-green-500" />
                         </div>
                     </div>
 
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div className="bg-surface border border-line rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Refusés (page)</p>
+                                <p className="text-sm text-fg-muted font-medium">Refusés (page)</p>
                                 <p className="text-2xl font-bold text-red-500">{summaryStats.rejected}</p>
                             </div>
-                            <div className="text-3xl">✗</div>
+                            <HugeiconsIcon icon={CancelCircleIcon} size={28} className="text-red-500" />
                         </div>
                     </div>
 
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div className="bg-surface border border-line rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Échoués (page)</p>
+                                <p className="text-sm text-fg-muted font-medium">Échoués (page)</p>
                                 <p className="text-2xl font-bold text-orange-500">{summaryStats.failed}</p>
                             </div>
-                            <div className="text-3xl">⚠️</div>
+                            <HugeiconsIcon icon={Alert02Icon} size={28} className="text-orange-500" />
                         </div>
                     </div>
 
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div className="bg-surface border border-line rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-400 font-medium">Payé sur cette page (XAF)</p>
-                                <p className="text-xl font-bold text-blue-400">
+                                <p className="text-sm text-fg-muted font-medium">Payé sur cette page (XAF)</p>
+                                <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
                                     {formatCurrency(summaryStats.totalAmount, 'XAF' as any)}
                                 </p>
                             </div>
-                            <div className="text-3xl">💰</div>
+                            <HugeiconsIcon icon={MoneyBag02Icon} size={28} className="text-blue-600 dark:text-blue-400" />
                         </div>
                     </div>
                 </div>
 
                 {/* Filters and Search */}
-                <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-6">
+                <div className="bg-surface border border-line rounded-lg p-4 mb-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                            <label className="text-sm font-medium text-gray-300 mb-2 block">Status</label>
+                            <label className="text-sm font-medium text-fg-muted mb-2 block">Statut</label>
                             <select
                                 value={statusFilter}
                                 onChange={(e) => {
                                     setStatusFilter(e.target.value as any);
                                     setCurrentPage(1);
                                 }}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:ring-2 focus:ring-indigo-500"
                             >
-                                <option value="all">All Statuses</option>
-                                <option value="completed">✓ Completed</option>
-                                <option value="rejected_by_admin">✗ Rejected</option>
-                                <option value="failed">⚠️ Failed</option>
+                                <option value="all">Tous les statuts</option>
+                                <option value="completed">Terminés</option>
+                                <option value="rejected_by_admin">Rejetés</option>
+                                <option value="failed">Échoués</option>
                             </select>
                         </div>
 
                         <div>
-                            <label className="text-sm font-medium text-gray-300 mb-2 block">Type</label>
+                            <label className="text-sm font-medium text-fg-muted mb-2 block">Type</label>
                             <select
                                 value={withdrawalTypeFilter}
                                 onChange={(e) => setWithdrawalTypeFilter(e.target.value as any)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:ring-2 focus:ring-indigo-500"
                             >
-                                <option value="all">All Types</option>
-                                <option value="mobile_money">📱 Mobile Money</option>
-                                <option value="crypto">💰 Crypto</option>
+                                <option value="all">Tous les types</option>
+                                <option value="mobile_money">Mobile Money</option>
+                                <option value="crypto">Crypto</option>
                             </select>
                         </div>
 
                         <div>
-                            <label className="text-sm font-medium text-gray-300 mb-2 block">Search</label>
+                            <label className="text-sm font-medium text-fg-muted mb-2 block">Recherche</label>
                             <input
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="Chercher sur cette page : ID, nom, téléphone…"
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-2 focus:ring-indigo-500 placeholder-gray-400"
+                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:ring-2 focus:ring-indigo-500 placeholder-fg-subtle"
                             />
                         </div>
                     </div>
 
-                    <div className="mt-3 text-sm text-gray-400">
-                        Showing {filteredWithdrawals.length} of {totalCount} withdrawals
+                    <div className="mt-3 text-sm text-fg-muted">
+                        {filteredWithdrawals.length} sur {totalCount} retraits
                     </div>
                 </div>
 
                 {/* Withdrawals Table */}
-                <div className="shadow-sm overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700">
+                <div className="overflow-hidden border-b border-line sm:rounded-lg mb-6 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-line">
+                        <thead className="bg-surface-2">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                                     Transaction
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    User
+                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
+                                    Membre
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                                     Type
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Amount
+                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
+                                    Montant
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Status
+                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
+                                    Statut
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                                     Date
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                                     Actions
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="bg-gray-800 divide-y divide-gray-600">
+                        <tbody className="bg-surface divide-y divide-line-strong">
                             {filteredWithdrawals.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
-                                        {searchTerm ? 'No withdrawals found matching your search' : 'No withdrawal history available'}
+                                    <td colSpan={7} className="px-6 py-8 text-center text-fg-muted">
+                                        {searchTerm ? 'Aucun retrait ne correspond à la recherche' : 'Aucun retrait dans l\'historique'}
                                     </td>
                                 </tr>
                             ) : (
                                 filteredWithdrawals.map((withdrawal) => (
-                                    <tr key={withdrawal._id} className="hover:bg-gray-750">
+                                    <tr key={withdrawal._id} className="hover:bg-surface-2">
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="font-mono text-sm text-gray-300">{withdrawal.transactionId}</div>
+                                            <div className="font-mono text-sm text-fg-muted">{withdrawal.transactionId}</div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-white">{withdrawal.userName || 'N/A'}</div>
-                                            <div className="text-xs text-gray-400">{withdrawal.userEmail || 'N/A'}</div>
+                                            <div className="text-sm font-medium text-fg">{withdrawal.userName || '—'}</div>
+                                            <div className="text-xs text-fg-muted">{withdrawal.userEmail || '—'}</div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-sm text-gray-300">
-                                                {withdrawal.metadata?.withdrawalType === 'crypto' ? '💰 Crypto' : '📱 Momo'}
+                                            <span className="text-sm text-fg-muted">
+                                                {withdrawal.metadata?.withdrawalType === 'crypto' ? 'Crypto' : 'Mobile Money'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-semibold text-white">
+                                            <div className="text-sm font-semibold text-fg">
                                                 {formatCurrency(withdrawal.amount - withdrawal.fee, withdrawal.currency)}
                                             </div>
-                                            <div className="text-xs text-gray-400">
-                                                Fee: {formatCurrency(withdrawal.fee, withdrawal.currency)}
+                                            <div className="text-xs text-fg-muted">
+                                                Frais : {formatCurrency(withdrawal.fee, withdrawal.currency)}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(withdrawal.status)}`}>
-                                                {getStatusLabel(withdrawal.status)}
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${withdrawalStatusColor(withdrawal.status)}`}>
+                                                {withdrawalStatusLabel(withdrawal.status)}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">
                                             {formatDate(withdrawal.createdAt)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                             <button
                                                 onClick={() => handleViewDetails(withdrawal)}
-                                                className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition"
+                                                className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-blue-500 transition"
                                             >
-                                                View Details
+                                                Voir le détail
                                             </button>
                                         </td>
                                     </tr>

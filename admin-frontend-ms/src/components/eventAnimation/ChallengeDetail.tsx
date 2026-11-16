@@ -62,8 +62,8 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
         <Modal onClose={onClose} footer={footer}
             title={c?.name ?? 'Défi'}
             subtitle={d?.event ? `${d.event.title}${d.event.status ? ` · ${EVENT_STATUS_LABELS[d.event.status] ?? ''}` : ''}` : undefined}>
-            {q.loading && !d ? <p className="text-gray-400">Chargement…</p> : !d || !c ? (
-                <div className="bg-red-900/30 border border-red-800 text-red-300 rounded-xl p-4">
+            {q.loading && !d ? <p className="text-fg-muted">Chargement…</p> : !d || !c ? (
+                <div className="bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl p-4">
                     Défi introuvable ou impossible à charger. <button onClick={q.reload} className="underline ml-2">Réessayer</button>
                 </div>
             ) : (
@@ -72,20 +72,20 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
                         <StatusBadge status={c.status} labels={CHALLENGE_STATUS} />
                         {c.suspendedAt && <Badge tone="danger">Suspendu le {fmtDate(c.suspendedAt)}</Badge>}
                         {openFlags.length > 0 && <Badge tone="warning">{openFlags.length} {plural(openFlags.length, 'signalement ouvert', 'signalements ouverts')}</Badge>}
-                        <button onClick={q.reload} className="ml-auto text-xs text-gray-300 hover:text-white border border-gray-600 rounded-sm px-2 py-1">{q.loading ? 'Chargement…' : 'Recharger'}</button>
+                        <button onClick={q.reload} className="ml-auto text-xs text-fg-muted hover:text-fg border border-line-strong rounded-sm px-2 py-1">{q.loading ? 'Chargement…' : 'Recharger'}</button>
                     </div>
                     {c.suspendedAt && c.suspendedReason && (
-                        <p className="text-sm rounded-lg bg-red-900/30 border border-red-800 text-red-100 px-3 py-2"><b>Motif de suspension :</b> {c.suspendedReason}</p>
+                        <p className="text-sm rounded-lg bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-100 px-3 py-2"><b>Motif de suspension :</b> {c.suspendedReason}</p>
                     )}
                     {c.cancellation && (
-                        <p className="text-sm rounded-lg bg-gray-800 border border-gray-700 px-3 py-2">
+                        <p className="text-sm rounded-lg bg-surface border border-line px-3 py-2">
                             Annulé le {fmtDate(c.cancellation.at)} — {c.cancellation.reason} ({num(c.cancellation.refundedTransactions)} {plural(c.cancellation.refundedTransactions, 'achat remboursé', 'achats remboursés')})
                         </p>
                     )}
                     {freezeError && (
-                        <p className="text-sm rounded-lg bg-amber-900/30 border border-amber-700 text-amber-100 px-3 py-2" role="alert">
+                        <p className="text-sm rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-100 px-3 py-2" role="alert">
                             {freezeError.message}
-                            {freezeError.code === 'FRAUD_REVIEW_PENDING' && <> <button onClick={() => go({ tab: 'a-verifier' })} className="font-semibold text-blue-300 underline">Ouvrir « À vérifier »</button></>}
+                            {freezeError.code === 'FRAUD_REVIEW_PENDING' && <> <button onClick={() => go({ tab: 'a-verifier' })} className="font-semibold text-blue-600 dark:text-blue-300 underline">Ouvrir « À vérifier »</button></>}
                         </p>
                     )}
 
@@ -96,15 +96,15 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
                         <Stat label="Revenus" value={xaf(c.counters.paidRevenue)} />
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
-                        <button onClick={() => go({ tab: 'votes', defi: c._id })} className="text-blue-300 hover:underline">Voir ses votes payants</button>
-                        <button onClick={() => go({ tab: 'journal', defi: c._id })} className="text-blue-300 hover:underline">Voir son journal</button>
+                        <button onClick={() => go({ tab: 'votes', defi: c._id })} className="text-blue-600 dark:text-blue-300 hover:underline">Voir ses votes payants</button>
+                        <button onClick={() => go({ tab: 'journal', defi: c._id })} className="text-blue-600 dark:text-blue-300 hover:underline">Voir son journal</button>
                     </div>
 
                     <Section title="Configuration"><KV items={config(c)} /></Section>
 
                     <Section title="Résultat">
                         <Card>
-                            {!d.result ? <p className="text-sm text-gray-400">Pas encore calculé (le résultat est calculé à la clôture des votes).</p> : (
+                            {!d.result ? <p className="text-sm text-fg-muted">Pas encore calculé (le résultat est calculé à la clôture des votes).</p> : (
                                 <div className="space-y-3">
                                     <div className="flex flex-wrap gap-1.5">
                                         <StatusBadge status={d.result.status} labels={RESULT_STATUS} />
@@ -116,34 +116,34 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
                                         d.result.publishedAt ? ['Publié le', fmtDate(d.result.publishedAt)] : null,
                                     ]} />
                                     {d.result.ties?.length > 0 && (
-                                        <p className="text-sm text-amber-300">{plural(d.result.ties.length, 'Égalité', 'Égalités')} : {d.result.ties.map(t => `rang ${t.rank} (${t.candidateIds.length} candidats)`).join(', ')}</p>
+                                        <p className="text-sm text-amber-700 dark:text-amber-300">{plural(d.result.ties.length, 'Égalité', 'Égalités')} : {d.result.ties.map(t => `rang ${t.rank} (${t.candidateIds.length} candidats)`).join(', ')}</p>
                                     )}
                                     {d.result.entries?.length > 0 && (
                                         <Table headers={['Rang', 'Candidat', 'Votes', 'Score']}>
                                             {d.result.entries.slice(0, 10).map(e => (
-                                                <tr key={e.candidateId} className="border-t border-gray-700">
+                                                <tr key={e.candidateId} className="border-t border-line">
                                                     <td className={`${tdCls} font-bold`}>{e.rank}{e.sharedRank ? ' (ex æquo)' : ''}</td>
-                                                    <td className={tdCls}>{e.displayName} <span className="text-gray-400">n°{e.number}</span></td>
+                                                    <td className={tdCls}>{e.displayName} <span className="text-fg-muted">n°{e.number}</span></td>
                                                     <td className={`${tdCls} text-right`}>{num(e.totalVotes)}</td>
                                                     <td className={`${tdCls} text-right`}>{num(Math.round(e.score * 100) / 100)}</td>
                                                 </tr>
                                             ))}
                                         </Table>
                                     )}
-                                    <p className="text-xs text-gray-500 break-all">Empreinte de contrôle : {d.result.inputsHash}</p>
+                                    <p className="text-xs text-fg-subtle break-all">Empreinte de contrôle : {d.result.inputsHash}</p>
                                 </div>
                             )}
                         </Card>
                     </Section>
 
                     <Section title="Classement en direct (top 20)">
-                        {d.board && <p className="text-xs text-gray-400">{num(d.board.totals.candidates)} candidats classés · {num(d.board.totals.votes)} votes comptés{d.board.computedAt ? ` · ${fmtDate(d.board.computedAt)}` : ''}</p>}
+                        {d.board && <p className="text-xs text-fg-muted">{num(d.board.totals.candidates)} candidats classés · {num(d.board.totals.votes)} votes comptés{d.board.computedAt ? ` · ${fmtDate(d.board.computedAt)}` : ''}</p>}
                         <Table headers={['Rang', 'Candidat', 'Catégorie', 'Gratuits', 'Payants', 'Total', 'Score']}
                             empty={!d.board?.entries.length ? 'Aucun candidat approuvé.' : undefined}>
                             {d.board?.entries.slice(0, 20).map(e => (
-                                <tr key={e.candidateId} className="border-t border-gray-700">
+                                <tr key={e.candidateId} className="border-t border-line">
                                     <td className={`${tdCls} font-bold`}>{e.rank}</td>
-                                    <td className={tdCls}><span className="font-medium">{e.displayName}</span> <span className="text-gray-400">n°{e.number}</span></td>
+                                    <td className={tdCls}><span className="font-medium">{e.displayName}</span> <span className="text-fg-muted">n°{e.number}</span></td>
                                     <td className={tdCls}>{e.category || '—'}</td>
                                     <td className={`${tdCls} text-right`}>{num(e.freeVotes)}</td>
                                     <td className={`${tdCls} text-right`}>{num(e.paidVotes)}</td>
@@ -154,16 +154,16 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
                         </Table>
                     </Section>
 
-                    <Section title={`Signalements (${d.flags.length})`} action={<button onClick={() => go({ tab: 'a-verifier' })} className="text-sm font-semibold text-blue-300">File « À vérifier »</button>}>
-                        {d.flags.length === 0 ? <Card><p className="text-sm text-gray-400">Aucun signalement.</p></Card> : (
-                            <ul className="divide-y divide-gray-700 border border-gray-700 rounded-lg">
+                    <Section title={`Signalements (${d.flags.length})`} action={<button onClick={() => go({ tab: 'a-verifier' })} className="text-sm font-semibold text-blue-600 dark:text-blue-300">File « À vérifier »</button>}>
+                        {d.flags.length === 0 ? <Card><p className="text-sm text-fg-muted">Aucun signalement.</p></Card> : (
+                            <ul className="divide-y divide-line border border-line rounded-lg">
                                 {d.flags.map(f => (
                                     <li key={f._id} className="px-3 py-2.5 space-y-1">
                                         <span className="flex items-center justify-between gap-2">
                                             <span className="font-semibold text-sm">{flagSubjectKind(f)}{f.subjectLabel ? ` · ${f.subjectLabel}` : ''}</span>
                                             <span className="flex gap-1.5"><Badge tone={f.score >= FREEZE_BLOCK_SCORE ? 'danger' : 'neutral'}>Score {f.score}</Badge><StatusBadge status={f.status} labels={FLAG_STATUS} /></span>
                                         </span>
-                                        <span className="block text-xs text-gray-400">{f.signals.map(s => FRAUD_SIGNAL_LABELS[s.code]?.label ?? 'Autre signal').join(', ')} · {fmtDate(f.createdAt)}</span>
+                                        <span className="block text-xs text-fg-muted">{f.signals.map(s => FRAUD_SIGNAL_LABELS[s.code]?.label ?? 'Autre signal').join(', ')} · {fmtDate(f.createdAt)}</span>
                                     </li>
                                 ))}
                             </ul>

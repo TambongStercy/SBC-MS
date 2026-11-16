@@ -23,7 +23,7 @@ const keyLabel = (path: string) => {
 
 /** A before/after snapshot as label → value lines. A lock override's diff reads as field: before → after. */
 function Snapshot({ value }: { value: unknown }) {
-    if (value === undefined) return <p className="text-sm text-gray-400">—</p>;
+    if (value === undefined) return <p className="text-sm text-fg-muted">—</p>;
     if (Array.isArray(value) && value.every(d => d && typeof d === 'object' && 'path' in d)) {
         return <KV items={(value as Array<{ path: string; from: unknown; to: unknown }>).map(d => [fieldLabel(d.path), `${showValue(d.from, d.path)} → ${showValue(d.to, d.path)}`] as [string, string])} />;
     }
@@ -76,7 +76,7 @@ export default function AuditTab() {
             </div>
 
             <Card className="space-y-1">
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-fg-muted">
                     Export du journal {challengeId ? `du défi « ${challengeName(challengeId)} »` : eventId ? `de l’événement « ${eventTitle(eventId)} »` : 'complet'} (le filtre d’action ne s’applique pas à l’export).
                 </p>
                 <ExportButtons kinds={['audit']} formats={['csv', 'xlsx']} scope={{ eventId: eventId || undefined, challengeId: challengeId || undefined }} />
@@ -87,12 +87,12 @@ export default function AuditTab() {
                 empty={q.data && items.length === 0 ? 'Aucune entrée' : undefined}>
                 {items.map(a => (
                     <tr key={a._id} className={trCls} onClick={() => setOpen(a)}>
-                        <td className={`${tdCls} text-xs text-gray-400 whitespace-nowrap`}>{fmtDate(a.at)}</td>
+                        <td className={`${tdCls} text-xs text-fg-muted whitespace-nowrap`}>{fmtDate(a.at)}</td>
                         <td className={`${tdCls} font-medium`}>{auditActionLabel(a.action)}</td>
-                        <td className={`${tdCls} text-gray-300`}>{roleLabel(a.actorRole)}</td>
-                        <td className={`${tdCls} text-gray-300`}>{targetLabel(a.targetType)}</td>
-                        <td className={`${tdCls} text-gray-300`}>{a.challengeId ? challengeName(a.challengeId) : a.eventId ? eventTitle(a.eventId) : '—'}</td>
-                        <td className={`${tdCls} text-gray-300 max-w-xs truncate`}>{a.reason || '—'}</td>
+                        <td className={`${tdCls} text-fg-muted`}>{roleLabel(a.actorRole)}</td>
+                        <td className={`${tdCls} text-fg-muted`}>{targetLabel(a.targetType)}</td>
+                        <td className={`${tdCls} text-fg-muted`}>{a.challengeId ? challengeName(a.challengeId) : a.eventId ? eventTitle(a.eventId) : '—'}</td>
+                        <td className={`${tdCls} text-fg-muted max-w-xs truncate`}>{a.reason || '—'}</td>
                     </tr>
                 ))}
             </Table>
@@ -109,7 +109,7 @@ export default function AuditTab() {
                         open.ip ? ['Adresse IP', open.ip] : null,
                     ]} />
                     {open.actorUserId && <Section title="Auteur"><UserRef id={open.actorUserId} fallback={roleLabel(open.actorRole)} /></Section>}
-                    {open.reason && <Section title="Motif"><p className="text-sm whitespace-pre-wrap bg-gray-800 border border-gray-700 rounded-lg p-3">{open.reason}</p></Section>}
+                    {open.reason && <Section title="Motif"><p className="text-sm whitespace-pre-wrap bg-surface border border-line rounded-lg p-3">{open.reason}</p></Section>}
                     {open.before !== undefined && <Section title="Avant"><Snapshot value={open.before} /></Section>}
                     {open.after !== undefined && <Section title="Après"><Snapshot value={open.after} /></Section>}
                     <div className="flex flex-wrap gap-2">
