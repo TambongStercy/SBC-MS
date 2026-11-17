@@ -38,6 +38,7 @@ interface IConfig {
         chatServiceUrl: string;
         sbcloveServiceUrl: string;
         eventServiceUrl: string;
+        supportServiceUrl: string;
     };
 }
 
@@ -58,7 +59,7 @@ const config: IConfig = {
             return list.length === 1 ? list[0] : list;
         })(),
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Service-Name']
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Service-Name', 'X-CSRF-Token', 'X-Reauth-Token', 'X-Request-Id']
     },
 
     jwt: {
@@ -77,7 +78,9 @@ const config: IConfig = {
         chatServiceUrl: process.env.CHAT_SERVICE_URL || 'http://localhost:3008',
         sbcloveServiceUrl: process.env.SBCLOVE_SERVICE_URL || 'http://localhost:3009',
         // SBC Event / ticketing marketplace. Prod 3011, preprod 6011.
-        eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3011'
+        eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3011',
+        // SBC Support (agent desk + member help). Prod 3012, preprod 6012.
+        supportServiceUrl: process.env.SUPPORT_SERVICE_URL || 'http://localhost:3012'
     }
 };
 
