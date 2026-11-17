@@ -11,7 +11,12 @@ export const MIN_PASSWORD = 12;
 export default function ActivatePage() {
   const [params, setParams] = useSearchParams();
   // Read the token once, then take it out of the address bar (and history).
-  const [token] = useState(() => params.get('token') ?? '');
+  // The service sends `/activate#<token>` (a fragment never reaches a server log
+  // or a Referer header); `?token=` is still accepted.
+  const [token] = useState(() => {
+    const fromHash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
+    return fromHash || params.get('token') || '';
+  });
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -19,6 +24,7 @@ export default function ActivatePage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
     if (params.has('token')) setParams({}, { replace: true });
   }, [params, setParams]);
 
