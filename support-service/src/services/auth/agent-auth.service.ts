@@ -254,7 +254,7 @@ export async function issueActivation(agentId: string, createdBy: string | null)
     await Agent.updateOne({ _id: agentId }, {
         $set: { activation: { tokenHash: sha256Hex(token), expiresAt, usedAt: null, createdBy } },
     });
-    return { token, url: `${config.publicUrl}/activation#${token}`, expiresAt };
+    return { token, url: `${config.publicUrl}/activate#${token}`, expiresAt };
 }
 
 /** Re-authentication before a sensitive action: TOTP code → 5-minute single-use token. */

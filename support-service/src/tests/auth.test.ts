@@ -178,7 +178,7 @@ describe('sessions', () => {
         const token = await reauthToken(admin, jar);
         const ok = await desk('post', '/agents', jar, { 'x-reauth-token': token }).send(body);
         expect(ok.status).toBe(201);
-        expect(ok.body.data.activationUrl).toMatch(/^https:\/\/support\.test\/activation#/);
+        expect(ok.body.data.activationUrl).toMatch(/^https:\/\/support\.test\/activate#/);
         const reused = await desk('post', '/agents', jar, { 'x-reauth-token': token }).send({ ...body, email: 'other@agents.test' });
         expect(reused.status).toBe(401);
 
