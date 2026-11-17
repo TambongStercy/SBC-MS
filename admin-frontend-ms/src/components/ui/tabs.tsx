@@ -6,7 +6,7 @@ export const Tabs = T.Root;
 export const TabsContent = T.Content;
 
 export function TabsList({ className, ...props }: ComponentPropsWithoutRef<typeof T.List>) {
-  return <T.List className={cn('flex gap-1 overflow-x-auto border-b border-line', className)} {...props} />;
+  return <T.List className={cn('flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden', className)} {...props} />;
 }
 
 export function TabsTrigger({ className, ...props }: ComponentPropsWithoutRef<typeof T.Trigger>) {

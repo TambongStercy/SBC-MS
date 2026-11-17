@@ -39,7 +39,7 @@ describe('menuFor', () => {
 describe('shortcutsFor', () => {
   const shortcutPaths = (perms: Permissions | null) => shortcutsFor(perms).map(i => i.path);
 
-  it('gives the super admin Accueil, Utilisateurs, Retraits à valider', () => {
+  it('gives the super admin Accueil, Membres, Retraits à valider', () => {
     expect(shortcutPaths(permissionsForRole('admin'))).toEqual(['/', '/users', '/withdrawals/approvals']);
   });
 

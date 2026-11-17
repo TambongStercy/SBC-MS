@@ -45,12 +45,15 @@
   --info-soft: #E0F2FE;
   --shadow-color: 222 30% 25%;
   /* Chart series: brand blue and orange first, then distinct hues */
+  /* Chart series in this fixed order (blue, orange, violet, green, magenta, cyan),
+     checked with the dataviz validator: colour-blind separation, lightness band,
+     contrast. Light and dark are stepped separately. */
   --chart-1: #115CF6;
-  --chart-2: #F68F0F;
-  --chart-3: #0C7C3C;
-  --chart-4: #8B5CF6;
-  --chart-5: #0891B2;
-  --chart-6: #DB2777;
+  --chart-2: #E07A00;
+  --chart-3: #8B5CF6;
+  --chart-4: #0C7C3C;
+  --chart-5: #DB2777;
+  --chart-6: #0891B2;
 }
 
 .dark {
@@ -83,12 +86,12 @@
   --info: #38BDF8;
   --info-soft: #0C2A3D;
   --shadow-color: 222 47% 3%;
-  --chart-1: #5B93FF;
-  --chart-2: #FFA53D;
-  --chart-3: #34C77B;
-  --chart-4: #A78BFA;
-  --chart-5: #22D3EE;
-  --chart-6: #F472B6;
+  --chart-1: #4A86F5;
+  --chart-2: #C27315;
+  --chart-3: #8E79F0;
+  --chart-4: #2A9A50;
+  --chart-5: #E0559A;
+  --chart-6: #1797B2;
 }
 
 @theme inline {

@@ -1,18 +1,89 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { CreditCard, DollarSign, Wallet, Edit2, Save, X, RefreshCw, TrendingUp, AlertCircle, Zap, Clock } from 'lucide-react';
-import { getGatewayBalances, updateGatewayBalances, getLiveGatewayBalances, IGatewayBalances, IGatewayBalanceInput, ILiveGatewayBalances } from '../../services/adminSettingsApi';
+import React, { useCallback, useEffect, useState } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Alert02Icon, Edit02Icon, RefreshIcon } from '@hugeicons/core-free-icons';
+import {
+    getGatewayBalances, updateGatewayBalances, getLiveGatewayBalances,
+    type IGatewayBalances, type IGatewayBalanceInput, type ILiveGatewayBalances,
+} from '../../services/adminSettingsApi';
+import { Can } from '../Can';
+import { Badge, Button, Dialog, DialogClose, DialogContent, Field, Input, Panel, PanelBody, PanelHeader, Segmented, Skeleton, Tooltip } from '../ui';
+import { cn } from '../../lib/cn';
+import { formatDateTime, formatMoney } from './format';
+
+/** The provider's raw (English) error, said in French; the raw text stays in the tooltip. */
+function providerErrorFr(provider: string, raw: string): string {
+    if (/NOWPAYMENTS_EMAIL|NOWPAYMENTS_PASSWORD|API_KEY|not configured|requires/i.test(raw)) return `Solde en direct indisponible : ${provider} n'est pas configuré sur ce serveur.`;
+    if (/authenticat|unauthori|401|403/i.test(raw)) return `Solde en direct indisponible : ${provider} a refusé la connexion.`;
+    if (/timeout|ECONN|ENOTFOUND|network/i.test(raw)) return `Solde en direct indisponible : ${provider} ne répond pas.`;
+    return `Solde en direct indisponible chez ${provider}.`;
+}
 
 interface GatewayBalancesCardProps {
     totalUserBalanceXAF?: number;
     totalUserBalanceUSD?: number;
     onUpdate?: () => void;
+    /**
+     * Set when the member balances above are one country's only (page country
+     * filter): the gateways' balances are global, so no margin is computed.
+     */
+    liabilitiesScope?: string;
 }
 
+const USD_TO_XAF_RATE = 600;
+
+/**
+ * Money that arrived over the wire, as a number you can safely format.
+ * A provider returning "12.34" instead of 12.34 used to throw from render and
+ * unmount the whole dashboard.
+ */
+const money = (value: unknown): number => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+};
+
+function Provider({ name, value, badge, children }: { name: string; value: string; badge?: React.ReactNode; children?: React.ReactNode }) {
+    return (
+        <div className="rounded-control border border-line p-4">
+            <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-fg-muted">{name}</p>
+                {badge}
+            </div>
+            <p className="mt-2 text-xl font-semibold tracking-tight text-fg">{value}</p>
+            {children && <div className="mt-1 space-y-0.5 text-xs text-fg-muted">{children}</div>}
+        </div>
+    );
+}
+
+/** One currency's line: held by the gateways, owed to members, margin. */
+function MarginRow({ label, held, owed, currency, scoped }: { label: string; held: number; owed: number; currency: 'XAF' | 'USD'; scoped: boolean }) {
+    const margin = held - owed;
+    return (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 py-3 text-sm sm:grid-cols-[8rem_1fr_1fr_1fr] sm:items-baseline">
+            <p className="col-span-2 font-medium text-fg sm:col-span-1">{label}</p>
+            <p className="text-fg-muted">Détenu <span className="block font-medium text-fg tabular-nums sm:inline sm:ml-1">{formatMoney(held, currency)}</span></p>
+            <p className="text-fg-muted">Dû aux membres <span className="block font-medium text-fg tabular-nums sm:inline sm:ml-1">{formatMoney(owed, currency)}</span></p>
+            {!scoped && (
+                <p className="col-span-2 text-fg-muted sm:col-span-1">
+                    Marge{' '}
+                    <span className={cn('font-semibold tabular-nums', margin >= 0 ? 'text-success' : 'text-danger')}>
+                        {margin > 0 ? '+' : ''}{formatMoney(margin, currency)}
+                    </span>
+                </p>
+            )}
+        </div>
+    );
+}
+
+/**
+ * What the payment gateways hold (live from their APIs where they have one,
+ * else the figures typed here), against what SBC owes members.
+ * Editing the manual figures needs `payments` write.
+ */
 const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
     totalUserBalanceXAF = 0,
     totalUserBalanceUSD = 0,
-    onUpdate
+    onUpdate,
+    liabilitiesScope,
 }) => {
     const [balances, setBalances] = useState<IGatewayBalances | null>(null);
     const [liveBalances, setLiveBalances] = useState<ILiveGatewayBalances | null>(null);
@@ -21,55 +92,57 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
     const [isLoadingLive, setIsLoadingLive] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showLiveBalances, setShowLiveBalances] = useState(true);
+    const [mode, setMode] = useState<'live' | 'manual'>('live');
+    const showLiveBalances = mode === 'live';
 
-    // Edit form state
     const [editForm, setEditForm] = useState<IGatewayBalanceInput>({
         nowpaymentsBalanceUSD: 0,
         feexpayBalanceXAF: 0,
         cinetpayBalanceXAF: 0,
-        notes: ''
+        notes: '',
     });
 
-    const USD_TO_XAF_RATE = 600;
+    const resetForm = (data: IGatewayBalances | null) => {
+        if (!data) return;
+        setEditForm({
+            nowpaymentsBalanceUSD: data.nowpaymentsBalanceUSD,
+            feexpayBalanceXAF: data.feexpayBalanceXAF,
+            cinetpayBalanceXAF: data.cinetpayBalanceXAF,
+            notes: data.notes || '',
+        });
+    };
 
-    const fetchBalances = async () => {
+    const fetchBalances = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
             const data = await getGatewayBalances();
             setBalances(data);
-            setEditForm({
-                nowpaymentsBalanceUSD: data.nowpaymentsBalanceUSD,
-                feexpayBalanceXAF: data.feexpayBalanceXAF,
-                cinetpayBalanceXAF: data.cinetpayBalanceXAF,
-                notes: data.notes || ''
-            });
+            resetForm(data);
         } catch (err) {
             console.error('Error fetching gateway balances:', err);
-            setError('Erreur lors du chargement des soldes');
+            setError('Les soldes enregistrés n’ont pas pu être chargés.');
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    const fetchLiveBalances = async () => {
+    const fetchLiveBalances = useCallback(async () => {
         setIsLoadingLive(true);
         try {
-            const data = await getLiveGatewayBalances();
-            setLiveBalances(data);
+            setLiveBalances(await getLiveGatewayBalances());
         } catch (err) {
+            // Live figures are a bonus: the manual ones are still shown.
             console.error('Error fetching live gateway balances:', err);
-            // Don't set error for live balances - just show manual ones
         } finally {
             setIsLoadingLive(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
-        fetchBalances();
-        fetchLiveBalances();
-    }, []);
+        void fetchBalances();
+        void fetchLiveBalances();
+    }, [fetchBalances, fetchLiveBalances]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -81,434 +154,177 @@ const GatewayBalancesCard: React.FC<GatewayBalancesCardProps> = ({
             onUpdate?.();
         } catch (err) {
             console.error('Error updating gateway balances:', err);
-            setError('Erreur lors de la mise à jour');
+            setError('La mise à jour n’a pas pu être enregistrée.');
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleCancel = () => {
-        setIsEditing(false);
-        if (balances) {
-            setEditForm({
-                nowpaymentsBalanceUSD: balances.nowpaymentsBalanceUSD,
-                feexpayBalanceXAF: balances.feexpayBalanceXAF,
-                cinetpayBalanceXAF: balances.cinetpayBalanceXAF,
-                notes: balances.notes || ''
-            });
-        }
-    };
+    const nowLive = showLiveBalances && !!liveBalances?.nowpayments.available;
+    const cinetLive = showLiveBalances && !!liveBalances?.cinetpay.available;
 
-    /**
-     * Money that arrived over the wire, as a number you can safely format.
-     *
-     * A provider returning "12.34" instead of 12.34 used to throw
-     * `.toFixed is not a function` from render, which unmounts the whole admin
-     * dashboard — one gateway's bad field took out transactions, withdrawals
-     * and stats with it.
-     */
-    const money = (value: unknown): number => {
-        const n = Number(value);
-        return Number.isFinite(n) ? n : 0;
-    };
+    const totalExternalUSD = nowLive ? money(liveBalances!.nowpayments.totalUsd) : money(balances?.nowpaymentsBalanceUSD);
+    const cinetpayXAF = cinetLive ? money(liveBalances!.cinetpay.available_balance) : money(balances?.cinetpayBalanceXAF);
+    const feexpayXAF = money(balances?.feexpayBalanceXAF); // always manual
+    const totalExternalXAF = cinetpayXAF + feexpayXAF;
+    const totalExternalCombinedXAF = totalExternalXAF + totalExternalUSD * USD_TO_XAF_RATE;
+    const combinedMargin = (totalExternalXAF - totalUserBalanceXAF) + (totalExternalUSD - totalUserBalanceUSD) * USD_TO_XAF_RATE;
+    const scoped = !!liabilitiesScope;
 
-    // Calculate separate USD and XAF revenues
-    const calculateRevenue = () => {
-        // USD calculation (NOWPayments only)
-        let totalExternalUSD = 0;
-        if (showLiveBalances && liveBalances?.nowpayments.available) {
-            totalExternalUSD = money(liveBalances.nowpayments.totalUsd);
-        } else {
-            totalExternalUSD = balances?.nowpaymentsBalanceUSD || 0;
-        }
-        const revenueUSD = totalExternalUSD - totalUserBalanceUSD;
-
-        // XAF calculation (CinetPay + FeexPay)
-        let totalExternalXAF = 0;
-        if (showLiveBalances && liveBalances) {
-            const cinetpayXAF = liveBalances.cinetpay.available
-                ? liveBalances.cinetpay.available_balance
-                : (balances?.cinetpayBalanceXAF || 0);
-            const feexpayXAF = balances?.feexpayBalanceXAF || 0; // Always manual for FeexPay
-            totalExternalXAF = cinetpayXAF + feexpayXAF;
-        } else if (balances) {
-            totalExternalXAF = (balances.cinetpayBalanceXAF || 0) + (balances.feexpayBalanceXAF || 0);
-        }
-        const revenueXAF = totalExternalXAF - totalUserBalanceXAF;
-
-        // Combined total (for reference)
-        const totalExternalCombinedXAF = totalExternalXAF + (totalExternalUSD * USD_TO_XAF_RATE);
-
-        return {
-            revenueUSD,
-            revenueXAF,
-            totalExternalUSD,
-            totalExternalXAF,
-            totalExternalCombinedXAF
-        };
-    };
-
-    const revenue = calculateRevenue();
-
-    if (isLoading) {
-        return (
-            <motion.div
-                className="bg-surface overflow-hidden rounded-xl border border-line p-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-            >
-                <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="animate-spin text-fg-muted" size={24} />
-                    <span className="ml-2 text-fg-muted">Chargement…</span>
-                </div>
-            </motion.div>
-        );
-    }
+    const liveBadge = <Badge tone="success">En direct</Badge>;
+    const manualBadge = <Badge tone="neutral">Saisi à la main</Badge>;
 
     return (
-        <motion.div
-            className="bg-surface overflow-hidden rounded-xl border border-line"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-        >
-            <div className="p-6">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center">
-                        <CreditCard className="text-purple-600 dark:text-purple-400 mr-2" size={24} />
-                        <h3 className="text-lg font-semibold text-fg">Soldes des passerelles</h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {/* Toggle Live/Manual */}
-                        <button
-                            onClick={() => setShowLiveBalances(!showLiveBalances)}
-                            className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                                showLiveBalances
-                                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                                    : 'bg-surface-3 hover:bg-surface-2 text-fg'
-                            }`}
-                            title={showLiveBalances ? 'Affichage en direct' : 'Affichage manuel'}
-                        >
-                            {showLiveBalances ? <Zap size={14} /> : <Clock size={14} />}
-                            {showLiveBalances ? 'En direct' : 'Manuel'}
-                        </button>
-                        <button
-                            onClick={() => {
-                                fetchBalances();
-                                fetchLiveBalances();
-                            }}
-                            className="p-2 text-fg-muted hover:text-fg transition-colors"
-                            title="Actualiser" aria-label="Actualiser"
-                            disabled={isLoadingLive}
-                        >
-                            <RefreshCw size={18} className={isLoadingLive ? 'animate-spin' : ''} />
-                        </button>
-                        {!isEditing ? (
-                            <button
-                                onClick={() => setIsEditing(true)}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-                            >
-                                <Edit2 size={14} />
-                                Modifier
-                            </button>
-                        ) : (
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handleCancel}
-                                    className="flex items-center gap-1 px-3 py-1.5 bg-surface-3 hover:bg-surface-2 text-fg text-sm rounded-lg transition-colors"
-                                    disabled={isSaving}
-                                >
-                                    <X size={14} />
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleSave}
-                                    className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
-                                    disabled={isSaving}
-                                >
-                                    {isSaving ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
-                                    Enregistrer
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {error && (
-                    <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg flex items-center text-red-700 dark:text-red-300">
-                        <AlertCircle size={18} className="mr-2" />
-                        {error}
-                    </div>
-                )}
-
-                {/* Live Balance Indicator */}
-                {showLiveBalances && liveBalances && (
-                    <div className="mb-4 p-2 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700/50 rounded-lg flex items-center text-green-700 dark:text-green-300 text-sm">
-                        <Zap size={16} className="mr-2" />
-                        Soldes en direct depuis les APIs des passerelles
-                        <span className="ml-auto text-xs text-green-600 dark:text-green-400">
-                            {new Date(liveBalances.timestamp).toLocaleTimeString('fr-FR')}
-                        </span>
-                    </div>
-                )}
-
-                {/* Gateway Balances Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    {/* NOWPayments (USD) */}
-                    <div className="bg-surface-2/50 rounded-lg p-4">
-                        <div className="flex items-center justify-between text-sm text-fg-muted mb-2">
-                            <div className="flex items-center">
-                                <DollarSign size={16} className="mr-1 text-green-600 dark:text-green-400" />
-                                NOWPayments (USD)
-                            </div>
-                            {showLiveBalances && liveBalances?.nowpayments.available && (
-                                <span className="text-xs bg-green-600/15 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-sm">EN DIRECT</span>
-                            )}
-                        </div>
-                        {isEditing ? (
-                            <input
-                                type="number"
-                                value={editForm.nowpaymentsBalanceUSD}
-                                onChange={(e) => setEditForm({ ...editForm, nowpaymentsBalanceUSD: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-xl font-semibold"
-                                step="0.01"
-                                min="0"
-                            />
-                        ) : (
-                            <>
-                                <p className="text-2xl font-semibold text-green-600 dark:text-green-400">
-                                    ${showLiveBalances && liveBalances?.nowpayments.available
-                                        ? money(liveBalances.nowpayments.totalUsd).toFixed(2)
-                                        : money(balances?.nowpaymentsBalanceUSD).toFixed(2)}
-                                </p>
-                                {showLiveBalances && liveBalances?.nowpayments.available && money(liveBalances.nowpayments.totalPendingUsd) > 0 && (
-                                    <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
-                                        + ${money(liveBalances.nowpayments.totalPendingUsd).toFixed(2)} en attente
-                                    </p>
-                                )}
-                                {showLiveBalances && liveBalances?.nowpayments.error && (
-                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">Erreur : {liveBalances.nowpayments.error}</p>
-                                )}
-                                {/* Show crypto breakdown */}
-                                {showLiveBalances && liveBalances?.nowpayments.available && liveBalances.nowpayments.balances.length > 0 && (
-                                    <div className="mt-2 text-xs text-fg-muted max-h-20 overflow-y-auto">
-                                        {liveBalances.nowpayments.balances
-                                            .filter(b => b.amount > 0)
-                                            .map(b => (
-                                                <div key={b.currency} className="flex justify-between">
-                                                    <span>{b.currency}</span>
-                                                    <span>{money(b.amount).toFixed(6)} (~${money(b.usdValue).toFixed(2)})</span>
-                                                </div>
-                                            ))}
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
-
-                    {/* FeexPay (XAF) - Always Manual */}
-                    <div className="bg-surface-2/50 rounded-lg p-4">
-                        <div className="flex items-center justify-between text-sm text-fg-muted mb-2">
-                            <div className="flex items-center">
-                                <Wallet size={16} className="mr-1 text-orange-600 dark:text-orange-400" />
-                                FeexPay (XAF)
-                            </div>
-                            <span className="text-xs bg-surface-3/50 text-fg-muted px-2 py-0.5 rounded-sm">MANUEL</span>
-                        </div>
-                        {isEditing ? (
-                            <input
-                                type="number"
-                                value={editForm.feexpayBalanceXAF}
-                                onChange={(e) => setEditForm({ ...editForm, feexpayBalanceXAF: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-xl font-semibold"
-                                step="1"
-                                min="0"
-                            />
-                        ) : (
-                            <>
-                                <p className="text-2xl font-semibold text-orange-600 dark:text-orange-400">
-                                    {Math.round(balances?.feexpayBalanceXAF || 0).toLocaleString('fr-FR')} F
-                                </p>
-                                <p className="text-xs text-fg-subtle mt-1">
-                                    API non disponible - saisie manuelle
-                                </p>
-                            </>
-                        )}
-                    </div>
-
-                    {/* CinetPay (XAF) */}
-                    <div className="bg-surface-2/50 rounded-lg p-4">
-                        <div className="flex items-center justify-between text-sm text-fg-muted mb-2">
-                            <div className="flex items-center">
-                                <Wallet size={16} className="mr-1 text-blue-600 dark:text-blue-400" />
-                                CinetPay (XAF)
-                            </div>
-                            {showLiveBalances && liveBalances?.cinetpay.available && (
-                                <span className="text-xs bg-green-600/15 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-sm">EN DIRECT</span>
-                            )}
-                        </div>
-                        {isEditing ? (
-                            <input
-                                type="number"
-                                value={editForm.cinetpayBalanceXAF}
-                                onChange={(e) => setEditForm({ ...editForm, cinetpayBalanceXAF: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2 text-xl font-semibold"
-                                step="1"
-                                min="0"
-                            />
-                        ) : (
-                            <>
-                                <p className="text-2xl font-semibold text-blue-600 dark:text-blue-400">
-                                    {showLiveBalances && liveBalances?.cinetpay.available
-                                        ? Math.round(liveBalances.cinetpay.available_balance).toLocaleString('fr-FR')
-                                        : Math.round(balances?.cinetpayBalanceXAF || 0).toLocaleString('fr-FR')} F
-                                </p>
-                                {showLiveBalances && liveBalances?.cinetpay.available && (
-                                    <div className="text-xs text-fg-muted mt-1">
-                                        <div>Total : {Math.round(liveBalances.cinetpay.total).toLocaleString('fr-FR')} F</div>
-                                        {liveBalances.cinetpay.inUse > 0 && (
-                                            <div className="text-yellow-700 dark:text-yellow-400">En cours : {Math.round(liveBalances.cinetpay.inUse).toLocaleString('fr-FR')} F</div>
-                                        )}
-                                    </div>
-                                )}
-                                {showLiveBalances && liveBalances?.cinetpay.error && (
-                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">Erreur : {liveBalances.cinetpay.error}</p>
-                                )}
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                {/* Notes field (only in edit mode) */}
-                {isEditing && (
-                    <div className="mb-6">
-                        <label className="block text-sm text-fg-muted mb-2">Notes (optionnel)</label>
-                        <input
-                            type="text"
-                            value={editForm.notes}
-                            onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                            placeholder="Ex. : mise à jour du 26/12/2025"
-                            className="w-full bg-surface border border-line-strong text-fg rounded-sm px-3 py-2"
+        <Panel>
+            <PanelHeader
+                title="Argent chez les passerelles"
+                description="Ce que détiennent NOWPayments, FeexPay et CinetPay, comparé à ce que SBC doit aux membres."
+                className="flex-col sm:flex-row"
+                actions={(
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Segmented
+                            label="Source des soldes"
+                            size="sm"
+                            value={mode}
+                            onValueChange={setMode}
+                            options={[{ value: 'live', label: 'En direct' }, { value: 'manual', label: 'Saisis' }]}
                         />
+                        <Tooltip content="Actualiser">
+                            <Button variant="ghost" size="icon" className="h-11 w-11 sm:h-9 sm:w-9" aria-label="Actualiser les soldes"
+                                onClick={() => { void fetchBalances(); void fetchLiveBalances(); }} disabled={isLoadingLive}>
+                                <HugeiconsIcon icon={RefreshIcon} size={16} className={isLoadingLive ? 'animate-spin' : undefined} aria-hidden="true" />
+                            </Button>
+                        </Tooltip>
+                        <Can module="payments" write>
+                            <Button size="sm" className="h-11 sm:h-8" onClick={() => { resetForm(balances); setIsEditing(true); }} disabled={!balances}>
+                                <HugeiconsIcon icon={Edit02Icon} size={14} aria-hidden="true" />
+                                Modifier les soldes saisis
+                            </Button>
+                        </Can>
+                    </div>
+                )}
+            />
+            <PanelBody className="space-y-4">
+                {error && (
+                    <p role="alert" className="flex items-center gap-2 rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
+                        <HugeiconsIcon icon={Alert02Icon} size={16} aria-hidden="true" />
+                        {error}
+                    </p>
+                )}
+
+                {isLoading ? (
+                    <div className="grid gap-3 md:grid-cols-3">
+                        {[0, 1, 2].map(i => <Skeleton key={i} className="h-24" />)}
+                    </div>
+                ) : (
+                    <div className="grid gap-3 md:grid-cols-3">
+                        <Provider
+                            name="NOWPayments (crypto)"
+                            value={formatMoney(totalExternalUSD, 'USD')}
+                            badge={nowLive ? liveBadge : manualBadge}
+                        >
+                            {nowLive && money(liveBalances!.nowpayments.totalPendingUsd) > 0 && (
+                                <p>+ {formatMoney(money(liveBalances!.nowpayments.totalPendingUsd), 'USD')} en attente</p>
+                            )}
+                            {showLiveBalances && liveBalances?.nowpayments.error && <p className="text-danger" title={liveBalances.nowpayments.error}>{providerErrorFr('NOWPayments', liveBalances.nowpayments.error)}</p>}
+                            {nowLive && liveBalances!.nowpayments.balances.filter(b => b.amount > 0).length > 0 && (
+                                <details className="pt-1">
+                                    <summary className="cursor-pointer text-fg-muted hover:text-fg">Détail par crypto</summary>
+                                    <ul className="mt-1 space-y-0.5">
+                                        {liveBalances!.nowpayments.balances.filter(b => b.amount > 0).map(b => (
+                                            <li key={b.currency} className="flex justify-between gap-2 tabular-nums">
+                                                <span className="uppercase">{b.currency}</span>
+                                                <span>{money(b.amount).toFixed(6)} (≈ {formatMoney(money(b.usdValue), 'USD')})</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            )}
+                        </Provider>
+                        <Provider name="FeexPay" value={formatMoney(feexpayXAF)} badge={manualBadge}>
+                            <p>Pas d’API de solde : chiffre saisi ici.</p>
+                        </Provider>
+                        <Provider name="CinetPay" value={formatMoney(cinetpayXAF)} badge={cinetLive ? liveBadge : manualBadge}>
+                            {cinetLive && (
+                                <>
+                                    <p>Total {formatMoney(money(liveBalances!.cinetpay.total))}{liveBalances!.cinetpay.inUse > 0 ? ` · en cours ${formatMoney(money(liveBalances!.cinetpay.inUse))}` : ''}</p>
+                                    <p className="text-fg-subtle">Solde d’un seul pays CinetPay (limite connue de l’API).</p>
+                                </>
+                            )}
+                            {showLiveBalances && liveBalances?.cinetpay.error && <p className="text-danger" title={liveBalances.cinetpay.error}>{providerErrorFr('CinetPay', liveBalances.cinetpay.error)}</p>}
+                        </Provider>
                     </div>
                 )}
 
-                {/* Summary Section */}
-                <div className="border-t border-line pt-4">
-                    {/* Totals Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        {/* Total External USD */}
-                        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-                            <div className="flex items-center text-sm text-green-600 dark:text-green-300 mb-1">
-                                <DollarSign size={16} className="mr-1" />
-                                Total externe USD (NOWPayments)
-                            </div>
-                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                ${revenue.totalExternalUSD.toFixed(2)}
+                <div className="divide-y divide-line border-t border-line">
+                    <MarginRow label="Francs (XAF)" held={totalExternalXAF} owed={totalUserBalanceXAF} currency="XAF" scoped={scoped} />
+                    <MarginRow label="Dollars (USD)" held={totalExternalUSD} owed={totalUserBalanceUSD} currency="USD" scoped={scoped} />
+                    {scoped ? (
+                        <p className="py-3 text-xs text-fg-muted">
+                            « Dû aux membres » ne compte ici que les membres de {liabilitiesScope}. Les passerelles, elles, sont globales :
+                            la marge n’est calculée que pour « Tous les pays ».
+                        </p>
+                    ) : (
+                        <div className="flex flex-col gap-1 py-3 text-sm sm:flex-row sm:items-baseline sm:justify-between">
+                            <p className="text-fg-muted">
+                                Tout converti en francs (1 $ = {USD_TO_XAF_RATE} F) : détenu{' '}
+                                <span className="font-medium text-fg tabular-nums">{formatMoney(totalExternalCombinedXAF)}</span>
                             </p>
-                            <p className="text-xs text-fg-muted mt-1">
-                                Passif membres USD : ${totalUserBalanceUSD.toFixed(2)}
-                            </p>
-                        </div>
-
-                        {/* Total External XAF */}
-                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-                            <div className="flex items-center text-sm text-blue-600 dark:text-blue-300 mb-1">
-                                <Wallet size={16} className="mr-1" />
-                                Total externe XAF (CinetPay + FeexPay)
-                            </div>
-                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                {Math.round(revenue.totalExternalXAF).toLocaleString('fr-FR')} F
-                            </p>
-                            <p className="text-xs text-fg-muted mt-1">
-                                Passif membres XAF : {Math.round(totalUserBalanceXAF).toLocaleString('fr-FR')} F
+                            <p className="text-fg-muted">
+                                Marge totale{' '}
+                                <span className={cn('font-semibold tabular-nums', combinedMargin >= 0 ? 'text-success' : 'text-danger')}>
+                                    {combinedMargin > 0 ? '+' : ''}{formatMoney(combinedMargin)}
+                                </span>
                             </p>
                         </div>
-                    </div>
-
-                    {/* Revenue Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* USD Revenue */}
-                        <div className={`rounded-lg p-4 ${revenue.revenueUSD >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                            <div className={`flex items-center text-sm mb-1 ${revenue.revenueUSD >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                                <TrendingUp size={16} className="mr-1" />
-                                Revenu USD (NOWPayments - Passif USD)
-                            </div>
-                            <p className={`text-2xl font-bold ${revenue.revenueUSD >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                ${revenue.revenueUSD.toFixed(2)}
-                            </p>
-                            <p className="text-xs text-fg-muted mt-1">
-                                = ${revenue.totalExternalUSD.toFixed(2)} - ${totalUserBalanceUSD.toFixed(2)}
-                            </p>
-                        </div>
-
-                        {/* XAF Revenue */}
-                        <div className={`rounded-lg p-4 ${revenue.revenueXAF >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                            <div className={`flex items-center text-sm mb-1 ${revenue.revenueXAF >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                                <TrendingUp size={16} className="mr-1" />
-                                Revenu XAF (CinetPay + FeexPay - Passif XAF)
-                            </div>
-                            <p className={`text-2xl font-bold ${revenue.revenueXAF >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                {Math.round(revenue.revenueXAF).toLocaleString('fr-FR')} F
-                            </p>
-                            <p className="text-xs text-fg-muted mt-1">
-                                = {Math.round(revenue.totalExternalXAF).toLocaleString('fr-FR')} - {Math.round(totalUserBalanceXAF).toLocaleString('fr-FR')} F
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Combined Totals Row */}
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Combined Total External */}
-                        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center text-sm text-purple-600 dark:text-purple-300">
-                                    <CreditCard size={16} className="mr-1" />
-                                    Total externe combiné (XAF)
-                                </div>
-                                <p className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                                    {Math.round(revenue.totalExternalCombinedXAF).toLocaleString('fr-FR')} F
-                                </p>
-                            </div>
-                            <p className="text-xs text-fg-muted mt-1">
-                                Taux USD/XAF : {USD_TO_XAF_RATE} | USD converti : {Math.round(revenue.totalExternalUSD * USD_TO_XAF_RATE).toLocaleString('fr-FR')} F
-                            </p>
-                        </div>
-
-                        {/* Combined Total Revenue */}
-                        {(() => {
-                            const totalRevenueCombinedXAF = revenue.revenueXAF + (revenue.revenueUSD * USD_TO_XAF_RATE);
-                            const isPositive = totalRevenueCombinedXAF >= 0;
-                            return (
-                                <div className={`rounded-lg p-3 ${isPositive ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                                    <div className="flex items-center justify-between">
-                                        <div className={`flex items-center text-sm ${isPositive ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                                            <TrendingUp size={16} className="mr-1" />
-                                            Revenu total combiné (XAF)
-                                        </div>
-                                        <p className={`text-lg font-bold ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                            {Math.round(totalRevenueCombinedXAF).toLocaleString('fr-FR')} F
-                                        </p>
-                                    </div>
-                                    <p className="text-xs text-fg-muted mt-1">
-                                        = {Math.round(revenue.revenueXAF).toLocaleString('fr-FR')} F + (${revenue.revenueUSD.toFixed(2)} × {USD_TO_XAF_RATE})
-                                    </p>
-                                </div>
-                            );
-                        })()}
-                    </div>
+                    )}
                 </div>
 
-                {/* Last Updated Info */}
                 {balances?.lastUpdatedAt && (
-                    <div className="mt-4 text-xs text-fg-subtle text-right">
-                        Dernière mise à jour manuelle : {new Date(balances.lastUpdatedAt).toLocaleString('fr-FR')}
-                        {balances.notes && <span className="ml-2">- {balances.notes}</span>}
-                    </div>
+                    <p className="text-xs text-fg-subtle">
+                        Soldes saisis mis à jour le {formatDateTime(balances.lastUpdatedAt)}{balances.notes ? ` · ${balances.notes}` : ''}
+                    </p>
                 )}
-            </div>
-        </motion.div>
+            </PanelBody>
+
+            <Dialog open={isEditing} onOpenChange={open => { if (!open && !isSaving) setIsEditing(false); }}>
+                {isEditing && (
+                    <DialogContent
+                        title="Modifier les soldes saisis"
+                        description="Pour les passerelles sans API de solde, ou quand l’API ne répond pas. Les soldes en direct ne changent pas."
+                        footer={(
+                            <>
+                                <DialogClose asChild><Button size="lg" disabled={isSaving}>Annuler</Button></DialogClose>
+                                <Button variant="primary" size="lg" loading={isSaving} onClick={handleSave}>Enregistrer</Button>
+                            </>
+                        )}
+                    >
+                        <div className="grid gap-4">
+                            <Field label="NOWPayments (USD)">
+                                <Input type="number" inputMode="decimal" step="0.01" min="0" className="h-11"
+                                    value={editForm.nowpaymentsBalanceUSD}
+                                    onChange={e => setEditForm({ ...editForm, nowpaymentsBalanceUSD: parseFloat(e.target.value) || 0 })} />
+                            </Field>
+                            <Field label="FeexPay (F)">
+                                <Input type="number" inputMode="numeric" step="1" min="0" className="h-11"
+                                    value={editForm.feexpayBalanceXAF}
+                                    onChange={e => setEditForm({ ...editForm, feexpayBalanceXAF: parseFloat(e.target.value) || 0 })} />
+                            </Field>
+                            <Field label="CinetPay (F)">
+                                <Input type="number" inputMode="numeric" step="1" min="0" className="h-11"
+                                    value={editForm.cinetpayBalanceXAF}
+                                    onChange={e => setEditForm({ ...editForm, cinetpayBalanceXAF: parseFloat(e.target.value) || 0 })} />
+                            </Field>
+                            <Field label="Note (facultatif)">
+                                <Input className="h-11" placeholder="Ex. : relevé du 16/11/2026" value={editForm.notes}
+                                    onChange={e => setEditForm({ ...editForm, notes: e.target.value })} />
+                            </Field>
+                            {error && <p className="text-sm text-danger">{error}</p>}
+                        </div>
+                    </DialogContent>
+                )}
+            </Dialog>
+        </Panel>
     );
 };
 

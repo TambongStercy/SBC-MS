@@ -4,7 +4,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import { ArrowDown01Icon, Tick02Icon } from '@hugeicons/core-free-icons';
 import { cn } from '../../lib/cn';
 
-export interface SelectOption { value: string; label: ReactNode }
+export interface SelectOption { value: string; label: ReactNode; disabled?: boolean }
 
 /** A list of choices (use a plain <Input list> or a combobox for long searchable lists). */
 export function Select({ value, onValueChange, options, placeholder, id, disabled, className, 'aria-describedby': describedBy, 'aria-invalid': invalid }: {
@@ -37,7 +37,7 @@ export function Select({ value, onValueChange, options, placeholder, id, disable
         <S.Content position="popper" sideOffset={4} className="z-[220] max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-panel border border-line bg-surface shadow-overlay">
           <S.Viewport className="p-1">
             {options.map(o => (
-              <S.Item key={o.value} value={o.value} className="relative flex cursor-default select-none items-center rounded-md py-2 pl-2.5 pr-8 text-sm text-fg outline-none data-[highlighted]:bg-surface-2">
+              <S.Item key={o.value} value={o.value} disabled={o.disabled} className="relative flex cursor-default select-none items-center rounded-md py-2 pl-2.5 pr-8 text-sm text-fg outline-none data-[highlighted]:bg-surface-2 data-[disabled]:text-fg-subtle data-[disabled]:pointer-events-none">
                 <S.ItemText>{o.label}</S.ItemText>
                 <S.ItemIndicator className="absolute right-2 text-primary"><HugeiconsIcon icon={Tick02Icon} size={14} aria-hidden="true" /></S.ItemIndicator>
               </S.Item>

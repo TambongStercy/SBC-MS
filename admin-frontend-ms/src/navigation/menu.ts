@@ -84,9 +84,9 @@ export const MENU: MenuGroup[] = [
     id: 'core',
     label: 'Gestion',
     items: [
-      { label: 'Utilisateurs', path: '/users', icon: UserGroupIcon },
+      { label: 'Membres', path: '/users', icon: UserGroupIcon },
       { label: 'Partenaires', path: '/partners', icon: Agreement01Icon },
-      { label: 'Produits', path: '/products', icon: PackageIcon },
+      { label: 'Boutique', path: '/products', icon: PackageIcon },
       { label: 'Tombola', path: '/tombola', icon: Ticket01Icon },
       { label: 'Impact Challenge', path: '/impact-challenges', icon: ChampionIcon },
       { label: 'SBC Love', path: '/sbclove', icon: FavouriteIcon },
@@ -184,7 +184,7 @@ export function activePathFor(groups: MenuGroup[], pathname: string): string | u
 
 /**
  * Phone bottom bar, in order of preference; each account gets the first three
- * it can read, then "Menu". Super admin: Accueil, Utilisateurs, Retraits à
+ * it can read, then "Menu". Super admin: Accueil, Membres, Retraits à
  * valider; a withdrawals-only account: its two withdrawal pages; a video
  * checker: Vérifications vidéo.
  */
