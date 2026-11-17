@@ -401,6 +401,34 @@ push), so a hijacker cannot silence it.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
 
+### Withdrawal reservations, wallet ledger, webhook rules (support phase 2, 2026-11)
+
+- **Reservation:** a withdrawal holds its gross amount from the request (`users.reservedBalance`,
+  USD: `reservedUsdBalance`, rows in user-service `balancereservations`). Available money =
+  `balance - debt - reservedBalance`. Every debit except a withdrawal's own settlement is
+  refused beyond it (spend, transfer, conversion, admin adjust, internal withdrawal). Success
+  converts (balance and reserved drop once, ledger ref `withdrawal:<txId>`); a confirmed
+  failure, rejection, cancellation or approval expiry releases. Nothing releases on a timeout.
+- **Ledger:** every balance change is a `walletmovements` row (unique `{reference, direction}`).
+  Opening balances: `user-service/src/scripts/snapshot-opening-balances.ts` (dry run, `--apply`).
+- **Status changes** go through `payment-service/src/services/withdrawal-lifecycle.ts`
+  (one conditional write; money moves only for the call that made the transition).
+- **MoneyFusion payout webhooks are hints.** A "completed" applies only with concordant
+  amount + number (`MONEYFUSION_PAYOUT_STRICT_MATCH=true`, the default; `false` = the tokenPay
+  match is enough, as before). A "cancelled" never fails a withdrawal: it opens a review case
+  and the money stays reserved. So **the old webhook-simulation pattern (rule 7 above) no
+  longer works for MoneyFusion**: use Mark Completed / Mark Failed or the support
+  `regularize` route. A provider-confirmed success still completes a FAILED withdrawal (debit
+  once, divergence case).
+- **Deploy order:** user-service first (wallet routes `/api/users/internal/wallet/*`), then
+  payment-service. Against an older user-service, payment-service refuses withdrawals with a
+  503 ("mise à jour en cours") — nothing is paid without a reservation. Set
+  `NOWPAYMENTS_IPN_SECRET` (webhooks without a valid signature get 401) and
+  `SUPPORT_SERVICE_URL` in both services. Kill switches: `LEDGER_CHECK_DISABLED`,
+  `FINANCE_RECONCILIATION_DISABLED`.
+- Assertions: `user-service/src/scripts/check-wallet-reservations.ts`,
+  `payment-service/src/scripts/check-support-money.ts` (test DBs only).
+
 ### Withdrawal investigation cheat-sheet (read before pinging Sterling)
 
 Recurring "user says they didn't receive their withdrawal" requests. The

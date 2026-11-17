@@ -7,6 +7,7 @@ import PaymentIntentModel from '../database/models/PaymentIntent';
 import ManualRefClaimModel from '../database/models/manual-ref-claim.model';
 import { IPaymentIntent, PaymentGateway, PaymentStatus } from '../database/interfaces/IPaymentIntent';
 import paymentService from './payment.service';
+import { userServiceClient } from './clients/user.service.client';
 import { verifyPayinAtProvider, verifyPayoutAtProvider, ProviderAnswer } from './provider-verification.service';
 import { completeWithdrawal, endWithdrawal, COMPLETABLE_STATUSES } from './withdrawal-lifecycle';
 import { transactionStatusChecker } from '../jobs/transaction-status-checker.job';
@@ -240,8 +241,11 @@ class SupportFinanceService {
             actor: input.actor, at: new Date().toISOString(), requestId: input.requestId,
         };
         const from = [TransactionStatus.PROCESSING, TransactionStatus.PENDING];
+        // complete may also follow a failure (money really left: checked on the
+        // provider's dashboard, double-approved); the debit then happens once and a
+        // divergence case is opened.
         const tx = input.action === 'complete'
-            ? await completeWithdrawal(input.transactionId, { from, source: `support-regularize:${input.actor}`, set: { 'metadata.regularization': record } })
+            ? await completeWithdrawal(input.transactionId, { from: [...from, TransactionStatus.FAILED], source: `support-regularize:${input.actor}`, set: { 'metadata.regularization': record } })
             : await endWithdrawal(input.transactionId, {
                 from, to: TransactionStatus.FAILED,
                 set: { 'metadata.regularization': record, 'metadata.failureReason': `Régularisation support : ${input.reason}` },
@@ -258,7 +262,9 @@ class SupportFinanceService {
 
     /** Claims an external reference for a manual path; throws REF_ALREADY_USED. */
     async claimExternalRef(gateway: string, ref: string, by: string, extra: { userId?: string; approvalId?: string } = {}) {
-        const existing = await PaymentIntentModel.findOne({ gateway: gateway.toLowerCase(), gatewayPaymentId: ref }).select('sessionId status').lean();
+        const existing = await PaymentIntentModel.findOne({
+            $or: [{ gateway: gateway.toLowerCase(), gatewayPaymentId: ref }, { 'metadata.cinetpayTransactionId': ref }],
+        }).select('sessionId status').lean();
         if (existing) {
             throw Object.assign(new AppError(`Cette référence est déjà rattachée au paiement ${existing.sessionId} (${existing.status}). Utilisez la revérification de ce paiement.`, 409), { code: 'REF_ALREADY_USED', data: { sessionId: existing.sessionId, status: existing.status } });
         }
@@ -276,12 +282,86 @@ class SupportFinanceService {
         await ManualRefClaimModel.deleteOne({ gateway: gateway.toLowerCase(), ref, sessionId: { $exists: false } });
     }
 
+    async bindExternalRefs(gateway: string, refs: string[], sessionId: string) {
+        await ManualRefClaimModel.updateMany({ gateway: gateway.toLowerCase(), ref: { $in: refs } }, { $set: { sessionId } });
+    }
+
     /**
-     * Manual activation by an agent (contract §2.2): the external reference must
-     * be a payment the provider confirms, never used before, and (MoneyFusion)
-     * made for this member when MF tells us whose it is. Creates a SUCCEEDED
-     * intent bound to that reference and runs the normal completion (callback to
-     * user-service with fixed callbackPath/originatingService).
+     * Everything a manual activation / admin recovery needs before crediting a
+     * member with an external payment:
+     *  - every id the provider knows the payment by (CinetPay token AND
+     *    transaction id…) is unused by our intents and claimed once;
+     *  - the provider confirms it;
+     *  - it is not one of our own payments (then: recheck it) nor one made for
+     *    another member (the provider echoes our session / user id);
+     *  - the amount covers the pack price (plan prices from user-service) and,
+     *    when given, `minAmount`.
+     * Any refusal releases the claims. Returns the provider answer and the claimed ids.
+     */
+    async verifyExternalPayment(input: {
+        gateway: string; ref: string; userId: string; plan: string; by: string; approvalId?: string;
+        countryCode?: string; minAmount?: number; requestId: string;
+    }): Promise<{ answer: ProviderAnswer; refs: string[]; price: number }> {
+        const gateway = input.gateway.toLowerCase();
+        const claimed: string[] = [];
+        const releaseAll = async () => { for (const r of claimed) await this.releaseExternalRef(gateway, r); };
+        const refuse = (status: number, code: string, message: string, answer?: ProviderAnswer) => Object.assign(new AppError(message, status), {
+            code, data: answer ? { ...this.publicAnswer(answer), checkedAt: new Date().toISOString(), requestId: input.requestId } : undefined,
+        });
+
+        await this.claimExternalRef(gateway, input.ref, input.by, { userId: input.userId, approvalId: input.approvalId });
+        claimed.push(input.ref);
+        try {
+            const answer = await verifyPayinAtProvider(gateway, input.ref, { countryCode: input.countryCode });
+            if (answer.result !== 'confirmed') {
+                throw refuse(422, 'PROVIDER_NOT_CONFIRMED', `Le prestataire ne confirme pas ce paiement (${answer.result}).`, answer);
+            }
+            const details: any = answer.details || {};
+            for (const id of (details.relatedIds as string[] | undefined) || []) {
+                if (claimed.includes(id)) continue;
+                await this.claimExternalRef(gateway, id, input.by, { userId: input.userId, approvalId: input.approvalId });
+                claimed.push(id);
+            }
+            if (details.ourSessionId) {
+                const ours = await PaymentIntentModel.findOne({ sessionId: String(details.ourSessionId) }).select('sessionId userId status').lean();
+                if (ours) {
+                    throw Object.assign(refuse(409, 'REF_ALREADY_USED', `Ce paiement correspond déjà au paiement ${ours.sessionId} (${ours.status}) : utilisez sa revérification.`, answer), {
+                        data: { sessionId: ours.sessionId, status: ours.status },
+                    });
+                }
+            }
+            if (details.ownerUserId && String(details.ownerUserId) !== String(input.userId)) {
+                throw refuse(422, 'PAID_FOR_ANOTHER_ACCOUNT', 'Ce paiement a été fait pour un autre compte.', answer);
+            }
+
+            const prices = await userServiceClient.getPlanPrices();
+            const planKey = String(input.plan || '').toUpperCase() as 'CLASSIQUE' | 'CIBLE' | 'UPGRADE';
+            const isUsd = gateway === 'nowpayments';
+            const price = prices?.[planKey]?.[isUsd ? 'USD' : 'XAF'];
+            if (!(price > 0)) throw refuse(400, 'UNKNOWN_PLAN', 'Pack inconnu.');
+            const currency = String(answer.currency || (isUsd ? 'USD' : 'XAF')).toUpperCase();
+            const acceptable = isUsd ? ['USD'] : ['XAF', 'XOF']; // XAF/XOF are 1:1
+            if (!acceptable.includes(currency)) {
+                throw refuse(422, 'CURRENCY_MISMATCH', `Paiement en ${currency} : à traiter à la main par la finance.`, answer);
+            }
+            if (!(Number(answer.amount) > 0)) {
+                throw refuse(422, 'AMOUNT_UNVERIFIED', 'Le prestataire ne donne pas le montant payé : activation manuelle impossible.', answer);
+            }
+            const needed = Math.max(price, input.minAmount ?? 0);
+            if (Number(answer.amount) < needed - 0.01) {
+                throw refuse(422, 'AMOUNT_TOO_LOW', `Montant payé ${answer.amount} ${currency}, inférieur au prix du pack (${needed}).`, answer);
+            }
+            return { answer, refs: claimed, price };
+        } catch (err) {
+            await releaseAll();
+            throw err;
+        }
+    }
+
+    /**
+     * Manual activation by an agent (contract §2.2): see verifyExternalPayment.
+     * Creates a SUCCEEDED intent bound to that reference and runs the normal
+     * completion (callback to user-service with fixed callbackPath/originatingService).
      */
     async manualActivation(input: {
         userId: string; gateway: string; externalRef: string; plan: string; approvalId: string; actor: string; requestId: string; countryCode?: string;
@@ -292,31 +372,15 @@ class SupportFinanceService {
             CIBLE: { planId: 'CIBLE', planName: 'Abonnement Ciblé', isUpgrade: false },
             UPGRADE: { planId: 'CIBLE', planName: 'Upgrade to Ciblé', isUpgrade: true },
         };
-        const plan = plans[String(input.plan || '').toUpperCase()];
+        const planKey = String(input.plan || '').toUpperCase();
+        const plan = plans[planKey];
         if (!plan) throw new AppError('plan must be CLASSIQUE, CIBLE or UPGRADE', 400);
         if (!['feexpay', 'cinetpay', 'moneyfusion', 'nowpayments'].includes(gateway)) throw new AppError('Unsupported gateway', 400);
 
-        await this.claimExternalRef(gateway, input.externalRef, input.actor, { userId: input.userId, approvalId: input.approvalId });
-        let answer: ProviderAnswer;
-        try {
-            answer = await verifyPayinAtProvider(gateway, input.externalRef, { countryCode: input.countryCode });
-        } catch (err) {
-            await this.releaseExternalRef(gateway, input.externalRef);
-            throw err;
-        }
-        const notConfirmed = (message: string) => Object.assign(new AppError(message, 422), {
-            code: 'PROVIDER_NOT_CONFIRMED',
-            data: { ...this.publicAnswer(answer), checkedAt: new Date().toISOString(), requestId: input.requestId },
+        const { answer, refs } = await this.verifyExternalPayment({
+            gateway, ref: input.externalRef, userId: input.userId, plan: planKey, by: input.actor,
+            approvalId: input.approvalId, countryCode: input.countryCode, requestId: input.requestId,
         });
-        if (answer.result !== 'confirmed') {
-            await this.releaseExternalRef(gateway, input.externalRef);
-            throw notConfirmed(`Le prestataire ne confirme pas ce paiement (${answer.result}).`);
-        }
-        const owner = (answer.details?.personalInfo as any)?.userId;
-        if (owner && String(owner) !== String(input.userId)) {
-            await this.releaseExternalRef(gateway, input.externalRef);
-            throw notConfirmed('Ce paiement a été fait pour un autre compte.');
-        }
 
         const currency = gateway === 'nowpayments' ? 'USD' : (answer.currency || 'XAF');
         let intent: any;
@@ -341,6 +405,7 @@ class SupportFinanceService {
                     isManualAdmin: true,
                     createdBy: 'support',
                     externalReference: input.externalRef,
+                    providerRelatedIds: refs,
                     manualActivation: {
                         approvalId: input.approvalId, actor: input.actor, requestId: input.requestId, verifiedAt: new Date(),
                         providerStatus: answer.providerStatus, providerAmount: answer.amount ?? null,
@@ -348,11 +413,11 @@ class SupportFinanceService {
                 },
             });
         } catch (err: any) {
-            await this.releaseExternalRef(gateway, input.externalRef);
+            for (const r of refs) await this.releaseExternalRef(gateway, r);
             if (err?.code === 11000) throw Object.assign(new AppError('Cette référence est déjà utilisée.', 409), { code: 'REF_ALREADY_USED' });
             throw err;
         }
-        await ManualRefClaimModel.updateOne({ gateway, ref: input.externalRef }, { $set: { sessionId: intent.sessionId } });
+        await this.bindExternalRefs(gateway, refs, intent.sessionId);
         await paymentService.handlePaymentCompletion(intent.toObject());
         log.warn(`[${input.requestId}] manual activation ${intent.sessionId} for user ${input.userId} (${plan.planId}) by ${input.actor}, approval ${input.approvalId}, ${gateway} ref verified`);
         return { sessionId: intent.sessionId, status: intent.status, amount: intent.amount, currency, verified: this.publicAnswer(answer) };

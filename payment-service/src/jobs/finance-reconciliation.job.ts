@@ -28,10 +28,13 @@ export interface ReconciliationReport {
     debitMissing: number;
     debitWithoutProof: number;
     releasesRetried: number;
+    heldOnFinal: number;
 }
 
+const OPEN = [TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING_ADMIN_APPROVAL, TransactionStatus.PENDING, TransactionStatus.PROCESSING];
+
 export async function runFinanceReconciliation(now: Date = new Date(), sinceDays = 3): Promise<ReconciliationReport> {
-    const report: ReconciliationReport = { unknownStatus: 0, debitMissing: 0, debitWithoutProof: 0, releasesRetried: 0 };
+    const report: ReconciliationReport = { unknownStatus: 0, debitMissing: 0, debitWithoutProof: 0, releasesRetried: 0, heldOnFinal: 0 };
     const cases: SupportCaseInput[] = [];
     const since = new Date(now.getTime() - sinceDays * DAY);
 
@@ -101,12 +104,38 @@ export async function runFinanceReconciliation(now: Date = new Date(), sinceDays
     const ended = await TransactionModel.find({
         type: TransactionType.WITHDRAWAL,
         status: { $in: [TransactionStatus.FAILED, TransactionStatus.CANCELLED, TransactionStatus.REJECTED_BY_ADMIN, TransactionStatus.EXPIRED] },
-        'metadata.reservation.state': 'held',
+        // held, but also requested/unknown: a reserve whose outcome was never confirmed.
+        'metadata.reservation.state': { $in: ['held', 'requested', 'unknown'] },
         updatedAt: { $gte: new Date(now.getTime() - 30 * DAY) },
     }).select('transactionId metadata').limit(1000).lean<ITransaction[]>();
     for (const tx of ended) {
         report.releasesRetried++;
         await releaseWithdrawalReservation(tx, 'reconciliation: ended withdrawal still reserved');
+    }
+
+    // 5. Held reservations seen from user-service: one whose withdrawal is final is
+    //    settled (completed) or released (other ends); an unknown one is a case.
+    try {
+        const held = await userServiceClient.listReservations('held', 60);
+        const byTx = new Map((await TransactionModel.find({ transactionId: { $in: held.map((h) => h.transactionId) } })
+            .lean<ITransaction[]>()).map((t) => [t.transactionId, t]));
+        for (const r of held) {
+            const t = byTx.get(r.transactionId);
+            if (t && OPEN.includes(t.status)) continue;
+            report.heldOnFinal++;
+            if (t?.status === TransactionStatus.COMPLETED) await settleCompletedWithdrawal(t, 'finance-reconciliation');
+            else if (t) await releaseWithdrawalReservation(t, `reconciliation: withdrawal is ${t.status}`);
+            cases.push({
+                type: 'withdrawal_divergence', dedupKey: `withdrawal:${r.transactionId}:held-on-final`, severity: t ? 'warning' : 'critical',
+                subject: { userId: String(r.userId), transactionId: r.transactionId },
+                summary: t
+                    ? `Montant encore réservé pour un retrait ${t.status} : ${t.status === TransactionStatus.COMPLETED ? 'débit relancé' : 'libération relancée'}.`
+                    : 'Montant réservé pour un retrait introuvable : à vérifier.',
+                details: { amount: r.amount, currency: r.currency, status: t?.status ?? null },
+            });
+        }
+    } catch (err: any) {
+        log.error(`Held-reservation check skipped: ${err.message}`);
     }
 
     for (const c of cases) await openSupportCase(c);

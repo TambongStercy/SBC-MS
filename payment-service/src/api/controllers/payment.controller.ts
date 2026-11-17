@@ -1786,29 +1786,22 @@ export class PaymentController {
                 return;
             }
             const adminId = (req as any).user?.userId || (req as any).user?.id || 'admin';
+            const planKey = metadata?.subscriptionType === 'UPGRADE' ? 'UPGRADE' : metadata?.subscriptionType === 'CIBLE' ? 'CIBLE' : 'CLASSIQUE';
+            let verified: any;
+            let claimedRefs: string[] = [];
             try {
-                await supportFinanceService.claimExternalRef(provider, reference, `admin:${adminId}`, { userId: String(userId) });
-            } catch (claimError: any) {
-                res.status(claimError.statusCode || 409).json({ success: false, code: claimError.code || 'REF_ALREADY_USED', message: claimError.message, data: claimError.data });
-                return;
-            }
-            const verified = await verifyPayinAtProvider(provider, reference);
-            if (verified.result !== 'confirmed') {
-                await supportFinanceService.releaseExternalRef(provider, reference);
-                res.status(422).json({
-                    success: false, code: 'PROVIDER_NOT_CONFIRMED',
-                    message: `Le prestataire ne confirme pas ce paiement (${verified.result}, ${verified.providerStatus}).`,
-                    data: { result: verified.result, providerStatus: verified.providerStatus, amount: verified.amount ?? null },
+                // Confirmed at the provider, every provider id unused and claimed, not
+                // paid for another account, amount >= pack price and >= `amount`.
+                const out = await supportFinanceService.verifyExternalPayment({
+                    gateway: provider, ref: reference, userId: String(userId), plan: planKey, by: `admin:${adminId}`,
+                    minAmount: Number(amount), requestId: String(req.header('x-request-id') || 'admin'),
                 });
+                verified = out.answer;
+                claimedRefs = out.refs;
+            } catch (refusal: any) {
+                res.status(refusal.statusCode || 409).json({ success: false, code: refusal.code, message: refusal.message, data: refusal.data });
                 return;
             }
-            const owner = (verified.details?.personalInfo as any)?.userId;
-            if (owner && String(owner) !== String(userId)) {
-                await supportFinanceService.releaseExternalRef(provider, reference);
-                res.status(422).json({ success: false, code: 'PROVIDER_NOT_CONFIRMED', message: 'Ce paiement a été fait pour un autre compte.' });
-                return;
-            }
-
 
             // Fetch user information from user service including subscription info
             let userInfo = null;
@@ -1892,7 +1885,7 @@ export class PaymentController {
                     providerVerification: { result: verified.result, providerStatus: verified.providerStatus, amount: verified.amount ?? null, at: new Date() },
                 }
             });
-            await ManualRefClaimModel.updateOne({ gateway: provider, ref: reference }, { $set: { sessionId: paymentIntent.sessionId } });
+            await supportFinanceService.bindExternalRefs(provider, claimedRefs, paymentIntent.sessionId);
 
             let finalIntent = paymentIntent;
 
@@ -2157,6 +2150,19 @@ export class PaymentController {
                 }
             }
             const verified = await verifyPayinAtProvider(existingIntent.gateway, reference, { countryCode: existingIntent.countryCode });
+            const vd: any = verified.details || {};
+            const providerAmount = Number(verified.amount);
+            const wrongOwner = (vd.ourSessionId && String(vd.ourSessionId) !== sessionId)
+                || (vd.ownerUserId && String(vd.ownerUserId) !== String(existingIntent.userId));
+            const tooLow = verified.result === 'confirmed' && (!(providerAmount > 0) || providerAmount < Number(existingIntent.metadata?.mfPayinAmount ?? existingIntent.amount ?? 0) - 0.01);
+            if (verified.result === 'confirmed' && (wrongOwner || tooLow)) {
+                if (claimsNewRef) await supportFinanceService.releaseExternalRef(existingIntent.gateway, reference);
+                res.status(422).json({
+                    success: false, code: wrongOwner ? 'PAID_FOR_ANOTHER_ACCOUNT' : 'AMOUNT_TOO_LOW',
+                    message: wrongOwner ? 'Ce paiement appartient à un autre paiement ou un autre compte.' : `Montant confirmé (${verified.amount ?? 'inconnu'}) inférieur au montant attendu (${existingIntent.amount}).`,
+                });
+                return;
+            }
             if (verified.result !== 'confirmed') {
                 if (claimsNewRef) await supportFinanceService.releaseExternalRef(existingIntent.gateway, reference);
                 res.status(422).json({

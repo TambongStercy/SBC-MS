@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { toMemberTransaction, toMemberTransactions } from '../../utils/member-transaction-view';
 import { Types } from 'mongoose';
 import paymentService from '../../services/payment.service';
 import { userServiceClient } from '../../services/clients/user.service.client';
@@ -68,7 +69,7 @@ export class TransactionController {
 
             return res.status(200).json({
                 success: true,
-                transactions: result.transactions,
+                transactions: toMemberTransactions(result.transactions),
                 pagination: {
                     total: result.total,
                     limit: options.limit,
@@ -111,7 +112,7 @@ export class TransactionController {
 
             return res.status(200).json({
                 success: true,
-                transaction
+                transaction: toMemberTransaction(transaction)
             });
         } catch (error) {
             log.error(`Error in getTransaction: ${error}`);
@@ -868,7 +869,7 @@ export class TransactionController {
 
             return res.status(200).json({
                 success: true,
-                transactions: result.transactions,
+                transactions: toMemberTransactions(result.transactions),
                 pagination: {
                     total: result.total,
                     limit: options.limit,
@@ -916,7 +917,7 @@ export class TransactionController {
             return res.status(200).json({
                 success: true,
                 data: {
-                    transactions: result.transactions,
+                    transactions: toMemberTransactions(result.transactions),
                     pagination: {
                         page: options.page,
                         limit: options.limit,

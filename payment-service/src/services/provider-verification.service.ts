@@ -33,6 +33,7 @@ export interface ProviderAnswer {
 }
 
 const httpStatus = (err: any): number | undefined => err?.response?.status;
+const uniq = (ids: unknown[]): string[] => [...new Set(ids.filter((v) => v !== undefined && v !== null && v !== '').map(String))];
 
 /** Is this external reference a payment that really succeeded at the provider? */
 export async function verifyPayinAtProvider(gateway: string, ref: string, opts: { countryCode?: string } = {}): Promise<ProviderAnswer> {
@@ -53,10 +54,15 @@ export async function verifyPayinAtProvider(gateway: string, ref: string, opts: 
                         headers: { Authorization: `Bearer ${config.feexpay.apiKey}`, 'Content-Type': 'application/json' }, timeout: 15000,
                     });
                     const st = String(res.data?.status || '').toUpperCase();
+                    const cb = res.data?.callback_info || {};
                     return {
                         ...base, providerStatus: st || 'UNKNOWN',
                         result: st === 'SUCCESSFUL' ? 'confirmed' : st === 'FAILED' ? 'failed' : 'pending',
                         amount: Number(res.data?.amount) || undefined, currency: res.data?.currency,
+                        details: {
+                            relatedIds: uniq([ref, res.data?.reference]),
+                            ourSessionId: cb.sessionId ?? null, ownerUserId: cb.userId ?? null,
+                        },
                     };
                 } catch (err: any) {
                     if (httpStatus(err) === 404) return { ...base, result: 'not_found', providerStatus: 'NOT_FOUND' };
@@ -76,10 +82,18 @@ export async function verifyPayinAtProvider(gateway: string, ref: string, opts: 
                         const st = String(res.data?.status || '').toUpperCase();
                         const result: RecheckOutcome = code === 100 || st === 'SUCCESS' ? 'confirmed'
                             : code === 2010 || code === 2003 || st === 'FAILED' || st === 'EXPIRED' ? 'failed' : 'pending';
+                        const d = res.data?.data || {};
+                        const merchantTx = String(d.merchant_transaction_id ?? res.data?.merchant_transaction_id ?? '').replace(/^TEST-/, '') || null;
                         return {
                             ...base, result, providerStatus: `${code ?? ''} ${st}`.trim(),
-                            amount: Number(res.data?.data?.amount ?? res.data?.amount) || undefined,
-                            currency: res.data?.data?.currency ?? res.data?.currency, details: { country: cc },
+                            amount: Number(d.amount ?? res.data?.amount) || undefined,
+                            currency: d.currency ?? res.data?.currency,
+                            details: {
+                                country: cc,
+                                // Every id CinetPay knows this payment by (payment token AND transaction id).
+                                relatedIds: uniq([ref, d.transaction_id, d.payment_token, res.data?.transaction_id, res.data?.payment_token]),
+                                ourSessionId: merchantTx,
+                            },
                         };
                     } catch (err: any) {
                         const status = httpStatus(err);
@@ -102,7 +116,11 @@ export async function verifyPayinAtProvider(gateway: string, ref: string, opts: 
                     ...base, providerStatus: st || 'unknown',
                     result: ['paid', 'success', 'completed'].includes(st) ? 'confirmed' : ['failure', 'cancelled', 'no paid'].includes(st) ? 'failed' : 'pending',
                     amount: Number(data.Montant) || undefined,
-                    details: { personalInfo: info ? { userId: info.userId ?? null, sessionId: info.sessionId ?? null } : null, raw: data },
+                    details: {
+                        personalInfo: info ? { userId: info.userId ?? null, sessionId: info.sessionId ?? null } : null, raw: data,
+                        relatedIds: uniq([ref, data.numeroTransaction]),
+                        ourSessionId: info?.sessionId ?? null, ownerUserId: info?.userId ?? null,
+                    },
                 };
             }
             case 'nowpayments': {
@@ -112,7 +130,7 @@ export async function verifyPayinAtProvider(gateway: string, ref: string, opts: 
                     ...base, providerStatus: st || 'unknown',
                     result: st === 'finished' || st === 'confirmed' ? 'confirmed' : st === 'failed' || st === 'expired' || st === 'refunded' ? 'failed' : 'pending',
                     amount: Number(p.priceAmount) || undefined, currency: p.priceCurrency,
-                    details: { orderId: p.orderId ?? null },
+                    details: { orderId: p.orderId ?? null, relatedIds: uniq([ref]), ourSessionId: p.orderId ?? null },
                 };
             }
             default:

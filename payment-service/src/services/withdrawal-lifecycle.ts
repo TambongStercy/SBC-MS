@@ -184,9 +184,9 @@ export async function releaseWithdrawalReservation(tx: Pick<ITransaction, 'trans
             log.error(`Reservation of ${tx.transactionId} could not be released (conflict): left for review`);
             return;
         }
-        if (out !== 'not_reserved') {
-            await TransactionModel.updateOne({ transactionId: tx.transactionId }, { $set: { 'metadata.reservation.state': 'released', 'metadata.reservation.releasedAt': new Date() } });
-        }
+        await TransactionModel.updateOne({ transactionId: tx.transactionId }, { $set: out === 'not_reserved'
+            ? { 'metadata.reservation.state': 'none' }
+            : { 'metadata.reservation.state': 'released', 'metadata.reservation.releasedAt': new Date() } });
     } catch (error: any) {
         log.error(`Reservation of ${tx.transactionId} not released yet (${error.message}); the daily reconciliation retries`);
     }

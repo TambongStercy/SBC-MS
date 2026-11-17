@@ -118,7 +118,14 @@ Implementation notes (feature/support-money):
   `[A-Za-z0-9_.:-]`). Same key for the same member = the first request is returned.
 - user-service wallet internals used by payment-service (not for support-service):
   `/api/users/internal/wallet/{reservations, reservations/:txId/{release,convert},
-  available/:userId, movements, movements/lookup}`.
+  available/:userId, movements, movements/lookup, plan-prices}`.
+- `activation/manual` (and the admin manual paths) also refuse with `422 AMOUNT_TOO_LOW`
+  (paid amount below the pack price), `422 AMOUNT_UNVERIFIED`, `422 CURRENCY_MISMATCH`,
+  `422 PAID_FOR_ANOTHER_ACCOUNT`; every provider id of the payment (CinetPay token and
+  transaction id) is claimed once (`409 REF_ALREADY_USED`).
+- `regularize complete` also accepts a `failed` withdrawal (money confirmed out on the
+  provider's dashboard): debited once, divergence case opened.
+- Member-facing `/api/transactions*` responses never carry provider references.
 
 ### 2.3 advertising-service (`/api/advertising/internal/…`)
 

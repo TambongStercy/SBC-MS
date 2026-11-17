@@ -191,13 +191,24 @@ class UserServiceClient {
      * checks the balance net of debt). False when it does not cover it.
      */
     async spendBalance(userId: string, amount: number, movement: LedgerMovement = {}): Promise<boolean> {
+        if (!this.baseUrl) throw new AppError('User service is not configured.', 503);
+        let res;
         try {
-            await this.request('post', `/users/internal/${userId}/spend-balance`, { amount, ...movement });
-            return true;
+            res = await axios.post(`${this.baseUrl}/users/internal/${userId}/spend-balance`, { amount, ...movement }, {
+                headers: { Authorization: `Bearer ${this.serviceSecret}`, 'x-service-name': 'payment-service' },
+                timeout: 15000, validateStatus: (s) => s < 500,
+            });
         } catch (error: any) {
-            if (error instanceof AppError && error.statusCode === 409) return false;
-            throw error;
+            log.error(`spendBalance for ${userId} failed: ${error.response?.status ?? ''} ${error.message}`);
+            throw new AppError('Le service des soldes est momentanément indisponible.', 503);
         }
+        if (res.status === 200 && res.data?.success !== false) return true;
+        if (res.status === 409 && (res.data?.code === 'MOVEMENT_UNDONE' || res.data?.code === 'MOVEMENT_PENDING')) {
+            // Same reference already taken and given back (or in review): never report it as paid.
+            throw new AppError('Ce paiement a été annulé ou est en vérification : recommencez avec une nouvelle demande.', 409);
+        }
+        if (res.status === 409) return false;
+        throw new AppError(res.data?.message || `Balance spend refused (${res.status})`, res.status);
     }
 
     /**
@@ -700,7 +711,18 @@ class UserServiceClient {
         if (status === 201 || status === 200) return body?.data?.status === 'already_reserved' ? 'already_reserved' : 'reserved';
         if (status === 409 && body?.code === 'INSUFFICIENT_AVAILABLE_BALANCE') return 'insufficient';
         if (status === 409) return 'conflict';
+        if (status === 404 && body?.code !== 'USER_NOT_FOUND') {
+            // An older user-service without the wallet routes (rolling deploy): refuse cleanly.
+            log.error('user-service has no wallet reservation route: deploy user-service before payment-service');
+            throw new AppError('Les retraits sont momentanément indisponibles (mise à jour en cours). Réessayez dans quelques minutes.', 503);
+        }
         throw new AppError(body?.message || `Reservation refused (${status})`, status === 404 ? 404 : 400);
+    }
+
+    async listReservations(state: string, olderThanMinutes: number): Promise<Array<{ transactionId: string; userId: string; amount: number; currency: string; state: string; updatedAt: string }>> {
+        const { status, body } = await this.walletCall('get', `/reservations?state=${encodeURIComponent(state)}&olderThanMinutes=${olderThanMinutes}&limit=2000`);
+        if (status !== 200) throw new AppError(body?.message || `Reservation listing failed (${status})`, 503);
+        return body?.data ?? [];
     }
 
     async releaseWithdrawalFunds(transactionId: string, reason: string): Promise<'released' | 'already_released' | 'not_reserved' | 'conflict'> {
@@ -722,6 +744,13 @@ class UserServiceClient {
         if (status === 404) return null;
         if (status === 200) return body.data;
         throw new AppError(body?.message || `Reservation lookup failed (${status})`, 503);
+    }
+
+    /** Pack prices (user-service subscription plans) for manual activations. */
+    async getPlanPrices(): Promise<Record<'CLASSIQUE' | 'CIBLE' | 'UPGRADE', { XAF: number; USD: number }>> {
+        const { status, body } = await this.walletCall('get', '/plan-prices');
+        if (status !== 200 || !body?.data) throw new AppError('Prix des packs indisponibles : réessayez dans quelques minutes.', 503);
+        return body.data;
     }
 
     async getAvailableBalance(userId: string): Promise<{ balance: number; debt: number; reservedBalance: number; available: number; usdBalance: number; reservedUsdBalance: number; availableUsd: number } | null> {

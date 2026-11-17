@@ -353,7 +353,9 @@ class PaymentService {
             return tx;
         } catch (err: any) {
             // The money left the balance but nothing records it: put it back.
-            await userServiceClient.updateUserBalance(args.userId, args.amount, { reference: `spend-undo:${args.reference}`, source: 'balance-spend-undo' }).catch((e: any) =>
+            // Undo under the SAME reference (credit direction): a retry with this
+            // reference is then refused by user-service instead of passing as paid.
+            await userServiceClient.updateUserBalance(args.userId, args.amount, { reference: `spend:${args.reference}`, source: 'balance-spend-undo' }).catch((e: any) =>
                 log.error(`CRITICAL: balance payment ${args.reference} debited ${args.amount} XAF from ${args.userId}, `
                     + `was not recorded, and could not be put back: ${e.message}`));
             throw err;
@@ -482,6 +484,25 @@ class PaymentService {
     }
 
     /**
+     * Credits a member under a fixed ledger reference. 'applied' (including a
+     * replay already applied), 'refused' (user-service answered 400/404: nothing
+     * moved), or 'unknown' after 3 unclear failures (network, 5xx, pending row).
+     */
+    private async creditWithRetry(userId: string, amount: number, reference: string, source: string): Promise<'applied' | 'refused' | 'unknown'> {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                await userServiceClient.updateUserBalance(userId, amount, { reference, source });
+                return 'applied';
+            } catch (error: any) {
+                if (error instanceof AppError && (error.statusCode === 400 || error.statusCode === 404)) return 'refused';
+                log.warn(`Credit ${reference} attempt ${attempt + 1} unclear: ${error.message}`);
+                await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+            }
+        }
+        return 'unknown';
+    }
+
+    /**
      * The withdrawal already created under this Idempotency-Key, shaped like an
      * initiation response; null when there is none (or no key).
      */
@@ -517,6 +538,17 @@ class PaymentService {
             await transitionWithdrawal(tx.transactionId, OPEN_WITHDRAWAL_STATUSES, TransactionStatus.FAILED, {
                 'metadata.failureReason': `Reservation unavailable: ${error.message}`,
             });
+            // The reserve may have landed in user-service before the error: undo it
+            // (idempotent). If that cannot be confirmed either, mark it for the daily
+            // reconciliation, which retries the release.
+            try {
+                const out = await userServiceClient.releaseWithdrawalFunds(tx.transactionId, 'reservation outcome unknown at request');
+                await TransactionModel.updateOne({ transactionId: tx.transactionId }, { $set: {
+                    'metadata.reservation.state': out === 'conflict' ? 'unknown' : out === 'not_reserved' ? 'none' : 'released',
+                } });
+            } catch {
+                await TransactionModel.updateOne({ transactionId: tx.transactionId }, { $set: { 'metadata.reservation.state': 'unknown' } });
+            }
             throw error instanceof AppError ? error : new AppError('Les retraits sont momentanément indisponibles. Réessayez dans quelques minutes.', 503);
         }
         if (!reserved) {
@@ -1483,6 +1515,9 @@ class PaymentService {
             if (!(await userServiceClient.spendBalance(fromUserId.toString(), amount, { reference: transferRef, source: 'member-transfer' }))) {
                 throw new AppError('Insufficient balance', 400); // Use AppError
             }
+            // 'before': the recipient was not credited (definitely) → the sender may be refunded.
+            // 'unknown': the credit may have landed → never refund (that could create money).
+            let creditPhase: 'before' | 'unknown' | 'done' = 'before';
             try {
 
             // Fetch sender details for notification
@@ -1545,8 +1580,24 @@ class PaymentService {
             await transactionRepository.updateStatus(senderTransaction.transactionId, TransactionStatus.COMPLETED);
             await transactionRepository.updateStatus(recipientTransaction.transactionId, TransactionStatus.COMPLETED);
 
-            // The sender was debited above; credit the recipient.
-            await userServiceClient.updateUserBalance(toUserId.toString(), amount, { reference: `${transferRef}:in`, source: 'member-transfer' });
+            // The sender was debited above; credit the recipient under a fixed reference,
+            // retried on unclear errors (idempotent), refunded only on a definite refusal.
+            creditPhase = 'unknown';
+            const credit = await this.creditWithRetry(toUserId.toString(), amount, `${transferRef}:in`, 'member-transfer');
+            if (credit === 'refused') {
+                creditPhase = 'before';
+                throw new AppError('Le destinataire ne peut pas recevoir ce transfert.', 400);
+            }
+            if (credit === 'unknown') {
+                void openSupportCase({
+                    type: 'ledger_mismatch', dedupKey: `transfer:${transferRef}`, severity: 'critical',
+                    subject: { userId: fromUserId.toString() },
+                    summary: `Transfert entre membres : expéditeur débité, crédit du destinataire non confirmé (${amount} ${currency}). Ne pas rembourser sans vérifier le registre (${transferRef}:in).`,
+                    details: { transferRef, toUserId: toUserId.toString(), amount },
+                });
+                throw new AppError('Transfert en cours de vérification. Ne le refaites pas : le support vous recontactera.', 502);
+            }
+            creditPhase = 'done';
 
             // Send notifications to both users
             if (senderEmail) {
@@ -1583,7 +1634,13 @@ class PaymentService {
                 recipientTransaction
             };
             } catch (afterDebitError: any) {
-                log.error(`Member transfer ${transferRef} failed after debiting ${fromUserId}: ${afterDebitError.message}. Putting the money back.`);
+                if (creditPhase === 'done') {
+                    // Money moved both ways; only a side effect (notification) failed.
+                    log.error(`Member transfer ${transferRef} completed; a later step failed: ${afterDebitError.message}`);
+                    throw afterDebitError;
+                }
+                if (creditPhase === 'unknown') throw afterDebitError; // case opened, never refund on doubt
+                log.error(`Member transfer ${transferRef} failed after debiting ${fromUserId} (recipient not credited): ${afterDebitError.message}. Putting the money back.`);
                 await userServiceClient.updateUserBalance(fromUserId.toString(), amount, { reference: `${transferRef}:undo`, source: 'member-transfer-undo' })
                     .catch((e: any) => log.error(`CRITICAL: member transfer ${transferRef} debited ${amount} from ${fromUserId} and could not be put back: ${e.message}`));
                 throw afterDebitError;
@@ -2593,7 +2650,7 @@ class PaymentService {
             // Conditional transitions: a replayed or out-of-order event moves nothing.
             if (newStatus === TransactionStatus.COMPLETED) {
                 const done = await completeWithdrawal(transaction.transactionId, {
-                    from: COMPLETABLE_STATUSES, source: 'nowpayments-payout', set: { ...webhookFields, 'metadata.completedAt': new Date() },
+                    from: [...COMPLETABLE_STATUSES, TransactionStatus.FAILED], source: 'nowpayments-payout', set: { ...webhookFields, 'metadata.completedAt': new Date() },
                 });
                 if (done) {
                     log.info(`NOWPayments withdrawal ${transaction.transactionId} completed; USD wallet settled (amount + fee).`);
@@ -4104,8 +4161,10 @@ class PaymentService {
                 });
                 return;
             }
+            // FAILED included: a real success may follow a failure decided by hand or by
+            // an error; it is debited once under withdrawal:<txId> and opens a case.
             const done = await completeWithdrawal(transaction.transactionId, {
-                from: COMPLETABLE_STATUSES, source: 'moneyfusion-payout-webhook',
+                from: [...COMPLETABLE_STATUSES, TransactionStatus.FAILED], source: 'moneyfusion-payout-webhook',
                 set: { 'metadata.mfWebhookEvidence': evidence.received },
             });
             if (done) {
@@ -4113,11 +4172,26 @@ class PaymentService {
                 pushWithdrawalResult(transaction, 'completed');
             }
         } else if (status === 'failed') {
-            await this.handleFailedWithdrawal(
-                transaction.transactionId,
-                `MoneyFusion reported failure: ${event}`,
-                tokenPay
+            // A "cancelled" is a hint too: anyone can post it, and failing on it would
+            // free the money while the real payout may have gone through. Only a
+            // sandbox reference is its own proof; otherwise finance checks the MF
+            // dashboard and fails it by hand (manual-fail / regularize).
+            if (sandbox.isSandboxActive() && sandbox.isSandboxRef(tokenPay)) {
+                await this.handleFailedWithdrawal(transaction.transactionId, `MoneyFusion reported failure: ${event}`, tokenPay);
+                return;
+            }
+            log.warn(`MoneyFusion payout "${event}" for ${transaction.transactionId} not applied: sent to review, funds stay reserved`);
+            const flagged = await TransactionModel.updateOne(
+                { transactionId: transaction.transactionId, status: { $in: COMPLETABLE_STATUSES } },
+                { $set: { 'metadata.mfWebhookReview': { at: new Date(), event, reason: 'cancelled webhook (unverifiable)' } } },
             );
+            if (flagged.matchedCount !== 1) return; // already final: nothing to review
+            void openSupportCase({
+                type: 'withdrawal_divergence', dedupKey: `withdrawal:${transaction.transactionId}:mf-cancelled`, severity: 'warning',
+                subject: { userId: transaction.userId.toString(), transactionId: transaction.transactionId, gateway: 'moneyfusion' },
+                summary: `MoneyFusion annonce l'annulation du retrait (tokenPay ${tokenPay}) : à vérifier sur le tableau de bord MoneyFusion avant de le marquer échoué.`,
+                details: { tokenPay, event },
+            });
         } else {
             log.info(`MoneyFusion payout webhook: pending/no-op for ${transaction.transactionId} (event="${event}"), no status change`);
         }
@@ -4157,6 +4231,12 @@ class PaymentService {
         }
         if (rawNumber !== undefined && !numberOk) {
             return { concordant: false, amountMismatch: false, reason: 'numéro du webhook différent du numéro de retrait', received, expected };
+        }
+        // MF's payout payload fields are not documented: strict mode (default) wants both
+        // amount and number. MONEYFUSION_PAYOUT_STRICT_MATCH=false accepts the tokenPay
+        // match alone, as before support phase 2 (a present but wrong value is still refused).
+        if (process.env.MONEYFUSION_PAYOUT_STRICT_MATCH === 'false') {
+            return { concordant: true, amountMismatch: false, reason: 'tokenPay (strict match off)', received, expected };
         }
         if (!amountOk || !numberOk) {
             return { concordant: false, amountMismatch: false, reason: 'le webhook ne contient pas le montant et le numéro à comparer', received, expected };
@@ -5401,6 +5481,7 @@ class PaymentService {
                 status: {
                     $in: [
                         TransactionStatus.PENDING_OTP_VERIFICATION,
+                        TransactionStatus.PENDING_ADMIN_APPROVAL,
                         TransactionStatus.PENDING,
                         TransactionStatus.PROCESSING
                     ]
@@ -6991,7 +7072,7 @@ class PaymentService {
             case 'completed': {
                 // Conditional: completes (and debits) once, whatever else reports it.
                 const done = await completeWithdrawal(update.internalTransactionId, {
-                    from: COMPLETABLE_STATUSES,
+                    from: [...COMPLETABLE_STATUSES, TransactionStatus.FAILED],
                     source: 'feexpay-status-check',
                     set: { 'metadata.statusDetails': update.comment, 'metadata.providerTransactionId': update.feexpayReference },
                 });
@@ -7155,6 +7236,19 @@ class PaymentService {
                 return { success: false, error: `La réservation de ce retrait n'est plus active (${reservation.state}).` };
             }
 
+            // The held money must still be there: balance >= everything reserved.
+            const wallet = await userServiceClient.getAvailableBalance(transaction.userId.toString());
+            if (!wallet || wallet.balance < wallet.reservedBalance - 0.005 || wallet.usdBalance < wallet.reservedUsdBalance - 0.005) {
+                log.error(`Approval of ${transactionId} refused: balance ${wallet?.balance} below reserved ${wallet?.reservedBalance} (USD ${wallet?.usdBalance}/${wallet?.reservedUsdBalance})`);
+                void openSupportCase({
+                    type: 'withdrawal_divergence', dedupKey: `withdrawal:${transactionId}:divergence`, severity: 'critical',
+                    subject: { userId: transaction.userId.toString(), transactionId },
+                    summary: 'Approbation refusée : le solde du membre ne couvre plus les montants réservés.',
+                    details: { balance: wallet?.balance ?? null, reservedBalance: wallet?.reservedBalance ?? null },
+                });
+                return { success: false, error: 'Le solde du membre ne couvre plus le montant réservé : retrait laissé en attente, dossier ouvert.' };
+            }
+
             // One conditional write: two admins (or two clicks) approve once.
             const approved = await transitionWithdrawal(
                 transactionId,
@@ -7299,6 +7393,12 @@ class PaymentService {
      */
     private async processMobileMoneyWithdrawalPayout(transaction: any): Promise<void> {
         log.info(`[PAYOUT-TRACE] ${transaction?.transactionId}: entered processMobileMoneyWithdrawalPayout`);
+        // Set once a provider has taken the payout: from then on no error can fail it
+        // (and free its money) — only the provider's own answer can.
+        let providerAccepted = false;
+        // Writes named metadata keys only: a webhook may already have written others.
+        const setFields = (fields: Record<string, unknown>) =>
+            TransactionModel.updateOne({ transactionId: transaction.transactionId }, { $set: fields });
         try {
             const accountInfo = transaction.metadata?.accountInfo;
             if (!accountInfo) {
@@ -7349,20 +7449,17 @@ class PaymentService {
                 if (!result.success) {
                     throw new Error(result.message);
                 }
+                providerAccepted = true;
 
                 // Record that CinetPay is paying it, whatever the withdrawal was
                 // labelled when it was requested: the status checker and the fix
                 // pages route on these fields. A BF withdrawal requested under
                 // MoneyFusion and approved after BF moved to CinetPay would
                 // otherwise sit in "processing" with nothing checking it.
-                await transactionRepository.update(transaction._id, {
+                await setFields({
                     serviceProvider: 'CinetPay',
-                    ...(result.cinetpayTransactionId ? { externalTransactionId: result.cinetpayTransactionId } : {}),
-                    metadata: {
-                        ...(transaction.metadata || {}),
-                        selectedPayoutService: 'CinetPay',
-                        ...(result.cinetpayTransactionId ? { cinetpayTransactionId: result.cinetpayTransactionId } : {}),
-                    }
+                    'metadata.selectedPayoutService': 'CinetPay',
+                    ...(result.cinetpayTransactionId ? { externalTransactionId: result.cinetpayTransactionId, 'metadata.cinetpayTransactionId': result.cinetpayTransactionId } : {}),
                 });
                 log.info(`Stored CinetPay transaction ID ${result.cinetpayTransactionId ?? '(none returned)'} for transaction ${transaction.transactionId}`);
             } else if (selectedGateway === PaymentGateway.FEEXPAY) {
@@ -7383,13 +7480,11 @@ class PaymentService {
                     + `message="${feexpayResult.message}"`,
                 );
 
+                if (feexpayResult.success) providerAccepted = true;
                 if (feexpayResult.success && feexpayResult.providerTransactionId) {
-                    await transactionRepository.update(transaction._id, {
+                    await setFields({
                         externalTransactionId: feexpayResult.providerTransactionId,
-                        metadata: {
-                            ...(transaction.metadata || {}),
-                            feexpayReference: feexpayResult.providerTransactionId
-                        }
+                        'metadata.feexpayReference': feexpayResult.providerTransactionId,
                     });
                     log.info(`Stored FeexPay reference ${feexpayResult.providerTransactionId} for transaction ${transaction.transactionId}`);
                 }
@@ -7419,16 +7514,14 @@ class PaymentService {
                 if (!result.success) {
                     throw new Error(result.message || 'MoneyFusion payout failed');
                 }
+                providerAccepted = true;
 
                 if (result.tokenPay) {
-                    await transactionRepository.update(transaction._id, {
+                    await setFields({
                         externalTransactionId: result.tokenPay,
                         serviceProvider: 'MoneyFusion',
-                        metadata: {
-                            ...(transaction.metadata || {}),
-                            moneyFusionTokenPay: result.tokenPay,
-                            payoutMessage: result.message,
-                        },
+                        'metadata.moneyFusionTokenPay': result.tokenPay,
+                        'metadata.payoutMessage': result.message,
                     });
                     log.info(`Stored MoneyFusion tokenPay ${result.tokenPay} for transaction ${transaction.transactionId}`);
                     // Replay any webhook that beat us to storing tokenPay (MF fires
@@ -7443,14 +7536,11 @@ class PaymentService {
                     // PROCESSING for ever — invisible, because this branch previously
                     // stored nothing and said nothing. Record that MF took it, and say
                     // so loudly.
-                    await transactionRepository.update(transaction._id, {
+                    await setFields({
                         serviceProvider: 'MoneyFusion',
-                        metadata: {
-                            ...(transaction.metadata || {}),
-                            providerAcceptedWithoutReference: true,
-                            payoutMessage: result.message,
-                            payoutAcceptedAt: new Date().toISOString(),
-                        },
+                        'metadata.providerAcceptedWithoutReference': true,
+                        'metadata.payoutMessage': result.message,
+                        'metadata.payoutAcceptedAt': new Date().toISOString(),
                     });
                     log.error(
                         `MoneyFusion accepted payout for ${transaction.transactionId} WITHOUT a reference `
@@ -7482,20 +7572,29 @@ class PaymentService {
                                    error.code === 'ECONNRESET' ||
                                    /socket hang up|ECONNRESET|EPIPE/i.test(error.message || '');
 
-            if (isTimeoutError) {
-                // Timeout doesn't mean the payout failed - it may still be processing on the provider side
-                // Keep transaction in PROCESSING status and wait for webhook confirmation
-                log.warn(`Timeout occurred for ${transaction.transactionId}, keeping in PROCESSING status for webhook confirmation`);
-                await transactionRepository.update(transaction._id, {
-                    status: TransactionStatus.PROCESSING,
-                    metadata: {
-                        ...(transaction.metadata || {}),
-                        timeoutOccurred: true,
-                        timeoutAt: new Date().toISOString(),
-                        awaitingWebhook: true,
-                        timeoutMessage: error.message
-                    }
-                });
+            if (isTimeoutError || providerAccepted) {
+                // The provider may have the payout (timeout) or has it (accepted, then a
+                // local error): keep PROCESSING with the money reserved; the webhook,
+                // the status checker or finance settles it — never a failure here.
+                log.warn(`${providerAccepted ? 'Error after the provider accepted' : 'Timeout'} for ${transaction.transactionId}, keeping PROCESSING`);
+                await TransactionModel.updateOne(
+                    { transactionId: transaction.transactionId, status: TransactionStatus.PROCESSING },
+                    { $set: {
+                        'metadata.timeoutOccurred': isTimeoutError,
+                        'metadata.errorAfterProviderAccepted': providerAccepted,
+                        'metadata.timeoutAt': new Date().toISOString(),
+                        'metadata.awaitingWebhook': true,
+                        'metadata.timeoutMessage': error.message,
+                    } },
+                );
+                if (providerAccepted) {
+                    void openSupportCase({
+                        type: 'unknown_status', dedupKey: `withdrawal:${transaction.transactionId}:unknown`, severity: 'warning',
+                        subject: { userId: transaction.userId?.toString(), transactionId: transaction.transactionId },
+                        summary: 'Retrait accepté par le prestataire mais erreur interne ensuite : en attente de sa réponse finale (fonds réservés).',
+                        details: { error: error.message },
+                    });
+                }
                 // Don't throw - let the webhook handle the final status
                 return;
             }
@@ -7516,6 +7615,7 @@ class PaymentService {
      * (Helper method for crypto withdrawals)
      */
     private async processCryptoWithdrawalPayout(transaction: any): Promise<void> {
+        let providerAccepted = false;
         try {
             const userId = transaction.userId.toString();
             const netAmount = transaction.amount - transaction.fee;
@@ -7541,21 +7641,29 @@ class PaymentService {
                 ipnCallbackUrl: `${config.selfBaseUrl}/api/payouts/webhooks/nowpayments`
             });
 
-            // Update transaction with external payout info
-            await transactionRepository.update(transaction._id, {
+            providerAccepted = true;
+            // Update transaction with external payout info (named keys only)
+            await TransactionModel.updateOne({ transactionId: transaction.transactionId }, { $set: {
                 externalTransactionId: payoutResult.id,
-                metadata: {
-                    ...(transaction.metadata || {}),
-                    cryptoPayoutId: payoutResult.id,
-                    cryptoWalletAddress,
-                    cryptoWalletCurrency
-                }
-            });
+                'metadata.cryptoPayoutId': payoutResult.id,
+                'metadata.cryptoWalletAddress': cryptoWalletAddress,
+                'metadata.cryptoWalletCurrency': cryptoWalletCurrency,
+            } });
 
             log.info(`Crypto payout initiated for ${transaction.transactionId}: ${payoutResult.id}`);
 
         } catch (error: any) {
             log.error(`Error processing crypto payout for ${transaction.transactionId}:`, error);
+            if (providerAccepted) {
+                // NOWPayments has it: only its answer may end it.
+                await TransactionModel.updateOne({ transactionId: transaction.transactionId }, { $set: { 'metadata.errorAfterProviderAccepted': true, 'metadata.awaitingWebhook': true } });
+                void openSupportCase({
+                    type: 'unknown_status', dedupKey: `withdrawal:${transaction.transactionId}:unknown`, severity: 'warning',
+                    subject: { userId: transaction.userId?.toString(), transactionId: transaction.transactionId },
+                    summary: 'Retrait crypto accepté par NOWPayments mais erreur interne ensuite (fonds réservés).', details: { error: error.message },
+                });
+                return;
+            }
             // Failed at initiation: conditional transition, USD reservation released.
             await endWithdrawal(transaction.transactionId, {
                 from: [TransactionStatus.PROCESSING],
