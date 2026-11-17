@@ -13,7 +13,10 @@ import { APPROVE_PERMISSIONS, hasAny, roleLabel } from '../lib/permissions';
 import { formatNumber } from '../lib/format';
 import { menuFor } from '../navigation/menu';
 
-const n = (v: number | undefined, loading: boolean) => (loading ? <Skeleton className="h-7 w-12" /> : formatNumber(v));
+// A tile whose service is down says so instead of loading forever.
+const n = (v: number | undefined, loading: boolean, failed = false) =>
+  failed ? <span className="text-sm font-normal text-fg-muted" title="Service indisponible">indisponible</span>
+    : loading ? <Skeleton className="h-7 w-12" /> : formatNumber(v);
 
 /** Overview for the agent's roles: what is waiting for them, and where to go. */
 export default function HomePage() {
@@ -52,36 +55,36 @@ export default function HomePage() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {canTickets && <>
           <Link to="/tickets?assignee=me" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Mes tickets en cours" value={n(mine.data?.total, mine.isLoading)} icon={Ticket01Icon} tone="primary" className="h-full hover:border-line-strong" />
+            <Metric label="Mes tickets en cours" value={n(mine.data?.total, mine.isLoading, mine.isError)} icon={Ticket01Icon} tone="primary" className="h-full hover:border-line-strong" />
           </Link>
           <Link to="/tickets?assignee=unassigned" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Tickets sans agent" value={n(unassigned.data?.total, unassigned.isLoading)} icon={UserAdd01Icon} className="h-full hover:border-line-strong" />
+            <Metric label="Tickets sans agent" value={n(unassigned.data?.total, unassigned.isLoading, unassigned.isError)} icon={UserAdd01Icon} className="h-full hover:border-line-strong" />
           </Link>
         </>}
         {canApprove && (
           <Link to="/approbations" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Approbations à donner" value={n(toDecide, approvals.isLoading)} icon={CheckListIcon} tone={toDecide ? 'warning' : 'neutral'} className="h-full hover:border-line-strong" />
+            <Metric label="Approbations à donner" value={n(toDecide, approvals.isLoading, approvals.isError)} icon={CheckListIcon} tone={toDecide ? 'warning' : 'neutral'} className="h-full hover:border-line-strong" />
           </Link>
         )}
         {canFinance && <>
           <Link to="/finance?ageBucket=48-72h" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Retraits bloqués 48–72 h" value={n(bucket('48-72h'), summary.isLoading)} icon={Clock01Icon} tone={bucket('48-72h') ? 'warning' : 'neutral'} className="h-full hover:border-line-strong" />
+            <Metric label="Retraits bloqués 48–72 h" value={n(bucket('48-72h'), summary.isLoading, summary.isError)} icon={Clock01Icon} tone={bucket('48-72h') ? 'warning' : 'neutral'} className="h-full hover:border-line-strong" />
           </Link>
           <Link to="/finance?ageBucket=%3E72h" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Retraits bloqués > 72 h" value={n(bucket('>72h'), summary.isLoading)} icon={Alert02Icon} tone={bucket('>72h') ? 'danger' : 'neutral'} className="h-full hover:border-line-strong" />
+            <Metric label="Retraits bloqués > 72 h" value={n(bucket('>72h'), summary.isLoading, summary.isError)} icon={Alert02Icon} tone={bucket('>72h') ? 'danger' : 'neutral'} className="h-full hover:border-line-strong" />
           </Link>
         </>}
         {canCases && (
           <Link to="/finance?tab=dossiers" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Dossiers finance ouverts" value={n(cases.data?.total, cases.isLoading)} icon={Alert02Icon} className="h-full hover:border-line-strong" />
+            <Metric label="Dossiers finance ouverts" value={n(cases.data?.total, cases.isLoading, cases.isError)} icon={Alert02Icon} className="h-full hover:border-line-strong" />
           </Link>
         )}
         {canSupervise && <>
           <Link to="/supervision" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Preuves en attente" value={n(board.data?.counts.available, board.isLoading)} icon={Video01Icon} className="h-full hover:border-line-strong" />
+            <Metric label="Preuves en attente" value={n(board.data?.counts.available, board.isLoading, board.isError)} icon={Video01Icon} className="h-full hover:border-line-strong" />
           </Link>
           <Link to="/supervision" className="rounded-panel focus-visible:outline-2 focus-visible:outline-primary">
-            <Metric label="Alertes d’inactivité" value={n(board.data?.alerts.length, board.isLoading)} icon={ViewIcon} tone={board.data?.alerts.length ? 'danger' : 'neutral'} className="h-full hover:border-line-strong" />
+            <Metric label="Alertes d’inactivité" value={n(board.data?.alerts.length, board.isLoading, board.isError)} icon={ViewIcon} tone={board.data?.alerts.length ? 'danger' : 'neutral'} className="h-full hover:border-line-strong" />
           </Link>
         </>}
       </div>
