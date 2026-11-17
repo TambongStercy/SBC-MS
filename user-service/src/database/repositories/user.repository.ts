@@ -1,4 +1,5 @@
 import UserModel, { IUser, OtpPurpose } from '../models/user.model';
+import { walletLedger } from '../../services/wallet-ledger.service';
 import EventOrganizerLedgerModel, { EventOrganizerLedgerDirection, EventOrganizerLedgerStatus } from '../models/event-organizer-ledger.model';
 import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType } from '../models/subscription.model';
 import mongoose, { Types, FilterQuery } from 'mongoose';
@@ -148,12 +149,18 @@ export class UserRepository {
      * @param amountChange - The amount to add (positive) or subtract (negative).
      * @returns The updated user document or null.
      */
-    async updateBalance(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
-        return UserModel.findByIdAndUpdate(
-            userId,
-            { $inc: { balance: amountChange } }, // Use $inc for atomic update
-            { new: true } // Return the updated document
-        ).exec();
+    async updateBalance(
+        userId: string | Types.ObjectId,
+        amountChange: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<IUser | null> {
+        // Every balance change leaves a walletmovements row (wallet-ledger.service.ts).
+        const out = await walletLedger.applyInc({
+            userId, currency: 'XAF', delta: amountChange,
+            reference: movement.reference, source: movement.source || 'user-repository.updateBalance',
+            description: movement.description,
+        });
+        return out.user;
     }
 
     /**
@@ -161,15 +168,28 @@ export class UserRepository {
      * covers it, in one update: two payments landing together cannot both pass
      * a check made before the debit. Returns null when there is not enough.
      */
-    async spendBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
-        return UserModel.findOneAndUpdate(
-            {
-                _id: userId,
-                $expr: { $gte: [{ $subtract: [{ $ifNull: ['$balance', 0] }, { $ifNull: ['$debt', 0] }] }, amount] },
+    async spendBalance(
+        userId: string | Types.ObjectId,
+        amount: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<IUser | null> {
+        // Money held by a withdrawal in flight (reservedBalance) is not spendable.
+        const out = await walletLedger.applyInc({
+            userId, currency: 'XAF', delta: -amount,
+            guard: {
+                $expr: {
+                    $gte: [{
+                        $subtract: [
+                            { $subtract: [{ $ifNull: ['$balance', 0] }, { $ifNull: ['$debt', 0] }] },
+                            { $ifNull: ['$reservedBalance', 0] },
+                        ],
+                    }, amount],
+                },
             },
-            { $inc: { balance: -amount } },
-            { new: true },
-        ).exec();
+            reference: movement.reference, source: movement.source || 'balance-spend', description: movement.description,
+        });
+        if (out.alreadyApplied) return out.user; // the same spend, replayed: already taken once
+        return out.applied ? out.user : null;
     }
 
     /**
@@ -178,12 +198,17 @@ export class UserRepository {
      * @param amountChange - The amount to add (positive) or subtract (negative).
      * @returns The updated user document or null.
      */
-    async updateUsdBalance(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
-        return UserModel.findByIdAndUpdate(
-            userId,
-            { $inc: { usdBalance: amountChange } }, // Use $inc for atomic update
-            { new: true } // Return the updated document
-        ).exec();
+    async updateUsdBalance(
+        userId: string | Types.ObjectId,
+        amountChange: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<IUser | null> {
+        const out = await walletLedger.applyInc({
+            userId, currency: 'USD', delta: amountChange,
+            reference: movement.reference, source: movement.source || 'user-repository.updateUsdBalance',
+            description: movement.description,
+        });
+        return out.user;
     }
 
     /**
@@ -213,20 +238,18 @@ export class UserRepository {
             throw new Error('Transfer amount must be positive');
         }
 
-        // Atomically decrement balance and increment activationBalance
-        return UserModel.findOneAndUpdate(
-            {
-                _id: userId,
-                balance: { $gte: amount } // Ensure sufficient balance
+        // Atomically decrement balance and increment activationBalance. Money held
+        // by a withdrawal in flight (reservedBalance) cannot be moved.
+        const out = await walletLedger.applyInc({
+            userId, currency: 'XAF', delta: -amount,
+            guard: {
+                balance: { $gte: amount }, // Ensure sufficient balance
+                $expr: { $gte: [{ $subtract: [{ $ifNull: ['$balance', 0] }, { $ifNull: ['$reservedBalance', 0] }] }, amount] },
             },
-            {
-                $inc: {
-                    balance: -amount,
-                    activationBalance: amount
-                }
-            },
-            { new: true }
-        ).exec();
+            extraInc: { activationBalance: amount },
+            source: 'activation-transfer-in', description: 'Transfert vers le solde d\'activation',
+        });
+        return out.applied ? out.user : null;
     }
 
     /**
@@ -240,19 +263,13 @@ export class UserRepository {
             throw new Error('Reversal amount must be positive');
         }
 
-        return UserModel.findOneAndUpdate(
-            {
-                _id: userId,
-                activationBalance: { $gte: amount }
-            },
-            {
-                $inc: {
-                    balance: amount,
-                    activationBalance: -amount
-                }
-            },
-            { new: true }
-        ).exec();
+        const out = await walletLedger.applyInc({
+            userId, currency: 'XAF', delta: amount,
+            guard: { activationBalance: { $gte: amount } },
+            extraInc: { activationBalance: -amount },
+            source: 'activation-transfer-reversal', description: 'Annulation de transfert vers le solde d\'activation',
+        });
+        return out.applied ? out.user : null;
     }
 
     /**
@@ -291,19 +308,13 @@ export class UserRepository {
             throw new Error('Transfer amount must be positive');
         }
 
-        return UserModel.findOneAndUpdate(
-            {
-                _id: userId,
-                advertisingBalance: { $gte: amount }
-            },
-            {
-                $inc: {
-                    balance: amount,
-                    advertisingBalance: -amount
-                }
-            },
-            { new: true }
-        ).exec();
+        const out = await walletLedger.applyInc({
+            userId, currency: 'XAF', delta: amount,
+            guard: { advertisingBalance: { $gte: amount } },
+            extraInc: { advertisingBalance: -amount },
+            source: 'advertising-transfer', description: 'Transfert des gains publicitaires',
+        });
+        return out.applied ? out.user : null;
     }
 
     /**
@@ -315,11 +326,13 @@ export class UserRepository {
         if (amount <= 0) {
             throw new Error('Transfer amount must be positive');
         }
-        return UserModel.findOneAndUpdate(
-            { _id: userId, eventOrganizerBalance: { $gte: amount } },
-            { $inc: { balance: amount, eventOrganizerBalance: -amount } },
-            { new: true }
-        ).exec();
+        const out = await walletLedger.applyInc({
+            userId, currency: 'XAF', delta: amount,
+            guard: { eventOrganizerBalance: { $gte: amount } },
+            extraInc: { eventOrganizerBalance: -amount },
+            source: 'event-organizer-transfer', description: 'Transfert des gains organisateur',
+        });
+        return out.applied ? out.user : null;
     }
 
     /**

@@ -36,6 +36,16 @@ const sendOtpThrottled = (res: Response, error: OtpThrottledError): void => {
     res.status(429).json({ success: false, message: error.message, retryAfterSeconds: error.retryAfterSeconds });
 };
 
+
+/** Optional ledger fields a service may send with a balance change. */
+function movementFromBody(body: any, defaultSource: string): { reference?: string; source: string; description?: string } {
+    const clean = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+    return {
+        reference: clean(body?.reference, 200),
+        source: clean(body?.source, 100) || defaultSource,
+        description: clean(body?.description, 500),
+    };
+}
 const log = logger.getLogger('UserController');
 
 // Explicitly type AuthenticatedRequest if global augmentation is unreliable
@@ -137,7 +147,7 @@ export class UserController {
                 res.status(400).json({ success: false, message: 'A positive amount is required' });
                 return;
             }
-            const updated = await userRepository.spendBalance(req.params.userId, amount);
+            const updated = await userRepository.spendBalance(req.params.userId, amount, movementFromBody(req.body, 'balance-spend'));
             if (!updated) {
                 res.status(409).json({ success: false, message: 'Insufficient balance' });
                 return;
@@ -217,8 +227,8 @@ export class UserController {
 
             const numericAmount = Number(amount);
 
-            // Update balance
-            const newBalance = await this.userService.updateBalance(userId, numericAmount);
+            // Update balance (optional reference/source from the caller make it idempotent and traceable in the ledger)
+            const newBalance = await this.userService.updateBalance(userId, numericAmount, movementFromBody(req.body, 'payment-service'));
 
             if (newBalance === null) {
                 res.status(404).json({
@@ -328,7 +338,7 @@ export class UserController {
             const numericAmount = Number(amount);
 
             // Update USD balance
-            const newUsdBalance = await this.userService.updateUsdBalance(userId, numericAmount);
+            const newUsdBalance = await this.userService.updateUsdBalance(userId, numericAmount, movementFromBody(req.body, 'payment-service'));
 
             if (newUsdBalance === null) {
                 res.status(404).json({

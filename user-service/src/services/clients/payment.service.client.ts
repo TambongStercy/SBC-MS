@@ -727,6 +727,21 @@ class PaymentServiceClient {
             throw new Error('Payment service communication error (recordActivationTransaction)');
         }
     }
+
+    /**
+     * Records an admin balance adjustment as a transaction (record only: the
+     * balance itself is moved by user-service, ledger reference = `reference`).
+     * Idempotent on `reference` on the payment-service side.
+     */
+    async recordAdjustmentTransaction(payload: {
+        userId: string; amount: number; reason: string; adminId: string; reference: string; status: 'pending' | 'completed' | 'failed';
+    }): Promise<{ transactionId: string }> {
+        const response = await this.apiClient.post<PaymentServiceResponse<{ transactionId: string }>>('/internal/adjustment-transaction', payload);
+        if (!response.data?.success || !response.data.data?.transactionId) {
+            throw new Error(response.data?.message || 'Failed to record adjustment transaction');
+        }
+        return response.data.data;
+    }
 }
 
 export const paymentService = new PaymentServiceClient(); 
