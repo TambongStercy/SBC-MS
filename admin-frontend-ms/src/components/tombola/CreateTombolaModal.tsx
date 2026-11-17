@@ -1,111 +1,60 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Button, Dialog, DialogClose, DialogContent, Field, Select } from '../ui';
+import { Notice } from '../moduleKit';
+import { MONTH_NAMES, monthLabel } from './labels';
 
-interface CreateTombolaModalProps {
-    isOpen: boolean;
-    isLoading: boolean;
-    onSave: (month: number, year: number) => Promise<void>; // Async save handler
-    onClose: () => void;
-}
+/** Create the tombola of a month (current year or the 5 before it; never a future year). */
+export default function CreateTombolaModal({ isOpen, isLoading, onSave, onClose }: {
+  isOpen: boolean;
+  isLoading: boolean;
+  onSave: (month: number, year: number) => Promise<void>;
+  onClose: () => void;
+}) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (isOpen) setError(null); }, [isOpen]);
 
-const CreateTombolaModal: React.FC<CreateTombolaModalProps> = ({
-    isOpen,
-    isLoading,
-    onSave,
-    onClose,
-}) => {
-    const currentYear = new Date().getFullYear();
-    const [year, setYear] = useState<number>(currentYear);
-    const [month, setMonth] = useState<number>(new Date().getMonth() + 1); // Default to current month (1-12)
-    const [error, setError] = useState<string | null>(null);
+  const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - i);
 
-    const handleSave = async () => {
-        setError(null); // Clear previous errors
-        // Basic validation
-        if (month < 1 || month > 12) {
-            setError('Le mois doit être compris entre 1 et 12.');
-            return;
-        }
-        // Add year validation if needed (e.g., must be current year or past N years)
-        if (year > currentYear) {
-            setError('Impossible de créer une tombola pour une année future.');
-            return;
-        }
-        // Consider adding check for future month in current year if needed
-
-        try {
-            await onSave(month, year);
-            // onClose(); // Let the parent handle closing on success
-        } catch (err) {
-            // Error is handled by the parent via toast, but we can set local error too
-            setError(err instanceof Error ? err.message : 'La tombola n’a pas pu être créée.');
-            console.error("Error in modal save:", err);
-        }
-    };
-
-    if (!isOpen) {
-        return null;
+  const save = async () => {
+    setError(null);
+    if (month < 1 || month > 12) { setError('Le mois doit être compris entre 1 et 12.'); return; }
+    if (year > currentYear) { setError('Impossible de créer une tombola pour une année future.'); return; }
+    try {
+      await onSave(month, year);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'La tombola n’a pas pu être créée.');
     }
+  };
 
-    // Create year options (e.g., current year and past 5 years)
-    const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - i);
-
-    return (
-        <div className="fixed inset-0 bg-black/75 flex justify-center items-center z-50 p-4">
-            <div className="bg-surface p-6 rounded-lg w-full max-w-sm border border-line">
-                <h2 className="text-xl font-semibold text-fg mb-4">Nouvelle tombola</h2>
-
-                {error && <p className="text-red-600 dark:text-red-400 text-sm mb-3">Erreur : {error}</p>}
-
-                <div className="mb-4">
-                    <label htmlFor="month" className="block text-sm font-medium text-fg-muted mb-1">Mois (1-12)</label>
-                    <input
-                        type="number"
-                        id="month"
-                        value={month}
-                        onChange={(e) => setMonth(parseInt(e.target.value, 10) || 1)}
-                        min="1"
-                        max="12"
-                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
-                        required
-                        disabled={isLoading}
-                    />
-                </div>
-
-                <div className="mb-6">
-                    <label htmlFor="year" className="block text-sm font-medium text-fg-muted mb-1">Année</label>
-                    <select
-                        id="year"
-                        value={year}
-                        onChange={(e) => setYear(parseInt(e.target.value, 10))}
-                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
-                        required
-                        disabled={isLoading}
-                    >
-                        {yearOptions.map(y => (
-                            <option key={y} value={y}>{y}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="flex justify-end gap-3">
-                    <button
-                        onClick={onClose}
-                        disabled={isLoading}
-                        className="px-4 py-2 bg-surface-3 text-fg text-sm font-medium rounded-md hover:bg-surface-2 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-fg-subtle focus:ring-offset-surface disabled:opacity-50"
-                    >
-                        Annuler
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isLoading}
-                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-surface disabled:opacity-50"
-                    >
-                        {isLoading ? 'Création…' : 'Créer la tombola'}
-                    </button>
-                </div>
-            </div>
+  return (
+    <Dialog open={isOpen} onOpenChange={o => { if (!o && !isLoading) onClose(); }}>
+      <DialogContent
+        size="sm"
+        title="Nouvelle tombola"
+        description="Une tombola par mois : les membres y achètent leurs tickets jusqu’au tirage."
+        footer={(
+          <>
+            <DialogClose asChild><Button variant="outline" size="lg" disabled={isLoading}>Annuler</Button></DialogClose>
+            <Button variant="primary" size="lg" loading={isLoading} onClick={() => void save()}>Créer la tombola de {monthLabel(month, year)}</Button>
+          </>
+        )}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Mois">
+            <Select value={String(month)} onValueChange={v => setMonth(Number(v))} disabled={isLoading}
+              options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))} className="h-11 sm:h-9" />
+          </Field>
+          <Field label="Année">
+            <Select value={String(year)} onValueChange={v => setYear(Number(v))} disabled={isLoading}
+              options={yearOptions.map(y => ({ value: String(y), label: String(y) }))} className="h-11 sm:h-9" />
+          </Field>
         </div>
-    );
-};
-
-export default CreateTombolaModal; 
+        {error && <Notice tone="danger" className="mt-4">{error}</Notice>}
+      </DialogContent>
+    </Dialog>
+  );
+}

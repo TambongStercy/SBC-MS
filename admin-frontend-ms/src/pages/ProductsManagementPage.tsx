@@ -1,22 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import toast from 'react-hot-toast';
-// Import sub-components
-import ProductList from '../components/products/ProductList';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Delete02Icon, Edit02Icon, FlashIcon, PlusSignIcon, ShoppingBag01Icon } from '@hugeicons/core-free-icons';
+import ProductList, { PRODUCT_STATUS, ProductThumb } from '../components/products/ProductList';
 import ProductEditForm from '../components/products/ProductEditForm';
 import FlashSaleModal from '../components/products/FlashSaleModal';
-import Pagination from '../components/common/Pagination';
-import ConfirmationModal from '../components/common/ConfirmationModal';
-import Header from '../components/common/Header';
-
-// Import API functions
+import { Can } from '../components/Can';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { countryOnly, fetchProducts, type AdminFilterParams, type ProductQuery } from '../components/products/api';
+import { Button, Dialog, EmptyState, Metric, PageHeader, Pagination, Panel, PanelHeader, SheetContent, Skeleton } from '../components/ui';
 import {
-    getProducts,
+    ConfirmDialog, CopyId, DateText, DetailList, ErrorState, FilterBar, FilterSelect, Money, Notice, SearchInput, SheetSection, StatusBadge,
+    TodoAction, TodoPanel, formatNumber, plural, useUrlFilters, type ConfirmOptions,
+} from '../components/moduleKit';
+import {
     createProduct,
     updateProduct,
     deleteProduct,
-    createFlashSale,      // Import new API function
-    deleteFlashSaleById, // <-- Import renamed function
-    getProductFlashSales // <-- Import the new function
+    createFlashSale,
+    deleteFlashSaleById,
+    getProductFlashSales,
 } from '../services/adminProductApi';
 
 // Define interfaces for Product and FlashSale (move to types file later?)
@@ -65,401 +70,330 @@ interface BackendFlashSaleCreatePayload {
     endTime: string | Date;
 }
 
-const ProductsManagementPage: React.FC = () => {
-    const [products, setProducts] = useState<Product[]>([]);
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-    const [currentFlashSales, setCurrentFlashSales] = useState<FlashSale[]>([]); // Explicitly use imported FlashSale type
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [isFetchingSales, setIsFetchingSales] = useState(false); // <-- Loading state for flash sales fetch
-    const [error, setError] = useState<string | null>(null);
-    const [isEditFormVisible, setIsEditFormVisible] = useState<boolean>(false);
-    const [isFlashSaleModalVisible, setIsFlashSaleModalVisible] = useState<boolean>(false);
-    const [searchTerm, setSearchTerm] = useState<string>('');
-    const [statusFilter, setStatusFilter] = useState<string>('all');
-    const [flashSaleFilter, setFlashSaleFilter] = useState<string>('all');
-    const [currentPage, setCurrentPage] = useState<number>(1);
-    const [totalPages, setTotalPages] = useState<number>(1);
-    const [limit] = useState<number>(10);
-    const [fetchTrigger, setFetchTrigger] = useState<number>(0);
-    // --- State for Confirmation Modal ---
-    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState<boolean>(false);
-    const [confirmAction, setConfirmAction] = useState<'deleteProduct' | 'deleteFlashSale' | null>(null);
-    const [itemIdToDelete, setItemIdToDelete] = useState<string | null>(null);
-    const [confirmTitle, setConfirmTitle] = useState<string>('');
-    const [confirmMessage, setConfirmMessage] = useState<string>('');
-    // --- End State for Confirmation Modal ---
 
-    // fetchProducts now depends only on variables needed for the API call itself
-    // It reads the latest filter values directly from state when called.
-    const fetchProducts = useCallback(async () => {
-        setIsLoading(true);
-        setError(null);
-        console.log(`Fetching page: ${currentPage}, Limit: ${limit}, Search: '${searchTerm}', Status: ${statusFilter}, FlashSale: ${flashSaleFilter}`);
-        try {
-            const filters = {
-                page: currentPage,
-                limit: limit,
-                searchTerm: searchTerm || undefined,
-                status: statusFilter === 'all' ? undefined : statusFilter,
-                hasActiveFlashSale: flashSaleFilter === 'all' ? undefined : flashSaleFilter === 'yes',
-            };
-            console.log("Fetching products with filters:", filters);
-            const response = await getProducts(filters);
-            setProducts(response.data);
-            setTotalPages(response.pagination.totalPages);
-            setCurrentPage(response.pagination.currentPage);
-            console.log("Products fetched:", response.data, "Pagination:", response.pagination);
-        } catch (err) {
-            console.error("Failed to fetch products:", err);
-            setError(err instanceof Error ? err.message : 'Impossible de charger les produits.');
-            setProducts([]);
-            setTotalPages(1);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentPage, limit, searchTerm, statusFilter, flashSaleFilter]);
+const LIMIT = 10;
+const KEY = ['admin-products'] as const;
+const FILTER_KEYS = ['q', 'status', 'flash'] as const;
+const msg = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
+const countOf = (q: ProductQuery, f: AdminFilterParams) => fetchProducts({ ...q, page: 1, limit: 1 }, f).then(r => r.pagination.totalCount);
 
-    // useEffect now only runs on initial load and when currentPage/limit changes
-    useEffect(() => {
-        console.log("useEffect triggered by page/limit/trigger change");
-        fetchProducts();
-    }, [currentPage, limit, fetchTrigger, fetchProducts]);
+/**
+ * Boutique: the products members publish, their flash sales, edit and removal.
+ * Filters live in the URL. The product status is shown and filterable, but it
+ * changes nothing in the member app (products are listed whatever their status).
+ */
+function ProductsManagementPage() {
+    const queryClient = useQueryClient();
+    const { values, set, clear, activeCount, page, setPage } = useUrlFilters(FILTER_KEYS);
 
-    // Filter input handlers ONLY update state, don't trigger fetch or reset page
-    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setSearchTerm(event.target.value);
+    const [editing, setEditing] = useState<Product | null | 'new'>(null);
+    const [saving, setSaving] = useState(false);
+    const [viewing, setViewing] = useState<Product | null>(null);
+    const [flashProduct, setFlashProduct] = useState<Product | null>(null);
+    const [flashSales, setFlashSales] = useState<FlashSale[]>([]);
+    const [flashLoading, setFlashLoading] = useState(false);
+    const [confirm, setConfirm] = useState<ConfirmOptions | null>(null);
+
+    const pageFilters = usePageFilters();
+    const clearAll = () => clear(['pays', 'periode', 'du', 'au']);
+    const filters = {
+        page,
+        limit: LIMIT,
+        searchTerm: values.q || undefined,
+        status: values.status || undefined,
+        hasActiveFlashSale: values.flash === '' ? undefined : values.flash === 'yes',
     };
+    const list = useQuery({ queryKey: [...KEY, 'list', filters, pageFilters.apiParams], queryFn: () => fetchProducts(filters, pageFilters.apiParams), placeholderData: prev => prev });
+    const queueParams = countryOnly(pageFilters.apiParams);
+    const counts = useQuery({
+        queryKey: [...KEY, 'counts', pageFilters.apiParams],
+        queryFn: async () => {
+            // Catalogue figures follow country + period; the pending queue only the country.
+            const [all, pending, flash] = await Promise.all([
+                countOf({}, pageFilters.apiParams),
+                countOf({ status: 'pending' }, queueParams),
+                countOf({ hasActiveFlashSale: true }, pageFilters.apiParams),
+            ]);
+            return { all, pending, flash };
+        },
+    });
 
-    const handleStatusFilterChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-        setStatusFilter(event.target.value);
-    };
+    const products = list.data?.data ?? [];
+    const total = list.data?.pagination.totalCount ?? 0;
+    const totalPages = list.data?.pagination.totalPages ?? 1;
+    const refresh = () => { void queryClient.invalidateQueries({ queryKey: KEY }); };
 
-    const handleFlashSaleFilterChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-        setFlashSaleFilter(event.target.value);
-    };
-
-    const handlePageChange = (newPage: number) => {
-        if (newPage >= 1 && newPage <= totalPages) {
-            setCurrentPage(newPage);
-        }
-    };
-
-    // --- Handler for Apply Filters button ---
-    const handleApplyFilters = () => {
-        console.log("Apply Filters button clicked");
-        setCurrentPage(1); // Reset page to 1
-        setFetchTrigger(prev => prev + 1); // Increment trigger to force useEffect execution
-    };
-    // --- End Apply Filters Handler ---
-
-    // Handlers for CRUD operations
-    const handleCreateProduct = () => {
-        setSelectedProduct(null);
-        setIsEditFormVisible(true);
-    };
-
-    const handleEditProduct = (product: Product) => {
-        setSelectedProduct(product);
-        setIsEditFormVisible(true);
-    };
-
-    // Updated handleDeleteProduct
-    const handleDeleteProduct = (productId: string, productName?: string) => {
-        setItemIdToDelete(productId);
-        setConfirmAction('deleteProduct');
-        setConfirmTitle('Supprimer le produit ?');
-        setConfirmMessage(`Supprimer le produit « ${productName || 'ce produit'} » ? Cette action est définitive.`);
-        setIsConfirmModalOpen(true);
-        // Original logic moved to confirmProductDelete
-    };
-
-    // New handler for confirming product deletion
-    const confirmProductDelete = async () => {
-        if (!itemIdToDelete) return;
-        setIsLoading(true); // Use main loading state or a dedicated one
-        setError(null);
-        try {
-            await deleteProduct(itemIdToDelete);
-            fetchProducts(); // Refresh list
-            toast.success('Produit supprimé.'); // Use toast for feedback
-        } catch (err) { // Type assertion for err
-            console.error("Failed to delete product:", err);
-            setError(err instanceof Error ? err.message : 'Impossible de supprimer le produit.');
-            toast.error(err instanceof Error ? err.message : 'Impossible de supprimer le produit.');
-        } finally {
-            setIsLoading(false);
-            closeConfirmationModal();
-        }
-    };
-
-    // Modified handleSaveProduct to use API functions
     const handleSaveProduct = async (productData: Partial<Product>) => {
-        setIsLoading(true);
-        setError(null);
+        setSaving(true);
         try {
-            let savedProduct;
-            if (productData._id) { // Check if it has an ID (means editing)
-                // Update
-                console.log("Calling updateProduct with:", productData._id, productData);
-                savedProduct = await updateProduct(productData._id, productData);
+            if (productData._id) {
+                await updateProduct(productData._id, productData);
+                toast.success('Produit enregistré.');
             } else {
-                // Create
-                console.log("Calling createProduct with:", productData);
-                // Ensure required fields for create are present or handle error
-                savedProduct = await createProduct(productData as Required<Omit<Product, '_id' | 'createdAt' | 'updatedAt' | 'flashSales' | 'isActive'>>); // Type assertion might be needed
+                await createProduct(productData as Required<Omit<Product, '_id' | 'createdAt' | 'updatedAt' | 'flashSales' | 'isActive'>>);
+                toast.success('Produit ajouté.');
             }
-            console.log("Product saved successfully:", savedProduct);
-            setIsEditFormVisible(false);
-            fetchProducts(); // Refresh list
-            // Optionally show success toast/message
+            setEditing(null);
+            setViewing(null);
+            refresh();
         } catch (err) {
-            console.error("Failed to save product:", err);
-            setError(err instanceof Error ? err.message : 'Impossible d’enregistrer le produit.');
-            // Keep form open on error for correction?
-            // setIsEditFormVisible(true); 
+            // The form stays open so the admin can correct and retry.
+            toast.error(msg(err, 'Impossible d’enregistrer le produit.'));
         } finally {
-            setIsLoading(false);
+            setSaving(false);
         }
     };
 
-    // Handlers for Flash Sale
+    const handleDeleteProduct = (productId: string, productName?: string) => setConfirm({
+        title: 'Supprimer le produit ?',
+        description: `Supprimer « ${productName || 'ce produit'} » ? Cette action est définitive.`,
+        confirmLabel: 'Supprimer le produit',
+        onConfirm: async () => {
+            try {
+                await deleteProduct(productId);
+            } catch (err) {
+                throw new Error(msg(err, 'Impossible de supprimer le produit.'));
+            }
+            toast.success('Produit supprimé.');
+            setViewing(null);
+            refresh();
+        },
+    });
+
     const handleManageFlashSale = async (product: Product) => {
-        setSelectedProduct(product);
-        setCurrentFlashSales([]); // Clear previous sales
-        setIsFetchingSales(true); // Start loading indicator for sales
-        setIsFlashSaleModalVisible(true);
-        console.log("Opening flash sale modal for:", product._id);
+        setFlashProduct(product);
+        setFlashSales([]);
+        setFlashLoading(true);
         try {
-            const sales = await getProductFlashSales(product._id); // <-- Fetch sales for this product
-            console.log("Fetched flash sales for modal:", sales);
-            setCurrentFlashSales(sales || []); // Update state with fetched sales (ensure array)
+            setFlashSales((await getProductFlashSales(product._id)) || []);
         } catch (err) {
-            console.error("Failed to fetch flash sales for modal:", err);
-            setError(err instanceof Error ? err.message : 'Impossible de charger les ventes flash de ce produit.');
-            // Optionally close modal or show error within modal?
-            // setIsFlashSaleModalVisible(false);
+            toast.error(msg(err, 'Impossible de charger les ventes flash de ce produit.'));
         } finally {
-            setIsFetchingSales(false); // Stop loading indicator for sales
+            setFlashLoading(false);
         }
     };
 
-    const handleSaveFlashSale = async (flashSaleData: { discountedPrice: number; startTime: Date; endTime: Date }) => {
-        if (!selectedProduct) return;
-        setIsLoading(true);
-        setError(null);
+    const handleSaveFlashSale = async (data: { discountedPrice: number; startTime: Date; endTime: Date }) => {
+        if (!flashProduct) return;
+        setFlashLoading(true);
         try {
-            // Construct payload for the API
-            const payload: BackendFlashSaleCreatePayload = {
-                productId: selectedProduct._id,
-                discountedPrice: flashSaleData.discountedPrice,
-                startTime: flashSaleData.startTime, // Already Date objects from modal
-                endTime: flashSaleData.endTime
-            };
-
-            // Use the imported API function
-            const response = await createFlashSale(payload);
-            console.log("Create flash sale response (placeholder):", response);
-
-            fetchProducts(); // Refresh the entire product list
-            setIsFlashSaleModalVisible(false);
-
+            const payload: BackendFlashSaleCreatePayload = { productId: flashProduct._id, ...data };
+            await createFlashSale(payload);
+            toast.success('Vente flash enregistrée.');
+            setFlashProduct(null);
+            refresh();
         } catch (err) {
-            console.error("Failed to save flash sale:", err);
-            setError(err instanceof Error ? err.message : 'Impossible d’enregistrer la vente flash.');
+            toast.error(msg(err, 'Impossible d’enregistrer la vente flash.'));
         } finally {
-            setIsLoading(false);
+            setFlashLoading(false);
         }
     };
 
-    // Updated handleDeleteFlashSale
     const handleDeleteFlashSale = (flashSaleId: string) => {
         if (!flashSaleId) {
-            console.error("handleDeleteFlashSale called without flashSaleId");
-            setError('Suppression impossible : identifiant de la vente flash manquant.');
-            toast.error('Suppression impossible : identifiant de la vente flash manquant.'); // Toast feedback
+            toast.error('Suppression impossible : identifiant de la vente flash manquant.');
             return;
         }
-        setItemIdToDelete(flashSaleId);
-        setConfirmAction('deleteFlashSale');
-        setConfirmTitle('Retirer la vente flash ?');
-        setConfirmMessage(`Retirer cette vente flash (ID : ${flashSaleId}) ? Elle sera annulée ou désactivée.`);
-        setIsConfirmModalOpen(true);
-        // Original logic moved to confirmFlashSaleDelete
+        setConfirm({
+            title: 'Retirer la vente flash ?',
+            description: 'La vente flash en cours ou programmée sera annulée ou désactivée.',
+            confirmLabel: 'Retirer la vente',
+            onConfirm: async () => {
+                let response;
+                try {
+                    response = await deleteFlashSaleById(flashSaleId);
+                } catch (err) {
+                    throw new Error(msg(err, 'Impossible de retirer la vente flash.'));
+                }
+                toast.success(response?.message || 'Vente flash retirée.');
+                setFlashProduct(null);
+                refresh();
+            },
+        });
     };
 
-    // New handler for confirming flash sale deletion
-    const confirmFlashSaleDelete = async () => {
-        if (!itemIdToDelete) return;
-        setIsLoading(true); // Use main loading state or a dedicated one
-        setError(null);
-        try {
-            const response = await deleteFlashSaleById(itemIdToDelete);
-            console.log("Delete flash sale response:", response);
-            fetchProducts(); // Refresh list to see changes
-            setIsFlashSaleModalVisible(false); // Close the main flash sale modal too
-            toast.success(response.message || 'Vente flash retirée.'); // Toast feedback
-        } catch (err) { // Type assertion for err
-            console.error("Failed to delete flash sale:", err);
-            setError(err instanceof Error ? err.message : 'Impossible de retirer la vente flash.');
-            toast.error(err instanceof Error ? err.message : 'Impossible de retirer la vente flash.');
-        } finally {
-            setIsLoading(false);
-            closeConfirmationModal();
-        }
-    };
+    const pending = counts.data?.pending ?? 0;
+    const showingPending = values.status === 'pending';
 
-    // --- Confirmation Modal Handlers ---
-    const handleConfirm = () => {
-        if (confirmAction === 'deleteProduct') {
-            confirmProductDelete();
-        } else if (confirmAction === 'deleteFlashSale') {
-            confirmFlashSaleDelete();
-        }
-    };
-
-    const closeConfirmationModal = () => {
-        setIsConfirmModalOpen(false);
-        setItemIdToDelete(null);
-        setConfirmAction(null);
-        setConfirmTitle('');
-        setConfirmMessage('');
-    };
-    // --- End Confirmation Modal Handlers ---
-
-    console.log("Products state before render:", products);
-
-    /* // Simplified return for testing commented out
     return (
-        <div className="p-10 bg-red-500 text-white text-4xl relative z-10">
-            PRODUCT PAGE TEST - VISIBLE?
-            <p>Products count: {products.length}</p>
-        </div>
-    );
-    */
+        <div className="space-y-6">
+            <PageHeader
+                title="Boutique"
+                description="Les produits publiés par les membres, leurs ventes flash, la modification et le retrait."
+                actions={(
+                    <Can module="boutique" write>
+                        <Button variant="primary" size="lg" className="w-full sm:w-auto" onClick={() => setEditing('new')}>
+                            <HugeiconsIcon icon={PlusSignIcon} size={18} aria-hidden="true" />
+                            Ajouter un produit
+                        </Button>
+                    </Can>
+                )}
+            />
 
-    // Restore original return, but omit container and mx-auto
-    return (
-        <div className="relative w-full text-fg">
-            <Header title="Gestion des produits" />
+            <PageFilters filters={pageFilters} onReset={clearAll}>
+                    <FilterBar
+                        className="sm:contents"
+                        filterCount={2}
+                        activeCount={pageFilters.isFiltered ? 0 : activeCount}
+                        onClear={clearAll}
+                        search={<SearchInput value={values.q} onChange={v => set({ q: v })} placeholder="Rechercher par nom, catégorie…" />}
+                        filters={(
+                            <>
+                                <FilterSelect
+                                    label="Statut"
+                                    allLabel="Tous les statuts"
+                                    value={values.status}
+                                    onChange={v => set({ status: v })}
+                                    options={[
+                                        { value: 'pending', label: 'En attente' },
+                                        { value: 'approved', label: 'Approuvé' },
+                                        { value: 'rejected', label: 'Rejeté' },
+                                    ]}
+                                />
+                                <FilterSelect
+                                    label="Vente flash active"
+                                    allLabel="Vente flash : tous"
+                                    value={values.flash}
+                                    onChange={v => set({ flash: v })}
+                                    options={[{ value: 'yes', label: 'Avec vente flash' }, { value: 'no', label: 'Sans vente flash' }]}
+                                />
+                            </>
+                        )}
+                    />
+            </PageFilters>
 
-            {error && <div className="bg-red-500 text-white p-3 rounded-sm mb-4">Erreur : {error}</div>}
+            {!counts.isError && (
+                <TodoPanel
+                    loading={counts.isLoading}
+                    items={[{
+                        key: 'pending',
+                        count: pending,
+                        label: `${plural(pending, 'Produit')} en attente de vérification`,
+                        hint: 'Le statut n’a aucun effet dans l’app : les produits en attente sont déjà visibles des membres.',
+                        action: showingPending ? undefined : <TodoAction onClick={() => set({ status: 'pending' })}>Voir</TodoAction>,
+                    }]}
+                />
+            )}
 
-            {/* --- Filter Controls --- */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 items-end">
-                {/* Search Input */}
-                <div className="md:col-span-2">
-                    <label htmlFor="search" className="block text-sm font-medium text-fg-muted mb-1">Rechercher des produits</label>
-                    <input
-                        type="text"
-                        id="search"
-                        value={searchTerm}
-                        onChange={handleSearchChange}
-                        placeholder="Rechercher par nom, catégorie…"
-                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Metric label="Produits" icon={ShoppingBag01Icon} value={counts.isLoading ? <Skeleton className="h-7 w-24" /> : formatNumber(counts.data?.all ?? 0)} hint="Tous statuts confondus" />
+                <Metric
+                    label="En attente"
+                    tone={pending > 0 ? 'warning' : 'neutral'}
+                    value={counts.isLoading ? <Skeleton className="h-7 w-24" /> : formatNumber(pending)}
+                    hint={pageFilters.period !== 'all' ? 'Toutes périodes confondues' : counts.data?.all ? `${Math.round((pending / counts.data.all) * 100)} % du catalogue` : undefined}
+                    onClick={() => set({ status: 'pending' })}
+                />
+                <Metric
+                    label="Vente flash active"
+                    icon={FlashIcon}
+                    value={counts.isLoading ? <Skeleton className="h-7 w-24" /> : formatNumber(counts.data?.flash ?? 0)}
+                    onClick={() => set({ flash: 'yes' })}
+                />
+            </div>
+
+            <Panel>
+                <PanelHeader title="Produits" description={list.data ? `${formatNumber(total)} ${plural(total, 'produit')}` : undefined} />
+                {values.status && (
+                    <div className="px-4 pb-3 sm:px-5">
+                        <Notice tone="info">
+                            Le statut d’un produit ne change rien dans l’app : les membres voient tous les produits, quel que soit leur statut.
+                        </Notice>
+                    </div>
+                )}
+                <div className={list.isFetching && !list.isLoading ? 'opacity-60 transition-opacity' : undefined}>
+                    <ProductList
+                        products={products}
+                        isLoading={list.isLoading}
+                        onOpen={setViewing}
+                        onEdit={p => setEditing(p)}
+                        onDelete={handleDeleteProduct}
+                        onManageFlashSale={p => void handleManageFlashSale(p)}
+                        empty={list.isError ? (
+                            <ErrorState error={list.error} onRetry={() => void list.refetch()} retrying={list.isFetching} />
+                        ) : (
+                            <EmptyState
+                                icon={ShoppingBag01Icon}
+                                title="Aucun produit trouvé"
+                                description={activeCount || pageFilters.isFiltered ? 'Aucun produit ne correspond à ces filtres.' : 'Les produits publiés par les membres apparaîtront ici.'}
+                                action={activeCount || pageFilters.isFiltered ? <Button size="lg" onClick={clearAll}>Effacer les filtres</Button> : undefined}
+                            />
+                        )}
                     />
                 </div>
-                {/* Status Filter */}
-                <div>
-                    <label htmlFor="statusFilter" className="block text-sm font-medium text-fg-muted mb-1">Statut</label>
-                    <select
-                        id="statusFilter"
-                        value={statusFilter}
-                        onChange={handleStatusFilterChange}
-                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
+                <Pagination page={page} totalPages={totalPages} total={total} pageSize={LIMIT} onPageChange={setPage} />
+            </Panel>
+
+            <Dialog open={!!viewing} onOpenChange={o => { if (!o) setViewing(null); }}>
+                {viewing && (
+                    <SheetContent
+                        title={viewing.name}
+                        description={`${viewing.category}${viewing.subcategory ? ` › ${viewing.subcategory}` : ''}`}
+                        width="lg"
+                        footer={(
+                            <Can module="boutique" write>
+                                <Button variant="danger-ghost" size="lg" onClick={() => handleDeleteProduct(viewing._id, viewing.name)}>
+                                    <HugeiconsIcon icon={Delete02Icon} size={16} aria-hidden="true" />Supprimer
+                                </Button>
+                                <Button variant="outline" size="lg" onClick={() => void handleManageFlashSale(viewing)}>
+                                    <HugeiconsIcon icon={FlashIcon} size={16} aria-hidden="true" />Vente flash
+                                </Button>
+                                <Button variant="primary" size="lg" onClick={() => setEditing(viewing)}>
+                                    <HugeiconsIcon icon={Edit02Icon} size={16} aria-hidden="true" />Modifier
+                                </Button>
+                            </Can>
+                        )}
                     >
-                        <option value="all">Tous les statuts</option>
-                        <option value="pending">En attente</option>
-                        <option value="approved">Approuvé</option>
-                        <option value="rejected">Rejeté</option>
-                        {/* Add 'deleted' if backend supports it for admin view */}
-                        {/* <option value="deleted">Deleted</option> */}
-                    </select>
-                </div>
-                {/* Flash Sale Filter */}
-                <div>
-                    <label htmlFor="flashSaleFilter" className="block text-sm font-medium text-fg-muted mb-1">Vente flash active</label>
-                    <select
-                        id="flashSaleFilter"
-                        value={flashSaleFilter}
-                        onChange={handleFlashSaleFilterChange}
-                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500"
-                    >
-                        <option value="all">Tous</option>
-                        <option value="yes">Oui</option>
-                        <option value="no">Non</option>
-                    </select>
-                </div>
-                {/* Apply Filters Button */}
-                <div>
-                    <button
-                        onClick={handleApplyFilters}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-sm disabled:opacity-50"
-                        disabled={isLoading}
-                    >
-                        Appliquer les filtres
-                    </button>
-                </div>
-            </div>
-            {/* --- End Filter Controls --- */}
+                        <div className="space-y-6">
+                            {(viewing.imagesUrl?.length ?? 0) > 0 && (
+                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                    {viewing.imagesUrl!.map((u, i) => <ProductThumb key={i} src={u} alt={`${viewing.name} ${i + 1}`} className="aspect-square h-auto w-full border border-line" />)}
+                                </div>
+                            )}
+                            <DetailList items={[
+                                ['Prix', <Money value={viewing.price} />],
+                                ['Statut', <StatusBadge status={viewing.status} map={PRODUCT_STATUS} />],
+                                ['Vente flash active', viewing.hasActiveFlashSale ? 'Oui' : 'Non'],
+                                viewing.stock !== undefined && ['Stock', formatNumber(viewing.stock)],
+                                viewing.isActive !== undefined && ['Actif', viewing.isActive ? 'Oui' : 'Non'],
+                                ['Publié', <DateText value={viewing.createdAt} />],
+                                ['Modifié', <DateText value={viewing.updatedAt} />],
+                                viewing.userId ? ['Vendeur', <CopyId value={viewing.userId} />] : null,
+                                ['Produit', <CopyId value={viewing._id} />],
+                            ]} />
+                            {viewing.description && (
+                                <SheetSection title="Description">
+                                    <p className="whitespace-pre-line text-sm text-fg-muted">{viewing.description}</p>
+                                </SheetSection>
+                            )}
+                            <Notice tone="info">Le statut ne change rien dans l’app : le produit est visible des membres quel que soit son statut.</Notice>
+                        </div>
+                    </SheetContent>
+                )}
+            </Dialog>
 
-            <div className="mb-4">
-                <button
-                    onClick={handleCreateProduct}
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-sm disabled:opacity-50"
-                    disabled={isLoading}
-                >
-                    Ajouter un produit
-                </button>
-            </div>
-
-            <ProductList
-                products={products}
-                isLoading={isLoading}
-                onEdit={handleEditProduct}
-                onDelete={handleDeleteProduct}
-                onManageFlashSale={handleManageFlashSale}
-            />
-
-            {/* --- Pagination Controls --- */}
-            <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
-            />
-            {/* --- End Pagination Controls --- */}
-
-            {/* Modals */}
-            {isEditFormVisible && (
+            {editing && (
                 <ProductEditForm
-                    product={selectedProduct}
+                    product={editing === 'new' ? null : editing}
                     onSave={handleSaveProduct}
-                    onCancel={() => setIsEditFormVisible(false)}
-                    isLoading={isLoading}
+                    onCancel={() => setEditing(null)}
+                    isLoading={saving}
                 />
             )}
 
             <FlashSaleModal
-                isOpen={isFlashSaleModalVisible}
-                product={selectedProduct}
-                existingSales={currentFlashSales} // <-- Pass fetched sales
-                isLoading={isLoading || isFetchingSales} // <-- Combine loading states
+                isOpen={!!flashProduct}
+                product={flashProduct}
+                existingSales={flashSales}
+                isLoading={flashLoading}
                 onSave={handleSaveFlashSale}
                 onDelete={handleDeleteFlashSale}
-                onClose={() => setIsFlashSaleModalVisible(false)}
+                onClose={() => setFlashProduct(null)}
             />
 
-            {/* Confirmation Modal */}
-            <ConfirmationModal
-                isOpen={isConfirmModalOpen}
-                title={confirmTitle}
-                message={confirmMessage}
-                onConfirm={handleConfirm}
-                onCancel={closeConfirmationModal}
-                isLoading={isLoading} // Use main loading state for now
-                confirmText={confirmAction === 'deleteProduct' ? 'Supprimer le produit' : 'Retirer la vente'}
-            />
+            <ConfirmDialog options={confirm} onClose={() => setConfirm(null)} />
         </div>
     );
-};
+}
 
-export default ProductsManagementPage; 
+export default ProductsManagementPage;

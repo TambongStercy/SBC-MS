@@ -1,30 +1,17 @@
 import React from 'react';
-import { CheckCircle2, Circle, MinusCircle, RefreshCw, Wallet } from 'lucide-react';
-import { Entrepreneur, FundSummary, ImpactChallenge, formatDateTime, formatXaf } from '../../services/impactChallengeApi';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkCircle02Icon, Clock01Icon, MinusSignIcon, RefreshIcon } from '@hugeicons/core-free-icons';
+import { Entrepreneur, FundSummary, ImpactChallenge } from '../../services/impactChallengeApi';
+import { Badge, Button, Panel, PanelHeader, ResponsiveList, type ListColumn } from '../ui';
+import { Can } from '../Can';
+import { Money, formatDateTime, formatMoney } from '../moduleKit';
 import { PayoutLeg, payoutLegs } from './payout';
 import { Notice } from './shared';
-import { btn, panelClass } from './styles';
 
 const LegState: React.FC<{ leg: PayoutLeg }> = ({ leg }) => {
-    if (leg.state === 'paid') {
-        return (
-            <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-300 text-xs">
-                <CheckCircle2 className="w-4 h-4" /> Versé
-            </span>
-        );
-    }
-    if (leg.state === 'nothing') {
-        return (
-            <span className="inline-flex items-center gap-1 text-fg-muted text-xs">
-                <MinusCircle className="w-4 h-4" /> Rien à verser
-            </span>
-        );
-    }
-    return (
-        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300 text-xs">
-            <Circle className="w-4 h-4" /> À verser
-        </span>
-    );
+    if (leg.state === 'paid') return <Badge tone="success"><HugeiconsIcon icon={CheckmarkCircle02Icon} size={12} aria-hidden="true" />Versé</Badge>;
+    if (leg.state === 'nothing') return <Badge tone="neutral"><HugeiconsIcon icon={MinusSignIcon} size={12} aria-hidden="true" />Rien à verser</Badge>;
+    return <Badge tone="warning"><HugeiconsIcon icon={Clock01Icon} size={12} aria-hidden="true" />À verser</Badge>;
 };
 
 /**
@@ -48,64 +35,54 @@ const FundsPanel: React.FC<{
     const winnerMissingAccount = isClosed && !!winner && !winner.userId;
     const noWinner = isClosed && !winner;
     const blocked = c.distributionInProgress || noWinner || winnerMissingAccount;
+    const withState = isClosed || isDone;
+
+    const columns: ListColumn<PayoutLeg>[] = [
+        { key: 'label', header: 'Part', cell: l => <span className="text-fg">{l.label} <span className="text-fg-muted">· {l.share}</span></span> },
+        { key: 'amount', header: 'Montant', numeric: true, cell: l => <Money value={l.amount} /> },
+        ...(withState ? [
+            { key: 'state', header: 'État', cell: (l: PayoutLeg) => <LegState leg={l} /> },
+            { key: 'tx', header: 'Transaction', cell: (l: PayoutLeg) => <span className="break-all font-mono text-xs text-fg-muted">{l.transactionId || '—'}</span> },
+        ] : []),
+    ];
 
     return (
-        <div className={`${panelClass} p-6 mb-6`}>
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-                <div>
-                    <h3 className="text-lg font-semibold text-fg flex items-center gap-2">
-                        <Wallet className="w-5 h-5 text-green-600 dark:text-green-400" />
-                        {isDone ? 'Fonds distribués' : isClosed ? 'Distribution des fonds' : 'Répartition prévue'}
-                    </h3>
-                    <p className="text-sm text-fg-muted mt-1">
-                        {isDone
-                            ? `Versé le ${formatDateTime(c.distributionDate)}, sur ${formatXaf(total)} collectés.`
-                            : isClosed
-                                ? `Sur ${formatXaf(total)} collectés pendant les votes.`
-                                : `Calculée sur les ${formatXaf(total)} collectés jusqu’ici. Les montants sont fixés à la clôture des votes.`}
-                    </p>
-                </div>
-                {isClosed && (
-                    <div className="flex gap-2 shrink-0">
-                        <button onClick={onRefresh} className={btn.secondary}><RefreshCw className="w-4 h-4" /> Rafraîchir</button>
-                        <button onClick={onDistribute} disabled={blocked} className={btn.success}>
-                            {c.distributionInProgress ? 'Versement en cours…' : partial ? 'Reprendre le versement' : 'Distribuer les fonds'}
-                        </button>
+        <Panel>
+            <PanelHeader
+                title={isDone ? 'Fonds distribués' : isClosed ? 'Distribution des fonds' : 'Répartition prévue'}
+                description={isDone
+                    ? `Versé le ${formatDateTime(c.distributionDate)}, sur ${formatMoney(total)} collectés.`
+                    : isClosed
+                        ? `Sur ${formatMoney(total)} collectés pendant les votes.`
+                        : `Calculée sur les ${formatMoney(total)} collectés jusqu’ici. Les montants sont fixés à la clôture des votes.`}
+                actions={isClosed ? (
+                    <div className="hidden items-center gap-2 sm:flex">
+                        <Button variant="ghost" size="md" onClick={onRefresh}><HugeiconsIcon icon={RefreshIcon} size={16} aria-hidden="true" />Rafraîchir</Button>
+                        <Can module="impactChallenge" write>
+                            <Button variant="primary" size="md" onClick={onDistribute} disabled={blocked}>
+                                {c.distributionInProgress ? 'Versement en cours…' : partial ? 'Reprendre le versement' : 'Distribuer les fonds'}
+                            </Button>
+                        </Can>
                     </div>
-                )}
-            </div>
+                ) : undefined}
+            />
+            {isClosed && (
+                <div className="grid grid-cols-1 gap-2 px-4 pb-3 sm:hidden">
+                    <Can module="impactChallenge" write>
+                        <Button variant="primary" size="lg" onClick={onDistribute} disabled={blocked}>
+                            {c.distributionInProgress ? 'Versement en cours…' : partial ? 'Reprendre le versement' : 'Distribuer les fonds'}
+                        </Button>
+                    </Can>
+                    <Button variant="outline" size="lg" onClick={onRefresh}>Rafraîchir</Button>
+                </div>
+            )}
 
-            {summaryError && !isDone && <Notice tone="danger" className="mb-4">{summaryError}</Notice>}
+            {summaryError && !isDone && <div className="px-4 pb-3 sm:px-5"><Notice tone="danger">{summaryError}</Notice></div>}
 
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead className="bg-background/50 text-fg-muted">
-                        <tr>
-                            <th className="px-4 py-2 text-left">Part</th>
-                            <th className="px-4 py-2 text-left">Pourcentage</th>
-                            <th className="px-4 py-2 text-right">Montant</th>
-                            {(isClosed || isDone) && <th className="px-4 py-2 text-left">État</th>}
-                            {(isClosed || isDone) && <th className="px-4 py-2 text-left">Transaction</th>}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {legs.map(l => (
-                            <tr key={l.key} className="border-t border-line">
-                                <td className="px-4 py-2 text-fg">{l.label}</td>
-                                <td className="px-4 py-2 text-fg-muted">{l.share}</td>
-                                <td className="px-4 py-2 text-right text-fg font-mono whitespace-nowrap">{formatXaf(l.amount)}</td>
-                                {(isClosed || isDone) && <td className="px-4 py-2"><LegState leg={l} /></td>}
-                                {(isClosed || isDone) && (
-                                    <td className="px-4 py-2 font-mono text-xs text-fg-muted break-all">{l.transactionId || '—'}</td>
-                                )}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            <ResponsiveList rows={legs} columns={columns} rowKey={l => l.key} className="border-t border-line" />
 
             {isClosed && (
-                <div className="space-y-3 mt-4">
+                <div className="space-y-3 border-t border-line px-4 py-4 sm:px-5">
                     {c.distributionInProgress && (
                         <Notice tone="info">
                             Un versement est en cours. Rafraîchis dans un instant pour voir le résultat.
@@ -125,22 +102,23 @@ const FundsPanel: React.FC<{
                     )}
                     {winnerMissingAccount && winner && (
                         <Notice tone="danger">
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                <span>
-                                    {winner.name} n’a pas de compte SBC lié : sa part ne peut être créditée nulle part, le versement sera refusé.
-                                </span>
-                                <button onClick={() => onLinkWinner(winner)} className={`${btn.smallPrimary} shrink-0`}>Lier son compte SBC</button>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <span>{winner.name} n’a pas de compte SBC lié : sa part ne peut être créditée nulle part, le versement sera refusé.</span>
+                                <Can module="impactChallenge" write>
+                                    <Button variant="soft" size="md" className="h-11 shrink-0 sm:h-9" onClick={() => onLinkWinner(winner)}>Lier son compte SBC</Button>
+                                </Can>
                             </div>
                         </Notice>
                     )}
                     {!blocked && (
-                        <p className="text-xs text-fg-subtle">
+                        <p className="text-xs text-fg-muted">
                             La part du gagnant est créditée sur le solde de son compte SBC ; la cagnotte et la commission sur les comptes SBC prévus pour cela.
+                            Le versement demande LOTTERY_POOL_ACCOUNT_ID et SBC_COMMISSION_ACCOUNT_ID dans la configuration du serveur tombola.
                         </p>
                     )}
                 </div>
             )}
-        </div>
+        </Panel>
     );
 };
 

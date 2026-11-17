@@ -1,7 +1,12 @@
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-import { Trash2 } from "lucide-react";
-import { deleteProduct } from "../api"; // Import your deleteProduct API function
+import React, { useState } from 'react';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Delete02Icon, ShoppingBag01Icon } from '@hugeicons/core-free-icons';
+import { deleteProduct } from '../api';
+import { Can } from './Can';
+import { Button, EmptyState, Panel, PanelHeader, ResponsiveList, type ListColumn } from './ui';
+import { ConfirmDialog, Money, errorText, type ConfirmOptions } from './moduleKit';
+import { ProductThumb } from './products/ProductList';
 
 interface UserProductsProps {
   data: {
@@ -25,104 +30,68 @@ interface ProductsProps {
   overallRating: number;
 }
 
+/** A member's products and services (member page), with removal behind a confirmation. */
 const UserProductsTable: React.FC<UserProductsProps> = ({ data }) => {
-  const [filteredData, setFilteredData] = useState(data);
+  const [products, setProducts] = useState(data.product ?? []);
+  const [confirm, setConfirm] = useState<ConfirmOptions | null>(null);
 
-  const handleDelete = async (productId: string) => {
-    try {
-      await deleteProduct(productId);
-      // Remove the deleted product from the UI
-      setFilteredData((prevData) => ({
-        ...prevData,
-        product: prevData.product.filter((prdt) => prdt.id !== productId),
-      }));
-      alert("Produit/service supprimé avec succès.");
-    } catch (error) {
-      console.error("Failed to delete product:", error);
-      alert("Échec de la suppression du produit/service.");
-    }
-  };
+  const askDelete = (p: ProductsProps) => setConfirm({
+    title: 'Supprimer ce produit ?',
+    description: `« ${p.name} » disparaît de la boutique. C’est définitif.`,
+    confirmLabel: 'Supprimer',
+    onConfirm: async () => {
+      try {
+        await deleteProduct(p.id);
+      } catch (err) {
+        throw new Error(errorText(err, 'Échec de la suppression du produit ou service.'));
+      }
+      setProducts(prev => prev.filter(x => x.id !== p.id));
+      toast.success('Produit ou service supprimé.');
+    },
+  });
+
+  const columns: ListColumn<ProductsProps>[] = [
+    {
+      key: 'name', header: 'Produit ou service', cell: p => (
+        <div className="flex min-w-0 items-center gap-3">
+          <ProductThumb src={p.imagesUrl?.[0]} alt={p.name} className="h-8 w-8" />
+          <span className="truncate text-fg">{p.name}</span>
+        </div>
+      ),
+    },
+    { key: 'price', header: 'Prix', numeric: true, cell: p => (p.price != null ? <Money value={p.price} /> : '—') },
+    { key: 'town', header: 'Ville', cell: () => data.town },
+    { key: 'contact', header: 'Contact', cell: () => <span className="text-fg-muted">{[data.phone, data.email].filter(Boolean).join(' · ')}</span> },
+    {
+      key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', hideOnCard: true, cell: p => (
+        <Can module="boutique" write>
+          <Button variant="danger-ghost" size="sm" className="h-11 sm:h-8" onClick={() => askDelete(p)}>
+            <HugeiconsIcon icon={Delete02Icon} size={16} aria-hidden="true" />Supprimer
+          </Button>
+        </Can>
+      ),
+    },
+  ];
 
   return (
-    <>
-      <motion.div
-        className="bg-surface rounded-xl p-6 border border-line mb-8 mt-2"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1, ease: "easeInOut" }}
-      >
-        <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4 sm:mb-0">
-            Produits/Service
-          </h2>
-          <div className="relative w-full sm:w-auto"></div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-line">
-            <thead>
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                  Produit/service
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                  Ville
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                  Tel
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                  E-mail
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {/* Add check for product array existence before mapping */}
-              {filteredData.product && Array.isArray(filteredData.product) && filteredData.product.length > 0 ? (
-                filteredData.product.map((prdt) => (
-                  <motion.tr
-                    key={prdt.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-fg flex gap-2 items-center">
-                      <img
-                        src={prdt.imagesUrl[0]}
-                        alt={prdt.name}
-                        className="size-8 rounded-full"
-                      />
-                      {prdt.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                      {filteredData.town}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                      {filteredData.phone}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                      {filteredData.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                      <button onClick={() => handleDelete(prdt.id)}>
-                        <Trash2 color="#ec4899" />
-                      </button>
-                    </td>
-                  </motion.tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-sm text-fg-muted">Aucun produit ou service pour cet utilisateur.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
-    </>
+    <Panel className="mb-8 mt-2">
+      <PanelHeader title="Produits et services" />
+      <ResponsiveList
+        rows={products}
+        columns={columns}
+        rowKey={p => p.id}
+        className="border-t border-line"
+        card={p => (
+          <div className="space-y-2">
+            {columns[0].cell(p)}
+            <p className="text-xs text-fg-muted">{data.town} · {[data.phone, data.email].filter(Boolean).join(' · ')}</p>
+            {columns[4].cell(p)}
+          </div>
+        )}
+        empty={<EmptyState icon={ShoppingBag01Icon} title="Aucun produit ou service" description="Ce membre n’a rien publié dans la boutique." />}
+      />
+      <ConfirmDialog options={confirm} onClose={() => setConfirm(null)} />
+    </Panel>
   );
 };
 

@@ -1,249 +1,315 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, RefreshCw, Trophy } from 'lucide-react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
-import Pagination from '../components/common/Pagination';
-import ConfirmationModal from '../components/common/ConfirmationModal';
-import ToastContainer from '../components/common/ToastContainer';
-import { useToast } from '../hooks/useToast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowRight01Icon, Award01Icon, Cancel01Icon, Delete02Icon, PlusSignIcon, VoteIcon } from '@hugeicons/core-free-icons';
+import { Can } from '../components/Can';
+import { usePermission } from '../hooks/usePermission';
+import { Button, EmptyState, MenuItem, Metric, PageHeader, Pagination, Panel, PanelHeader, ResponsiveList, Skeleton, type ListColumn } from '../components/ui';
+import {
+    ConfirmDialog, DateText, ErrorState, FilterSelect, Money, RowMenu, TodoAction, TodoPanel, formatDate, formatNumber, plural,
+    useUrlFilters, type ConfirmOptions, type TodoItem,
+} from '../components/moduleKit';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { countryOnly, fetchChallenges, type AdminFilterParams } from '../components/impactChallenge/api';
 import ChallengeFormModal from '../components/impactChallenge/ChallengeFormModal';
 import { StatusBadge } from '../components/impactChallenge/shared';
-import { btn, panelClass } from '../components/impactChallenge/styles';
 import {
     ChallengeStatus,
     ImpactChallenge,
     STATUS_LABELS,
     apiErrorMessage,
     deleteChallenge,
-    formatDay,
-    formatXaf,
-    listChallenges,
+    getChallengeDetails,
     monthLabel,
     updateChallengeStatus,
 } from '../services/impactChallengeApi';
 
 const PAGE_SIZE = 10;
+const KEY = ['impact-challenges'] as const;
+const FILTER_KEYS = ['status'] as const;
 
-type PendingAction = { kind: 'activate' | 'cancel' | 'delete'; challenge: ImpactChallenge };
-
-/** What the service allows, so the buttons offered are the ones that will work. */
+/** What the service allows, so the actions offered are the ones that will work. */
 const canActivate = (c: ImpactChallenge) => c.status === 'draft';
 const canCancel = (c: ImpactChallenge) =>
     ['draft', 'active', 'voting_closed'].includes(c.status) && (c.totalCollected ?? 0) === 0;
 const canDelete = (c: ImpactChallenge) => (c.status === 'draft' || c.status === 'cancelled') && (c.totalVoteCount ?? 0) === 0;
 
+/**
+ * What needs the admin across all challenges: funds to distribute, and
+ * entrepreneurs waiting for approval on drafts / open challenges (read from
+ * each challenge's details: the list does not carry them).
+ */
+async function loadWork(f: AdminFilterParams) {
+    const [closed, drafts, active] = await Promise.all([
+        fetchChallenges(1, 20, 'voting_closed', f),
+        fetchChallenges(1, 20, 'draft', f),
+        fetchChallenges(1, 5, 'active', f),
+    ]);
+    const open = [...(drafts.challenges || []), ...(active.challenges || [])];
+    const details = await Promise.allSettled(open.map(c => getChallengeDetails(c._id)));
+    const toApprove = details.flatMap((d, i) =>
+        d.status === 'fulfilled' ? [{ challenge: open[i], count: (d.value.entrepreneurs || []).filter(e => !e.approved).length }] : [],
+    ).filter(x => x.count > 0);
+    return { closed: closed.challenges || [], active: active.challenges || [], toApprove };
+}
+
 /** All Impact Challenges, newest month first: create, open the votes, cancel, delete. */
-const ImpactChallengePage: React.FC = () => {
+export default function ImpactChallengePage() {
     const navigate = useNavigate();
-    const { toasts, removeToast, showSuccess, showError } = useToast();
+    const queryClient = useQueryClient();
+    const canWrite = usePermission('impactChallenge') === 'write';
+    const { values, set, clear, activeCount, page, setPage } = useUrlFilters(FILTER_KEYS);
+    const filters = usePageFilters();
+    const queueParams = countryOnly(filters.apiParams);
+    const clearAll = () => clear(['pays', 'periode', 'du', 'au']);
+    const statusFilter = values.status as ChallengeStatus | '';
 
-    const [challenges, setChallenges] = useState<ImpactChallenge[]>([]);
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(1);
-    const [statusFilter, setStatusFilter] = useState<ChallengeStatus | ''>('');
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
-    const [pending, setPending] = useState<PendingAction | null>(null);
+    const [confirm, setConfirm] = useState<ConfirmOptions | null>(null);
 
-    const fetchChallenges = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const res = await listChallenges(page, PAGE_SIZE, statusFilter || undefined);
-            setChallenges(res.challenges || []);
-            setTotal(res.total || 0);
-        } catch (err) {
-            setError(apiErrorMessage(err, 'Impossible de charger les challenges.'));
-            setChallenges([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [page, statusFilter]);
+    const list = useQuery({
+        queryKey: [...KEY, 'list', page, statusFilter, filters.apiParams],
+        queryFn: () => fetchChallenges(page, PAGE_SIZE, statusFilter || undefined, filters.apiParams),
+        placeholderData: prev => prev,
+    });
+    // Queues: everything pending whatever the period (country only).
+    const work = useQuery({ queryKey: [...KEY, 'work', queueParams], queryFn: () => loadWork(queueParams) });
 
-    useEffect(() => { fetchChallenges(); }, [fetchChallenges]);
-
+    const challenges = list.data?.challenges ?? [];
+    const total = list.data?.total ?? 0;
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const refresh = () => { void queryClient.invalidateQueries({ queryKey: KEY }); };
 
-    const runPending = async () => {
-        if (!pending) return;
-        const { kind, challenge } = pending;
-        try {
-            if (kind === 'activate') {
-                await updateChallengeStatus(challenge._id, 'active');
-                showSuccess(`Votes ouverts pour « ${challenge.campaignName} ».`);
-            } else if (kind === 'cancel') {
-                await updateChallengeStatus(challenge._id, 'cancelled');
-                showSuccess(`« ${challenge.campaignName} » est annulé.`);
-            } else {
-                await deleteChallenge(challenge._id);
-                showSuccess(`« ${challenge.campaignName} » est supprimé.`);
-            }
-            setPending(null);
-            fetchChallenges();
-        } catch (err) {
-            showError(apiErrorMessage(err, 'L’action a échoué.'));
-            setPending(null);
-        }
-    };
+    const open = (c: ImpactChallenge) => navigate(`/impact-challenges/${c._id}`);
 
-    const confirmCopy = (p: PendingAction) => {
-        const c = p.challenge;
-        if (p.kind === 'activate') {
-            return {
+    const ask = (kind: 'activate' | 'cancel' | 'delete', c: ImpactChallenge) => {
+        const fail = (err: unknown) => { throw new Error(apiErrorMessage(err, 'L’action a échoué.')); };
+        if (kind === 'activate') {
+            setConfirm({
                 title: 'Ouvrir les votes ?',
-                variant: 'success' as const,
-                confirmText: 'Ouvrir les votes',
-                message: (
-                    <div className="space-y-2 text-sm">
-                        <p>« {c.campaignName} » apparaît dans l’app : les membres paient pour voter, et chaque vote leur donne aussi des tickets de la tombola du mois.</p>
-                        <p className="text-fg-muted">Il faut au moins un entrepreneur approuvé, et aucun autre challenge ne doit avoir ses votes ouverts.</p>
-                    </div>
-                ),
-            };
-        }
-        if (p.kind === 'cancel') {
-            return {
+                tone: 'primary',
+                confirmLabel: 'Ouvrir les votes',
+                description: `« ${c.campaignName} » apparaît dans l’app : les membres paient pour voter, et chaque vote leur donne aussi des tickets de la tombola du mois.`,
+                body: <p className="text-sm text-fg-muted">Il faut au moins un entrepreneur approuvé, et aucun autre challenge ne doit avoir ses votes ouverts.</p>,
+                onConfirm: async () => {
+                    await updateChallengeStatus(c._id, 'active').catch(fail);
+                    toast.success(`Votes ouverts pour « ${c.campaignName} ».`);
+                    refresh();
+                },
+            });
+        } else if (kind === 'cancel') {
+            setConfirm({
                 title: 'Annuler ce challenge ?',
-                variant: 'danger' as const,
-                confirmText: 'Annuler le challenge',
-                message: <p className="text-sm">« {c.campaignName} » s’arrête et ne pourra plus être rouvert. Rien n’a été collecté, donc personne n’est à rembourser.</p>,
-            };
+                confirmLabel: 'Annuler le challenge',
+                description: `« ${c.campaignName} » s’arrête et ne pourra plus être rouvert. Rien n’a été collecté, donc personne n’est à rembourser.`,
+                onConfirm: async () => {
+                    await updateChallengeStatus(c._id, 'cancelled').catch(fail);
+                    toast.success(`« ${c.campaignName} » est annulé.`);
+                    refresh();
+                },
+            });
+        } else {
+            setConfirm({
+                title: 'Supprimer ce challenge ?',
+                confirmLabel: 'Supprimer',
+                description: `« ${c.campaignName} » disparaît de la liste. C’est définitif. La tombola du mois reste.`,
+                onConfirm: async () => {
+                    await deleteChallenge(c._id).catch(fail);
+                    toast.success(`« ${c.campaignName} » est supprimé.`);
+                    refresh();
+                },
+            });
         }
-        return {
-            title: 'Supprimer ce challenge ?',
-            variant: 'danger' as const,
-            confirmText: 'Supprimer',
-            message: <p className="text-sm">« {c.campaignName} » disparaît de la liste. C’est définitif. La tombola du mois reste.</p>,
-        };
     };
+
+    const todo: TodoItem[] = useMemo(() => {
+        const w = work.data;
+        if (!w) return [];
+        const items: TodoItem[] = [];
+        const toPay = w.closed.filter(c => !c.distributionInProgress);
+        const running = w.closed.filter(c => c.distributionInProgress);
+        if (toPay.length) {
+            items.push({
+                key: 'pay',
+                label: `${plural(toPay.length, 'Challenge')} aux votes clôturés : fonds à distribuer`,
+                hint: toPay.map(c => c.campaignName).join(', '),
+                count: toPay.length,
+                action: toPay.length === 1
+                    ? <TodoAction onClick={() => open(toPay[0])}>Distribuer</TodoAction>
+                    : <TodoAction onClick={() => set({ status: 'voting_closed' })}>Voir</TodoAction>,
+            });
+        }
+        if (running.length) {
+            items.push({
+                key: 'running', tone: 'info', count: running.length,
+                label: 'Versement en cours',
+                hint: 'S’il reste affiché longtemps, il a été interrompu côté serveur : prévenir l’équipe technique.',
+                action: <TodoAction onClick={() => open(running[0])}>Ouvrir</TodoAction>,
+            });
+        }
+        for (const t of w.toApprove) {
+            items.push({
+                key: `approve-${t.challenge._id}`,
+                label: `${plural(t.count, 'Entrepreneur')} à approuver`,
+                hint: `${t.challenge.campaignName} · ${STATUS_LABELS[t.challenge.status]}`,
+                count: t.count,
+                action: <TodoAction onClick={() => open(t.challenge)}>Approuver</TodoAction>,
+            });
+        }
+        return items;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [work.data]);
+
+    const current = work.data?.active[0];
+
+    const actionsFor = (c: ImpactChallenge) => {
+        const items = [
+            canActivate(c) && <MenuItem key="a" onSelect={() => ask('activate', c)}><HugeiconsIcon icon={VoteIcon} size={16} aria-hidden="true" />Ouvrir les votes</MenuItem>,
+            canCancel(c) && <MenuItem key="c" onSelect={() => ask('cancel', c)}><HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />Annuler le challenge</MenuItem>,
+            canDelete(c) && <MenuItem key="d" destructive onSelect={() => ask('delete', c)}><HugeiconsIcon icon={Delete02Icon} size={16} aria-hidden="true" />Supprimer</MenuItem>,
+        ].filter(Boolean);
+        return (
+            <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                <Button variant="ghost" size="sm" className="h-11 sm:h-8" onClick={() => open(c)}>
+                    Gérer<HugeiconsIcon icon={ArrowRight01Icon} size={14} aria-hidden="true" />
+                </Button>
+                {canWrite && (items.length > 0 ? <RowMenu>{items}</RowMenu> : <span className="hidden w-9 sm:block" aria-hidden="true" />)}
+            </div>
+        );
+    };
+
+    const statusCell = (c: ImpactChallenge) => (
+        <div className="flex flex-col items-end gap-1 md:items-start">
+            <StatusBadge status={c.status} />
+            {c.status === 'voting_closed' && (
+                <span className="text-xs text-fg-muted">{c.distributionInProgress ? 'Versement en cours' : 'Fonds à distribuer'}</span>
+            )}
+        </div>
+    );
+
+    const columns: ListColumn<ImpactChallenge>[] = [
+        {
+            key: 'name', header: 'Challenge', cell: c => (
+                <div className="min-w-0">
+                    <p className="truncate font-medium text-fg">{c.campaignName}</p>
+                    <p className="text-xs text-fg-muted">{monthLabel(c.month, c.year)} · votes du {formatDate(c.startDate)} au {formatDate(c.endDate)}</p>
+                </div>
+            ),
+        },
+        { key: 'status', header: 'Statut', cell: statusCell },
+        { key: 'votes', header: 'Votes', numeric: true, cell: c => formatNumber(c.totalVoteCount ?? 0) },
+        { key: 'collected', header: 'Collecté', numeric: true, cell: c => <Money value={c.totalCollected} /> },
+        { key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', hideOnCard: true, cell: actionsFor },
+    ];
+
+    const card = (c: ImpactChallenge) => (
+        <div className="space-y-2">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="font-medium text-fg">{c.campaignName}</p>
+                    <p className="text-xs text-fg-muted">{monthLabel(c.month, c.year)} · {formatDate(c.startDate)} → {formatDate(c.endDate)}</p>
+                </div>
+                {statusCell(c)}
+            </div>
+            <div className="flex items-baseline justify-between text-sm">
+                <span className="text-fg-muted">{formatNumber(c.totalVoteCount ?? 0)} {plural(c.totalVoteCount ?? 0, 'vote')}</span>
+                <Money value={c.totalCollected} className="font-medium text-fg" />
+            </div>
+            {actionsFor(c)}
+        </div>
+    );
 
     return (
-        <div className="flex-1 overflow-auto relative z-10">
-            <Header title="Impact Challenge" />
-            <main>
-                <motion.div
-                    className={`${panelClass} p-6 mb-6`}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                >
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div>
-                            <h2 className="text-xl font-semibold text-fg flex items-center gap-2">
-                                <Trophy className="w-5 h-5 text-amber-700 dark:text-amber-400" /> Challenges du mois
-                            </h2>
-                            <p className="text-sm text-fg-muted mt-1">
-                                Chaque mois, jusqu’à 3 entrepreneurs présentent leur projet en vidéo. Les membres paient pour voter, le plus voté gagne.
-                                L’argent collecté est réparti : 50 % au gagnant, 30 % à la cagnotte de la tombola, 20 % à SBC.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
-                            <select
-                                value={statusFilter}
-                                onChange={e => { setStatusFilter(e.target.value as ChallengeStatus | ''); setPage(1); }}
-                                className="px-3 py-2 bg-surface border border-line-strong rounded-lg text-sm text-fg focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">Tous les statuts</option>
-                                {(Object.keys(STATUS_LABELS) as ChallengeStatus[]).map(s => (
-                                    <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                                ))}
-                            </select>
-                            <button onClick={fetchChallenges} className={btn.secondary}>
-                                <RefreshCw className="w-4 h-4" /> Rafraîchir
-                            </button>
-                            <button onClick={() => setCreating(true)} className={btn.primary}>
-                                <Plus className="w-4 h-4" /> Nouveau challenge
-                            </button>
-                        </div>
-                    </div>
-                    {error && <div className="mt-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-3 text-red-800 dark:text-red-200 text-sm">{error}</div>}
-                </motion.div>
+        <div className="space-y-6">
+            <PageHeader
+                title="Impact Challenge"
+                description="Chaque mois, jusqu’à 3 entrepreneurs présentent leur projet en vidéo ; les membres paient pour voter. 50 % au gagnant, 30 % à la cagnotte de la tombola, 20 % à SBC."
+                actions={(
+                    <Can module="impactChallenge" write>
+                        <Button variant="primary" size="lg" className="w-full sm:w-auto" onClick={() => setCreating(true)}>
+                            <HugeiconsIcon icon={PlusSignIcon} size={18} aria-hidden="true" />
+                            Nouveau challenge
+                        </Button>
+                    </Can>
+                )}
+            />
 
-                <motion.div
-                    className={`${panelClass} overflow-hidden`}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    {loading ? (
-                        <div className="p-12 flex justify-center"><Loader name="Chargement…" /></div>
-                    ) : challenges.length === 0 ? (
-                        <div className="p-12 text-center text-fg-muted">
-                            <Trophy className="w-12 h-12 mx-auto mb-3 text-fg-subtle" />
-                            <p>{statusFilter ? 'Aucun challenge avec ce statut.' : 'Aucun challenge pour l’instant.'}</p>
-                            {!statusFilter && <p className="text-xs mt-2">Crée le challenge du mois avec « Nouveau challenge ».</p>}
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-background/50 text-fg-muted">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left">Challenge</th>
-                                        <th className="px-4 py-3 text-left">Votes ouverts</th>
-                                        <th className="px-4 py-3 text-left">Statut</th>
-                                        <th className="px-4 py-3 text-right">Votes</th>
-                                        <th className="px-4 py-3 text-right">Collecté</th>
-                                        <th className="px-4 py-3 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {challenges.map(c => (
-                                        <tr key={c._id} className="border-t border-line hover:bg-surface-2/30">
-                                            <td className="px-4 py-3">
-                                                <button onClick={() => navigate(`/impact-challenges/${c._id}`)} className="text-left">
-                                                    <span className="block text-fg font-medium hover:text-blue-700 dark:hover:text-blue-300">{c.campaignName}</span>
-                                                    <span className="block text-xs text-fg-muted">{monthLabel(c.month, c.year)}</span>
-                                                </button>
-                                            </td>
-                                            <td className="px-4 py-3 text-fg-muted whitespace-nowrap">
-                                                {formatDay(c.startDate)} <span className="text-fg-subtle">→</span> {formatDay(c.endDate)}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col items-start gap-1">
-                                                    <StatusBadge status={c.status} />
-                                                    {c.status === 'voting_closed' && (
-                                                        <span className="text-xs text-amber-700 dark:text-amber-300">{c.distributionInProgress ? 'Versement en cours' : 'Fonds à distribuer'}</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-right text-fg tabular-nums">{(c.totalVoteCount ?? 0).toLocaleString('fr-FR')}</td>
-                                            <td className="px-4 py-3 text-right text-fg font-mono whitespace-nowrap">{formatXaf(c.totalCollected)}</td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex justify-end flex-wrap gap-2">
-                                                    <button onClick={() => navigate(`/impact-challenges/${c._id}`)} className={btn.smallPrimary}>Gérer</button>
-                                                    {canActivate(c) && (
-                                                        <button onClick={() => setPending({ kind: 'activate', challenge: c })} className={btn.smallSuccess}>Ouvrir les votes</button>
-                                                    )}
-                                                    {canCancel(c) && (
-                                                        <button onClick={() => setPending({ kind: 'cancel', challenge: c })} className={btn.smallSecondary}>Annuler</button>
-                                                    )}
-                                                    {canDelete(c) && (
-                                                        <button onClick={() => setPending({ kind: 'delete', challenge: c })} className={btn.smallDanger}>Supprimer</button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                    {totalPages > 1 && (
-                        <div className="px-4 pb-4">
-                            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-                        </div>
-                    )}
-                </motion.div>
-            </main>
+            <PageFilters filters={filters} onReset={clearAll}>
+                <FilterSelect
+                    className="sm:w-48"
+                    label="Statut"
+                    allLabel="Tous les statuts"
+                    value={statusFilter}
+                    onChange={v => set({ status: v })}
+                    options={(Object.keys(STATUS_LABELS) as ChallengeStatus[]).map(st => ({ value: st, label: STATUS_LABELS[st] }))}
+                />
+                {activeCount > 0 && !filters.isFiltered && (
+                    <Button variant="ghost" size="sm" className="self-start sm:self-auto" onClick={clearAll}>Effacer les filtres</Button>
+                )}
+            </PageFilters>
+
+            {work.isError ? null : <TodoPanel items={todo} loading={work.isLoading} />}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Metric
+                    label="Challenge en cours"
+                    icon={Award01Icon}
+                    tone="primary"
+                    value={work.isLoading ? <Skeleton className="h-7 w-40" /> : current ? <span className="block truncate text-lg">{current.campaignName}</span> : <span className="text-lg text-fg-muted">Aucun</span>}
+                    hint={current ? <>Fin des votes <DateText value={current.endDate} /></> : 'Aucun challenge n’a ses votes ouverts.'}
+                    onClick={current ? () => open(current) : undefined}
+                />
+                <Metric
+                    label="Collecté sur le challenge en cours"
+                    value={work.isLoading ? <Skeleton className="h-7 w-28" /> : <Money value={current?.totalCollected ?? 0} />}
+                    hint={current ? `${formatNumber(current.totalVoteCount ?? 0)} ${plural(current.totalVoteCount ?? 0, 'vote')}` : '—'}
+                />
+                <Metric
+                    label="Fonds à distribuer"
+                    tone={(work.data?.closed.length ?? 0) > 0 ? 'warning' : 'neutral'}
+                    value={work.isLoading ? <Skeleton className="h-7 w-20" /> : <Money value={(work.data?.closed ?? []).reduce((s, c) => s + (c.totalCollected ?? 0), 0)} />}
+                    hint={`${work.data?.closed.length ?? 0} ${plural(work.data?.closed.length ?? 0, 'challenge')} aux votes clôturés`}
+                />
+            </div>
+
+            <Panel>
+                <PanelHeader
+                    title="Tous les challenges"
+                    description={list.data ? `${formatNumber(total)} ${plural(total, 'challenge')}` : undefined}
+                />
+                <div className={list.isFetching && !list.isLoading ? 'opacity-60 transition-opacity' : undefined}>
+                    <ResponsiveList
+                        rows={challenges}
+                        columns={columns}
+                        card={card}
+                        rowKey={c => c._id}
+                        onRowClick={open}
+                        loading={list.isLoading}
+                        className="border-t border-line"
+                        empty={list.isError ? (
+                            <ErrorState error={new Error(apiErrorMessage(list.error, 'Impossible de charger les challenges.'))} onRetry={() => void list.refetch()} retrying={list.isFetching} />
+                        ) : (
+                            <EmptyState
+                                icon={Award01Icon}
+                                title={statusFilter || filters.isFiltered ? 'Aucun challenge avec ces filtres' : 'Aucun challenge pour l’instant'}
+                                description={statusFilter || filters.isFiltered ? 'Changez de statut, de pays ou de période, ou effacez les filtres.' : 'Créez le challenge du mois avec « Nouveau challenge ».'}
+                                action={statusFilter || filters.isFiltered ? <Button size="lg" onClick={clearAll}>Effacer les filtres</Button> : undefined}
+                            />
+                        )}
+                    />
+                </div>
+                <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            </Panel>
 
             {creating && (
                 <ChallengeFormModal
                     onClose={() => setCreating(false)}
                     onSaved={saved => {
                         setCreating(false);
+                        refresh();
                         // Shown by the challenge page, where the admin lands.
                         navigate(`/impact-challenges/${saved._id}`, {
                             state: { flash: `« ${saved.campaignName} » est créé en brouillon. Ajoute les entrepreneurs, approuve-les, puis ouvre les votes.` },
@@ -252,25 +318,7 @@ const ImpactChallengePage: React.FC = () => {
                 />
             )}
 
-            {pending && (() => {
-                const copy = confirmCopy(pending);
-                return (
-                    <ConfirmationModal
-                        isOpen
-                        title={copy.title}
-                        message={copy.message}
-                        variant={copy.variant}
-                        confirmText={copy.confirmText}
-                        cancelText="Retour"
-                        onConfirm={runPending}
-                        onCancel={() => setPending(null)}
-                    />
-                );
-            })()}
-
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
+            <ConfirmDialog options={confirm} onClose={() => setConfirm(null)} />
         </div>
     );
-};
-
-export default ImpactChallengePage;
+}
