@@ -42,12 +42,11 @@ const ViewTaskSchema = new Schema<IViewTask>({
     qa: { type: Schema.Types.Mixed, default: null },
 }, { timestamps: true, versionKey: false });
 
+// One task per proof: the database refuses a second task for the same proof, so
+// a proof can never be held by two verifiers. Who holds it changes only through
+// the atomic claim/reassign writes (filter on state + assignee). No partial index
+// with $in here: older MongoDB versions refuse $in in partialFilterExpression.
 ViewTaskSchema.index({ sourceId: 1 }, { unique: true });
-// The database itself refuses two active assignments of the same proof.
-ViewTaskSchema.index(
-    { sourceId: 1, state: 1 },
-    { unique: true, name: 'one_active_assignment', partialFilterExpression: { state: { $in: ['assigned', 'in_progress'] } } },
-);
 ViewTaskSchema.index({ state: 1, submittedAt: 1 });
 ViewTaskSchema.index({ assigneeId: 1, state: 1 });
 
