@@ -187,10 +187,17 @@ export async function enrollStart(input: { challengeId?: unknown }) {
     if (!c || c.stage !== 'enroll') throw INVALID_CREDENTIALS();
     const agent = await Agent.findById(c.agentId);
     if (!agent || agent.status !== 'active') throw INVALID_CREDENTIALS();
-    const secret = generateSecret();
-    c.secretEnc = encryptSecret(secret);
+    // One secret per challenge, whoever asks first: a double click, a page reload or
+    // React's double effect in development sends two starts at once, and two
+    // different secrets would leave the screen showing one key while the server
+    // checks codes against the other (every code refused).
+    const slot = k(`chalsecret:${id}`);
+    await redis().set(slot, encryptSecret(generateSecret()), 'EX', config.auth.challengeTtlSec, 'NX');
+    const secretEnc = await redis().get(slot);
+    if (!secretEnc) throw INVALID_CREDENTIALS();
+    c.secretEnc = secretEnc;
     await saveChallenge(id, c);
-    return enrollmentPayload(secret, agent.email);
+    return enrollmentPayload(decryptSecret(secretEnc), agent.email);
 }
 
 export async function enrollConfirm(input: { challengeId?: unknown; code?: unknown }, ctx: ReqCtx) {

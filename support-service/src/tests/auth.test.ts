@@ -64,6 +64,22 @@ describe('login', () => {
 });
 
 describe('TOTP', () => {
+    it('gives the same key to two enrolment starts sent at once, and accepts a code from it', async () => {
+        const a = await makeAgent(['support_agent'], { enrolled: false });
+        const jar = await csrfJar();
+        const l = await desk('post', '/auth/login', jar).send({ email: a.email, password: PASSWORD });
+        const challengeId = l.body.data.challengeId;
+        const [s1, s2] = await Promise.all([
+            desk('post', '/auth/enroll/start', jar).send({ challengeId }),
+            desk('post', '/auth/enroll/start', jar).send({ challengeId }),
+        ]);
+        const k1 = new URL(s1.body.data.otpauthUrl).searchParams.get('secret')!;
+        const k2 = new URL(s2.body.data.otpauthUrl).searchParams.get('secret')!;
+        expect(k1).toBe(k2);
+        const conf = await desk('post', '/auth/enroll/confirm', jar).send({ challengeId, code: authenticator.generate(k1) });
+        expect(conf.status).toBe(200);
+    });
+
     it('enrols at first sign-in, then accepts each backup code only once', async () => {
         const a = await makeAgent(['support_agent'], { enrolled: false });
         const jar = await csrfJar();
