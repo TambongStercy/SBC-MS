@@ -16,8 +16,10 @@ function assertMoneyRead(req: any) {
     if (!hasPermission(roles, 'finance.read') && !hasPermission(roles, 'activation.check')) assertPermission(req, 'finance.read');
 }
 
-router.get('/search', requirePermission('members.read'), ah(async (req, res) => {
-    const hits = await members.search(req.query.q);
+// POST, not GET: the search text is usually an email or a phone number, and a
+// query string ends up in the gateway and nginx access logs and the browser history.
+router.post('/search', requirePermission('members.read'), ah(async (req, res) => {
+    const hits = await members.search(req.body?.q);
     await audit({ actor: actorOf(req), action: 'member.search', meta: { results: hits.length }, ...reqCtx(req) });
     res.json({ success: true, data: hits });
 }));
