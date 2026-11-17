@@ -1,235 +1,197 @@
-import React, { useState, useEffect } from 'react';
-import { MessageSquare, Edit2, Eye, Save, X, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Robot01Icon, PencilEdit01Icon } from '@hugeicons/core-free-icons';
-import { getSmsTemplates, updateSmsTemplate, previewSmsTemplate, SmsTemplate } from '../services/adminRelanceApi';
+import { Edit02Icon, FloppyDiskIcon, MessageMultiple01Icon, PencilEdit01Icon, Robot01Icon, ViewIcon } from '@hugeicons/core-free-icons';
+import { getSmsTemplates, previewSmsTemplate, updateSmsTemplate, type SmsTemplate } from '../services/adminRelanceApi';
+import { usePermission } from '../hooks/usePermission';
+import { Can } from '../components/Can';
+import { Badge, Button, EmptyState, Field, Input, PageHeader, Panel, Segmented, Skeleton, Switch, Textarea } from '../components/ui';
+import { cn } from '../lib/cn';
+import { ErrorState } from '../components/display/ErrorState';
+import { apiError, fmtInt } from '../components/display/format';
+import { useUrlParams } from '../components/display/useUrlParams';
 
-const RelanceSmsTemplatesPage: React.FC = () => {
-    const [templates, setTemplates] = useState<SmsTemplate[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'auto' | 'manual'>('auto');
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editText, setEditText] = useState('');
+const SMS_LEN = 160;
+// GSM 03.38 basic set (+ extension chars). Anything else (emoji, œ, ’…) makes the SMS Unicode: 70 characters, 67 per part.
+const GSM = /^[@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&'()*+,\-./0-9:;<=>?¡A-ZÄÖÑÜ§¿a-zäöñüà^{}\\[~\]|€]*$/;
+function smsParts(text: string): { parts: number; unicode: boolean; limit: number } {
+    const unicode = !GSM.test(text);
+    const single = unicode ? 70 : SMS_LEN;
+    const multi = unicode ? 67 : 153;
+    const n = [...text].length;
+    return { parts: n <= single ? 1 : Math.ceil(n / multi), unicode, limit: single };
+}
+const dayLabel = (t: SmsTemplate) => (t.type === 'auto' ? (t.dayNumber === 0 ? 'J0 · 15 min après l’inscription' : `J${t.dayNumber}`) : `Jour ${t.dayNumber}`);
+
+/**
+ * Fixed relance SMS (Cameroonian parrains only, sent to +237 numbers): the
+ * parrain only adds his link through {{link}}. "Automatique" follows the
+ * 7-day journey (J0–J7); "Manuel" is what a parrain sends by hand.
+ */
+export default function RelanceSmsTemplatesPage() {
+    const queryClient = useQueryClient();
+    const canWrite = usePermission('relance') === 'write';
+    const url = useUrlParams({ type: 'auto' });
+    const type = (url.get('type') === 'manual' ? 'manual' : 'auto') as 'auto' | 'manual';
+    const [link, setLink] = useState('https://sniperbuisnesscenter.com/p/MONCODE');
+    const [editing, setEditing] = useState<string | null>(null);
+    const [text, setText] = useState('');
     const [saving, setSaving] = useState(false);
-    const [previewData, setPreviewData] = useState<{ rendered: string; characterCount: number } | null>(null);
-    const [previewLink, setPreviewLink] = useState('https://example.com/mon-lien');
-    const [previewTarget, setPreviewTarget] = useState<SmsTemplate | null>(null);
+    const [toggling, setToggling] = useState<string | null>(null);
+    const [previews, setPreviews] = useState<Record<string, { rendered: string; characterCount: number }>>({});
+    const [previewing, setPreviewing] = useState<string | null>(null);
 
-    useEffect(() => {
-        loadTemplates();
-    }, []);
+    const templates = useQuery({ queryKey: ['relance-sms-templates'], queryFn: getSmsTemplates });
+    const rows = (templates.data ?? []).filter(t => t.type === type).sort((a, b) => a.dayNumber - b.dayNumber);
+    const counts = { auto: (templates.data ?? []).filter(t => t.type === 'auto').length, manual: (templates.data ?? []).filter(t => t.type === 'manual').length };
 
-    const loadTemplates = async () => {
-        try {
-            setLoading(true);
-            const data = await getSmsTemplates();
-            setTemplates(data);
-        } catch {
-            toast.error('Erreur lors du chargement des modèles SMS');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const replace = (u: SmsTemplate) => queryClient.setQueryData<SmsTemplate[]>(['relance-sms-templates'], prev => prev?.map(t => (t._id === u._id ? u : t)));
+    const length = (s: string) => s.replace(/\{\{link\}\}/g, link).length;
 
-    const filtered = templates.filter(t => t.type === activeTab).sort((a, b) => a.dayNumber - b.dayNumber);
-
-    const startEdit = (tpl: SmsTemplate) => {
-        setEditingId(tpl._id);
-        setEditText(tpl.templateText);
-        setPreviewData(null);
-    };
-
-    const cancelEdit = () => {
-        setEditingId(null);
-        setEditText('');
-        setPreviewData(null);
-    };
-
-    const saveEdit = async (tpl: SmsTemplate) => {
-        if (!editText.trim()) { toast.error('Le texte ne peut pas être vide'); return; }
+    const save = async (t: SmsTemplate) => {
+        if (!text.trim()) { toast.error('Le texte ne peut pas être vide.'); return; }
         setSaving(true);
         try {
-            const updated = await updateSmsTemplate(tpl.type, tpl.dayNumber, { templateText: editText });
-            setTemplates(prev => prev.map(t => t._id === updated._id ? updated : t));
-            setEditingId(null);
-            toast.success('Modèle mis à jour');
-        } catch {
-            toast.error('Erreur lors de la sauvegarde');
+            replace(await updateSmsTemplate(t.type, t.dayNumber, { templateText: text }));
+            setEditing(null);
+            setPreviews(p => { const n = { ...p }; delete n[t._id]; return n; });
+            toast.success(`SMS ${dayLabel(t)} enregistré.`);
+        } catch (error) {
+            toast.error(apiError(error, 'Le SMS n’a pas pu être enregistré.'));
         } finally {
             setSaving(false);
         }
     };
 
-    const toggleActive = async (tpl: SmsTemplate) => {
+    const toggle = async (t: SmsTemplate) => {
+        setToggling(t._id);
         try {
-            const updated = await updateSmsTemplate(tpl.type, tpl.dayNumber, { active: !tpl.active });
-            setTemplates(prev => prev.map(t => t._id === updated._id ? updated : t));
-            toast.success(updated.active ? 'Modèle activé' : 'Modèle désactivé');
-        } catch {
-            toast.error('Erreur lors de la mise à jour');
+            const u = await updateSmsTemplate(t.type, t.dayNumber, { active: !t.active });
+            replace(u);
+            toast.success(u.active ? 'SMS activé.' : 'SMS coupé : il ne part plus.');
+        } catch (error) {
+            toast.error(apiError(error, 'Le changement n’a pas pu être enregistré.'));
+        } finally {
+            setToggling(null);
         }
     };
 
-    const handlePreview = async (tpl: SmsTemplate) => {
+    const preview = async (t: SmsTemplate) => {
+        setPreviewing(t._id);
         try {
-            setPreviewTarget(tpl);
-            const data = await previewSmsTemplate(tpl.type, tpl.dayNumber, previewLink);
-            setPreviewData(data);
-        } catch {
-            toast.error('Erreur lors de la prévisualisation');
+            const p = await previewSmsTemplate(t.type, t.dayNumber, link);
+            setPreviews(prev => ({ ...prev, [t._id]: p }));
+        } catch (error) {
+            toast.error(apiError(error, 'L’aperçu n’a pas pu être créé.'));
+        } finally {
+            setPreviewing(null);
         }
     };
-
-    const dayLabel = (type: 'auto' | 'manual', day: number) =>
-        type === 'auto' ? (day === 0 ? 'J0 (15 min)' : `J${day}`) : `Jour ${day}`;
-
-    const charCount = (text: string) => text.replace(/\{\{link\}\}/g, previewLink).length;
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-            </div>
-        );
-    }
 
     return (
-        <div>
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-fg flex items-center gap-2">
-                    <MessageSquare className="w-7 h-7 text-blue-600 dark:text-blue-400" />
-                    Modèles SMS de relance
-                </h1>
-                <p className="text-fg-muted mt-1 text-sm">
-                    Messages prédéfinis — les utilisateurs ajoutent uniquement leur lien via <code className="bg-surface-2 px-1 rounded-sm">{'{{link}}'}</code>
-                </p>
-            </div>
+        <div className="space-y-6">
+            <PageHeader
+                title="SMS de relance"
+                description="Les SMS tout prêts des parrains du Cameroun (numéros +237 uniquement) : le parrain n’ajoute que son lien, à la place de {{link}}."
+            />
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-6">
-                {(['auto', 'manual'] as const).map(tab => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                            activeTab === tab
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-surface-2 text-fg-muted hover:bg-surface-3'
-                        }`}
-                    >
-                        <HugeiconsIcon icon={tab === 'auto' ? Robot01Icon : PencilEdit01Icon} size={16} />
-                        {tab === 'auto' ? 'Automatique (J0–J7)' : 'Manuel (Jour 1–7)'}
-                    </button>
-                ))}
-            </div>
-
-            {/* Preview link input */}
-            <div className="bg-surface border border-line rounded-lg p-4 mb-4 flex items-center gap-3">
-                <Eye className="w-4 h-4 text-fg-muted shrink-0" />
-                <span className="text-fg-muted text-sm">Lien pour prévisualisation :</span>
-                <input
-                    value={previewLink}
-                    onChange={e => setPreviewLink(e.target.value)}
-                    className="flex-1 bg-surface text-fg text-sm rounded-sm px-3 py-1.5 border border-line-strong focus:outline-hidden focus:border-blue-500"
-                    placeholder="https://..."
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <Segmented
+                    size="lg"
+                    label="Type de SMS"
+                    value={type}
+                    onValueChange={v => { url.set({ type: v }); setEditing(null); }}
+                    options={[
+                        { value: 'auto', label: `Automatiques (J0–J7)${counts.auto ? ` · ${counts.auto}` : ''}`, icon: Robot01Icon },
+                        { value: 'manual', label: `Manuels${counts.manual ? ` · ${counts.manual}` : ''}`, icon: PencilEdit01Icon },
+                    ]}
                 />
+                <Field label="Lien d’exemple pour les aperçus" className="w-full sm:max-w-sm">
+                    <Input value={link} onChange={e => setLink(e.target.value)} placeholder="https://…" className="h-11 md:h-9" />
+                </Field>
             </div>
 
-            {/* Template list */}
-            <div className="space-y-4">
-                {filtered.map(tpl => (
-                    <div key={tpl._id} className={`bg-surface rounded-xl border ${tpl.active ? 'border-line' : 'border-line opacity-60'}`}>
-                        <div className="flex items-center justify-between p-4 pb-2">
-                            <div className="flex items-center gap-3">
-                                <span className="bg-blue-600/20 text-blue-700 dark:text-blue-400 text-xs font-bold px-2 py-1 rounded-sm">
-                                    {dayLabel(tpl.type, tpl.dayNumber)}
-                                </span>
-                                {!tpl.active && (
-                                    <span className="text-xs text-fg-subtle bg-surface-2 px-2 py-0.5 rounded-sm">Inactif</span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => handlePreview(tpl)}
-                                    className="p-1.5 rounded-sm text-fg-muted hover:text-blue-700 dark:hover:text-blue-400 hover:bg-surface-2"
-                                    title="Prévisualiser"
-                                >
-                                    <Eye className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={() => toggleActive(tpl)}
-                                    className="p-1.5 rounded-sm text-fg-muted hover:text-yellow-800 dark:hover:text-yellow-400 hover:bg-surface-2"
-                                    title={tpl.active ? 'Désactiver' : 'Activer'}
-                                >
-                                    {tpl.active
-                                        ? <ToggleRight className="w-5 h-5 text-green-600 dark:text-green-400" />
-                                        : <ToggleLeft className="w-5 h-5 text-fg-subtle" />}
-                                </button>
-                                {editingId !== tpl._id && (
-                                    <button
-                                        onClick={() => startEdit(tpl)}
-                                        className="p-1.5 rounded-sm text-fg-muted hover:text-fg hover:bg-surface-2"
-                                        title="Modifier"
-                                    >
-                                        <Edit2 className="w-4 h-4" />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="px-4 pb-4">
-                            {editingId === tpl._id ? (
-                                <div className="space-y-2">
-                                    <textarea
-                                        value={editText}
-                                        onChange={e => setEditText(e.target.value)}
-                                        rows={5}
-                                        className="w-full bg-surface text-fg text-sm rounded-lg p-3 border border-blue-500 focus:outline-hidden resize-none font-mono"
-                                    />
-                                    <div className="flex items-center justify-between">
-                                        <span className={`text-xs ${charCount(editText) > 160 ? 'text-orange-600 dark:text-orange-400' : 'text-fg-muted'}`}>
-                                            {charCount(editText)} caractères ({Math.ceil(charCount(editText) / 160)} SMS)
-                                        </span>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={cancelEdit}
-                                                className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-surface-2 text-fg-muted hover:bg-surface-3"
-                                            >
-                                                <X className="w-3.5 h-3.5" /> Annuler
-                                            </button>
-                                            <button
-                                                onClick={() => saveEdit(tpl)}
-                                                disabled={saving}
-                                                className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                                            >
-                                                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                                                Enregistrer
-                                            </button>
+            {templates.isLoading ? (
+                <div className="space-y-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}</div>
+            ) : templates.isError ? (
+                <Panel><ErrorState message={apiError(templates.error, 'Les SMS n’ont pas pu être chargés.')} onRetry={() => void templates.refetch()} retrying={templates.isFetching} /></Panel>
+            ) : rows.length === 0 ? (
+                <Panel><EmptyState icon={MessageMultiple01Icon} title="Aucun SMS de ce type" description="Les modèles sont créés par le service de relance." /></Panel>
+            ) : (
+                <ul className="space-y-3">
+                    {rows.map(t => {
+                        const isEditing = editing === t._id;
+                        const body = (isEditing ? text : t.templateText).replace(/\{\{link\}\}/g, link);
+                        const n = length(isEditing ? text : t.templateText);
+                        const { parts, unicode, limit } = smsParts(body);
+                        const p = previews[t._id];
+                        return (
+                            <li key={t._id}>
+                                <Panel className={cn(!t.active && 'bg-surface-2/60')}>
+                                    <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-sm font-semibold text-fg">{dayLabel(t)}</span>
+                                            {t.active ? <Badge tone="success">Envoyé</Badge> : <Badge tone="neutral">Coupé</Badge>}
+                                            <span className={cn('text-xs tabular-nums', n > limit ? 'text-warning' : 'text-fg-muted')} title={unicode ? 'Emoji ou caractère spécial : 70 caractères par SMS au lieu de 160.' : undefined}>
+                                                {fmtInt(n)} caractères · {parts} SMS{unicode ? ' (Unicode)' : ''}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="ghost" size="sm" className="h-11 md:h-8" loading={previewing === t._id} onClick={() => void preview(t)}>
+                                                {previewing !== t._id && <HugeiconsIcon icon={ViewIcon} size={16} aria-hidden="true" />}
+                                                Aperçu
+                                            </Button>
+                                            {!isEditing && (
+                                                <Can module="relance" write>
+                                                    <Button variant="ghost" size="sm" className="h-11 md:h-8" onClick={() => { setEditing(t._id); setText(t.templateText); }}>
+                                                        <HugeiconsIcon icon={Edit02Icon} size={16} aria-hidden="true" />
+                                                        Modifier
+                                                    </Button>
+                                                </Can>
+                                            )}
+                                            <label className="ml-1 flex min-h-11 items-center gap-2 text-sm text-fg-muted md:min-h-0">
+                                                <Switch
+                                                    checked={t.active}
+                                                    disabled={!canWrite || toggling === t._id}
+                                                    onCheckedChange={() => void toggle(t)}
+                                                    aria-label={`${t.active ? 'Couper' : 'Activer'} le SMS ${dayLabel(t)}`}
+                                                />
+                                                <span className="sr-only sm:not-sr-only">Actif</span>
+                                            </label>
                                         </div>
                                     </div>
-                                </div>
-                            ) : (
-                                <pre className="text-fg-muted text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                                    {tpl.templateText}
-                                </pre>
-                            )}
-
-                            {/* Preview panel */}
-                            {previewTarget?._id === tpl._id && previewData && (
-                                <div className="mt-3 p-3 bg-background rounded-lg border border-line">
-                                    <p className="text-xs text-fg-subtle mb-1">Prévisualisation ({previewData.characterCount} car.)</p>
-                                    <pre className="text-green-600 dark:text-green-300 text-sm whitespace-pre-wrap font-sans">
-                                        {previewData.rendered}
-                                    </pre>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
+                                    <div className="space-y-3 px-4 pb-4 pt-3 sm:px-5">
+                                        {isEditing ? (
+                                            <>
+                                                <Field label="Texte du SMS" help="Gardez {{link}} : il est remplacé par le lien du parrain. Au-delà de 160 caractères (70 avec un emoji ou un caractère spécial), le message part en plusieurs SMS.">
+                                                    <Textarea value={text} onChange={e => setText(e.target.value)} rows={5} className="font-mono text-sm" autoFocus />
+                                                </Field>
+                                                {!text.includes('{{link}}') && <p className="text-xs text-warning">Ce texte ne contient pas {'{{link}}'} : le parrain ne pourra pas y mettre son lien.</p>}
+                                                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                                    <Button size="lg" onClick={() => setEditing(null)} disabled={saving}>Annuler</Button>
+                                                    <Button variant="primary" size="lg" loading={saving} onClick={() => void save(t)}>
+                                                        {!saving && <HugeiconsIcon icon={FloppyDiskIcon} size={16} aria-hidden="true" />}
+                                                        Enregistrer
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-fg">{t.templateText}</p>
+                                        )}
+                                        {p && (
+                                            <div className="rounded-md border border-line bg-surface-2 p-3">
+                                                <p className="mb-1 text-xs text-fg-muted">Ce que reçoit le filleul ({fmtInt(p.characterCount)} caractères) :</p>
+                                                <p className="whitespace-pre-wrap text-sm text-fg">{p.rendered}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </Panel>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
         </div>
     );
-};
-
-export default RelanceSmsTemplatesPage;
+}

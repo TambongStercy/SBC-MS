@@ -1,559 +1,400 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { MessageSquare, Save, Eye, EyeOff, Image, Video, FileText, X, Plus, Loader2, Upload, Link, Palette, Monitor } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { getAllMessages, upsertMessage, deactivateMessage, RelanceMessage, RelanceButton, uploadMediaFile, previewMessage } from '../services/adminRelanceApi';
-import ConfirmationModal from '../components/common/ConfirmationModal';
+import { useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+    Alert02Icon, Delete02Icon, File01Icon, FloppyDiskIcon, Image01Icon, Upload04Icon, Video01Icon, ViewIcon, ViewOffSlashIcon,
+} from '@hugeicons/core-free-icons';
+import {
+    deactivateMessage, getAllMessages, previewMessage, uploadMediaFile, upsertMessage, type RelanceButton, type RelanceMessage,
+} from '../services/adminRelanceApi';
+import { usePermission } from '../hooks/usePermission';
+import { Can } from '../components/Can';
+import {
+    Badge, Button, Dialog, DialogClose, DialogContent, Field, Input, PageHeader, Panel, PanelBody, PanelHeader, Skeleton, Switch,
+    Tabs, TabsContent, TabsList, TabsTrigger, Textarea,
+} from '../components/ui';
+import { cn } from '../lib/cn';
+import { ErrorState } from '../components/display/ErrorState';
+import { apiError } from '../components/display/format';
+import { useUrlParams } from '../components/display/useUrlParams';
+import { ButtonsEditor } from '../components/relance/ButtonsEditor';
 
-const MEDIA_TYPE_LABELS: Record<string, string> = { image: 'Image', video: 'Vidéo', pdf: 'PDF' };
+type Media = RelanceMessage['mediaUrls'][number];
+interface Draft { subject: string; fr: string; en: string; media: Media[]; buttons: RelanceButton[]; active: boolean }
 
-const RelanceMessagesPage: React.FC = () => {
-    const [messages, setMessages] = useState<RelanceMessage[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedDay, setSelectedDay] = useState<number>(1);
+const DAYS = [1, 2, 3, 4, 5, 6, 7];
+const VARIABLES = [
+    { code: '{{name}}', label: 'Prénom du filleul' },
+    { code: '{{referrerName}}', label: 'Nom du parrain' },
+    { code: '{{day}}', label: 'Jour (1 à 7)' },
+];
+const MEDIA_ICON = { image: Image01Icon, video: Video01Icon, pdf: File01Icon } as const;
+const MEDIA_LABEL = { image: 'Image', video: 'Vidéo', pdf: 'PDF' } as const;
+
+const toDraft = (m?: RelanceMessage): Draft => ({
+    subject: m?.subject ?? '',
+    fr: m?.messageTemplate.fr ?? '',
+    en: m?.messageTemplate.en ?? '',
+    media: m?.mediaUrls ?? [],
+    buttons: m?.buttons ?? [],
+    active: m?.active ?? true,
+});
+const same = (a: Draft, b: Draft) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The 7 e-mails of the relance journey (J1 → J7), shared by « relance des
+ * nouveaux » and the campaigns. One day at a time: subject, text in French
+ * and English, buttons, attachments; preview renders the real e-mail.
+ */
+export default function RelanceMessagesPage() {
+    const queryClient = useQueryClient();
+    const canWrite = usePermission('relance') === 'write';
+    const url = useUrlParams({ jour: '1' });
+    const day = Math.min(7, Math.max(1, Number(url.get('jour')) || 1));
+
+    const messages = useQuery({ queryKey: ['relance-messages'], queryFn: getAllMessages });
+    const saved = useMemo(() => messages.data?.find(m => m.dayNumber === day), [messages.data, day]);
+    // Unsaved edits of the shown day; without any, the form shows the saved e-mail.
+    const [edits, setEdits] = useState<{ day: number; draft: Draft } | null>(null);
+    const [lang, setLang] = useState<'fr' | 'en'>('fr');
     const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [preview, setPreview] = useState<string | null>(null);
+    const [previewing, setPreviewing] = useState(false);
+    const [confirmOff, setConfirmOff] = useState(false);
+    const [pendingDay, setPendingDay] = useState<number | null>(null);
+    const textRefs = { fr: useRef<HTMLTextAreaElement>(null), en: useRef<HTMLTextAreaElement>(null) };
 
-    // Confirmation modal
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
-    const [confirmAction, setConfirmAction] = useState<{
-        title: string;
-        message: string;
-        onConfirm: () => void;
-    } | null>(null);
+    const base = toDraft(saved);
+    const draft = edits && edits.day === day ? edits.draft : base;
+    const dirty = !same(draft, base);
+    const update = (fn: (d: Draft) => Draft) => setEdits(e => ({ day, draft: fn(e && e.day === day ? e.draft : base) }));
+    const set = (patch: Partial<Draft>) => update(d => ({ ...d, ...patch }));
 
-    // Form state
-    const [subject, setSubject] = useState('');
-    const [messageFr, setMessageFr] = useState('');
-    const [messageEn, setMessageEn] = useState('');
-    const [mediaUrls, setMediaUrls] = useState<{ url: string; type: 'image' | 'video' | 'pdf'; filename?: string }[]>([]);
-    const [active, setActive] = useState(true);
-    const [buttons, setButtons] = useState<RelanceButton[]>([]);
+    const goTo = (d: number) => {
+        if (d === day) return;
+        if (dirty) { setPendingDay(d); return; }
+        setEdits(null);
+        url.set({ jour: String(d) });
+    };
 
-    // Preview state
-    const [previewHtml, setPreviewHtml] = useState<string>('');
-    const [showPreview, setShowPreview] = useState(false);
-    const [loadingPreview, setLoadingPreview] = useState(false);
+    const insertVariable = (code: string) => {
+        const el = textRefs[lang].current;
+        const value = draft[lang];
+        const start = el?.selectionStart ?? value.length;
+        const end = el?.selectionEnd ?? value.length;
+        set({ [lang]: value.slice(0, start) + code + value.slice(end) } as Partial<Draft>);
+        requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(start + code.length, start + code.length); });
+    };
 
-    useEffect(() => {
-        loadMessages();
-    }, []);
-
-    useEffect(() => {
-        // Load selected day's message into form
-        const dayMessage = messages.find(m => m.dayNumber === selectedDay);
-        if (dayMessage) {
-            setMessageFr(dayMessage.messageTemplate.fr);
-            setMessageEn(dayMessage.messageTemplate.en);
-            setMediaUrls(dayMessage.mediaUrls);
-            setActive(dayMessage.active);
-            setSubject(dayMessage.subject || '');
-            setButtons(dayMessage.buttons || []);
-        } else {
-            // Reset form for new message
-            setMessageFr('');
-            setMessageEn('');
-            setMediaUrls([]);
-            setActive(true);
-            setSubject('');
-            setButtons([]);
-        }
-        setPreviewHtml('');
-        setShowPreview(false);
-    }, [selectedDay, messages]);
-
-    const loadMessages = async () => {
+    const save = async () => {
+        if (!draft.fr.trim() || !draft.en.trim()) { toast.error('Le texte en français et en anglais est obligatoire.'); return; }
+        if (draft.buttons.some(b => !b.label.trim() || !b.url.trim())) { toast.error('Chaque bouton a besoin d’un texte et d’un lien.'); return; }
+        setSaving(true);
         try {
-            setLoading(true);
-            const data = await getAllMessages();
-            setMessages(data);
-        } catch (error: any) {
-            console.error('Error loading messages:', error);
-            toast.error('Impossible de charger les messages : ' + (error.response?.data?.message || error.message));
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSave = async () => {
-        if (!messageFr.trim() || !messageEn.trim()) {
-            toast.error('Les messages en français et en anglais sont obligatoires');
-            return;
-        }
-
-        // Validate buttons
-        for (const btn of buttons) {
-            if (!btn.label.trim() || !btn.url.trim()) {
-                toast.error('Chaque bouton doit avoir un libellé et une URL');
-                return;
-            }
-        }
-
-        try {
-            setSaving(true);
-            const messageData: Omit<RelanceMessage, '_id' | 'createdAt' | 'updatedAt'> = {
-                dayNumber: selectedDay,
-                subject: subject.trim() || undefined,
-                messageTemplate: {
-                    fr: messageFr,
-                    en: messageEn
-                },
-                mediaUrls: mediaUrls,
-                buttons: buttons,
-                variables: ['{{name}}', '{{referrerName}}', '{{day}}'],
-                active: active
-            };
-
-            await upsertMessage(messageData);
-            toast.success(`Message du jour ${selectedDay} enregistré`);
-            await loadMessages();
-        } catch (error: any) {
-            console.error('Error saving message:', error);
-            toast.error("Impossible d'enregistrer le message : " + (error.response?.data?.message || error.message));
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleDeactivate = async () => {
-        setConfirmAction({
-            title: 'Désactiver le message',
-            message: `Voulez-vous vraiment désactiver le message du jour ${selectedDay} ?`,
-            onConfirm: async () => {
-                try {
-                    setSaving(true);
-                    await deactivateMessage(selectedDay);
-                    toast.success(`Message du jour ${selectedDay} désactivé`);
-                    await loadMessages();
-                    setShowConfirmModal(false);
-                } catch (error: any) {
-                    console.error('Error deactivating message:', error);
-                    toast.error('Impossible de désactiver le message : ' + (error.response?.data?.message || error.message));
-                } finally {
-                    setSaving(false);
-                }
-            }
-        });
-        setShowConfirmModal(true);
-    };
-
-    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (file.size > 50 * 1024 * 1024) {
-            toast.error('Le fichier doit faire moins de 50 Mo');
-            return;
-        }
-
-        try {
-            setSaving(true);
-            const uploadedMedia = await uploadMediaFile(file);
-            setMediaUrls([...mediaUrls, {
-                url: uploadedMedia.url,
-                type: uploadedMedia.type,
-                filename: uploadedMedia.filename
-            }]);
-            toast.success(`${file.name} envoyé`);
-            event.target.value = '';
-        } catch (error: any) {
-            console.error('Error uploading file:', error);
-            toast.error("Impossible d'envoyer le fichier : " + (error.response?.data?.message || error.message));
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleRemoveMedia = (index: number) => {
-        setMediaUrls(mediaUrls.filter((_, i) => i !== index));
-    };
-
-    // Button management
-    const handleAddButton = () => {
-        setButtons([...buttons, { label: '', url: '', color: '#F59E0B' }]);
-    };
-
-    const handleRemoveButton = (index: number) => {
-        setButtons(buttons.filter((_, i) => i !== index));
-    };
-
-    const handleButtonChange = (index: number, field: keyof RelanceButton, value: string) => {
-        const updated = [...buttons];
-        updated[index] = { ...updated[index], [field]: value };
-        setButtons(updated);
-    };
-
-    // Preview
-    const handlePreview = useCallback(async () => {
-        if (!messageFr.trim()) {
-            toast.error("Saisissez un message en français pour l'aperçu");
-            return;
-        }
-
-        try {
-            setLoadingPreview(true);
-            const html = await previewMessage({
-                dayNumber: selectedDay,
-                subject: subject.trim() || undefined,
-                messageTemplate: { fr: messageFr, en: messageEn },
-                mediaUrls: mediaUrls.map(m => ({ url: m.url, type: m.type })),
-                buttons: buttons.filter(b => b.label.trim() && b.url.trim()),
-                recipientName: 'John Doe',
-                referrerName: 'Jane Smith'
+            await upsertMessage({
+                dayNumber: day,
+                subject: draft.subject.trim() || undefined,
+                messageTemplate: { fr: draft.fr, en: draft.en },
+                mediaUrls: draft.media,
+                buttons: draft.buttons,
+                variables: VARIABLES.map(v => v.code),
+                active: draft.active,
             });
-            setPreviewHtml(html);
-            setShowPreview(true);
-        } catch (error: any) {
-            console.error('Error generating preview:', error);
-            toast.error("Impossible de générer l'aperçu : " + (error.response?.data?.message || error.message));
+            toast.success(`E-mail du jour ${day} enregistré.`);
+            await queryClient.invalidateQueries({ queryKey: ['relance-messages'] });
+            setEdits(null);
+        } catch (error) {
+            toast.error(apiError(error, 'L’e-mail n’a pas pu être enregistré.'));
         } finally {
-            setLoadingPreview(false);
-        }
-    }, [selectedDay, messageFr, messageEn, mediaUrls, buttons]);
-
-    const getMediaIcon = (type: string) => {
-        switch (type) {
-            case 'image': return <Image size={16} />;
-            case 'video': return <Video size={16} />;
-            case 'pdf': return <FileText size={16} />;
-            default: return <FileText size={16} />;
+            setSaving(false);
         }
     };
 
-    if (loading) {
+    const deactivate = async () => {
+        setSaving(true);
+        try {
+            await deactivateMessage(day);
+            toast.success(`E-mail du jour ${day} désactivé.`);
+            setConfirmOff(false);
+            await queryClient.invalidateQueries({ queryKey: ['relance-messages'] });
+            setEdits(null);
+        } catch (error) {
+            toast.error(apiError(error, 'L’e-mail n’a pas pu être désactivé.'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const upload = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        if (file.size > 50 * 1024 * 1024) { toast.error('Le fichier doit faire moins de 50 Mo.'); return; }
+        setUploading(true);
+        try {
+            const up = await uploadMediaFile(file);
+            update(d => ({ ...d, media: [...d.media, { url: up.url, type: up.type, filename: up.filename }] }));
+            toast.success(`${file.name} ajouté. Pensez à enregistrer.`);
+        } catch (error) {
+            toast.error(apiError(error, 'Le fichier n’a pas pu être envoyé.'));
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const showPreview = async () => {
+        if (!draft.fr.trim()) { toast.error('Écrivez le texte en français pour voir l’aperçu.'); return; }
+        setPreviewing(true);
+        try {
+            setPreview(await previewMessage({
+                dayNumber: day,
+                subject: draft.subject.trim() || undefined,
+                messageTemplate: { fr: draft.fr, en: draft.en },
+                mediaUrls: draft.media.map(m => ({ url: m.url, type: m.type })),
+                buttons: draft.buttons.filter(b => b.label.trim() && b.url.trim()),
+                recipientName: 'Marie Nguema',
+                referrerName: 'Paul Mbarga',
+            }));
+        } catch (error) {
+            toast.error(apiError(error, 'L’aperçu n’a pas pu être créé.'));
+        } finally {
+            setPreviewing(false);
+        }
+    };
+
+    const dayState = (d: number) => {
+        const m = messages.data?.find(x => x.dayNumber === d);
+        return !m ? 'missing' : m.active ? 'on' : 'off';
+    };
+
+    const actions = (sticky: boolean) => (
+        <>
+            <Button size="lg" className={sticky ? 'flex-1' : undefined} onClick={() => void showPreview()} loading={previewing}>
+                {!previewing && <HugeiconsIcon icon={ViewIcon} size={16} aria-hidden="true" />}
+                Aperçu
+            </Button>
+            <Can module="relance" write>
+                <Button variant="primary" size="lg" className={sticky ? 'flex-1' : undefined} onClick={() => void save()} loading={saving} disabled={!dirty && !!saved}>
+                    {!saving && <HugeiconsIcon icon={FloppyDiskIcon} size={16} aria-hidden="true" />}
+                    Enregistrer
+                </Button>
+            </Can>
+        </>
+    );
+
+    if (messages.isError) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="animate-spin text-blue-500" size={48} />
+            <div className="space-y-6">
+                <PageHeader title="E-mails de relance" />
+                <Panel><ErrorState message={apiError(messages.error, 'Les e-mails n’ont pas pu être chargés.')} onRetry={() => void messages.refetch()} retrying={messages.isFetching} /></Panel>
             </div>
         );
     }
 
     return (
-        <div>
-            <div className="mb-6">
-                <h1 className="text-2xl font-semibold tracking-tight text-fg flex items-center gap-2">
-                    <MessageSquare size={28} className="text-blue-500" />
-                    Messages de relance
-                </h1>
-                <p className="text-fg-muted mt-2">Configurez l'e-mail envoyé chaque jour de la boucle de relance de 7 jours</p>
-            </div>
+        <div className="space-y-6 pb-24 md:pb-0">
+            <PageHeader
+                title="E-mails de relance"
+                description="L’e-mail que reçoit un filleul chaque jour de sa relance (J1 à J7), pour la relance des nouveaux comme pour les campagnes."
+                actions={<div className="hidden gap-2 md:flex">{actions(false)}</div>}
+            />
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Day Selector */}
-                <div className="bg-surface rounded-lg p-6 border border-line lg:col-span-1">
-                    <h2 className="text-lg font-semibold text-fg mb-4">Choisir le jour</h2>
-                    <div className="space-y-2">
-                        {[1, 2, 3, 4, 5, 6, 7].map(day => {
-                            const dayMessage = messages.find(m => m.dayNumber === day);
-                            const isActive = dayMessage?.active ?? false;
-                            const isSelected = selectedDay === day;
-
-                            return (
-                                <button
-                                    key={day}
-                                    onClick={() => setSelectedDay(day)}
-                                    className={`w-full p-3 rounded-lg border transition-all flex items-center justify-between ${
-                                        isSelected
-                                            ? 'bg-blue-600 border-blue-500 text-white'
-                                            : 'bg-surface-2 border-line-strong text-fg-muted hover:bg-surface-3'
-                                    }`}
-                                >
-                                    <span className="font-medium">Jour {day}</span>
-                                    <span className="flex items-center gap-2">
-                                        {dayMessage ? (
-                                            isActive ? (
-                                                <Eye size={16} className="text-green-600 dark:text-green-400" />
-                                            ) : (
-                                                <EyeOff size={16} className="text-fg-subtle" />
-                                            )
-                                        ) : (
-                                            <span className="text-xs text-fg-subtle">Non configuré</span>
-                                        )}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* Message Editor */}
-                <div className="bg-surface rounded-lg p-6 border border-line lg:col-span-2">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-fg">Message du jour {selectedDay}</h2>
-                        <div className="flex items-center gap-3">
+            <Panel>
+                <div className="grid grid-cols-7 gap-1 p-2" role="tablist" aria-label="Jour de la relance">
+                    {DAYS.map(d => {
+                        const st = dayState(d);
+                        const on = d === day;
+                        return (
                             <button
-                                onClick={handlePreview}
-                                disabled={loadingPreview}
-                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded-lg flex items-center gap-2 text-sm transition-colors"
+                                key={d}
+                                type="button"
+                                role="tab"
+                                aria-selected={on}
+                                onClick={() => goTo(d)}
+                                className={cn(
+                                    'flex min-h-14 flex-col items-center justify-center gap-1 rounded-control px-1 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary',
+                                    on ? 'bg-primary-soft text-primary' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
+                                )}
                             >
-                                {loadingPreview ? <Loader2 size={14} className="animate-spin" /> : <Monitor size={14} />}
-                                Aperçu de l'e-mail
+                                <span>J{d}</span>
+                                <span className="flex items-center gap-1 text-[11px] font-normal">
+                                    <span aria-hidden="true" className={cn('h-1.5 w-1.5 rounded-full', st === 'on' ? 'bg-success' : st === 'off' ? 'bg-warning' : 'bg-line-strong')} />
+                                    <span className="hidden sm:inline">{st === 'on' ? 'Envoyé' : st === 'off' ? 'Coupé' : 'Vide'}</span>
+                                    <span className="sr-only sm:hidden">{st === 'on' ? 'envoyé' : st === 'off' ? 'coupé' : 'vide'}</span>
+                                </span>
                             </button>
-                            <label className="flex items-center gap-2 text-sm text-fg-muted">
-                                <input
-                                    type="checkbox"
-                                    checked={active}
-                                    onChange={(e) => setActive(e.target.checked)}
-                                    className="rounded-sm"
-                                />
-                                Actif
-                            </label>
-                        </div>
-                    </div>
+                        );
+                    })}
+                </div>
+            </Panel>
 
-                    {/* Subject Line */}
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                            Objet de l'e-mail (facultatif, remplace l'objet par défaut)
-                        </label>
-                        <input
-                            type="text"
-                            value={subject}
-                            onChange={(e) => setSubject(e.target.value)}
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                            placeholder="Objet personnalisé… Laissez vide pour l'objet automatique"
-                        />
-                    </div>
-
-                    {/* French Message */}
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                            Message (français)
-                        </label>
-                        <textarea
-                            value={messageFr}
-                            onChange={(e) => setMessageFr(e.target.value)}
-                            rows={5}
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                            placeholder="Message en français… Variables : {{name}}, {{referrerName}}, {{day}}"
-                        />
-                    </div>
-
-                    {/* English Message */}
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                            Message (anglais)
-                        </label>
-                        <textarea
-                            value={messageEn}
-                            onChange={(e) => setMessageEn(e.target.value)}
-                            rows={5}
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                            placeholder="Message en anglais… Variables : {{name}}, {{referrerName}}, {{day}}"
-                        />
-                    </div>
-
-                    {/* CTA Buttons Editor */}
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                            Boutons d'action
-                        </label>
-                        {buttons.length > 0 && (
-                            <div className="space-y-3 mb-3">
-                                {buttons.map((btn, index) => (
-                                    <div key={index} className="p-3 bg-surface-2 rounded-lg border border-line-strong">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <span className="text-xs text-fg-muted font-medium">Bouton {index + 1}</span>
-                                            <button
-                                                onClick={() => handleRemoveButton(index)}
-                                                aria-label="Retirer le bouton"
-                                                className="ml-auto text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                            <div>
-                                                <label className="block text-xs text-fg-subtle mb-1">Libellé</label>
-                                                <div className="relative">
-                                                    <input
-                                                        type="text"
-                                                        value={btn.label}
-                                                        onChange={(e) => handleButtonChange(index, 'label', e.target.value)}
-                                                        placeholder="ex. Payer maintenant"
-                                                        className="w-full px-3 py-1.5 bg-surface border border-line-strong rounded-sm text-fg text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs text-fg-subtle mb-1">URL</label>
-                                                <div className="relative">
-                                                    <input
-                                                        type="url"
-                                                        value={btn.url}
-                                                        onChange={(e) => handleButtonChange(index, 'url', e.target.value)}
-                                                        placeholder="https://..."
-                                                        className="w-full px-3 py-1.5 bg-surface border border-line-strong rounded-sm text-fg text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs text-fg-subtle mb-1">Couleur</label>
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="color"
-                                                        value={btn.color || '#F59E0B'}
-                                                        onChange={(e) => handleButtonChange(index, 'color', e.target.value)}
-                                                        className="w-8 h-8 rounded-sm cursor-pointer border-0 bg-transparent"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        value={btn.color || '#F59E0B'}
-                                                        onChange={(e) => handleButtonChange(index, 'color', e.target.value)}
-                                                        className="flex-1 px-3 py-1.5 bg-surface border border-line-strong rounded-sm text-fg text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {/* Button preview */}
-                                        {btn.label && (
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <span className="text-xs text-fg-subtle">Aperçu :</span>
-                                                <span
-                                                    className="inline-block px-4 py-1 rounded-full text-white text-xs font-semibold"
-                                                    style={{ backgroundColor: btn.color || '#F59E0B' }}
-                                                >
-                                                    {btn.label}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
+            {messages.isLoading ? (
+                <div className="space-y-4"><Skeleton className="h-64 w-full" /><Skeleton className="h-40 w-full" /></div>
+            ) : (
+                <fieldset disabled={!canWrite} className="min-w-0 space-y-6">
+                    {saved && !saved.active && (
+                        <Panel className="border-warning/40 bg-warning-soft/40" role="status">
+                            <div className="flex gap-3 px-4 py-3 sm:px-5">
+                                <HugeiconsIcon icon={Alert02Icon} size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
+                                <p className="text-sm text-fg">
+                                    Le jour {day} est coupé : les filleuls qui arrivent à ce jour y restent bloqués (l’envoi ne passe pas au jour suivant).
+                                    Réactivez-le dès que possible.
+                                </p>
                             </div>
-                        )}
-                        <button
-                            onClick={handleAddButton}
-                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2 text-sm transition-colors"
-                        >
-                            <Plus size={16} />
-                            Ajouter un bouton
-                        </button>
-                        <p className="text-xs text-fg-muted mt-2">Ajoutez des boutons d'action à l'e-mail (ex. « Payer maintenant », « Voir le tableau de bord »)</p>
-                    </div>
+                        </Panel>
+                    )}
 
-                    {/* Media URLs */}
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                            Pièces jointes
-                        </label>
+                    <Panel>
+                        <PanelHeader
+                            title={`E-mail du jour ${day}`}
+                            description={saved ? (dirty ? 'Modifications non enregistrées.' : 'Enregistré.') : 'Pas encore configuré : il sera créé à l’enregistrement.'}
+                            actions={(
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-fg md:min-h-0">
+                                    <Switch checked={draft.active} onCheckedChange={v => set({ active: v })} aria-label="E-mail envoyé" />
+                                    Envoyé
+                                </label>
+                            )}
+                        />
+                        <PanelBody className="space-y-4">
+                            <Field label="Objet de l’e-mail" help="Facultatif : laissez vide pour l’objet automatique.">
+                                <Input value={draft.subject} onChange={e => set({ subject: e.target.value })} placeholder="Objet personnalisé" className="h-11 md:h-9" />
+                            </Field>
 
-                        {/* Existing Media */}
-                        {mediaUrls.length > 0 && (
-                            <div className="space-y-2 mb-3">
-                                {mediaUrls.map((media, index) => (
-                                    <div key={index} className="flex items-center gap-2 p-2 bg-surface-2 rounded-sm border border-line-strong">
-                                        {getMediaIcon(media.type)}
-                                        <span className="flex-1 text-sm text-fg-muted truncate">{media.url}</span>
-                                        <span className="text-xs text-fg-subtle">{MEDIA_TYPE_LABELS[media.type] ?? media.type}</span>
-                                        <button
-                                            onClick={() => handleRemoveMedia(index)}
-                                            aria-label="Retirer le média"
-                                            className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
-                                        >
-                                            <X size={16} />
-                                        </button>
-                                    </div>
+                            <Tabs value={lang} onValueChange={v => setLang(v as 'fr' | 'en')}>
+                                <TabsList className="pb-px [scrollbar-width:none]">
+                                    <TabsTrigger value="fr">Français{!draft.fr.trim() && <Badge tone="danger" className="ml-2">à écrire</Badge>}</TabsTrigger>
+                                    <TabsTrigger value="en">Anglais{!draft.en.trim() && <Badge tone="danger" className="ml-2">à écrire</Badge>}</TabsTrigger>
+                                </TabsList>
+                                {(['fr', 'en'] as const).map(l => (
+                                    <TabsContent key={l} value={l} className="pt-3">
+                                        <Field label={l === 'fr' ? 'Texte en français' : 'Texte en anglais'} required>
+                                            <Textarea ref={textRefs[l]} value={draft[l]} onChange={e => set({ [l]: e.target.value } as Partial<Draft>)} rows={12} />
+                                        </Field>
+                                    </TabsContent>
                                 ))}
-                            </div>
-                        )}
+                            </Tabs>
 
-                        {/* Upload Media */}
-                        <div className="flex gap-2">
-                            <label className="flex-1 cursor-pointer">
-                                <div className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors">
-                                    <Upload size={16} />
-                                    <span>Envoyer un média (image, vidéo, PDF)</span>
+                            <div>
+                                <p className="mb-2 text-xs text-fg-muted">Insérer à l’endroit du curseur :</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {VARIABLES.map(v => (
+                                        <Button key={v.code} size="sm" className="h-11 md:h-8" onClick={() => insertVariable(v.code)} title={v.code}>
+                                            {v.label}
+                                            <code className="font-mono text-[11px] text-fg-muted">{v.code}</code>
+                                        </Button>
+                                    ))}
                                 </div>
-                                <input
-                                    type="file"
-                                    accept="image/*,video/*,.pdf"
-                                    onChange={handleFileUpload}
-                                    className="hidden"
-                                    disabled={saving}
-                                />
-                            </label>
-                        </div>
-                        <p className="text-xs text-fg-muted mt-2">Taille max. : 50 Mo. Formats : images, vidéos, PDF</p>
-                    </div>
+                            </div>
+                        </PanelBody>
+                    </Panel>
 
-                    {/* Available Variables */}
-                    <div className="mb-6 p-3 bg-surface-2 rounded-sm border border-line-strong">
-                        <p className="text-xs text-fg-muted mb-1">Variables disponibles :</p>
-                        <div className="flex gap-2 flex-wrap">
-                            <code className="text-xs bg-surface px-2 py-1 rounded-sm text-blue-600 dark:text-blue-400">{'{{name}}'}</code>
-                            <code className="text-xs bg-surface px-2 py-1 rounded-sm text-blue-600 dark:text-blue-400">{'{{referrerName}}'}</code>
-                            <code className="text-xs bg-surface px-2 py-1 rounded-sm text-blue-600 dark:text-blue-400">{'{{day}}'}</code>
-                        </div>
-                    </div>
+                    <Panel>
+                        <PanelHeader title="Boutons d’action" description="Par exemple « Payer maintenant » vers la page de paiement." />
+                        <PanelBody>
+                            <ButtonsEditor buttons={draft.buttons} onChange={b => set({ buttons: b })} disabled={!canWrite} />
+                        </PanelBody>
+                    </Panel>
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-3">
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
-                        >
-                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            {saving ? 'Enregistrement…' : 'Enregistrer le message'}
-                        </button>
-                        {messages.find(m => m.dayNumber === selectedDay) && (
-                            <button
-                                onClick={handleDeactivate}
-                                disabled={saving}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded-lg flex items-center gap-2 transition-colors"
-                            >
-                                <EyeOff size={16} />
-                                Désactiver
-                            </button>
-                        )}
-                    </div>
-                </div>
+                    <Panel>
+                        <PanelHeader title="Pièces jointes" description="Images, vidéos ou PDF, 50 Mo au plus." />
+                        <PanelBody className="space-y-3">
+                            {draft.media.length > 0 && (
+                                <ul className="divide-y divide-line rounded-panel border border-line">
+                                    {draft.media.map((m, i) => {
+                                        const local = /localhost|127\.0\.0\.1/.test(m.url);
+                                        return (
+                                            <li key={`${m.url}-${i}`} className="flex items-center gap-3 px-3 py-2">
+                                                <HugeiconsIcon icon={MEDIA_ICON[m.type] ?? File01Icon} size={18} className="shrink-0 text-fg-muted" aria-hidden="true" />
+                                                <div className="min-w-0 flex-1">
+                                                    <a href={m.url} target="_blank" rel="noreferrer" className="block truncate text-sm text-fg hover:underline">{m.filename || m.url}</a>
+                                                    <p className="text-xs text-fg-muted">
+                                                        {MEDIA_LABEL[m.type] ?? m.type}
+                                                        {local && <span className="text-danger"> · adresse locale, illisible dans une boîte mail</span>}
+                                                    </p>
+                                                </div>
+                                                {canWrite && (
+                                                    <Button variant="danger-ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" aria-label={`Retirer ${m.filename || 'le fichier'}`} onClick={() => set({ media: draft.media.filter((_, j) => j !== i) })}>
+                                                        <HugeiconsIcon icon={Delete02Icon} size={16} aria-hidden="true" />
+                                                    </Button>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )}
+                            <Can module="relance" write>
+                                <Button asChild size="lg" className={cn(uploading && 'pointer-events-none opacity-60')}>
+                                    <label>
+                                        <HugeiconsIcon icon={Upload04Icon} size={16} aria-hidden="true" />
+                                        {uploading ? 'Envoi…' : 'Ajouter un fichier'}
+                                        <input type="file" accept="image/*,video/*,.pdf" className="sr-only" onChange={e => void upload(e)} disabled={uploading} />
+                                    </label>
+                                </Button>
+                            </Can>
+                        </PanelBody>
+                    </Panel>
+
+                    {saved && saved.active && (
+                        <Can module="relance" write>
+                            <div className="flex justify-end">
+                                <Button variant="danger-ghost" size="lg" onClick={() => setConfirmOff(true)}>
+                                    <HugeiconsIcon icon={ViewOffSlashIcon} size={16} aria-hidden="true" />
+                                    Couper l’e-mail du jour {day}
+                                </Button>
+                            </div>
+                        </Can>
+                    )}
+                </fieldset>
+            )}
+
+            {/* Phones: the two actions stay under the thumb, just above the shell's bottom bar (the shell content is not a sticky container). */}
+            <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-40 flex gap-2 border-t border-line bg-surface px-4 py-3 md:hidden">
+                {actions(true)}
             </div>
 
-            {/* Email Preview Modal */}
-            {showPreview && previewHtml && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowPreview(false)}>
-                    <div className="bg-surface rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col m-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between p-4 border-b border-line">
-                            <h2 className="text-lg font-semibold text-fg flex items-center gap-2">
-                                <Monitor size={20} className="text-purple-600 dark:text-purple-400" />
-                                Aperçu de l'e-mail - Jour {selectedDay}
-                            </h2>
-                            <button
-                                onClick={() => setShowPreview(false)}
-                                aria-label="Fermer"
-                                className="text-fg-muted hover:text-fg"
-                            >
-                                <X size={24} />
-                            </button>
+            <Dialog open={!!preview} onOpenChange={o => { if (!o) setPreview(null); }}>
+                {preview && (
+                    <DialogContent size="lg" title={`Aperçu de l’e-mail du jour ${day}`} description="Avec un filleul et un parrain fictifs.">
+                        <div className="overflow-hidden rounded-md border border-line bg-white">
+                            <iframe srcDoc={preview} title="Aperçu de l’e-mail" sandbox="allow-same-origin" className="h-[65dvh] w-full border-0" />
                         </div>
-                        <div className="flex-1 overflow-hidden p-4">
-                            <div className="bg-white rounded-lg overflow-hidden h-full">
-                                <iframe
-                                    srcDoc={previewHtml}
-                                    className="w-full border-0"
-                                    style={{ height: 'calc(90vh - 120px)' }}
-                                    title="Aperçu de l'e-mail"
-                                    sandbox="allow-same-origin"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                    </DialogContent>
+                )}
+            </Dialog>
 
-            {/* Confirmation Modal */}
-            {confirmAction && (
-                <ConfirmationModal
-                    isOpen={showConfirmModal}
-                    title={confirmAction.title}
-                    message={confirmAction.message}
-                    confirmText="Confirmer"
-                    cancelText="Annuler"
-                    onConfirm={confirmAction.onConfirm}
-                    onCancel={() => setShowConfirmModal(false)}
+            <Dialog open={confirmOff} onOpenChange={o => { if (!o && !saving) setConfirmOff(false); }}>
+                <DialogContent
+                    size="sm"
+                    title={`Couper l’e-mail du jour ${day} ?`}
+                    description="Plus aucun e-mail ne partira pour ce jour."
+                    footer={(
+                        <>
+                            <DialogClose asChild><Button size="lg" disabled={saving}>Annuler</Button></DialogClose>
+                            <Button variant="danger" size="lg" loading={saving} onClick={() => void deactivate()}>Couper</Button>
+                        </>
+                    )}
+                >
+                    <p className="text-sm text-fg-muted">
+                        Attention : les filleuls qui arrivent au jour {day} y restent bloqués tant qu’il est coupé, ils ne reçoivent pas non plus les jours suivants.
+                    </p>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={pendingDay !== null} onOpenChange={o => { if (!o) setPendingDay(null); }}>
+                <DialogContent
+                    size="sm"
+                    title="Quitter sans enregistrer ?"
+                    description={`Les modifications du jour ${day} seront perdues.`}
+                    footer={(
+                        <>
+                            <DialogClose asChild><Button size="lg">Rester</Button></DialogClose>
+                            <Button variant="danger" size="lg" onClick={() => { if (pendingDay) { setEdits(null); url.set({ jour: String(pendingDay) }); } setPendingDay(null); }}>Quitter</Button>
+                        </>
+                    )}
                 />
-            )}
+            </Dialog>
         </div>
     );
-};
-
-export default RelanceMessagesPage;
+}

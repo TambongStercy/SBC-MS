@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Add01Icon, Cancel01Icon, FilterIcon, PlayCircleIcon, Search01Icon, ImageNotFound01Icon } from '@hugeicons/core-free-icons';
 import { useSocket } from '../contexts/SocketContext';
+import { useAuth } from '../context/AuthContext';
 import {
     getStatusFeed,
     getCategories,
@@ -9,730 +13,395 @@ import {
     deleteStatus,
     Status,
     StatusCategory,
-    StatusFilters
+    type PaginationInfo,
 } from '../services/statusApi';
-import {
-    Heart,
-    X,
-    Image,
-    Video,
-    Plus,
-    ChevronLeft,
-    ChevronRight,
-    Trash2,
-    Clock,
-    MapPin,
-    Send,
-    Eye
-} from 'lucide-react';
-import { useToast } from '../hooks/useToast';
-import ToastContainer from '../components/common/ToastContainer';
-import ConfirmationModal from '../components/common/ConfirmationModal';
+import { Can } from '../components/Can';
+import { Badge, Button, Dialog, EmptyState, Input, Metric, PageHeader, Panel, Segmented, Select, SheetContent, Skeleton } from '../components/ui';
+import { PageFilters } from '../components/filters/PageFilters';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { ErrorState } from '../components/display/ErrorState';
+import { apiError, fmtInt } from '../components/display/format';
+import { useUrlParams } from '../components/display/useUrlParams';
+import { ConfirmDialog, type ConfirmRequest } from '../components/chat/ConfirmDialog';
+import { MemberInfoSheet } from '../components/chat/MemberInfoSheet';
+import { StatusCard } from '../components/statuses/StatusCard';
+import { StatusComposerSheet, type StatusDraft } from '../components/statuses/StatusComposerSheet';
+import { StatusDetailSheet } from '../components/statuses/StatusDetailSheet';
+import { StoryViewer } from '../components/statuses/StoryViewer';
+import { categoryLabel, groupByAuthor } from '../components/statuses/status-utils';
 
-interface GroupedStatus {
-    authorId: string;
-    authorName: string;
-    authorAvatar?: string;
-    statuses: Status[];
-    latestTime: Date;
-    hasUnviewed: boolean;
-}
+const URL_DEFAULTS = { q: '', categorie: '', type: '', tri: 'recent' };
+const ALL = '__all';
 
+const TYPE_OPTIONS = [
+    { value: ALL, label: 'Tous les formats' },
+    { value: 'text', label: 'Texte' },
+    { value: 'image', label: 'Image ou affiche' },
+    { value: 'video', label: 'Vidéo' },
+];
+
+const matchesType = (s: Status, type: string) =>
+    !type || (type === 'image' ? s.mediaType === 'image' || s.mediaType === 'flyer' : s.mediaType === type);
+
+/**
+ * Stories (chat-service statuses): what members posted in the last 24 h.
+ * The team checks them, removes those that break the rules, and can post its own.
+ */
 const StatusPage: React.FC = () => {
     const { socket, subscribeToStatuses, unsubscribeFromStatuses, viewStatus } = useSocket();
-    const { toasts, removeToast, showSuccess, showError } = useToast();
+    const { adminUser, role } = useAuth();
+    const currentUserId = adminUser?._id ?? '';
+    const isSuperAdmin = role === 'admin';
 
+    // Country + period (shared row), then this page's own filters.
+    const pageFilters = usePageFilters();
+    const { apiParams } = pageFilters;
+    const filters = useUrlParams(URL_DEFAULTS);
+    const setFilter = filters.set;
+    const query = filters.get('q');
+    const category = filters.get('categorie');
+    const type = filters.get('type');
+    const sortBy = (filters.get('tri') === 'popular' ? 'popular' : 'recent') as 'recent' | 'popular';
+
+    const [searchDraft, setSearchDraft] = useState(query);
     const [statuses, setStatuses] = useState<Status[]>([]);
-    const [groupedStatuses, setGroupedStatuses] = useState<GroupedStatus[]>([]);
+    const [pagination, setPagination] = useState<PaginationInfo | null>(null);
     const [categories, setCategories] = useState<StatusCategory[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showComposer, setShowComposer] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    // Story viewer state
-    const [viewingGroup, setViewingGroup] = useState<GroupedStatus | null>(null);
-    const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
-    const [storyProgress, setStoryProgress] = useState(0);
-    const progressInterval = useRef<NodeJS.Timeout | null>(null);
+    const [openId, setOpenId] = useState<string | null>(null);
+    const [viewerStart, setViewerStart] = useState<{ authorId: string; index: number } | null>(null);
+    const [composerOpen, setComposerOpen] = useState(false);
+    const [publishing, setPublishing] = useState(false);
+    const [liking, setLiking] = useState<string | null>(null);
+    const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+    const [memberId, setMemberId] = useState<string | null>(null);
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
-    // Composer state
-    const [newStatus, setNewStatus] = useState({
-        category: '',
-        content: '',
-        media: null as File | null
-    });
-    const [composerLoading, setComposerLoading] = useState(false);
-
-    // Confirmation modal state
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
-    const [confirmAction, setConfirmAction] = useState<{
-        title: string;
-        message: string;
-        onConfirm: () => void;
-    } | null>(null);
-
-    // Load categories
+    // Search box → URL, 400 ms after the last keystroke
+    useEffect(() => { setSearchDraft(query); }, [query]);
     useEffect(() => {
-        const loadCategories = async () => {
-            try {
-                const cats = await getCategories();
-                setCategories(cats);
-            } catch (error) {
-                console.error('Failed to load categories:', error);
-                showError('Impossible de charger les catégories');
-            }
-        };
-        loadCategories();
+        if (searchDraft === query) return;
+        const t = setTimeout(() => setFilter({ q: searchDraft.trim() }), 400);
+        return () => clearTimeout(t);
+    }, [searchDraft, query, setFilter]);
+
+    useEffect(() => {
+        getCategories()
+            .then(setCategories)
+            .catch(err => {
+                console.error('Failed to load categories:', err);
+                toast.error('Impossible de charger les catégories');
+            });
     }, []);
 
-    // Load statuses
+    // Stories last 24 h: one page of 100 is the whole feed.
     const loadStatuses = useCallback(async () => {
         try {
             setLoading(true);
-            // Load all statuses (stories expire after 24h, so we don't need pagination)
-            const response = await getStatusFeed({}, 1, 100);
+            setError(null);
+            const response = await getStatusFeed({ category: category || undefined, search: query || undefined, sortBy, ...apiParams }, 1, 100);
             setStatuses(response.data);
-        } catch (error) {
-            console.error('Failed to load statuses:', error);
-            showError('Impossible de charger les stories');
+            setPagination(response.pagination ?? null);
+        } catch (err) {
+            console.error('Failed to load statuses:', err);
+            setError(apiError(err, 'Vérifiez la connexion, puis réessayez.'));
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [category, query, sortBy, apiParams]);
 
-    useEffect(() => {
-        loadStatuses();
-    }, [loadStatuses]);
+    useEffect(() => { void loadStatuses(); }, [loadStatuses]);
 
-    // Group statuses by author
-    useEffect(() => {
-        const groups = new Map<string, GroupedStatus>();
-
-        statuses.forEach(status => {
-            if (!status.author) return;
-
-            const authorId = status.author._id;
-            if (!groups.has(authorId)) {
-                groups.set(authorId, {
-                    authorId,
-                    authorName: status.author.name,
-                    authorAvatar: status.author.avatar,
-                    statuses: [],
-                    latestTime: new Date(status.createdAt),
-                    hasUnviewed: false // TODO: Track viewed stories
-                });
-            }
-
-            groups.get(authorId)!.statuses.push(status);
-        });
-
-        // Sort statuses within each group by time
-        groups.forEach(group => {
-            group.statuses.sort((a, b) =>
-                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-            );
-        });
-
-        // Convert to array and sort by latest story
-        const groupedArray = Array.from(groups.values()).sort((a, b) =>
-            b.latestTime.getTime() - a.latestTime.getTime()
-        );
-
-        setGroupedStatuses(groupedArray);
-    }, [statuses]);
-
-    // Subscribe to status updates
+    // Live updates
     useEffect(() => {
         subscribeToStatuses();
         return () => unsubscribeFromStatuses();
     }, [subscribeToStatuses, unsubscribeFromStatuses]);
 
-    // Socket event listeners
     useEffect(() => {
         if (!socket) return;
-
+        // With a country or period set, only the server knows if a new story matches: reload.
         const handleNewStatus = (status: Status) => {
-            setStatuses(prev => [status, ...prev]);
+            if (pageFilters.isFiltered) { void loadStatuses(); return; }
+            setStatuses(prev => (prev.some(s => s._id === status._id) ? prev : [status, ...prev]));
         };
-
         const handleStatusLiked = ({ statusId, likesCount }: { statusId: string; likesCount: number }) => {
-            setStatuses(prev => prev.map(s =>
-                s._id === statusId ? { ...s, likesCount } : s
-            ));
+            setStatuses(prev => prev.map(s => (s._id === statusId ? { ...s, likesCount } : s)));
         };
-
         const handleStatusDeleted = ({ statusId }: { statusId: string }) => {
             setStatuses(prev => prev.filter(s => s._id !== statusId));
-            // Close viewer if current story was deleted
-            if (viewingGroup && viewingGroup.statuses[currentStoryIndex]?._id === statusId) {
-                handleNextStory();
-            }
         };
-
         socket.on('status:new', handleNewStatus);
         socket.on('status:liked', handleStatusLiked);
         socket.on('status:unliked', handleStatusLiked);
         socket.on('status:deleted', handleStatusDeleted);
-
         return () => {
             socket.off('status:new', handleNewStatus);
             socket.off('status:liked', handleStatusLiked);
             socket.off('status:unliked', handleStatusLiked);
             socket.off('status:deleted', handleStatusDeleted);
         };
-    }, [socket, viewingGroup, currentStoryIndex]);
+    }, [socket, pageFilters.isFiltered, loadStatuses]);
 
-    // Story progress timer
-    useEffect(() => {
-        if (!viewingGroup) {
-            if (progressInterval.current) {
-                clearInterval(progressInterval.current);
-                progressInterval.current = null;
-            }
-            return;
-        }
+    // What is shown: the server filters; live arrivals are checked here too.
+    const visible = useMemo(() => statuses.filter(s =>
+        (!category || s.category === category)
+        && matchesType(s, type)
+        && (!query || `${s.content} ${s.author?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())),
+    ), [statuses, category, type, query]);
+    const groups = useMemo(() => groupByAuthor(visible), [visible]);
 
-        const duration = 5000; // 5 seconds per story
-        const intervalTime = 50; // Update every 50ms
-        const increment = (intervalTime / duration) * 100;
+    const openIndex = openId ? visible.findIndex(s => s._id === openId) : -1;
+    const openStatus = openIndex >= 0 ? visible[openIndex] : null;
+    const label = useCallback((s: Status) => categoryLabel(s, categories), [categories]);
 
-        progressInterval.current = setInterval(() => {
-            setStoryProgress(prev => {
-                const next = prev + increment;
-                if (next >= 100) {
-                    handleNextStory();
-                    return 0;
-                }
-                return next;
-            });
-        }, intervalTime);
+    const canDelete = useCallback((s: Status) => isSuperAdmin || s.authorId === currentUserId, [isSuperAdmin, currentUserId]);
+    const hourAgo = Date.now() - 60 * 60 * 1000;
+    const lastHour = visible.filter(s => new Date(s.createdAt).getTime() >= hourAgo).length;
 
-        return () => {
-            if (progressInterval.current) {
-                clearInterval(progressInterval.current);
-                progressInterval.current = null;
-            }
-        };
-    }, [viewingGroup, currentStoryIndex]);
-
-    const openStoryViewer = (group: GroupedStatus, startIndex: number = 0) => {
-        setViewingGroup(group);
-        setCurrentStoryIndex(startIndex);
-        setStoryProgress(0);
-
-        // Mark as viewed
-        if (group.statuses[startIndex]) {
-            viewStatus(group.statuses[startIndex]._id);
-        }
-    };
-
-    const closeStoryViewer = () => {
-        setViewingGroup(null);
-        setCurrentStoryIndex(0);
-        setStoryProgress(0);
-    };
-
-    const handleNextStory = () => {
-        if (!viewingGroup) return;
-
-        if (currentStoryIndex < viewingGroup.statuses.length - 1) {
-            // Next story in same group
-            const nextIndex = currentStoryIndex + 1;
-            setCurrentStoryIndex(nextIndex);
-            setStoryProgress(0);
-            viewStatus(viewingGroup.statuses[nextIndex]._id);
-        } else {
-            // Move to next group
-            const currentGroupIndex = groupedStatuses.findIndex(g => g.authorId === viewingGroup.authorId);
-            if (currentGroupIndex < groupedStatuses.length - 1) {
-                const nextGroup = groupedStatuses[currentGroupIndex + 1];
-                openStoryViewer(nextGroup, 0);
-            } else {
-                closeStoryViewer();
-            }
-        }
-    };
-
-    const handlePrevStory = () => {
-        if (!viewingGroup) return;
-
-        if (currentStoryIndex > 0) {
-            // Previous story in same group
-            const prevIndex = currentStoryIndex - 1;
-            setCurrentStoryIndex(prevIndex);
-            setStoryProgress(0);
-            viewStatus(viewingGroup.statuses[prevIndex]._id);
-        } else {
-            // Move to previous group
-            const currentGroupIndex = groupedStatuses.findIndex(g => g.authorId === viewingGroup.authorId);
-            if (currentGroupIndex > 0) {
-                const prevGroup = groupedStatuses[currentGroupIndex - 1];
-                openStoryViewer(prevGroup, prevGroup.statuses.length - 1);
-            }
-        }
-    };
-
-    const handleLikeCurrentStory = async () => {
-        if (!viewingGroup) return;
-        const status = viewingGroup.statuses[currentStoryIndex];
-
+    const toggleLike = async (status: Status) => {
+        setLiking(status._id);
         try {
             if (status.isLiked) {
                 const result = await unlikeStatusApi(status._id);
-                setStatuses(prev => prev.map(s =>
-                    s._id === status._id ? { ...s, isLiked: false, likesCount: result.likesCount } : s
-                ));
+                setStatuses(prev => prev.map(s => (s._id === status._id ? { ...s, isLiked: false, likesCount: result.likesCount } : s)));
             } else {
                 const result = await likeStatusApi(status._id);
-                setStatuses(prev => prev.map(s =>
-                    s._id === status._id ? { ...s, isLiked: true, likesCount: result.likesCount } : s
-                ));
+                setStatuses(prev => prev.map(s => (s._id === status._id ? { ...s, isLiked: true, likesCount: result.likesCount } : s)));
             }
-        } catch (error) {
-            console.error('Failed to toggle like:', error);
-            showError("Impossible d'aimer la story");
+        } catch (err) {
+            console.error('Failed to toggle like:', err);
+            toast.error(apiError(err, 'Impossible d’aimer la story.'));
+        } finally {
+            setLiking(null);
         }
     };
 
-    const handleDeleteCurrentStory = async () => {
-        if (!viewingGroup) return;
-        const status = viewingGroup.statuses[currentStoryIndex];
-
-        setConfirmAction({
-            title: 'Supprimer la story',
-            message: 'Voulez-vous vraiment supprimer cette story ? Cette action est irréversible.',
+    const askDelete = (status: Status) => {
+        setConfirm({
+            title: 'Supprimer la story ?',
+            message: `La story de ${status.author?.name || 'ce membre'} disparaît du fil de tous les membres.`,
+            warning: 'Cette action est irréversible.',
             onConfirm: async () => {
                 try {
                     await deleteStatus(status._id);
                     setStatuses(prev => prev.filter(s => s._id !== status._id));
-                    showSuccess('Story supprimée');
-                    setShowConfirmModal(false);
-                    handleNextStory();
-                } catch (error) {
-                    console.error('Failed to delete status:', error);
-                    showError('Impossible de supprimer la story');
+                    toast.success('Story supprimée.');
+                    if (openId === status._id) {
+                        const nextStatus = visible[openIndex + 1] ?? visible[openIndex - 1];
+                        setOpenId(nextStatus?._id ?? null);
+                    }
+                } catch (err) {
+                    console.error('Failed to delete status:', err);
+                    toast.error(apiError(err, 'Impossible de supprimer la story.'));
                 }
-            }
+            },
         });
-        setShowConfirmModal(true);
     };
 
-    const handleCreateStatus = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newStatus.category || !newStatus.content.trim()) return;
-
-        setComposerLoading(true);
+    const publish = async (draft: StatusDraft) => {
+        setPublishing(true);
         try {
-            const status = await createStatus({
-                category: newStatus.category,
-                content: newStatus.content.trim(),
-                media: newStatus.media || undefined
-            });
-
+            const status = await createStatus({ category: draft.category, content: draft.content.trim(), media: draft.media || undefined });
             setStatuses(prev => [status, ...prev]);
-            setNewStatus({ category: '', content: '', media: null });
-            setShowComposer(false);
-            showSuccess('Story publiée');
-        } catch (error) {
-            console.error('Failed to create status:', error);
-            showError('Impossible de publier la story');
+            setComposerOpen(false);
+            toast.success('Story publiée.');
+            return true;
+        } catch (err) {
+            console.error('Failed to create status:', err);
+            toast.error(apiError(err, 'Impossible de publier la story.'));
+            return false;
         } finally {
-            setComposerLoading(false);
+            setPublishing(false);
         }
     };
 
-    const formatTimeAgo = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffHours = Math.floor(diffMs / 3600000);
-
-        if (diffHours < 1) return "À l'instant";
-        if (diffHours < 24) return `Il y a ${diffHours} h`;
-        return `Il y a ${Math.floor(diffHours / 24)} j`;
+    const playFrom = (status?: Status) => {
+        const group = status ? groups.find(g => g.authorId === status.author?._id) : groups[0];
+        if (!group) return;
+        const index = status ? Math.max(0, group.statuses.findIndex(s => s._id === status._id)) : 0;
+        setOpenId(null);
+        setViewerStart({ authorId: group.authorId, index });
     };
+    const closeViewer = useCallback(() => setViewerStart(null), []);
+    const onView = useCallback((id: string) => viewStatus(id), [viewStatus]);
 
-    const currentStory = viewingGroup?.statuses[currentStoryIndex];
+    const total = pagination?.totalCount ?? visible.length;
+    const postable = categories.filter(c => !c.adminOnly || isSuperAdmin);
+
+    const clearOwnFilters = () => { setSearchDraft(''); filters.clear(); };
+    const activeCount = (pageFilters.country ? 1 : 0) + (pageFilters.period !== 'all' ? 1 : 0)
+        + (category ? 1 : 0) + (type ? 1 : 0) + (sortBy !== 'recent' ? 1 : 0);
+    const searchBox = (cls: string) => (
+        <div className="relative min-w-0">
+            <HugeiconsIcon icon={Search01Icon} size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" />
+            <Input
+                type="search"
+                aria-label="Rechercher dans les stories"
+                placeholder="Texte ou auteur"
+                value={searchDraft}
+                onChange={e => setSearchDraft(e.target.value)}
+                className={`h-11 pl-9 ${cls}`}
+            />
+        </div>
+    );
+    const ownFilters = (cls: string, inSheet = false) => (
+        <>
+            <Select
+                value={category || ALL}
+                onValueChange={v => filters.set({ categorie: v === ALL ? '' : v })}
+                options={[{ value: ALL, label: 'Toutes les catégories' }, ...categories.map(c => ({ value: c.key, label: c.nameFr || c.nameEn }))]}
+                className={`h-11 md:w-48 ${cls}`}
+            />
+            <Select
+                value={type || ALL}
+                onValueChange={v => filters.set({ type: v === ALL ? '' : v })}
+                options={TYPE_OPTIONS}
+                className={`h-11 md:w-40 ${cls}`}
+            />
+            <Segmented
+                label="Tri"
+                value={sortBy}
+                onValueChange={v => filters.set({ tri: v })}
+                options={[{ value: 'recent', label: 'Récentes' }, { value: 'popular', label: 'Populaires' }]}
+                size="lg"
+                fill={inSheet}
+                className="md:w-auto md:[&>button]:h-7"
+            />
+        </>
+    );
 
     return (
-        <div>
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
+        <div className="flex flex-col gap-6">
+            <PageHeader
+                title="Stories"
+                description="Ce que les membres ont publié ces dernières 24 heures. Ouvrez une story pour la lire en entier et retirer celles qui posent problème."
+                className="mb-0"
+                actions={(
+                    <>
+                        <Button variant="outline" size="lg" className="flex-1 sm:flex-none" onClick={() => playFrom()} disabled={groups.length === 0}>
+                            <HugeiconsIcon icon={PlayCircleIcon} size={18} aria-hidden="true" /> Lire en continu
+                        </Button>
+                        <Can module="communication" write>
+                            <Button variant="primary" size="lg" className="flex-1 sm:flex-none" onClick={() => setComposerOpen(true)}>
+                                <HugeiconsIcon icon={Add01Icon} size={18} aria-hidden="true" /> Publier une story
+                            </Button>
+                        </Can>
+                    </>
+                )}
+            />
 
-            {/* Header */}
-            <h1 className="mb-6 text-2xl font-semibold tracking-tight text-fg">Stories</h1>
+            {/* One filter row: country + period (shared), then this page's own. Phones: search + a "Filtres" sheet. */}
+            <PageFilters filters={pageFilters} onReset={clearOwnFilters} className="mb-0 hidden md:flex">
+                {searchBox('md:h-9 md:w-56')}
+                {ownFilters('md:h-9')}
+                {filters.active && !pageFilters.isFiltered && (
+                    <Button variant="ghost" size="sm" onClick={clearOwnFilters}>
+                        <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" /> Effacer les filtres
+                    </Button>
+                )}
+            </PageFilters>
+            <div className="flex gap-2 md:hidden">
+                <div className="min-w-0 flex-1">{searchBox('')}</div>
+                <Button size="lg" className="shrink-0" onClick={() => setFiltersOpen(true)} aria-label={activeCount ? `Filtres, ${activeCount} actifs` : 'Filtres'}>
+                    <HugeiconsIcon icon={FilterIcon} size={16} aria-hidden="true" />
+                    Filtres{activeCount > 0 && <Badge tone="primary" className="tabular-nums">{activeCount}</Badge>}
+                </Button>
+            </div>
+            <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+                <SheetContent
+                    title="Filtres"
+                    description="Pays, période, catégorie, format et tri des stories."
+                    footer={<Button variant="primary" size="lg" onClick={() => setFiltersOpen(false)}>Voir {fmtInt(visible.length)} stor{visible.length > 1 ? 'ies' : 'y'}</Button>}
+                >
+                    <PageFilters filters={pageFilters} onReset={clearOwnFilters} className="mb-0 flex-col items-stretch [&>*]:w-full">
+                        {ownFilters('', true)}
+                        {filters.active && !pageFilters.isFiltered && (
+                            <Button variant="ghost" size="lg" onClick={clearOwnFilters}>Effacer les filtres</Button>
+                        )}
+                    </PageFilters>
+                </SheetContent>
+            </Dialog>
 
-            {/* Stories Bar */}
-            <div className="bg-surface border border-line rounded-lg px-4 py-4 overflow-x-auto">
-                <div className="flex gap-4">
-                    {/* Add Your Story */}
-                    <button
-                        onClick={() => setShowComposer(true)}
-                        className="shrink-0 flex flex-col items-center gap-2 group"
-                    >
-                        <div className="relative">
-                            <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center border-2 border-line-strong group-hover:border-indigo-500 transition-colors">
-                                <Plus className="w-6 h-6 text-fg-muted group-hover:text-indigo-500" />
-                            </div>
-                        </div>
-                        <span className="text-xs text-fg-muted group-hover:text-fg">Votre story</span>
-                    </button>
-
-                    {/* User Stories */}
-                    {loading ? (
-                        <div className="flex items-center justify-center flex-1">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
-                        </div>
-                    ) : groupedStatuses.length === 0 ? (
-                        <div className="flex-1 text-center text-fg-muted py-4">
-                            Aucune story pour le moment. Publiez la première !
-                        </div>
-                    ) : (
-                        groupedStatuses.map(group => (
-                            <button
-                                key={group.authorId}
-                                onClick={() => openStoryViewer(group)}
-                                className="shrink-0 flex flex-col items-center gap-2 group"
-                            >
-                                <div className="relative">
-                                    <div className={`w-16 h-16 rounded-full p-0.5 ${group.hasUnviewed ? 'bg-linear-to-tr from-yellow-400 to-pink-600' : 'bg-surface-3'}`}>
-                                        <div className="w-full h-full rounded-full bg-surface p-0.5">
-                                            {group.authorAvatar ? (
-                                                <img
-                                                    src={group.authorAvatar}
-                                                    alt={group.authorName}
-                                                    className="w-full h-full rounded-full object-cover"
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
-                                                    {group.authorName.charAt(0).toUpperCase()}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="absolute bottom-0 right-0 bg-background rounded-full px-1.5 py-0.5 text-xs text-fg border border-line">
-                                        {group.statuses.length}
-                                    </div>
-                                </div>
-                                <span className="text-xs text-fg-muted max-w-[64px] truncate group-hover:text-fg">
-                                    {group.authorName}
-                                </span>
-                            </button>
-                        ))
-                    )}
-                </div>
+            <div className="grid grid-cols-3 gap-3">
+                <Metric label="En ligne" value={loading ? <Skeleton className="h-8 w-12" /> : fmtInt(total)} hint={total > visible.length && !loading ? `${fmtInt(visible.length)} affichées` : 'Stories, 24 h'} />
+                <Metric label="Auteurs" value={loading ? <Skeleton className="h-8 w-12" /> : fmtInt(groups.length)} hint="Membres distincts" />
+                <Metric label="Dernière heure" value={loading ? <Skeleton className="h-8 w-12" /> : fmtInt(lastHour)} hint="Nouvelles à regarder" />
             </div>
 
-            {/* Story Viewer Modal */}
-            {viewingGroup && currentStory && (
-                <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
-                    {/* Story Container */}
-                    <div className="relative w-full max-w-md h-full bg-gray-900 flex flex-col">
-                        {/* Progress Bars */}
-                        <div className="absolute top-0 left-0 right-0 z-20 flex gap-1 p-2">
-                            {viewingGroup.statuses.map((_, index) => (
-                                <div key={index} className="flex-1 h-0.5 bg-gray-600 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-white transition-all"
-                                        style={{
-                                            width: index < currentStoryIndex ? '100%' :
-                                                   index === currentStoryIndex ? `${storyProgress}%` : '0%'
-                                        }}
-                                    />
+            <Panel>
+                <div className="p-3">
+                    {loading && statuses.length === 0 ? (
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6" aria-busy="true">
+                            {Array.from({ length: 10 }, (_, i) => (
+                                <div key={i} className="overflow-hidden rounded-panel border border-line">
+                                    <Skeleton className="aspect-[4/5] w-full rounded-none" />
+                                    <div className="space-y-2 p-3"><Skeleton className="h-3.5 w-2/3" /><Skeleton className="h-3 w-1/2" /></div>
                                 </div>
                             ))}
                         </div>
-
-                        {/* Header */}
-                        <div className="absolute top-4 left-0 right-0 z-20 px-4 pt-2">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    {viewingGroup.authorAvatar ? (
-                                        <img
-                                            src={viewingGroup.authorAvatar}
-                                            alt={viewingGroup.authorName}
-                                            className="w-8 h-8 rounded-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-semibold">
-                                            {viewingGroup.authorName.charAt(0).toUpperCase()}
-                                        </div>
-                                    )}
-                                    <div>
-                                        <div className="text-white text-sm font-medium">{viewingGroup.authorName}</div>
-                                        <div className="text-gray-400 text-xs flex items-center gap-1">
-                                            <Clock className="w-3 h-3" />
-                                            {formatTimeAgo(currentStory.createdAt)}
-                                        </div>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={closeStoryViewer}
-                                    aria-label="Fermer"
-                                    className="text-white hover:bg-white/10 rounded-full p-1 transition-colors"
-                                >
-                                    <X className="w-6 h-6" />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Story Content */}
-                        <div className="flex-1 relative flex items-center justify-center">
-                            {/* Navigation Areas */}
-                            <button
-                                onClick={handlePrevStory}
-                                aria-label="Story précédente"
-                                className="absolute left-0 top-0 bottom-0 w-1/3 z-10 hover:bg-linear-to-r hover:from-black/20"
-                            >
-                                {currentStoryIndex > 0 && (
-                                    <ChevronLeft className="w-8 h-8 text-white/50 absolute left-4 top-1/2 -translate-y-1/2" />
-                                )}
-                            </button>
-                            <button
-                                onClick={handleNextStory}
-                                aria-label="Story suivante"
-                                className="absolute right-0 top-0 bottom-0 w-1/3 z-10 hover:bg-linear-to-l hover:from-black/20"
-                            >
-                                <ChevronRight className="w-8 h-8 text-white/50 absolute right-4 top-1/2 -translate-y-1/2" />
-                            </button>
-
-                            {/* Media or Text */}
-                            {currentStory.mediaUrl ? (
-                                currentStory.mediaType === 'video' ? (
-                                    <video
-                                        src={currentStory.mediaUrl}
-                                        className="w-full h-full object-contain"
-                                        autoPlay
-                                        muted
-                                        playsInline
-                                    />
-                                ) : (
-                                    <img
-                                        src={currentStory.mediaUrl}
-                                        alt="Story"
-                                        className="w-full h-full object-contain"
-                                    />
-                                )
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center p-8">
-                                    <div className="text-center">
-                                        <p className="text-white text-xl leading-relaxed">
-                                            {currentStory.content}
-                                        </p>
-                                        {currentStory.country && (
-                                            <div className="flex items-center justify-center gap-1 text-gray-400 mt-4">
-                                                <MapPin className="w-4 h-4" />
-                                                <span className="text-sm">{currentStory.city || currentStory.country}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Content Overlay (for media stories) */}
-                            {currentStory.mediaUrl && (
-                                <div className="absolute bottom-20 left-0 right-0 px-4">
-                                    <div className="bg-linear-to-t from-black/80 to-transparent p-4 rounded-lg">
-                                        <p className="text-white text-sm leading-relaxed">{currentStory.content}</p>
-                                        {currentStory.country && (
-                                            <div className="flex items-center gap-1 text-gray-300 mt-2">
-                                                <MapPin className="w-3 h-3" />
-                                                <span className="text-xs">{currentStory.city || currentStory.country}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Bottom Actions */}
-                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-black/80 to-transparent">
-                            <div className="flex items-center gap-4">
-                                <button
-                                    onClick={handleLikeCurrentStory}
-                                    aria-label="J'aime"
-                                    className={`flex items-center gap-2 ${currentStory.isLiked ? 'text-red-500' : 'text-white'}`}
-                                >
-                                    <Heart className={`w-6 h-6 ${currentStory.isLiked ? 'fill-current' : ''}`} />
-                                    <span className="text-sm">{currentStory.likesCount}</span>
-                                </button>
-                                <div className="flex items-center gap-2 text-white">
-                                    <Eye className="w-5 h-5" />
-                                    <span className="text-sm">{currentStory.viewsCount}</span>
-                                </div>
-                                <div className="flex-1" />
-                                <button
-                                    onClick={handleDeleteCurrentStory}
-                                    aria-label="Supprimer la story"
-                                    className="text-white hover:text-red-500 transition-colors"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    ) : error ? (
+                        <ErrorState title="Les stories n’ont pas pu être chargées" message={error} onRetry={() => void loadStatuses()} retrying={loading} />
+                    ) : visible.length === 0 ? (
+                        <EmptyState
+                            icon={ImageNotFound01Icon}
+                            title={filters.active || pageFilters.isFiltered ? 'Aucune story ne correspond' : 'Aucune story en ligne'}
+                            description={filters.active || pageFilters.isFiltered ? 'Changez la recherche ou les filtres.' : 'Les stories restent en ligne 24 heures. Publiez la première.'}
+                            action={filters.active || pageFilters.isFiltered
+                                ? <Button size="lg" onClick={() => { pageFilters.reset(); clearOwnFilters(); }}>Effacer les filtres</Button>
+                                : <Can module="communication" write><Button variant="primary" size="lg" onClick={() => setComposerOpen(true)}>Publier une story</Button></Can>}
+                        />
+                    ) : (
+                        <ul className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 ${loading ? 'opacity-60' : ''}`}>
+                            {visible.map(s => (
+                                <li key={s._id} className="min-w-0">
+                                    <StatusCard status={s} category={label(s)} onOpen={() => setOpenId(s._id)} />
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
-            )}
+            </Panel>
 
-            {/* Story Composer Modal - Full Screen with Preview */}
-            {showComposer && (
-                <div className="fixed inset-0 bg-black z-50">
-                    {/* Story Preview */}
-                    <div className="relative w-full h-full flex items-center justify-center">
-                        {/* Background/Media Preview */}
-                        {newStatus.media ? (
-                            newStatus.media.type.startsWith('video/') ? (
-                                <video
-                                    src={URL.createObjectURL(newStatus.media)}
-                                    className="w-full h-full object-contain"
-                                    controls={false}
-                                    autoPlay
-                                    loop
-                                    muted
-                                />
-                            ) : (
-                                <img
-                                    src={URL.createObjectURL(newStatus.media)}
-                                    alt="Aperçu de la story"
-                                    className="w-full h-full object-contain"
-                                />
-                            )
-                        ) : (
-                            // Gradient background for text-only stories
-                            <div className="w-full h-full bg-linear-to-br from-indigo-600 via-purple-600 to-pink-600" />
-                        )}
+            <StatusDetailSheet
+                status={openStatus}
+                category={openStatus ? label(openStatus) : ''}
+                position={openIndex}
+                total={visible.length}
+                canDelete={!!openStatus && canDelete(openStatus)}
+                liking={!!openStatus && liking === openStatus._id}
+                onClose={() => setOpenId(null)}
+                onPrev={() => openIndex > 0 && setOpenId(visible[openIndex - 1]._id)}
+                onNext={() => openIndex < visible.length - 1 && setOpenId(visible[openIndex + 1]._id)}
+                onLike={() => openStatus && void toggleLike(openStatus)}
+                onDelete={() => openStatus && askDelete(openStatus)}
+                onPlay={() => openStatus && playFrom(openStatus)}
+                onShowAuthor={setMemberId}
+            />
 
-                        {/* Top Bar - Close and Category */}
-                        <div className="absolute top-0 left-0 right-0 p-4 bg-linear-to-b from-black/60 to-transparent">
-                            <div className="flex items-center justify-between">
-                                <button
-                                    onClick={() => {
-                                        setShowComposer(false);
-                                        setNewStatus({ category: '', content: '', media: null });
-                                    }}
-                                    aria-label="Fermer"
-                                    className="text-white hover:bg-white/10 rounded-full p-2 transition-colors"
-                                >
-                                    <X className="w-6 h-6" />
-                                </button>
+            <StoryViewer
+                groups={groups}
+                start={viewerStart}
+                paused={!!confirm}
+                onClose={closeViewer}
+                onView={onView}
+                onLike={s => void toggleLike(s)}
+                onDelete={askDelete}
+                canDelete={canDelete}
+            />
 
-                                {/* Category Selector */}
-                                <div className="flex-1 mx-4">
-                                    <select
-                                        value={newStatus.category}
-                                        onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value })}
-                                        className="w-full max-w-xs px-3 py-2 bg-black/40 text-white rounded-full text-sm border border-white/20 focus:outline-hidden focus:border-white/40"
-                                    >
-                                        <option value="">Choisir une catégorie…</option>
-                                        {categories.filter(c => !c.adminOnly).map(cat => (
-                                            <option key={cat.key} value={cat.key}>{cat.nameFr || cat.nameEn}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
+            <StatusComposerSheet
+                open={composerOpen}
+                onOpenChange={setComposerOpen}
+                categories={postable}
+                publishing={publishing}
+                onPublish={publish}
+            />
 
-                        {/* Text Overlay (on top of media or gradient) */}
-                        <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none">
-                            <div className="w-full max-w-lg text-center">
-                                {newStatus.content && (
-                                    <p className="text-white text-xl md:text-2xl font-semibold leading-relaxed">
-                                        {newStatus.content}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Bottom Controls */}
-                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-black/80 to-transparent pointer-events-auto">
-                            <div className="max-w-2xl mx-auto space-y-3">
-                                {/* Text Input */}
-                                <div className="relative">
-                                    <textarea
-                                        value={newStatus.content}
-                                        onChange={(e) => setNewStatus({ ...newStatus, content: e.target.value })}
-                                        placeholder="Ajoutez un texte à votre story…"
-                                        rows={2}
-                                        maxLength={2000}
-                                        className="w-full px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-hidden focus:border-white/40 resize-none"
-                                    />
-                                    <div className="absolute bottom-2 right-2 text-xs text-white/60">
-                                        {newStatus.content.length}/2000
-                                    </div>
-                                </div>
-
-                                {/* Action Buttons */}
-                                <div className="flex items-center gap-3">
-                                    {/* Media Upload Buttons */}
-                                    {!newStatus.media && (
-                                        <>
-                                            <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white hover:bg-white/20 cursor-pointer transition-colors">
-                                                <Image className="w-5 h-5" />
-                                                <span className="text-sm font-medium">Photo</span>
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => setNewStatus({ ...newStatus, media: e.target.files?.[0] || null })}
-                                                />
-                                            </label>
-                                            <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 backdrop-blur-xs border border-white/20 rounded-lg text-white hover:bg-white/20 cursor-pointer transition-colors">
-                                                <Video className="w-5 h-5" />
-                                                <span className="text-sm font-medium">Vidéo</span>
-                                                <input
-                                                    type="file"
-                                                    accept="video/*"
-                                                    className="hidden"
-                                                    onChange={(e) => setNewStatus({ ...newStatus, media: e.target.files?.[0] || null })}
-                                                />
-                                            </label>
-                                        </>
-                                    )}
-
-                                    {/* Remove Media Button (if media exists) */}
-                                    {newStatus.media && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setNewStatus({ ...newStatus, media: null })}
-                                            className="px-4 py-3 bg-red-500/80 backdrop-blur-xs rounded-lg text-white hover:bg-red-600/80 transition-colors flex items-center gap-2"
-                                        >
-                                            <X className="w-5 h-5" />
-                                            <span className="text-sm font-medium">Retirer</span>
-                                        </button>
-                                    )}
-
-                                    {/* Post Button */}
-                                    <button
-                                        onClick={handleCreateStatus}
-                                        disabled={!newStatus.category || !newStatus.content.trim() || composerLoading}
-                                        className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 rounded-lg text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        {composerLoading ? (
-                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                                        ) : (
-                                            <>
-                                                <Send className="w-5 h-5" />
-                                                Publier la story
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Confirmation Modal */}
-            {confirmAction && (
-                <ConfirmationModal
-                    isOpen={showConfirmModal}
-                    title={confirmAction.title}
-                    message={confirmAction.message}
-                    confirmText="Supprimer"
-                    cancelText="Annuler"
-                    onConfirm={confirmAction.onConfirm}
-                    onCancel={() => setShowConfirmModal(false)}
-                />
-            )}
+            <MemberInfoSheet userId={memberId} onClose={() => setMemberId(null)} />
+            <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
         </div>
     );
 };

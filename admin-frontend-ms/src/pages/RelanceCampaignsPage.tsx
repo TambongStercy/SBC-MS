@@ -1,1071 +1,338 @@
-import React, { useState, useEffect } from 'react';
-import { Target, Users, TrendingUp, Play, Pause, XCircle, Eye, RefreshCw, Loader2, Filter, Calendar, BarChart3, MessageSquare, Mail, CheckCircle, AlertTriangle, Smartphone, Layers } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
-    getAllCampaigns,
-    getCampaignById,
-    getCampaignTargets,
-    getCampaignStatsById,
-    getCampaignRecentMessages,
-    pauseCampaign,
-    resumeCampaign,
-    cancelCampaign,
-    Campaign,
-    CampaignTarget,
-    RecentMessage
+    Cancel01Icon, FilterIcon, MoreHorizontalIcon, PauseIcon, PlayIcon, RefreshIcon, SentIcon, Target02Icon, UserGroupIcon, ViewIcon,
+} from '@hugeicons/core-free-icons';
+import {
+    cancelCampaign, getAllCampaigns, getCampaignStats, pauseCampaign, resumeCampaign, type Campaign,
 } from '../services/adminRelanceApi';
-import ConfirmationModal from '../components/common/ConfirmationModal';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { Can } from '../components/Can';
+import {
+    Button, Dialog, DialogClose, DialogContent, EmptyState, Field, Input, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger,
+    Metric, PageHeader, Pagination, Panel, ResponsiveList, Select, SheetContent, Skeleton, Textarea, type ListColumn,
+} from '../components/ui';
+import { ErrorState } from '../components/display/ErrorState';
+import { RelativeDate } from '../components/display/RelativeDate';
+import { apiError, fmtInt, fmtPct } from '../components/display/format';
+import { useUrlParams } from '../components/display/useUrlParams';
+import { CAMPAIGN_STATUS, CampaignStatusBadge, ChannelLabel, TYPE_LABELS } from '../components/relance/labels';
+import { CampaignSheet } from '../components/relance/CampaignSheet';
+import { campaignDeliveryRate } from '../components/relance/rates';
 
-const STATUS_LABELS: Record<string, string> = {
-    draft: 'Brouillon', scheduled: 'Programmée', active: 'Active', paused: 'En pause', completed: 'Terminée', cancelled: 'Annulée', failed: 'Échouée',
-};
-const TYPE_LABELS: Record<string, string> = { default: 'Par défaut', filtered: 'Filtrée' };
-const CHANNEL_LABELS: Record<string, string> = { email: 'E-mail', sms: 'SMS', both: 'E-mail + SMS' };
-const GENDER_LABELS: Record<string, string> = { male: 'Homme', female: 'Femme', other: 'Autre' };
-const EXIT_REASON_LABELS: Record<string, string> = {
-    paid: 'Payé', completed_7_days: '7 jours terminés', completed_7days: '7 jours terminés', subscription_expired: 'Abonnement expiré',
-    manual: 'Sortie manuelle', referrer_inactive: 'Parrain inactif', expired: 'Expiré',
-};
-/** Display label of a campaign's channel (`channel` is not on the Campaign type). */
-const channelLabel = (c: Campaign) => {
-    const channel = (c as { channel?: string }).channel || 'email';
-    return CHANNEL_LABELS[channel] ?? channel;
-};
-const LANGUAGE_LABELS: Record<string, string> = { fr: 'Français', en: 'Anglais' };
+const PAGE_SIZE = 20;
+const URL_DEFAULTS = { statut: 'all', type: 'all', canal: 'all', membre: '', page: '1' };
 
-const RelanceCampaignsPage: React.FC = () => {
-    const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-    const [campaignTargets, setCampaignTargets] = useState<CampaignTarget[]>([]);
-    const [showDetailsModal, setShowDetailsModal] = useState(false);
-    const [showTargetsModal, setShowTargetsModal] = useState(false);
-    const [showStatsModal, setShowStatsModal] = useState(false);
-    const [showMessagesModal, setShowMessagesModal] = useState(false);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
+const STATUS_OPTIONS = [{ value: 'all', label: 'Tous les statuts' }, ...Object.entries(CAMPAIGN_STATUS).filter(([k]) => k !== 'failed').map(([value, s]) => ({ value, label: s.label }))];
+const TYPE_OPTIONS = [{ value: 'all', label: 'Tous les types' }, { value: 'default', label: TYPE_LABELS.default }, { value: 'filtered', label: TYPE_LABELS.filtered }];
+const CHANNEL_OPTIONS = [{ value: 'all', label: 'Tous les canaux' }, { value: 'email', label: 'E-mail' }, { value: 'sms', label: 'SMS' }, { value: 'both', label: 'E-mail + SMS' }];
 
-    // Campaign stats
-    const [campaignStats, setCampaignStats] = useState<{
-        campaign: { _id: string; name: string; status: string; type: string };
-        totalEnrolled: number;
-        activeTargets: number;
-        completedRelance: number;
-        totalMessagesSent: number;
-        totalMessagesDelivered: number;
-        totalMessagesFailed: number;
-        deliveryPercentage: number;
-        dayProgression: { day: number; count: number }[];
-        exitReasons: Record<string, number>;
-    } | null>(null);
-    const [loadingStats, setLoadingStats] = useState(false);
+const deliveryRate = campaignDeliveryRate;
 
-    // Recent messages
-    const [recentMessages, setRecentMessages] = useState<RecentMessage[]>([]);
-    const [loadingMessages, setLoadingMessages] = useState(false);
-    const [viewingEmailHtml, setViewingEmailHtml] = useState<string | null>(null);
+/**
+ * Campagnes de relance: every parrain's campaigns (a parrain pushes his
+ * older filleuls through the 7-day journey). Pause, resume and cancel act on
+ * the owner's campaign; details, filleuls and sent messages open on the side.
+ */
+export default function RelanceCampaignsPage() {
+    const queryClient = useQueryClient();
+    const filters = usePageFilters();
+    const url = useUrlParams(URL_DEFAULTS);
+    const page = Math.max(1, Number(url.get('page')) || 1);
+    const statut = url.get('statut');
+    const type = url.get('type');
+    const canal = url.get('canal');
+    const membre = url.get('membre');
+    const [membreDraft, setMembreDraft] = useState(membre);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [open, setOpen] = useState<Campaign | null>(null);
+    const [cancelling, setCancelling] = useState<Campaign | null>(null);
+    const [reason, setReason] = useState('');
 
-    // Confirmation modal
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
-    const [confirmAction, setConfirmAction] = useState<{
-        title: string;
-        message: string;
-        onConfirm: () => void;
-    } | null>(null);
-    const [cancellationReason, setCancellationReason] = useState<string>('');
-
-    // Filters
-    const [statusFilter, setStatusFilter] = useState<string>('all');
-    const [typeFilter, setTypeFilter] = useState<string>('all');
-    const [channelFilter, setChannelFilter] = useState<string>('all');
-    const [userIdFilter, setUserIdFilter] = useState<string>('');
-
-    useEffect(() => {
-        loadCampaigns();
-    }, [statusFilter, typeFilter, channelFilter, page]);
-
-    const loadCampaigns = async (isRefresh = false) => {
-        try {
-            if (isRefresh) {
-                setRefreshing(true);
-            } else {
-                setLoading(true);
-            }
-
-            const filters: any = {
-                page,
-                limit: 20
-            };
-
-            if (statusFilter !== 'all') filters.status = statusFilter;
-            if (typeFilter !== 'all') filters.type = typeFilter;
-            if (channelFilter !== 'all') filters.channel = channelFilter;
-            if (userIdFilter) filters.userId = userIdFilter;
-
-            const data = await getAllCampaigns(filters);
-            setCampaigns(data.campaigns);
-            setTotalPages(data.totalPages);
-        } catch (error: any) {
-            console.error('Error loading campaigns:', error);
-            toast.error('Impossible de charger les campagnes : ' + (error.response?.data?.message || error.message));
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
+    const listParams = {
+        ...filters.apiParams,
+        page, limit: PAGE_SIZE,
+        ...(statut !== 'all' ? { status: statut } : {}),
+        ...(type !== 'all' ? { type: type as 'default' | 'filtered' } : {}),
+        // API: channel is not filtered by the server yet (sent anyway).
+        ...(canal !== 'all' ? { channel: canal } : {}),
+        ...(membre ? { userId: membre } : {}),
     };
+    const list = useQuery({ queryKey: ['relance-campaigns', listParams], queryFn: () => getAllCampaigns(listParams), placeholderData: keepPreviousData });
+    const stats = useQuery({ queryKey: ['relance-campaign-stats-all', filters.apiParams], queryFn: () => getCampaignStats(filters.apiParams), placeholderData: keepPreviousData });
+    // Queue: paused campaigns, whatever the period (country only).
+    const queueParams = { ...(filters.country ? { country: filters.country } : {}), status: 'paused', limit: 1 };
+    const pausedQueue = useQuery({ queryKey: ['relance-campaigns-paused', queueParams], queryFn: () => getAllCampaigns(queueParams) });
 
-    const handleRefresh = () => {
-        loadCampaigns(true);
+    const replace = (c: Campaign) => {
+        void queryClient.invalidateQueries({ queryKey: ['relance-campaigns'] });
+        void queryClient.invalidateQueries({ queryKey: ['relance-campaigns-paused'] });
+        void queryClient.invalidateQueries({ queryKey: ['relance-campaign-stats-all'] });
+        setOpen(prev => (prev && prev._id === c._id ? { ...prev, ...c, owner: prev.owner } : prev));
     };
+    const pause = useMutation({
+        mutationFn: (c: Campaign) => pauseCampaign(c._id, c.userId),
+        onSuccess: c => { toast.success('Campagne mise en pause : plus aucun envoi jusqu’à la reprise.'); replace(c); },
+        onError: e => toast.error(apiError(e, 'La campagne n’a pas pu être mise en pause.')),
+    });
+    const resume = useMutation({
+        mutationFn: (c: Campaign) => resumeCampaign(c._id, c.userId),
+        onSuccess: c => { toast.success('Campagne reprise.'); replace(c); },
+        onError: e => toast.error(apiError(e, 'La campagne n’a pas pu reprendre.')),
+    });
+    const cancel = useMutation({
+        mutationFn: ({ c, why }: { c: Campaign; why: string }) => cancelCampaign(c._id, c.userId, why.trim() || undefined),
+        onSuccess: c => { toast.success('Campagne annulée.'); setCancelling(null); setReason(''); replace(c); },
+        onError: e => toast.error(apiError(e, 'La campagne n’a pas pu être annulée.')),
+    });
+    const busy = pause.isPending || resume.isPending || cancel.isPending;
 
-    const handleViewDetails = async (campaign: Campaign) => {
-        try {
-            const fullCampaign = await getCampaignById(campaign._id);
-            setSelectedCampaign(fullCampaign);
-            setShowDetailsModal(true);
-        } catch (error: any) {
-            toast.error('Impossible de charger le détail de la campagne : ' + (error.response?.data?.message || error.message));
-        }
-    };
+    const startCancel = (c: Campaign) => { setReason(''); setCancelling(c); };
+    const clearOwn = () => { url.set({ statut: 'all', type: 'all', canal: 'all', membre: '' }); setMembreDraft(''); };
+    const ownCount = [statut !== 'all', type !== 'all', canal !== 'all', !!membre].filter(Boolean).length;
+    const anyFilter = filters.isFiltered || ownCount > 0;
 
-    const handleViewTargets = async (campaign: Campaign) => {
-        try {
-            setSelectedCampaign(campaign);
-            const data = await getCampaignTargets(campaign._id, 1, 50);
-            setCampaignTargets(data.targets);
-            setShowTargetsModal(true);
-        } catch (error: any) {
-            toast.error('Impossible de charger les cibles de la campagne : ' + (error.response?.data?.message || error.message));
-        }
-    };
-
-    const handleViewStats = async (campaign: Campaign) => {
-        try {
-            setSelectedCampaign(campaign);
-            setLoadingStats(true);
-            setShowStatsModal(true);
-            const stats = await getCampaignStatsById(campaign._id);
-            setCampaignStats(stats);
-        } catch (error: any) {
-            toast.error('Impossible de charger les statistiques de la campagne : ' + (error.response?.data?.message || error.message));
-        } finally {
-            setLoadingStats(false);
-        }
-    };
-
-    const handleViewMessages = async (campaign: Campaign) => {
-        try {
-            setSelectedCampaign(campaign);
-            setLoadingMessages(true);
-            setShowMessagesModal(true);
-            const data = await getCampaignRecentMessages(campaign._id, 15);
-            setRecentMessages(data.messages);
-        } catch (error: any) {
-            toast.error('Impossible de charger les messages récents : ' + (error.response?.data?.message || error.message));
-        } finally {
-            setLoadingMessages(false);
-        }
-    };
-
-    const updateCampaignState = (updatedCampaign: Campaign) => {
-        // Update in the campaigns list
-        setCampaigns(prev => prev.map(c => c._id === updatedCampaign._id ? updatedCampaign : c));
-        // Update selectedCampaign if it's the same one
-        setSelectedCampaign(prev => prev && prev._id === updatedCampaign._id ? updatedCampaign : prev);
-    };
-
-    const handlePauseCampaign = async (campaign: Campaign) => {
-        try {
-            const updated = await pauseCampaign(campaign._id, campaign.userId);
-            toast.success('Campagne mise en pause');
-            updateCampaignState(updated);
-        } catch (error: any) {
-            toast.error('Impossible de mettre la campagne en pause : ' + (error.response?.data?.message || error.message));
-        }
-    };
-
-    const handleResumeCampaign = async (campaign: Campaign) => {
-        try {
-            const updated = await resumeCampaign(campaign._id, campaign.userId);
-            toast.success('Campagne relancée');
-            updateCampaignState(updated);
-        } catch (error: any) {
-            toast.error('Impossible de reprendre la campagne : ' + (error.response?.data?.message || error.message));
-        }
-    };
-
-    const handleCancelCampaign = async (campaign: Campaign) => {
-        setCancellationReason('');
-        setConfirmAction({
-            title: 'Annuler la campagne',
-            message: `Voulez-vous vraiment annuler la campagne « ${campaign.name} » ? Toutes les cibles actives sortiront de la boucle.`,
-            onConfirm: async () => {
-                try {
-                    const updated = await cancelCampaign(campaign._id, campaign.userId, cancellationReason || undefined);
-                    toast.success('Campagne annulée');
-                    updateCampaignState(updated);
-                    setShowConfirmModal(false);
-                    setCancellationReason('');
-                } catch (error: any) {
-                    toast.error("Impossible d'annuler la campagne : " + (error.response?.data?.message || error.message));
-                }
-            }
-        });
-        setShowConfirmModal(true);
-    };
-
-    const formatDate = (dateString?: string) => {
-        if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleString('fr-FR', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
-
-    const formatFullDate = (dateString?: string) => {
-        if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleString('fr-FR', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
-
-    const getStatusBadge = (status: string) => {
-        const styles = {
-            draft: 'bg-surface-3 text-fg',
-            scheduled: 'bg-blue-600 text-white',
-            active: 'bg-green-600 text-white',
-            paused: 'bg-yellow-600 text-white',
-            completed: 'bg-purple-600 text-white',
-            cancelled: 'bg-red-600 text-white'
-        };
-        return styles[status as keyof typeof styles] || 'bg-surface-3 text-fg';
-    };
-
-    const getTypeBadge = (type: string) => {
-        return type === 'default' ? 'bg-blue-500 text-white' : 'bg-purple-500 text-white';
-    };
-
-    const getChannelBadge = (channel?: string) => {
-        const styles: Record<string, string> = { email: 'bg-blue-700 text-blue-200', sms: 'bg-green-700 text-green-200', both: 'bg-indigo-700 text-indigo-200' };
-        return styles[channel || 'email'] || styles.email;
-    };
-
-    const channelIcon = (channel?: string) => {
-        if (channel === 'sms') return <Smartphone size={12} />;
-        if (channel === 'both') return <Layers size={12} />;
-        return <Mail size={12} />;
-    };
-
-    const calculateSuccessRate = (campaign: Campaign) => {
-        if (campaign.messagesSent === 0) return 0;
-        return ((campaign.messagesDelivered / campaign.messagesSent) * 100).toFixed(1);
-    };
-
-    if (loading) {
+    const rowMenu = (c: Campaign) => {
+        const canCancel = c.status === 'active' || c.status === 'paused' || c.status === 'scheduled';
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="animate-spin text-blue-500" size={48} />
+            <Menu>
+                <MenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" aria-label={`Actions pour ${c.name}`} onClick={e => e.stopPropagation()}>
+                        <HugeiconsIcon icon={MoreHorizontalIcon} size={18} aria-hidden="true" />
+                    </Button>
+                </MenuTrigger>
+                <MenuContent onClick={e => e.stopPropagation()}>
+                    <MenuItem onSelect={() => setOpen(c)}>
+                        <HugeiconsIcon icon={ViewIcon} size={16} aria-hidden="true" />
+                        Détails, filleuls et messages
+                    </MenuItem>
+                    <MenuItem onSelect={() => { url.set({ membre: c.userId }); setMembreDraft(c.userId); }}>
+                        <HugeiconsIcon icon={UserGroupIcon} size={16} aria-hidden="true" />
+                        Campagnes de ce parrain
+                    </MenuItem>
+                    <Can module="relance" write>
+                        {(c.status === 'active' || c.status === 'paused' || canCancel) && <MenuSeparator />}
+                        {c.status === 'active' && (
+                            <MenuItem onSelect={() => pause.mutate(c)} disabled={busy}>
+                                <HugeiconsIcon icon={PauseIcon} size={16} aria-hidden="true" />
+                                Mettre en pause
+                            </MenuItem>
+                        )}
+                        {c.status === 'paused' && (
+                            <MenuItem onSelect={() => resume.mutate(c)} disabled={busy}>
+                                <HugeiconsIcon icon={PlayIcon} size={16} aria-hidden="true" />
+                                Reprendre
+                            </MenuItem>
+                        )}
+                        {canCancel && (
+                            <MenuItem destructive onSelect={() => startCancel(c)}>
+                                <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+                                Annuler la campagne
+                            </MenuItem>
+                        )}
+                    </Can>
+                </MenuContent>
+            </Menu>
+        );
+    };
+
+    const progress = (c: Campaign) => {
+        const rate = deliveryRate(c);
+        return (
+            <div className="text-right">
+                <p className="tabular-nums text-fg">{fmtInt(c.messagesSent)} envoyés</p>
+                <p className="text-xs text-fg-muted tabular-nums">{rate === null ? 'Aucun envoi' : `${fmtPct(rate)} remis`}</p>
             </div>
         );
-    }
+    };
+
+    const columns: ListColumn<Campaign>[] = [
+        {
+            key: 'name', header: 'Campagne', cell: c => (
+                <div className="min-w-0">
+                    <p className="truncate font-medium text-fg">{c.name}</p>
+                    <p className="truncate text-xs text-fg-muted">{c.owner?.name ?? c.userId} · {TYPE_LABELS[c.type] ?? c.type}</p>
+                </div>
+            ),
+        },
+        { key: 'status', header: 'Statut', cell: c => <CampaignStatusBadge status={c.status} /> },
+        { key: 'channel', header: 'Canal', cell: c => <ChannelLabel channel={c.channel} /> },
+        { key: 'enrolled', header: 'Filleuls', numeric: true, cell: c => fmtInt(c.targetsEnrolled) },
+        { key: 'sent', header: 'Envois', numeric: true, cell: progress },
+        { key: 'created', header: 'Créée', cell: c => <RelativeDate value={c.createdAt} className="text-sm text-fg-muted" /> },
+        { key: 'actions', header: <span className="sr-only">Actions</span>, className: 'w-12 text-right', hideOnCard: true, cell: rowMenu },
+    ];
+
+    const card = (c: Campaign) => {
+        const rate = deliveryRate(c);
+        return (
+            <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                    <p className="truncate text-sm font-medium text-fg">{c.name}</p>
+                    <p className="truncate text-xs text-fg-muted">{c.owner?.name ?? c.userId}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <CampaignStatusBadge status={c.status} />
+                        <ChannelLabel channel={c.channel} />
+                    </div>
+                    <p className="text-xs text-fg-muted tabular-nums">
+                        {fmtInt(c.targetsEnrolled)} filleuls · {fmtInt(c.messagesSent)} envois{rate !== null ? ` · ${fmtPct(rate)} remis` : ''} · <RelativeDate value={c.createdAt} />
+                    </p>
+                </div>
+                {rowMenu(c)}
+            </div>
+        );
+    };
+
+    const ownFilters = (stack: boolean) => (
+        <>
+            <Field label="Statut">
+                <Select value={statut} onValueChange={v => url.set({ statut: v })} options={STATUS_OPTIONS} className={stack ? 'h-11' : 'h-9 sm:w-44'} />
+            </Field>
+            <Field label="Type">
+                <Select value={type} onValueChange={v => url.set({ type: v })} options={TYPE_OPTIONS} className={stack ? 'h-11' : 'h-9 sm:w-48'} />
+            </Field>
+            <Field label="Canal" help={stack ? 'Le serveur ne filtre pas encore par canal.' : undefined}>
+                <Select value={canal} onValueChange={v => url.set({ canal: v })} options={CHANNEL_OPTIONS} className={stack ? 'h-11' : 'h-9 sm:w-40'} />
+            </Field>
+            <Field label="Identifiant du parrain">
+                <Input
+                    value={membreDraft}
+                    onChange={e => setMembreDraft(e.target.value)}
+                    onBlur={() => url.set({ membre: membreDraft.trim() })}
+                    onKeyDown={e => { if (e.key === 'Enter') url.set({ membre: membreDraft.trim() }); }}
+                    placeholder="ID du membre"
+                    className={stack ? 'h-11' : 'h-9 sm:w-56'}
+                    inputMode="text"
+                />
+            </Field>
+        </>
+    );
+
+    const s = stats.data;
+    const paused = pausedQueue.data?.total ?? 0;
 
     return (
-        <div>
-            {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-fg flex items-center gap-2">
-                        <Target size={28} className="text-purple-500" />
-                        Campagnes de relance
-                    </h1>
-                    <p className="text-fg-muted mt-2">Gérez et suivez toutes les campagnes de relance</p>
-                </div>
-                <button
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded-lg flex items-center gap-2 transition-colors"
-                >
-                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                    {refreshing ? 'Actualisation…' : 'Actualiser'}
-                </button>
-            </div>
+        <div className="space-y-6">
+            <PageHeader
+                title="Campagnes de relance"
+                description="Les campagnes lancées par les parrains vers leurs anciens filleuls : suivre, mettre en pause, reprendre ou annuler."
+                actions={(
+                    <Button size="lg" className="w-full sm:w-auto" onClick={() => void queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith('relance-campaign') })} loading={list.isFetching && !list.isLoading}>
+                        {!(list.isFetching && !list.isLoading) && <HugeiconsIcon icon={RefreshIcon} size={16} aria-hidden="true" />}
+                        Actualiser
+                    </Button>
+                )}
+            />
 
-            {/* Filters */}
-            <div className="bg-surface rounded-lg p-4 border border-line mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                    <Filter size={20} className="text-fg-muted" />
-                    <h2 className="text-lg font-semibold text-fg">Filtres</h2>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                        <label className="block text-sm text-fg-muted mb-2">Statut</label>
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:border-blue-500"
-                        >
-                            <option value="all">Tous les statuts</option>
-                            <option value="draft">Brouillon</option>
-                            <option value="scheduled">Programmée</option>
-                            <option value="active">Active</option>
-                            <option value="paused">En pause</option>
-                            <option value="completed">Terminée</option>
-                            <option value="cancelled">Annulée</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm text-fg-muted mb-2">Type</label>
-                        <select
-                            value={typeFilter}
-                            onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:border-blue-500"
-                        >
-                            <option value="all">Tous les types</option>
-                            <option value="default">Par défaut</option>
-                            <option value="filtered">Filtrée</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm text-fg-muted mb-2">Canal</label>
-                        <select
-                            value={channelFilter}
-                            onChange={(e) => { setChannelFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:border-blue-500"
-                        >
-                            <option value="all">Tous</option>
-                            <option value="email">E-mail</option>
-                            <option value="sms">SMS</option>
-                            <option value="both">E-mail + SMS</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm text-fg-muted mb-2">ID membre (facultatif)</label>
-                        <input
-                            type="text"
-                            value={userIdFilter}
-                            onChange={(e) => setUserIdFilter(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    setPage(1);
-                                    loadCampaigns();
-                                }
-                            }}
-                            placeholder="Saisir un ID membre…"
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:border-blue-500"
-                        />
-                    </div>
-                </div>
-            </div>
-
-            {/* Campaigns Grid */}
-            {campaigns.length === 0 ? (
-                <div className="bg-surface rounded-lg p-12 border border-line text-center">
-                    <Target size={48} className="mx-auto text-fg-subtle mb-4" />
-                    <p className="text-fg-muted text-lg">Aucune campagne trouvée</p>
-                </div>
-            ) : (
-                <>
-                    <div className="grid grid-cols-1 gap-4 mb-6">
-                        {campaigns.map((campaign) => (
-                            <div
-                                key={campaign._id}
-                                className="bg-surface rounded-lg p-6 border border-line hover:border-line-strong transition-colors"
-                            >
-                                {/* Campaign Header */}
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                            <h3 className="text-xl font-semibold text-fg">{campaign.name}</h3>
-                                            <span className={`text-xs px-2 py-1 rounded-sm ${getStatusBadge(campaign.status)}`}>
-                                                {STATUS_LABELS[campaign.status] ?? campaign.status}
-                                            </span>
-                                            <span className={`text-xs px-2 py-1 rounded-sm ${getTypeBadge(campaign.type)}`}>
-                                                {TYPE_LABELS[campaign.type] ?? campaign.type}
-                                            </span>
-                                            {(campaign as any).channel && (
-                                                <span className={`text-xs px-2 py-1 rounded-sm flex items-center gap-1 ${getChannelBadge((campaign as any).channel)}`}>
-                                                    {channelIcon((campaign as any).channel)} {channelLabel(campaign)}
-                                                </span>
-                                            )}
-                                            {(campaign as any).contactBatch && (
-                                                <span className="text-xs px-2 py-1 rounded-sm bg-surface-3 text-fg-muted">
-                                                    Lot: {(campaign as any).contactBatch.offset}–{(campaign as any).contactBatch.offset + (campaign as any).contactBatch.limit - 1}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-sm text-fg-muted">ID membre : {campaign.userId}</p>
-                                        <p className="text-sm text-fg-muted">Créée le {formatDate(campaign.createdAt)}</p>
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => handleViewStats(campaign)}
-                                            className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                                            title="Statistiques" aria-label="Statistiques"
-                                        >
-                                            <BarChart3 size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleViewMessages(campaign)}
-                                            className="p-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
-                                            title="Messages récents" aria-label="Messages récents"
-                                        >
-                                            <MessageSquare size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleViewDetails(campaign)}
-                                            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                                            title="Voir le détail" aria-label="Voir le détail"
-                                        >
-                                            <Eye size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleViewTargets(campaign)}
-                                            className="p-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-                                            title="Voir les cibles" aria-label="Voir les cibles"
-                                        >
-                                            <Users size={16} />
-                                        </button>
-                                        {campaign.status === 'active' && (
-                                            <button
-                                                onClick={() => handlePauseCampaign(campaign)}
-                                                className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
-                                                title="Mettre en pause" aria-label="Mettre en pause"
-                                            >
-                                                <Pause size={16} />
-                                            </button>
-                                        )}
-                                        {campaign.status === 'paused' && (
-                                            <button
-                                                onClick={() => handleResumeCampaign(campaign)}
-                                                className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                                                title="Reprendre" aria-label="Reprendre"
-                                            >
-                                                <Play size={16} />
-                                            </button>
-                                        )}
-                                        {(campaign.status === 'active' || campaign.status === 'paused' || campaign.status === 'scheduled') && (
-                                            <button
-                                                onClick={() => handleCancelCampaign(campaign)}
-                                                className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                                                title="Annuler la campagne" aria-label="Annuler la campagne"
-                                            >
-                                                <XCircle size={16} />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Campaign Stats */}
-                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-surface-2 rounded-lg p-4">
-                                    <div className="text-center">
-                                        <p className="text-xs text-fg-muted mb-1">Inscrits</p>
-                                        <p className="text-lg font-bold text-green-600 dark:text-green-400">{campaign.targetsEnrolled}</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-xs text-fg-muted mb-1">Messages envoyés</p>
-                                        <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{campaign.messagesSent}</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-xs text-fg-muted mb-1">Remis</p>
-                                        <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{campaign.messagesDelivered}</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-xs text-fg-muted mb-1">Taux de réussite</p>
-                                        <p className="text-lg font-bold text-yellow-700 dark:text-yellow-400">{calculateSuccessRate(campaign)}%</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-xs text-fg-muted mb-1">Terminées</p>
-                                        <p className="text-lg font-bold text-fg-muted">{campaign.targetsCompleted}</p>
-                                    </div>
-                                </div>
-
-                                {/* Filter Info (for filtered campaigns) */}
-                                {campaign.type === 'filtered' && campaign.targetFilter && (
-                                    <div className="mt-4 p-3 bg-surface-2 rounded-lg">
-                                        <p className="text-xs text-fg-muted mb-2">Critères de filtre :</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {campaign.targetFilter.countries && (
-                                                <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-sm">
-                                                    Pays : {campaign.targetFilter.countries.join(', ')}
-                                                </span>
-                                            )}
-                                            {campaign.targetFilter.gender && campaign.targetFilter.gender !== 'all' && (
-                                                <span className="text-xs px-2 py-1 bg-pink-100 dark:bg-pink-900 text-pink-700 dark:text-pink-300 rounded-sm">
-                                                    Sexe : {GENDER_LABELS[campaign.targetFilter.gender] ?? campaign.targetFilter.gender}
-                                                </span>
-                                            )}
-                                            {campaign.targetFilter.professions && (
-                                                <span className="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-sm">
-                                                    Professions : {campaign.targetFilter.professions.length}
-                                                </span>
-                                            )}
-                                            {campaign.targetFilter.minAge && (
-                                                <span className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-sm">
-                                                    Âge min. : {campaign.targetFilter.minAge}
-                                                </span>
-                                            )}
-                                            {campaign.targetFilter.maxAge && (
-                                                <span className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-sm">
-                                                    Âge max. : {campaign.targetFilter.maxAge}
-                                                </span>
-                                            )}
-                                            {campaign.targetFilter.registrationDateFrom && (
-                                                <span className="text-xs px-2 py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 rounded-sm">
-                                                    Inscrits depuis le {new Date(campaign.targetFilter.registrationDateFrom).toLocaleDateString('fr-FR')}
-                                                </span>
-                                            )}
-                                            {campaign.targetFilter.registrationDateTo && (
-                                                <span className="text-xs px-2 py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 rounded-sm">
-                                                    Inscrits jusqu'au {new Date(campaign.targetFilter.registrationDateTo).toLocaleDateString('fr-FR')}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-fg-muted mt-2">
-                                            Cibles estimées : {campaign.estimatedTargetCount || 'N/A'}
-                                        </p>
-                                    </div>
-                                )}
-
-                                {/* Scheduled Info */}
-                                {campaign.scheduledStartDate && campaign.status === 'scheduled' && (
-                                    <div className="mt-3 p-2 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center gap-2">
-                                        <Calendar size={16} className="text-blue-600 dark:text-blue-300" />
-                                        <p className="text-sm text-blue-600 dark:text-blue-300">
-                                            Démarrage prévu le {formatDate(campaign.scheduledStartDate)}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="flex items-center justify-center gap-2">
-                            <button
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page === 1}
-                                className="px-4 py-2 bg-surface-2 hover:bg-surface-3 disabled:bg-surface-2 text-fg rounded-lg transition-colors"
-                            >
-                                Précédent
-                            </button>
-                            <span className="text-fg-muted">
-                                Page {page} sur {totalPages}
-                            </span>
-                            <button
-                                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                disabled={page === totalPages}
-                                className="px-4 py-2 bg-surface-2 hover:bg-surface-3 disabled:bg-surface-2 text-fg rounded-lg transition-colors"
-                            >
-                                Suivant
-                            </button>
-                        </div>
+            <div>
+                <PageFilters filters={filters} onReset={clearOwn} className="mb-0">
+                    <div className="hidden items-end gap-2 md:flex [&_label]:sr-only">{ownFilters(false)}</div>
+                    <Button size="lg" className="w-full md:hidden" onClick={() => setFiltersOpen(true)}>
+                        <HugeiconsIcon icon={FilterIcon} size={16} aria-hidden="true" />
+                        Filtres{ownCount ? ` (${ownCount})` : ''}
+                    </Button>
+                    {!filters.isFiltered && ownCount > 0 && (
+                        <Button variant="ghost" size="sm" onClick={clearOwn} className="self-start sm:self-auto">
+                            <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+                            Effacer les filtres
+                        </Button>
                     )}
-                </>
-            )}
+                </PageFilters>
+            </div>
 
-            {/* Campaign Details Modal */}
-            {showDetailsModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowDetailsModal(false)}>
-                    <div className="bg-surface rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-2xl font-bold text-fg">Détail de la campagne</h2>
-                            <button
-                                onClick={() => setShowDetailsModal(false)}
-                                className="text-fg-muted hover:text-fg"
-                                aria-label="Fermer"
-                            >
-                                <XCircle size={24} />
-                            </button>
+            {paused > 0 && statut !== 'paused' && (
+                <Panel className="border-warning/40 bg-warning-soft/40" role="status">
+                    <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                        <div>
+                            <p className="text-sm font-medium text-fg">À traiter : {fmtInt(paused)} campagne{paused > 1 ? 's' : ''} en pause</p>
+                            <p className="mt-0.5 text-sm text-fg-muted">Rien ne part tant qu’elles ne sont pas reprises ou annulées (toutes périodes confondues).</p>
                         </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <p className="text-sm text-fg-muted">Nom</p>
-                                <p className="text-lg text-fg">{selectedCampaign.name}</p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-sm text-fg-muted">Statut</p>
-                                    <span className={`inline-block text-sm px-3 py-1 rounded-sm mt-1 ${getStatusBadge(selectedCampaign.status)}`}>
-                                        {STATUS_LABELS[selectedCampaign.status] ?? selectedCampaign.status}
-                                    </span>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-fg-muted">Type</p>
-                                    <span className={`inline-block text-sm px-3 py-1 rounded-sm mt-1 ${getTypeBadge(selectedCampaign.type)}`}>
-                                        {TYPE_LABELS[selectedCampaign.type] ?? selectedCampaign.type}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div>
-                                <p className="text-sm text-fg-muted">ID membre</p>
-                                <p className="text-fg font-mono text-sm">{selectedCampaign.userId}</p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-sm text-fg-muted">Canal d'envoi</p>
-                                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-sm mt-1 ${getChannelBadge((selectedCampaign as any).channel)}`}>
-                                        {channelIcon((selectedCampaign as any).channel)} {channelLabel(selectedCampaign)}
-                                    </span>
-                                </div>
-                                {(selectedCampaign as any).contactBatch && (
-                                    <div>
-                                        <p className="text-sm text-fg-muted">Lot de contacts</p>
-                                        <p className="text-fg text-sm mt-1">
-                                            Positions {(selectedCampaign as any).contactBatch.offset} → {(selectedCampaign as any).contactBatch.offset + (selectedCampaign as any).contactBatch.limit - 1}
-                                            <span className="text-fg-muted ml-1">({(selectedCampaign as any).contactBatch.limit} contacts)</span>
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {selectedCampaign.scheduledStartDate && (
-                                <div>
-                                    <p className="text-sm text-fg-muted">Démarrage prévu</p>
-                                    <p className="text-fg">{formatDate(selectedCampaign.scheduledStartDate)}</p>
-                                </div>
-                            )}
-
-                            {selectedCampaign.startedAt && (
-                                <div>
-                                    <p className="text-sm text-fg-muted">Démarrée le</p>
-                                    <p className="text-fg">{formatDate(selectedCampaign.startedAt)}</p>
-                                </div>
-                            )}
-
-                            {selectedCampaign.actualEndDate && (
-                                <div>
-                                    <p className="text-sm text-fg-muted">Terminée le</p>
-                                    <p className="text-fg">{formatDate(selectedCampaign.actualEndDate)}</p>
-                                </div>
-                            )}
-
-                            {selectedCampaign.cancellationReason && (
-                                <div>
-                                    <p className="text-sm text-fg-muted">Motif d'annulation</p>
-                                    <p className="text-fg">{selectedCampaign.cancellationReason}</p>
-                                </div>
-                            )}
-
-                            <div className="bg-surface-2 rounded-lg p-4">
-                                <h3 className="text-lg font-semibold text-fg mb-3 flex items-center gap-2">
-                                    <BarChart3 size={20} />
-                                    Statistiques
-                                </h3>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <p className="text-xs text-fg-muted">Inscrits</p>
-                                        <p className="text-xl font-bold text-green-600 dark:text-green-400">{selectedCampaign.targetsEnrolled}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-fg-muted">Messages envoyés</p>
-                                        <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{selectedCampaign.messagesSent}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-fg-muted">Remis</p>
-                                        <p className="text-xl font-bold text-purple-600 dark:text-purple-400">{selectedCampaign.messagesDelivered}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-fg-muted">Échecs</p>
-                                        <p className="text-xl font-bold text-red-600 dark:text-red-400">{selectedCampaign.messagesFailed}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-fg-muted">Terminées</p>
-                                        <p className="text-xl font-bold text-yellow-700 dark:text-yellow-400">{selectedCampaign.targetsCompleted}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-fg-muted">Sorties</p>
-                                        <p className="text-xl font-bold text-fg-muted">{selectedCampaign.targetsExited}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <Button size="lg" onClick={() => url.set({ statut: 'paused' })}>Voir les campagnes en pause</Button>
                     </div>
-                </div>
+                </Panel>
             )}
 
-            {/* Campaign Analytics Modal */}
-            {showStatsModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowStatsModal(false)}>
-                    <div className="bg-surface rounded-lg p-6 max-w-4xl w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-2xl font-bold text-fg flex items-center gap-2">
-                                <BarChart3 size={24} className="text-green-600 dark:text-green-400" />
-                                Statistiques de la campagne
-                            </h2>
-                            <button
-                                onClick={() => setShowStatsModal(false)}
-                                className="text-fg-muted hover:text-fg"
-                                aria-label="Fermer"
-                            >
-                                <XCircle size={24} />
-                            </button>
-                        </div>
+            <div className={`grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4 ${stats.isFetching && !stats.isLoading ? 'opacity-60 transition-opacity' : ''}`}>
+                <Metric label="Campagnes" icon={Target02Icon} value={s ? fmtInt(s.totalCampaigns) : <Skeleton className="h-8 w-14" />} hint={s ? `${fmtInt(s.completedCampaigns)} terminées` : undefined} />
+                <Metric label="En cours" icon={PlayIcon} tone="success" value={s ? fmtInt(s.activeCampaigns) : <Skeleton className="h-8 w-14" />} />
+                <Metric label="Filleuls inscrits" icon={UserGroupIcon} value={s ? fmtInt(s.totalTargetsEnrolled) : <Skeleton className="h-8 w-14" />} />
+                {/* The API's averageSuccessRate ignores failed sends (always ~100 %): the per-row rate counts them. */}
+                <Metric label="Messages envoyés" icon={SentIcon} value={s ? fmtInt(s.totalMessagesSent) : <Skeleton className="h-8 w-14" />} hint="Taux de remise par campagne dans la liste" />
+            </div>
 
-                        {loadingStats ? (
-                            <div className="flex items-center justify-center py-12">
-                                <Loader2 className="animate-spin text-blue-500" size={32} />
-                            </div>
-                        ) : campaignStats ? (
-                            <div className="space-y-6">
-                                {/* Campaign Info */}
-                                <div className="flex items-center gap-3">
-                                    <h3 className="text-xl font-semibold text-fg">{campaignStats.campaign.name}</h3>
-                                    <span className={`text-xs px-2 py-1 rounded-sm ${getStatusBadge(campaignStats.campaign.status)}`}>
-                                        {STATUS_LABELS[campaignStats.campaign.status] ?? campaignStats.campaign.status}
-                                    </span>
-                                    <span className={`text-xs px-2 py-1 rounded-sm ${getTypeBadge(campaignStats.campaign.type)}`}>
-                                        {TYPE_LABELS[campaignStats.campaign.type] ?? campaignStats.campaign.type}
-                                    </span>
-                                </div>
 
-                                {/* Overview Stats */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <div className="bg-surface-2 rounded-lg p-4 text-center">
-                                        <Users size={24} className="mx-auto text-green-600 dark:text-green-400 mb-2" />
-                                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{campaignStats.totalEnrolled}</p>
-                                        <p className="text-xs text-fg-muted">Total inscrits</p>
-                                    </div>
-                                    <div className="bg-surface-2 rounded-lg p-4 text-center">
-                                        <Target size={24} className="mx-auto text-blue-600 dark:text-blue-400 mb-2" />
-                                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{campaignStats.activeTargets}</p>
-                                        <p className="text-xs text-fg-muted">Cibles actives</p>
-                                    </div>
-                                    <div className="bg-surface-2 rounded-lg p-4 text-center">
-                                        <CheckCircle size={24} className="mx-auto text-purple-600 dark:text-purple-400 mb-2" />
-                                        <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{campaignStats.completedRelance}</p>
-                                        <p className="text-xs text-fg-muted">Terminées</p>
-                                    </div>
-                                    <div className="bg-surface-2 rounded-lg p-4 text-center">
-                                        <TrendingUp size={24} className="mx-auto text-yellow-700 dark:text-yellow-400 mb-2" />
-                                        <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">{campaignStats.deliveryPercentage}%</p>
-                                        <p className="text-xs text-fg-muted">Taux de remise</p>
-                                    </div>
-                                </div>
-
-                                {/* Message Stats */}
-                                <div className="bg-surface-2 rounded-lg p-4">
-                                    <h4 className="text-md font-semibold text-fg mb-3 flex items-center gap-2">
-                                        <Mail size={18} />
-                                        Statistiques des messages
-                                    </h4>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="text-center">
-                                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{campaignStats.totalMessagesSent}</p>
-                                            <p className="text-xs text-fg-muted">Total envoyés</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{campaignStats.totalMessagesDelivered}</p>
-                                            <p className="text-xs text-fg-muted">Remis</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{campaignStats.totalMessagesFailed}</p>
-                                            <p className="text-xs text-fg-muted">Échecs</p>
-                                        </div>
-                                    </div>
-                                    {/* Delivery bar */}
-                                    <div className="mt-4">
-                                        <div className="flex justify-between text-xs text-fg-muted mb-1">
-                                            <span>Progression des envois</span>
-                                            <span>{campaignStats.deliveryPercentage}%</span>
-                                        </div>
-                                        <div className="w-full bg-surface-3 rounded-full h-3">
-                                            <div
-                                                className="h-3 rounded-full transition-all"
-                                                style={{
-                                                    width: `${campaignStats.deliveryPercentage}%`,
-                                                    background: `linear-gradient(90deg, #10B981, #115CF6)`
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Day Progression */}
-                                <div className="bg-surface-2 rounded-lg p-4">
-                                    <h4 className="text-md font-semibold text-fg mb-3">Progression par jour</h4>
-                                    <div className="grid grid-cols-7 gap-2">
-                                        {campaignStats.dayProgression.map(({ day, count }) => {
-                                            const maxCount = Math.max(...campaignStats.dayProgression.map(d => d.count), 1);
-                                            const heightPct = (count / maxCount) * 100;
-                                            return (
-                                                <div key={day} className="text-center">
-                                                    <div className="h-24 flex items-end justify-center mb-1">
-                                                        <div
-                                                            className="w-8 rounded-t transition-all"
-                                                            style={{
-                                                                height: `${Math.max(heightPct, 4)}%`,
-                                                                background: `linear-gradient(180deg, #115CF6, #10B981)`
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <p className="text-sm font-bold text-fg">{count}</p>
-                                                    <p className="text-xs text-fg-muted">Jour {day}</p>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                {/* Exit Reasons */}
-                                {Object.keys(campaignStats.exitReasons).length > 0 && (
-                                    <div className="bg-surface-2 rounded-lg p-4">
-                                        <h4 className="text-md font-semibold text-fg mb-3">Motifs de sortie</h4>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                            {Object.entries(campaignStats.exitReasons).map(([reason, count]) => {
-                                                const colors: Record<string, string> = {
-                                                    paid: 'text-green-600 dark:text-green-400',
-                                                    completed_7_days: 'text-blue-600 dark:text-blue-400',
-                                                    completed_7days: 'text-blue-600 dark:text-blue-400',
-                                                    subscription_expired: 'text-yellow-700 dark:text-yellow-400',
-                                                    manual: 'text-red-600 dark:text-red-400',
-                                                    referrer_inactive: 'text-orange-600 dark:text-orange-400'
-                                                };
-                                                const labels = EXIT_REASON_LABELS;
-                                                return (
-                                                    <div key={reason} className="bg-surface-3 rounded-lg p-3 text-center">
-                                                        <p className={`text-xl font-bold ${colors[reason] || 'text-fg-muted'}`}>{count}</p>
-                                                        <p className="text-xs text-fg-muted">{labels[reason] || reason}</p>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <p className="text-fg-muted text-center py-8">Aucune statistique disponible</p>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Recent Messages Modal */}
-            {showMessagesModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowMessagesModal(false); setViewingEmailHtml(null); }}>
-                    <div className="bg-surface rounded-lg p-6 max-w-4xl w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-2xl font-bold text-fg flex items-center gap-2">
-                                <MessageSquare size={24} className="text-orange-600 dark:text-orange-400" />
-                                {viewingEmailHtml ? "Aperçu de l'e-mail" : `Messages récents - ${selectedCampaign.name}`}
-                            </h2>
-                            <div className="flex items-center gap-2">
-                                {viewingEmailHtml && (
-                                    <button
-                                        onClick={() => setViewingEmailHtml(null)}
-                                        className="px-3 py-1.5 bg-surface-3 hover:bg-line-strong text-fg rounded-lg text-sm transition-colors"
-                                    >
-                                        Retour à la liste
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => { setShowMessagesModal(false); setViewingEmailHtml(null); }}
-                                    className="text-fg-muted hover:text-fg"
-                                    aria-label="Fermer"
-                                >
-                                    <XCircle size={24} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {viewingEmailHtml ? (
-                            <div className="bg-white rounded-lg overflow-hidden">
-                                <iframe
-                                    srcDoc={viewingEmailHtml}
-                                    className="w-full border-0"
-                                    style={{ height: 'calc(85vh - 140px)', minHeight: '500px' }}
-                                    title="Aperçu de l'e-mail"
-                                    sandbox="allow-same-origin"
-                                />
-                            </div>
-                        ) : loadingMessages ? (
-                            <div className="flex items-center justify-center py-12">
-                                <Loader2 className="animate-spin text-blue-500" size={32} />
-                            </div>
-                        ) : recentMessages.length === 0 ? (
-                            <div className="text-center py-12">
-                                <MessageSquare size={48} className="mx-auto text-fg-subtle mb-4" />
-                                <p className="text-fg-muted">Aucun message envoyé pour cette campagne</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {recentMessages.map((msg, index) => (
-                                    <div
-                                        key={index}
-                                        className={`p-4 rounded-lg border ${
-                                            msg.status === 'delivered'
-                                                ? 'bg-surface-2 border-line-strong'
-                                                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-sm font-semibold text-fg">
-                                                    Jour {msg.day}
-                                                </span>
-                                                <span className={`text-xs px-2 py-0.5 rounded ${
-                                                    msg.status === 'delivered'
-                                                        ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
-                                                        : 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300'
-                                                }`}>
-                                                    {msg.status === 'delivered' ? (
-                                                        <span className="flex items-center gap-1"><CheckCircle size={12} /> Remis</span>
-                                                    ) : (
-                                                        <span className="flex items-center gap-1"><AlertTriangle size={12} /> Échec</span>
-                                                    )}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {msg.renderedHtml && (
-                                                    <button
-                                                        onClick={() => setViewingEmailHtml(msg.renderedHtml!)}
-                                                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-sm text-xs flex items-center gap-1 transition-colors"
-                                                    >
-                                                        <Eye size={12} />
-                                                        Voir l'e-mail
-                                                    </button>
-                                                )}
-                                                <span className="text-xs text-fg-muted">
-                                                    {formatFullDate(msg.sentAt)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            {msg.referralUser?.avatar ? (
-                                                <img
-                                                    src={msg.referralUser.avatar}
-                                                    alt=""
-                                                    className="w-8 h-8 rounded-full object-cover"
-                                                />
-                                            ) : (
-                                                <div className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center">
-                                                    <Users size={14} className="text-fg-muted" />
-                                                </div>
-                                            )}
-                                            <div className="flex-1">
-                                                <p className="text-sm text-fg">
-                                                    {msg.referralUser?.name || 'Membre inconnu'}
-                                                </p>
-                                                <p className="text-xs text-fg-muted">
-                                                    {msg.referralUser?.email || 'Pas d\'e-mail'}
-                                                    {msg.referralUser?.phoneNumber && ` | ${msg.referralUser.phoneNumber}`}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {msg.errorMessage && (
-                                            <div className="mt-2 text-xs text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/30 px-3 py-1 rounded-sm">
-                                                Erreur : {msg.errorMessage}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Campaign Targets Modal */}
-            {showTargetsModal && selectedCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowTargetsModal(false)}>
-                    <div className="bg-surface rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-2xl font-bold text-fg flex items-center gap-2">
-                                <Users size={24} />
-                                Cibles de la campagne ({selectedCampaign.name})
-                            </h2>
-                            <button
-                                onClick={() => setShowTargetsModal(false)}
-                                className="text-fg-muted hover:text-fg"
-                                aria-label="Fermer"
-                            >
-                                <XCircle size={24} />
-                            </button>
-                        </div>
-
-                        {campaignTargets.length === 0 ? (
-                            <p className="text-fg-muted text-center py-8">Aucune cible trouvée</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {campaignTargets.map((target) => (
-                                    <div key={target._id} className="p-4 bg-surface-2 rounded-lg border border-line-strong">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-sm font-medium text-fg">
-                                                Jour {target.currentDay}/7
-                                            </span>
-                                            <span className={`text-xs px-2 py-1 rounded-sm ${getStatusBadge(target.status)}`}>
-                                                {STATUS_LABELS[target.status] ?? target.status}
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-fg-muted">
-                                            <div>
-                                                <p>ID filleul : {target.referralUserId}</p>
-                                                <p>ID parrain : {target.referrerUserId}</p>
-                                                <p>Langue : {LANGUAGE_LABELS[target.language] ?? target.language}</p>
-                                            </div>
-                                            <div>
-                                                <p>Entrée : {formatDate(target.enteredLoopAt)}</p>
-                                                <p>Prochain message : {formatDate(target.nextMessageDue)}</p>
-                                                <p>Messages : {target.messagesDelivered.length}</p>
-                                            </div>
-                                        </div>
-                                        {target.exitReason && (
-                                            <div className="mt-2 text-xs text-yellow-700 dark:text-yellow-400">
-                                                Motif de sortie : {EXIT_REASON_LABELS[target.exitReason] ?? target.exitReason}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Confirmation Modal */}
-            {confirmAction && (
-                <ConfirmationModal
-                    isOpen={showConfirmModal}
-                    title={confirmAction.title}
-                    message={confirmAction.message}
-                    confirmText="Confirmer"
-                    cancelText="Fermer"
-                    onConfirm={confirmAction.onConfirm}
-                    onCancel={() => {
-                        setShowConfirmModal(false);
-                        setCancellationReason('');
-                    }}
-                >
-                    {/* Optional cancellation reason input */}
-                    <div className="mt-4">
-                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                            Motif d'annulation (facultatif)
-                        </label>
-                        <textarea
-                            value={cancellationReason}
-                            onChange={(e) => setCancellationReason(e.target.value)}
-                            placeholder="Saisir le motif de l'annulation…"
-                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                            rows={3}
+            <Panel className={list.isFetching && !list.isLoading ? 'opacity-60 transition-opacity' : undefined}>
+                <ResponsiveList
+                    rows={list.data?.campaigns ?? []}
+                    columns={columns}
+                    card={card}
+                    rowKey={c => c._id}
+                    onRowClick={c => setOpen(c)}
+                    loading={list.isLoading}
+                    empty={list.isError ? (
+                        <ErrorState message={apiError(list.error, 'Les campagnes n’ont pas pu être chargées.')} onRetry={() => void list.refetch()} retrying={list.isFetching} />
+                    ) : (
+                        <EmptyState
+                            icon={Target02Icon}
+                            title={anyFilter ? 'Aucune campagne ne correspond' : 'Aucune campagne'}
+                            description={anyFilter ? 'Élargissez la période ou effacez les filtres.' : 'Les campagnes apparaissent ici dès qu’un parrain en lance une.'}
+                            action={anyFilter ? <Button size="lg" onClick={() => { filters.reset(); clearOwn(); }}>Effacer les filtres</Button> : undefined}
                         />
-                    </div>
-                </ConfirmationModal>
-            )}
+                    )}
+                />
+                {list.data && (
+                    <Pagination page={page} totalPages={list.data.totalPages} total={list.data.total} pageSize={PAGE_SIZE} onPageChange={p => url.set({ page: String(p) })} />
+                )}
+            </Panel>
+
+            <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+                <SheetContent
+                    title="Filtres"
+                    footer={(
+                        <>
+                            <Button size="lg" onClick={clearOwn}>Effacer</Button>
+                            <Button variant="primary" size="lg" onClick={() => { url.set({ membre: membreDraft.trim() }); setFiltersOpen(false); }}>Afficher</Button>
+                        </>
+                    )}
+                >
+                    <div className="space-y-4">{ownFilters(true)}</div>
+                </SheetContent>
+            </Dialog>
+
+            <Dialog open={!!open} onOpenChange={o => { if (!o) setOpen(null); }}>
+                {open && (
+                    <CampaignSheet
+                        campaign={open}
+                        busy={busy}
+                        onPause={c => pause.mutate(c)}
+                        onResume={c => resume.mutate(c)}
+                        onCancel={startCancel}
+                    />
+                )}
+            </Dialog>
+
+            <Dialog open={!!cancelling} onOpenChange={o => { if (!o && !cancel.isPending) setCancelling(null); }}>
+                {cancelling && (
+                    <DialogContent
+                        size="sm"
+                        title="Annuler la campagne ?"
+                        description={`« ${cancelling.name} » s’arrête pour de bon : tous ses filleuls encore en cours sortent de la boucle. Ça ne se reprend pas.`}
+                        footer={(
+                            <>
+                                <DialogClose asChild><Button size="lg" disabled={cancel.isPending}>Garder la campagne</Button></DialogClose>
+                                <Button variant="danger" size="lg" loading={cancel.isPending} onClick={() => cancel.mutate({ c: cancelling, why: reason })}>Annuler la campagne</Button>
+                            </>
+                        )}
+                    >
+                        <Field label="Motif (facultatif)" help="Visible dans le détail de la campagne.">
+                            <Textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Pourquoi cette campagne est annulée" />
+                        </Field>
+                    </DialogContent>
+                )}
+            </Dialog>
         </div>
     );
-};
-
-export default RelanceCampaignsPage;
+}

@@ -1,5 +1,8 @@
 import apiClient from '../api/apiClient';
 
+/** Page filters (country of the parrain, period), sent on every admin read. */
+export type AdminFilterParams = { country?: string; from?: string; to?: string };
+
 // Types
 export interface RelanceButton {
     label: string;
@@ -117,22 +120,22 @@ export const deactivateMessage = async (dayNumber: number): Promise<void> => {
 /**
  * Get relance statistics
  */
-export const getStats = async (): Promise<RelanceStats> => {
-    const response = await apiClient.get('/relance/admin/stats');
+export const getStats = async (filters: AdminFilterParams = {}): Promise<RelanceStats> => {
+    const response = await apiClient.get('/relance/admin/stats', { params: filters });
     return response.data.data;
 };
 
 /**
  * Get all active targets with pagination
  */
-export const getActiveTargets = async (page: number = 1, limit: number = 20): Promise<{
+export const getActiveTargets = async (page: number = 1, limit: number = 20, filters: AdminFilterParams = {}): Promise<{
     targets: RelanceTarget[];
     total: number;
     page: number;
     totalPages: number;
 }> => {
     const response = await apiClient.get('/relance/admin/targets', {
-        params: { page, limit, status: 'active' }
+        params: { page, limit, status: 'active', ...filters }
     });
     return response.data.data;
 };
@@ -140,7 +143,7 @@ export const getActiveTargets = async (page: number = 1, limit: number = 20): Pr
 /**
  * Get delivery logs with pagination
  */
-export const getDeliveryLogs = async (page: number = 1, limit: number = 50, filters?: {
+export const getDeliveryLogs = async (page: number = 1, limit: number = 50, filters?: AdminFilterParams & {
     userId?: string;
     success?: boolean;
     dayNumber?: number;
@@ -161,8 +164,8 @@ export const getDeliveryLogs = async (page: number = 1, limit: number = 50, filt
 /**
  * Get all active relance configs
  */
-export const getActiveConfigs = async (): Promise<RelanceConfig[]> => {
-    const response = await apiClient.get('/relance/admin/configs');
+export const getActiveConfigs = async (filters: AdminFilterParams = {}): Promise<RelanceConfig[]> => {
+    const response = await apiClient.get('/relance/admin/configs', { params: filters });
     return response.data.data;
 };
 
@@ -241,9 +244,15 @@ export interface Campaign {
     startedAt?: string;
     actualEndDate?: string;
     cancellationReason?: string;
+    /** Admin list only: the parrain who owns the campaign. */
+    owner?: RelancePerson | null;
+    channel?: 'email' | 'sms' | 'both';
+    contactBatch?: { offset: number; limit: number };
     createdAt: string;
     updatedAt: string;
 }
+
+export interface RelancePerson { _id: string; name: string; phoneNumber?: string; email?: string }
 
 export interface CampaignTarget {
     _id: string;
@@ -271,10 +280,11 @@ export interface CampaignTarget {
 /**
  * Get all campaigns (admin view - all users)
  */
-export const getAllCampaigns = async (filters?: {
+export const getAllCampaigns = async (filters?: AdminFilterParams & {
     userId?: string;
     type?: 'default' | 'filtered';
     status?: string;
+    channel?: string;
     page?: number;
     limit?: number;
 }): Promise<{
@@ -350,7 +360,7 @@ export const cancelCampaign = async (
 /**
  * Get campaign statistics
  */
-export const getCampaignStats = async (): Promise<{
+export const getCampaignStats = async (filters: AdminFilterParams = {}): Promise<{
     totalCampaigns: number;
     activeCampaigns: number;
     completedCampaigns: number;
@@ -358,7 +368,7 @@ export const getCampaignStats = async (): Promise<{
     totalMessagesSent: number;
     averageSuccessRate: number;
 }> => {
-    const response = await apiClient.get('/relance/admin/campaigns/stats');
+    const response = await apiClient.get('/relance/admin/campaigns/stats', { params: filters });
     return response.data.data;
 };
 
@@ -521,4 +531,47 @@ export const adminUpdateUserConfig = async (
     data: { smsEnabled?: boolean }
 ): Promise<void> => {
     await apiClient.put(`/relance/admin/configs/${userId}`, data);
+};
+// ===== ADMIN OVERVIEW (the two products counted apart) =====
+
+export interface RelanceOverview {
+    /** Relance des nouveaux: filleuls with no campaign. */
+    nouveaux: { active: number; enrolledToday: number; paidLast30Days: number; finishedLast30Days: number };
+    campaigns: { byStatus: Record<string, number>; activeTargets: number };
+    sends: {
+        today: { email: number; sms: number; failed: number };
+        last7Days: { email: number; sms: number; failed: number };
+    };
+    /** Balances right now, every parrain (country only). */
+    credits: { emailLeft: number; smsLeft: number; parrainsWithCredits: number };
+    packs: { total: { count: number; amountXAF: number }; last30Days: { count: number; amountXAF: number } };
+}
+
+export const getAdminOverview = async (filters: AdminFilterParams = {}): Promise<RelanceOverview> => {
+    const response = await apiClient.get('/relance/admin/overview', { params: filters });
+    return response.data.data;
+};
+
+export interface RelanceParrain {
+    userId: string;
+    user: RelancePerson | null;
+    enabled: boolean;
+    enrollmentPaused: boolean;
+    sendingPaused: boolean;
+    smsEnabled: boolean;
+    emailBalance: number;
+    smsBalance: number;
+    emailsSentToday: number;
+    inLoop: { nouveaux: number; campaigns: number };
+    packs: { count: number; lastAt: string | null };
+}
+
+export const getAdminParrains = async (params: AdminFilterParams & {
+    page?: number;
+    limit?: number;
+    withCredits?: boolean;
+    userId?: string;
+}): Promise<{ parrains: RelanceParrain[]; total: number; page: number; totalPages: number }> => {
+    const response = await apiClient.get('/relance/admin/parrains', { params });
+    return response.data.data;
 };
