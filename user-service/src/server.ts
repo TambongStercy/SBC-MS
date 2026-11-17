@@ -10,6 +10,7 @@ import apiRoutes from './api/routes/index';
 import logger from './utils/logger';
 import { vcfCacheScheduler } from './jobs/vcf-cache-scheduler';
 import { leaderboardBonusScheduler } from './jobs/leaderboard-bonus-scheduler';
+import { canalDeVenteJob } from './jobs/canal-de-vente.job';
 import { subscriptionEndingScheduler } from './jobs/subscription-ending-scheduler';
 import { contactsWebhookJob } from './jobs/contacts-webhook.job';
 
@@ -90,6 +91,7 @@ async function startServer() {
 
         // Monthly leaderboard bonus payout (no-op unless LEADERBOARD_BONUS_ENABLED)
         leaderboardBonusScheduler.start();
+        canalDeVenteJob.start();
         subscriptionEndingScheduler.start();
         contactsWebhookJob.start();
 
@@ -111,6 +113,7 @@ async function startServer() {
             vcfCacheScheduler.stop();
             logger.info('[Server] VCF cache scheduler stopped');
             leaderboardBonusScheduler.stop();
+            canalDeVenteJob.stop();
             subscriptionEndingScheduler.stop();
             contactsWebhookJob.stop();
             process.exit(0);
