@@ -18,7 +18,8 @@ interface IConfig {
     host: string;
     logLevel: string;
     cors: {
-        origin: string;
+        /** '*' or an explicit list of allowed origins. */
+        origin: string | string[];
         methods: string[];
         allowedHeaders: string[];
     };
@@ -48,7 +49,14 @@ const config: IConfig = {
     logLevel: process.env.LOG_LEVEL || 'info',
 
     cors: {
-        origin: process.env.CORS_ORIGIN || '*',
+        // "https://a.com,https://b.com" becomes a list: the cors package compares a
+        // plain string to the Origin header as a whole, so a comma list would match nobody.
+        origin: (() => {
+            const raw = (process.env.CORS_ORIGIN || '*').trim();
+            if (raw === '*') return '*';
+            const list = raw.split(',').map(o => o.trim().replace(/\/+$/, '')).filter(Boolean);
+            return list.length === 1 ? list[0] : list;
+        })(),
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Service-Name']
     },

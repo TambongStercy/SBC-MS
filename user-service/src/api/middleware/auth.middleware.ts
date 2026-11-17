@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../../utils/jwt'; // Adjust path as needed
 import config from '../../config';
@@ -77,6 +78,14 @@ export const authenticate = async (req: AuthenticatedRequest, res: Response, nex
     }
 };
 
+/** Constant-time comparison of a presented secret with the expected one. */
+function secretEquals(presented: string | undefined, expected: string | undefined): boolean {
+    if (!presented || !expected) return false;
+    const a = createHash('sha256').update(presented).digest();
+    const b = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(a, b);
+}
+
 /**
  * Middleware for service-to-service authentication
  * This middleware checks for a service token (shared secret) and optional service name
@@ -94,7 +103,7 @@ export const authenticateServiceRequest = async (req: Request, res: Response, ne
         const token = authHeader.split(' ')[1];
 
         // Validate service token against the shared secret
-        if (token !== config.services.serviceSecret) { // Use the correct config path
+        if (!secretEquals(token, config.services.serviceSecret)) { // constant-time: no timing leak of the secret
             log.warn('Invalid service token');
             return res.status(403).json({ success: false, message: 'Invalid service token' });
         }

@@ -1,9 +1,19 @@
+import { createHash, timingSafeEqual } from 'crypto';
 import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import config from '../../config';
 import path from 'path';
 import logger from '../../utils/logger';
 import { AccessLevel, AdminModule, allows, resolveAdminRoute } from './admin-routes';
+
+/** Constant-time comparison of a presented secret with the expected one. */
+function secretEquals(presented: string | undefined, expected: string | undefined): boolean {
+    if (!presented || !expected) return false;
+    const a = createHash('sha256').update(presented).digest();
+    const b = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(a, b);
+}
+
 
 const log = logger.getLogger('AdminAllowlist');
 
@@ -101,7 +111,7 @@ export const adminAllowlist = async (req: Request, res: Response, next: NextFunc
 
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-    if (token && token === config.services.serviceSecret) {
+    if (token && secretEquals(token, config.services.serviceSecret)) {
         return next();
     }
 

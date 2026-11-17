@@ -716,9 +716,13 @@ on the wrong pattern.
   `sbc-db-backups/mongodb-backups/` since 2026-11-02, the last 3 also in
   `/var/backups/sbc-mongodb`; older ones on `gs://db-backups-vps/`) restored
   into a scratch DB.
-- **user-service logs every OTP code in clear** (`Generated OTP <code> …`,
-  `user.service.ts:628`). Useful for forensics (proves who validated a code),
-  but anyone with log access can log in as a member while a code is valid.
+- **OTP codes are no longer logged** (since 2026-11-17): the log shows
+  `fp=<10 hex>`, an HMAC of the lower-cased code keyed with `SERVICE_SECRET`
+  (`otpFingerprint`, `user-service/src/utils/otp.utils.ts`; payment-service's
+  withdrawal OTP uses the same formula). To prove who validated a code, compute
+  the fingerprint of the code you have and search for it. Before that date the
+  logs held every code in clear (`Generated OTP <code> …`), so anyone with log
+  access could sign in as a member while a code was valid.
 - **The admin panel has no direct-payout screen.** `POST /api/withdrawals/admin/direct`
   is API-only, so any direct payout was sent by a hand-made request (curl/Postman).
 - Logs: `~/.pm2/logs`, ~3 days kept. Access-log lines (IP + user agent) are in

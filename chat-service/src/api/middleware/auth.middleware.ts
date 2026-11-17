@@ -1,7 +1,17 @@
+import { createHash, timingSafeEqual } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, JwtPayload } from '../../utils/jwt';
 import config from '../../config';
 import logger from '../../utils/logger';
+
+/** Constant-time comparison of a presented secret with the expected one. */
+function secretEquals(presented: string | undefined, expected: string | undefined): boolean {
+    if (!presented || !expected) return false;
+    const a = createHash('sha256').update(presented).digest();
+    const b = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(a, b);
+}
+
 
 const log = logger.getLogger('AuthMiddleware');
 
@@ -67,7 +77,7 @@ export const authenticateServiceRequest = async (
 
         const token = authHeader.split(' ')[1];
 
-        if (token !== config.services.serviceSecret) {
+        if (!secretEquals(token, config.services.serviceSecret)) {
             return res.status(403).json({
                 success: false,
                 message: 'Invalid service token'
