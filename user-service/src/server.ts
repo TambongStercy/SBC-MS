@@ -14,6 +14,7 @@ import { canalDeVenteJob } from './jobs/canal-de-vente.job';
 import { subscriptionEndingScheduler } from './jobs/subscription-ending-scheduler';
 import { contactsWebhookJob } from './jobs/contacts-webhook.job';
 import { ledgerCheckJob } from './jobs/ledger-check.job';
+import { conversionRetryJob } from './jobs/conversion-retry.job';
 
 // Create Express server
 const app: Express = express();
@@ -96,6 +97,7 @@ async function startServer() {
         subscriptionEndingScheduler.start();
         contactsWebhookJob.start();
         ledgerCheckJob.start(); // nightly wallet ledger check (read-only, opens ledger_mismatch cases)
+        conversionRetryJob.start(); // finishes conversions whose credit leg did not land
 
         // Build the first leaderboard snapshot now, so the first visitor after
         // a deploy is not the one who pays for the cold aggregation.
@@ -119,6 +121,7 @@ async function startServer() {
             subscriptionEndingScheduler.stop();
             contactsWebhookJob.stop();
             ledgerCheckJob.stop();
+            conversionRetryJob.stop();
             process.exit(0);
         };
 

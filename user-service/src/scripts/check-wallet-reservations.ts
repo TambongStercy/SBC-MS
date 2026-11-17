@@ -211,6 +211,41 @@ const doc = async (id: Types.ObjectId) => (await UserModel.collection.findOne({ 
     probe.apiClient.defaults.baseURL = savedBase;
     ok('(15) hasPendingTransactions fails closed (true) when payment-service is unreachable');
 
+    // (16) a conversion whose credit leg does not land: one open per member, finished by the retry job
+    const WalletConversionModel = require('../database/models/wallet-conversion.model').default;
+    await WalletConversionModel.syncIndexes();
+    const { retryPendingConversions } = require('../services/wallet-conversion.service');
+    const u16 = await user({ balance: 10000, usdBalance: 0 });
+    const realUsd = userRepository.updateUsdBalance;
+    (userRepository as any).updateUsdBalance = async (id: any, delta: number, mv: any) => {
+        if (delta > 0) throw new Error('user-service hiccup');
+        return realUsd.call(userRepository, id, delta, mv);
+    };
+    const first = await userService.convertXafToUsd(u16, 1000);
+    assert.strictEqual(first.success, false);
+    assert.match(first.message, /crédité automatiquement/);
+    assert.strictEqual((await doc(u16)).balance, 9000, 'debited once');
+    const second = await userService.convertXafToUsd(u16, 1000);
+    assert.match(second.message, /déjà en cours/, 'no second conversion while one is pending');
+    assert.strictEqual((await doc(u16)).balance, 9000, 'no second debit');
+    assert.strictEqual((await retryPendingConversions(new Date(Date.now() + 5 * 60000))).stillPending, 1, 'still failing → still pending');
+    (userRepository as any).updateUsdBalance = realUsd;
+    const done16 = await retryPendingConversions(new Date(Date.now() + 5 * 60000));
+    assert.strictEqual(done16.credited, 1);
+    await retryPendingConversions(new Date(Date.now() + 5 * 60000));
+    const d16 = await doc(u16);
+    const row16 = await WalletConversionModel.findOne({ userId: u16 }).lean();
+    assert.ok(row16.toAmount > 0);
+    assert.strictEqual(d16.usdBalance, row16.toAmount, 'credited once');
+    assert.strictEqual(await WalletConversionModel.countDocuments({ userId: u16, open: true }), 0);
+    assert.strictEqual((await userService.convertXafToUsd(u16, 1000)).success, true, 'a new conversion is allowed afterwards');
+    ok('(16) credit leg failing → conversion pending (no second conversion), retry job credits once under the same reference');
+
+    // (17) a conversion that never debited is closed by the retry job
+    await WalletConversionModel.collection.insertOne({ reference: 'conversion:stale', userId: u16, fromCurrency: 'XAF', fromAmount: 10, toCurrency: 'USD', toAmount: 0.02, state: 'started', open: true, attempts: 0, createdAt: new Date(Date.now() - 3600_000), updatedAt: new Date(Date.now() - 3600_000) });
+    assert.strictEqual((await retryPendingConversions()).abandoned, 1);
+    ok('(17) a conversion whose debit never happened is abandoned (closed) by the retry job');
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
     console.log(`\nALL PASSED (${passed})`);
