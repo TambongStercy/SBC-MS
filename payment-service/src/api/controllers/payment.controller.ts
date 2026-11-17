@@ -1714,11 +1714,26 @@ export class PaymentController {
                 return;
             }
 
-            if (!amount || amount <= 0) {
+            // A finite positive number, or nothing is compared (NaN passed every check before).
+            const amountValue = typeof amount === 'number' ? amount : (typeof amount === 'string' && amount.trim() !== '' ? Number(amount) : NaN);
+            if (!Number.isFinite(amountValue) || amountValue <= 0) {
                 res.status(400).json({
                     success: false,
                     message: 'Montant valide et positif requis'
                 });
+                return;
+            }
+            // The plan priced below is exactly the plan granted: only packs with a known price.
+            const MANUAL_PLANS: Record<string, { planId: string; planName: string; isUpgrade: boolean }> = {
+                CLASSIQUE: { planId: 'CLASSIQUE', planName: 'Abonnement Classique', isUpgrade: false },
+                CIBLE: { planId: 'CIBLE', planName: 'Abonnement Ciblé', isUpgrade: false },
+                UPGRADE: { planId: 'CIBLE', planName: 'Upgrade to Ciblé', isUpgrade: true },
+            };
+            const requestedPlan = metadata?.subscriptionType === undefined || metadata?.subscriptionType === null || metadata?.subscriptionType === ''
+                ? 'CLASSIQUE' : String(metadata.subscriptionType).toUpperCase();
+            const planDef = MANUAL_PLANS[requestedPlan];
+            if (!planDef) {
+                res.status(400).json({ success: false, code: 'UNKNOWN_PLAN', message: `Pack ${requestedPlan} non activable manuellement (prix inconnu). Packs possibles : CLASSIQUE, CIBLE, UPGRADE.` });
                 return;
             }
 
@@ -1786,7 +1801,7 @@ export class PaymentController {
                 return;
             }
             const adminId = (req as any).user?.userId || (req as any).user?.id || 'admin';
-            const planKey = metadata?.subscriptionType === 'UPGRADE' ? 'UPGRADE' : metadata?.subscriptionType === 'CIBLE' ? 'CIBLE' : 'CLASSIQUE';
+            const planKey = requestedPlan;
             let verified: any;
             let claimedRefs: string[] = [];
             try {
@@ -1794,7 +1809,7 @@ export class PaymentController {
                 // paid for another account, amount >= pack price and >= `amount`.
                 const out = await supportFinanceService.verifyExternalPayment({
                     gateway: provider, ref: reference, userId: String(userId), plan: planKey, by: `admin:${adminId}`,
-                    minAmount: Number(amount), requestId: String(req.header('x-request-id') || 'admin'),
+                    minAmount: amountValue, requestId: String(req.header('x-request-id') || 'admin'),
                 });
                 verified = out.answer;
                 claimedRefs = out.refs;
@@ -1852,13 +1867,17 @@ export class PaymentController {
                 log.warn(`Erreur lors de la récupération des informations utilisateur pour ${userId}:`, userFetchError.message);
             }
 
-            // metadata may describe the plan, never where the result is sent.
-            const { callbackPath: _cb, originatingService: _os, userId: _uid, ...safeMetadata } = (metadata && typeof metadata === 'object') ? metadata : ({} as any);
+            // metadata may carry notes, never where the result is sent nor what is granted
+            // (plan fields and product keys are set from the priced plan only).
+            const {
+                callbackPath: _cb, originatingService: _os, userId: _uid, product: _p, offerId: _o, winnerFrom: _w,
+                planId: _pi, planType: _pt, planName: _pn, isUpgrade: _iu, ...safeMetadata
+            } = (metadata && typeof metadata === 'object') ? metadata : ({} as any);
 
             // Create the payment intent with proper webhook metadata
             const paymentIntent = await paymentService.createPaymentIntent({
                 userId,
-                amount,
+                amount: amountValue,
                 currency: finalCurrency,
                 paymentType,
                 metadata: {
@@ -1866,12 +1885,11 @@ export class PaymentController {
                     ...safeMetadata,
                     // Core subscription metadata (matches normal payment intent structure)
                     userId: userId,
-                    planId: metadata.subscriptionType || 'CLASSIQUE',
-                    planName: metadata.subscriptionType === 'CLASSIQUE' ? 'Abonnement Classique' : 
-                              metadata.subscriptionType === 'CIBLE' ? 'Abonnement Ciblé' : 
-                              metadata.subscriptionType === 'UPGRADE' ? 'Upgrade to Ciblé' : 'Abonnement Classique',
-                    planType: metadata.subscriptionType || 'CLASSIQUE',
-                    isUpgrade: metadata.subscriptionType === 'UPGRADE',
+                    subscriptionType: requestedPlan,
+                    planId: planDef.planId,
+                    planName: planDef.planName,
+                    planType: planDef.planId,
+                    isUpgrade: planDef.isUpgrade,
                     
                     // Service communication metadata
                     originatingService: 'user-service',
@@ -1907,7 +1925,7 @@ export class PaymentController {
                              provider === 'feexpay' ? 'feexpay' :
                              provider === 'moneyfusion' ? 'moneyfusion' :
                              provider === 'nowpayments' ? 'nowpayments' : 'testing',
-                    paidAmount: amount,
+                    paidAmount: amountValue,
                     paidCurrency: finalCurrency
                 };
 

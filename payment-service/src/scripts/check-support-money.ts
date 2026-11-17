@@ -588,6 +588,40 @@ const main = async () => {
     ok('(28) an older user-service without the reservation route → withdrawal refused with 503');
     void config2; void lifecycle;
 
+    // (29) admin manual intent: the exact plan granted is the one priced; amount must be a number
+    axiosRoutes.push({ match: /single\/status\/FX-ADMIN-2150/, reply: () => ({ data: { status: 'SUCCESSFUL', amount: 2150 } }) });
+    const u29 = await member({});
+    const admin29 = (body: any) => call('post', '/admin/create-manual-intent', { userId: u29, provider: 'feexpay', force: true, externalReference: 'FX-ADMIN-2150', ...body });
+    const winner = await admin29({ amount: 2150, metadata: { subscriptionType: 'WINNER' } });
+    assert.strictEqual(winner.status, 400); assert.strictEqual(winner.data.code, 'UNKNOWN_PLAN');
+    assert.strictEqual((await admin29({ amount: 2150, metadata: { subscriptionType: 'VISIBILITE_MAX' } })).status, 400);
+    assert.strictEqual((await admin29({ amount: 'abc' })).status, 400, 'non-numeric amount refused');
+    assert.strictEqual((await admin29({ amount: -5 })).status, 400);
+    const cible = await admin29({ amount: 2150, metadata: { subscriptionType: 'CIBLE' } });
+    assert.strictEqual(cible.status, 422); assert.strictEqual(cible.data.code, 'AMOUNT_TOO_LOW', 'a CLASSIQUE-priced payment cannot buy CIBLE');
+    const classic = await admin29({ amount: '2150', metadata: { subscriptionType: 'classique', product: 'WINNER', planId: 'WINNER', isUpgrade: true } });
+    assert.strictEqual(classic.status, 201);
+    const pi29 = await PaymentIntentModel.findOne({ gatewayPaymentId: 'FX-ADMIN-2150' }).lean();
+    assert.strictEqual(pi29.metadata.planId, 'CLASSIQUE', 'granted plan = priced plan');
+    assert.strictEqual(pi29.metadata.isUpgrade, false);
+    assert.strictEqual(pi29.metadata.product, undefined, 'product key stripped');
+    assert.strictEqual(pi29.amount, 2150);
+    ok('(29) admin manual intent: WINNER/VISIBILITE_MAX refused, NaN/negative amount refused, CIBLE needs the CIBLE price, plan fields come from the priced plan');
+
+    // (30) transaction-recovery script settles through withdrawal:<txId>, once
+    const { settleRecoveredWithdrawal } = require('./transaction-recovery.script');
+    const u30 = await member({ balance: 10000 });
+    const t30 = await TransactionModel.create({
+        transactionId: `recovered-${n++}`, userId: new Types.ObjectId(u30), type: TransactionType.WITHDRAWAL, amount: 3075, fee: 75,
+        currency: Currency.XAF, status: TransactionStatus.COMPLETED, description: 'restored by the recovery script',
+    });
+    await settleRecoveredWithdrawal(t30);
+    await settleRecoveredWithdrawal(t30);
+    await lifecycle.settleCompletedWithdrawal(t30.toObject(), 'later-reconciliation');
+    assert.strictEqual((await userDoc(u30)).balance, 10000 - 3075, 'debited once');
+    assert.strictEqual(await WalletMovementModel.countDocuments({ reference: `withdrawal:${t30.transactionId}` }), 1);
+    ok('(30) recovery-script debits go through settlement (withdrawal:<txId>): a later settlement does not debit again');
+
     console.log(`\nALL PASSED (${passed})`);
     for (const s of [userSrv.server, supportSrv.server, paySrv.server]) s.close();
 };

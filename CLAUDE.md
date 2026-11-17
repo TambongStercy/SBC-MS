@@ -421,11 +421,20 @@ push), so a hijacker cannot silence it.
   `regularize` route. A provider-confirmed success still completes a FAILED withdrawal (debit
   once, divergence case).
 - **Deploy order:** user-service first (wallet routes `/api/users/internal/wallet/*`), then
-  payment-service. Against an older user-service, payment-service refuses withdrawals with a
-  503 ("mise à jour en cours") — nothing is paid without a reservation. Set
-  `NOWPAYMENTS_IPN_SECRET` (webhooks without a valid signature get 401) and
-  `SUPPORT_SERVICE_URL` in both services. Kill switches: `LEDGER_CHECK_DISABLED`,
-  `FINANCE_RECONCILIATION_DISABLED`.
+  payment-service **immediately after, back to back**. Against an older user-service,
+  payment-service refuses withdrawals with a 503 ("mise à jour en cours") — nothing is paid
+  without a reservation. The other mix is the dangerous one: a new user-service guards every
+  debit (`balance - debt - reserved`), and the OLD payment-service's FeexPay webhook handler
+  marks a payout FAILED when its debit is refused — a paid payout recorded as failed. Keep
+  the window between the two deploys as short as possible; `WITHDRAWALS_ENABLED=false` stops
+  new payouts but not the webhooks of payouts already sent, so it does not close this window.
+- **Required:** `NOWPAYMENTS_IPN_SECRET` in payment-service `.env` (every NOWPayments
+  webhook without a valid HMAC is refused with 401, and crypto payins only complete through
+  them). `SUPPORT_SERVICE_URL` in both services (cases are only logged without it).
+- **Prod MongoDB must be ≥ 5.0** for the partial unique indexes
+  (`paymentintents.uniq_gateway_ref_since_20261118`, `transactions.uniq_user_idempotency_key`,
+  `walletconversions.one_open_conversion_per_user`); check with `db.version()` before deploying.
+- Kill switches: `LEDGER_CHECK_DISABLED`, `FINANCE_RECONCILIATION_DISABLED`.
 - Assertions: `user-service/src/scripts/check-wallet-reservations.ts`,
   `payment-service/src/scripts/check-support-money.ts` (test DBs only).
 

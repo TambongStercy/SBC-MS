@@ -16,6 +16,16 @@ import { paymentIntentRepository } from '../database/repositories/paymentIntent.
 import TransactionModel from '../database/models/transaction.model';
 import PaymentIntentModel from '../database/models/PaymentIntent';
 import { userServiceClient } from '../services/clients/user.service.client';
+import { settleCompletedWithdrawal } from '../services/withdrawal-lifecycle';
+
+/**
+ * A recovered (COMPLETED) withdrawal is debited like any completed payout:
+ * once, under withdrawal:<txId>, never with a plain balance update.
+ */
+export async function settleRecoveredWithdrawal(transaction: any): Promise<void> {
+    const plain = typeof transaction?.toObject === 'function' ? transaction.toObject() : transaction;
+    await settleCompletedWithdrawal(plain, 'transaction-recovery-script');
+}
 import { getCountryCodeFromPhoneNumber } from '../utils/operatorMaps';
 import { 
     RecoveryProvider, 
@@ -1202,8 +1212,9 @@ class TransactionRecoveryService {
                 
                 await transaction.save();
 
-                // Update user balance (deduct the amount since it was withdrawn)
-                await userServiceClient.updateUserBalance(userId, -transactionData.amount);
+                // Debit through withdrawal settlement (ledger ref withdrawal:<txId>): a later
+                // settlement of the same withdrawal (webhook below, reconciliation) cannot debit again.
+                await settleRecoveredWithdrawal(transaction);
 
                 // Trigger webhook processing for additional effects
                 // If the internal transaction doesn't exist, skip webhook processing
@@ -1651,8 +1662,8 @@ class TransactionRecoveryService {
         
         await transaction.save();
 
-        // Update user balance
-        await userServiceClient.updateUserBalance(userId, -record.amount);
+        // Debit through withdrawal settlement (ledger ref withdrawal:<txId>), once.
+        await settleRecoveredWithdrawal(transaction);
     }
 
     /**

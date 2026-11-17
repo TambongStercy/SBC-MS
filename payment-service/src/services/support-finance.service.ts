@@ -303,6 +303,9 @@ class SupportFinanceService {
         countryCode?: string; minAmount?: number; requestId: string;
     }): Promise<{ answer: ProviderAnswer; refs: string[]; price: number }> {
         const gateway = input.gateway.toLowerCase();
+        if (input.minAmount !== undefined && (!Number.isFinite(input.minAmount) || input.minAmount <= 0)) {
+            throw Object.assign(new AppError('Montant attendu invalide.', 400), { code: 'INVALID_AMOUNT' });
+        }
         const claimed: string[] = [];
         const releaseAll = async () => { for (const r of claimed) await this.releaseExternalRef(gateway, r); };
         const refuse = (status: number, code: string, message: string, answer?: ProviderAnswer) => Object.assign(new AppError(message, status), {
@@ -337,8 +340,8 @@ class SupportFinanceService {
             const prices = await userServiceClient.getPlanPrices();
             const planKey = String(input.plan || '').toUpperCase() as 'CLASSIQUE' | 'CIBLE' | 'UPGRADE';
             const isUsd = gateway === 'nowpayments';
-            const price = prices?.[planKey]?.[isUsd ? 'USD' : 'XAF'];
-            if (!(price > 0)) throw refuse(400, 'UNKNOWN_PLAN', 'Pack inconnu.');
+            const price = Number(prices?.[planKey]?.[isUsd ? 'USD' : 'XAF']);
+            if (!Number.isFinite(price) || price <= 0) throw refuse(400, 'UNKNOWN_PLAN', 'Pack inconnu.');
             const currency = String(answer.currency || (isUsd ? 'USD' : 'XAF')).toUpperCase();
             const acceptable = isUsd ? ['USD'] : ['XAF', 'XOF']; // XAF/XOF are 1:1
             if (!acceptable.includes(currency)) {
@@ -348,7 +351,8 @@ class SupportFinanceService {
                 throw refuse(422, 'AMOUNT_UNVERIFIED', 'Le prestataire ne donne pas le montant payé : activation manuelle impossible.', answer);
             }
             const needed = Math.max(price, input.minAmount ?? 0);
-            if (Number(answer.amount) < needed - 0.01) {
+            const paid = Number(answer.amount);
+            if (!Number.isFinite(paid) || paid < needed - 0.01) {
                 throw refuse(422, 'AMOUNT_TOO_LOW', `Montant payé ${answer.amount} ${currency}, inférieur au prix du pack (${needed}).`, answer);
             }
             return { answer, refs: claimed, price };
