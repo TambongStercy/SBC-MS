@@ -1,98 +1,67 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Search, RefreshCw, Wrench } from 'lucide-react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
+import React, { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon, MoreHorizontalIcon, Tick02Icon } from '@hugeicons/core-free-icons';
 import {
     WithdrawalTransaction,
     formatCurrency,
-    formatDate,
     getStuckMoneyFusionWithdrawals,
     manualCompleteWithdrawal,
     manualFailWithdrawal,
 } from '../services/adminWithdrawalApi';
-import ToastContainer from '../components/common/ToastContainer';
 import { useToast } from '../hooks/useToast';
-import Pagination from '../components/common/Pagination';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { Tick02Icon, Cancel01Icon } from '@hugeicons/core-free-icons';
+import { formatMoney } from '../components/common/format';
+import { Can } from '../components/Can';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PaymentsFilterRow } from '../components/payments/PaymentsFilterRow';
+import {
+    Button, Dialog, DialogContent, Field, Menu, MenuContent, MenuItem, MenuTrigger, PageHeader, Textarea,
+} from '../components/ui';
+import { CheckFirst, CopyValue } from '../components/payments/shared';
+import { StuckWithdrawalQueue } from '../components/payments/StuckWithdrawalQueue';
+import { STUCK_KEY, providerRef } from '../components/payments/stuck';
 
 /**
- * Dedicated page for reconciling MoneyFusion withdrawals stuck in PROCESSING.
- * Rationale: MF doesn't deliver payout webhooks, so admin has to confirm
- * out-of-band (MF dashboard / recipient confirmation) and click here to either
- * mark completed (debits wallet) or mark failed (no wallet movement).
- *
- * Mirrors the shape of FixFeexpayPaymentsPage but for withdrawals instead of
- * payins. Each row exposes the recipient phone + amount the admin needs to
- * verify against the MF dashboard before deciding.
+ * MoneyFusion withdrawals stuck in PROCESSING / PENDING. MF has no payout
+ * status API, so the admin confirms on the MF dashboard (by tokenPay, or the
+ * gross amount rounded) and marks each one paid (debits the wallet) or
+ * failed (wallet untouched, reason required).
  */
-const PAGE_SIZE = 20;
-
 interface FixMoneyFusionWithdrawalsPageProps {
     embedded?: boolean;
 }
 
 const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps> = ({ embedded = false }) => {
-    const { toasts, removeToast, showSuccess, showError } = useToast();
+    const { showSuccess, showError } = useToast();
+    const queryClient = useQueryClient();
+    const filters = usePageFilters();
 
-    const [withdrawals, setWithdrawals] = useState<WithdrawalTransaction[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalCount, setTotalCount] = useState(0);
-    // What's typed, and what's searched: the second follows the first after a pause.
-    const [searchInput, setSearchInput] = useState('');
-    const [search, setSearch] = useState('');
-
-    // Per-row state — which transaction is currently being acted on + the
-    // expanded reason input for failure.
+    const [details, setDetails] = useState<WithdrawalTransaction | null>(null);
     const [actingOn, setActingOn] = useState<string | null>(null);
-    const [failReasonByTx, setFailReasonByTx] = useState<Record<string, string>>({});
-    const [showFailFormFor, setShowFailFormFor] = useState<string | null>(null);
     const [confirmComplete, setConfirmComplete] = useState<WithdrawalTransaction | null>(null);
+    const [failTarget, setFailTarget] = useState<WithdrawalTransaction | null>(null);
+    const [failReason, setFailReason] = useState('');
 
-    const fetchData = useCallback(async () => {
-        try {
-            setError(null);
-            setLoading(true);
-            const res = await getStuckMoneyFusionWithdrawals(page, PAGE_SIZE, search.trim() || undefined);
-            setWithdrawals(res.data.withdrawals);
-            setTotalPages(res.data.pagination.totalPages);
-            setTotalCount(res.data.pagination.total);
-        } catch (err: any) {
-            setError(err.message || 'Impossible de charger les retraits bloqués');
-        } finally {
-            setLoading(false);
-        }
-    }, [page, search]);
-
-    useEffect(() => { fetchData(); }, [fetchData]);
-
-    useEffect(() => {
-        const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
-        return () => clearTimeout(t);
-    }, [searchInput]);
-
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e.target.value);
+    const refresh = () => queryClient.invalidateQueries({ queryKey: STUCK_KEY });
 
     const handleMarkCompleted = async (tx: WithdrawalTransaction) => {
         setActingOn(tx.transactionId);
         try {
             await manualCompleteWithdrawal(tx.transactionId, {});
             showSuccess(`Retrait ${tx.transactionId} marqué payé ; ${formatCurrency(tx.amount, tx.currency)} débité du portefeuille du membre.`);
-            await fetchData();
-        } catch (e: any) {
-            showError(e.message || 'Impossible de marquer le retrait comme payé');
+            await refresh();
+        } catch (e: unknown) {
+            showError((e instanceof Error ? e.message : '') || 'Impossible de marquer le retrait comme payé');
         } finally {
             setActingOn(null);
         }
     };
 
-    const handleMarkFailed = async (tx: WithdrawalTransaction) => {
-        const reason = (failReasonByTx[tx.transactionId] || '').trim();
+    const handleMarkFailed = async () => {
+        const tx = failTarget;
+        if (!tx || actingOn) return;
+        const reason = failReason.trim();
         if (!reason) {
             showError("Le motif de l'échec est obligatoire");
             return;
@@ -101,184 +70,148 @@ const FixMoneyFusionWithdrawalsPage: React.FC<FixMoneyFusionWithdrawalsPageProps
         try {
             await manualFailWithdrawal(tx.transactionId, { reason });
             showSuccess(`Retrait ${tx.transactionId} marqué en échec.`);
-            setShowFailFormFor(null);
-            setFailReasonByTx((m) => ({ ...m, [tx.transactionId]: '' }));
-            await fetchData();
-        } catch (e: any) {
-            showError(e.message || "Impossible de marquer le retrait en échec");
+            setFailTarget(null);
+            setFailReason('');
+            await refresh();
+        } catch (e: unknown) {
+            showError((e instanceof Error ? e.message : '') || "Impossible de marquer le retrait en échec");
         } finally {
             setActingOn(null);
         }
     };
 
-    return (
-        <div>
-            {!embedded && <Header title="Retraits MoneyFusion bloqués" />}
-            <main>
-                <motion.div
-                    className="bg-surface rounded-xl p-6 border border-line mb-6"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                >
-                    <div className="flex flex-wrap items-center gap-3 mb-4">
-                        <div className="relative flex-1 min-w-[12rem]">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted w-4 h-4" />
-                            <input
-                                type="text"
-                                value={searchInput}
-                                onChange={handleSearchChange}
-                                placeholder="Rechercher par nom, e-mail, téléphone, ID transaction ou numéro MoMo"
-                                className="w-full pl-10 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                        </div>
-                        <button
-                            onClick={fetchData}
-                            className="flex items-center gap-2 px-4 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3"
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            Actualiser
-                        </button>
-                    </div>
+    // Actions opened from the details sheet close it first (one dialog at a time).
+    const askComplete = (tx: WithdrawalTransaction) => { setDetails(null); setConfirmComplete(tx); };
+    const askFail = (tx: WithdrawalTransaction) => { setDetails(null); setFailReason(''); setFailTarget(tx); };
 
-                    <div className="text-sm text-fg-muted mb-2">
-                        {loading ? 'Chargement…' : `${totalCount} retrait${totalCount > 1 ? 's' : ''} bloqué${totalCount > 1 ? 's' : ''}${search.trim() ? ` pour « ${search.trim()} »` : ''}`}
-                    </div>
-
-                    {error && (
-                        <div className="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-3 text-red-800 dark:text-red-200 mb-4">{error}</div>
-                    )}
-                </motion.div>
-
-                <motion.div
-                    className="bg-surface rounded-xl border border-line overflow-hidden"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    {loading ? (
-                        <div className="p-12 flex justify-center"><Loader name="Chargement des retraits bloqués…" /></div>
-                    ) : withdrawals.length === 0 ? (
-                        <div className="p-12 text-center text-fg-muted">
-                            <Wrench className="w-12 h-12 mx-auto mb-3 text-fg-subtle" />
-                            <p>Aucun retrait MoneyFusion bloqué pour le moment.</p>
-                            <p className="text-xs mt-2">Les retraits validés et envoyés à MoneyFusion apparaissent ici jusqu'à ce que vous les marquiez payés ou en échec.</p>
-                        </div>
+    const rowActions = (tx: WithdrawalTransaction, phone: boolean) => {
+        const busy = actingOn === tx.transactionId;
+        return (
+            <Can module="payments" write fallback={phone ? null : <span className="text-xs text-fg-subtle">Lecture seule</span>}>
+                <div className={phone ? 'grid grid-cols-2 gap-2' : 'flex items-center justify-end gap-1'} onClick={e => e.stopPropagation()} role="presentation">
+                    <Button variant="soft" size={phone ? 'lg' : 'sm'} loading={busy} onClick={() => askComplete(tx)}>
+                        {!busy && <HugeiconsIcon icon={Tick02Icon} size={16} aria-hidden="true" />}
+                        Marquer payé
+                    </Button>
+                    {phone ? (
+                        <Button variant="danger-ghost" size="lg" disabled={busy} onClick={() => askFail(tx)}>
+                            <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+                            En échec
+                        </Button>
                     ) : (
-                        <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-surface-2 text-fg-muted">
-                                <tr>
-                                    <th className="px-4 py-3 text-left">Membre</th>
-                                    <th className="px-4 py-3 text-left">Montant (brut)</th>
-                                    <th className="px-4 py-3 text-left">MoMo du bénéficiaire</th>
-                                    <th className="px-4 py-3 text-left">Demandé le</th>
-                                    <th className="px-4 py-3 text-left">MF tokenPay</th>
-                                    <th className="px-4 py-3 text-left">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {withdrawals.map((tx) => {
-                                    const recipientMomo = (tx as any).metadata?.accountInfo?.fullMomoNumber || '—';
-                                    const tokenPay = tx as any;
-                                    const mfToken = tokenPay.externalTransactionId || tokenPay.metadata?.moneyFusionTokenPay || '—';
-                                    const isActing = actingOn === tx.transactionId;
-                                    const showingFail = showFailFormFor === tx.transactionId;
-                                    return (
-                                        <tr key={tx.transactionId} className="border-t border-line align-top">
-                                            <td className="px-4 py-3">
-                                                <div className="text-fg">{tx.userName || 'Inconnu'}</div>
-                                                <div className="text-xs text-fg-muted">{tx.userEmail}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-fg font-mono">{formatCurrency(tx.amount, tx.currency)}</td>
-                                            <td className="px-4 py-3 font-mono text-fg">{recipientMomo}</td>
-                                            <td className="px-4 py-3 text-fg-muted">{formatDate(tx.createdAt)}</td>
-                                            <td className="px-4 py-3 font-mono text-xs text-fg-muted break-all">{mfToken}</td>
-                                            <td className="px-4 py-3">
-                                                {!showingFail ? (
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => setConfirmComplete(tx)}
-                                                            disabled={isActing}
-                                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded-sm hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
-                                                        >
-                                                            {isActing ? 'En cours…' : <><HugeiconsIcon icon={Tick02Icon} size={14} />Marquer payé</>}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setShowFailFormFor(tx.transactionId)}
-                                                            disabled={isActing}
-                                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded-sm hover:bg-red-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
-                                                        >
-                                                            <HugeiconsIcon icon={Cancel01Icon} size={14} />
-                                                            Marquer en échec
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex flex-col gap-2">
-                                                        <input
-                                                            type="text"
-                                                            value={failReasonByTx[tx.transactionId] || ''}
-                                                            onChange={(e) => setFailReasonByTx((m) => ({ ...m, [tx.transactionId]: e.target.value }))}
-                                                            placeholder="Motif (obligatoire)"
-                                                            className="px-2 py-1 bg-surface border border-line-strong rounded-sm text-xs text-fg placeholder-fg-subtle"
-                                                        />
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setShowFailFormFor(null);
-                                                                    setFailReasonByTx((m) => ({ ...m, [tx.transactionId]: '' }));
-                                                                }}
-                                                                className="px-3 py-1 text-xs bg-surface-2 text-fg-muted rounded-sm hover:bg-surface-3"
-                                                            >
-                                                                Annuler
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleMarkFailed(tx)}
-                                                                disabled={isActing || !(failReasonByTx[tx.transactionId] || '').trim()}
-                                                                className="px-3 py-1 text-xs bg-red-600 text-white rounded-sm hover:bg-red-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
-                                                            >
-                                                                {isActing ? 'En cours…' : "Confirmer l'échec"}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                        </div>
+                        <Menu>
+                            <MenuTrigger asChild>
+                                <Button variant="ghost" size="icon-sm" disabled={busy} aria-label={`Autres actions pour le retrait ${tx.transactionId}`}>
+                                    <HugeiconsIcon icon={MoreHorizontalIcon} size={16} aria-hidden="true" />
+                                </Button>
+                            </MenuTrigger>
+                            <MenuContent>
+                                <MenuItem destructive onSelect={() => askFail(tx)}>
+                                    <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+                                    Marquer en échec…
+                                </MenuItem>
+                            </MenuContent>
+                        </Menu>
                     )}
+                </div>
+            </Can>
+        );
+    };
 
-                    {totalPages > 1 && (
-                        <div className="p-4 border-t border-line">
-                            <Pagination
-                                currentPage={page}
-                                totalPages={totalPages}
-                                onPageChange={setPage}
-                            />
-                        </div>
-                    )}
-                </motion.div>
-            </main>
+    const sheetActions = (tx: WithdrawalTransaction) => (
+        <Can module="payments" write>
+            <Button variant="danger-ghost" size="lg" disabled={actingOn === tx.transactionId} onClick={() => askFail(tx)}>
+                <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+                Marquer en échec
+            </Button>
+            <Button variant="primary" size="lg" loading={actingOn === tx.transactionId} onClick={() => askComplete(tx)}>
+                <HugeiconsIcon icon={Tick02Icon} size={16} aria-hidden="true" />
+                Marquer payé
+            </Button>
+        </Can>
+    );
+
+    return (
+        <div className="flex flex-col gap-6">
+            {!embedded && (
+                <PageHeader
+                    className="mb-0"
+                    title="Retraits MoneyFusion bloqués"
+                    description="Retraits envoyés à MoneyFusion dont la réponse n’est jamais arrivée : vérifiez chacun sur le tableau de bord MoneyFusion, puis marquez-le payé ou en échec."
+                />
+            )}
+            {!embedded && <PaymentsFilterRow filters={filters} />}
+
+            <StuckWithdrawalQueue
+                provider="moneyfusion"
+                fetcher={getStuckMoneyFusionWithdrawals}
+                providerName="MoneyFusion"
+                refLabel="tokenPay MoneyFusion"
+                actions={{ row: rowActions, sheet: sheetActions }}
+                detailsOpen={details}
+                onDetailsOpenChange={setDetails}
+                emptyDescription="Les retraits validés et envoyés à MoneyFusion apparaissent ici jusqu’à ce que vous les marquiez payés ou en échec."
+                checkFirst={(
+                    <CheckFirst>
+                        <p>
+                            MoneyFusion n’a pas d’API de statut : cherchez le retrait sur le tableau de bord MoneyFusion par son <strong className="font-medium text-fg">tokenPay</strong>,
+                            ou par le <strong className="font-medium text-fg">montant brut arrondi</strong> (jamais le net demandé).
+                        </p>
+                        <p>« Validé » chez MoneyFusion → <strong className="font-medium text-fg">Marquer payé</strong> (débite le portefeuille du membre). Absent ou refusé → <strong className="font-medium text-fg">Marquer en échec</strong> (portefeuille inchangé).</p>
+                    </CheckFirst>
+                )}
+            />
+
             {/* Marking completed debits the member's wallet: only once MoneyFusion shows the payout. */}
             <ConfirmationModal
                 isOpen={!!confirmComplete}
                 variant="success"
                 title="Marquer ce retrait comme payé ?"
                 message={confirmComplete && (
-                    <div className="space-y-1 text-sm">
-                        <p><span className="text-fg-muted">Vers :</span> {confirmComplete.metadata?.accountInfo?.fullMomoNumber || '—'}</p>
-                        <p><span className="text-fg-muted">Montant :</span> {formatCurrency(confirmComplete.amount, confirmComplete.currency)}</p>
-                        <p className="pt-2 text-fg-muted">Vérifie d'abord qu'il apparaît « Validé » sur le tableau de bord MoneyFusion. Le portefeuille du membre sera débité.</p>
+                    <div className="space-y-2 text-sm">
+                        <dl className="space-y-1">
+                            <div className="flex justify-between gap-3"><dt className="text-fg-muted">Membre</dt><dd className="text-right text-fg">{confirmComplete.userName || '—'}</dd></div>
+                            <div className="flex justify-between gap-3"><dt className="text-fg-muted">Vers</dt><dd className="text-right font-mono text-fg">{confirmComplete.metadata?.accountInfo?.fullMomoNumber || '—'}</dd></div>
+                            <div className="flex justify-between gap-3"><dt className="text-fg-muted">Montant brut</dt><dd className="text-right font-medium tabular-nums text-fg">{formatMoney(confirmComplete.amount, confirmComplete.currency)}</dd></div>
+                            <div className="flex items-center justify-between gap-3"><dt className="shrink-0 text-fg-muted">tokenPay</dt><dd className="min-w-0 text-right"><CopyValue value={providerRef(confirmComplete)} label="Copier le tokenPay" /></dd></div>
+                        </dl>
+                        <p className="pt-1 text-fg-muted">Vérifiez d’abord qu’il apparaît « Validé » sur le tableau de bord MoneyFusion. Le portefeuille du membre sera débité.</p>
                     </div>
                 )}
                 confirmText="Oui, il est payé"
                 onConfirm={async () => { if (confirmComplete) await handleMarkCompleted(confirmComplete); setConfirmComplete(null); }}
                 onCancel={() => setConfirmComplete(null)}
             />
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+            <Dialog open={!!failTarget} onOpenChange={open => { if (!open && !actingOn) { setFailTarget(null); setFailReason(''); } }}>
+                {failTarget && (
+                    <DialogContent
+                        size="sm"
+                        title="Marquer ce retrait en échec ?"
+                        description={`${failTarget.userName || 'Membre inconnu'} · ${formatMoney(failTarget.amount, failTarget.currency)} vers ${failTarget.metadata?.accountInfo?.fullMomoNumber || '—'}`}
+                        footer={(
+                            <>
+                                <Button variant="outline" size="lg" disabled={!!actingOn} onClick={() => { setFailTarget(null); setFailReason(''); }}>Annuler</Button>
+                                <Button variant="danger" size="lg" loading={actingOn === failTarget.transactionId} disabled={!failReason.trim()} onClick={() => void handleMarkFailed()}>
+                                    Confirmer l’échec
+                                </Button>
+                            </>
+                        )}
+                    >
+                        <div className="space-y-3">
+                            <p className="text-sm text-fg-muted">Le retrait passe en échec ; le portefeuille du membre n’est pas touché (il n’a jamais été débité).</p>
+                            <Field label="Motif" required help="Gardé dans l’historique du retrait.">
+                                <Textarea
+                                    value={failReason}
+                                    onChange={e => setFailReason(e.target.value)}
+                                    placeholder="Ex. : absent du tableau de bord MoneyFusion"
+                                    autoFocus
+                                />
+                            </Field>
+                        </div>
+                    </DialogContent>
+                )}
+            </Dialog>
         </div>
     );
 };

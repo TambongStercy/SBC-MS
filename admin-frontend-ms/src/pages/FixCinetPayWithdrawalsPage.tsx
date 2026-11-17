@@ -1,78 +1,44 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Search, RefreshCw, Wrench } from 'lucide-react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
+import React, { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Search01Icon } from '@hugeicons/core-free-icons';
 import {
     WithdrawalTransaction,
     formatCurrency,
-    formatDate,
     getStuckCinetPayWithdrawals,
     reconcileCinetPayWithdrawal,
 } from '../services/adminWithdrawalApi';
-import ToastContainer from '../components/common/ToastContainer';
 import { useToast } from '../hooks/useToast';
-import Pagination from '../components/common/Pagination';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { Search01Icon } from '@hugeicons/core-free-icons';
+import { Can } from '../components/Can';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PaymentsFilterRow } from '../components/payments/PaymentsFilterRow';
+import { Button, PageHeader } from '../components/ui';
+import { CheckFirst } from '../components/payments/shared';
+import { StuckWithdrawalQueue } from '../components/payments/StuckWithdrawalQueue';
+import { STUCK_KEY } from '../components/payments/stuck';
 
 /**
- * Dedicated page for reconciling CinetPay withdrawals stuck in PROCESSING.
- * Different from the MoneyFusion equivalent: instead of asking admin to verify
- * on the provider dashboard, we call CinetPay's own status API when the button
- * is clicked. Their docs explicitly recommend polling as the fallback when
- * their notification webhook doesn't arrive.
- *
- * Per-row action: "Verify & Apply" — deterministic outcome:
- *   - CinetPay says completed → wallet debited, status → COMPLETED
- *   - CinetPay says failed    → status → FAILED, no wallet movement
- *   - CinetPay says pending   → nothing changed, admin reminded to wait
+ * CinetPay withdrawals stuck in PROCESSING / PENDING. CinetPay rarely calls
+ * our webhook, but its status API is authoritative, so one button per row
+ * asks it and applies the answer:
+ *   - completed → wallet debited, status COMPLETED
+ *   - failed    → status FAILED, no wallet movement
+ *   - pending   → nothing changed, try later
  */
-const PAGE_SIZE = 20;
-
 interface FixCinetPayWithdrawalsPageProps {
     embedded?: boolean;
 }
 
 const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({ embedded = false }) => {
-    const { toasts, removeToast, showSuccess, showError, showInfo } = useToast();
-
-    const [withdrawals, setWithdrawals] = useState<WithdrawalTransaction[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalCount, setTotalCount] = useState(0);
-    // What's typed, and what's searched: the second follows the first after a pause.
-    const [searchInput, setSearchInput] = useState('');
-    const [search, setSearch] = useState('');
+    const { showSuccess, showError, showInfo } = useToast();
+    const queryClient = useQueryClient();
+    const filters = usePageFilters();
+    const [details, setDetails] = useState<WithdrawalTransaction | null>(null);
     const [actingOn, setActingOn] = useState<string | null>(null);
 
-    const fetchData = useCallback(async () => {
-        try {
-            setError(null);
-            setLoading(true);
-            const res = await getStuckCinetPayWithdrawals(page, PAGE_SIZE, search.trim() || undefined);
-            setWithdrawals(res.data.withdrawals);
-            setTotalPages(res.data.pagination.totalPages);
-            setTotalCount(res.data.pagination.total);
-        } catch (err: any) {
-            setError(err.message || 'Impossible de charger les retraits CinetPay bloqués');
-        } finally {
-            setLoading(false);
-        }
-    }, [page, search]);
-
-    useEffect(() => { fetchData(); }, [fetchData]);
-
-    useEffect(() => {
-        const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
-        return () => clearTimeout(t);
-    }, [searchInput]);
-
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e.target.value);
-
     const handleVerifyAndApply = async (tx: WithdrawalTransaction) => {
+        // One check at a time: a second tap while CinetPay answers does nothing.
+        if (actingOn) return;
         setActingOn(tx.transactionId);
         try {
             const res = await reconcileCinetPayWithdrawal(tx.transactionId);
@@ -85,128 +51,65 @@ const FixCinetPayWithdrawalsPage: React.FC<FixCinetPayWithdrawalsPageProps> = ({
             } else {
                 showInfo(res.message || `Action : ${res.action}`);
             }
-            await fetchData();
-        } catch (e: any) {
-            showError(e.message || 'La vérification a échoué');
+            setDetails(null);
+            await queryClient.invalidateQueries({ queryKey: STUCK_KEY });
+        } catch (e: unknown) {
+            showError((e instanceof Error ? e.message : '') || 'La vérification a échoué');
         } finally {
             setActingOn(null);
         }
     };
 
+    const verifyButton = (tx: WithdrawalTransaction, size: 'sm' | 'lg', variant: 'soft' | 'primary') => (
+        <Button
+            variant={variant}
+            size={size}
+            className={size === 'lg' ? 'w-full sm:w-auto' : undefined}
+            loading={actingOn === tx.transactionId}
+            disabled={!!actingOn && actingOn !== tx.transactionId}
+            onClick={e => { e.stopPropagation(); void handleVerifyAndApply(tx); }}
+        >
+            {actingOn !== tx.transactionId && <HugeiconsIcon icon={Search01Icon} size={16} aria-hidden="true" />}
+            {actingOn === tx.transactionId ? 'Vérification…' : 'Vérifier et appliquer'}
+        </Button>
+    );
+
     return (
-        <div>
-            {!embedded && <Header title="Retraits CinetPay bloqués" />}
-            <main>
-                <motion.div
-                    className="bg-surface rounded-xl p-6 border border-line mb-6"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                >
-                    <div className="flex flex-wrap items-center gap-3 mb-4">
-                        <div className="relative flex-1 min-w-[12rem]">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted w-4 h-4" />
-                            <input
-                                type="text"
-                                value={searchInput}
-                                onChange={handleSearchChange}
-                                placeholder="Rechercher par nom, e-mail, téléphone, ID transaction ou numéro MoMo"
-                                className="w-full pl-10 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                        </div>
-                        <button
-                            onClick={fetchData}
-                            className="flex items-center gap-2 px-4 py-2 bg-surface-2 text-fg rounded-lg hover:bg-surface-3"
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            Actualiser
-                        </button>
-                    </div>
+        <div className="flex flex-col gap-6">
+            {!embedded && (
+                <PageHeader
+                    className="mb-0"
+                    title="Retraits CinetPay bloqués"
+                    description="Retraits envoyés à CinetPay restés sans réponse : un clic demande leur statut à CinetPay et applique sa réponse."
+                />
+            )}
+            {!embedded && <PaymentsFilterRow filters={filters} />}
 
-                    <div className="text-sm text-fg-muted mb-2">
-                        {loading ? 'Chargement…' : `${totalCount} retrait${totalCount > 1 ? 's' : ''} bloqué${totalCount > 1 ? 's' : ''}${search.trim() ? ` pour « ${search.trim()} »` : ''}`}
-                    </div>
-
-                    {error && (
-                        <div className="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-3 text-red-800 dark:text-red-200 mb-4">{error}</div>
-                    )}
-                </motion.div>
-
-                <motion.div
-                    className="bg-surface rounded-xl border border-line overflow-hidden"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    {loading ? (
-                        <div className="p-12 flex justify-center"><Loader name="Chargement des retraits bloqués…" /></div>
-                    ) : withdrawals.length === 0 ? (
-                        <div className="p-12 text-center text-fg-muted">
-                            <Wrench className="w-12 h-12 mx-auto mb-3 text-fg-subtle" />
-                            <p>Aucun retrait CinetPay bloqué pour le moment.</p>
-                            <p className="text-xs mt-2">Les retraits validés et envoyés à CinetPay apparaissent ici si CinetPay n'a jamais répondu.</p>
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-surface-2 text-fg-muted">
-                                <tr>
-                                    <th className="px-4 py-3 text-left">Membre</th>
-                                    <th className="px-4 py-3 text-left">Montant</th>
-                                    <th className="px-4 py-3 text-left">Pays</th>
-                                    <th className="px-4 py-3 text-left">MoMo du bénéficiaire</th>
-                                    <th className="px-4 py-3 text-left">Demandé le</th>
-                                    <th className="px-4 py-3 text-left">CinetPay tokenPay</th>
-                                    <th className="px-4 py-3 text-left">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {withdrawals.map((tx) => {
-                                    const meta = (tx as any).metadata;
-                                    const recipientMomo = meta?.accountInfo?.fullMomoNumber || '—';
-                                    const country = meta?.accountInfo?.countryCode || '—';
-                                    const tokenPay = (tx as any).externalTransactionId || '—';
-                                    const isActing = actingOn === tx.transactionId;
-                                    return (
-                                        <tr key={tx.transactionId} className="border-t border-line align-top">
-                                            <td className="px-4 py-3">
-                                                <div className="text-fg">{tx.userName || 'Inconnu'}</div>
-                                                <div className="text-xs text-fg-muted">{tx.userEmail}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-fg font-mono">{formatCurrency(tx.amount, tx.currency)}</td>
-                                            <td className="px-4 py-3 text-fg-muted">{country}</td>
-                                            <td className="px-4 py-3 font-mono text-fg">{recipientMomo}</td>
-                                            <td className="px-4 py-3 text-fg-muted">{formatDate(tx.createdAt)}</td>
-                                            <td className="px-4 py-3 font-mono text-xs text-fg-muted break-all">{tokenPay}</td>
-                                            <td className="px-4 py-3">
-                                                <button
-                                                    onClick={() => handleVerifyAndApply(tx)}
-                                                    disabled={isActing}
-                                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap"
-                                                >
-                                                    {isActing ? 'Vérification…' : <><HugeiconsIcon icon={Search01Icon} size={14} />Vérifier et appliquer</>}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                        </div>
-                    )}
-
-                    {totalPages > 1 && (
-                        <div className="p-4 border-t border-line">
-                            <Pagination
-                                currentPage={page}
-                                totalPages={totalPages}
-                                onPageChange={setPage}
-                            />
-                        </div>
-                    )}
-                </motion.div>
-            </main>
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
+            <StuckWithdrawalQueue
+                provider="cinetpay"
+                fetcher={getStuckCinetPayWithdrawals}
+                providerName="CinetPay"
+                refLabel="Référence CinetPay"
+                detailsOpen={details}
+                onDetailsOpenChange={setDetails}
+                emptyDescription="Les retraits validés et envoyés à CinetPay apparaissent ici si CinetPay n’a jamais répondu."
+                actions={{
+                    row: (tx, phone) => (
+                        <Can module="payments" write fallback={phone ? null : <span className="text-xs text-fg-subtle">Lecture seule</span>}>
+                            {verifyButton(tx, phone ? 'lg' : 'sm', 'soft')}
+                        </Can>
+                    ),
+                    sheet: tx => <Can module="payments" write>{verifyButton(tx, 'lg', 'primary')}</Can>,
+                }}
+                checkFirst={(
+                    <CheckFirst title="Rien à vérifier à la main">
+                        <p>
+                            « Vérifier et appliquer » interroge l’API de statut de CinetPay, qui fait foi : payé → retrait terminé et portefeuille débité ;
+                            échoué → retrait en échec, portefeuille inchangé ; encore en attente → rien ne change, réessayez plus tard.
+                        </p>
+                    </CheckFirst>
+                )}
+            />
         </div>
     );
 };

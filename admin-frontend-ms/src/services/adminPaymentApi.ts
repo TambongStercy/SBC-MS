@@ -89,6 +89,10 @@ export interface TransactionFilters {
     currency?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    /** Shared page filters (country code, ISO instants) */
+    country?: string;
+    from?: string;
+    to?: string;
 }
 
 // --- API Function --- 
@@ -160,9 +164,10 @@ export const reprocessFeexpayPaymentsForUser = async (userId: string): Promise<R
  * @param searchTerm The search query (name, email, phone number).
  * @returns A promise resolving to an array of AdminUserData.
  */
-export const searchUsersForFeexPayFix = async (searchTerm: string): Promise<AdminUserData[]> => {
+export const searchUsersForFeexPayFix = async (searchTerm: string, country?: string): Promise<AdminUserData[]> => {
     try {
         const filters: AdminUserListFilters = searchTerm ? { search: searchTerm } : {};
+        if (country) filters.country = country;
         const pagination = { page: 1, limit: 20 }; // Always fetch first page with a reasonable limit for search
         const response: AdminUserListResponse = await listUsers(filters, pagination);
         return response.data || [];

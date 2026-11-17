@@ -1,21 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import ConfirmationModal from '../components/common/ConfirmationModal';
-import { motion } from 'framer-motion';
-import { Search, Plus, DollarSign, CheckCircle, AlertCircle } from 'lucide-react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { 
-    createManualPaymentIntent, 
-    searchUsersForFeexPayFix, 
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+    Alert02Icon, BulbIcon, CancelCircleIcon, CheckmarkCircle02Icon, PencilEdit01Icon, Search01Icon, UserSearch01Icon,
+} from '@hugeicons/core-free-icons';
+import ConfirmationModal from '../components/common/ConfirmationModal';
+import {
+    createManualPaymentIntent,
+    recoverExistingPaymentIntent,
+    searchPaymentIntent,
+    searchUsersForFeexPayFix,
     ManualPaymentIntentRequest,
     ManualPaymentIntentResponse,
-    SubscriptionType
+    SubscriptionType,
 } from '../services/adminPaymentApi';
 import { AdminUserData } from '../services/adminUserApi';
 import { getAvatarUrl } from '../api/apiClient';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { PencilEdit01Icon, Search01Icon, ChartBarLineIcon, Alert02Icon, BulbIcon, CheckmarkCircle02Icon, CancelCircleIcon } from '@hugeicons/core-free-icons';
+import { Can } from '../components/Can';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PaymentsFilterRow } from '../components/payments/PaymentsFilterRow';
+import {
+    Avatar, Badge, Button, Checkbox, EmptyState, Field, Input, PageHeader, Panel, PanelHeader, ResponsiveList, Segmented, Textarea, type ListColumn,
+} from '../components/ui';
+import { cn } from '../lib/cn';
+import { ErrorState, FilterBar } from '../components/common/DataStates';
+import { formatDateTime, formatMoney } from '../components/common/format';
+import { CheckFirst, CopyValue, DetailRow, SearchInput } from '../components/payments/shared';
+import { useUrlSearchAndPage } from '../components/payments/useUrlSearchAndPage';
 
 /** Payment intent statuses as shown to the admin. */
 const INTENT_STATUS_LABELS: Record<string, string> = {
@@ -29,109 +42,138 @@ const INTENT_STATUS_LABELS: Record<string, string> = {
     CANCELLED: 'Annulé',
     EXPIRED: 'Expiré',
     REQUIRES_ACTION: 'Action requise',
+    ERROR: 'Erreur',
 };
 const intentStatusLabel = (s: string) => INTENT_STATUS_LABELS[s] ?? s;
+const intentTone = (s: string) => (s === 'SUCCEEDED' ? 'success' : s === 'FAILED' || s === 'ERROR' ? 'danger' : s === 'CANCELED' || s === 'CANCELLED' || s === 'EXPIRED' ? 'neutral' : 'warning') as 'success' | 'danger' | 'neutral' | 'warning';
 
-function ManualPaymentRecoveryPage() {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [users, setUsers] = useState<AdminUserData[]>([]);
-    const [loadingUsers, setLoadingUsers] = useState(false);
-    const [selectedUser, setSelectedUser] = useState<AdminUserData | null>(null);
-    const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
-    
-    // Configuration des prix d'abonnement
-    const SUBSCRIPTION_PRICING = {
-        cinetpay: {
-            currency: 'XAF',
-            plans: {
-                CLASSIQUE: { amount: 2070, label: 'Classique (2 070 XAF)' },
-                CIBLE: { amount: 5140, label: 'Ciblé (5 140 XAF)' },
-                UPGRADE: { amount: 3070, label: 'Mise à niveau (3 070 XAF)' }
-            }
-        },
-        feexpay: {
-            currency: 'XAF',
-            plans: {
-                CLASSIQUE: { amount: 2070, label: 'Classique (2 070 XAF)' },
-                CIBLE: { amount: 5140, label: 'Ciblé (5 140 XAF)' },
-                UPGRADE: { amount: 3070, label: 'Mise à niveau (3 070 XAF)' }
-            }
-        },
-        nowpayments: {
-            currency: 'USD',
-            plans: {
-                CLASSIQUE: { amount: 4.8, label: 'Classique (4,8 $)' }, // TODO: Import from config
-                CIBLE: { amount: 11.6, label: 'Ciblé (11,6 $)' }, // TODO: Import from config
-                UPGRADE: { amount: 7, label: 'Mise à niveau (7 $)' } // TODO: Import from config
-            }
+const SUBSCRIPTION_LABELS: Record<string, string> = { CLASSIQUE: 'Classique', CIBLE: 'Ciblé', UPGRADE: 'Mise à niveau vers Ciblé' };
+
+/** What GET /payments/admin/search-payment-intent returns. */
+interface FoundIntent {
+    sessionId: string;
+    status: string;
+    amount: number;
+    currency: string;
+    gateway: string;
+    gatewayPaymentId?: string;
+    userId: string;
+    userName?: string;
+    userEmail?: string;
+    createdAt: string;
+    canRecover: boolean;
+}
+
+type Provider = 'cinetpay' | 'feexpay' | 'nowpayments';
+type Plan = 'CLASSIQUE' | 'CIBLE' | 'UPGRADE';
+type Mode = 'find' | 'create';
+
+// Configuration des prix d'abonnement
+const SUBSCRIPTION_PRICING = {
+    cinetpay: {
+        currency: 'XAF',
+        plans: {
+            CLASSIQUE: { amount: 2070, label: 'Classique (2 070 XAF)' },
+            CIBLE: { amount: 5140, label: 'Ciblé (5 140 XAF)' },
+            UPGRADE: { amount: 3070, label: 'Mise à niveau (3 070 XAF)' }
         }
-    };
+    },
+    feexpay: {
+        currency: 'XAF',
+        plans: {
+            CLASSIQUE: { amount: 2070, label: 'Classique (2 070 XAF)' },
+            CIBLE: { amount: 5140, label: 'Ciblé (5 140 XAF)' },
+            UPGRADE: { amount: 3070, label: 'Mise à niveau (3 070 XAF)' }
+        }
+    },
+    nowpayments: {
+        currency: 'USD',
+        plans: {
+            CLASSIQUE: { amount: 4.8, label: 'Classique (4,8 $)' }, // TODO: Import from config
+            CIBLE: { amount: 11.6, label: 'Ciblé (11,6 $)' }, // TODO: Import from config
+            UPGRADE: { amount: 7, label: 'Mise à niveau (7 $)' } // TODO: Import from config
+        }
+    }
+};
 
-    // Recovery mode state
-    const [recoveryMode, setRecoveryMode] = useState<'create' | 'find'>('create');
+const EMPTY_FORM = {
+    provider: 'cinetpay' as Provider,
+    subscriptionType: 'CLASSIQUE' as Plan,
+    externalReference: '',
+    adminNote: '',
+    autoMarkSucceeded: true,
+    triggerWebhook: true
+};
+
+// Get available subscription options based on current user subscriptions
+const getAvailableSubscriptionOptions = (userSubscriptions: SubscriptionType[]): { value: Plan; label: string; hint: string; disabled?: boolean }[] => {
+    const hasClassique = userSubscriptions.includes(SubscriptionType.CLASSIQUE);
+    const hasCible = userSubscriptions.includes(SubscriptionType.CIBLE);
+    const options: { value: Plan; label: string; hint: string }[] = [
+        { value: 'CLASSIQUE', label: 'Classique', hint: 'Ciblage par pays, à vie' },
+        { value: 'CIBLE', label: 'Ciblé', hint: 'Ciblage avancé, tous critères, à vie' },
+        { value: 'UPGRADE', label: 'Mise à niveau', hint: 'De Classique à Ciblé, à vie' },
+    ];
+    if (hasCible) return options.map(o => ({ ...o, disabled: true })); // User has CIBLE, can't do any subscription
+    if (hasClassique) return options.map(o => ({ ...o, disabled: o.value !== 'UPGRADE' })); // can only upgrade
+    return options.map(o => ({ ...o, disabled: o.value === 'UPGRADE' })); // no subscription: CLASSIQUE or CIBLE
+};
+
+const getSubscriptionDisplayText = (subscriptions: SubscriptionType[]): string =>
+    !subscriptions || subscriptions.length === 0 ? 'Aucun abonnement actif' : subscriptions.join(', ');
+
+/**
+ * A member paid and their subscription was not activated: find the existing
+ * payment and recover it, or create one by hand. Both grant a lifetime
+ * subscription and pay referral commissions, so both ask first.
+ */
+function ManualPaymentRecoveryPage() {
+    const [params, setParams] = useSearchParams();
+    const recoveryMode: Mode = params.get('mode') === 'create' ? 'create' : 'find';
+    const setRecoveryMode = (m: Mode) => setParams(prev => {
+        const p = new URLSearchParams();
+        const country = prev.get('pays');
+        if (country) p.set('pays', country);
+        if (m === 'create') p.set('mode', 'create');
+        return p;
+    }, { replace: true });
+    // Country narrows the member search (create mode). The reference lookup and
+    // the period make no sense here, so the find mode shows no filter row.
+    const filters = usePageFilters();
+
+    // Member search (create mode): text in the URL (`q`).
+    const memberSearch = useUrlSearchAndPage();
+    const [selectedUser, setSelectedUser] = useState<AdminUserData | null>(null);
+    const usersQuery = useQuery({
+        queryKey: ['payments-recovery-member-search', memberSearch.q, filters.country],
+        queryFn: () => searchUsersForFeexPayFix(memberSearch.q, filters.country || undefined),
+        enabled: recoveryMode === 'create' && memberSearch.q !== '' && !selectedUser,
+    });
+    useEffect(() => {
+        if (usersQuery.isError) toast.error('La recherche de membres a échoué.');
+    }, [usersQuery.isError]);
+
+    // Find mode
     const [searchReference, setSearchReference] = useState('');
-    const [foundPaymentIntent, setFoundPaymentIntent] = useState<any>(null);
+    const [foundPaymentIntent, setFoundPaymentIntent] = useState<FoundIntent | null>(null);
     const [isSearching, setIsSearching] = useState(false);
 
     // Form state
-    const [formData, setFormData] = useState({
-        provider: 'cinetpay' as 'cinetpay' | 'feexpay' | 'nowpayments',
-        subscriptionType: 'CLASSIQUE' as 'CLASSIQUE' | 'CIBLE' | 'UPGRADE',
-        externalReference: '',
-        adminNote: '',
-        autoMarkSucceeded: true,
-        triggerWebhook: true
-    });
-    
+    const [formData, setFormData] = useState(EMPTY_FORM);
     const [isCreating, setIsCreating] = useState(false);
     // Both actions grant a lifetime subscription and pay commissions: ask first.
     const [confirmAction, setConfirmAction] = useState<'create' | 'recover' | null>(null);
     const [creationResult, setCreationResult] = useState<ManualPaymentIntentResponse | null>(null);
-
-    // Debounce search input
-    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setSearchTerm(event.target.value);
-        setSelectedUser(null); // Clear selection when searching
-        
-        if (debounceTimeout) {
-            clearTimeout(debounceTimeout);
-        }
-        const timeout = setTimeout(() => {
-            if (event.target.value.trim() !== '') {
-                fetchUsers(event.target.value);
-            } else {
-                setUsers([]);
-            }
-        }, 500);
-        setDebounceTimeout(timeout);
-    };
-
-    const fetchUsers = useCallback(async (query: string) => {
-        setLoadingUsers(true);
-        try {
-            const fetchedUsers = await searchUsersForFeexPayFix(query);
-            setUsers(fetchedUsers);
-        } catch (error) {
-            toast.error("La recherche de membres a échoué.");
-            console.error("Échec de recherche des utilisateurs:", error);
-        } finally {
-            setLoadingUsers(false);
-        }
-    }, []);
 
     const handleSearchPaymentIntent = async () => {
         if (!searchReference.trim()) {
             toast.error('Veuillez entrer une référence de paiement');
             return;
         }
-
         setIsSearching(true);
         const toastId = toast.loading('Recherche de l\'intention de paiement…');
-
         try {
-            const { searchPaymentIntent } = await import('../services/adminPaymentApi');
             const result = await searchPaymentIntent(searchReference.trim());
-
             if (result.success && result.data) {
                 setFoundPaymentIntent(result.data);
                 toast.success('Intention de paiement trouvée', { id: toastId });
@@ -139,10 +181,10 @@ function ManualPaymentRecoveryPage() {
                 setFoundPaymentIntent(null);
                 toast.error(result.message || 'Intention de paiement non trouvée', { id: toastId });
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Erreur lors de la recherche:", error);
             setFoundPaymentIntent(null);
-            toast.error(error.message || "Erreur lors de la recherche", { id: toastId });
+            toast.error((error instanceof Error ? error.message : '') || "Erreur lors de la recherche", { id: toastId });
         } finally {
             setIsSearching(false);
         }
@@ -153,32 +195,24 @@ function ManualPaymentRecoveryPage() {
             toast.error('Aucune intention de paiement sélectionnée pour récupération');
             return;
         }
-
         if (!foundPaymentIntent.canRecover) {
             toast.error('Cette intention de paiement ne peut pas être récupérée (déjà réussie)');
             return;
         }
-
         setIsCreating(true);
         const toastId = toast.loading('Récupération de l\'intention de paiement…');
-
         try {
-            const { recoverExistingPaymentIntent } = await import('../services/adminPaymentApi');
             const result = await recoverExistingPaymentIntent(
                 foundPaymentIntent.sessionId,
                 `Récupération admin - Référence: ${searchReference}`
             );
-
             setCreationResult(result);
             toast.success('Intention de paiement récupérée', { id: toastId });
-            
-            // Reset search
             setSearchReference('');
             setFoundPaymentIntent(null);
-            
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Erreur lors de la récupération:", error);
-            toast.error(error.message || "Échec de récupération", { id: toastId });
+            toast.error((error instanceof Error ? error.message : '') || "Échec de récupération", { id: toastId });
         } finally {
             setIsCreating(false);
         }
@@ -186,85 +220,28 @@ function ManualPaymentRecoveryPage() {
 
     const handleUserSelect = (user: AdminUserData) => {
         setSelectedUser(user);
-        setSearchTerm(''); // Clear search
-        setUsers([]); // Clear users list
-        
+        memberSearch.clear();
         // Auto-select appropriate subscription type based on user's current subscriptions
-        const availableOptions = getAvailableSubscriptionOptions(user.activeSubscriptionTypes || []);
-        const validOptions = availableOptions.filter(opt => !opt.disabled);
-        
+        const validOptions = getAvailableSubscriptionOptions(user.activeSubscriptionTypes || []).filter(opt => !opt.disabled);
         if (validOptions.length > 0) {
-            // Set to first available option
-            setFormData(prev => ({
-                ...prev,
-                subscriptionType: validOptions[0].value as 'CLASSIQUE' | 'CIBLE' | 'UPGRADE'
-            }));
+            setFormData(prev => ({ ...prev, subscriptionType: validOptions[0].value }));
         }
     };
 
-    const handleFormChange = (field: string, value: any) => {
-        setFormData(prev => ({
-            ...prev,
-            [field]: value
-        }));
+    const handleFormChange = <K extends keyof typeof EMPTY_FORM>(field: K, value: (typeof EMPTY_FORM)[K]) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    // Get current pricing based on provider and subscription type
-    const getCurrentPricing = () => {
-        return SUBSCRIPTION_PRICING[formData.provider].plans[formData.subscriptionType];
-    };
-
-    const getCurrentCurrency = () => {
-        return SUBSCRIPTION_PRICING[formData.provider].currency;
-    };
-
-    // Get available subscription options based on current user subscriptions
-    const getAvailableSubscriptionOptions = (userSubscriptions: SubscriptionType[]): { value: string; label: string; disabled?: boolean }[] => {
-        const hasClassique = userSubscriptions.includes(SubscriptionType.CLASSIQUE);
-        const hasCible = userSubscriptions.includes(SubscriptionType.CIBLE);
-        
-        if (hasCible) {
-            // User has CIBLE, can't do any subscription
-            return [
-                { value: 'CLASSIQUE', label: 'Classique - ciblage par pays (à vie)', disabled: true },
-                { value: 'CIBLE', label: 'Ciblé - ciblage avancé, tous critères (à vie)', disabled: true },
-                { value: 'UPGRADE', label: 'Mise à niveau - de Classique à Ciblé (à vie)', disabled: true }
-            ];
-        } else if (hasClassique) {
-            // User has CLASSIQUE, can only upgrade
-            return [
-                { value: 'CLASSIQUE', label: 'Classique - ciblage par pays (à vie)', disabled: true },
-                { value: 'CIBLE', label: 'Ciblé - ciblage avancé, tous critères (à vie)', disabled: true },
-                { value: 'UPGRADE', label: 'Mise à niveau - de Classique à Ciblé (à vie)', disabled: false }
-            ];
-        } else {
-            // User has no subscription, can do CLASSIQUE or CIBLE
-            return [
-                { value: 'CLASSIQUE', label: 'Classique - ciblage par pays (à vie)', disabled: false },
-                { value: 'CIBLE', label: 'Ciblé - ciblage avancé, tous critères (à vie)', disabled: false },
-                { value: 'UPGRADE', label: 'Mise à niveau - de Classique à Ciblé (à vie)', disabled: true }
-            ];
-        }
-    };
-
-    // Get subscription display text
-    const getSubscriptionDisplayText = (subscriptions: SubscriptionType[]): string => {
-        if (!subscriptions || subscriptions.length === 0) {
-            return 'Aucun abonnement actif';
-        }
-        return subscriptions.join(', ');
-    };
+    const getCurrentPricing = () => SUBSCRIPTION_PRICING[formData.provider].plans[formData.subscriptionType];
+    const getCurrentCurrency = () => SUBSCRIPTION_PRICING[formData.provider].currency;
 
     const handleCreatePaymentIntent = async () => {
         if (!selectedUser) {
             toast.error('Sélectionnez d\'abord un membre');
             return;
         }
-
         // Check if the selected subscription type is valid for this user
-        const availableOptions = getAvailableSubscriptionOptions(selectedUser.activeSubscriptionTypes || []);
-        const selectedOption = availableOptions.find(opt => opt.value === formData.subscriptionType);
-        
+        const selectedOption = getAvailableSubscriptionOptions(selectedUser.activeSubscriptionTypes || []).find(opt => opt.value === formData.subscriptionType);
         if (!selectedOption || selectedOption.disabled) {
             toast.error('Ce type d\'abonnement n\'est pas possible pour ce membre');
             return;
@@ -284,8 +261,8 @@ function ManualPaymentRecoveryPage() {
                 externalReference: formData.externalReference || undefined,
                 metadata: {
                     subscriptionType: formData.subscriptionType,
-                    subscriptionPlan: formData.subscriptionType === 'CLASSIQUE' ? 'Abonnement Classique' : 
-                                      formData.subscriptionType === 'CIBLE' ? 'Abonnement Ciblé' : 
+                    subscriptionPlan: formData.subscriptionType === 'CLASSIQUE' ? 'Abonnement Classique' :
+                                      formData.subscriptionType === 'CIBLE' ? 'Abonnement Ciblé' :
                                       formData.subscriptionType === 'UPGRADE' ? 'Upgrade to Ciblé' : 'Subscription',
                     manualRecovery: true,
                     adminCreated: new Date().toISOString(),
@@ -298,558 +275,326 @@ function ManualPaymentRecoveryPage() {
 
             const result = await createManualPaymentIntent(requestData);
             setCreationResult(result);
-            
             toast.success('Intention de paiement créée', { id: toastId });
-            
-            // Reset form
-            setFormData({
-                provider: 'cinetpay',
-                subscriptionType: 'CLASSIQUE',
-                externalReference: '',
-                adminNote: '',
-                autoMarkSucceeded: true,
-                triggerWebhook: true
-            });
+            setFormData(EMPTY_FORM);
             setSelectedUser(null);
-
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Erreur lors de la création de l'intention de paiement:", error);
-            toast.error(error.message || "Échec de création de l'intention de paiement", { id: toastId });
+            toast.error((error instanceof Error ? error.message : '') || "Échec de création de l'intention de paiement", { id: toastId });
         } finally {
             setIsCreating(false);
         }
     };
 
+    // "Changer de membre": back to the start of the create flow.
     const resetForm = () => {
         setSelectedUser(null);
         setCreationResult(null);
         setFoundPaymentIntent(null);
         setSearchReference('');
+        setFormData(EMPTY_FORM);
         setRecoveryMode('create');
-        setFormData({
-            provider: 'cinetpay',
-            subscriptionType: 'CLASSIQUE',
-            externalReference: '',
-            adminNote: '',
-            autoMarkSucceeded: true,
-            triggerWebhook: true
-        });
     };
 
+    const users = recoveryMode === 'create' && memberSearch.q && !selectedUser ? usersQuery.data ?? [] : [];
+    const userOptions = selectedUser ? getAvailableSubscriptionOptions(selectedUser.activeSubscriptionTypes || []) : [];
+    const noOptionLeft = selectedUser && userOptions.every(o => o.disabled);
+
+    const identity = (u: AdminUserData) => (
+        <div className="flex min-w-0 items-center gap-3">
+            <Avatar src={getAvatarUrl(u.avatar)} name={u.name || '?'} size="sm" />
+            <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-fg">{u.name || 'Sans nom'}</p>
+                <p className="truncate text-xs text-fg-muted">{u.email || '—'}</p>
+            </div>
+        </div>
+    );
+    const memberColumns: ListColumn<AdminUserData>[] = [
+        { key: 'member', header: 'Membre', cell: identity },
+        { key: 'phone', header: 'Téléphone', cell: u => <span className="font-mono text-sm">{u.phoneNumber || '—'}</span> },
+        { key: 'subs', header: 'Abonnement', cell: u => <span className="text-sm text-fg-muted">{getSubscriptionDisplayText(u.activeSubscriptionTypes || [])}</span> },
+        {
+            key: 'pick', header: <span className="sr-only">Choisir</span>, className: 'text-right', hideOnCard: true,
+            cell: u => <Button variant="soft" size="sm" onClick={e => { e.stopPropagation(); handleUserSelect(u); }}>Sélectionner</Button>,
+        },
+    ];
+
+    const fi = foundPaymentIntent;
+    const cr = creationResult?.data;
+
     return (
-        <div>
-            <Header title="Récupération manuelle de paiement" />
-            <main>
+        <div className="flex flex-col gap-6">
+            <PageHeader
+                className="mb-0"
+                title="Récupération de paiement"
+                description="Un membre a payé mais son abonnement n’a pas été activé : retrouvez son paiement pour le récupérer, ou créez-le à la main."
+            />
 
-                {/* Recovery Mode Toggle */}
-                <motion.div
-                    className="bg-surface rounded-xl p-6 border border-line mb-8"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 1, ease: "easeInOut" }}
-                >
-                    <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4">Mode de récupération</h2>
-                    
-                    <div className="flex flex-wrap gap-3">
-                        <button
-                            onClick={() => setRecoveryMode('create')}
-                            className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-                                recoveryMode === 'create' 
-                                    ? 'bg-blue-600 text-white' 
-                                    : 'bg-surface-2 text-fg-muted hover:bg-surface-3'
-                            }`}
-                        >
-                            <HugeiconsIcon icon={PencilEdit01Icon} size={18} />
-                            Créer une nouvelle intention
-                        </button>
-                        <button
-                            onClick={() => setRecoveryMode('find')}
-                            className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-                                recoveryMode === 'find' 
-                                    ? 'bg-green-600 text-white' 
-                                    : 'bg-surface-2 text-fg-muted hover:bg-surface-3'
-                            }`}
-                        >
-                            <HugeiconsIcon icon={Search01Icon} size={18} />
-                            Récupérer une intention existante
-                        </button>
-                    </div>
-                    
-                    <p className="text-fg-muted text-sm mt-3">
-                        {recoveryMode === 'create' 
-                            ? 'Créer une nouvelle intention de paiement pour un utilisateur'
-                            : 'Chercher et récupérer une intention de paiement existante par ID de session ou référence de paiement'
-                        }
-                    </p>
-                </motion.div>
+            <CheckFirst icon={Alert02Icon} title="Seulement si l’argent est bien arrivé">
+                <p>
+                    Vérifiez-le chez le fournisseur avant d’agir : le membre reçoit un abonnement à vie et ses parrains leurs commissions.
+                    Un paiement « en attente du fournisseur » est le plus souvent abandonné, pas payé ; le contrôle automatique le revérifie toutes les 10 minutes.
+                </p>
+            </CheckFirst>
 
-                {/* Payment Intent Search Section - Only shown in 'find' mode */}
-                {recoveryMode === 'find' && (
-                    <motion.div
-                        className="bg-surface rounded-xl p-6 border border-line mb-8"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 1, ease: "easeInOut" }}
+            {cr && (
+                <Panel className="border-success/40" role="status">
+                    <PanelHeader
+                        title={<span className="flex items-center gap-2"><HugeiconsIcon icon={CheckmarkCircle02Icon} size={18} aria-hidden="true" className="text-success" />Paiement enregistré</span>}
+                        description={creationResult?.message}
+                        actions={<Button variant="outline" size="md" className="h-11 sm:h-9" onClick={() => setCreationResult(null)}>Créer une autre</Button>}
+                    />
+                    <dl className="divide-y divide-line px-5 pb-4">
+                        <DetailRow label="Statut"><Badge tone={intentTone(cr.status)}>{intentStatusLabel(cr.status)}</Badge></DetailRow>
+                        <DetailRow label="Membre">{cr.userName || '—'}{cr.userEmail ? ` · ${cr.userEmail}` : ''}</DetailRow>
+                        <DetailRow label="Montant"><span className="tabular-nums">{formatMoney(cr.amount, cr.currency)}</span></DetailRow>
+                        <DetailRow label="Fournisseur">{cr.gateway}</DetailRow>
+                        <DetailRow label="Type d’abonnement">{SUBSCRIPTION_LABELS[cr.subscriptionProcessing?.subscriptionType] ?? cr.subscriptionProcessing?.subscriptionType ?? '—'}</DetailRow>
+                        <DetailRow label="Webhook déclenché">{cr.webhookTriggered ? <Badge tone="success">Oui</Badge> : <Badge tone="danger">Non</Badge>}</DetailRow>
+                        <DetailRow label="Traitement de l’abonnement">{cr.subscriptionProcessing?.webhookConfigured ? <Badge tone="success">Configuré</Badge> : <Badge tone="danger">Non configuré</Badge>}</DetailRow>
+                        <DetailRow label="ID de session"><CopyValue value={cr.sessionId} label="Copier l’ID de session" /></DetailRow>
+                        <DetailRow label="ID membre"><CopyValue value={cr.userId} label="Copier l’ID du membre" /></DetailRow>
+                        {cr.gatewayPaymentId && <DetailRow label="ID de paiement fournisseur"><CopyValue value={cr.gatewayPaymentId} label="Copier l’ID fournisseur" /></DetailRow>}
+                    </dl>
+                </Panel>
+            )}
+
+            <Segmented<Mode>
+                label="Mode de récupération"
+                size="lg"
+                fill
+                className="sm:inline-flex sm:w-auto sm:self-start sm:[&>button]:flex-none"
+                value={recoveryMode}
+                onValueChange={setRecoveryMode}
+                options={[
+                    { value: 'find', label: <><span className="sm:hidden">Retrouver</span><span className="hidden sm:inline">Retrouver un paiement</span></>, icon: Search01Icon },
+                    { value: 'create', label: <><span className="sm:hidden">Créer</span><span className="hidden sm:inline">Créer un paiement</span></>, icon: PencilEdit01Icon },
+                ]}
+            />
+
+            {recoveryMode === 'find' && (
+                <Panel>
+                    <PanelHeader title="Retrouver le paiement" description="Par l’ID de session SBC ou l’ID de paiement du fournisseur." />
+                    <form
+                        className="flex flex-col gap-2 px-5 pb-4 sm:flex-row"
+                        onSubmit={e => { e.preventDefault(); void handleSearchPaymentIntent(); }}
                     >
-                        <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4 flex items-center gap-2">
-                            <HugeiconsIcon icon={Search01Icon} size={20} />
-                            Rechercher une intention de paiement
-                        </h2>
-                        
-                        <div className="flex flex-wrap gap-4 mb-6">
-                            <div className="flex-1 min-w-[12rem]">
-                                <input
-                                    type="text"
-                                    placeholder="ID de session ou ID de paiement du fournisseur…"
-                                    className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-green-500"
-                                    value={searchReference}
-                                    onChange={(e) => setSearchReference(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleSearchPaymentIntent()}
-                                />
+                        <Input
+                            aria-label="Référence du paiement"
+                            placeholder="ID de session ou ID de paiement du fournisseur…"
+                            className="h-11 sm:h-9"
+                            value={searchReference}
+                            onChange={e => setSearchReference(e.target.value)}
+                        />
+                        <Button type="submit" variant="primary" className="h-11 sm:h-9" loading={isSearching} disabled={!searchReference.trim()}>
+                            {!isSearching && <HugeiconsIcon icon={Search01Icon} size={16} aria-hidden="true" />}
+                            {isSearching ? 'Recherche…' : 'Chercher'}
+                        </Button>
+                    </form>
+
+                    {fi ? (
+                        <div className="border-t border-line px-5 py-4">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-fg">Paiement trouvé</p>
+                                <Badge tone={intentTone(fi.status)}>{intentStatusLabel(fi.status)}</Badge>
                             </div>
-                            <button
-                                onClick={handleSearchPaymentIntent}
-                                disabled={isSearching || !searchReference.trim()}
-                                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-                            >
-                                {isSearching ? (
-                                    <>
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                        <span>Recherche…</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Search size={16} />
-                                        <span>Chercher</span>
-                                    </>
-                                )}
-                            </button>
+                            <dl className="divide-y divide-line">
+                                <DetailRow label="Membre">{fi.userName || '—'}</DetailRow>
+                                <DetailRow label="E-mail du membre">{fi.userEmail || '—'}</DetailRow>
+                                <DetailRow label="Montant"><span className="font-medium tabular-nums">{formatMoney(fi.amount, fi.currency)}</span></DetailRow>
+                                <DetailRow label="Fournisseur">{fi.gateway}</DetailRow>
+                                <DetailRow label="Créé le">{formatDateTime(fi.createdAt)}</DetailRow>
+                                <DetailRow label="ID de session"><CopyValue value={fi.sessionId} label="Copier l’ID de session" /></DetailRow>
+                                {fi.gatewayPaymentId && <DetailRow label="ID de paiement fournisseur"><CopyValue value={fi.gatewayPaymentId} label="Copier l’ID fournisseur" /></DetailRow>}
+                                <DetailRow label="ID membre"><CopyValue value={fi.userId} label="Copier l’ID du membre" /></DetailRow>
+                            </dl>
+                            {fi.canRecover ? (
+                                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <span className="inline-flex items-center gap-1.5 text-sm text-success"><HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} aria-hidden="true" />Ce paiement peut être récupéré</span>
+                                    <Can module="payments" write fallback={<span className="text-xs text-fg-subtle">Lecture seule</span>}>
+                                        <Button variant="primary" size="lg" className="w-full sm:w-auto" loading={isCreating} onClick={() => setConfirmAction('recover')}>
+                                            {!isCreating && <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} aria-hidden="true" />}
+                                            {isCreating ? 'Récupération…' : 'Récupérer ce paiement'}
+                                        </Button>
+                                    </Can>
+                                </div>
+                            ) : (
+                                <p className="mt-4 inline-flex items-center gap-1.5 text-sm text-danger"><HugeiconsIcon icon={CancelCircleIcon} size={16} aria-hidden="true" />Ce paiement ne peut pas être récupéré (déjà réussi).</p>
+                            )}
                         </div>
+                    ) : (
+                        <EmptyState
+                            className="border-t border-line py-8"
+                            icon={Search01Icon}
+                            title="Collez la référence du paiement"
+                            description="Si le paiement n’existe pas chez SBC, passez à « Créer un paiement »."
+                        />
+                    )}
+                </Panel>
+            )}
 
-                        {/* Found Payment Intent Display */}
-                        {foundPaymentIntent && (
-                            <div className="bg-surface-2/50 rounded-lg p-4 mb-4">
-                                <h3 className="text-lg font-semibold text-fg mb-3 flex items-center">
-                                    <CheckCircle className="mr-2 text-green-600 dark:text-green-400" size={20} />
-                                    Intention de paiement trouvée
-                                </h3>
-                                
-                                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                                    <div>
-                                        <span className="text-fg-muted">ID de session :</span>
-                                        <span className="text-fg font-mono ml-2">{foundPaymentIntent.sessionId}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-fg-muted">Statut :</span>
-                                        <span className={`ml-2 font-semibold ${
-                                            foundPaymentIntent.status === 'SUCCEEDED' ? 'text-green-600 dark:text-green-400' : 
-                                            foundPaymentIntent.status === 'FAILED' ? 'text-red-600 dark:text-red-400' : 'text-yellow-700 dark:text-yellow-400'
-                                        }`}>
-                                            {intentStatusLabel(foundPaymentIntent.status)}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span className="text-fg-muted">Montant :</span>
-                                        <span className="text-fg ml-2">{foundPaymentIntent.amount} {foundPaymentIntent.currency}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-fg-muted">Fournisseur :</span>
-                                        <span className="text-fg ml-2">{foundPaymentIntent.gateway}</span>
-                                    </div>
-                                    {foundPaymentIntent.gatewayPaymentId && (
-                                        <div>
-                                            <span className="text-fg-muted">ID de paiement fournisseur :</span>
-                                            <span className="text-fg font-mono ml-2">{foundPaymentIntent.gatewayPaymentId}</span>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <span className="text-fg-muted">Nom du membre :</span>
-                                        <span className="text-fg ml-2">{foundPaymentIntent.userName || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-fg-muted">E-mail du membre :</span>
-                                        <span className="text-fg ml-2">{foundPaymentIntent.userEmail || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-fg-muted">ID membre :</span>
-                                        <span className="text-fg font-mono ml-2">{foundPaymentIntent.userId}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-fg-muted">Créé le :</span>
-                                        <span className="text-fg ml-2">{new Date(foundPaymentIntent.createdAt).toLocaleString('fr-FR')}</span>
-                                    </div>
-                                </div>
+            {recoveryMode === 'create' && !selectedUser && <PaymentsFilterRow filters={filters} hidePeriod note={false} />}
 
-                                {foundPaymentIntent.canRecover ? (
-                                    <div className="flex items-center justify-between">
-                                        <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400 text-sm"><HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} />Cette intention peut être récupérée</span>
-                                        <button
-                                            onClick={() => setConfirmAction('recover')}
-                                            disabled={isCreating}
-                                            className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-                                        >
-                                            {isCreating ? (
-                                                <>
-                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                                    <span>Récupération…</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <CheckCircle size={16} />
-                                                    <span>Récupérer</span>
-                                                </>
-                                            )}
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 text-sm"><HugeiconsIcon icon={CancelCircleIcon} size={16} />Cette intention ne peut pas être récupérée (déjà réussie)</div>
-                                )}
-                            </div>
-                        )}
-                    </motion.div>
-                )}
-                
-                {/* User Search Section - Only shown in 'create' mode */}
-                {recoveryMode === 'create' && (
-                <motion.div
-                    className="bg-surface rounded-xl p-6 border border-line mb-8"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 1, ease: "easeInOut" }}
-                >
-                    <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4">
-                        {selectedUser ? `Membre sélectionné : ${selectedUser.name}` : 'Rechercher un membre'}
-                    </h2>
-                    
+            {recoveryMode === 'create' && (
+                <Panel>
+                    <PanelHeader title="1. Le membre" description={selectedUser ? undefined : 'Celui qui a payé.'} />
                     {selectedUser ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-2/50 rounded-lg p-4">
-                            <div className="flex items-center space-x-4">
-                                <img
-                                    src={getAvatarUrl(selectedUser.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedUser.name || 'User')}&background=random`}
-                                    alt={`Avatar de ${selectedUser.name}`}
-                                    className="h-12 w-12 rounded-full object-cover"
-                                />
-                                <div>
-                                    <p className="text-fg font-medium">{selectedUser.name}</p>
-                                    <p className="text-fg-muted text-sm">{selectedUser.email}</p>
-                                    <p className="text-fg-muted text-sm">{selectedUser.phoneNumber || 'Aucun téléphone'}</p>
-                                    <p className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400 text-sm font-medium">
-                                        <HugeiconsIcon icon={ChartBarLineIcon} size={16} />
-                                        Abonnement : {getSubscriptionDisplayText(selectedUser.activeSubscriptionTypes || [])}
-                                    </p>
+                        <div className="flex flex-col gap-3 px-5 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <Avatar src={getAvatarUrl(selectedUser.avatar)} name={selectedUser.name || '?'} size="md" />
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium text-fg">{selectedUser.name}</p>
+                                    <p className="truncate text-xs text-fg-muted">{selectedUser.email}{selectedUser.phoneNumber ? ` · ${selectedUser.phoneNumber}` : ''}</p>
+                                    <p className="mt-1 text-xs text-fg-muted">Abonnement : <span className="text-fg">{getSubscriptionDisplayText(selectedUser.activeSubscriptionTypes || [])}</span></p>
                                 </div>
                             </div>
-                            <button
-                                onClick={resetForm}
-                                className="bg-surface-3 hover:bg-line-strong text-fg px-4 py-2 rounded-lg transition-colors"
-                            >
-                                Changer de membre
-                            </button>
+                            <Button variant="outline" className="h-11 sm:h-9" onClick={resetForm}>Changer de membre</Button>
                         </div>
                     ) : (
                         <>
-                            <div className="relative w-full mb-6">
-                                <input
-                                    type="text"
-                                    placeholder="Rechercher par nom, e-mail ou téléphone"
-                                    className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-10 pr-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                                    value={searchTerm}
-                                    onChange={handleSearchChange}
-                                />
-                                <Search className="absolute left-3 top-2.5 text-fg-muted" size={18} />
+                            <div className="px-5 pb-4">
+                                <FilterBar active={!!memberSearch.input && !filters.isFiltered} onClear={memberSearch.clear}>
+                                    <SearchInput value={memberSearch.input} onChange={memberSearch.setInput} label="Rechercher un membre" placeholder="Nom, e-mail ou téléphone" />
+                                </FilterBar>
                             </div>
-
-                            {loadingUsers ? (
-                                <div className="text-center py-4"><Loader name="Membres" /></div>
-                            ) : users.length === 0 && searchTerm !== '' ? (
-                                <p className="text-center text-fg-muted">Aucun membre ne correspond à « {searchTerm} ».</p>
-                            ) : users.length === 0 && searchTerm === '' ? (
-                                <p className="text-center text-fg-muted">Commencez à taper pour rechercher un membre.</p>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-line">
-                                        <thead>
-                                            <tr>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Avatar</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Nom</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">E-mail</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Téléphone</th>
-                                                <th className="px-6 py-3 text-center text-xs font-medium text-fg-muted uppercase tracking-wider">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-line">
-                                            {users.map((user) => (
-                                                <tr key={user._id}>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                                                        <img
-                                                            src={getAvatarUrl(user.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
-                                                            alt={`Avatar de ${user.name}`}
-                                                            className="h-10 w-10 rounded-full object-cover"
-                                                        />
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.name}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.email || '—'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.phoneNumber || '—'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                                        <button
-                                                            onClick={() => handleUserSelect(user)}
-                                                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
-                                                        >
-                                                            Sélectionner
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
+                            <ResponsiveList
+                                rows={users}
+                                columns={memberColumns}
+                                rowKey={u => u._id}
+                                className="border-t border-line"
+                                onRowClick={handleUserSelect}
+                                loading={memberSearch.q !== '' && usersQuery.isLoading}
+                                card={u => (
+                                    <div className="space-y-2">
+                                        {identity(u)}
+                                        <p className="text-xs text-fg-muted">{u.phoneNumber || 'Aucun téléphone'} · {getSubscriptionDisplayText(u.activeSubscriptionTypes || [])}</p>
+                                    </div>
+                                )}
+                                empty={!memberSearch.q ? (
+                                    <EmptyState icon={UserSearch01Icon} title="Commencez à taper pour rechercher un membre" />
+                                ) : usersQuery.isError ? (
+                                    <ErrorState title="La recherche a échoué" onRetry={() => void usersQuery.refetch()} retrying={usersQuery.isFetching} />
+                                ) : (
+                                    <EmptyState title={`Aucun membre ne correspond à « ${memberSearch.q} »`} description="Essayez l’e-mail ou le numéro de téléphone." />
+                                )}
+                            />
                         </>
                     )}
-                </motion.div>
-                )}
+                </Panel>
+            )}
 
-                {/* Payment Intent Creation Form - Only shown in 'create' mode */}
-                {recoveryMode === 'create' && selectedUser && (
-                    <motion.div
-                        className="bg-surface rounded-xl p-6 border border-line mb-8"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 1, ease: "easeInOut" }}
-                    >
-                        <h2 className="text-lg sm:text-xl font-semibold text-fg mb-6">Créer une intention de paiement</h2>
-                        
-                        {/* Pricing Information */}
-                        <div className="bg-blue-100 dark:bg-blue-900/30 border border-blue-500 rounded-lg p-4 mb-6">
-                            <div className="flex items-center mb-2">
-                                <DollarSign className="mr-2 text-blue-600 dark:text-blue-400" size={20} />
-                                <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-100">Détails du paiement</h3>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                    <span className="text-fg-muted">Montant :</span>
-                                    <span className="text-fg font-semibold ml-2">
-                                        {getCurrentPricing().amount} {getCurrentCurrency()}
-                                    </span>
-                                </div>
-                                <div>
-                                    <span className="text-fg-muted">Abonnement :</span>
-                                    <span className="text-fg font-semibold ml-2">
-                                        {getCurrentPricing().label}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Provider */}
+            {recoveryMode === 'create' && selectedUser && (
+                <Panel>
+                    <PanelHeader title="2. Le paiement" description="Ce qu’il a payé, et chez quel fournisseur." />
+                    <div className="space-y-5 px-5 pb-4">
+                        <Field label="Fournisseur de paiement">
                             <div>
-                                <label className="block text-sm font-medium text-fg-muted mb-2">Fournisseur de paiement</label>
-                                <select
+                                <Segmented<Provider>
+                                    label="Fournisseur de paiement"
+                                    size="lg"
+                                    fill
+                                    className="sm:inline-flex sm:w-auto sm:self-start sm:[&>button]:flex-none"
                                     value={formData.provider}
-                                    onChange={(e) => handleFormChange('provider', e.target.value)}
-                                    className="bg-surface border border-line-strong text-fg rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="cinetpay">CinetPay (XAF)</option>
-                                    <option value="feexpay">FeexPay (XAF)</option>
-                                    <option value="nowpayments">NOWPayments (USD)</option>
-                                </select>
+                                    onValueChange={v => handleFormChange('provider', v)}
+                                    options={[
+                                        { value: 'cinetpay', label: 'CinetPay' },
+                                        { value: 'feexpay', label: 'FeexPay' },
+                                        { value: 'nowpayments', label: 'NOWPayments' },
+                                    ]}
+                                />
                             </div>
+                        </Field>
 
-                            {/* Subscription Type */}
-                            <div>
-                                <label className="block text-sm font-medium text-fg-muted mb-2">Type d'abonnement (à vie)</label>
-                                <select
-                                    value={formData.subscriptionType}
-                                    onChange={(e) => handleFormChange('subscriptionType', e.target.value)}
-                                    className="bg-surface border border-line-strong text-fg rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                                >
-                                    {getAvailableSubscriptionOptions(selectedUser?.activeSubscriptionTypes || []).map(option => (
-                                        <option 
-                                            key={option.value} 
-                                            value={option.value}
-                                            disabled={option.disabled}
-                                            className={option.disabled ? 'text-fg-subtle' : 'text-fg'}
+                        <fieldset>
+                            <legend className="mb-1.5 text-sm font-medium text-fg">Abonnement (à vie)</legend>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                {userOptions.map(o => {
+                                    const price = SUBSCRIPTION_PRICING[formData.provider].plans[o.value];
+                                    const checked = formData.subscriptionType === o.value;
+                                    return (
+                                        <label
+                                            key={o.value}
+                                            className={cn(
+                                                'flex min-h-[44px] cursor-pointer items-start gap-3 rounded-control border p-3 transition-colors',
+                                                checked && !o.disabled ? 'border-primary bg-primary-soft/40' : 'border-line hover:border-line-strong',
+                                                o.disabled && 'cursor-not-allowed opacity-50 hover:border-line',
+                                            )}
                                         >
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                {selectedUser && getAvailableSubscriptionOptions(selectedUser.activeSubscriptionTypes || []).every(opt => opt.disabled) && (
-                                    <p className="flex items-start gap-1.5 text-red-600 dark:text-red-400 text-sm mt-2">
-                                        <HugeiconsIcon icon={Alert02Icon} size={16} className="mt-0.5 shrink-0" />
-                                        Ce membre a déjà l'abonnement CIBLÉ et ne peut pas bénéficier d'autres abonnements.
-                                    </p>
-                                )}
-                                {selectedUser && selectedUser.activeSubscriptionTypes?.includes(SubscriptionType.CLASSIQUE) && !selectedUser.activeSubscriptionTypes?.includes(SubscriptionType.CIBLE) && (
-                                    <p className="flex items-start gap-1.5 text-yellow-700 dark:text-yellow-400 text-sm mt-2">
-                                        <HugeiconsIcon icon={BulbIcon} size={16} className="mt-0.5 shrink-0" />
-                                        Ce membre a l'abonnement CLASSIQUE et peut seulement faire l'UPGRADE vers CIBLÉ.
-                                    </p>
-                                )}
+                                            <input
+                                                type="radio"
+                                                name="subscriptionType"
+                                                value={o.value}
+                                                checked={checked}
+                                                disabled={o.disabled}
+                                                onChange={() => handleFormChange('subscriptionType', o.value)}
+                                                className="mt-1 accent-[var(--primary)]"
+                                            />
+                                            <span className="min-w-0">
+                                                <span className="block text-sm font-medium text-fg">{o.label}</span>
+                                                <span className="block text-xs text-fg-muted">{o.hint}</span>
+                                                <span className="mt-1 block text-sm tabular-nums text-fg">{formatMoney(price.amount, SUBSCRIPTION_PRICING[formData.provider].currency)}</span>
+                                            </span>
+                                        </label>
+                                    );
+                                })}
                             </div>
+                            {noOptionLeft && (
+                                <p className="mt-2 flex items-start gap-1.5 text-sm text-danger">
+                                    <HugeiconsIcon icon={Alert02Icon} size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+                                    Ce membre a déjà l’abonnement Ciblé et ne peut pas bénéficier d’autres abonnements.
+                                </p>
+                            )}
+                            {selectedUser.activeSubscriptionTypes?.includes(SubscriptionType.CLASSIQUE) && !selectedUser.activeSubscriptionTypes?.includes(SubscriptionType.CIBLE) && (
+                                <p className="mt-2 flex items-start gap-1.5 text-sm text-fg-muted">
+                                    <HugeiconsIcon icon={BulbIcon} size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
+                                    Ce membre a l’abonnement Classique : seule la mise à niveau vers Ciblé est possible.
+                                </p>
+                            )}
+                        </fieldset>
 
-                            {/* External Reference */}
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-fg-muted mb-2">Référence externe</label>
-                                <input
-                                    type="text"
-                                    value={formData.externalReference}
-                                    onChange={(e) => handleFormChange('externalReference', e.target.value)}
-                                    className="bg-surface border border-line-strong text-fg rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Référence du paiement chez le fournisseur (facultatif)"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Admin Note */}
-                        <div className="mt-6">
-                            <label className="block text-sm font-medium text-fg-muted mb-2">Note de l'admin</label>
-                            <textarea
-                                value={formData.adminNote}
-                                onChange={(e) => handleFormChange('adminNote', e.target.value)}
-                                className="bg-surface border border-line-strong text-fg rounded-lg px-4 py-2 w-full focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                                placeholder={`Exemple : le membre a payé via ${formData.provider} mais l'inscription a échoué. Paiement récupéré avec la référence : ${formData.externalReference || 'ABC123'}`}
-                                rows={3}
+                        <Field label="Référence externe" help="Référence du paiement chez le fournisseur (facultatif).">
+                            <Input
+                                className="h-11 font-mono sm:h-9"
+                                value={formData.externalReference}
+                                onChange={e => handleFormChange('externalReference', e.target.value)}
                             />
-                        </div>
+                        </Field>
 
-                        {/* Checkboxes */}
-                        <div className="mt-6 space-y-3">
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.autoMarkSucceeded}
-                                    onChange={(e) => handleFormChange('autoMarkSucceeded', e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-line-strong rounded-sm"
-                                />
-                                <label className="ml-2 text-sm text-fg-muted">
-                                    Marquer automatiquement comme réussi (recommandé)
-                                </label>
-                            </div>
-                            
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.triggerWebhook}
-                                    onChange={(e) => handleFormChange('triggerWebhook', e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-line-strong rounded-sm"
-                                />
-                                <label className="ml-2 text-sm text-fg-muted">
-                                    Activer l'abonnement à vie et verser les commissions (recommandé)
-                                </label>
-                            </div>
-                        </div>
+                        <Field label="Note de l’admin">
+                            <Textarea
+                                rows={3}
+                                value={formData.adminNote}
+                                onChange={e => handleFormChange('adminNote', e.target.value)}
+                                placeholder={`Exemple : le membre a payé via ${formData.provider} mais l'inscription a échoué. Paiement récupéré avec la référence : ${formData.externalReference || 'ABC123'}`}
+                            />
+                        </Field>
 
-                        {/* Create Button */}
-                        <div className="mt-8">
-                            <button
-                                onClick={() => setConfirmAction('create')}
-                                disabled={isCreating}
-                                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center space-x-2 transition-colors duration-200"
-                            >
-                                {isCreating ? (
-                                    <>
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                        <span>Création…</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus size={20} />
-                                        <span>Créer l'intention de paiement</span>
-                                    </>
-                                )}
-                            </button>
+                        <div className="space-y-1">
+                            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-sm text-fg">
+                                <Checkbox checked={formData.autoMarkSucceeded} onCheckedChange={v => handleFormChange('autoMarkSucceeded', v === true)} />
+                                Marquer automatiquement comme réussi (recommandé)
+                            </label>
+                            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-sm text-fg">
+                                <Checkbox checked={formData.triggerWebhook} onCheckedChange={v => handleFormChange('triggerWebhook', v === true)} />
+                                Activer l’abonnement à vie et verser les commissions (recommandé)
+                            </label>
                         </div>
-                    </motion.div>
-                )}
+                    </div>
 
-                {/* Results Section */}
-                {creationResult && (
-                    <motion.div
-                        className="bg-surface rounded-xl p-6 border border-line"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 1, ease: "easeInOut" }}
-                    >
-                        <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4 flex items-center">
-                            <CheckCircle className="mr-2 text-green-600 dark:text-green-400" size={24} />
-                            Intention de paiement créée
-                        </h2>
-                        
-                        <div className="bg-surface-2/50 rounded-lg p-4 space-y-3">
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">ID de session :</span>
-                                <span className="text-fg font-mono">{creationResult.data.sessionId}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">ID membre :</span>
-                                <span className="text-fg font-mono">{creationResult.data.userId}</span>
-                            </div>
-                            {(creationResult.data.userName || creationResult.data.userEmail) && (
-                                <>
-                                    <div className="flex justify-between">
-                                        <span className="text-fg-muted">Nom du membre :</span>
-                                        <span className="text-fg">{creationResult.data.userName || '—'}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-fg-muted">E-mail du membre :</span>
-                                        <span className="text-fg">{creationResult.data.userEmail || '—'}</span>
-                                    </div>
-                                </>
-                            )}
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">Montant :</span>
-                                <span className="text-fg">{creationResult.data.amount} {creationResult.data.currency}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">Statut :</span>
-                                <span className={`font-semibold ${
-                                    creationResult.data.status === 'SUCCEEDED' ? 'text-green-600 dark:text-green-400' : 
-                                    creationResult.data.status === 'FAILED' ? 'text-red-600 dark:text-red-400' : 'text-yellow-700 dark:text-yellow-400'
-                                }`}>
-                                    {intentStatusLabel(creationResult.data.status)}
-                                </span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">Fournisseur :</span>
-                                <span className="text-fg">{creationResult.data.gateway}</span>
-                            </div>
-                            {creationResult.data.gatewayPaymentId && (
-                                <div className="flex justify-between">
-                                    <span className="text-fg-muted">ID de paiement fournisseur :</span>
-                                    <span className="text-fg font-mono">{creationResult.data.gatewayPaymentId}</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">Type d'abonnement :</span>
-                                <span className="text-fg">{creationResult.data.subscriptionProcessing.subscriptionType}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">Webhook déclenché :</span>
-                                <span className={creationResult.data.webhookTriggered ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                                    {creationResult.data.webhookTriggered ? 'Oui' : 'Non'}
-                                </span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-fg-muted">Traitement de l'abonnement :</span>
-                                <span className={creationResult.data.subscriptionProcessing.webhookConfigured ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                                    {creationResult.data.subscriptionProcessing.webhookConfigured ? 'Configuré' : 'Non configuré'}
-                                </span>
-                            </div>
-                        </div>
-                        
-                        <div className="mt-4">
-                            <button
-                                onClick={() => setCreationResult(null)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-                            >
-                                Créer une autre
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
-            </main>
+                    {/* Sticky on phones: the form is long. */}
+                    <div className="sticky bottom-0 flex flex-col gap-2 rounded-b-panel border-t border-line bg-surface px-5 py-3 sm:static sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-fg-muted">
+                            {SUBSCRIPTION_LABELS[formData.subscriptionType]} · <span className="font-medium tabular-nums text-fg">{formatMoney(getCurrentPricing().amount, getCurrentCurrency())}</span> · {formData.provider}
+                        </p>
+                        <Can module="payments" write fallback={<span className="text-xs text-fg-subtle">Lecture seule</span>}>
+                            <Button variant="primary" size="lg" className="w-full sm:w-auto" loading={isCreating} disabled={!!noOptionLeft} onClick={() => setConfirmAction('create')}>
+                                {isCreating ? 'Création…' : 'Créer le paiement'}
+                            </Button>
+                        </Can>
+                    </div>
+                </Panel>
+            )}
+
             <ConfirmationModal
                 isOpen={confirmAction !== null}
                 variant="success"
@@ -858,14 +603,17 @@ function ManualPaymentRecoveryPage() {
                     <div className="space-y-1 text-sm">
                         {confirmAction === 'create' && selectedUser && (
                             <>
-                                <p><span className="text-fg-muted">Membre :</span> {selectedUser.name}</p>
-                                <p><span className="text-fg-muted">Abonnement :</span> {formData.subscriptionType}</p>
+                                <p><span className="text-fg-muted">Membre :</span> <span className="text-fg">{selectedUser.name}</span></p>
+                                <p><span className="text-fg-muted">Abonnement :</span> <span className="text-fg">{SUBSCRIPTION_LABELS[formData.subscriptionType]} ({formatMoney(getCurrentPricing().amount, getCurrentCurrency())}, {formData.provider})</span></p>
                             </>
                         )}
-                        {confirmAction === 'recover' && foundPaymentIntent && (
-                            <p><span className="text-fg-muted">Paiement :</span> {foundPaymentIntent.sessionId}</p>
+                        {confirmAction === 'recover' && fi && (
+                            <>
+                                <p><span className="text-fg-muted">Membre :</span> <span className="text-fg">{fi.userName || '—'}</span></p>
+                                <p><span className="text-fg-muted">Paiement :</span> <span className="break-all font-mono text-fg">{fi.sessionId}</span></p>
+                            </>
                         )}
-                        <p className="pt-2 text-fg-muted">Le membre reçoit un abonnement à vie et les commissions sont versées aux parrains. Fais-le seulement si le paiement a bien été reçu.</p>
+                        <p className="pt-2 text-fg-muted">Le membre reçoit un abonnement à vie et les commissions sont versées aux parrains. Faites-le seulement si le paiement a bien été reçu.</p>
                     </div>
                 }
                 confirmText={confirmAction === 'recover' ? 'Récupérer' : 'Créer le paiement'}

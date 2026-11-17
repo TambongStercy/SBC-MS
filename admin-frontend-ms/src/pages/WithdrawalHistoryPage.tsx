@@ -1,80 +1,112 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+    Alert02Icon, CancelCircleIcon, CheckmarkCircle02Icon, Download01Icon, InboxIcon, MoneySend01Icon, Refresh01Icon,
+} from '@hugeicons/core-free-icons';
 import {
     WithdrawalTransaction,
     getValidatedWithdrawals,
-    formatCurrency,
-    formatDate,
 } from '../services/adminWithdrawalApi';
-import { withdrawalStatusLabel, withdrawalStatusColor } from '../components/withdrawals/withdrawalStatus';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { Refresh01Icon, Download01Icon, ChartBarLineIcon, CheckmarkCircle02Icon, CancelCircleIcon, Alert02Icon, MoneyBag02Icon } from '@hugeicons/core-free-icons';
 import WithdrawalDetailsModal from '../components/withdrawals/WithdrawalDetailsModal';
-import Pagination from '../components/common/Pagination';
-import Loader from '../components/common/loader';
-import Header from '../components/common/Header';
+import { WithdrawalStatusBadge } from '../components/withdrawals/WithdrawalStatusBadge';
+import { withdrawalStatusLabel, withdrawalTypeLabel } from '../components/withdrawals/withdrawalStatus';
 import ToastContainer from '../components/common/ToastContainer';
+import { ErrorState, RelativeTime } from '../components/common/DataStates';
+import { formatDateTime, formatNumber } from '../components/common/format';
+import { FilterRow, SHARED_FILTER_KEYS, SearchBox, downloadCsv, errorMessage, exactMoney, useUrlFilters } from '../components/finance/shared';
+import { usePageFilters } from '../hooks/usePageFilters';
 import { useToast } from '../hooks/useToast';
+import {
+    Button, EmptyState, Metric, PageHeader, Pagination, Panel, PanelHeader, ResponsiveList, Select,
+    type ListColumn,
+} from '../components/ui';
 
+type StatusFilter = 'all' | 'completed' | 'rejected_by_admin' | 'failed';
+type TypeFilter = 'all' | 'mobile_money' | 'crypto';
+const STATUS_OPTIONS = [
+    { value: 'all', label: 'Tous les statuts' },
+    { value: 'completed', label: 'Payés' },
+    { value: 'rejected_by_admin', label: 'Rejetés' },
+    { value: 'failed', label: 'Échoués' },
+];
+const TYPE_OPTIONS = [
+    { value: 'all', label: 'Tous les types' },
+    { value: 'mobile_money', label: 'Mobile Money' },
+    { value: 'crypto', label: 'Crypto' },
+];
+const LIMIT = 20;
+
+const net = (w: WithdrawalTransaction) => w.amount - w.fee;
+
+function destination(w: WithdrawalTransaction): string {
+    if (w.metadata?.withdrawalType === 'crypto') return `Crypto${w.metadata.cryptoCurrency ? ` · ${w.metadata.cryptoCurrency}` : ''}`;
+    const a = w.metadata?.accountInfo;
+    return a ? `${a.momoOperator || 'Mobile Money'} · ${a.fullMomoNumber}` : withdrawalTypeLabel(w.metadata?.withdrawalType);
+}
+
+/**
+ * Historique des retraits (module `withdrawals`): requests already decided
+ * (paid, rejected, failed). Status is filtered by the server; type and search
+ * apply to the page shown, as before.
+ */
 const WithdrawalHistoryPage: React.FC = () => {
     const { toasts, removeToast, showWarning, showSuccess, showError } = useToast();
+    const { get, set, clear, page } = useUrlFilters();
+    const filters = usePageFilters();
+    const sharedParams = JSON.stringify(filters.apiParams);
 
-    // State
+    const rawStatus = get('status', 'all');
+    const statusFilter: StatusFilter = (['completed', 'rejected_by_admin', 'failed'] as const).includes(rawStatus as never) ? rawStatus as StatusFilter : 'all';
+    const rawType = get('type', 'all');
+    const withdrawalTypeFilter: TypeFilter = rawType === 'mobile_money' || rawType === 'crypto' ? rawType : 'all';
+    const searchTerm = get('q');
+
     const [withdrawals, setWithdrawals] = useState<WithdrawalTransaction[]>([]);
     const [selectedWithdrawal, setSelectedWithdrawal] = useState<WithdrawalTransaction | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [fetching, setFetching] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    // Pagination
-    const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const limit = 20;
+    const requestId = useRef(0);
 
-    // Filters
-    const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'rejected_by_admin' | 'failed'>('all');
-    const [withdrawalTypeFilter, setWithdrawalTypeFilter] = useState<'all' | 'mobile_money' | 'crypto'>('all');
-
-    // Search
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filteredWithdrawals, setFilteredWithdrawals] = useState<WithdrawalTransaction[]>([]);
-
-    // Fetch data
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
+        const id = ++requestId.current;
         try {
-            setLoading(true);
+            setFetching(true);
             setError(null);
-
             const response = await getValidatedWithdrawals(
-                currentPage,
-                limit,
-                statusFilter === 'all' ? undefined : statusFilter
+                page,
+                LIMIT,
+                statusFilter === 'all' ? undefined : statusFilter,
+                JSON.parse(sharedParams) as Record<string, string>
             );
-
+            if (id !== requestId.current) return;
             setWithdrawals(response.data.withdrawals);
             setTotalPages(response.data.pagination.totalPages);
             setTotalCount(response.data.pagination.total);
-        } catch (err: any) {
-            setError(err.message || "Impossible de charger l'historique des retraits");
+        } catch (err: unknown) {
+            if (id !== requestId.current) return;
+            setError(errorMessage(err, "Impossible de charger l'historique des retraits"));
         } finally {
-            setLoading(false);
+            if (id === requestId.current) {
+                setLoading(false);
+                setFetching(false);
+            }
         }
-    };
+    }, [page, statusFilter, sharedParams]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, statusFilter]);
+    }, [fetchData]);
 
-    // Apply client-side filters (search and withdrawal type)
-    useEffect(() => {
-        let filtered = [...withdrawals];
-
-        // Filter by withdrawal type
+    // Type and search filter the page shown (client side, as before)
+    const filteredWithdrawals = useMemo(() => {
+        let filtered = withdrawals;
         if (withdrawalTypeFilter !== 'all') {
             filtered = filtered.filter(w => w.metadata?.withdrawalType === withdrawalTypeFilter);
         }
-
-        // Filter by search term
         if (searchTerm.trim()) {
             const term = searchTerm.toLowerCase();
             filtered = filtered.filter(w =>
@@ -84,11 +116,9 @@ const WithdrawalHistoryPage: React.FC = () => {
                 w.userPhoneNumber?.toLowerCase().includes(term)
             );
         }
-
-        setFilteredWithdrawals(filtered);
+        return filtered;
     }, [withdrawals, withdrawalTypeFilter, searchTerm]);
 
-    // Handlers
     const handleViewDetails = (withdrawal: WithdrawalTransaction) => {
         setSelectedWithdrawal(withdrawal);
         setIsModalOpen(true);
@@ -104,297 +134,163 @@ const WithdrawalHistoryPage: React.FC = () => {
             showWarning('Aucune donnée à exporter');
             return;
         }
-
-        // Prepare CSV data
         const headers = ['ID transaction', 'Membre', 'E-mail', 'Téléphone', 'Type', 'Montant', 'Frais', 'Statut', 'Date'];
         const rows = filteredWithdrawals.map(w => [
             w.transactionId,
             w.userName || 'N/A',
             w.userEmail || 'N/A',
             w.userPhoneNumber || 'N/A',
-            w.metadata?.withdrawalType === 'crypto' ? 'Crypto' : 'Mobile Money',
+            withdrawalTypeLabel(w.metadata?.withdrawalType),
             `${w.amount - w.fee} ${w.currency}`,
             `${w.fee} ${w.currency}`,
             withdrawalStatusLabel(w.status),
-            formatDate(w.createdAt)
+            formatDateTime(w.createdAt)
         ]);
-
-        // Create CSV content
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-        ].join('\n');
-
-        // Download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `historique-retraits-${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
+        downloadCsv(`historique-retraits-${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
         showSuccess('Export CSV terminé');
     };
 
-    // Calculate summary stats
     const summaryStats = {
-        total: filteredWithdrawals.length,
         completed: filteredWithdrawals.filter(w => w.status === 'completed').length,
         rejected: filteredWithdrawals.filter(w => w.status === 'rejected_by_admin').length,
         failed: filteredWithdrawals.filter(w => w.status === 'failed').length,
-        totalAmount: filteredWithdrawals.reduce((sum, w) => {
-            if (w.status === 'completed' && w.currency === 'XAF') {
-                return sum + (w.amount - w.fee);
-            }
-            return sum;
-        }, 0)
+        totalAmount: filteredWithdrawals.reduce((sum, w) => (w.status === 'completed' && w.currency === 'XAF' ? sum + net(w) : sum), 0),
     };
 
-    if (loading && withdrawals.length === 0) {
-        return (
-            <div>
-                <Header title="Historique des retraits" />
-                <div className="flex items-center justify-center h-96">
-                    <Loader name="Historique des retraits" />
+    const ownActive = statusFilter !== 'all' || withdrawalTypeFilter !== 'all' || !!searchTerm;
+    const filtersActive = ownActive || filters.isFiltered;
+    const clearAll = () => clear(['status', 'type', 'q', ...SHARED_FILTER_KEYS]);
+    const pageLabel = 'sur cette page';
+    const metricValue = (v: React.ReactNode) => (loading ? '—' : v);
+
+    const columns: ListColumn<WithdrawalTransaction>[] = [
+        {
+            key: 'member',
+            header: 'Membre',
+            cell: w => (
+                <div className="min-w-0">
+                    <p className="truncate font-medium text-fg">{w.userName || '—'}</p>
+                    <p className="truncate text-xs text-fg-muted">{w.userEmail || w.userPhoneNumber || '—'}</p>
                 </div>
+            ),
+        },
+        {
+            key: 'amount',
+            header: 'Montant envoyé',
+            numeric: true,
+            cell: w => (
+                <div>
+                    <div className="font-semibold text-fg">{exactMoney(net(w), w.currency)}</div>
+                    <div className="text-xs text-fg-muted">frais {exactMoney(w.fee, w.currency)}</div>
+                </div>
+            ),
+        },
+        { key: 'to', header: 'Vers', cell: w => <span className="text-sm text-fg-muted">{destination(w)}</span> },
+        { key: 'status', header: 'Statut', cell: w => <WithdrawalStatusBadge status={w.status} /> },
+        { key: 'date', header: 'Demandé', cell: w => <RelativeTime value={w.createdAt} className="text-sm text-fg-muted" /> },
+    ];
+
+    const card = (w: WithdrawalTransaction) => (
+        <div>
+            <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 truncate text-sm font-medium text-fg">{w.userName || w.userEmail || '—'}</p>
+                <p className="shrink-0 text-sm font-semibold tabular-nums text-fg">{exactMoney(net(w), w.currency)}</p>
             </div>
-        );
-    }
+            <p className="mt-0.5 truncate text-xs text-fg-muted">{destination(w)}</p>
+            <div className="mt-2 flex items-center justify-between gap-2">
+                <WithdrawalStatusBadge status={w.status} />
+                <RelativeTime value={w.createdAt} className="text-xs text-fg-muted" />
+            </div>
+        </div>
+    );
 
     return (
-        <div className="text-fg">
-            <Header title="Historique des retraits" />
-
-            <main>
-                {/* Header Actions */}
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                    <p className="text-fg-muted">Historique de toutes les demandes de retrait traitées</p>
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={fetchData}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors"
-                        >
-                            <HugeiconsIcon icon={Refresh01Icon} size={16} />
+        <div className="space-y-6">
+            <PageHeader
+                title="Historique des retraits"
+                description="Toutes les demandes de retrait déjà traitées : payées, rejetées ou échouées. Touchez une ligne pour le détail."
+                actions={(
+                    <>
+                        <Button variant="outline" className="h-11 sm:h-9" onClick={() => fetchData()} loading={fetching && !loading}>
+                            {!(fetching && !loading) && <HugeiconsIcon icon={Refresh01Icon} size={16} aria-hidden="true" />}
                             Actualiser
-                        </button>
-                        <button
-                            onClick={handleExportCSV}
-                            disabled={filteredWithdrawals.length === 0}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <HugeiconsIcon icon={Download01Icon} size={16} />
+                        </Button>
+                        <Button variant="outline" className="h-11 sm:h-9" onClick={handleExportCSV} disabled={filteredWithdrawals.length === 0}>
+                            <HugeiconsIcon icon={Download01Icon} size={16} aria-hidden="true" />
                             Exporter en CSV
-                        </button>
-                    </div>
-                </div>
+                        </Button>
+                    </>
+                )}
+            />
 
-                {/* Error Message */}
-                {error && (
-                    <div className="mb-6 bg-red-100 dark:bg-red-800 border border-red-300 dark:border-red-700 rounded-lg p-4">
-                        <p className="text-red-800 dark:text-red-200">{error}</p>
-                    </div>
+            <FilterRow filters={filters} ownKeys={['status', 'type', 'q']} ownActive={ownActive}>
+                <Select
+                    className="h-11 sm:h-9 sm:w-44"
+                    value={statusFilter}
+                    onValueChange={v => set({ status: v === 'all' ? null : v })}
+                    options={STATUS_OPTIONS}
+                />
+                <Select
+                    className="h-11 sm:h-9 sm:w-44"
+                    value={withdrawalTypeFilter}
+                    onValueChange={v => set({ type: v === 'all' ? null : v, page })}
+                    options={TYPE_OPTIONS}
+                />
+            </FilterRow>
+
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Metric label="Payés" value={metricValue(formatNumber(summaryStats.completed))} hint={pageLabel} icon={CheckmarkCircle02Icon} tone="success" />
+                <Metric label="Rejetés" value={metricValue(formatNumber(summaryStats.rejected))} hint={pageLabel} icon={CancelCircleIcon} tone="danger" />
+                <Metric label="Échoués" value={metricValue(formatNumber(summaryStats.failed))} hint={pageLabel} icon={Alert02Icon} tone="warning" />
+                <Metric label="Montant payé" value={metricValue(exactMoney(summaryStats.totalAmount, 'XAF'))} hint={`${pageLabel}, en francs`} icon={MoneySend01Icon} tone="primary" />
+            </div>
+
+            <Panel>
+                <PanelHeader
+                    title="Retraits traités"
+                    description={loading ? undefined : `${formatNumber(filteredWithdrawals.length)} affiché${filteredWithdrawals.length > 1 ? 's' : ''} sur ${formatNumber(totalCount)}`}
+                    className="flex-col sm:flex-row"
+                    actions={(
+                        <SearchBox
+                            className="w-full sm:w-[26rem]"
+                            label="Chercher sur cette page"
+                            placeholder="ID, nom, e-mail, téléphone"
+                            value={searchTerm}
+                            onSearch={v => set({ q: v, page })}
+                        />
+                    )}
+                />
+                {(searchTerm || withdrawalTypeFilter !== 'all') && (
+                    <p className="px-4 pb-3 text-xs text-fg-muted sm:px-5">La recherche et le type filtrent la page affichée ({LIMIT} retraits par page).</p>
+                )}
+                {error && withdrawals.length > 0 && (
+                    <p role="alert" className="border-y border-danger/30 bg-danger-soft px-5 py-2.5 text-sm text-danger">{error}</p>
                 )}
 
-                {/* Summary Statistics */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                    <div className="bg-surface border border-line rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-fg-muted font-medium">Sur cette page</p>
-                                <p className="text-2xl font-bold text-fg">{summaryStats.total}</p>
-                            </div>
-                            <HugeiconsIcon icon={ChartBarLineIcon} size={28} className="text-fg-muted" />
-                        </div>
-                    </div>
-
-                    <div className="bg-surface border border-line rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-fg-muted font-medium">Payés (page)</p>
-                                <p className="text-2xl font-bold text-green-600 dark:text-green-500">{summaryStats.completed}</p>
-                            </div>
-                            <HugeiconsIcon icon={CheckmarkCircle02Icon} size={28} className="text-green-600 dark:text-green-500" />
-                        </div>
-                    </div>
-
-                    <div className="bg-surface border border-line rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-fg-muted font-medium">Refusés (page)</p>
-                                <p className="text-2xl font-bold text-red-500">{summaryStats.rejected}</p>
-                            </div>
-                            <HugeiconsIcon icon={CancelCircleIcon} size={28} className="text-red-500" />
-                        </div>
-                    </div>
-
-                    <div className="bg-surface border border-line rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-fg-muted font-medium">Échoués (page)</p>
-                                <p className="text-2xl font-bold text-orange-500">{summaryStats.failed}</p>
-                            </div>
-                            <HugeiconsIcon icon={Alert02Icon} size={28} className="text-orange-500" />
-                        </div>
-                    </div>
-
-                    <div className="bg-surface border border-line rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-fg-muted font-medium">Payé sur cette page (XAF)</p>
-                                <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                                    {formatCurrency(summaryStats.totalAmount, 'XAF' as any)}
-                                </p>
-                            </div>
-                            <HugeiconsIcon icon={MoneyBag02Icon} size={28} className="text-blue-600 dark:text-blue-400" />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Filters and Search */}
-                <div className="bg-surface border border-line rounded-lg p-4 mb-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label className="text-sm font-medium text-fg-muted mb-2 block">Statut</label>
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => {
-                                    setStatusFilter(e.target.value as any);
-                                    setCurrentPage(1);
-                                }}
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:ring-2 focus:ring-indigo-500"
-                            >
-                                <option value="all">Tous les statuts</option>
-                                <option value="completed">Terminés</option>
-                                <option value="rejected_by_admin">Rejetés</option>
-                                <option value="failed">Échoués</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="text-sm font-medium text-fg-muted mb-2 block">Type</label>
-                            <select
-                                value={withdrawalTypeFilter}
-                                onChange={(e) => setWithdrawalTypeFilter(e.target.value as any)}
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:ring-2 focus:ring-indigo-500"
-                            >
-                                <option value="all">Tous les types</option>
-                                <option value="mobile_money">Mobile Money</option>
-                                <option value="crypto">Crypto</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="text-sm font-medium text-fg-muted mb-2 block">Recherche</label>
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Chercher sur cette page : ID, nom, téléphone…"
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md text-fg focus:ring-2 focus:ring-indigo-500 placeholder-fg-subtle"
+                <div className={fetching && !loading ? 'opacity-70 transition-opacity' : undefined}>
+                    <ResponsiveList
+                        rows={filteredWithdrawals}
+                        columns={columns}
+                        rowKey={w => w._id}
+                        onRowClick={handleViewDetails}
+                        card={card}
+                        loading={loading}
+                        empty={error && withdrawals.length === 0 ? (
+                            <ErrorState description={error} onRetry={() => fetchData()} retrying={fetching} />
+                        ) : (
+                            <EmptyState
+                                icon={InboxIcon}
+                                title={filtersActive ? 'Aucun retrait ne correspond' : 'Aucun retrait dans l’historique'}
+                                description={filtersActive ? 'Changez la recherche ou les filtres.' : 'Les retraits validés, rejetés ou échoués apparaîtront ici.'}
+                                action={filtersActive ? <Button size="lg" onClick={clearAll}>Effacer les filtres</Button> : undefined}
                             />
-                        </div>
-                    </div>
-
-                    <div className="mt-3 text-sm text-fg-muted">
-                        {filteredWithdrawals.length} sur {totalCount} retraits
-                    </div>
-                </div>
-
-                {/* Withdrawals Table */}
-                <div className="overflow-hidden border-b border-line sm:rounded-lg mb-6 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-line">
-                        <thead className="bg-surface-2">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                                    Transaction
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                                    Membre
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                                    Type
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                                    Montant
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                                    Statut
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                                    Date
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-surface divide-y divide-line-strong">
-                            {filteredWithdrawals.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-8 text-center text-fg-muted">
-                                        {searchTerm ? 'Aucun retrait ne correspond à la recherche' : 'Aucun retrait dans l\'historique'}
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredWithdrawals.map((withdrawal) => (
-                                    <tr key={withdrawal._id} className="hover:bg-surface-2">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="font-mono text-sm text-fg-muted">{withdrawal.transactionId}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-fg">{withdrawal.userName || '—'}</div>
-                                            <div className="text-xs text-fg-muted">{withdrawal.userEmail || '—'}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-sm text-fg-muted">
-                                                {withdrawal.metadata?.withdrawalType === 'crypto' ? 'Crypto' : 'Mobile Money'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-semibold text-fg">
-                                                {formatCurrency(withdrawal.amount - withdrawal.fee, withdrawal.currency)}
-                                            </div>
-                                            <div className="text-xs text-fg-muted">
-                                                Frais : {formatCurrency(withdrawal.fee, withdrawal.currency)}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${withdrawalStatusColor(withdrawal.status)}`}>
-                                                {withdrawalStatusLabel(withdrawal.status)}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">
-                                            {formatDate(withdrawal.createdAt)}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <button
-                                                onClick={() => handleViewDetails(withdrawal)}
-                                                className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-blue-500 transition"
-                                            >
-                                                Voir le détail
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        onPageChange={setCurrentPage}
+                        )}
                     />
-                )}
-            </main>
+                </div>
 
-            {/* Details Modal */}
+                <Pagination page={page} totalPages={totalPages} total={totalCount} pageSize={LIMIT} onPageChange={p => set({ page: p })} />
+            </Panel>
+
             <WithdrawalDetailsModal
                 withdrawal={selectedWithdrawal}
                 isOpen={isModalOpen}
@@ -405,7 +301,6 @@ const WithdrawalHistoryPage: React.FC = () => {
                 showError={showError}
             />
 
-            {/* Toast Container */}
             <ToastContainer toasts={toasts} onRemove={removeToast} />
         </div>
     );

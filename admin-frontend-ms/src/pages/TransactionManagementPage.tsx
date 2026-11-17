@@ -1,60 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listAdminTransactions, PaymentIntent, PaymentStatus, TransactionFilters, Pagination as ApiPagination } from '../services/adminPaymentApi';
-import Header from '../components/common/Header';
-import Pagination from '../components/common/Pagination';
-import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CodeIcon, InboxIcon, MoreHorizontalIcon, UserIcon } from '@hugeicons/core-free-icons';
+import { listAdminTransactions, PaymentIntent, PaymentStatus, TransactionFilters, Pagination as ApiPagination } from '../services/adminPaymentApi';
 import MetadataViewerModal from '../components/common/MetadataViewerModal';
-
-// Helper to format date strings
-const formatDate = (dateString?: string) => {
-    if (!dateString) return '—';
-    try {
-        return format(parseISO(dateString), 'dd MMM yyyy, HH:mm', { locale: fr });
-    } catch (error) {
-        console.error("Error formatting date:", dateString, error);
-        return 'Date invalide';
-    }
-};
-
-/** Payment intent statuses as shown to the admin (values stay the API's). */
-const STATUS_LABELS: Record<string, string> = {
-    PENDING_USER_INPUT: 'En attente du membre',
-    PENDING_PROVIDER: 'En attente du fournisseur',
-    PROCESSING: 'En cours',
-    SUCCEEDED: 'Réussi',
-    FAILED: 'Échoué',
-    CANCELED: 'Annulé',
-    EXPIRED: 'Expiré',
-    ERROR: 'Erreur',
-    REQUIRES_ACTION: 'Action requise',
-    REFUNDED: 'Remboursé',
-};
-const statusLabel = (status: string) => STATUS_LABELS[status] ?? status;
-
-// Status badges
-const getStatusBadge = (status: PaymentStatus) => {
-    const base = 'px-2 inline-flex text-xs leading-5 font-semibold rounded-full';
-    switch (status) {
-        case PaymentStatus.SUCCEEDED:
-            return <span className={`${base} bg-success-soft text-success`}>{statusLabel(status)}</span>;
-        case PaymentStatus.FAILED:
-        case PaymentStatus.ERROR:
-            return <span className={`${base} bg-danger-soft text-danger`}>{statusLabel(status)}</span>;
-        case PaymentStatus.PENDING_USER_INPUT:
-        case PaymentStatus.PENDING_PROVIDER:
-            return <span className={`${base} bg-warning-soft text-warning`}>{statusLabel(status)}</span>;
-        case PaymentStatus.PROCESSING:
-            return <span className={`${base} bg-info-soft text-info`}>{statusLabel(status)}</span>;
-        case PaymentStatus.CANCELED:
-        case PaymentStatus.EXPIRED:
-            return <span className={`${base} bg-surface-2 text-fg-muted`}>{statusLabel(status)}</span>;
-        default:
-            return <span className={`${base} bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300`}>{statusLabel(status)}</span>;
-    }
-};
+import { ErrorState, RelativeTime } from '../components/common/DataStates';
+import { formatDateTime, formatNumber } from '../components/common/format';
+import { DetailList, FilterRow, MoreFiltersButton, Reference, SHARED_FILTER_KEYS, SearchBox, SheetSection, exactMoney, useUrlFilters } from '../components/finance/shared';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { toDateInput } from '../lib/period';
+import { TransactionFilterSheet, countExtra, type ExtraFilters } from '../components/finance/TransactionFilterSheet';
+import { PAYMENT_STATUS, StatusBadge, gatewayLabel } from '../components/finance/labels';
+import { getCountryName } from '../utils/countryUtils';
+import {
+    Button, Dialog, EmptyState, Menu, MenuContent, MenuItem, MenuTrigger, PageHeader, Pagination, Panel, PanelHeader,
+    ResponsiveList, Select, SheetContent, type ListColumn,
+} from '../components/ui';
 
 // Define common currencies, prioritizing African ones
 const CURRENCIES = [
@@ -68,323 +30,315 @@ const CURRENCIES = [
     { code: 'USD', name: 'Dollar américain' },
     { code: 'EUR', name: 'Euro' },
     { code: 'GBP', name: 'Livre sterling' },
-    // Add more as needed
 ];
+const CURRENCY_OPTIONS = CURRENCIES.map(c => ({ value: c.code, label: `${c.name} (${c.code})` }));
+const STATUS_OPTIONS = [
+    { value: 'all', label: 'Tous les statuts' },
+    ...Object.values(PaymentStatus).map(s => ({ value: s, label: PAYMENT_STATUS[s]?.label ?? s })),
+];
+const LIMIT = 20;
+const FILTER_KEYS = ['q', 'status', 'currency', 'min', 'max'];
 
-function TransactionManagementPage() {
-    const [transactions, setTransactions] = useState<PaymentIntent[]>([]);
-    const [pagination, setPagination] = useState<ApiPagination>({ currentPage: 1, totalPages: 1, totalCount: 0, limit: 20 });
-    const [filters, setFilters] = useState<TransactionFilters>({
-        page: 1,
-        limit: 20,
-        status: '',
-        userSearchTerm: '',
-        minAmount: '',
-        maxAmount: '',
-        currency: '',
-        startDate: '',
-        endDate: ''
-    });
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    // State for Metadata Modal
-    const [isMetadataModalOpen, setIsMetadataModalOpen] = useState<boolean>(false);
-    const [selectedMetadata, setSelectedMetadata] = useState<Record<string, any> | null>(null);
-
-    const navigate = useNavigate();
-
-    // Remove debounced filter application
-    /*
-    const applyFiltersDebounced = useCallback(
-        debounce((newFilters: TransactionFilters) => {
-            setFilters(prev => ({ ...prev, ...newFilters, page: 1 })); // Reset page on filter change
-        }, 500), // 500ms delay
-        []
+function AmountCell({ tx }: { tx: PaymentIntent }) {
+    return (
+        <div>
+            <div className="font-medium text-fg">{exactMoney(tx.amount, tx.currency)}</div>
+            {tx.gateway === 'nowpayments' && !!tx.payAmount && !!tx.payCurrency && (
+                <div className="text-xs text-fg-muted">Crypto : {tx.payAmount.toLocaleString('fr-FR')} {tx.payCurrency}</div>
+            )}
+            {tx.gateway !== 'nowpayments' && !!tx.paidAmount && tx.paidAmount !== tx.amount && (
+                <div className="text-xs text-fg-muted">Payé : {exactMoney(tx.paidAmount, tx.paidCurrency)}</div>
+            )}
+        </div>
     );
-    */
+}
 
-    const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        // Only update the local filters state
-        setFilters(prev => ({ ...prev, [name]: value }));
-        // Do not trigger API call here anymore
-        // applyFiltersDebounced({ [name]: value }); 
+/** Everything known about one payment, with the member link and the raw metadata. */
+function PaymentSheet({ tx, onOpenChange, onViewUser }: { tx: PaymentIntent | null; onOpenChange: (open: boolean) => void; onViewUser: (id: string) => void }) {
+    const [showMeta, setShowMeta] = useState(false);
+    return (
+        <Dialog open={!!tx} onOpenChange={onOpenChange}>
+            {tx && (
+                <SheetContent
+                    width="lg"
+                    title="Détail du paiement"
+                    description={`${tx.userName || 'Membre'} · ${gatewayLabel(tx.gateway)}`}
+                    footer={(
+                        <>
+                            <Button variant="outline" size="lg" onClick={() => setShowMeta(true)} disabled={!tx.metadata}>
+                                <HugeiconsIcon icon={CodeIcon} size={16} aria-hidden="true" />
+                                Métadonnées
+                            </Button>
+                            <Button variant="primary" size="lg" onClick={() => onViewUser(tx.userId)}>
+                                <HugeiconsIcon icon={UserIcon} size={16} aria-hidden="true" />
+                                Voir la fiche du membre
+                            </Button>
+                        </>
+                    )}
+                >
+                    <div className="space-y-6">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <StatusBadge status={tx.status} map={PAYMENT_STATUS} />
+                            <span className="text-sm text-fg-muted">Créé <RelativeTime value={tx.createdAt} /></span>
+                        </div>
+                        <SheetSection title="Paiement">
+                            <DetailList items={[
+                                { label: 'Montant', value: <span className="font-medium tabular-nums">{exactMoney(tx.amount, tx.currency)}</span> },
+                                { label: 'Montant payé', value: exactMoney(tx.paidAmount, tx.paidCurrency), hidden: !tx.paidAmount },
+                                { label: 'Montant crypto', value: `${tx.payAmount?.toLocaleString('fr-FR')} ${tx.payCurrency ?? ''}`, hidden: !tx.payAmount },
+                                { label: 'Pour', value: [tx.paymentType, tx.subscriptionType, tx.subscriptionPlan].filter(Boolean).join(' · ') || '—' },
+                                { label: 'Passerelle', value: gatewayLabel(tx.gateway) },
+                                { label: 'Téléphone payeur', value: tx.phoneNumber, hidden: !tx.phoneNumber },
+                                { label: 'Pays', value: tx.countryCode ? `${getCountryName(tx.countryCode)} (${tx.countryCode})` : '—', hidden: !tx.countryCode },
+                                { label: 'Opérateur', value: tx.operator, hidden: !tx.operator },
+                            ]} />
+                        </SheetSection>
+                        <SheetSection title="Membre">
+                            <DetailList items={[
+                                { label: 'Nom', value: tx.userName || '—' },
+                                { label: 'E-mail', value: tx.userEmail, hidden: !tx.userEmail },
+                                { label: 'Téléphone', value: tx.userPhoneNumber, hidden: !tx.userPhoneNumber },
+                                { label: 'Abonnements actifs', value: tx.userActiveSubscriptions?.join(', '), hidden: !tx.userActiveSubscriptions?.length },
+                                { label: 'ID membre', value: <Reference value={tx.userId} /> },
+                            ]} />
+                        </SheetSection>
+                        <SheetSection title="Références">
+                            <DetailList items={[
+                                { label: 'ID de session', value: <Reference value={tx.sessionId} /> },
+                                { label: 'ID fournisseur', value: <Reference value={tx.gatewayPaymentId} />, hidden: !tx.gatewayPaymentId },
+                                { label: 'Créé le', value: formatDateTime(tx.createdAt) },
+                                { label: 'Mis à jour le', value: formatDateTime(tx.updatedAt) },
+                            ]} />
+                        </SheetSection>
+                        {tx.webhookHistory && tx.webhookHistory.length > 0 && (
+                            <SheetSection title="Réponses du fournisseur">
+                                <ul className="divide-y divide-line rounded-control border border-line">
+                                    {tx.webhookHistory.map((h, i) => (
+                                        <li key={i} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                            <StatusBadge status={h.status} map={PAYMENT_STATUS} />
+                                            <span className="text-xs text-fg-muted">{formatDateTime(h.timestamp)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </SheetSection>
+                        )}
+                    </div>
+                    <MetadataViewerModal isOpen={showMeta} onClose={() => setShowMeta(false)} metadata={tx.metadata ?? null} />
+                </SheetContent>
+            )}
+        </Dialog>
+    );
+}
+
+/**
+ * Transactions de paiement (module `finance`): payments started by members
+ * (packs, subscriptions…) and where they stand with the provider. Read only.
+ */
+function TransactionManagementPage() {
+    const navigate = useNavigate();
+    const { get, set, clear, page } = useUrlFilters();
+    const filters = usePageFilters();
+    // The shared period replaces the old Du/Au fields: sent as startDate/endDate (what the API reads) and from/to.
+    const shared = {
+        ...filters.apiParams,
+        startDate: toDateInput(filters.range.from),
+        endDate: toDateInput(filters.range.to),
+    };
+    const status = get('status');
+    const userSearchTerm = get('q');
+    const extra: ExtraFilters = {
+        currency: get('currency'), minAmount: get('min'), maxAmount: get('max')
     };
 
-    const fetchTransactions = useCallback(async (fetchFilters: TransactionFilters) => {
+    const [transactions, setTransactions] = useState<PaymentIntent[]>([]);
+    const [pagination, setPagination] = useState<ApiPagination>({ currentPage: 1, totalPages: 1, totalCount: 0, limit: LIMIT });
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasLoaded, setHasLoaded] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [selected, setSelected] = useState<PaymentIntent | null>(null);
+    const [isMetadataModalOpen, setIsMetadataModalOpen] = useState<boolean>(false);
+    const [selectedMetadata, setSelectedMetadata] = useState<Record<string, unknown> | null>(null);
+    const requestId = useRef(0);
+
+    // The applied filters, as the API takes them
+    const filterKey = JSON.stringify({ page, status, userSearchTerm, ...extra, ...shared });
+    const fetchTransactions = useCallback(async () => {
+        const f = JSON.parse(filterKey) as { page: number; status: string; userSearchTerm: string; startDate: string; endDate: string; country?: string; from?: string; to?: string } & ExtraFilters;
+        const fetchFilters: TransactionFilters = {
+            page: f.page, limit: LIMIT, status: f.status, userSearchTerm: f.userSearchTerm,
+            minAmount: f.minAmount, maxAmount: f.maxAmount, currency: f.currency, startDate: f.startDate, endDate: f.endDate,
+            country: f.country, from: f.from, to: f.to,
+        };
+        const id = ++requestId.current;
         setIsLoading(true);
         setError(null);
         try {
-            console.log("Fetching transactions with filters:", fetchFilters);
             const response = await listAdminTransactions(fetchFilters);
+            if (id !== requestId.current) return;
             setTransactions(response.data || []);
-            setPagination(response.pagination || { currentPage: 1, totalPages: 1, totalCount: 0, limit: fetchFilters.limit || 20 });
+            setPagination(response.pagination || { currentPage: 1, totalPages: 1, totalCount: 0, limit: LIMIT });
         } catch (err) {
+            if (id !== requestId.current) return;
             const message = err instanceof Error ? err.message : 'Erreur inconnue';
             setError(message);
             toast.error(`Impossible de charger les transactions : ${message}`);
             setTransactions([]);
-            setPagination({ currentPage: 1, totalPages: 1, totalCount: 0, limit: fetchFilters.limit || 20 });
+            setPagination({ currentPage: 1, totalPages: 1, totalCount: 0, limit: LIMIT });
         } finally {
-            setIsLoading(false);
+            if (id === requestId.current) {
+                setIsLoading(false);
+                setHasLoaded(true);
+            }
         }
-    }, []); // Remove filters from dependency array, fetch triggered manually
+    }, [filterKey]);
 
-    // Initial fetch on component mount
-    useEffect(() => {
-        fetchTransactions({ page: 1, limit: 20 }); // Fetch initial page
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Empty dependency array means run only once on mount
+    useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
-    const handlePageChange = (newPage: number) => {
-        if (newPage > 0 && newPage <= pagination.totalPages) {
-            const newFilters = { ...filters, page: newPage };
-            setFilters(newFilters);
-            fetchTransactions(newFilters); // Fetch new page immediately
-        }
-    };
-
-    // Function to handle the Search button click
-    const handleSearch = () => {
-        const searchFilters = { ...filters, page: 1 }; // Reset to page 1 for new search
-        setFilters(searchFilters); // Update state to reflect page reset
-        fetchTransactions(searchFilters); // Fetch data with current filters
-    };
-
-    const handleViewUser = (userId: string) => {
-        // Adjust route to match App.tsx definition
-        navigate(`/userpage/${userId}`);
-    };
-
-    // Handler to open metadata modal
-    const handleViewMetadata = (metadata: Record<string, any> | undefined) => {
+    const handleViewUser = (userId: string) => navigate(`/userpage/${userId}`);
+    const handleViewMetadata = (metadata: Record<string, unknown> | undefined) => {
         setSelectedMetadata(metadata || null);
         setIsMetadataModalOpen(true);
     };
 
-    // Handler to close metadata modal
-    const handleCloseMetadataModal = () => {
-        setIsMetadataModalOpen(false);
-        setSelectedMetadata(null);
-    };
+    const extraCount = countExtra(extra);
+    const ownActive = !!status || !!userSearchTerm || extraCount > 0;
+    const filtersActive = ownActive || filters.isFiltered;
+    const clearAll = () => clear([...FILTER_KEYS, ...SHARED_FILTER_KEYS]);
+
+    const rowMenu = (tx: PaymentIntent) => (
+        <Menu>
+            <MenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-11 w-11 sm:h-9 sm:w-9" aria-label="Plus d’actions" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                    <HugeiconsIcon icon={MoreHorizontalIcon} size={18} aria-hidden="true" />
+                </Button>
+            </MenuTrigger>
+            <MenuContent onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                <MenuItem onSelect={() => handleViewUser(tx.userId)}>
+                    <HugeiconsIcon icon={UserIcon} size={16} aria-hidden="true" />
+                    Voir la fiche du membre
+                </MenuItem>
+                <MenuItem disabled={!tx.metadata} onSelect={() => handleViewMetadata(tx.metadata)}>
+                    <HugeiconsIcon icon={CodeIcon} size={16} aria-hidden="true" />
+                    Voir les métadonnées
+                </MenuItem>
+            </MenuContent>
+        </Menu>
+    );
+
+    const columns: ListColumn<PaymentIntent>[] = [
+        {
+            key: 'member',
+            header: 'Membre',
+            cell: tx => (
+                <div className="min-w-0">
+                    <p className="truncate font-medium text-fg">{tx.userName || '—'}</p>
+                    <p className="truncate text-xs text-fg-muted">{tx.userPhoneNumber || tx.userEmail || tx.userId}</p>
+                </div>
+            ),
+        },
+        { key: 'amount', header: 'Montant', numeric: true, cell: tx => <AmountCell tx={tx} /> },
+        { key: 'status', header: 'Statut', cell: tx => <StatusBadge status={tx.status} map={PAYMENT_STATUS} /> },
+        { key: 'gateway', header: 'Passerelle', cell: tx => <span className="text-sm text-fg-muted">{gatewayLabel(tx.gateway)}</span> },
+        { key: 'date', header: 'Date', cell: tx => <RelativeTime value={tx.createdAt} className="text-sm text-fg-muted" /> },
+        { key: 'menu', header: <span className="sr-only">Actions</span>, cell: rowMenu, className: 'w-12 text-right', hideOnCard: true },
+    ];
+
+    const card = (tx: PaymentIntent) => (
+        <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 truncate text-sm font-medium text-fg">{tx.userName || '—'}</p>
+                    <div className="shrink-0 text-right text-sm tabular-nums"><AmountCell tx={tx} /></div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <StatusBadge status={tx.status} map={PAYMENT_STATUS} />
+                    <span className="text-xs text-fg-muted">{gatewayLabel(tx.gateway)} · <RelativeTime value={tx.createdAt} /></span>
+                </div>
+            </div>
+            <div className="-mr-2 -mt-2">{rowMenu(tx)}</div>
+        </div>
+    );
 
     return (
-        <div className="text-fg">
-            <Header title="Transactions de paiement" />
-            <main>
-                {/* --- Filter Section --- */}
-                <div className="mb-6 p-4 bg-surface rounded-lg border border-line">
-                    <h3 className="text-lg font-semibold mb-3">Filtres</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        {/* Status Filter */}
-                        <div>
-                            <label htmlFor="status" className="block text-sm font-medium text-fg-muted mb-1">Statut</label>
-                            <select
-                                id="status"
-                                name="status"
-                                value={filters.status || ''} // Controlled component
-                                onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-fg"
-                            >
-                                <option value="">Tous les statuts</option>
-                                {Object.values(PaymentStatus).map(status => (
-                                    <option key={status} value={status}>{statusLabel(status)}</option>
-                                ))}
-                            </select>
-                        </div>
-                        {/* User Search Filter */}
-                        <div>
-                            <label htmlFor="userSearchTerm" className="block text-sm font-medium text-fg-muted mb-1">Membre (ID, nom, téléphone)</label>
-                            <input
-                                type="text"
-                                id="userSearchTerm"
-                                name="userSearchTerm"
-                                value={filters.userSearchTerm || ''}
-                                onChange={handleFilterChange}
-                                placeholder="ID, nom ou téléphone"
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-fg"
-                            />
-                        </div>
-                        {/* Min Amount Filter */}
-                        <div>
-                            <label htmlFor="minAmount" className="block text-sm font-medium text-fg-muted mb-1">Montant min.</label>
-                            <input
-                                type="number"
-                                id="minAmount"
-                                name="minAmount"
-                                value={filters.minAmount || ''} // Controlled component
-                                onChange={handleFilterChange}
-                                placeholder="ex. 100"
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-fg"
-                            />
-                        </div>
-                        {/* Max Amount Filter */}
-                        <div>
-                            <label htmlFor="maxAmount" className="block text-sm font-medium text-fg-muted mb-1">Montant max.</label>
-                            <input
-                                type="number"
-                                id="maxAmount"
-                                name="maxAmount"
-                                value={filters.maxAmount || ''} // Controlled component
-                                onChange={handleFilterChange}
-                                placeholder="ex. 5000"
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-fg"
-                            />
-                        </div>
-                        {/* Currency Filter */}
-                        <div>
-                            <label htmlFor="currency" className="block text-sm font-medium text-fg-muted mb-1">Devise</label>
-                            <select
-                                id="currency"
-                                name="currency"
-                                value={filters.currency || ''} // Controlled component
-                                onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-fg"
-                            >
-                                <option value="">Toutes les devises</option>
-                                {CURRENCIES.map(curr => (
-                                    <option key={curr.code} value={curr.code}>
-                                        {curr.name} ({curr.code})
-                                    </option>
-                                ))}
-                                {/* Option to add a custom one? Unlikely needed */}
-                            </select>
-                        </div>
-                        {/* Start Date Filter */}
-                        <div>
-                            <label htmlFor="startDate" className="block text-sm font-medium text-fg-muted mb-1">Date de début</label>
-                            <input
-                                type="date"
-                                id="startDate"
-                                name="startDate"
-                                value={filters.startDate || ''} // Controlled component
-                                onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-fg"
-                            />
-                        </div>
-                        {/* End Date Filter */}
-                        <div>
-                            <label htmlFor="endDate" className="block text-sm font-medium text-fg-muted mb-1">Date de fin</label>
-                            <input
-                                type="date"
-                                id="endDate"
-                                name="endDate"
-                                value={filters.endDate || ''} // Controlled component
-                                onChange={handleFilterChange}
-                                className="w-full px-3 py-2 bg-surface border border-line-strong rounded-md focus:outline-hidden focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-fg"
-                            />
-                        </div>
+        <div className="space-y-6">
+            <PageHeader
+                title="Transactions de paiement"
+                description="Les paiements lancés par les membres (abonnements, packs, services) et leur état chez le fournisseur. Touchez une ligne pour le détail."
+            />
 
-                        {/* Search Button - Adjusted grid positioning */}
-                        <div className="md:col-start-4 flex items-end justify-end pt-4">
-                            <button
-                                onClick={handleSearch}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-surface transition ease-in-out duration-150 disabled:opacity-50"
-                                disabled={isLoading}
-                            >
-                                {isLoading ? 'Recherche…' : 'Rechercher'}
-                            </button>
-                        </div>
-                    </div>
+            <FilterRow filters={filters} ownKeys={FILTER_KEYS} ownActive={ownActive}>
+                <SearchBox
+                    className="sm:w-72"
+                    label="Chercher un membre"
+                    placeholder="Membre : ID, nom ou téléphone"
+                    value={userSearchTerm}
+                    onSearch={v => set({ q: v })}
+                />
+                <div className="grid grid-cols-2 gap-2 sm:flex">
+                    <Select
+                        className="h-11 sm:h-9 sm:w-56"
+                        value={status || 'all'}
+                        onValueChange={v => set({ status: v === 'all' ? null : v })}
+                        options={STATUS_OPTIONS}
+                    />
+                    <MoreFiltersButton count={extraCount} onClick={() => setFiltersOpen(true)} />
                 </div>
+            </FilterRow>
 
-                {/* --- Transaction Table --- */}
-                {isLoading ? (
-                    <p className="text-fg-muted">Chargement des transactions…</p>
-                ) : error ? (
-                    <div className="bg-danger-soft text-danger p-3 rounded-sm">Erreur : {error}</div>
-                ) : (
-                    <>
-                        <div className="overflow-hidden border-b border-line sm:rounded-lg mb-6 overflow-x-auto">
-                            <table className="min-w-full divide-y divide-line">
-                                <thead className="bg-surface-2">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">ID de session</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Membre</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Statut</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Montant</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Passerelle</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Date</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-surface divide-y divide-line-strong">
-                                    {transactions.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={7} className="px-6 py-4 text-center text-sm text-fg-muted">Aucune transaction ne correspond aux critères.</td>
-                                        </tr>
-                                    ) : (
-                                        transactions.map((tx) => (
-                                            <tr key={tx._id}>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-fg-muted" title={tx.sessionId}>{tx.sessionId.substring(0, 12)}...</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                                                    <div>{tx.userName || '—'}</div>
-                                                    <div className="text-xs text-fg-muted">ID: {tx.userId}</div>
-                                                    {tx.userPhoneNumber && (
-                                                        <div className="text-xs text-fg-muted">Tél. : {tx.userPhoneNumber}</div>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(tx.status)}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">
-                                                    {tx.amount?.toLocaleString('fr-FR') || '—'} {tx.currency}
-                                                    {/* Show crypto payment details for NOWPAYMENTS */}
-                                                    {tx.gateway === 'nowpayments' && tx.payAmount && tx.payCurrency && (
-                                                        <span className="block text-xs text-fg-muted">
-                                                            Crypto : {tx.payAmount.toLocaleString('fr-FR')} {tx.payCurrency}
-                                                        </span>
-                                                    )}
-                                                    {/* Show regular payment details for other gateways */}
-                                                    {tx.gateway !== 'nowpayments' && tx.paidAmount && tx.paidAmount !== tx.amount && (
-                                                        <span className="block text-xs text-fg-muted">
-                                                            Payé : {tx.paidAmount.toLocaleString('fr-FR')} {tx.paidCurrency}
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{tx.gateway}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">{formatDate(tx.createdAt)}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                                    <button
-                                                        onClick={() => handleViewUser(tx.userId)}
-                                                        title="Voir la fiche du membre"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-blue-500 transition ease-in-out duration-150"
-                                                    >
-                                                        Voir le membre
-                                                    </button>
-                                                    {/* View Metadata Button */}
-                                                    <button
-                                                        onClick={() => handleViewMetadata(tx.metadata)}
-                                                        title="Voir les métadonnées"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-purple-500 transition ease-in-out duration-150 disabled:opacity-50"
-                                                        disabled={!tx.metadata} // Disable if no metadata
-                                                    >
-                                                        Métadonnées
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                        {pagination.totalCount > 0 && pagination.totalPages > 1 && (
-                            <Pagination
-                                currentPage={pagination.currentPage}
-                                totalPages={pagination.totalPages}
-                                onPageChange={handlePageChange}
+            <Panel>
+                <PanelHeader
+                    title="Paiements"
+                    description={hasLoaded ? `${formatNumber(pagination.totalCount)} paiement${pagination.totalCount > 1 ? 's' : ''}${filtersActive ? ' pour ces filtres' : ''}` : undefined}
+                />
+
+                <div className={isLoading && hasLoaded ? 'opacity-70 transition-opacity' : undefined}>
+                    <ResponsiveList
+                        rows={transactions}
+                        columns={columns}
+                        rowKey={tx => tx._id}
+                        onRowClick={setSelected}
+                        card={card}
+                        loading={isLoading && !hasLoaded}
+                        empty={error ? (
+                            <ErrorState description={error} onRetry={() => fetchTransactions()} retrying={isLoading} />
+                        ) : (
+                            <EmptyState
+                                icon={InboxIcon}
+                                title="Aucune transaction ne correspond aux critères"
+                                description={filtersActive ? 'Changez la recherche ou les filtres.' : 'Les paiements des membres apparaîtront ici.'}
+                                action={filtersActive ? <Button size="lg" onClick={clearAll}>Effacer les filtres</Button> : undefined}
                             />
                         )}
-                    </>
-                )}
-            </main>
-            {/* Metadata Modal */}
+                    />
+                </div>
+
+                <Pagination
+                    page={page}
+                    totalPages={pagination.totalPages}
+                    total={pagination.totalCount}
+                    pageSize={pagination.limit || LIMIT}
+                    onPageChange={p => set({ page: p })}
+                />
+            </Panel>
+
+            <TransactionFilterSheet
+                open={filtersOpen}
+                onOpenChange={setFiltersOpen}
+                value={extra}
+                currencies={CURRENCY_OPTIONS}
+                onApply={f => set({ currency: f.currency, min: f.minAmount, max: f.maxAmount })}
+            />
+
+            <PaymentSheet tx={selected} onOpenChange={open => { if (!open) setSelected(null); }} onViewUser={handleViewUser} />
+
             <MetadataViewerModal
                 isOpen={isMetadataModalOpen}
-                onClose={handleCloseMetadataModal}
+                onClose={() => { setIsMetadataModalOpen(false); setSelectedMetadata(null); }}
                 metadata={selectedMetadata}
             />
         </div>
     );
 }
 
-export default TransactionManagementPage; 
+export default TransactionManagementPage;

@@ -21,6 +21,9 @@ export interface UserAnalyticsFilters {
     limit?: number;
     sortBy?: 'totalWithdrawn' | 'totalEarned' | 'total';
     sortOrder?: 'asc' | 'desc';
+    /** Shared page filters (ISO instants) */
+    from?: string;
+    to?: string;
 }
 
 export interface UserAnalyticsResponse {

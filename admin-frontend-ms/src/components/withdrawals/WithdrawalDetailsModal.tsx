@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Alert02Icon, Cancel01Icon, Tick02Icon } from '@hugeicons/core-free-icons';
 import ConfirmationModal from '../common/ConfirmationModal';
+import { RelativeTime } from '../common/DataStates';
+import { formatDateTime, formatNumber } from '../common/format';
+import { Can } from '../Can';
+import { Button, Dialog, DialogClose, DialogContent, Field, SheetContent, Textarea } from '../ui';
+import { DetailList, Reference, SheetSection, errorMessage, exactMoney } from '../finance/shared';
+import { getCountryName } from '../../utils/countryUtils';
 import {
     WithdrawalTransaction,
-    formatCurrency,
-    formatDate,
     approveWithdrawal,
     rejectWithdrawal
 } from '../../services/adminWithdrawalApi';
-import { withdrawalStatusLabel, withdrawalStatusColor } from './withdrawalStatus';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { Wallet01Icon, Tick02Icon, Cancel01Icon } from '@hugeicons/core-free-icons';
+import { withdrawalTypeLabel } from './withdrawalStatus';
+import { WithdrawalStatusBadge } from './WithdrawalStatusBadge';
 
 interface WithdrawalDetailsModalProps {
     withdrawal: WithdrawalTransaction | null;
@@ -21,6 +26,12 @@ interface WithdrawalDetailsModalProps {
     showError?: (message: string) => void;
 }
 
+/**
+ * One withdrawal in a side sheet (full screen on phones): amount, where the
+ * money goes, the member's balance and history, and, while it waits for an
+ * admin, the decision (validate behind a confirmation, reject with a reason).
+ * Name and props kept from the former modal.
+ */
 const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
     withdrawal,
     isOpen,
@@ -38,7 +49,17 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
     const [adminNotes, setAdminNotes] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    if (!isOpen || !withdrawal) return null;
+    // A different withdrawal opens with an empty decision form.
+    const currentId = withdrawal?.transactionId;
+    useEffect(() => {
+        setConfirmApprove(false);
+        setShowRejectForm(false);
+        setRejectionReason('');
+        setAdminNotes('');
+        setError(null);
+    }, [currentId]);
+
+    const busy = isApproving || isRejecting;
 
     const handleApprove = async () => {
         if (!withdrawal) return;
@@ -56,8 +77,8 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
             }
             if (onApproved) onApproved();
             onClose();
-        } catch (err: any) {
-            const errorMsg = err.message || 'Impossible de valider le retrait';
+        } catch (err: unknown) {
+            const errorMsg = errorMessage(err, 'Impossible de valider le retrait');
             setError(errorMsg);
             if (showError) {
                 showError(errorMsg);
@@ -89,10 +110,11 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
             if (showSuccess) {
                 showSuccess('Retrait rejeté');
             }
+            setShowRejectForm(false);
             if (onRejected) onRejected();
             onClose();
-        } catch (err: any) {
-            const errorMsg = err.message || 'Impossible de rejeter le retrait';
+        } catch (err: unknown) {
+            const errorMsg = errorMessage(err, 'Impossible de rejeter le retrait');
             setError(errorMsg);
             if (showError) {
                 showError(errorMsg);
@@ -102,412 +124,249 @@ const WithdrawalDetailsModal: React.FC<WithdrawalDetailsModalProps> = ({
         }
     };
 
-    const isPendingApproval = withdrawal.status === 'pending_admin_approval';
-    const isRejected = withdrawal.status === 'rejected_by_admin';
-    const isMobileMoneyWithdrawal = withdrawal.metadata?.withdrawalType === 'mobile_money';
+    const w = withdrawal;
+    const isPendingApproval = w?.status === 'pending_admin_approval';
+    const isRejected = w?.status === 'rejected_by_admin';
+    const isMobileMoneyWithdrawal = w?.metadata?.withdrawalType === 'mobile_money';
+    const account = w?.metadata?.accountInfo;
+    const net = w ? w.amount - w.fee : 0;
+
+    const balance = (() => {
+        if (!w || w.userBalance === undefined || w.userBalance === null) return null;
+        if (typeof w.userBalance === 'number') return [[w.currency as string, w.userBalance] as const];
+        const entries = Object.entries(w.userBalance);
+        return entries.length > 0 ? entries : null;
+    })();
+
+    const footer = w && isPendingApproval ? (
+        <Can module="withdrawals" write fallback={<p className="text-sm text-fg-muted">Lecture seule : vous ne pouvez pas décider de ce retrait.</p>}>
+            <Button variant="danger-ghost" size="lg" onClick={() => setShowRejectForm(true)} disabled={busy}>
+                <HugeiconsIcon icon={Cancel01Icon} size={18} aria-hidden="true" />
+                Rejeter
+            </Button>
+            <Button
+                variant="primary"
+                size="lg"
+                className="bg-success text-white hover:bg-success/90 dark:text-background"
+                onClick={() => setConfirmApprove(true)}
+                loading={isApproving}
+                disabled={busy}
+            >
+                {!isApproving && <HugeiconsIcon icon={Tick02Icon} size={18} aria-hidden="true" />}
+                {isApproving ? 'Validation…' : 'Valider le retrait'}
+            </Button>
+        </Can>
+    ) : undefined;
 
     return (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-line">
-                {/* Header */}
-                <div className="sticky top-0 bg-surface border-b border-line px-6 py-4 flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-fg">
-                        Détail du retrait
-                    </h2>
-                    <button
-                        onClick={onClose}
-                        className="text-fg-muted hover:text-fg transition-colors"
-                        aria-label="Fermer"
-                    >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="p-6 space-y-6">
-                    {/* Error Message */}
-                    {error && (
-                        <div className="bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-lg p-4">
-                            <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
-                        </div>
-                    )}
-
-                    {/* Status Badge */}
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${withdrawalStatusColor(withdrawal.status)}`}>
-                                {withdrawalStatusLabel(withdrawal.status)}
-                            </span>
-                        </div>
-                        <div className="text-sm text-fg-muted">
-                            {formatDate(withdrawal.createdAt)}
-                        </div>
-                    </div>
-
-                    {/* Transaction Info */}
-                    <div className="grid grid-cols-2 gap-4 bg-surface-2 p-4 rounded-lg border border-line-strong">
-                        <div>
-                            <p className="text-sm text-fg-muted">ID transaction</p>
-                            <p className="font-mono text-sm font-medium text-fg">{withdrawal.transactionId}</p>
-                        </div>
-                        <div>
-                            <p className="text-sm text-fg-muted">Type</p>
-                            <p className="font-medium capitalize text-fg">
-                                {withdrawal.metadata?.withdrawalType === 'crypto' ? 'Crypto' : 'Mobile Money'}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Amount Info */}
-                    <div className="bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg p-4">
-                        <div className="grid grid-cols-3 gap-4">
-                            <div>
-                                <p className="text-sm text-fg-muted">Montant</p>
-                                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                                    {formatCurrency(withdrawal.amount - withdrawal.fee, withdrawal.currency)}
-                                </p>
+        <Dialog open={isOpen && !!w} onOpenChange={open => { if (!open && !busy) onClose(); }}>
+            {w && (
+                <SheetContent
+                    width="lg"
+                    title="Détail du retrait"
+                    description={`${w.userName || w.userEmail || 'Membre'} · ${withdrawalTypeLabel(w.metadata?.withdrawalType)}`}
+                    footer={footer}
+                >
+                    <div className="space-y-6">
+                        {error && (
+                            <div role="alert" className="flex items-start gap-2 rounded-control border border-danger/40 bg-danger-soft px-3 py-2.5 text-sm text-danger">
+                                <HugeiconsIcon icon={Alert02Icon} size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+                                <p>{error}</p>
                             </div>
-                            <div>
-                                <p className="text-sm text-fg-muted">Frais</p>
-                                <p className="text-lg font-semibold text-fg-muted">
-                                    {formatCurrency(withdrawal.fee, withdrawal.currency)}
-                                </p>
+                        )}
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <WithdrawalStatusBadge status={w.status} />
+                            <span className="text-sm text-fg-muted">Demandé <RelativeTime value={w.createdAt} /></span>
+                        </div>
+
+                        {/* The amount that leaves, first */}
+                        <div className="grid grid-cols-3 gap-px overflow-hidden rounded-control border border-line bg-line">
+                            <div className="bg-surface p-3">
+                                <p className="text-xs text-fg-muted">Montant envoyé</p>
+                                <p className="mt-1 text-lg font-semibold text-fg">{exactMoney(net, w.currency)}</p>
                             </div>
-                            <div>
-                                <p className="text-sm text-fg-muted">Total débité</p>
-                                <p className="text-lg font-bold text-red-600 dark:text-red-400">
-                                    {formatCurrency(withdrawal.amount, withdrawal.currency)}
-                                </p>
+                            <div className="bg-surface p-3">
+                                <p className="text-xs text-fg-muted">Frais</p>
+                                <p className="mt-1 text-lg font-semibold text-fg-muted">{exactMoney(w.fee, w.currency)}</p>
+                            </div>
+                            <div className="bg-surface p-3">
+                                <p className="text-xs text-fg-muted">Total débité</p>
+                                <p className="mt-1 text-lg font-semibold text-fg">{exactMoney(w.amount, w.currency)}</p>
                             </div>
                         </div>
-                    </div>
 
-                    {/* User Info */}
-                    <div>
-                        <h3 className="text-lg font-semibold mb-3 text-fg">Membre</h3>
-                        <div className="grid grid-cols-2 gap-4 bg-surface-2 p-4 rounded-lg border border-line-strong">
-                            <div>
-                                <p className="text-sm text-fg-muted">Nom</p>
-                                <p className="font-medium text-fg">{withdrawal.userName || '—'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-fg-muted">E-mail</p>
-                                <p className="font-medium text-fg">{withdrawal.userEmail || '—'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-fg-muted">Téléphone</p>
-                                <p className="font-medium text-fg">{withdrawal.userPhoneNumber || '—'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-fg-muted">ID membre</p>
-                                <p className="font-mono text-xs text-fg-muted">{withdrawal.userId}</p>
-                            </div>
-                        </div>
-                    </div>
+                        {isMobileMoneyWithdrawal && account && (
+                            <SheetSection title="Envoyé vers (Mobile Money)">
+                                <DetailList items={[
+                                    { label: 'Numéro', value: <Reference value={account.fullMomoNumber} /> },
+                                    { label: 'Opérateur', value: account.momoOperator },
+                                    { label: 'Pays', value: account.countryCode ? `${getCountryName(account.countryCode)} (${account.countryCode})` : '—' },
+                                    { label: 'Nom du bénéficiaire', value: account.recipientName, hidden: !account.recipientName },
+                                ]} />
+                            </SheetSection>
+                        )}
 
-                    {/* User Balance */}
-                    <div>
-                        <h3 className="text-lg font-semibold mb-3 text-fg inline-flex items-center gap-2"><HugeiconsIcon icon={Wallet01Icon} size={20} className="text-green-600 dark:text-green-400" />Solde actuel du membre</h3>
-                        <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg p-4">
-                            {withdrawal.userBalance !== undefined && withdrawal.userBalance !== null ? (
-                                typeof withdrawal.userBalance === 'number' ? (
-                                    // Handle number format (single balance in withdrawal currency)
-                                    <div>
-                                        <p className="text-sm text-fg-muted">{withdrawal.currency}</p>
-                                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                            {formatCurrency(withdrawal.userBalance, withdrawal.currency)}
-                                        </p>
-                                    </div>
-                                ) : Object.keys(withdrawal.userBalance).length > 0 ? (
-                                    // Handle object format (multiple currencies)
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        {Object.entries(withdrawal.userBalance).map(([currency, amount]) => (
-                                            <div key={currency}>
-                                                <p className="text-sm text-fg-muted">{currency}</p>
-                                                <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                                    {formatCurrency(amount as number, currency as any)}
-                                                </p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-fg-muted text-sm">Solde non disponible</p>
-                                )
-                            ) : (
-                                <p className="text-fg-muted text-sm">Solde non disponible</p>
-                            )}
-                        </div>
-                    </div>
+                        {!isMobileMoneyWithdrawal && w.metadata?.cryptoAddress && (
+                            <SheetSection title="Envoyé vers (crypto)">
+                                <DetailList items={[
+                                    { label: 'Adresse du portefeuille', value: <Reference value={w.metadata.cryptoAddress} /> },
+                                    { label: 'Devise', value: w.metadata.cryptoCurrency },
+                                    { label: 'Montant en USD', value: w.metadata.usdAmount ? exactMoney(w.metadata.usdAmount, 'USD') : '—', hidden: !w.metadata.usdAmount },
+                                ]} />
+                            </SheetSection>
+                        )}
 
-                    {/* Referral Statistics */}
-                    {withdrawal.referralStats && (
-                        <div>
-                            <h3 className="text-lg font-semibold mb-3 text-fg">Filleuls</h3>
-                            <div className="bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-lg p-4">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <p className="text-sm text-fg-muted">Filleuls directs</p>
-                                        <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                            {withdrawal.referralStats.directReferrals}
-                                        </p>
-                                        <p className="text-xs text-fg-muted mt-1">
-                                            {withdrawal.referralStats.directSubscribedReferrals} avec abonnement actif
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-fg-muted">Filleuls indirects</p>
-                                        <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                            {withdrawal.referralStats.indirectReferrals}
-                                        </p>
-                                        <p className="text-xs text-fg-muted mt-1">
-                                            {withdrawal.referralStats.indirectSubscribedReferrals} avec abonnement actif
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-fg-muted">Filleuls abonnés (total)</p>
-                                        <p className="text-2xl font-bold text-purple-600 dark:text-purple-300">
-                                            {withdrawal.referralStats.totalSubscribedReferrals}
-                                        </p>
-                                        <p className="text-xs text-fg-muted mt-1">
-                                            sur {withdrawal.referralStats.totalReferrals} au total
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                        <SheetSection title="Membre">
+                            <DetailList items={[
+                                { label: 'Nom', value: w.userName || '—' },
+                                { label: 'E-mail', value: w.userEmail || '—' },
+                                { label: 'Téléphone', value: w.userPhoneNumber || '—' },
+                                { label: 'ID membre', value: <Reference value={w.userId} /> },
+                                {
+                                    label: 'Solde actuel',
+                                    value: balance
+                                        ? <span className="flex flex-col items-start gap-0.5 tabular-nums sm:items-end">{balance.map(([cur, amt]) => <span key={cur}>{exactMoney(amt as number, cur)}</span>)}</span>
+                                        : <span className="text-fg-muted">Solde non disponible</span>,
+                                },
+                            ]} />
+                        </SheetSection>
 
-                    {/* Withdrawal History */}
-                    {withdrawal.withdrawalHistory && withdrawal.withdrawalHistory.length > 0 && (
-                        <div>
-                            <h3 className="text-lg font-semibold mb-3 text-fg">Retraits récents</h3>
-                            <div className="bg-surface-2 border border-line-strong rounded-lg overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-surface-3">
-                                            <tr>
-                                                <th className="px-4 py-2 text-left text-fg-muted font-medium">ID transaction</th>
-                                                <th className="px-4 py-2 text-left text-fg-muted font-medium">Montant</th>
-                                                <th className="px-4 py-2 text-left text-fg-muted font-medium">Statut</th>
-                                                <th className="px-4 py-2 text-left text-fg-muted font-medium">Date</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-line-strong">
-                                            {withdrawal.withdrawalHistory.map((item, index) => (
-                                                <tr key={index} className="hover:bg-surface-3">
-                                                    <td className="px-4 py-2 font-mono text-xs text-fg-muted">{item.transactionId}</td>
-                                                    <td className="px-4 py-2 font-semibold text-fg">
-                                                        {formatCurrency(item.amount, (item.currency || withdrawal.currency) as any)}
-                                                    </td>
-                                                    <td className="px-4 py-2">
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                            item.status === 'completed' ? 'bg-success-soft text-success' :
-                                                            item.status === 'rejected_by_admin' ? 'bg-danger-soft text-danger' :
-                                                            'bg-surface-3 text-fg-muted'
-                                                        }`}>
-                                                            {withdrawalStatusLabel(item.status)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-2 text-fg-muted">{formatDate(item.createdAt)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Account Info */}
-                    {isMobileMoneyWithdrawal && withdrawal.metadata?.accountInfo && (
-                        <div>
-                            <h3 className="text-lg font-semibold mb-3 text-fg">Compte Mobile Money</h3>
-                            <div className="grid grid-cols-2 gap-4 bg-surface-2 p-4 rounded-lg border border-line-strong">
-                                <div>
-                                    <p className="text-sm text-fg-muted">Numéro</p>
-                                    <p className="font-mono font-medium text-fg">{withdrawal.metadata.accountInfo.fullMomoNumber}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-fg-muted">Opérateur</p>
-                                    <p className="font-medium text-fg">{withdrawal.metadata.accountInfo.momoOperator}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-fg-muted">Pays</p>
-                                    <p className="font-medium text-fg">{withdrawal.metadata.accountInfo.countryCode}</p>
-                                </div>
-                                {withdrawal.metadata.accountInfo.recipientName && (
-                                    <div>
-                                        <p className="text-sm text-fg-muted">Nom du bénéficiaire</p>
-                                        <p className="font-medium text-fg">{withdrawal.metadata.accountInfo.recipientName}</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Crypto Info */}
-                    {!isMobileMoneyWithdrawal && withdrawal.metadata?.cryptoAddress && (
-                        <div>
-                            <h3 className="text-lg font-semibold mb-3 text-fg">Compte crypto</h3>
-                            <div className="bg-surface-2 p-4 rounded-lg border border-line-strong space-y-3">
-                                <div>
-                                    <p className="text-sm text-fg-muted">Adresse du portefeuille</p>
-                                    <p className="font-mono text-xs break-all text-fg">{withdrawal.metadata.cryptoAddress}</p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <p className="text-sm text-fg-muted">Devise</p>
-                                        <p className="font-medium text-fg">{withdrawal.metadata.cryptoCurrency}</p>
-                                    </div>
-                                    {withdrawal.metadata.usdAmount && (
-                                        <div>
-                                            <p className="text-sm text-fg-muted">Montant en USD</p>
-                                            <p className="font-medium text-fg">${withdrawal.metadata.usdAmount}</p>
+                        {w.referralStats && (
+                            <SheetSection title="Filleuls">
+                                <div className="grid grid-cols-3 gap-px overflow-hidden rounded-control border border-line bg-line text-sm">
+                                    {[
+                                        { label: 'Directs', total: w.referralStats.directReferrals, active: w.referralStats.directSubscribedReferrals },
+                                        { label: 'Indirects', total: w.referralStats.indirectReferrals, active: w.referralStats.indirectSubscribedReferrals },
+                                        { label: 'Abonnés (total)', total: w.referralStats.totalSubscribedReferrals, active: null, of: w.referralStats.totalReferrals },
+                                    ].map(r => (
+                                        <div key={r.label} className="bg-surface p-3">
+                                            <p className="text-xs text-fg-muted">{r.label}</p>
+                                            <p className="mt-1 text-lg font-semibold text-fg">{formatNumber(r.total)}</p>
+                                            <p className="text-xs text-fg-muted">
+                                                {r.active !== null ? `${formatNumber(r.active)} abonné${r.active > 1 ? 's' : ''}` : `sur ${formatNumber(r.of)}`}
+                                            </p>
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
-                            </div>
-                        </div>
-                    )}
+                            </SheetSection>
+                        )}
 
-                    {/* Rejection Info (if rejected) */}
-                    {isRejected && withdrawal.rejectionReason && (
-                        <div className="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-4">
-                            <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">Rejet</h3>
-                            <div className="space-y-2">
-                                <div>
-                                    <p className="text-sm text-red-600 dark:text-red-300">Motif</p>
-                                    <p className="font-medium text-fg">{withdrawal.rejectionReason}</p>
-                                </div>
-                                {withdrawal.adminNotes && (
-                                    <div>
-                                        <p className="text-sm text-red-600 dark:text-red-300">Notes de l'admin</p>
-                                        <p className="text-sm text-fg">{withdrawal.adminNotes}</p>
-                                    </div>
+                        {w.withdrawalHistory && w.withdrawalHistory.length > 0 && (
+                            <SheetSection title="Retraits récents du membre">
+                                <ul className="divide-y divide-line rounded-control border border-line">
+                                    {w.withdrawalHistory.map((item, index) => (
+                                        <li key={`${item.transactionId}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium tabular-nums text-fg">{exactMoney(item.amount, item.currency || w.currency)}</p>
+                                                <p className="truncate font-mono text-xs text-fg-subtle" title={item.transactionId}>{item.transactionId}</p>
+                                            </div>
+                                            <div className="flex shrink-0 flex-col items-end gap-1">
+                                                <WithdrawalStatusBadge status={item.status} />
+                                                <RelativeTime value={item.createdAt} className="text-xs text-fg-muted" />
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </SheetSection>
+                        )}
+
+                        {isRejected && w.rejectionReason && (
+                            <SheetSection title="Rejet">
+                                <DetailList items={[
+                                    { label: 'Motif', value: w.rejectionReason },
+                                    { label: 'Notes de l’admin', value: w.adminNotes, hidden: !w.adminNotes },
+                                    { label: 'Rejeté le', value: formatDateTime(w.rejectedAt), hidden: !w.rejectedAt },
+                                ]} />
+                            </SheetSection>
+                        )}
+
+                        <SheetSection title="Références">
+                            <DetailList items={[
+                                { label: 'ID transaction', value: <Reference value={w.transactionId} /> },
+                                { label: 'Fournisseur', value: w.serviceProvider, hidden: !w.serviceProvider },
+                                { label: 'Demandé le', value: formatDateTime(w.createdAt) },
+                                { label: 'Validé le', value: formatDateTime(w.approvedAt), hidden: !w.approvedAt },
+                            ]} />
+                        </SheetSection>
+
+                        {isPendingApproval && (
+                            <Can module="withdrawals" write>
+                                <Field label="Notes (facultatif)" help="Gardées avec le retrait, pour l’équipe.">
+                                    <Textarea
+                                        value={adminNotes}
+                                        onChange={(e) => setAdminNotes(e.target.value)}
+                                        rows={3}
+                                        placeholder="Ajoutez une note sur ce retrait…"
+                                    />
+                                </Field>
+                            </Can>
+                        )}
+                    </div>
+
+                    {/* Nested here so a click in them is not an "outside" click for the sheet. */}
+                    {/* Approving sends real money: say how much, to whom, before it goes. */}
+                    <ConfirmationModal
+                        isOpen={confirmApprove}
+                        variant="success"
+                        title="Valider ce retrait ?"
+                        message={
+                            <div className="space-y-1 text-sm">
+                                <p><span className="text-fg-muted">Membre :</span> <span className="text-fg">{w.userName || w.userEmail || w.userId}</span></p>
+                                <p><span className="text-fg-muted">Montant envoyé :</span> <span className="font-medium text-fg">{exactMoney(net, w.currency)}</span></p>
+                                {account?.fullMomoNumber && (
+                                    <p><span className="text-fg-muted">Vers :</span> <span className="text-fg">{account.fullMomoNumber} ({account.momoOperator})</span></p>
                                 )}
-                                {withdrawal.rejectedAt && (
-                                    <div>
-                                        <p className="text-sm text-red-600 dark:text-red-300">Rejeté le</p>
-                                        <p className="text-sm text-fg">{formatDate(withdrawal.rejectedAt)}</p>
-                                    </div>
-                                )}
+                                <p className="pt-2">L’argent part dès la validation.</p>
                             </div>
-                        </div>
-                    )}
+                        }
+                        confirmText="Valider le retrait"
+                        onConfirm={async () => { await handleApprove(); setConfirmApprove(false); }}
+                        onCancel={() => setConfirmApprove(false)}
+                    />
 
-                    {/* Approval/Rejection Form */}
-                    {isPendingApproval && (
-                        <div className="border-t border-line pt-6">
-                            <h3 className="text-lg font-semibold mb-4 text-fg">Décision</h3>
-
-                            {!showRejectForm ? (
-                                <div>
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                                            Notes (facultatif)
-                                        </label>
-                                        <textarea
-                                            value={adminNotes}
-                                            onChange={(e) => setAdminNotes(e.target.value)}
-                                            rows={3}
-                                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-fg-subtle"
-                                            placeholder="Ajoutez une note sur ce retrait…"
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => setConfirmApprove(true)}
-                                            disabled={isApproving}
-                                            className="flex-1 inline-flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed font-medium transition-colors"
-                                        >
-                                            {isApproving ? 'Validation…' : <><HugeiconsIcon icon={Tick02Icon} size={18} />Valider le retrait</>}
-                                        </button>
-                                        <button
-                                            onClick={() => setShowRejectForm(true)}
-                                            className="flex-1 inline-flex items-center justify-center gap-2 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 font-medium transition-colors"
-                                        >
-                                            <HugeiconsIcon icon={Cancel01Icon} size={18} />
-                                            Rejeter le retrait
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div>
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                                            Motif du rejet <span className="text-red-600 dark:text-red-400">*</span>
-                                        </label>
-                                        <textarea
+                    <Dialog open={showRejectForm} onOpenChange={open => { if (!open && !isRejecting) { setShowRejectForm(false); setRejectionReason(''); } }}>
+                        {showRejectForm && (
+                            <DialogContent
+                                size="sm"
+                                title="Rejeter ce retrait ?"
+                                description={`${exactMoney(net, w.currency)} pour ${w.userName || w.userEmail || 'ce membre'}. Le membre verra le motif.`}
+                                footer={(
+                                    <>
+                                        <DialogClose asChild>
+                                            <Button variant="outline" size="lg" disabled={isRejecting}>Annuler</Button>
+                                        </DialogClose>
+                                        <Button variant="danger" size="lg" onClick={handleReject} loading={isRejecting} disabled={isRejecting || !rejectionReason.trim()}>
+                                            {isRejecting ? 'Rejet…' : 'Confirmer le rejet'}
+                                        </Button>
+                                    </>
+                                )}
+                            >
+                                <div className="space-y-4">
+                                    <Field label="Motif du rejet" required>
+                                        <Textarea
                                             value={rejectionReason}
                                             onChange={(e) => setRejectionReason(e.target.value)}
                                             rows={3}
-                                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:ring-2 focus:ring-red-500 focus:border-transparent placeholder-fg-subtle"
                                             placeholder="Pourquoi rejetez-vous ce retrait ?"
-                                            required
+                                            autoFocus
                                         />
-                                    </div>
-
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-fg-muted mb-2">
-                                            Notes complémentaires (facultatif)
-                                        </label>
-                                        <textarea
+                                    </Field>
+                                    <Field label="Notes complémentaires (facultatif)">
+                                        <Textarea
                                             value={adminNotes}
                                             onChange={(e) => setAdminNotes(e.target.value)}
                                             rows={2}
-                                            className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-fg-subtle"
                                             placeholder="Autres remarques…"
                                         />
-                                    </div>
-
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => {
-                                                setShowRejectForm(false);
-                                                setRejectionReason('');
-                                            }}
-                                            className="flex-1 bg-surface-2 text-fg-muted px-6 py-3 rounded-lg hover:bg-surface-3 font-medium transition-colors"
-                                        >
-                                            Annuler
-                                        </button>
-                                        <button
-                                            onClick={handleReject}
-                                            disabled={isRejecting || !rejectionReason.trim()}
-                                            className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed font-medium transition-colors"
-                                        >
-                                            {isRejecting ? 'Rejet…' : 'Confirmer le rejet'}
-                                        </button>
-                                    </div>
+                                    </Field>
                                 </div>
-                            )}
-                        </div>
-                    )}
-
-                </div>
-            </div>
-            {/* Approving sends real money: say how much, to whom, before it goes. */}
-            <ConfirmationModal
-                isOpen={confirmApprove}
-                variant="success"
-                title="Valider ce retrait ?"
-                message={
-                    <div className="space-y-1 text-sm">
-                        <p><span className="text-fg-muted">Membre :</span> {withdrawal.userName || withdrawal.userEmail || withdrawal.userId}</p>
-                        <p><span className="text-fg-muted">Montant envoyé :</span> {formatCurrency(withdrawal.amount - withdrawal.fee, withdrawal.currency)}</p>
-                        {withdrawal.metadata?.accountInfo?.fullMomoNumber && (
-                            <p><span className="text-fg-muted">Vers :</span> {withdrawal.metadata.accountInfo.fullMomoNumber} ({withdrawal.metadata.accountInfo.momoOperator})</p>
+                            </DialogContent>
                         )}
-                        <p className="pt-2 text-fg-muted">L'argent part dès la validation.</p>
-                    </div>
-                }
-                confirmText="Valider le retrait"
-                onConfirm={async () => { await handleApprove(); setConfirmApprove(false); }}
-                onCancel={() => setConfirmApprove(false)}
-            />
-        </div>
+                    </Dialog>
+                </SheetContent>
+            )}
+        </Dialog>
     );
 };
 
