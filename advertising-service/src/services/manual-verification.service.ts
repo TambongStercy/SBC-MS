@@ -1,12 +1,13 @@
 import { notifyManualVerificationApproved, notifyManualVerificationRejected } from './clients/notification.service.client';
 import { Types } from 'mongoose';
 import { customAlphabet } from 'nanoid';
-import ManualVerificationModel, { ManualVerificationStatus, IManualVerification } from '../database/models/manual-verification.model';
+import ManualVerificationModel, { ManualVerificationStatus, IManualVerification, IDecisionActor } from '../database/models/manual-verification.model';
 import CampaignParticipationModel, { ParticipationStatus } from '../database/models/campaign-participation.model';
 import CampaignModel from '../database/models/campaign.model';
 import { markDayVerifiedManually, earliestAllowedPost } from './verification.service';
 import { currentDay } from './day-window.service';
-import { getUserProfiles } from './clients/user.service.client';
+import { getUserProfile, getUserProfiles } from './clients/user.service.client';
+import { sendViewTask } from './clients/support.service.client';
 import { deleteFile } from './clients/settings.service.client';
 import { banDiffuseur } from './ranking.service';
 import config from '../config';
@@ -127,7 +128,14 @@ export const submitManualVideo = async (
     const mv = await ManualVerificationModel
         .findOne({ participationId, status: ManualVerificationStatus.AWAITING_UPLOAD })
         .sort({ createdAt: -1 });
-    if (!mv) throw new AppError("Aucun code en attente. Générez un code avant d'enregistrer.", 400);
+    if (!mv) {
+        // The same video sent again (double tap, network retry): answer as the first time.
+        const same = await ManualVerificationModel
+            .findOne({ participationId, videoFileId, status: ManualVerificationStatus.PENDING_REVIEW })
+            .select('day status').lean();
+        if (same) return { manualVerificationId: String(same._id), day: same.day, status: same.status };
+        throw new AppError("Aucun code en attente. Générez un code avant d'enregistrer.", 400);
+    }
 
     if (Date.now() > mv.expiresAt.getTime()) {
         mv.status = ManualVerificationStatus.EXPIRED;
@@ -135,13 +143,50 @@ export const submitManualVideo = async (
         throw new AppError('Le délai est dépassé. Recommencez avec un nouveau code.', 400);
     }
 
-    mv.videoFileId = videoFileId;
-    mv.uploadedAt = new Date();
-    mv.status = ManualVerificationStatus.PENDING_REVIEW;
-    await mv.save();
+    // Conditional, so a double tap or a retried upload cannot enter the queue
+    // (and reach SBC Support) twice.
+    const uploadedAt = new Date();
+    const entered = await ManualVerificationModel.findOneAndUpdate(
+        { _id: mv._id, status: ManualVerificationStatus.AWAITING_UPLOAD },
+        {
+            $set: { videoFileId, uploadedAt, status: ManualVerificationStatus.PENDING_REVIEW },
+            $push: { history: { at: uploadedAt, action: 'submitted' } },
+        },
+        { new: true },
+    );
+    if (!entered) {
+        const current = await ManualVerificationModel.findById(mv._id).select('status day').lean();
+        if (current?.status === ManualVerificationStatus.PENDING_REVIEW) {
+            return { manualVerificationId: String(mv._id), day: current.day, status: current.status };
+        }
+        throw new AppError("Aucun code en attente. Générez un code avant d'enregistrer.", 400);
+    }
 
-    log.info(`Manual verify video uploaded for participation ${participationId} day ${mv.day} (mv ${mv._id})`);
-    return { manualVerificationId: String(mv._id), day: mv.day, status: mv.status };
+    log.info(`Manual verify video uploaded for participation ${participationId} day ${entered.day} (mv ${entered._id})`);
+    // Fire-and-forget: never delays or fails the diffuseur's upload.
+    void queueViewTask(entered);
+    return { manualVerificationId: String(entered._id), day: entered.day, status: entered.status };
+};
+
+/**
+ * Tells SBC Support a proof is waiting (one verifier task per proof). Never
+ * throws; support-service's catch-up sync covers anything lost here.
+ */
+export const queueViewTask = async (mv: Pick<IManualVerification, '_id' | 'uploadedAt' | 'campaignId' | 'diffuseurUserId' | 'day'>): Promise<boolean> => {
+    try {
+        const profile = await getUserProfile(String(mv.diffuseurUserId)).catch(() => null);
+        return await sendViewTask({
+            sourceId: String(mv._id),
+            submittedAt: (mv.uploadedAt ?? new Date()).toISOString(),
+            campaignId: String(mv.campaignId),
+            diffuseurUserId: String(mv.diffuseurUserId),
+            dayIndex: mv.day,
+            country: profile?.country ?? null,
+        });
+    } catch (err) {
+        log.warn(`View task for proof ${mv._id} not sent: ${(err as Error)?.message}`);
+        return false;
+    }
 };
 
 /** The diffuseur's latest manual-verification state for a participation. */
@@ -161,17 +206,28 @@ export const getManualStatus = async (userId: Types.ObjectId, participationId: s
 
 // --- Admin ---
 
-/** `match`: extra conditions (the admin's country / date filters). */
-export const listPendingManualVerifications = async (match: Record<string, unknown> = {}) => {
-    const items = await ManualVerificationModel
-        .find({ ...match, status: ManualVerificationStatus.PENDING_REVIEW })
+export interface ListPage {
+    page: number;
+    limit: number;
+}
+
+/**
+ * `match`: extra conditions (the admin's country / date filters).
+ * `paging`: absent = every pending proof (what the dashboard counters read);
+ * given = one page of it. `total` is always the whole queue for these filters.
+ */
+export const listPendingManualVerifications = async (match: Record<string, unknown> = {}, paging?: ListPage) => {
+    const filter = { ...match, status: ManualVerificationStatus.PENDING_REVIEW };
+    let query = ManualVerificationModel
+        .find(filter)
         // By upload time, not by createdAt. createdAt is when the CODE was issued,
         // and the gap between the two is whatever the diffuseur took to record —
         // so ordering by it puts someone who asked for a code early and uploaded
         // late ahead of someone who has been waiting longer for a decision.
         // Whoever sent their video first is served first (Rufus, 2026-09-05).
-        .sort({ uploadedAt: 1, createdAt: 1 })
-        .lean();
+        .sort({ uploadedAt: 1, createdAt: 1 });
+    if (paging) query = query.skip((paging.page - 1) * paging.limit).limit(paging.limit);
+    const [items, total] = await Promise.all([query.lean(), ManualVerificationModel.countDocuments(filter)]);
 
     const [profiles, campaigns] = await Promise.all([
         getUserProfiles(items.map(i => String(i.diffuseurUserId))).catch(() => []),
@@ -180,98 +236,283 @@ export const listPendingManualVerifications = async (match: Record<string, unkno
     const profileById = new Map(profiles.map(p => [String(p._id), p]));
     const campaignById = new Map(campaigns.map(c => [String(c._id), c]));
 
-    return items.map(i => {
-        const p = profileById.get(String(i.diffuseurUserId));
-        const c = campaignById.get(String(i.campaignId));
-        return {
-            manualVerificationId: String(i._id),
-            participationId: String(i.participationId),
-            day: i.day,
-            code: i.code,
-            codeIssuedAt: i.codeIssuedAt,
-            uploadedAt: i.uploadedAt,
-            videoFileId: i.videoFileId ?? null,
-            videoUrl: i.videoFileId ? videoUrl(i.videoFileId) : null,
-            diffuseurName: p?.name ?? 'Inconnu',
-            diffuseurPhone: p?.phoneNumber,
-            campaignTitle: c?.title ?? '—',
-            isTestCampaign: Boolean(c?.isTestCampaign),
-        };
-    });
+    return {
+        total,
+        items: items.map(i => {
+            const p = profileById.get(String(i.diffuseurUserId));
+            const c = campaignById.get(String(i.campaignId));
+            return {
+                manualVerificationId: String(i._id),
+                participationId: String(i.participationId),
+                day: i.day,
+                code: i.code,
+                codeIssuedAt: i.codeIssuedAt,
+                uploadedAt: i.uploadedAt,
+                videoFileId: i.videoFileId ?? null,
+                videoUrl: i.videoFileId ? videoUrl(i.videoFileId) : null,
+                diffuseurName: p?.name ?? 'Inconnu',
+                diffuseurPhone: p?.phoneNumber,
+                campaignTitle: c?.title ?? '—',
+                isTestCampaign: Boolean(c?.isTestCampaign),
+            };
+        }),
+    };
 };
 
+// --- SBC Support (internal) ---
+
+/**
+ * Proofs for support-service's catch-up sync, oldest change first. Pass the
+ * last `updatedAt` seen as `updatedSince` to page through.
+ */
+export const listForSupportSync = async (opts: { status: ManualVerificationStatus; updatedSince?: Date; limit: number }) => {
+    const filter: Record<string, unknown> = { status: opts.status };
+    if (opts.updatedSince) filter.updatedAt = { $gt: opts.updatedSince };
+    const items = await ManualVerificationModel.find(filter)
+        .sort({ updatedAt: 1, _id: 1 })
+        .limit(opts.limit)
+        .select('_id status uploadedAt updatedAt campaignId diffuseurUserId day')
+        .lean();
+    return items.map(i => ({
+        id: String(i._id),
+        status: i.status,
+        submittedAt: i.uploadedAt ?? null,
+        updatedAt: i.updatedAt,
+        campaignId: String(i.campaignId),
+        diffuseurUserId: String(i.diffuseurUserId),
+        dayIndex: i.day,
+    }));
+};
+
+/** One proof with what a verifier needs to judge it. Null when not found. */
+export const getProofForSupport = async (manualVerificationId: string) => {
+    if (!Types.ObjectId.isValid(manualVerificationId)) return null;
+    const mv = await ManualVerificationModel.findById(manualVerificationId).lean();
+    if (!mv) return null;
+
+    const [participation, campaign, profile, attempts] = await Promise.all([
+        CampaignParticipationModel.findById(mv.participationId).lean(),
+        CampaignModel.findById(mv.campaignId).select('title targetUniqueViews isTestCampaign status').lean(),
+        getUserProfile(String(mv.diffuseurUserId)).catch(() => null),
+        // Earlier attempts at the same participation: a refused day, an expired code.
+        ManualVerificationModel.find({ participationId: mv.participationId, _id: { $ne: mv._id } })
+            .sort({ createdAt: -1 }).limit(20)
+            .select('day status uploadedAt reviewedAt rejectionReason observedViewCount decidedBy createdAt')
+            .lean(),
+    ]);
+    const day = participation?.days?.find((d: any) => d.day === mv.day);
+
+    return {
+        id: String(mv._id),
+        status: mv.status,
+        dayIndex: mv.day,
+        code: mv.code,
+        codeIssuedAt: mv.codeIssuedAt,
+        submittedAt: mv.uploadedAt ?? null,
+        // Served by settings-service's file proxy (proofs are in the public media
+        // bucket under an unguessable id), the same URL the admin panel plays.
+        videoUrl: mv.videoFileId ? videoUrl(mv.videoFileId) : null,
+        videoDeletedAt: mv.videoDeletedAt ?? null,
+        decision: mv.status === ManualVerificationStatus.APPROVED || mv.status === ManualVerificationStatus.REJECTED
+            ? { reviewedAt: mv.reviewedAt, decidedBy: mv.decidedBy ?? (mv.reviewedBy ? { source: 'admin', id: String(mv.reviewedBy) } : null), observedViewCount: mv.observedViewCount ?? null, rejectionReason: mv.rejectionReason ?? null }
+            : null,
+        participation: participation ? {
+            id: String(participation._id),
+            status: participation.status,
+            day: day ? { status: day.status, viewCount: day.viewCount ?? null, verifiedAt: day.verifiedAt ?? null } : null,
+            totalViews: participation.totalViews ?? 0,
+        } : null,
+        campaign: campaign ? {
+            id: String(campaign._id),
+            name: campaign.title,
+            targetViews: campaign.targetUniqueViews ?? null,
+            isTestCampaign: Boolean(campaign.isTestCampaign),
+        } : { id: String(mv.campaignId), name: null, targetViews: null, isTestCampaign: false },
+        diffuseur: {
+            id: String(mv.diffuseurUserId),
+            name: profile?.name ?? null,
+            country: profile?.country ?? null,
+        },
+        history: {
+            events: mv.history ?? [],
+            previousAttempts: attempts.map(a => ({
+                id: String(a._id),
+                dayIndex: a.day,
+                status: a.status,
+                submittedAt: a.uploadedAt ?? null,
+                reviewedAt: a.reviewedAt ?? null,
+                observedViewCount: a.observedViewCount ?? null,
+                rejectionReason: a.rejectionReason ?? null,
+                decidedBy: a.decidedBy ?? null,
+            })),
+        },
+    };
+};
+
+/** The roles allowed to ban a diffuseur from SBC Support (contract §2.3). */
+export const SUPPORT_BAN_ROLES = ['views_supervisor', 'support_admin'];
+
+export class AlreadyDecidedError extends AppError {
+    readonly code = 'ALREADY_DECIDED';
+    constructor(readonly currentStatus: string) {
+        super(`Cette vérification n'est plus en attente (statut : ${currentStatus}).`, 409);
+    }
+}
+
+export interface DecisionInput {
+    decision: 'approve' | 'reject';
+    observedViewCount?: number;
+    reason?: string;
+    /** Ban the diffuseur from the ads network in the same action (reject only). */
+    ban?: boolean;
+    actor: IDecisionActor;
+    /**
+     * The admin user who decided (admin panel), stored in reviewedBy and used as
+     * bannedBy. Absent for SBC Support agents, whose ids live in support-service.
+     */
+    adminUserId?: Types.ObjectId;
+}
+
+const objectIdOrUndefined = (id?: string) => (id && Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : undefined);
+
+/**
+ * The one way a video proof gets decided, from the admin panel or SBC Support.
+ *
+ * The status moves `pending_review → approved/rejected` in a single conditional
+ * write, BEFORE anything else happens. Two reviewers deciding the same proof at
+ * once used to both pass a read-then-check and both credit the day; now exactly
+ * one write matches and every other caller gets 409 ALREADY_DECIDED. Side
+ * effects (crediting the day, banning, notifying) run only for the caller whose
+ * write took. If crediting the day fails, the claim is released (back to
+ * pending_review) so the proof can be decided again.
+ */
+export const decideManualVerification = async (manualVerificationId: string, input: DecisionInput) => {
+    if (!Types.ObjectId.isValid(manualVerificationId)) throw new AppError('Vérification introuvable.', 404);
+    const { decision, actor } = input;
+    if (decision !== 'approve' && decision !== 'reject') {
+        throw new AppError('Décision invalide : « approve » ou « reject ».', 400);
+    }
+
+    const views = Number(input.observedViewCount);
+    if (decision === 'approve' && (input.observedViewCount === undefined || input.observedViewCount === null
+        || !Number.isFinite(views) || views < 0)) {
+        throw new AppError('Le nombre de vues doit être un nombre positif.', 400);
+    }
+    const reason = (input.reason ?? '').trim();
+    if (decision === 'reject' && !reason) throw new AppError('Un motif de refus est obligatoire.', 400);
+
+    const now = new Date();
+    const status = decision === 'approve' ? ManualVerificationStatus.APPROVED : ManualVerificationStatus.REJECTED;
+    const set: Record<string, unknown> = { status, reviewedAt: now, decidedBy: actor };
+    if (input.adminUserId) set.reviewedBy = input.adminUserId;
+    if (decision === 'reject') set.rejectionReason = reason;
+
+    const event = {
+        at: now,
+        action: decision === 'approve' ? 'approved' : 'rejected',
+        by: actor,
+        ...(decision === 'approve' ? { observedViewCount: Math.max(0, Math.round(views)) } : { reason, ban: Boolean(input.ban) }),
+    };
+
+    const mv = await ManualVerificationModel.findOneAndUpdate(
+        { _id: manualVerificationId, status: ManualVerificationStatus.PENDING_REVIEW },
+        { $set: set, $push: { history: event } },
+        { new: true },
+    );
+    if (!mv) {
+        const current = await ManualVerificationModel.findById(manualVerificationId).select('status').lean();
+        if (!current) throw new AppError('Vérification introuvable.', 404);
+        throw new AlreadyDecidedError(current.status);
+    }
+
+    const who = `${actor.source}:${actor.id ?? '?'}${actor.role ? `(${actor.role})` : ''}${actor.override ? ' [override]' : ''}`;
+
+    if (decision === 'approve') {
+        let result: Awaited<ReturnType<typeof markDayVerifiedManually>>;
+        try {
+            result = await markDayVerifiedManually(mv.participationId, mv.day, views);
+        } catch (err) {
+            // Not credited: release the claim so the proof can be decided again.
+            await ManualVerificationModel.updateOne(
+                { _id: mv._id, status: ManualVerificationStatus.APPROVED, reviewedAt: now },
+                {
+                    $set: { status: ManualVerificationStatus.PENDING_REVIEW },
+                    $unset: { reviewedAt: 1, reviewedBy: 1, decidedBy: 1 },
+                    $push: { history: { at: new Date(), action: 'decision_reverted', by: actor, reason: (err as Error)?.message?.slice(0, 300) } },
+                },
+            ).catch(e => log.error(`Could not release proof ${mv._id} after a failed approval: ${e?.message}`));
+            throw err;
+        }
+        await ManualVerificationModel.updateOne({ _id: mv._id }, { $set: { observedViewCount: result.viewCount } });
+
+        log.info(`${who} approved manual verification ${manualVerificationId} (day ${mv.day}, ${result.viewCount} views)`
+            + (actor.requestId ? ` request ${actor.requestId}` : ''));
+        void notifyManualVerificationApproved(String(mv.diffuseurUserId), mv.day, result.viewCount, result.earnedAmount);
+        return { manualVerificationId, status: ManualVerificationStatus.APPROVED, ...result };
+    }
+
+    let banned = false;
+    let offersWithdrawn = 0;
+    if (input.ban) {
+        // The refusal reason IS the ban reason: they are the same judgement about
+        // the same recording. The refusal is already recorded, so a failed ban is
+        // reported, not thrown: the caller retries it from the diffuseurs screen.
+        try {
+            ({ offersWithdrawn } = await banDiffuseur(
+                mv.diffuseurUserId,
+                input.adminUserId ?? objectIdOrUndefined(actor.id),
+                reason,
+            ));
+            banned = true;
+        } catch (err) {
+            log.error(`Proof ${manualVerificationId} rejected but banning diffuseur ${mv.diffuseurUserId} failed: ${(err as Error)?.message}`);
+        }
+    }
+
+    void notifyManualVerificationRejected(String(mv.diffuseurUserId), mv.day, reason);
+
+    log.info(
+        `${who} rejected manual verification ${manualVerificationId}: ${reason}`
+        + (banned ? ` — diffuseur ${mv.diffuseurUserId} banned` : '')
+        + (actor.requestId ? ` request ${actor.requestId}` : ''),
+    );
+    return { manualVerificationId, status: ManualVerificationStatus.REJECTED, banned, offersWithdrawn };
+};
+
+/** Admin panel approve (see decideManualVerification). */
 export const approveManualVerification = async (
     adminId: Types.ObjectId,
     manualVerificationId: string,
     observedViewCount: number,
-) => {
-    if (!Number.isFinite(observedViewCount) || observedViewCount < 0) {
-        throw new AppError('Le nombre de vues doit être un nombre positif.', 400);
-    }
-    const mv = await ManualVerificationModel.findById(manualVerificationId);
-    if (!mv) throw new AppError('Vérification introuvable.', 404);
-    if (mv.status !== ManualVerificationStatus.PENDING_REVIEW) {
-        throw new AppError(`Cette vérification n'est plus en attente (statut : ${mv.status}).`, 400);
-    }
+    actor: Partial<IDecisionActor> = {},
+) => decideManualVerification(manualVerificationId, {
+    decision: 'approve',
+    observedViewCount,
+    adminUserId: adminId,
+    actor: { source: 'admin', id: String(adminId), ...actor },
+});
 
-    const result = await markDayVerifiedManually(mv.participationId, mv.day, observedViewCount);
-
-    mv.status = ManualVerificationStatus.APPROVED;
-    mv.reviewedBy = adminId;
-    mv.reviewedAt = new Date();
-    mv.observedViewCount = result.viewCount;
-    await mv.save();
-
-    log.info(`Admin ${adminId} approved manual verification ${manualVerificationId} (day ${mv.day}, ${result.viewCount} views)`);
-    void notifyManualVerificationApproved(String(mv.diffuseurUserId), mv.day, result.viewCount, result.earnedAmount);
-    return { manualVerificationId, ...result };
-};
-
+/**
+ * Admin panel reject, optionally banning the diffuseur in the same action.
+ *
+ * The moment you know is the moment you are watching the recording — Rufus
+ * spotted an AI-generated proof for the second time and had nowhere to act on
+ * it from the review screen. Splitting "refuse" from "ban" across two screens
+ * means the second step is the one that gets skipped.
+ */
 export const rejectManualVerification = async (
     adminId: Types.ObjectId,
     manualVerificationId: string,
     reason: string,
-    /**
-     * Ban the diffuseur from the ads network as part of the same action.
-     *
-     * The moment you know is the moment you are watching the recording — Rufus
-     * spotted an AI-generated proof for the second time and had nowhere to act on
-     * it from the review screen. Splitting "refuse" from "ban" across two screens
-     * means the second step is the one that gets skipped.
-     */
     ban = false,
-) => {
-    const trimmed = (reason ?? '').trim();
-    if (!trimmed) throw new AppError('Un motif de refus est obligatoire.', 400);
-
-    const mv = await ManualVerificationModel.findById(manualVerificationId);
-    if (!mv) throw new AppError('Vérification introuvable.', 404);
-    if (mv.status !== ManualVerificationStatus.PENDING_REVIEW) {
-        throw new AppError(`Cette vérification n'est plus en attente (statut : ${mv.status}).`, 400);
-    }
-
-    mv.status = ManualVerificationStatus.REJECTED;
-    mv.reviewedBy = adminId;
-    mv.reviewedAt = new Date();
-    mv.rejectionReason = trimmed;
-    await mv.save();
-
-    let offersWithdrawn = 0;
-    if (ban) {
-        // The refusal reason IS the ban reason: they are the same judgement about
-        // the same recording, and asking for it twice would only get it typed
-        // shorter the second time.
-        ({ offersWithdrawn } = await banDiffuseur(mv.diffuseurUserId, adminId, trimmed));
-    }
-
-    void notifyManualVerificationRejected(String(mv.diffuseurUserId), mv.day, trimmed);
-
-    log.info(
-        `Admin ${adminId} rejected manual verification ${manualVerificationId}: ${trimmed}`
-        + (ban ? ` — diffuseur ${mv.diffuseurUserId} banned` : ''),
-    );
-    return { manualVerificationId, status: mv.status, banned: ban, offersWithdrawn };
-};
+    actor: Partial<IDecisionActor> = {},
+) => decideManualVerification(manualVerificationId, {
+    decision: 'reject',
+    reason,
+    ban,
+    adminUserId: adminId,
+    actor: { source: 'admin', id: String(adminId), ...actor },
+});
 
 /**
  * Delete the recordings of verifications that have already been decided.

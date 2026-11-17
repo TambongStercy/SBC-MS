@@ -227,7 +227,8 @@ export const campaignClickBreakdown = async (campaignId: Types.ObjectId) => {
  */
 export const banDiffuseur = async (
     userId: Types.ObjectId,
-    adminUserId: Types.ObjectId,
+    /** Undefined when an SBC Support agent bans (their id is not a user id). */
+    adminUserId: Types.ObjectId | undefined,
     reason: string,
 ): Promise<{ offersWithdrawn: number; participationsStopped: number }> => {
     const trimmed = (reason ?? '').trim();

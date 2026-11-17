@@ -50,6 +50,21 @@ interface IConfig {
         notificationService: string;
         settingsService: string;
         paymentService: string;
+        /**
+         * SBC Support (support-service), with the /api suffix. Empty when
+         * SUPPORT_SERVICE_URL is unset: calls to it are then skipped with a
+         * warning. Read on each access so tests can switch it.
+         */
+        readonly supportService: string;
+    };
+    /**
+     * Video proofs are decided in SBC Support (contract §2.3). While
+     * `adminReadOnly` is true (VIDEO_VERIFICATION_ADMIN_READONLY, default true),
+     * the admin panel's approve/reject answer 403 except for the super admin
+     * (role `admin`), whose override is logged. Read on each access.
+     */
+    videoVerification: {
+        readonly adminReadOnly: boolean;
     };
     /** Public origin the tracking links and landing pages are served from. */
     publicBaseUrl: string;
@@ -166,6 +181,10 @@ const config: IConfig = {
         notificationService: ensureApiSuffix(process.env.NOTIFICATION_SERVICE_URL, 'http://localhost:3002'),
         settingsService: ensureApiSuffix(process.env.SETTINGS_SERVICE_URL, 'http://localhost:3007'),
         paymentService: ensureApiSuffix(process.env.PAYMENT_SERVICE_URL, 'http://localhost:3003'),
+        get supportService() {
+            const url = (process.env.SUPPORT_SERVICE_URL || '').trim();
+            return url ? ensureApiSuffix(url.replace(/\/$/, ''), url) : '';
+        },
     },
     publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3010',
     mediaCdnBaseUrl: process.env.MEDIA_CDN_BASE_URL || 'https://media.sniperbuisnesscenter.com',
@@ -192,6 +211,13 @@ const config: IConfig = {
         minHoursBetweenDays: parseInt(process.env.MIN_HOURS_BETWEEN_DAYS || '24', 10),
         manualVerifyWindowSeconds: parseInt(process.env.MANUAL_VERIFY_WINDOW_SECONDS || '900', 10),
         manualVerifyRetentionDays: parseInt(process.env.MANUAL_VERIFY_RETENTION_DAYS || '7', 10),
+    },
+    videoVerification: {
+        get adminReadOnly() {
+            const raw = (process.env.VIDEO_VERIFICATION_ADMIN_READONLY ?? '').trim().toLowerCase();
+            // Anything but an explicit "off" keeps the admin panel read-only.
+            return !['false', '0', 'no', 'off'].includes(raw);
+        },
     },
     referral: {
         campaignsToUnlock: parseInt(process.env.REFERRAL_CAMPAIGNS_TO_UNLOCK || '100', 10),
