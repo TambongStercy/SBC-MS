@@ -67,6 +67,8 @@ interface IConfig {
     selfBaseUrl: string;
     contactsApp: { webhookUrl: string; webhookSecret: string };
     winnerVipGroupLink: string;
+    /** Canal de vente backend (SBC-security-server), called from this machine only. Off while the secret is empty. */
+    canalDeVente: { url: string; secret: string; cron: string };
     /**
      * Monthly leaderboard bonus (see leaderboard-bonus.service).
      *
@@ -158,6 +160,17 @@ const config: IConfig = {
 
     /** WhatsApp group link shown to Pack Winner members ("Accès groupe VIP SBC"). Hidden while empty. */
     winnerVipGroupLink: process.env.WINNER_VIP_GROUP_LINK || '',
+
+    /**
+     * Pack Winner members get a canal de vente link
+     * (https://canaldevente.sniperbuisnesscenter.com/<referralCode>/<phone>)
+     * created on the canal backend; see services/canal-de-vente.service.ts.
+     */
+    canalDeVente: {
+        url: (process.env.CANAL_SERVICE_URL || 'http://127.0.0.1:3050').replace(/\/$/, ''),
+        secret: process.env.CANAL_SERVICE_SECRET || '',
+        cron: process.env.CANAL_RETRY_CRON || '*/30 * * * *',
+    },
 
     leaderboardBonus: {
         // Off by default: turning it on is a deliberate act, because the first

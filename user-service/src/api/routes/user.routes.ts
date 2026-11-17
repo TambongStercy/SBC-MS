@@ -8,6 +8,7 @@ import { requireActiveSubscription } from '../middleware/requireActiveSubscripti
 import { authorize } from '../middleware/rbac.middleware';
 import { updateLastIp } from '../middleware/ip-update.middleware';
 import { UserRole, ADMIN_CAPABLE_ROLES } from '../../database/models/user.model';
+import { ensureCanalLink } from '../../services/canal-de-vente.service';
 import { getExtraNumbers, initiateExtraNumberPurchase, addExtraNumber, removeExtraNumber, setFeaturedNumber, getSalesPage } from '../../services/products.service';
 import { recordConsents, exportUserData, deleteOwnAccount } from '../../services/privacy.service';
 import logger from '../../utils/logger'; // Import logger
@@ -185,6 +186,9 @@ router.post('/me/extra-numbers', extraNumbers((userId, req) => addExtraNumber(us
 router.delete('/me/extra-numbers/:id', extraNumbers((userId, req) => removeExtraNumber(userId, req.params.id)));
 // Which number is shown on SBC Network and the sales page: { number } (an extra) or { number: null } (the main one).
 router.put('/me/extra-numbers/featured', extraNumbers((userId, req) => setFeaturedNumber(userId, req.body?.number ?? null)));
+
+// Pack Winner canal de vente link (created on the canal backend by SBC, never by the browser).
+router.get('/me/canal-de-vente', extraNumbers(async userId => ({ link: await ensureCanalLink(userId) })));
 
 // --- Data protection (APDP Benin, deliberation 2026-523): consent, download, erasure ---
 router.post('/me/consents', extraNumbers((userId, req) => recordConsents(userId, req.body ?? {}, req.ip)));

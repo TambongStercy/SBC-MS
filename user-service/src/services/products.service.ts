@@ -17,6 +17,7 @@ import { emitContactsEvent } from './contacts-webhook.service';
 import { pushCommission } from './push-notify';
 import { isSamePhoneNumber } from '../utils/phone.utils';
 import { displayWhatsappNumber } from '../utils/whatsapp-numbers';
+import { ensureCanalLinkInBackground } from './canal-de-vente.service';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('ProductsService');
@@ -238,6 +239,9 @@ async function applyWinner(userId: string, sessionId: string, metadata: any) {
     // 5. Relance credits (credited once per payment by notification-service).
     const granted = await notificationService.grantRelanceCredits(userId, `winner:${sessionId}`, WINNER.relancePackId);
     if (!granted) log.error(`ACTION NEEDED: ${WINNER.relanceCredits} relance credits for Winner ${sessionId} (user ${userId}) were not credited; re-run the grant`);
+    // 6. The canal de vente link (in the background: a canal backend outage never fails the payment;
+    //    the retry job and the profile pick it up later).
+    ensureCanalLinkInBackground(userId);
 }
 
 /**

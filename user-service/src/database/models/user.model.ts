@@ -83,6 +83,8 @@ export interface IUser extends Document {
      * For members whose main number is banned on WhatsApp.
      */
     featuredWhatsappNumber?: string;
+    /** Pack Winner canal de vente link, from the canal backend (services/canal-de-vente.service.ts). */
+    canalDeVente?: { link?: string; syncedAt?: Date; lastAttemptAt?: Date; lastError?: string };
     /**
      * Consents recorded for the APDP (Benin) authorisation, deliberation
      * 2026-523 of 27 Aug 2026: the privacy policy, and the hosting of data
@@ -198,6 +200,12 @@ const UserSchema = new Schema<IUser>(
         },
         extraNumberSlots: { type: Number, default: 0 },
         featuredWhatsappNumber: { type: String },
+        canalDeVente: {
+            link: { type: String },
+            syncedAt: { type: Date },
+            lastAttemptAt: { type: Date },
+            lastError: { type: String },
+        },
         consents: {
             privacy: { acceptedAt: Date, version: String, ip: String },
             dataTransfer: { acceptedAt: Date, version: String, ip: String },
