@@ -1,0 +1,12 @@
+export { Agent } from './agent.model';
+export { AgentSession } from './agent-session.model';
+export { AuditLog } from './audit-log.model';
+export { Approval } from './approval.model';
+export { Setting } from './setting.model';
+export { Counter } from './counter.model';
+export { Ticket, TicketMessage, TicketEvent, Attachment, ResponseTemplate } from './ticket.model';
+export { Case } from './case.model';
+export { ViewTask, AssignmentHistory } from './view-task.model';
+export { KbArticle } from './kb.model';
+export { BotConversation, AssistantUsage } from './bot.model';
+export { AgentNotification } from './agent-notification.model';
