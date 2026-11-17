@@ -15,6 +15,13 @@ router.use(authenticateServiceRequest);
 router.post('/deposit', (req, res, next) => paymentController.recordInternalDeposit(req, res, next));
 
 /**
+ * @route   GET /api/internal/intents/:sessionId
+ * @desc    Authoritative status + amount of a payment intent (callback verification)
+ * @access  Private (Service-to-Service)
+ */
+router.get('/intents/:sessionId', (req, res) => paymentController.getInternalIntent(req, res));
+
+/**
  * @route   POST /api/internal/withdrawal
  * @desc    Record an internal withdrawal (e.g., fee, chargeback, reversal)
  * @access  Private (Service-to-Service)
@@ -66,6 +73,13 @@ router.get('/user/:userId/has-pending-transactions', (req, res, next) => payment
  * @access  Private (Service-to-Service)
  */
 router.get('/user/:userId/has-pending-withdrawal', (req, res, next) => paymentController.checkUserPendingWithdrawal(req, res, next));
+
+/**
+ * @route   POST /api/internal/user/:userId/commissions-from
+ * @desc    Sum of referral commissions the user earned from given filleuls (read-only)
+ * @access  Private (Service-to-Service)
+ */
+router.post('/user/:userId/commissions-from', (req, res, next) => paymentController.getCommissionsFromSources(req, res, next));
 
 /**
  * @route   POST /api/internal/transactions/:transactionId/mark-reconciled

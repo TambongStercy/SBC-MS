@@ -1,13 +1,32 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
+import axios from 'axios';
+import { toast } from 'sonner';
 import { AdminUserData, loginAdmin, verifyAdminLoginOtp, AdminLoginChallenge } from '../services/adminUserApi';
+import { getMyAccess } from '../services/adminStaffApi';
 import { roleFromToken } from '../lib/roles';
+import { permissionsForRole, sanitizePermissions, type Permissions } from '../lib/permissions';
 
-interface AuthContextType {
+/** The signed-in admin as stored (localStorage 'adminUser'), with their rights. */
+export type AdminSessionUser = Omit<AdminUserData, 'password' | 'otps' | 'contactsOtps' | 'token'> & {
+  /** Effective per-module access, from the login answer then GET /users/admin/me/access. */
+  adminPermissions?: Permissions;
+};
+
+export interface AuthContextType {
   isAdminAuthenticated: boolean;
-  adminUser: Omit<AdminUserData, 'password' | 'otps' | 'contactsOtps' | 'token'> | null;
+  adminUser: AdminSessionUser | null;
   token: string | null;
-  /** From the session token; the stored user only as a fallback. */
+  /** The account's current role (refreshed from the server), for labels only. */
   role: string | null;
+  /**
+   * What this account may open, per module. null = not known yet (a staff
+   * session from before per-module access, waiting for the server's answer).
+   */
+  permissions: Permissions | null;
+  /** The last rights check failed for a reason other than "no access" (network, 503). */
+  accessError: boolean;
+  /** Asks the server for this account's rights again. */
+  refreshAccess: () => Promise<void>;
   /** Step one: checks the password and emails a code. */
   login: (credentials: { email: string; password: string }) => Promise<AdminLoginChallenge>;
   /** Step two: exchanges the emailed code for the session. */
@@ -16,7 +35,21 @@ interface AuthContextType {
   isLoading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/** Rights are re-read at most this often when the window regains focus. */
+const FOCUS_REFRESH_MS = 60 * 1000;
+
+function readStoredUser(): AdminSessionUser | null {
+  const storedUser = localStorage.getItem('adminUser');
+  try {
+    return storedUser ? JSON.parse(storedUser) : null;
+  } catch (error) {
+    console.error("Failed to parse stored admin user:", error);
+    localStorage.removeItem('adminUser');
+    return null;
+  }
+}
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -24,17 +57,12 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('adminToken'));
-  const [adminUser, setAdminUser] = useState<Omit<AdminUserData, 'password' | 'otps' | 'contactsOtps' | 'token'> | null>(() => {
-    const storedUser = localStorage.getItem('adminUser');
-    try {
-      return storedUser ? JSON.parse(storedUser) : null;
-    } catch (error) {
-      console.error("Failed to parse stored admin user:", error);
-      localStorage.removeItem('adminUser');
-      return null;
-    }
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(false); // Add loading state for login
+  const [adminUser, setAdminUser] = useState<AdminSessionUser | null>(readStoredUser);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [accessError, setAccessError] = useState(false);
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+  const lastRefresh = useRef(0);
 
   useEffect(() => {
     // Update local storage when state changes
@@ -66,8 +94,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!response.token || !response.user) {
         throw new Error('Login response missing token or user data');
       }
+      const { adminPermissions, ...user } = response.user;
+      lastRefresh.current = Date.now();
+      setAccessError(false);
       setToken(response.token);
-      setAdminUser(response.user);
+      setAdminUser(adminPermissions ? { ...user, adminPermissions: sanitizePermissions(adminPermissions) } : user);
     } catch (error) {
       setToken(null);
       setAdminUser(null);
@@ -77,16 +108,68 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken(null);
     setAdminUser(null);
-    // Optionally: could call a backend logout endpoint if one exists
-    // localStorage is cleared by the useEffect hook
-    // Redirect might happen in the component calling logout or via a route guard
-  };
+    setAccessError(false);
+    // localStorage is cleared by the effect above; the route guard sends to /login.
+  }, []);
+
+  const refreshAccess = useCallback(async () => {
+    const asked = tokenRef.current;
+    if (!asked) return;
+    lastRefresh.current = Date.now();
+    try {
+      const access = await getMyAccess();
+      if (tokenRef.current !== asked) return; // signed out or in again meanwhile
+      setAccessError(false);
+      setAdminUser(u => (u ? { ...u, role: access.role, adminPermissions: access.permissions } : u));
+    } catch (error) {
+      if (tokenRef.current !== asked) return;
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      if (status === 401 || status === 403) {
+        // The server no longer accepts this account in the admin.
+        toast.error('Votre accès à l’administration n’est plus valide. Reconnectez-vous.', { id: 'admin-session-ended' });
+        logout();
+        return;
+      }
+      setAccessError(true);
+    }
+  }, [logout]);
+
+  // On load and after each sign-in: the rights may have changed since.
+  useEffect(() => {
+    if (token) void refreshAccess();
+  }, [token, refreshAccess]);
+
+  // Back on the tab: re-read the rights, at most once a minute.
+  useEffect(() => {
+    const onFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (Date.now() - lastRefresh.current < FOCUS_REFRESH_MS) return;
+      void refreshAccess();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshAccess]);
+
+  const role = adminUser?.role ?? roleFromToken(token) ?? null;
+  // Sessions opened before the server sent adminPermissions fall back on the role.
+  const permissions = useMemo<Permissions | null>(() => {
+    if (!token) return null;
+    if (adminUser?.adminPermissions) return sanitizePermissions(adminUser.adminPermissions);
+    return permissionsForRole(roleFromToken(token) ?? adminUser?.role);
+  }, [token, adminUser]);
 
   return (
-    <AuthContext.Provider value={{ isAdminAuthenticated: !!token, adminUser, token, role: roleFromToken(token) ?? adminUser?.role ?? null, login, verifyLoginCode, logout, isLoading }}>
+    <AuthContext.Provider value={{
+      isAdminAuthenticated: !!token, adminUser, token, role, permissions, accessError, refreshAccess,
+      login, verifyLoginCode, logout, isLoading,
+    }}>
       {children}
     </AuthContext.Provider>
   );

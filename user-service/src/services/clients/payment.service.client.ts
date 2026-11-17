@@ -4,6 +4,16 @@ import logger from '../../utils/logger';
 import { AxiosInstance } from 'axios';
 import { AppError } from '../../utils/errors';
 
+/** Admin filters forwarded to payment-service's internal stats (country = the member's, dates on createdAt). */
+export interface AdminStatsParams { country?: string; from?: Date; to?: Date }
+function statsParams(f: AdminStatsParams): Record<string, string> {
+    const p: Record<string, string> = {};
+    if (f.country) p.country = f.country;
+    if (f.from) p.from = f.from.toISOString();
+    if (f.to) p.to = f.to.toISOString();
+    return p;
+}
+
 const log = logger.getLogger('PaymentServiceClient');
 
 // Define payload for creating an intent
@@ -219,11 +229,11 @@ class PaymentServiceClient {
      * Fetches the total number of transactions from the payment service.
      * Calls endpoint: GET /api/internal/stats/transactions
      */
-    async getTotalTransactions(): Promise<number> {
+    async getTotalTransactions(filters: AdminStatsParams = {}): Promise<number> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/transactions`);
         try {
             // Expect ApiResponse with data: { totalTransactionCount: number }
-            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/transactions');
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/transactions', { params: statsParams(filters) });
             if (response.data.success && typeof response.data.data === 'number') {
                 this.log.info(`Successfully fetched total transactions: ${response.data.data}`);
                 return response.data.data;
@@ -273,11 +283,11 @@ class PaymentServiceClient {
      * Fetches the total withdrawals amount from the payment service.
      * Calls endpoint: GET /api/internal/stats/total-withdrawals
      */
-    async getTotalWithdrawals(): Promise<number> {
+    async getTotalWithdrawals(filters: AdminStatsParams = {}): Promise<number> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/total-withdrawals`);
         try {
             // Expect ApiResponse with data: number
-            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-withdrawals');
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-withdrawals', { params: statsParams(filters) });
             if (response.data.success && typeof response.data.data === 'number') {
                 this.log.info(`Successfully fetched total withdrawals: ${response.data.data}`);
                 return response.data.data;
@@ -299,11 +309,11 @@ class PaymentServiceClient {
      * Fetches the total deposits amount from the payment service.
      * Calls endpoint: GET /api/internal/stats/total-deposits
      */
-    async getTotalDepositsAmount(): Promise<number> {
+    async getTotalDepositsAmount(filters: AdminStatsParams = {}): Promise<number> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/total-deposits`);
         try {
             // Expect ApiResponse with data: number
-            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-deposits');
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-deposits', { params: statsParams(filters) });
             if (response.data.success && typeof response.data.data === 'number') {
                 this.log.info(`Successfully fetched total deposits: ${response.data.data}`);
                 return response.data.data;
@@ -325,11 +335,11 @@ class PaymentServiceClient {
      * Fetches the total revenue amount from the payment service.
      * Calls endpoint: GET /api/internal/stats/total-revenue
      */
-    async getTotalRevenue(): Promise<number> {
+    async getTotalRevenue(filters: AdminStatsParams = {}): Promise<number> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/total-revenue`);
         try {
             // Expect ApiResponse with data: number
-            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-revenue');
+            const response = await this.apiClient.get<ApiResponse<number>>('/internal/stats/total-revenue', { params: statsParams(filters) });
             if (response.data.success && typeof response.data.data === 'number') {
                 this.log.info(`Successfully fetched total revenue: ${response.data.data}`);
                 return response.data.data;
@@ -351,11 +361,11 @@ class PaymentServiceClient {
      * Fetches monthly revenue data from the payment service.
      * Calls endpoint: GET /api/internal/stats/monthly-revenue
      */
-    async getMonthlyRevenue(): Promise<MonthlyRevenueResponseData[]> {
+    async getMonthlyRevenue(filters: AdminStatsParams = {}): Promise<MonthlyRevenueResponseData[]> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/monthly-revenue`);
         try {
             // Expect ApiResponse with data: MonthlyRevenueResponseData[]
-            const response = await this.apiClient.get<ApiResponse<MonthlyRevenueResponseData[]>>('/internal/stats/monthly-revenue');
+            const response = await this.apiClient.get<ApiResponse<MonthlyRevenueResponseData[]>>('/internal/stats/monthly-revenue', { params: statsParams(filters) });
             if (response.data.success && Array.isArray(response.data.data)) {
                 this.log.info(`Successfully fetched monthly revenue data. Count: ${response.data.data.length}`);
                 return response.data.data;
@@ -377,11 +387,11 @@ class PaymentServiceClient {
      * Fetches activity overview data from the payment service.
      * Calls endpoint: GET /api/internal/stats/activity-overview
      */
-    async getActivityOverview(): Promise<ActivityOverviewResponseData[]> {
+    async getActivityOverview(filters: AdminStatsParams = {}): Promise<ActivityOverviewResponseData[]> {
         this.log.info(`Sending request to ${this.apiClient.defaults.baseURL}/internal/stats/activity-overview`);
         try {
             // Expect ApiResponse with data: ActivityOverviewResponseData[]
-            const response = await this.apiClient.get<ApiResponse<ActivityOverviewResponseData[]>>('/internal/stats/activity-overview');
+            const response = await this.apiClient.get<ApiResponse<ActivityOverviewResponseData[]>>('/internal/stats/activity-overview', { params: statsParams(filters) });
             if (response.data.success && Array.isArray(response.data.data)) {
                 this.log.info(`Successfully fetched activity overview data. Count: ${response.data.data.length}`);
                 return response.data.data;

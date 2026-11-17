@@ -1,3 +1,4 @@
+import { pushWithdrawalResult } from './withdrawal-push';
 import { Types, Aggregate } from 'mongoose';
 import transactionRepository, { CreateTransactionInput } from '../database/repositories/transaction.repository';
 import paymentIntentRepository, { CreatePaymentIntentInput, UpdatePaymentIntentInput } from '../database/repositories/paymentIntent.repository';
@@ -27,6 +28,7 @@ import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.s
 import { currencyService } from './currency.service';
 import { ssoWebhookService } from './sso-webhook.service';
 import { buildCinetPayPayer } from '../utils/cinetpay-payer';
+import { checkCallbackUrl, callbackAllowlistEnforced } from '../utils/callback-allowlist';
 import * as sandbox from './sandbox.service';
 
 const host = 'https://sniperbuisnesscenter.com';
@@ -2498,11 +2500,13 @@ class PaymentService {
 
                     await userServiceClient.updateUserUsdBalance(transaction.userId.toString(), totalAmountToDebit);
                     log.info(`Debited ${Math.abs(totalAmountToDebit)} USD from user ${transaction.userId.toString()} for completed NOWPayments withdrawal`);
+                    pushWithdrawalResult(transaction, 'completed');
 
                 } else if (newStatus === TransactionStatus.FAILED) {
                     // For failed withdrawals, only update transaction status
                     // No balance refund needed since balance is only deducted on success
                     log.info(`NOWPayments withdrawal failed/rejected for transaction ${transaction.transactionId}. No balance changes needed.`);
+                    pushWithdrawalResult(transaction, 'failed');
                 }
             } else {
                 log.info(`Transaction ${transaction.transactionId} is not a withdrawal, skipping balance update`);
@@ -2871,6 +2875,16 @@ class PaymentService {
         if (!originatingService || !callbackUrl || typeof originatingService !== 'string' || typeof callbackUrl !== 'string') {
             log.warn(`Cannot notify originating service for PaymentIntent ${sessionId}: missing/invalid originatingService or callbackPath in metadata.`);
             return;
+        }
+
+        // The request below carries our service secret: never send it off-platform.
+        const verdict = checkCallbackUrl(callbackUrl);
+        if (!verdict.allowed) {
+            if (callbackAllowlistEnforced()) {
+                log.error(`Callback for PaymentIntent ${sessionId} NOT sent: ${verdict.reason} (${callbackUrl})`);
+                return;
+            }
+            log.warn(`Callback for PaymentIntent ${sessionId} would be blocked by the allowlist: ${verdict.reason} (${callbackUrl})`);
         }
 
         const callbackPayload = {
@@ -3922,6 +3936,7 @@ class PaymentService {
                 const amountToDebit = -Math.abs(transaction.amount);
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
                 log.info(`MoneyFusion payout completed: ${transaction.transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
+                pushWithdrawalResult(transaction, 'completed');
             }
         } else if (status === 'failed') {
             if (transaction.status !== TransactionStatus.FAILED) {
@@ -4004,6 +4019,7 @@ class PaymentService {
         const amountToDebit = -Math.abs(transaction.amount);
         await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
         log.info(`Admin ${adminId} manually completed MoneyFusion withdrawal ${transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
+        pushWithdrawalResult(transaction, 'completed');
 
         const updated = await transactionRepository.findByTransactionId(transactionId);
         return { success: true, transaction: updated };
@@ -4166,6 +4182,7 @@ class PaymentService {
             const amountToDebit = -Math.abs(transaction.amount);
             await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
             log.info(`Admin ${adminId} reconciled CinetPay withdrawal ${transactionId} as COMPLETED; debited ${amountToDebit} from user ${transaction.userId}`);
+            pushWithdrawalResult(transaction, 'completed');
             const updated = await transactionRepository.findByTransactionId(transactionId);
             return { success: true, action: 'completed', cinetpayStatus, transaction: updated };
         }
@@ -4796,7 +4813,8 @@ class PaymentService {
      * [ADMIN] Get total amount for completed withdrawals.
      * All amounts are stored as positive values regardless of transaction type.
      */
-    async getTotalWithdrawalsAmount(): Promise<number> {
+    async getTotalWithdrawalsAmount(extraMatch: Record<string, any> = {}): Promise<number> {
+        // extraMatch: admin filters only (member country, createdAt range); read-only.
         log.info('Calculating total completed withdrawal amount');
         try {
             const result = await TransactionModel.aggregate([
@@ -4804,7 +4822,8 @@ class PaymentService {
                     $match: {
                         type: TransactionType.WITHDRAWAL,
                         status: TransactionStatus.COMPLETED,
-                        deleted: { $ne: true } // Exclude soft-deleted
+                        deleted: { $ne: true }, // Exclude soft-deleted
+                        ...extraMatch
                     }
                 },
                 {
@@ -4859,7 +4878,8 @@ class PaymentService {
      * [ADMIN] Get total amount for completed deposits.
      * All amounts are stored as positive values regardless of transaction type.
      */
-    async getTotalDepositsAmount(): Promise<number> {
+    async getTotalDepositsAmount(extraMatch: Record<string, any> = {}): Promise<number> {
+        // extraMatch: admin filters only (member country, createdAt range); read-only.
         log.info('Calculating total completed deposit amount');
         try {
             const result = await TransactionModel.aggregate([
@@ -4867,7 +4887,8 @@ class PaymentService {
                     $match: {
                         type: TransactionType.DEPOSIT,
                         status: TransactionStatus.COMPLETED,
-                        deleted: { $ne: true } // Exclude soft-deleted
+                        deleted: { $ne: true }, // Exclude soft-deleted
+                        ...extraMatch
                     }
                 },
                 {
@@ -4900,7 +4921,8 @@ class PaymentService {
     /**
      * [ADMIN] Get total revenue from completed payments.
      */
-    async getTotalRevenueAmount(): Promise<number> {
+    async getTotalRevenueAmount(extraMatch: Record<string, any> = {}): Promise<number> {
+        // extraMatch: admin filters only (member country, createdAt range); read-only.
         log.info('Calculating total revenue from completed payments');
         try {
             const result = await TransactionModel.aggregate([
@@ -4908,7 +4930,8 @@ class PaymentService {
                     $match: {
                         type: TransactionType.PAYMENT,
                         status: TransactionStatus.COMPLETED,
-                        deleted: { $ne: true } // Exclude soft-deleted
+                        deleted: { $ne: true }, // Exclude soft-deleted
+                        ...extraMatch
                     }
                 },
                 {
@@ -4931,13 +4954,20 @@ class PaymentService {
      * [ADMIN] Get monthly revenue statistics from completed payments.
      * Returns data for the last N months.
      */
-    async getMonthlyRevenueStats(months: number = 12): Promise<{ month: string; totalAmount: number }[]> {
+    async getMonthlyRevenueStats(
+        months: number = 12,
+        scope: { memberMatch?: Record<string, any>; from?: Date; to?: Date } = {}
+    ): Promise<{ month: string; totalAmount: number }[]> {
         log.info(`Calculating monthly revenue stats for the last ${months} months`);
-        const endDate = new Date();
-        const startDate = new Date();
+        // Admin filters: from/to replace the default window (last N months → now),
+        // memberMatch restricts to a country's members. Read-only.
+        const endDate = scope.to ?? new Date();
+        let startDate = new Date(endDate); // default window: the N months before the end
         startDate.setMonth(startDate.getMonth() - months);
         startDate.setDate(1);
         startDate.setHours(0, 0, 0, 0);
+        if (scope.from) startDate = scope.from;
+        const memberMatch = scope.memberMatch ?? {};
 
         try {
             const result = await TransactionModel.aggregate([
@@ -4946,7 +4976,8 @@ class PaymentService {
                         type: TransactionType.PAYMENT,
                         status: TransactionStatus.COMPLETED,
                         deleted: { $ne: true },
-                        createdAt: { $gte: startDate, $lte: endDate }
+                        createdAt: { $gte: startDate, $lte: endDate },
+                        ...memberMatch
                     }
                 },
                 {
@@ -4975,7 +5006,7 @@ class PaymentService {
 
             // Fill missing months with 0 if needed by frontend
             const monthlyDataMap = new Map<string, number>();
-            let currentMonthDate = new Date(startDate);
+            let currentMonthDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
             while (currentMonthDate <= endDate) {
                 const monthKey = `${currentMonthDate.getFullYear()}-${currentMonthDate.getMonth() + 1}`;
                 monthlyDataMap.set(monthKey, 0);
@@ -4999,13 +5030,19 @@ class PaymentService {
      * [ADMIN] Get monthly activity overview (counts of deposits, withdrawals, payments).
      * Returns data for the last N months.
      */
-    async getMonthlyActivityOverviewStats(months: number = 12): Promise<any[]> { // Define a specific return type later if needed
+    async getMonthlyActivityOverviewStats(
+        months: number = 12,
+        scope: { memberMatch?: Record<string, any>; from?: Date; to?: Date } = {}
+    ): Promise<any[]> { // Define a specific return type later if needed
         log.info(`Calculating monthly activity overview stats for the last ${months} months`);
-        const endDate = new Date();
-        const startDate = new Date();
+        // Admin filters: same rules as getMonthlyRevenueStats. Read-only.
+        const endDate = scope.to ?? new Date();
+        let startDate = new Date(endDate); // default window: the N months before the end
         startDate.setMonth(startDate.getMonth() - months);
         startDate.setDate(1);
         startDate.setHours(0, 0, 0, 0);
+        if (scope.from) startDate = scope.from;
+        const memberMatch = scope.memberMatch ?? {};
 
         try {
             const result = await TransactionModel.aggregate([
@@ -5014,7 +5051,8 @@ class PaymentService {
                         type: { $in: [TransactionType.DEPOSIT, TransactionType.WITHDRAWAL, TransactionType.PAYMENT] },
                         status: TransactionStatus.COMPLETED, // Only count completed transactions? Adjust if needed
                         deleted: { $ne: true },
-                        createdAt: { $gte: startDate, $lte: endDate }
+                        createdAt: { $gte: startDate, $lte: endDate },
+                        ...memberMatch
                     }
                 },
                 {
@@ -5065,7 +5103,7 @@ class PaymentService {
 
             // Fill missing months with 0s if needed
             const activityMap = new Map<string, { month: string; deposits: number; withdrawals: number; payments: number }>();
-            let currentMonthDate = new Date(startDate);
+            let currentMonthDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
             while (currentMonthDate <= endDate) {
                 const monthKey = `${currentMonthDate.getFullYear()}-${currentMonthDate.getMonth() + 1}`;
                 activityMap.set(monthKey, { month: monthKey, deposits: 0, withdrawals: 0, payments: 0 });
@@ -6191,6 +6229,7 @@ class PaymentService {
                 // Debit user's balance - allowing negative balance if insufficient
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
+                pushWithdrawalResult(transaction, 'completed');
 
             } catch (balanceError: any) {
                 // DO NOT change the transaction status to FAILED. The payout was successful.
@@ -6205,6 +6244,7 @@ class PaymentService {
             }
         } else if (finalStatus === TransactionStatus.FAILED) {
             log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
+            if (transaction.metadata?.adminAction !== true) pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
             updateMetadata.failureReason = `External payout failed: ${verifiedPayoutStatus?.comment || providerStatusMessage}`;
 
             // Send failure notification (only if it's a regular user withdrawal)
@@ -6239,9 +6279,9 @@ class PaymentService {
     }
 
     // This new or modified method would fetch the total count
-    async getTotalTransactionsCount(): Promise<number> {
-        // Call a method in your transaction repository to get the count
-        const count = await transactionRepository.countAllTransactions(); // New method in repository
+    async getTotalTransactionsCount(extraMatch: Record<string, any> = {}): Promise<number> {
+        // extraMatch: admin filters only (member country, createdAt range); read-only.
+        const count = await transactionRepository.countAllTransactions(extraMatch);
         return count;
     }
 
@@ -6648,6 +6688,7 @@ class PaymentService {
                 // Debit user's balance - allowing negative balance if insufficient
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
                 log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
+                pushWithdrawalResult(transaction, 'completed');
 
                 const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
                 if (userDetails?.email) {
@@ -6669,6 +6710,7 @@ class PaymentService {
             }
         } else if (finalStatus === TransactionStatus.FAILED) {
             log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
+            if (transaction.metadata?.adminAction !== true) pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
             updateMetadata.failureReason = `External payout failed: ${providerMessage}`;
 
             if (transaction.metadata?.adminAction !== true) {
@@ -6730,6 +6772,7 @@ class PaymentService {
                 const amountToDebit = -Math.abs(transaction.amount);
                 await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
                 log.info(`Transaction ${update.internalTransactionId} successfully marked as COMPLETED and debited ${amountToDebit} from user ${transaction.userId}.`);
+                pushWithdrawalResult(transaction, 'completed');
 
                 break;
 
@@ -6783,6 +6826,8 @@ class PaymentService {
             'metadata.statusDetails': `Failed at ${new Date().toISOString()}`
         });
         log.info(`Transaction ${transactionId} successfully marked as FAILED.`);
+        // Debit-on-success: a mobile-money withdrawal that failed never touched the balance.
+        pushWithdrawalResult(transaction, 'failed', { saysNotDebited: (transaction.metadata?.payoutCurrency || transaction.currency) !== 'USD' });
 
         // Notify the user about the failure
         try {

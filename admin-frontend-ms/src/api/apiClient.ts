@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { toast } from 'sonner';
+import { isGatewayAccessRefusal } from '../lib/permissions';
 
 // Create an Axios instance with default configurations
 const apiClient = axios.create({
@@ -56,6 +58,13 @@ apiClient.interceptors.response.use(
     async error => {
         if (error.response) {
             console.error('API Error Response:', error.config?.url, error.response.status, error.response.data);
+
+            // A module this account may only read (or not see): say so, stay signed in.
+            // One toast at a time, however many calls the page made.
+            if (isGatewayAccessRefusal(error.response.status, error.response.data)) {
+                toast.error(error.response.data.message, { id: 'admin-module-refused', duration: 5000 });
+                return Promise.reject(error);
+            }
 
             if (error.response.status === 401 && !isUserServiceUrl(error.config?.url) && await sessionStillValid()) {
                 console.error('401 from a service other than user-service while the session is valid:', error.config?.url);

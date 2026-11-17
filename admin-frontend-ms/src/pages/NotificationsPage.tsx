@@ -1,32 +1,54 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
-import { Megaphone } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowRight01Icon, LockIcon, Megaphone02Icon } from '@hugeicons/core-free-icons';
 import WhatsAppManager from '../components/WhatsAppManager';
+import { Can } from '../components/Can';
+import { Button, EmptyState, PageHeader, Panel, PanelBody, PanelHeader } from '../components/ui';
 
 /**
- * The platform's WhatsApp connection. The "Send Notification" form that used
- * to sit here was a mock — it reported "sent" and sent nothing — so it is
- * gone; announcements go through Push Announcements, which really sends.
+ * Notifications: the server's WhatsApp connection (module `whatsapp`) and the
+ * way to the push announcements (module `notifications`). The old "Send
+ * Notification" form was a mock (it said "sent" and sent nothing), so
+ * announcements go through Annonces push, which really sends.
  */
-const NotificationsPage: React.FC = () => (
-    <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white p-4 md:p-8">
-        <h1 className="text-2xl md:text-3xl font-bold mb-6 text-white">WhatsApp</h1>
+export default function NotificationsPage() {
+    return (
+        <div className="space-y-6">
+            <PageHeader
+                title="Notifications"
+                description="La connexion WhatsApp qui envoie les messages du serveur, et les annonces aux membres."
+                actions={(
+                    <Can module="notifications" write>
+                        <Button asChild variant="primary" size="lg" className="w-full sm:w-auto">
+                            <Link to="/notifications/push">
+                                <HugeiconsIcon icon={Megaphone02Icon} size={18} aria-hidden="true" />
+                                Nouvelle annonce push
+                            </Link>
+                        </Button>
+                    </Can>
+                )}
+            />
 
-        <div className="max-w-4xl mx-auto mb-8">
-            <WhatsAppManager />
+            <Can
+                module="whatsapp"
+                fallback={(
+                    <Panel>
+                        <EmptyState icon={LockIcon} title="Connexion WhatsApp non accessible" description="Votre compte n’a pas accès à l’espace WhatsApp. Demandez-le à un super administrateur." />
+                    </Panel>
+                )}
+            >
+                <WhatsAppManager />
+            </Can>
+
+            <Panel>
+                <PanelHeader title="Annonces push" description="Une notification sur le téléphone des membres, à tous ou à un groupe (pays, abonnement, sexe)." />
+                <PanelBody>
+                    <Link to="/notifications/push" className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline">
+                        Voir et envoyer les annonces
+                        <HugeiconsIcon icon={ArrowRight01Icon} size={16} aria-hidden="true" />
+                    </Link>
+                </PanelBody>
+            </Panel>
         </div>
-
-        <div className="max-w-4xl mx-auto bg-gray-800 rounded-lg p-5 flex items-start gap-4">
-            <Megaphone className="text-blue-400 shrink-0" size={24} />
-            <div>
-                <h2 className="font-semibold">Envoyer une annonce aux membres</h2>
-                <p className="text-sm text-gray-400 mt-1">Les annonces partent en notification sur le téléphone des membres.</p>
-                <Link to="/notifications/push" className="inline-block mt-3 text-sm font-semibold text-blue-400 hover:text-blue-300">
-                    Ouvrir les annonces →
-                </Link>
-            </div>
-        </div>
-    </div>
-);
-
-export default NotificationsPage;
+    );
+}

@@ -51,7 +51,8 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
  */
 export const authorizeAdmin = (req: Request, res: Response, next: NextFunction): void => {
     const user = (req as AuthenticatedRequest).user;
-    if (user && (user.role === 'admin' || user.role === 'withdrawal_admin')) {
+    // 'staff' = admin team member; the gateway checks its module and read/write (admin-routes.ts).
+    if (user && (user.role === 'admin' || user.role === 'staff' || user.role === 'withdrawal_admin')) {
         next();
     } else {
         log.warn(`Admin authorization failed for user: ${user?.userId}. Role: ${user?.role}`);
@@ -65,7 +66,7 @@ export const authorizeAdmin = (req: Request, res: Response, next: NextFunction):
  */
 export const authorizeProofReviewer = (req: Request, res: Response, next: NextFunction): void => {
     const user = (req as AuthenticatedRequest).user;
-    if (user && (user.role === 'admin' || user.role === 'withdrawal_admin' || user.role === 'moderator')) {
+    if (user && (user.role === 'admin' || user.role === 'staff' || user.role === 'withdrawal_admin' || user.role === 'moderator')) {
         next();
     } else {
         log.warn(`Proof-review authorization failed for user: ${user?.userId}. Role: ${user?.role}`);

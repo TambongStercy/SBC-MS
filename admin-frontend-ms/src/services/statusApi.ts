@@ -53,7 +53,10 @@ export interface Status {
 
 export interface StatusFilters {
     category?: string;
+    /** Admin filters (country + period, from usePageFilters): status country, createdAt range (ISO). */
     country?: string;
+    from?: string;
+    to?: string;
     city?: string;
     search?: string;
     sortBy?: 'recent' | 'popular';
@@ -187,7 +190,7 @@ export const getStatusInteractions = async (
     type: 'likes' | 'reposts' = 'likes',
     page: number = 1,
     limit: number = 50
-): Promise<{ data: any[]; pagination: PaginationInfo }> => {
+): Promise<{ data: Array<Record<string, unknown>>; pagination: PaginationInfo }> => {
     const response = await apiClient.get(`/chat/statuses/${statusId}/interactions`, {
         params: { type, page, limit }
     });

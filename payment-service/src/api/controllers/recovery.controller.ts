@@ -4,8 +4,28 @@ import { TransactionRecoveryService } from '../../scripts/transaction-recovery.s
 import { recoverUserTransactionRepository } from '../../database/repositories/recover-user-transaction.repository';
 import { RecoveryProvider, RecoveryTransactionType, RecoveryStatus } from '../../database/models/recover-user-transaction.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
+import { AdminFilters, dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { directOrMemberCountryMatch, memberObjectIdsForCountry, sendFilterError } from '../../utils/country-members';
 
 const log = logger.getLogger('RecoveryController');
+
+/**
+ * Admin filters of the recovery records (people who paid a provider but have no
+ * SBC transaction): ?country = the provider's country
+ * (providerTransactionData.country) when it is an ISO-2 code, else the country
+ * of the member it was restored to (restoredUserId); ?from/?to on createdAt
+ * (when the record was found).
+ */
+async function recoveryScope(f: AdminFilters): Promise<Record<string, any>> {
+    const conditions: Record<string, any>[] = [];
+    if (f.country) {
+        const memberIds = await memberObjectIdsForCountry(f.country);
+        conditions.push(directOrMemberCountryMatch('providerTransactionData.country', 'restoredUserId', f.country, memberIds));
+    }
+    const dates = dateMatch('createdAt', f);
+    if (Object.keys(dates).length) conditions.push(dates);
+    return conditions.length ? { $and: conditions } : {};
+}
 
 export class RecoveryController {
     private recoveryService: TransactionRecoveryService;
@@ -101,8 +121,10 @@ export class RecoveryController {
     public getRecoveryStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             log.info('Admin request: Get recovery statistics');
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
 
-            const stats = await recoverUserTransactionRepository.getRecoveryStats();
+            const stats = await recoverUserTransactionRepository.getRecoveryStats(await recoveryScope(adminFilters));
 
             res.status(200).json({
                 success: true,
@@ -111,6 +133,7 @@ export class RecoveryController {
             });
 
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error getting recovery statistics:', error);
             next(error);
         }
@@ -123,6 +146,8 @@ export class RecoveryController {
      */
     public listRecoveryRecords = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
             const {
                 page = '1',
                 limit = '20',
@@ -151,7 +176,7 @@ export class RecoveryController {
                 sortOrder: sortOrder as 'asc' | 'desc'
             };
 
-            const result = await recoverUserTransactionRepository.findWithFilters(filters, options);
+            const result = await recoverUserTransactionRepository.findWithFilters(filters, options, await recoveryScope(adminFilters));
 
             res.status(200).json({
                 success: true,
@@ -166,6 +191,7 @@ export class RecoveryController {
             });
 
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error listing recovery records:', error);
             next(error);
         }

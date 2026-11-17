@@ -25,6 +25,7 @@ import {
     getMyFilleulsBoard,
 } from '../../services/leaderboard.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
+import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
 
 /**
  * A refused code send. The wait goes in the body for the app's countdown and in
@@ -2068,6 +2069,60 @@ export class UserController {
     }
 
     /**
+     * SBC Event: resolve an invited team member / juror from an email or phone.
+     * Returns only what the inviter needs to recognise the person — a masked
+     * contact, never the full email or number.
+     * @route POST /api/users/internal/event-member-lookup  { contact: string }
+     */
+    async lookupEventMember(req: Request, res: Response): Promise<void> {
+        try {
+            const contact = typeof req.body?.contact === 'string' ? req.body.contact.trim().slice(0, 200) : '';
+            if (!contact) {
+                res.status(400).json({ success: false, message: '`contact` is required.' });
+                return;
+            }
+            const matches = await this.userService.findEventMemberByContact(contact);
+            if (matches.length !== 1) {
+                res.status(200).json({ success: true, data: { found: false, ambiguous: matches.length > 1 } });
+                return;
+            }
+            const u: any = matches[0];
+            const mask = (s?: string) => (s ? (s.includes('@') ? s.replace(/^(.{2}).*(@.*)$/, '$1•••$2') : `•••${s.slice(-3)}`) : undefined);
+            res.status(200).json({
+                success: true,
+                data: { found: true, userId: String(u._id), name: u.name, avatar: u.avatar, contactHint: contact.includes('@') ? mask(u.email) : mask(u.phoneNumber) },
+            });
+        } catch (error: any) {
+            this.log.error(`Error looking up event member: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to look up member.' });
+        }
+    }
+
+    /**
+     * SBCLOVE admin search over its own members.
+     * @route POST /api/users/internal/sbclove-search  { userIds: string[], q: string }
+     */
+    async searchSbcloveMemberIds(req: Request, res: Response): Promise<void> {
+        try {
+            const { userIds, q } = req.body;
+            const term = typeof q === 'string' ? q.trim().slice(0, 100) : '';
+            if (!Array.isArray(userIds) || !term) {
+                res.status(400).json({ success: false, message: '`userIds` (array) and `q` (string) are required.' });
+                return;
+            }
+            if (userIds.some(id => !isValidObjectId(id))) {
+                res.status(400).json({ success: false, message: 'Invalid user IDs in `userIds`.' });
+                return;
+            }
+            const ids = userIds.length ? await this.userService.searchSbcloveMemberIds(userIds, term) : [];
+            res.status(200).json({ success: true, data: { userIds: ids } });
+        } catch (error: any) {
+            this.log.error(`Error searching SBCLOVE members: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to search SBCLOVE members.' });
+        }
+    }
+
+    /**
      * Targeting projection for advertising-service.
      * @route POST /api/users/internal/advertising-details
      */
@@ -2111,12 +2166,13 @@ export class UserController {
         try {
             const { country } = req.query;
 
-            if (!country || typeof country !== 'string') {
-                res.status(400).json({ success: false, message: 'Country code is required' });
+            if (!country || typeof country !== 'string' || !/^[A-Za-z]{2}$/.test(country.trim())) {
+                res.status(400).json({ success: false, message: 'Code pays ISO-2 requis (ex. CM).' });
                 return;
             }
 
-            const users = await this.userService.getUserIdsByCountry(country);
+            // Any case; legacy names ("Cameroun", "Congo-Brazzaville") are matched too.
+            const users = await this.userService.getUserIdsByCountry(country.trim().toUpperCase());
             res.status(200).json({ success: true, data: users });
         } catch (error: any) {
             this.log.error(`Error getting user IDs by country: ${error.message}`, error);
@@ -3077,7 +3133,18 @@ export class UserController {
             // cannot tip it into a neighbouring month.
             const monthStart = startOfCurrentMonthDouala(new Date(Date.UTC(year, month - 1, 15, 12)));
 
-            const country = typeof req.query.country === 'string' ? req.query.country.trim() : '';
+            // ?country is validated like every admin list (ISO-2, 400 otherwise) and
+            // matches legacy spellings. from/to do not apply: the board IS a month.
+            let country = '';
+            try {
+                country = parseAdminFilters(req.query as Record<string, unknown>).country ?? '';
+            } catch (e) {
+                if (e instanceof AdminFilterError) {
+                    res.status(400).json({ success: false, message: e.message });
+                    return;
+                }
+                throw e;
+            }
             const groupByCountry = String(req.query.groupBy ?? '') === 'country';
 
             // Three shapes: one country's board, every country's board, or global.

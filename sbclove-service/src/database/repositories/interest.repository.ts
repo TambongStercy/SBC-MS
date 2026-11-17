@@ -1,4 +1,4 @@
-import { Types } from 'mongoose';
+import { FilterQuery, Types } from 'mongoose';
 import InterestModel, { IInterest } from '../models/interest.model';
 import logger from '../../utils/logger';
 
@@ -41,6 +41,11 @@ export class InterestRepository {
     /** Every interest ever expressed (admin dashboard). */
     async countAll(): Promise<number> {
         return InterestModel.estimatedDocumentCount().exec();
+    }
+
+    /** Interests matching `query` (admin dashboard with filters). */
+    async count(query: FilterQuery<IInterest>): Promise<number> {
+        return InterestModel.countDocuments(query).exec();
     }
 
     async findSentByUser(fromUserId: Types.ObjectId | string, limit = 50, skip = 0): Promise<IInterest[]> {

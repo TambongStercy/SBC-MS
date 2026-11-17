@@ -1,8 +1,10 @@
-import { Types } from 'mongoose';
+import { FilterQuery, Types } from 'mongoose';
+import { ILoveProfile } from '../database/models/love-profile.model';
 import { loveProfileRepository } from '../database/repositories/love-profile.repository';
 import { userServiceClient } from './clients/user.service.client';
 import { profileService, PublicProfileView } from './profile.service';
 import { reportRepository } from '../database/repositories/report.repository';
+import { IReport } from '../database/models/report.model';
 import { matchRepository } from '../database/repositories/match.repository';
 import { interestRepository } from '../database/repositories/interest.repository';
 import { TtlCache } from '../utils/ttlCache';
@@ -11,14 +13,16 @@ import { ProfileStatus, ReportStatus } from '../types/sbclove.enums';
 import { IModuleConfig } from '../database/models/module-config.model';
 import config from '../config';
 import { AppError } from '../utils/errors';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { memberIdSetForCountry } from '../utils/country-members';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('AdminService');
 
 // The dashboard totals are four aggregations over whole collections. They are
 // read by a handful of admins, change slowly, and nobody needs them to the
-// second — so one cached copy serves every admin tab open.
-const statsCache = new TtlCache<AdminStats>(60 * 1000, 1);
+// second — so one cached copy serves every admin tab open (one per filter set).
+const statsCache = new TtlCache<AdminStats>(60 * 1000, 50);
 
 /** One row of the SBCLOVE member directory. */
 export interface AdminMemberRow {
@@ -76,8 +80,65 @@ class AdminService {
      * the SBC member behind it. A queue of display names and dates cannot be
      * validated at all — which is what this used to be.
      */
-    async listProfiles(status: ProfileStatus | undefined, limit: number, skip: number): Promise<{ items: AdminProfileView[]; total: number }> {
-        const query = status ? { status } : {};
+    /**
+     * The profile filter for the admin lists. A search covers every profile in
+     * the status, not just the page on screen: the pseudo is matched here, and
+     * name / email / phone / city — which live in user-service — are matched
+     * there, scoped to this module's members. A pasted profile or user id also
+     * finds its profile.
+     */
+    private async profileQuery(status: ProfileStatus | undefined, search?: string, filters: AdminFilters = {}): Promise<FilterQuery<ILoveProfile>> {
+        // ?from/?to bound the profile's createdAt (when the member joined SBC Love);
+        // ?country keeps the profiles whose member is from that country.
+        const query: FilterQuery<ILoveProfile> = {
+            ...(status ? { status } : {}),
+            ...dateMatch('createdAt', filters),
+        };
+        if (filters.country) {
+            query.userId = { $in: await this.loveMemberIdsInCountry(filters.country) };
+        }
+        const term = search?.trim().slice(0, 100);
+        if (!term) return query;
+
+        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const or: FilterQuery<ILoveProfile>[] = [{ displayName: { $regex: escaped, $options: 'i' } }];
+        if (/^[a-f\d]{24}$/i.test(term)) {
+            or.push({ _id: new Types.ObjectId(term) }, { userId: new Types.ObjectId(term) });
+        }
+
+        const memberIds = await loveProfileRepository.distinctUserIds(query);
+        if (memberIds.length) {
+            let matched: string[];
+            try {
+                matched = await userServiceClient.searchMemberIds(memberIds, term);
+            } catch (error: any) {
+                log.error(`SBCLOVE admin search: user-service lookup failed: ${error.message}`);
+                throw new AppError('La recherche est momentanément indisponible. Réessayez.', 503);
+            }
+            if (matched.length) or.push({ userId: { $in: matched.map(id => new Types.ObjectId(id)) } });
+        }
+        return { ...query, $or: or };
+    }
+
+    /**
+     * The SBC Love members (profile owners) from `country`, as ObjectIds.
+     *
+     * The country is on the member (user-service). Every admin figure here is
+     * about profile owners — only they can match, send interests or be
+     * reported — and profiles are never deleted, so the country's member list
+     * (up to ~72k ids) is intersected in memory with the profile owners (one
+     * indexed distinct) and only that short list goes into the queries.
+     */
+    private async loveMemberIdsInCountry(country: string): Promise<Types.ObjectId[]> {
+        const [owners, inCountry] = await Promise.all([
+            loveProfileRepository.distinctUserIds({}),
+            memberIdSetForCountry(country),
+        ]);
+        return owners.filter(id => inCountry.has(id)).map(id => new Types.ObjectId(id));
+    }
+
+    async listProfiles(status: ProfileStatus | undefined, limit: number, skip: number, search?: string, filters: AdminFilters = {}): Promise<{ items: AdminProfileView[]; total: number }> {
+        const query = await this.profileQuery(status, search, filters);
         const [profiles, total] = await Promise.all([
             loveProfileRepository.find(query, limit, skip),
             loveProfileRepository.count(query),
@@ -171,8 +232,8 @@ class AdminService {
      * profiles, ONE aggregation for the whole page's match/conversation counts,
      * and one (cached) batch hydration. No per-row queries.
      */
-    async listMembers(status: ProfileStatus | undefined, limit: number, skip: number): Promise<{ items: AdminMemberRow[]; total: number }> {
-        const query = status ? { status } : {};
+    async listMembers(status: ProfileStatus | undefined, limit: number, skip: number, search?: string, filters: AdminFilters = {}): Promise<{ items: AdminMemberRow[]; total: number }> {
+        const query = await this.profileQuery(status, search, filters);
         const [profiles, total] = await Promise.all([
             loveProfileRepository.find(query, limit, skip),
             loveProfileRepository.count(query),
@@ -215,14 +276,27 @@ class AdminService {
         return { items, total };
     }
 
-    /** Dashboard totals (cached — see statsCache). */
-    async getStats(): Promise<AdminStats> {
-        return statsCache.through('stats', async () => {
+    /**
+     * Dashboard totals (cached — see statsCache), every figure filtered:
+     *  - profiles: profile createdAt, owner's country;
+     *  - matches: match createdAt, matches involving a member of the country
+     *    (a cross-country match counts in both countries);
+     *  - interests: interest createdAt, sender or receiver from the country;
+     *  - open reports: report createdAt, reported member's country.
+     */
+    async getStats(filters: AdminFilters = {}): Promise<AdminStats> {
+        const key = `stats|${filters.country ?? ''}|${filters.from?.toISOString() ?? ''}|${filters.to?.toISOString() ?? ''}`;
+        return statsCache.through(key, async () => {
+            const ids = filters.country ? await this.loveMemberIdsInCountry(filters.country) : null;
+            const created = dateMatch('createdAt', filters);
+            const filtered = !!ids || Object.keys(created).length > 0;
             const [byStatus, matchTotals, interests, openReports] = await Promise.all([
-                loveProfileRepository.countByStatus(),
-                matchRepository.totals(),
-                interestRepository.countAll(),
-                reportRepository.count({ status: ReportStatus.OPEN }),
+                loveProfileRepository.countByStatus({ ...created, ...(ids ? { userId: { $in: ids } } : {}) }),
+                matchRepository.totals({ ...created, ...(ids ? { $or: [{ userA: { $in: ids } }, { userB: { $in: ids } }] } : {}) }),
+                filtered
+                    ? interestRepository.count({ ...created, ...(ids ? { $or: [{ fromUserId: { $in: ids } }, { toUserId: { $in: ids } }] } : {}) })
+                    : interestRepository.countAll(),
+                reportRepository.count({ status: ReportStatus.OPEN, ...created, ...(ids ? { reportedUserId: { $in: ids } } : {}) }),
             ]);
             const profiles = {
                 pending: byStatus[ProfileStatus.PENDING] ?? 0,
@@ -251,8 +325,10 @@ class AdminService {
      * 6848a4… reported 6a904d…". Both sides are resolved (one batch call, from
      * the cached hydration) so the queue names the people involved.
      */
-    async listReports(status: ReportStatus | undefined, limit: number, skip: number) {
-        const query = status ? { status } : {};
+    /** ?from/?to bound the report's createdAt; ?country is the REPORTED member's country. */
+    async listReports(status: ReportStatus | undefined, limit: number, skip: number, filters: AdminFilters = {}) {
+        const query: FilterQuery<IReport> = { ...(status ? { status } : {}), ...dateMatch('createdAt', filters) };
+        if (filters.country) query.reportedUserId = { $in: await this.loveMemberIdsInCountry(filters.country) };
         const [reports, total] = await Promise.all([
             reportRepository.find(query, limit, skip),
             reportRepository.count(query),

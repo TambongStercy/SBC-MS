@@ -8,6 +8,7 @@ import scanRoutes from './scan.routes';
 import adminRoutes from './admin.routes';
 import webhookRoutes from './webhook.routes';
 import meRoutes from './me.routes';
+import { mountAnimation } from '../../modules/animation/routes';
 
 const router = Router();
 
@@ -40,5 +41,9 @@ router.use('/tickets/resale', authenticate, requireLaunched, resaleRoutes);
 
 // QR scan — organizer-only, done inside scan.routes.
 router.use('/tickets/scan', authenticate, requireLaunched, scanRoutes);
+
+// Animation & Engagement: challenges, votes, rewards, live boards
+// (public, signed-in, event team and jury routers under /tickets/animation/*).
+mountAnimation(router);
 
 export default router;

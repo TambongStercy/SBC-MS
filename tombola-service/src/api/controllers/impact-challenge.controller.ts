@@ -6,6 +6,7 @@ import { ChallengeStatus } from '../../database/models/impact-challenge.model';
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import config from '../../config';
+import { readAdminFilters } from '../../utils/admin-filters';
 
 const log = logger.getLogger('ImpactChallengeController');
 
@@ -375,11 +376,13 @@ class ImpactChallengeController {
      */
     async listChallenges(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            // ?from/?to: campaign startDate; ?country: has an entrepreneur from it.
+            const filters = readAdminFilters(req, res); if (!filters) return;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 10;
             const status = req.query.status as ChallengeStatus | undefined;
 
-            const result = await impactChallengeService.listChallenges(page, limit, status);
+            const result = await impactChallengeService.listChallenges(page, limit, status, filters);
 
             res.status(200).json({ success: true, data: result });
         } catch (error: any) {
@@ -394,6 +397,9 @@ class ImpactChallengeController {
      */
     async getAdminChallengeDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            // Filters apply to the entrepreneurs list only (country field,
+            // createdAt); the challenge itself and its totals are unchanged.
+            const filters = readAdminFilters(req, res); if (!filters) return;
             const { challengeId } = req.params;
             const challenge = await impactChallengeService.getChallengeById(challengeId);
 
@@ -403,7 +409,7 @@ class ImpactChallengeController {
             }
 
             // Get all entrepreneurs (not just approved)
-            const entrepreneurs = await entrepreneurService.listEntrepreneursByChallenge(challengeId, false);
+            const entrepreneurs = await entrepreneurService.listEntrepreneursByChallenge(challengeId, false, filters);
 
             res.status(200).json({
                 success: true,
@@ -691,8 +697,10 @@ class ImpactChallengeController {
      */
     async getChallengeAnalytics(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            // ?country: voter's; ?from/?to: vote createdAt (recomputed from the votes).
+            const filters = readAdminFilters(req, res); if (!filters) return;
             const { challengeId } = req.params;
-            const analytics = await impactChallengeService.getChallengeAnalytics(challengeId);
+            const analytics = await impactChallengeService.getChallengeAnalytics(challengeId, filters);
 
             res.status(200).json({ success: true, data: analytics });
         } catch (error: any) {
@@ -707,11 +715,13 @@ class ImpactChallengeController {
      */
     async getVotes(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            // ?country: voter's; ?from/?to: vote createdAt.
+            const filters = readAdminFilters(req, res); if (!filters) return;
             const { challengeId } = req.params;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 20;
 
-            const result = await challengeVoteService.getVotesByChallenge(challengeId, page, limit);
+            const result = await challengeVoteService.getVotesByChallenge(challengeId, page, limit, filters);
 
             res.status(200).json({ success: true, data: result });
         } catch (error: any) {

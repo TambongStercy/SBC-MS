@@ -482,7 +482,8 @@ export class SubscriptionRepository {
     async getMonthlyActiveSubscriptionCounts(
         type: SubscriptionType,
         startDate: Date,
-        endDate: Date
+        endDate: Date,
+        extraMatch: mongoose.FilterQuery<ISubscription> = {}
     ): Promise<{ month: string; count: number }[]> {
         log.info(`Aggregating monthly active counts for type ${type} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
         try {
@@ -490,7 +491,10 @@ export class SubscriptionRepository {
                 // 1. Match relevant subscriptions (correct type, potentially active/expired but overlapping the date range)
                 {
                     $match: {
-                        type: type,
+                        // The field is `subscriptionType`: this matched `type` (no such
+                        // field) and so always returned nothing.
+                        subscriptionType: type,
+                        ...extraMatch,
                         // Subscription must start before the overall endDate
                         // AND end after the overall startDate to be potentially active within the range
                         startDate: { $lt: endDate }, // Started before the period ends
@@ -596,10 +600,11 @@ export class SubscriptionRepository {
      * @param type - The type of subscription to count.
      * @returns The number of active subscriptions of the specified type.
      */
-    async countActiveSubscriptionsByType(type: SubscriptionType): Promise<number> {
+    async countActiveSubscriptionsByType(type: SubscriptionType, extraMatch: mongoose.FilterQuery<ISubscription> = {}): Promise<number> {
         log.info(`Counting active subscriptions for type: ${type}`);
         const now = new Date();
         const query: mongoose.FilterQuery<ISubscription> = {
+            ...extraMatch,
             subscriptionType: type,
             status: SubscriptionStatus.ACTIVE,
             endDate: { $gt: now },

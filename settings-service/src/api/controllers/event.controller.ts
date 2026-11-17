@@ -3,6 +3,7 @@ import { eventService, PaginationParams, UpdateEventData } from '../../services/
 import logger from '../../utils/logger';
 import { AppError, BadRequestError, NotFoundError } from '../../utils/errors';
 import { Types } from 'mongoose';
+import { readAdminFilters } from '../../utils/admin-filters';
 
 const log = logger.getLogger('EventController');
 
@@ -68,6 +69,10 @@ class EventController {
             return next(new BadRequestError('Invalid pagination parameters: limit and page must be positive integers.'));
         }
 
+        // ?from/?to bound the event's own date (`timestamp`, the list's sort).
+        // ?country is validated but not applied: community events have no country.
+        const dates = readAdminFilters(req, res); if (!dates) return;
+
         // Validate sortOrder and ensure correct type
         const validSortOrder = (sortOrder === 'asc' || sortOrder === 'desc') ? sortOrder : 'desc';
 
@@ -76,7 +81,9 @@ class EventController {
                 limit: parsedLimit,
                 page: parsedPage,
                 sortBy: sortBy as string,
-                sortOrder: validSortOrder as 'asc' | 'desc'
+                sortOrder: validSortOrder as 'asc' | 'desc',
+                from: dates.from,
+                to: dates.to,
             };
             log.debug('Calling eventService.getEvents with params:', params);
             const result = await eventService.getEvents(params);

@@ -1,128 +1,119 @@
-import React from 'react';
-import { TombolaTicket, TombolaMonth } from '../../services/adminTombolaApi'; // Assuming interfaces are here or adjust path
-import Pagination from '../common/Pagination'; // Reuse pagination
-import { format, parseISO } from 'date-fns';
+import { useEffect, useState, type ReactNode } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Ticket01Icon } from '@hugeicons/core-free-icons';
+import { listTicketsForMonth, type TombolaMonth, type TombolaTicket } from '../../services/adminTombolaApi';
+import { Dialog, EmptyState, Pagination, ResponsiveList, SheetContent, type ListColumn } from '../ui';
+import {
+  CopyId, DateText, DetailList, ErrorState, SearchInput, SheetSection, StatusBadge, count, formatDateTime, formatNumber,
+} from '../moduleKit';
+import { Prize, TOMBOLA_STATUS, monthTitle } from './labels';
 
-interface ViewTicketsModalProps {
-    isOpen: boolean;
-    isLoading: boolean;
-    tombolaMonth: TombolaMonth | null; // Pass the whole month for context
-    tickets: TombolaTicket[];
-    currentPage: number;
-    totalPages: number;
-    totalTickets: number;
-    onClose: () => void;
-    onPageChange: (page: number) => void;
-    searchTerm: string;
-    onSearchChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-}
+const PAGE_SIZE = 15;
 
-// Helper to format date strings (or import from parent/utils)
-const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    try {
-        return format(parseISO(dateString), 'MMM dd, yyyy, hh:mm a');
-    } catch (error) {
-        return 'Invalid Date';
-    }
-};
+/**
+ * A tombola's details sheet: status and dates, its winners, and every ticket
+ * sold (search by name, e-mail or phone, paginated by the server).
+ */
+export default function TombolaSheet({ tombola, onClose, footer, winnerNames, api = {} }: {
+  tombola: TombolaMonth | null;
+  /** Country + period of the page filter row: tickets bought in that period / country. */
+  api?: { country?: string; from?: string; to?: string };
+  onClose: () => void;
+  footer?: ReactNode;
+  /** userId → name, when known */
+  winnerNames?: Map<string, string>;
+}) {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  useEffect(() => { setPage(1); setSearch(''); }, [tombola?._id]);
 
-const ViewTicketsModal: React.FC<ViewTicketsModalProps> = ({
-    isOpen,
-    isLoading,
-    tombolaMonth,
-    tickets,
-    currentPage,
-    totalPages,
-    totalTickets,
-    onClose,
-    onPageChange,
-    searchTerm,
-    onSearchChange
-}) => {
-    if (!isOpen || !tombolaMonth) {
-        return null;
-    }
+  const query = useQuery({
+    queryKey: ['tombola', 'tickets', tombola?._id, page, search, api],
+    queryFn: async () => {
+      const res = await listTicketsForMonth(tombola!._id, { page, limit: PAGE_SIZE, ...api }, search);
+      if (!res?.data?.tickets || !res.pagination) throw new Error(res?.message || 'Réponse inattendue du serveur pour les tickets.');
+      return res;
+    },
+    enabled: !!tombola,
+    placeholderData: keepPreviousData,
+  });
+  const tickets = query.data?.data.tickets ?? [];
+  const pg = query.data?.pagination;
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-            {/* Wider modal for ticket list */}
-            <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                    <h2 className="text-xl font-semibold text-white">
-                        Tickets for Tombola: {`${String(tombolaMonth.month).padStart(2, '0')}/${tombolaMonth.year}`}
-                    </h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                </div>
-
-                {/* Search Input - Added Here */}
-                <div className="mb-4 relative">
-                    <input
-                        type="text"
-                        placeholder="Search by Name, Email, Phone..."
-                        value={searchTerm}
-                        onChange={onSearchChange}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-600 rounded-md leading-5 bg-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i className="fas fa-search text-gray-400"></i>
-                    </div>
-                </div>
-
-                {/* Ticket Table Container */}
-                <div className="overflow-y-auto flex-grow mb-4">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700 sticky top-0"> {/* Sticky header */}
-                            <tr>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticket ID</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticket No.</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User Name</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User Phone</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User ID</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Purchase Date</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-600">
-                            {isLoading && (
-                                <tr>
-                                    <td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-400">Loading tickets...</td>
-                                </tr>
-                            )}
-                            {!isLoading && tickets.length === 0 && (
-                                <tr>
-                                    <td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-400">No tickets found for this tombola month.</td>
-                                </tr>
-                            )}
-                            {!isLoading && tickets.map((ticket) => (
-                                <tr key={ticket._id} className="hover:bg-gray-700">
-                                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono text-gray-400">{ticket.ticketId}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-gray-100">{ticket.ticketNumber}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{ticket.userName || 'N/A'}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{ticket.userPhoneNumber || 'N/A'}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono text-gray-400">{ticket.userId}</td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{formatDate(ticket.purchaseTimestamp)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Footer with Pagination */}
-                <div className="pt-4 border-t border-gray-700">
-                    {totalTickets > 0 && totalPages > 1 && (
-                        <Pagination
-                            currentPage={currentPage}
-                            totalPages={totalPages}
-                            onPageChange={onPageChange}
-                        />
-                    )}
-                    <div className="text-sm text-gray-400 mt-2 text-center">Total tickets found: {totalTickets}</div>
-                </div>
-            </div>
+  const columns: ListColumn<TombolaTicket>[] = [
+    { key: 'num', header: 'N°', cell: t => <span className="font-semibold tabular-nums">{t.ticketNumber}</span> },
+    {
+      key: 'member', header: 'Membre', cell: t => (
+        <div className="min-w-0">
+          <p className="truncate text-sm text-fg">{t.userName || 'Nom inconnu'}</p>
+          <p className="truncate text-xs text-fg-muted">{[t.userPhoneNumber, t.userEmail].filter(Boolean).join(' · ') || '—'}</p>
         </div>
-    );
-};
+      ),
+    },
+    { key: 'ids', header: 'Références', cell: t => <span className="flex flex-col items-start gap-0.5"><CopyId value={t.ticketId} label="Copier la référence du ticket" /><CopyId value={t.userId} label="Copier l’identifiant du membre" /></span> },
+    { key: 'date', header: 'Acheté', cell: t => <DateText value={t.purchaseTimestamp} className="text-fg-muted" /> },
+  ];
 
-export default ViewTicketsModal; 
+  const card = (t: TombolaTicket) => (
+    <div className="flex items-start gap-3">
+      <span className="inline-flex min-w-10 justify-center rounded-md bg-surface-3 px-1.5 py-0.5 text-sm font-semibold tabular-nums text-fg">{t.ticketNumber}</span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-fg">{t.userName || 'Nom inconnu'}</p>
+        <p className="truncate text-xs text-fg-muted">{t.userPhoneNumber || t.userEmail || '—'}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-fg-muted"><DateText value={t.purchaseTimestamp} /><CopyId value={t.ticketId} /></div>
+      </div>
+    </div>
+  );
+
+  const winners = [...(tombola?.winners ?? [])].sort((a, b) => a.rank - b.rank);
+
+  return (
+    <Dialog open={!!tombola} onOpenChange={o => { if (!o) onClose(); }}>
+      {tombola && (
+        <SheetContent width="xl" title={`Tombola de ${monthTitle(tombola.month, tombola.year).toLowerCase()}`} description="Détails, gagnants et tickets vendus." footer={footer}>
+          <div className="space-y-6">
+            <SheetSection title="Tombola">
+              <DetailList items={[
+                ['Statut', <StatusBadge status={tombola.status} map={TOMBOLA_STATUS} />],
+                ['Tickets vendus', <span className="tabular-nums">{formatNumber(tombola.lastTicketNumber ?? 0)}</span>],
+                ['Début', formatDateTime(tombola.startDate)],
+                !!tombola.endDate && ['Fin', formatDateTime(tombola.endDate)],
+                ['Tirage', tombola.drawDate ? formatDateTime(tombola.drawDate) : 'Pas encore tiré'],
+              ]} />
+            </SheetSection>
+
+            {winners.length > 0 && (
+              <SheetSection title="Gagnants">
+                <DetailList items={winners.map(w => [
+                  `Rang ${w.rank}`,
+                  <span className="flex flex-col items-start gap-0.5 sm:items-end">
+                    <span><Prize value={w.prize} /> · ticket n° <span className="tabular-nums">{w.winningTicketNumber}</span></span>
+                    <span className="text-xs text-fg-muted">{winnerNames?.get(w.userId) ?? <CopyId value={w.userId} />}</span>
+                  </span>,
+                ] as [ReactNode, ReactNode])} />
+              </SheetSection>
+            )}
+
+            <SheetSection title={pg ? `Tickets (${count(pg.totalCount, 'ticket')})` : 'Tickets'}>
+              {(api.country || api.from || api.to) && <p className="text-xs text-fg-muted">Seuls les tickets du pays et de la période choisis sur la page sont listés.</p>}
+              <SearchInput value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Nom, e-mail ou téléphone" delay={500} />
+              <div className={`overflow-hidden rounded-panel border border-line ${query.isFetching && !query.isLoading ? 'opacity-60' : ''}`}>
+                <ResponsiveList
+                  rows={tickets}
+                  columns={columns}
+                  rowKey={t => t._id}
+                  card={card}
+                  loading={query.isLoading}
+                  empty={query.isError
+                    ? <ErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+                    : <EmptyState icon={Ticket01Icon} title={search ? 'Aucun ticket ne correspond' : 'Aucun ticket vendu'} description={search ? 'Vérifiez l’orthographe.' : 'Les tickets achetés par les membres apparaissent ici.'} />}
+                />
+                {pg && <Pagination page={page} totalPages={pg.totalPages || 1} total={pg.totalCount || 0} pageSize={PAGE_SIZE} onPageChange={setPage} />}
+              </div>
+            </SheetSection>
+          </div>
+        </SheetContent>
+      )}
+    </Dialog>
+  );
+}

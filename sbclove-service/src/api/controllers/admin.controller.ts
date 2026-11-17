@@ -4,6 +4,7 @@ import { adminService } from '../../services/admin.service';
 import { ProfileStatus, ReportStatus } from '../../types/sbclove.enums';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
+import { readAdminFilters } from '../../utils/admin-filters';
 
 const log = logger.getLogger('AdminController');
 
@@ -15,11 +16,14 @@ const pagination = (req: AuthenticatedRequest) => {
 
 class AdminController {
 
+    /** GET /admin/profiles — ?country (member's), ?from/?to on the profile's createdAt. */
     async listProfiles(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
+            const filters = readAdminFilters(req, res); if (!filters) return;
             const { limit, skip, page } = pagination(req);
             const status = req.query.status as ProfileStatus | undefined;
-            const { items, total } = await adminService.listProfiles(status, limit, skip);
+            const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+            const { items, total } = await adminService.listProfiles(status, limit, skip, search, filters);
             res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
         } catch (error) {
             this.handle(error, res, next);
@@ -52,32 +56,43 @@ class AdminController {
         }
     }
 
-    /** GET /admin/members — the SBCLOVE member directory with per-member tallies. */
+    /**
+     * GET /admin/members — the SBCLOVE member directory with per-member tallies.
+     * ?country (member's), ?from/?to on the profile's createdAt (the tallies stay all-time).
+     */
     async listMembers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
+            const filters = readAdminFilters(req, res); if (!filters) return;
             const { limit, skip, page } = pagination(req);
             const status = req.query.status as ProfileStatus | undefined;
-            const { items, total } = await adminService.listMembers(status, limit, skip);
+            const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+            const { items, total } = await adminService.listMembers(status, limit, skip, search, filters);
             res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
         } catch (error) {
             this.handle(error, res, next);
         }
     }
 
-    /** GET /admin/stats — dashboard totals (served from a 60s cache). */
+    /**
+     * GET /admin/stats — dashboard totals (served from a 60s cache).
+     * ?country/?from/?to apply to every figure: see adminService.getStats.
+     */
     async getStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
-            res.status(200).json({ success: true, data: await adminService.getStats() });
+            const filters = readAdminFilters(req, res); if (!filters) return;
+            res.status(200).json({ success: true, data: await adminService.getStats(filters) });
         } catch (error) {
             this.handle(error, res, next);
         }
     }
 
+    /** GET /admin/reports — ?country (REPORTED member's), ?from/?to on the report's createdAt. */
     async listReports(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
+            const filters = readAdminFilters(req, res); if (!filters) return;
             const { limit, skip, page } = pagination(req);
             const status = req.query.status as ReportStatus | undefined;
-            const { items, total } = await adminService.listReports(status, limit, skip);
+            const { items, total } = await adminService.listReports(status, limit, skip, filters);
             res.status(200).json({ success: true, data: items, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
         } catch (error) {
             this.handle(error, res, next);

@@ -1,4 +1,5 @@
 import config from '../config';
+import { reconcilePendingPayments } from './payment-reconciler.service';
 import logger from '../utils/logger';
 import { sweepPendingPayouts } from './order.service';
 import { retryPendingRefunds } from './refund.service';
@@ -53,6 +54,14 @@ const tick = async () => {
         if (n > 0) log.info(`Swept ${n} pending organizer payouts.`);
     } catch (err) {
         log.error('sweepPendingPayouts tick failed:', err);
+    }
+
+    // 1b. Settle purchases whose payment callback never arrived (paid, no ticket).
+    try {
+        const n = await reconcilePendingPayments();
+        if (n > 0) log.warn(`Reconciler recovered ${n} paid purchases with a lost callback.`);
+    } catch (err) {
+        log.error('reconcilePendingPayments tick failed:', err);
     }
 
     // 2. Close events whose endsAt has passed so they stop showing in listings.

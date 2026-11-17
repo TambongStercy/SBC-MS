@@ -7,6 +7,8 @@ import { userServiceClient } from '../../services/clients/user.service.client';
 import { endOfQuietHours, inQuietHours, isPushCategory, PUSH_CATEGORIES, QUIET_FROM_H, QUIET_UNTIL_H } from '../../services/push-categories';
 import logger from '../../utils/logger';
 import config from '../../config';
+import { dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { CountryMembersUnavailableError, answerCountryUnavailable, memberIdSetForCountry } from '../../utils/country-members';
 import { PushMessage, pushEnabled, removeSubscription, saveSubscription, sendPushToUser, usersWithDevices } from '../../services/push.service';
 
 const log = logger.getLogger('PushRoutes');
@@ -130,12 +132,43 @@ async function audienceFor(filter: AnnouncementFilter | null): Promise<string[] 
 
 const toAllToday = () => PushAnnouncementModel.countDocuments({ toAll: true, createdAt: { $gte: new Date(Date.now() - DAY_MS) } });
 
-router.get('/admin/announcements', authenticate, requireAdmin, async (_req, res) => {
-    const recent = await PushAnnouncementModel.find().sort({ createdAt: -1 }).limit(20).lean();
-    res.status(200).json({
-        success: true,
-        data: { recent, toAllToday: await toAllToday(), toAllPerDay: ANNOUNCEMENTS_TO_ALL_PER_DAY, audience: (await usersWithDevices()).length },
-    });
+/*
+ * Admin filters:
+ * - ?country: announcements whose stored `filter.countries` holds it (any case),
+ *   plus those sent with no country filter (to everyone, or by subscription/sex
+ *   only), since they reached that country's members too. `audience` becomes the
+ *   members of that country with push on.
+ * - ?from/?to: announcement createdAt.
+ * - `toAllToday` is the 24 h cap's own counter and is never filtered.
+ */
+router.get('/admin/announcements', authenticate, requireAdmin, async (req, res) => {
+    const f = readAdminFilters(req, res); if (!f) return;
+    try {
+        const query: Record<string, unknown> = { ...dateMatch('createdAt', f) };
+        if (f.country) {
+            query.$or = [
+                { 'filter.countries': { $in: [f.country, f.country.toLowerCase()] } },
+                { 'filter.countries': { $exists: false } },
+                { 'filter.countries': { $size: 0 } },
+            ];
+        }
+        const [recent, withPush, members] = await Promise.all([
+            PushAnnouncementModel.find(query).sort({ createdAt: -1 }).limit(20).lean(),
+            usersWithDevices(),
+            f.country ? memberIdSetForCountry(f.country) : Promise.resolve(null),
+        ]);
+        res.status(200).json({
+            success: true,
+            data: {
+                recent, toAllToday: await toAllToday(), toAllPerDay: ANNOUNCEMENTS_TO_ALL_PER_DAY,
+                audience: members ? withPush.filter(id => members.has(id)).length : withPush.length,
+            },
+        });
+    } catch (error) {
+        if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
+        log.error(`Admin announcements list failed: ${(error as Error)?.message ?? error}`);
+        res.status(500).json({ success: false, message: 'Impossible de charger les annonces.' });
+    }
 });
 
 /** How many members a filter reaches, for the admin page while it is being set. */

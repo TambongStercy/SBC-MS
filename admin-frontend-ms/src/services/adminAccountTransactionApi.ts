@@ -60,6 +60,10 @@ export interface AccountTransactionFilters {
     minAmount?: number | string; // Allow string for input binding
     maxAmount?: number | string; // Allow string for input binding
     currency?: Currency | '';     // Allow empty string for 'all'
+    /** Shared page filters (ISO instants, country code) */
+    country?: string;
+    from?: string;
+    to?: string;
 }
 
 // Fetch all account transactions based on filters
@@ -80,6 +84,9 @@ export const getAccountTransactions = async (
         minAmount: filters.minAmount || undefined,
         maxAmount: filters.maxAmount || undefined,
         currency: filters.currency || undefined,
+        country: filters.country || undefined,
+        from: filters.from || undefined,
+        to: filters.to || undefined,
     };
 
     // Remove undefined/empty properties so they aren't sent as empty query params

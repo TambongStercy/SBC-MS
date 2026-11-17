@@ -1,0 +1,16 @@
+{
+  "name": "SBC Admin",
+  "short_name": "SBC Admin",
+  "description": "Administration de Sniper Business Center.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101828",
+  "theme_color": "#115CF6",
+  "lang": "fr",
+  "icons": [
+    { "src": "/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

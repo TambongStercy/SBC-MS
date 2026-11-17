@@ -1,11 +1,21 @@
-import { easeInOut, motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 // Imported, not a "/src/..." string: that path only exists on the dev server,
 // so the logo 404'd on every deployed build (preprod AND prod).
 import logoSbc from "../assets/logo-sbc.png";
 import { useNavigate } from "react-router-dom";
 import { useState, FormEvent, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { Button, Field, Input } from "../components/ui";
 
+const ease = [0.22, 1, 0.36, 1] as const;
+
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : '');
+
+/**
+ * Sign-in, in two steps: email + password (loginAdmin), then the code emailed
+ * to the admin (verifyLoginCode). The original identity is kept: the panning
+ * photo background (.background in index.css) and the round SBC logo.
+ */
 function Login() {
   const navigate = useNavigate();
   const { login, verifyLoginCode, isAdminAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -27,11 +37,11 @@ function Login() {
     setErrorMessage('');
 
     if (!email) {
-      setErrorMessage('Email is required');
+      setErrorMessage("L'email est requis");
       return;
     }
     if (!password) {
-      setErrorMessage('Password is required');
+      setErrorMessage('Le mot de passe est requis');
       return;
     }
 
@@ -39,8 +49,8 @@ function Login() {
       const challenge = await login({ email, password });
       setPendingUserId(challenge.userId);
       setCode('');
-    } catch (error: any) {
-      setErrorMessage(error.message || 'Authentication failed. Please check credentials.');
+    } catch (error) {
+      setErrorMessage(messageOf(error) || 'Connexion refusée. Vérifiez vos identifiants.');
     }
   };
 
@@ -54,102 +64,136 @@ function Login() {
     }
     try {
       await verifyLoginCode(pendingUserId, code.trim());
-    } catch (error: any) {
-      setErrorMessage(error.message || 'Code invalide ou expiré');
+    } catch (error) {
+      setErrorMessage(messageOf(error) || 'Code invalide ou expiré');
     }
   };
 
-  return (
-    <>
-      <main className="flex flex-col w-full h-full overflow-auto  z-10 background">
-        <div className="h-full w-auto flex justify-center items-center">
-          <motion.div
-            className="flex flex-col gap-5 justify-center bg-gray-700 bg-opacity-30 backdrop-blur-md shadow-lg rounded-xl p-6  content-center"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, ease: easeInOut }}
-          >
-            <div className="flex items-center gap-2 justify-center">
-              <img
-                className="w-20 h-20 rounded-full object-cover"
-                src={logoSbc}
-                alt="Logo SBC"
-              />
-              <p className="text-xl font-medium">
-                Administrateur Sniper <br /> Business Center
-              </p>
-            </div>
-            <form onSubmit={pendingUserId ? handleCodeSubmit : handleSubmit} className="flex flex-col">
-              {errorMessage && (
-                <div className="bg-red-500 bg-opacity-70 text-white p-2 rounded-lg mb-3 text-sm">
-                  {errorMessage}
-                </div>
-              )}
+  const backToPassword = () => { setPendingUserId(null); setCode(''); setErrorMessage(''); };
 
-              {pendingUserId ? (
-                <>
-                  <p className="text-sm text-gray-300 mb-3">
-                    Un code de connexion a été envoyé à {email}.
-                  </p>
-                  <input
+  return (
+    <main className="background flex h-dvh w-full items-center justify-center overflow-y-auto px-4 py-8 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
+      {/* Darkens the photo a little so the card reads in both themes */}
+      <div className="pointer-events-none fixed inset-0 bg-black/30" aria-hidden="true" />
+
+      <motion.div
+        className="relative w-full max-w-sm rounded-panel border border-line bg-surface/85 p-6 backdrop-blur-md sm:p-8"
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6, ease }}
+      >
+        <motion.div
+          className="mb-6 flex items-center gap-3"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.15, ease }}
+        >
+          <img className="h-16 w-16 shrink-0 rounded-full object-cover" src={logoSbc} alt="Logo SBC" />
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-primary">Administration</p>
+            <h1 className="text-lg font-semibold leading-snug text-fg">Sniper Business Center</h1>
+          </div>
+        </motion.div>
+
+        <form onSubmit={pendingUserId ? handleCodeSubmit : handleSubmit} className="flex flex-col gap-4">
+          <AnimatePresence initial={false}>
+            {errorMessage && (
+              <motion.div
+                key="error"
+                role="alert"
+                className="rounded-control border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                {errorMessage}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait" initial={false}>
+            {pendingUserId ? (
+              <motion.div
+                key="code"
+                className="flex flex-col gap-4"
+                initial={{ opacity: 0, x: 16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -16 }}
+                transition={{ duration: 0.25, ease }}
+              >
+                <p className="text-sm text-fg-muted">
+                  Un code de connexion a été envoyé à <span className="font-medium break-all text-fg">{email}</span>.
+                </p>
+                <Field label="Code reçu par email">
+                  <Input
                     type="text"
+                    inputMode="text"
                     autoComplete="one-time-code"
-                    placeholder="Code reçu par email"
-                    className="bg-gray-700 bg-opacity-60 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4 sm:py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-gray-700 tracking-widest"
+                    autoCapitalize="off"
+                    placeholder="Code à 6 caractères"
+                    className="h-11 font-mono text-base tracking-[0.3em]"
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
                     disabled={isAuthLoading}
                     autoFocus
-                    required
                   />
-                  <button
-                    type="button"
-                    className="text-xs text-gray-400 hover:text-gray-200 mt-3 self-start"
-                    onClick={() => { setPendingUserId(null); setCode(''); setErrorMessage(''); }}
-                    disabled={isAuthLoading}
-                  >
-                    Retour
-                  </button>
-                </>
-              ) : (
-                <>
-                  <input
+                </Field>
+                <button
+                  type="button"
+                  className="self-start text-sm text-fg-muted underline-offset-4 hover:text-fg hover:underline disabled:opacity-50"
+                  onClick={backToPassword}
+                  disabled={isAuthLoading}
+                >
+                  Retour
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="password"
+                className="flex flex-col gap-4"
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 16 }}
+                transition={{ duration: 0.25, ease }}
+              >
+                <Field label="E-mail">
+                  <Input
                     type="email"
-                    placeholder="Email"
-                    className="bg-gray-700 bg-opacity-60 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4 sm:py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-gray-700 mb-3"
+                    autoComplete="username"
+                    placeholder="admin@exemple.com"
+                    className="h-11 text-base md:text-sm"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isAuthLoading}
-                    required
                   />
-
-                  <input
+                </Field>
+                <Field label="Mot de passe">
+                  <Input
                     type="password"
-                    placeholder="Mot de passe"
-                    className="bg-gray-700 bg-opacity-60 text-white placeholder-gray-400 rounded-lg pl-3 py-2 pr-4 sm:py-3 md:py-4 focus:outline-none focus:ring-2 focus:ring-gray-700"
+                    autoComplete="current-password"
+                    className="h-11 text-base md:text-sm"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isAuthLoading}
-                    required
                   />
-                </>
-              )}
+                </Field>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              <motion.button
-                type="submit"
-                className="bg-gray-700 bg-opacity-60 text-white rounded-lg py-2 mt-6 hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 1.2, ease: "easeInOut" }}
-                disabled={isAuthLoading}
-              >
-                {isAuthLoading ? 'Connexion...' : pendingUserId ? 'Valider le code' : 'Se connecter'}
-              </motion.button>
-            </form>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3, ease }}
+          >
+            <Button type="submit" variant="primary" size="lg" className="mt-2 w-full" loading={isAuthLoading}>
+              {isAuthLoading ? 'Connexion…' : pendingUserId ? 'Valider le code' : 'Se connecter'}
+            </Button>
           </motion.div>
-        </div>
-      </main>
-    </>
+        </form>
+      </motion.div>
+    </main>
   );
 }
 

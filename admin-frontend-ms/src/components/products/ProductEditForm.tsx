@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Product } from '../../pages/ProductsManagementPage'; // Import interfaces
-import { ImageDisplay } from '../common/ImageDisplay';
-import { getFileUrl } from '../../utils/fileUtils';
+import React, { useEffect, useState } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Upload01Icon } from '@hugeicons/core-free-icons';
+import type { Product } from '../../pages/ProductsManagementPage';
+import { Button, Checkbox, Dialog, Field, Input, SheetContent, Textarea } from '../ui';
+import { ProductThumb } from './ProductList';
 
 interface ProductEditFormProps {
     product: Partial<Product> | null; // Use Partial for create mode, null if no initial data
@@ -10,13 +12,10 @@ interface ProductEditFormProps {
     onCancel: () => void;
 }
 
-const ProductEditForm: React.FC<ProductEditFormProps> = ({
-    product,
-    isLoading,
-    onSave,
-    onCancel,
-}) => {
-    // Form state initialization
+type Errors = Partial<Record<'name' | 'category' | 'price', string>>;
+
+/** Create or edit a product, in a side sheet (full screen on phones) with the buttons always visible. */
+const ProductEditForm: React.FC<ProductEditFormProps> = ({ product, isLoading, onSave, onCancel }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState<number | string>('');
@@ -24,272 +23,123 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({
     const [subcategory, setSubcategory] = useState('');
     const [stock, setStock] = useState<number | string>('');
     const [isActive, setIsActive] = useState(true);
-    // State for image handling
-    const [imageFiles, setImageFiles] = useState<FileList | null>(null);
-    const [imagePreviews, setImagePreviews] = useState<string[]>([]); // For newly selected files
-    const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]); // For existing product
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]); // newly selected files (preview only)
+    const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
+    const [errors, setErrors] = useState<Errors>({});
 
-    // Populate form when product prop changes (for editing)
     useEffect(() => {
-        if (product) {
-            setName(product.name || '');
-            setDescription(product.description || '');
-            setPrice(product.price ?? '');
-            setCategory(product.category || '');
-            setSubcategory(product.subcategory || '');
-            setStock(product.stock ?? '');
-            setIsActive(product.isActive === undefined ? true : product.isActive);
-            // Populate existing images and clear new selections
-            setExistingImageUrls(product.imagesUrl || []);
-            setImageFiles(null);
-            setImagePreviews([]);
-        } else {
-            // Reset form for create mode
-            setName('');
-            setDescription('');
-            setPrice('');
-            setCategory('');
-            setSubcategory('');
-            setStock('');
-            setIsActive(true);
-            // Clear all image states
-            setExistingImageUrls([]);
-            setImageFiles(null);
-            setImagePreviews([]);
-        }
+        setName(product?.name || '');
+        setDescription(product?.description || '');
+        setPrice(product?.price ?? '');
+        setCategory(product?.category || '');
+        setSubcategory(product?.subcategory || '');
+        setStock(product?.stock ?? '');
+        setIsActive(product?.isActive === undefined ? true : !!product.isActive);
+        setExistingImageUrls(product?.imagesUrl || []);
+        setImagePreviews([]);
+        setErrors({});
     }, [product]);
 
-    // Handle file input changes
     const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = event.target.files;
-        if (files) {
-            setImageFiles(files);
-            // Generate previews for selected files
-            const newPreviews: string[] = [];
-            Array.from(files).forEach(file => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    newPreviews.push(reader.result as string);
-                    // Update state once all previews are read (or iteratively)
-                    // This simple approach might cause multiple re-renders, optimize if needed
-                    if (newPreviews.length === files.length) {
-                        setImagePreviews(newPreviews);
-                    }
-                };
-                reader.readAsDataURL(file);
-            });
-            // If no files selected, clear previews
-            if (files.length === 0) {
-                setImagePreviews([]);
-            }
-        }
+        if (!files || files.length === 0) { setImagePreviews([]); return; }
+        const list = Array.from(files);
+        Promise.all(list.map(file => new Promise<string>(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+        }))).then(setImagePreviews);
     };
 
-    const handleSubmit = (event: React.FormEvent) => {
-        event.preventDefault();
-
-        // Basic validation (can be expanded)
-        if (!name || !category || price === '' || isNaN(Number(price))) {
-            alert('Please fill in Name, Category, and a valid Price.');
-            return;
-        }
+    const handleSubmit = (event?: React.FormEvent) => {
+        event?.preventDefault();
+        const next: Errors = {};
+        if (!name.trim()) next.name = 'Indique le nom du produit.';
+        if (!category.trim()) next.category = 'Indique la catégorie.';
+        if (price === '' || isNaN(Number(price)) || Number(price) < 0) next.price = 'Indique un prix valide (0 ou plus).';
+        setErrors(next);
+        if (Object.keys(next).length) return;
 
         const productData: Partial<Product> = {
             name,
             description,
             price: Number(price),
             category,
-            subcategory: subcategory || undefined, // Send undefined if empty
+            subcategory: subcategory || undefined,
             stock: stock === '' || isNaN(Number(stock)) ? undefined : Number(stock),
             isActive,
-            imagesUrl: existingImageUrls, // Pass existing URLs for now
+            imagesUrl: existingImageUrls,
         };
-
-        // If editing, include the _id
-        if (product?._id) {
-            productData._id = product._id;
-        }
-
-        // !!! IMPORTANT: Actual file upload logic would go here !!!
-        // This would involve sending `imageFiles` to the backend, possibly as FormData.
-        // Example placeholder:
-        // if (imageFiles) { 
-        //    uploadFiles(imageFiles).then(uploadedUrls => { 
-        //        productData.imagesUrl = [...existingImageUrls, ...uploadedUrls]; 
-        //        onSave(productData); 
-        //    }); 
-        // } else { 
-        //    onSave(productData); 
-        // } 
-
-        onSave(productData); // Call onSave without file handling for now
+        if (product?._id) productData._id = product._id;
+        // Uploading newly chosen images is not wired to an API yet: only the current images are saved.
+        onSave(productData);
     };
 
+    const editing = !!product?._id;
+
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-20 p-4">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                <h2 className="text-xl font-semibold text-white mb-6">{product?._id ? 'Edit Product' : 'Create New Product'}</h2>
-                <form onSubmit={handleSubmit}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        {/* Name */}
-                        <div>
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">Name *</label>
-                            <input
-                                type="text"
-                                id="name"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                disabled={isLoading}
-                                required
-                            />
-                        </div>
-                        {/* Price */}
-                        <div>
-                            <label htmlFor="price" className="block text-sm font-medium text-gray-300 mb-1">Price (XAF) *</label>
-                            <input
-                                type="number"
-                                id="price"
-                                value={price}
-                                onChange={(e) => setPrice(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                disabled={isLoading}
-                                required
-                                min="0"
-                            />
-                        </div>
-                        {/* Category */}
-                        <div>
-                            <label htmlFor="category" className="block text-sm font-medium text-gray-300 mb-1">Category *</label>
-                            <input
-                                type="text" // Consider changing to select if categories are fixed
-                                id="category"
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                disabled={isLoading}
-                                required
-                            />
-                        </div>
-                        {/* Subcategory */}
-                        <div>
-                            <label htmlFor="subcategory" className="block text-sm font-medium text-gray-300 mb-1">Subcategory</label>
-                            <input
-                                type="text"
-                                id="subcategory"
-                                value={subcategory}
-                                onChange={(e) => setSubcategory(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                disabled={isLoading}
-                            />
-                        </div>
-                        {/* Stock */}
-                        <div>
-                            <label htmlFor="stock" className="block text-sm font-medium text-gray-300 mb-1">Stock Quantity</label>
-                            <input
-                                type="number"
-                                id="stock"
-                                value={stock}
-                                onChange={(e) => setStock(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                disabled={isLoading}
-                                min="0"
-                            />
-                        </div>
-                        {/* Active Status */}
-                        <div className="flex items-center mt-4 md:mt-7">
-                            <input
-                                id="isActive"
-                                name="isActive"
-                                type="checkbox"
-                                checked={isActive}
-                                onChange={(e) => setIsActive(e.target.checked)}
-                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-500 rounded bg-gray-700"
-                                disabled={isLoading}
-                            />
-                            <label htmlFor="isActive" className="ml-2 block text-sm text-gray-300">
-                                Product Active
-                            </label>
-                        </div>
+        <Dialog open onOpenChange={open => { if (!open && !isLoading) onCancel(); }}>
+            <SheetContent
+                title={editing ? 'Modifier le produit' : 'Nouveau produit'}
+                description={editing ? product?.name : 'Le produit est publié dans la boutique des membres.'}
+                width="lg"
+                footer={(
+                    <>
+                        <Button variant="outline" size="lg" onClick={onCancel} disabled={isLoading}>Annuler</Button>
+                        <Button variant="primary" size="lg" onClick={() => handleSubmit()} loading={isLoading}>Enregistrer le produit</Button>
+                    </>
+                )}
+            >
+                <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field label="Nom" required error={errors.name}>
+                            <Input className="h-11 sm:h-9" value={name} onChange={e => setName(e.target.value)} disabled={isLoading} />
+                        </Field>
+                        <Field label="Prix (F CFA)" required error={errors.price}>
+                            <Input className="h-11 sm:h-9" type="number" inputMode="numeric" min="0" value={price} onChange={e => setPrice(e.target.value)} disabled={isLoading} />
+                        </Field>
+                        <Field label="Catégorie" required error={errors.category}>
+                            <Input className="h-11 sm:h-9" value={category} onChange={e => setCategory(e.target.value)} disabled={isLoading} />
+                        </Field>
+                        <Field label="Sous-catégorie">
+                            <Input className="h-11 sm:h-9" value={subcategory} onChange={e => setSubcategory(e.target.value)} disabled={isLoading} />
+                        </Field>
+                        <Field label="Quantité en stock">
+                            <Input className="h-11 sm:h-9" type="number" inputMode="numeric" min="0" value={stock} onChange={e => setStock(e.target.value)} disabled={isLoading} />
+                        </Field>
+                        <label className="flex min-h-11 items-center gap-2 self-end text-sm text-fg">
+                            <Checkbox checked={isActive} onCheckedChange={v => setIsActive(v === true)} disabled={isLoading} />
+                            Produit actif
+                        </label>
                     </div>
 
-                    {/* Description */}
-                    <div className="mb-4">
-                        <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-1">Description</label>
-                        <textarea
-                            id="description"
-                            rows={4}
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            disabled={isLoading}
-                        />
-                    </div>
+                    <Field label="Description">
+                        <Textarea rows={4} value={description} onChange={e => setDescription(e.target.value)} disabled={isLoading} />
+                    </Field>
 
-                    {/* Image Upload/Management Section */}
-                    <div className="mb-4">
-                        <label htmlFor="images" className="block text-sm font-medium text-gray-300 mb-1">Product Images</label>
-                        <input
-                            type="file"
-                            id="images"
-                            multiple
-                            accept="image/*" // Accept only image files
-                            onChange={handleImageChange}
-                            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"
-                            disabled={isLoading}
-                        />
-                        <p className="mt-1 text-xs text-gray-400">Select one or more images.</p>
-                    </div>
-
-                    {/* Image Previews */}
-                    <div className="mb-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                        {/* Existing Images (only show when editing) */}
-                        {product?._id && existingImageUrls.map((url, index) => (
-                            <div key={`existing-${index}`} className="relative group">
-                                {/* Handle both full URLs and file IDs */}
-                                {url.startsWith('http') ? (
-                                    <img src={url} alt={`Existing product image ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-gray-600" />
-                                ) : (
-                                    <ImageDisplay
-                                        fileId={url}
-                                        alt={`Existing product image ${index + 1}`}
-                                        className="w-full h-20 object-cover rounded-md border border-gray-600"
-                                    />
-                                )}
-                                {/* TODO: Add a button to remove existing image */}
-                                {/* <button type="button" className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100">&times;</button> */}
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium text-fg">Images du produit</p>
+                        {(existingImageUrls.length > 0 || imagePreviews.length > 0) && (
+                            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                                {editing && existingImageUrls.map((url, i) => (
+                                    <ProductThumb key={`e-${i}`} src={url} alt={`Image actuelle ${i + 1}`} className="aspect-square h-auto w-full border border-line" />
+                                ))}
+                                {imagePreviews.map((src, i) => (
+                                    <img key={`n-${i}`} src={src} alt={`Nouvelle image ${i + 1}`} className="aspect-square w-full rounded-md border border-primary object-cover" />
+                                ))}
                             </div>
-                        ))}
-                        {/* New Image Previews */}
-                        {imagePreviews.map((previewUrl, index) => (
-                            <div key={`new-${index}`} className="relative group">
-                                <img src={previewUrl} alt={`New preview ${index + 1}`} className="w-full h-20 object-cover rounded-md border border-indigo-500" />
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="mt-6 flex justify-end space-x-3">
-                        <button
-                            type="button"
-                            onClick={onCancel}
-                            disabled={isLoading}
-                            className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isLoading}
-                            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                        >
-                            {isLoading ? 'Saving...' : 'Save Product'}
-                        </button>
+                        )}
+                        <label className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-fg hover:bg-surface-2 sm:h-9">
+                            <HugeiconsIcon icon={Upload01Icon} size={16} aria-hidden="true" />
+                            Choisir des images
+                            <input type="file" multiple accept="image/*" className="sr-only" onChange={handleImageChange} disabled={isLoading} />
+                        </label>
+                        <p className="text-xs text-fg-muted">L’envoi de nouvelles images n’est pas encore branché : seules les images actuelles sont enregistrées.</p>
                     </div>
                 </form>
-            </div>
-        </div>
+            </SheetContent>
+        </Dialog>
     );
 };
 
-export default ProductEditForm; 
+export default ProductEditForm;

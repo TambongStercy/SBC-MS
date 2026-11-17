@@ -6,6 +6,8 @@ import { ChallengeStatus } from '../database/models/impact-challenge.model';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 import config from '../config';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { countryFieldMatch } from '../utils/country-names';
 
 const log = logger.getLogger('EntrepreneurService');
 
@@ -93,11 +95,17 @@ class EntrepreneurService {
      */
     async listEntrepreneursByChallenge(
         challengeId: string,
-        approvedOnly: boolean = false
+        approvedOnly: boolean = false,
+        filters: AdminFilters = {}
     ): Promise<IEntrepreneur[]> {
-        const query: Record<string, any> = { challengeId: new Types.ObjectId(challengeId) };
+        // Admin filters: ?country on entrepreneur.country (ISO code or name,
+        // any case), ?from/?to on the entrepreneur's createdAt (registration).
+        const query: Record<string, any> = { challengeId: new Types.ObjectId(challengeId), ...dateMatch('createdAt', filters) };
         if (approvedOnly) {
             query.approved = true;
+        }
+        if (filters.country) {
+            query.country = countryFieldMatch(filters.country);
         }
         return await entrepreneurRepository.find(query, 10, 0, { voteCount: -1 });
     }

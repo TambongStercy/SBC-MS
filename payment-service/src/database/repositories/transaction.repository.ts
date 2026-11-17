@@ -811,8 +811,9 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
         }
     }
 
-    async countAllTransactions(): Promise<number> {
-        const count = await this.model.countDocuments({ deleted: { $ne: true } }).exec();
+    /** `extraMatch`: admin filters (member country, date range), see the stats controller. */
+    async countAllTransactions(extraMatch: Record<string, any> = {}): Promise<number> {
+        const count = await this.model.countDocuments({ deleted: { $ne: true }, ...extraMatch }).exec();
         return count;
     }
 
@@ -964,9 +965,12 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
         limit?: number;
         sortBy?: 'totalWithdrawn' | 'totalEarned' | 'total';
         sortOrder?: 'asc' | 'desc';
+        /** Admin date filter on the transactions, e.g. `{ createdAt: { $gte, $lte } }`. */
+        dateMatch?: Record<string, any>;
     }): Promise<{ data: any[]; total: number }> {
         const {
             userIds,
+            dateMatch = {},
             minAmount = 0,
             page = 1,
             limit = 50,
@@ -985,9 +989,11 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             deleted: { $ne: true },
             type: { $in: ['withdrawal', 'deposit'] },
             userId: { $nin: excludedUserIds },
+            ...dateMatch,
         };
 
-        if (userIds && userIds.length > 0) {
+        // A country with no member gives an empty list: that must mean "nobody", not "everybody".
+        if (userIds) {
             matchStage.userId = { $in: userIds.filter(id => !excludedUserIds.some(ex => ex.equals(id))) };
         }
 

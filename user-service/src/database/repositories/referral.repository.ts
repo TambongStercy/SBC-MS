@@ -2,6 +2,7 @@ import ReferralModel, { IReferral } from '../models/referral.model';
 import UserModel, { IUser } from '../models/user.model';
 import mongoose, { Types, Document, UpdateWriteOpResult, PipelineStage } from 'mongoose';
 import SubscriptionModel, { SubscriptionStatus, SubscriptionCategory, SubscriptionType } from '../models/subscription.model';
+import { countryCondition } from '../../utils/country-filter';
 
 // Define document type
 type ReferralDocument = Document<unknown, {}, IReferral> & IReferral & { _id: Types.ObjectId };
@@ -2325,8 +2326,9 @@ export class ReferralRepository {
         // filter — rather than joining users for every referrer.
         let inCountry: Set<string> | null = null;
         if (country) {
+            // Any case, and legacy names ("Cameroun", "Congo-Brazzaville") too.
             const locals = await UserModel.find(
-                { country: new RegExp(`^${country.replace(/[^A-Za-z]/g, '')}$`, 'i') },
+                { country: await countryCondition(country) },
                 { _id: 1 }
             ).lean();
             inCountry = new Set(locals.map((u) => u._id.toString()));

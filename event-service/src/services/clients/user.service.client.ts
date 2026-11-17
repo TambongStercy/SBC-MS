@@ -126,3 +126,41 @@ export const creditEventOrganizerBalance = async (args: {
         throw new AppError('user-service unreachable', 502);
     }
 };
+
+export interface EventMemberLookup {
+    found: boolean;
+    ambiguous?: boolean;
+    userId?: string;
+    name?: string;
+    avatar?: string;
+    contactHint?: string;
+}
+
+/** Resolve an invited team member / juror by email or phone (user-service masked projection). */
+export const lookupEventMember = async (contact: string): Promise<EventMemberLookup> => {
+    try {
+        const { data } = await client.post('/users/internal/event-member-lookup', { contact });
+        if (!data?.success) throw new AppError(data?.message || 'user-service refused the lookup', 502);
+        return data.data as EventMemberLookup;
+    } catch (err) {
+        if (err instanceof AppError) throw err;
+        log.error(`event-member-lookup failed: ${(err as Error).message}`);
+        throw new AppError('Recherche du membre momentanément indisponible.', 502);
+    }
+};
+
+/**
+ * Every member id (hex strings) whose country is `country` (ISO-2), deleted
+ * members included — used by the admin `?country=` filter. Throws on any
+ * failure: the caller must never read "no answer" as "no filter".
+ */
+export const getUserIdsByCountry = async (country: string): Promise<string[]> => {
+    const { data } = await client.get('/users/internal/ids-by-country', {
+        params: { country },
+        timeout: 30000,
+    });
+    if (!data?.success || !Array.isArray(data.data)) {
+        throw new Error(data?.message || 'user-service refused ids-by-country');
+    }
+    return (data.data as unknown[]).map(String);
+};

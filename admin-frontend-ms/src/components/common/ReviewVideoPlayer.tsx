@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Gauge } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { DashboardSpeed01Icon, FullScreenIcon, PauseIcon, PlayIcon } from '@hugeicons/core-free-icons';
 
 /**
  * Video player for the verification review queue.
@@ -70,14 +71,14 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
 
     if (failure) {
         return (
-            <div className="rounded-xl border border-gray-700 bg-gray-900/60 p-6 text-center text-sm text-gray-400">
+            <div className="rounded-xl border border-line bg-background/60 p-6 text-center text-sm text-fg-muted">
                 {failure}
             </div>
         );
     }
 
     return (
-        <div className="overflow-hidden rounded-xl border border-gray-700 bg-black">
+        <div className="overflow-hidden rounded-xl border border-line bg-black">
             <video
                 ref={videoRef}
                 src={src}
@@ -91,16 +92,16 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                 className="block w-full max-h-[50vh] object-contain cursor-pointer bg-black"
             />
 
-            <div className="flex items-center gap-3 border-t border-gray-700 bg-gray-900 px-3 py-2">
+            <div className="flex items-center gap-1 border-t border-line bg-background px-1 sm:gap-2 sm:px-2">
                 <button
                     onClick={toggle}
                     aria-label={playing ? 'Pause' : 'Lecture'}
-                    className="text-gray-200 hover:text-white"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-fg hover:bg-surface-2"
                 >
-                    {playing ? <Pause size={18} /> : <Play size={18} />}
+                    <HugeiconsIcon icon={playing ? PauseIcon : PlayIcon} size={18} aria-hidden="true" />
                 </button>
 
-                <span className="w-20 shrink-0 text-[11px] tabular-nums text-gray-400">
+                <span className="w-20 shrink-0 text-xs tabular-nums text-fg-muted">
                     {clock(progress)} / {clock(duration)}
                 </span>
 
@@ -112,23 +113,24 @@ export default function ReviewVideoPlayer({ src }: { src: string }) {
                     value={progress}
                     onChange={(e) => seek(Number(e.target.value))}
                     aria-label="Position dans la vidéo"
-                    className="h-1 flex-1 cursor-pointer accent-blue-500"
+                    className="h-1 flex-1 cursor-pointer accent-[var(--primary)] min-w-0"
                 />
 
                 <button
                     onClick={cycleSpeed}
                     title="Vitesse de lecture"
-                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
+                    aria-label={`Vitesse de lecture : ${speed}×`}
+                    className="flex h-11 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-fg-muted hover:bg-surface-2 hover:text-fg"
                 >
-                    <Gauge size={14} /> {speed}×
+                    <HugeiconsIcon icon={DashboardSpeed01Icon} size={14} aria-hidden="true" /> {speed}×
                 </button>
 
                 <button
                     onClick={() => videoRef.current?.requestFullscreen?.()}
                     aria-label="Plein écran"
-                    className="text-gray-300 hover:text-white"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface-2 hover:text-fg"
                 >
-                    <Maximize2 size={16} />
+                    <HugeiconsIcon icon={FullScreenIcon} size={16} aria-hidden="true" />
                 </button>
             </div>
         </div>

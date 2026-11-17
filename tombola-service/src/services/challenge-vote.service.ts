@@ -13,6 +13,8 @@ import { entrepreneurService } from './entrepreneur.service';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 import config from '../config';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { keepMembersOfCountry } from '../utils/country-members';
 
 const log = logger.getLogger('ChallengeVoteService');
 
@@ -424,13 +426,23 @@ class ChallengeVoteService {
     async getVotesByChallenge(
         challengeId: string,
         page: number = 1,
-        limit: number = 20
+        limit: number = 20,
+        filters: AdminFilters = {}
     ): Promise<{ votes: IChallengeVote[]; total: number }> {
         const skip = (page - 1) * limit;
-        const query = {
+        // ?from/?to bound the vote's createdAt; ?country is the voter's (a
+        // non-member support has no member, so it drops out under a country).
+        const query: Record<string, unknown> = {
             challengeId: new Types.ObjectId(challengeId),
-            paymentStatus: VotePaymentStatus.COMPLETED
+            paymentStatus: VotePaymentStatus.COMPLETED,
+            ...dateMatch('createdAt', filters),
         };
+        if (filters.country) {
+            const voters = await ChallengeVoteModel.distinct('userId', query);
+            const allowed = await keepMembersOfCountry(voters.filter(Boolean), filters.country);
+            if (allowed.length === 0) return { votes: [], total: 0 };
+            query.userId = { $in: allowed };
+        }
 
         const [votes, total] = await Promise.all([
             challengeVoteRepository.find(query, limit, skip),

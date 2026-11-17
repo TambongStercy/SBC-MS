@@ -107,6 +107,22 @@ export const getUserProfiles = async (userIds: string[]): Promise<IUserProfile[]
     }
 };
 
+/**
+ * Ids (hex strings) of every member of a country, deleted members included, for
+ * the admin `?country=` filter. Throws on any failure: an admin list that
+ * silently drops its country filter would show every country under one flag.
+ */
+export const getUserIdsByCountry = async (country: string): Promise<string[]> => {
+    const { data } = await client.get<{ success: boolean; data?: string[]; message?: string }>(
+        '/users/internal/ids-by-country',
+        { params: { country }, timeout: 30000 },
+    );
+    if (!data?.success || !Array.isArray(data.data)) {
+        throw new Error(data?.message || 'user-service did not return the country\'s members');
+    }
+    return data.data;
+};
+
 /** Main balance net of any debt: what the annonceur can spend from it. */
 export const getSpendableBalance = async (userId: string): Promise<number> => {
     const { data } = await client.get<{ success: boolean; data?: { balance?: number } }>(`/users/internal/${userId}/balance`);

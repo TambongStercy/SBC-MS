@@ -60,8 +60,8 @@ class EventOrganizerBalanceController {
      * Credits verified organizer earnings. Service-to-service only, called by
      * event-service once an order or resale settlement lands.
      *
-     * Idempotency lives with the caller — event-service stamps creditedAt on the
-     * order and refuses to credit the same one twice.
+     * Idempotent on `reference` (see EventOrganizerLedger): a replay answers
+     * 200 with `alreadyApplied: true` and moves nothing.
      */
     async creditEarnings(req: AuthenticatedRequest, res: Response) {
         try {

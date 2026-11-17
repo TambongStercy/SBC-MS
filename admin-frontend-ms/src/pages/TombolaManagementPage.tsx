@@ -1,422 +1,294 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Award01Icon, DiceIcon, LockIcon, PlusSignIcon, SquareUnlock01Icon, Ticket01Icon, ViewIcon } from '@hugeicons/core-free-icons';
 import {
-    listTombolaMonths,
-    createTombolaMonth,
-    listTicketsForMonth,
-    TombolaMonth,
-    TombolaTicket,
-    PaginationOptions,
-    TombolaStatus,
-    updateTombolaStatus
+  TombolaStatus, createTombolaMonth, listTombolaMonths, updateTombolaStatus, type TombolaMonth,
 } from '../services/adminTombolaApi';
-import Header from '../components/common/Header';
-import Pagination from '../components/common/Pagination'; // Reuse pagination component
-import CreateTombolaModal from '../components/tombola/CreateTombolaModal'; // <-- Import Create Modal
-import ViewTicketsModal from '../components/tombola/ViewTicketsModal'; // <-- Import ViewTicketsModal
-import ConfirmationModal from '../components/common/ConfirmationModal'; // Import ConfirmationModal
-import { format, parseISO } from 'date-fns'; // For date formatting
-import toast from 'react-hot-toast';
-import { debounce } from 'lodash'; // Import debounce
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { usePermission } from '../hooks/usePermission';
+import { Can } from '../components/Can';
+import {
+  Button, EmptyState, MenuItem, MenuSeparator, Metric, PageHeader, Pagination, Panel, ResponsiveList, Skeleton, type ListColumn,
+} from '../components/ui';
+import {
+  ConfirmDialog, DateText, ErrorState, RowMenu, count, StatusBadge, TodoAction, TodoPanel, formatDelta, formatNumber, useUrlFilters,
+  type ConfirmOptions, type TodoItem,
+} from '../components/moduleKit';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { MonthlyTicketsChart } from '../components/tombola/MonthlyTicketsChart';
+import CreateTombolaModal from '../components/tombola/CreateTombolaModal';
+import TombolaSheet from '../components/tombola/ViewTicketsModal';
+import { TOMBOLA_STATUS, monthLabel, monthTitle } from '../components/tombola/labels';
 
-// Helper to format date strings
-const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
+const PAGE_SIZE = 10;
+const isDrawable = (t: TombolaMonth) => t.status === TombolaStatus.OPEN || t.status === TombolaStatus.DRAWING;
+const ym = (t: Pick<TombolaMonth, 'month' | 'year'>) => t.year * 12 + (t.month - 1);
+
+/**
+ * Tombola (module `tombola`): one tombola per month. What needs doing first
+ * (a past month still open = a draw is due, no tombola this month), then the
+ * figures, tickets sold per month and the list. The service draws only an
+ * OPEN tombola.
+ */
+export default function TombolaManagementPage() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const canWrite = usePermission('tombola') === 'write';
+  const f = useUrlFilters([] as const);
+  const filters = usePageFilters();
+  const api = filters.apiParams;
+  // The queue and the figures ignore the period (country only)
+  const queueApi = api.country ? { country: api.country } : {};
+  const [creating, setCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [open, setOpen] = useState<TombolaMonth | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmOptions | null>(null);
+
+  const list = useQuery({
+    queryKey: ['tombola', 'months', f.page, api],
+    queryFn: () => listTombolaMonths({ page: f.page, limit: PAGE_SIZE, ...api }),
+    placeholderData: keepPreviousData,
+  });
+  // The last two years, for the queue, the figures and the chart
+  const recent = useQuery({
+    queryKey: ['tombola', 'months', 'recent', queueApi],
+    queryFn: () => listTombolaMonths({ page: 1, limit: 24, ...queueApi }),
+  });
+  // Tickets per month over the chosen period
+  const chartQ = useQuery({
+    queryKey: ['tombola', 'months', 'chart', api],
+    queryFn: () => listTombolaMonths({ page: 1, limit: 100, ...api }),
+  });
+
+  const rows = list.data?.data ?? [];
+  const pg = list.data?.pagination;
+
+  const now = new Date();
+  const nowYm = now.getFullYear() * 12 + now.getMonth();
+  const summary = useMemo(() => {
+    const all = recent.data?.data ?? [];
+    const current = all.find(t => ym(t) === nowYm) ?? null;
+    const previous = all.find(t => ym(t) === nowYm - 1) ?? null;
+    const overdue = all.filter(t => isDrawable(t) && ym(t) < nowYm).sort((a, b) => ym(a) - ym(b));
+    const openOne = all.find(t => t.status === TombolaStatus.OPEN) ?? null;
+    const lastDrawn = all.filter(t => t.status === TombolaStatus.CLOSED && t.winners?.length).sort((a, b) => ym(b) - ym(a))[0] ?? null;
+    return { current, previous, overdue, openOne, lastDrawn };
+  }, [recent.data, nowYm]);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['tombola', 'months'] });
+
+  const handleCreate = async (month: number, year: number) => {
+    setIsSubmitting(true);
     try {
-        return format(parseISO(dateString), 'MMM dd, yyyy, hh:mm a'); // Example format
-    } catch (error) {
-        console.error("Error formatting date:", dateString, error);
-        return 'Invalid Date';
+      await createTombolaMonth(month, year);
+      toast.success(`Tombola de ${monthLabel(month, year)} créée.`);
+      setCreating(false);
+      void refresh();
+    } catch (err) {
+      toast.error(`La tombola n’a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+      throw err;
+    } finally {
+      setIsSubmitting(false);
     }
-};
+  };
 
-// Helper for status badges
-const getStatusBadge = (status: TombolaStatus) => {
-    switch (status) {
-        case TombolaStatus.OPEN:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">OPEN</span>;
-        case TombolaStatus.CLOSED:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">CLOSED</span>;
-        case TombolaStatus.DRAWING:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">DRAWING</span>;
-        default:
-            return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">UNKNOWN</span>;
+  const changeStatus = (t: TombolaMonth, status: TombolaStatus.OPEN | TombolaStatus.CLOSED) => setConfirm({
+    title: status === TombolaStatus.OPEN ? `Rouvrir la tombola de ${monthLabel(t.month, t.year)} ?` : `Fermer la tombola de ${monthLabel(t.month, t.year)} ?`,
+    description: status === TombolaStatus.OPEN
+      ? 'Les membres pourront de nouveau y acheter des tickets. Toute autre tombola ouverte sera fermée.'
+      : 'Plus aucun ticket ne pourra être acheté. Attention : le service ne tire qu’une tombola ouverte.',
+    confirmLabel: status === TombolaStatus.OPEN ? 'Rouvrir' : 'Fermer la tombola',
+    tone: status === TombolaStatus.OPEN ? 'primary' : 'danger',
+    onConfirm: async () => {
+      const updated = await updateTombolaStatus(t._id, status);
+      toast.success('Statut de la tombola mis à jour.');
+      if (open?._id === t._id) setOpen(updated);
+      void refresh();
+    },
+  });
+
+  const goDraw = (t: TombolaMonth) => navigate(`/tombola/draw/${t._id}`);
+
+  const primary = (t: TombolaMonth, phone = false) => {
+    const cls = phone ? 'h-11 flex-1' : '';
+    if (isDrawable(t) && canWrite) {
+      const none = (t.lastTicketNumber ?? 0) === 0;
+      return (
+        <Button variant="soft" size="md" className={cls} disabled={none} onClick={() => goDraw(t)}>
+          <HugeiconsIcon icon={DiceIcon} size={16} aria-hidden="true" />
+          {none ? 'Aucun ticket' : 'Tirage'}
+        </Button>
+      );
     }
-};
-
-function TombolaManagementPage() {
-    const [tombolas, setTombolas] = useState<TombolaMonth[]>([]);
-    const [pagination, setPagination] = useState<PaginationOptions>({ page: 1, limit: 10 });
-    const [totalPages, setTotalPages] = useState(1);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
-    const [isSubmitting, setIsSubmitting] = useState<boolean>(false); // Loading state for create action
-
-    // --- State for View Tickets Modal ---
-    const [isViewTicketsModalOpen, setIsViewTicketsModalOpen] = useState<boolean>(false);
-    const [selectedTombolaForTickets, setSelectedTombolaForTickets] = useState<TombolaMonth | null>(null);
-    const [tickets, setTickets] = useState<TombolaTicket[]>([]);
-    const [ticketsPagination, setTicketsPagination] = useState<PaginationOptions>({ page: 1, limit: 15 }); // Separate pagination for tickets
-    const [ticketsTotalPages, setTicketsTotalPages] = useState(1);
-    const [ticketsTotalCount, setTicketsTotalCount] = useState(0);
-    const [isLoadingTickets, setIsLoadingTickets] = useState<boolean>(false);
-    // --- End State for View Tickets Modal ---
-
-    // --- State for Ticket Search ---
-    const [ticketsSearchTerm, setTicketsSearchTerm] = useState<string>("");
-    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>(""); // State for debounced value
-    // --- End State for Ticket Search ---
-
-    // --- State for Status Change ---
-    const [isConfirmStatusModalOpen, setIsConfirmStatusModalOpen] = useState<boolean>(false);
-    const [tombolaToChangeStatus, setTombolaToChangeStatus] = useState<TombolaMonth | null>(null);
-    const [targetStatus, setTargetStatus] = useState<TombolaStatus.OPEN | TombolaStatus.CLOSED | null>(null);
-    const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
-    // --- End State for Status Change ---
-
-    const navigate = useNavigate(); // Initialize navigate
-
-    const fetchTombolas = useCallback(async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const response = await listTombolaMonths(pagination);
-            // Access data and pagination based on the revised interface
-            setTombolas(response.data || []);
-            setTotalPages(response.pagination?.totalPages || 1);
-            // Ensure current page is sync with response in case API adjusted it
-            if (response.pagination?.page && response.pagination.page !== pagination.page) {
-                setPagination(prev => ({ ...prev, page: response.pagination.page }));
-            }
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
-            setError(message);
-            toast.error(`Failed to load tombolas: ${message}`);
-            setTombolas([]);
-            setTotalPages(1);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [pagination]);
-
-    useEffect(() => {
-        fetchTombolas();
-    }, [fetchTombolas]);
-
-    const handlePageChange = (newPage: number) => {
-        if (newPage > 0 && newPage <= totalPages) {
-            setPagination(prev => ({ ...prev, page: newPage }));
-        }
-    };
-
-    // --- Create Handlers ---
-    const handleOpenCreateModal = () => {
-        setIsCreateModalOpen(true);
-    };
-
-    const handleCloseCreateModal = () => {
-        setIsCreateModalOpen(false);
-    };
-
-    const handleCreateTombola = async (month: number, year: number) => {
-        setIsSubmitting(true);
-        const loadingToastId = toast.loading('Creating new tombola...');
-        try {
-            const newTombola = await createTombolaMonth(month, year);
-            console.log(newTombola);
-            toast.success(`Successfully created tombola for ${String(month).padStart(2, '0')}/${year}.`, { id: loadingToastId });
-            handleCloseCreateModal();
-            fetchTombolas(); // Refresh the list
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
-            console.error("Failed to create tombola:", err);
-            toast.error(`Failed to create tombola: ${message}`, { id: loadingToastId });
-            // Re-throw error so modal can display it if needed
-            throw err;
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-    // --- End Create Handlers ---
-
-    // --- View Tickets Handlers ---
-    const fetchTicketsForSelectedMonth = useCallback(async (currentSearchTerm: string) => {
-        if (!selectedTombolaForTickets) return;
-
-        setIsLoadingTickets(true);
-        try {
-            // Pass pagination and search term to the API call
-            // Ensure the response type matches the actual structure { success, data, pagination?, message? }
-            const response = await listTicketsForMonth(selectedTombolaForTickets._id, ticketsPagination, currentSearchTerm);
-
-            // Adjusted access based on expected API response structure
-            // Assuming response has { data: { tickets: Ticket[], ... }, pagination: { totalPages, totalCount, page } }
-            if (response && response.data && response.data.tickets && response.pagination) {
-                setTickets(response.data.tickets || []); // Access the 'tickets' array inside response.data
-                setTicketsTotalPages(response.pagination.totalPages || 1);
-                setTicketsTotalCount(response.pagination.totalCount || 0);
-                // Sync local pagination state if API adjusted the page
-                if (response.pagination.page && response.pagination.page !== ticketsPagination.page) {
-                    setTicketsPagination(prev => ({ ...prev, page: response.pagination.page }));
-                }
-            } else {
-                // Handle case where response might be missing expected fields even if successful
-                throw new Error(response.message || 'Failed to fetch tickets: Invalid response structure');
-            }
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
-            console.error("Failed to fetch tickets:", err);
-            toast.error(`Failed to load tickets: ${message}`);
-            setTickets([]);
-            setTicketsTotalPages(1);
-            setTicketsTotalCount(0);
-        } finally {
-            setIsLoadingTickets(false);
-        }
-    }, [selectedTombolaForTickets, ticketsPagination]);
-
-    // Debounce the function that updates the search term used for fetching
-    const debouncedSetFetcherSearchTerm = useCallback(
-        debounce((value: string) => {
-            setTicketsPagination(prev => ({ ...prev, page: 1 })); // Reset page to 1 on new search
-            setDebouncedSearchTerm(value);
-        }, 500), // 500ms delay
-        [] // Empty dependency array for useCallback
-    );
-
-    // Handler for the search input change
-    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const value = event.target.value;
-        setTicketsSearchTerm(value); // Update the input value immediately
-        debouncedSetFetcherSearchTerm(value); // Trigger the debounced update for fetching
-    };
-
-    // Trigger fetch when selected tombola, ticket page, or DEBOUNCED SEARCH TERM changes
-    useEffect(() => {
-        if (selectedTombolaForTickets && isViewTicketsModalOpen) {
-            fetchTicketsForSelectedMonth(debouncedSearchTerm); // Use debounced search term
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedTombolaForTickets, ticketsPagination, isViewTicketsModalOpen, debouncedSearchTerm]); // Use debouncedSearchTerm
-
-    const handleViewTickets = (tombola: TombolaMonth) => {
-        setSelectedTombolaForTickets(tombola);
-        setTicketsPagination({ page: 1, limit: 15 }); // Reset to page 1
-        setTicketsSearchTerm(""); // Clear search term when opening modal
-        setDebouncedSearchTerm(""); // Clear debounced search term
-        setTickets([]); // Clear previous tickets
-        setIsViewTicketsModalOpen(true);
-        // Initial fetch is triggered by useEffect
-    };
-
-    const handleCloseViewTicketsModal = () => {
-        setIsViewTicketsModalOpen(false);
-        setSelectedTombolaForTickets(null);
-        setTickets([]);
-        setTicketsPagination({ page: 1, limit: 15 });
-    };
-
-    const handleTicketsPageChange = (newPage: number) => {
-        if (newPage > 0 && newPage <= ticketsTotalPages) {
-            setTicketsPagination(prev => ({ ...prev, page: newPage }));
-        }
-    };
-
-    const handleGoToDrawPage = (tombolaId: string) => {
-        navigate(`/tombola/draw/${tombolaId}`);
-    };
-
-    // --- End View Tickets Handlers ---
-
-    // --- Status Change Handlers ---
-    const openStatusConfirmation = (tombola: TombolaMonth, newStatus: TombolaStatus.OPEN | TombolaStatus.CLOSED) => {
-        setTombolaToChangeStatus(tombola);
-        setTargetStatus(newStatus);
-        setIsConfirmStatusModalOpen(true);
-    };
-
-    const closeStatusConfirmation = () => {
-        setIsConfirmStatusModalOpen(false);
-        setTombolaToChangeStatus(null);
-        setTargetStatus(null);
-    };
-
-    const confirmStatusUpdate = async () => {
-        if (!tombolaToChangeStatus || targetStatus === null) return;
-
-        setIsUpdatingStatus(true);
-        const loadingToastId = toast.loading(`Updating status to ${targetStatus}...`);
-        try {
-            await updateTombolaStatus(tombolaToChangeStatus._id, targetStatus);
-            toast.success('Tombola status updated successfully.', { id: loadingToastId });
-            closeStatusConfirmation();
-            fetchTombolas(); // Refresh the list
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred';
-            console.error("Failed to update status:", err);
-            toast.error(`Failed to update status: ${message}`, { id: loadingToastId });
-            // Keep modal open on error?
-            // closeStatusConfirmation(); // Optionally close even on error
-        } finally {
-            setIsUpdatingStatus(false);
-        }
-    };
-    // --- End Status Change Handlers ---
-
-    // TODO: Add handlers for Delete
-
     return (
-        <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white">
-            <Header title="Tombola Management" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-semibold">All Tombola Months</h2>
-                    <button
-                        onClick={handleOpenCreateModal}
-                        // Apply standard button styling
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition ease-in-out duration-150"
-                    >
-                        Create New Tombola
-                    </button>
-                </div>
-
-                {isLoading ? (
-                    <p>Loading tombolas...</p>
-                ) : error ? (
-                    <div className="bg-red-800 text-white p-3 rounded">Error: {error}</div>
-                ) : (
-                    <>
-                        {/* Wrap the table container with overflow-x-auto */}
-                        <div className="shadow overflow-hidden border-b border-gray-700 sm:rounded-lg mb-6 overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-700">
-                                <thead className="bg-gray-700">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Month/Year</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Start Date</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Draw Date</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Tickets Sold</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Winners</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-gray-800 divide-y divide-gray-600">
-                                    {tombolas.map((tombola) => (
-                                        <tr key={tombola._id}>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{`${String(tombola.month).padStart(2, '0')}/${tombola.year}`}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(tombola.status)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatDate(tombola.startDate)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatDate(tombola.drawDate)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{tombola.lastTicketNumber ?? 0}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{tombola.winners?.length ?? 0}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                                {/* --- ACTION BUTTONS --- */}
-                                                <button
-                                                    onClick={() => handleViewTickets(tombola)}
-                                                    title="View Tickets"
-                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition ease-in-out duration-150"
-                                                >
-                                                    View Tickets
-                                                </button>
-
-                                                {/* Conditional Draw Button */}
-                                                {(tombola.status === TombolaStatus.OPEN || tombola.status === TombolaStatus.DRAWING) && (
-                                                    <button
-                                                        onClick={() => handleGoToDrawPage(tombola._id)}
-                                                        title="Perform Draw"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500 transition ease-in-out duration-150"
-                                                        disabled={tombola.lastTicketNumber === 0} // Disable if no tickets
-                                                    >
-                                                        {tombola.lastTicketNumber === 0 ? 'Draw (No Tickets)' : 'Perform Draw'}
-                                                    </button>
-                                                )}
-
-                                                {/* NEW: View Draw Button for Closed Tombolas */}
-                                                {tombola.status === TombolaStatus.CLOSED && (
-                                                    <button
-                                                        onClick={() => handleGoToDrawPage(tombola._id)}
-                                                        title="View Draw Results"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 transition ease-in-out duration-150"
-                                                    >
-                                                        View Draw
-                                                    </button>
-                                                )}
-
-                                                {/* Conditional Status Change Buttons */}
-                                                {tombola.status === TombolaStatus.OPEN && (
-                                                    <button
-                                                        onClick={() => openStatusConfirmation(tombola, TombolaStatus.CLOSED)}
-                                                        title="Close Tombola"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-gray-500 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-400 transition ease-in-out duration-150"
-                                                    >
-                                                        Set Closed
-                                                    </button>
-                                                )}
-                                                {tombola.status === TombolaStatus.CLOSED && (
-                                                    <button
-                                                        onClick={() => openStatusConfirmation(tombola, TombolaStatus.OPEN)}
-                                                        title="Re-open Tombola"
-                                                        className="px-3 py-1 text-xs font-semibold rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-yellow-400 transition ease-in-out duration-150"
-                                                    >
-                                                        Set Open
-                                                    </button>
-                                                )}
-
-                                                {/* TODO: Add Delete Button with confirmation */}
-                                                {/* <button
-                                                    // onClick={() => handleDeleteTombola(tombola._id)} // Need delete handler
-                                                    title="Delete Tombola"
-                                                    className="px-3 py-1 text-xs font-semibold rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 transition ease-in-out duration-150"
-                                                >
-                                                    Delete
-                                                </button> */}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <Pagination
-                            currentPage={pagination.page ?? 1}
-                            totalPages={totalPages ?? 1}
-                            onPageChange={handlePageChange}
-                        />
-                    </>
-                )}
-            </main>
-
-            {/* Modals */}
-            <CreateTombolaModal
-                isOpen={isCreateModalOpen}
-                onClose={handleCloseCreateModal}
-                onSave={handleCreateTombola}
-                isLoading={isSubmitting}
-            />
-            <ViewTicketsModal
-                isOpen={isViewTicketsModalOpen}
-                onClose={handleCloseViewTicketsModal}
-                tombolaMonth={selectedTombolaForTickets}
-                tickets={tickets}
-                isLoading={isLoadingTickets}
-                currentPage={ticketsPagination.page ?? 1}
-                totalPages={ticketsTotalPages ?? 1}
-                totalTickets={ticketsTotalCount ?? 0}
-                onPageChange={handleTicketsPageChange}
-                searchTerm={ticketsSearchTerm}
-                onSearchChange={handleSearchChange}
-            />
-            <ConfirmationModal
-                isOpen={isConfirmStatusModalOpen}
-                title={`Confirm Status Change`}
-                message={`Are you sure you want to set the status of Tombola ${tombolaToChangeStatus ? `${String(tombolaToChangeStatus.month).padStart(2, '0')}/${tombolaToChangeStatus.year}` : ''} to ${targetStatus?.toUpperCase()}? ${targetStatus === TombolaStatus.OPEN ? 'This will close any other currently open tombola.' : ''}`}
-                onConfirm={confirmStatusUpdate}
-                onCancel={closeStatusConfirmation}
-                confirmText={`Yes, Set to ${targetStatus?.toUpperCase()}`}
-                isLoading={isUpdatingStatus}
-            />
-        </div>
+      <Button variant="ghost" size="md" className={cls} onClick={() => goDraw(t)}>
+        <HugeiconsIcon icon={ViewIcon} size={16} aria-hidden="true" />
+        Voir le tirage
+      </Button>
     );
-}
+  };
 
-export default TombolaManagementPage; 
+  const menu = (t: TombolaMonth) => (
+    <RowMenu>
+      <MenuItem onSelect={() => setOpen(t)}>
+        <HugeiconsIcon icon={Ticket01Icon} size={16} aria-hidden="true" />
+        Voir les tickets
+      </MenuItem>
+      {canWrite && (t.status === TombolaStatus.OPEN || t.status === TombolaStatus.CLOSED) && <MenuSeparator />}
+      {canWrite && t.status === TombolaStatus.OPEN && (
+        <MenuItem destructive onSelect={() => changeStatus(t, TombolaStatus.CLOSED)}>
+          <HugeiconsIcon icon={LockIcon} size={16} aria-hidden="true" />
+          Fermer la tombola
+        </MenuItem>
+      )}
+      {canWrite && t.status === TombolaStatus.CLOSED && (
+        <MenuItem onSelect={() => changeStatus(t, TombolaStatus.OPEN)}>
+          <HugeiconsIcon icon={SquareUnlock01Icon} size={16} aria-hidden="true" />
+          Rouvrir la tombola
+        </MenuItem>
+      )}
+    </RowMenu>
+  );
+
+  const actions = (t: TombolaMonth, phone = false) => (
+    <div className={phone ? 'flex items-center gap-2' : 'flex items-center justify-end gap-1'} onClick={e => e.stopPropagation()}>
+      {primary(t, phone)}
+      {menu(t)}
+    </div>
+  );
+
+  const columns: ListColumn<TombolaMonth>[] = [
+    { key: 'month', header: 'Mois', cell: t => <span className="font-medium">{monthTitle(t.month, t.year)}</span> },
+    { key: 'status', header: 'Statut', cell: t => <StatusBadge status={t.status} map={TOMBOLA_STATUS} /> },
+    { key: 'tickets', header: 'Tickets vendus', cell: t => formatNumber(t.lastTicketNumber ?? 0), numeric: true },
+    { key: 'winners', header: 'Gagnants', cell: t => formatNumber(t.winners?.length ?? 0), numeric: true },
+    { key: 'draw', header: 'Tirage', cell: t => (t.drawDate ? <DateText value={t.drawDate} className="text-fg-muted" /> : <span className="text-fg-subtle">Pas encore</span>) },
+    { key: 'actions', header: <span className="sr-only">Actions</span>, cell: t => actions(t), hideOnCard: true },
+  ];
+
+  const card = (t: TombolaMonth) => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-fg">{monthTitle(t.month, t.year)}</span>
+        <StatusBadge status={t.status} map={TOMBOLA_STATUS} />
+      </div>
+      <p className="text-sm text-fg-muted">
+        <span className="tabular-nums text-fg">{formatNumber(t.lastTicketNumber ?? 0)}</span> tickets ·{' '}
+        <span className="tabular-nums text-fg">{formatNumber(t.winners?.length ?? 0)}</span> gagnants
+        {t.drawDate && <> · tiré <DateText value={t.drawDate} /></>}
+      </p>
+      {actions(t, true)}
+    </div>
+  );
+
+  const todo: TodoItem[] = [];
+  if (summary.overdue.length) {
+    const first = summary.overdue[0];
+    todo.push({
+      key: 'draw', count: summary.overdue.length, tone: 'warning',
+      label: summary.overdue.length > 1 ? 'Tirages en retard' : `Tirage à faire : ${monthLabel(first.month, first.year)}`,
+      hint: `Le mois est fini et la tombola est encore ${first.status === TombolaStatus.DRAWING ? 'en cours de tirage' : 'ouverte'} (${count(first.lastTicketNumber ?? 0, 'ticket')}).`,
+      action: <TodoAction onClick={() => goDraw(first)}>Ouvrir le tirage</TodoAction>,
+    });
+  }
+  if (recent.data && !summary.current) {
+    todo.push({
+      key: 'create', count: 1, tone: 'info',
+      label: `Pas de tombola pour ${monthLabel(now.getMonth() + 1, now.getFullYear())}`,
+      hint: 'Les membres ne peuvent pas acheter de ticket ce mois-ci.',
+      action: canWrite ? <TodoAction onClick={() => setCreating(true)}>Créer la tombola</TodoAction> : undefined,
+    });
+  }
+
+  const cur = summary.current;
+  const delta = cur ? formatDelta(cur.lastTicketNumber ?? 0, summary.previous?.lastTicketNumber) : null;
+  const v = (node: ReactNode) => (recent.isLoading ? <Skeleton className="h-7 w-24" /> : node);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Tombola"
+        description="Une tombola par mois : ventes de tickets, ouverture et fermeture, tirage des gagnants."
+        actions={(
+          <Can module="tombola" write>
+            <Button variant="primary" size="lg" className="w-full sm:w-auto" onClick={() => setCreating(true)}>
+              <HugeiconsIcon icon={PlusSignIcon} size={18} aria-hidden="true" />
+              Nouvelle tombola
+            </Button>
+          </Can>
+        )}
+      />
+
+      <PageFilters filters={filters} className="mb-6" />
+
+      {recent.isError
+        ? <Panel><ErrorState error={recent.error} onRetry={() => void recent.refetch()} retrying={recent.isFetching} /></Panel>
+        : <TodoPanel loading={recent.isLoading} items={todo} />}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Metric label="Tombola ouverte" icon={Ticket01Icon}
+          value={v(summary.openOne ? monthTitle(summary.openOne.month, summary.openOne.year) : 'Aucune')}
+          hint={summary.openOne ? 'Les membres y achètent leurs tickets.' : 'Aucun ticket ne peut être acheté.'} />
+        <Metric label="Tickets vendus ce mois-ci"
+          value={v(cur ? formatNumber(cur.lastTicketNumber ?? 0) : '—')}
+          hint={cur ? (delta ?? (summary.previous ? 'Comme le mois dernier' : 'Pas de tombola le mois dernier')) : 'Pas de tombola ce mois-ci'} />
+        <Metric label="Dernier tirage" icon={Award01Icon}
+          value={v(summary.lastDrawn ? `${formatNumber(summary.lastDrawn.winners.length)} gagnants` : '—')}
+          hint={summary.lastDrawn ? monthTitle(summary.lastDrawn.month, summary.lastDrawn.year) : 'Aucun tirage récent'} />
+      </div>
+
+      <Panel>
+        {chartQ.isLoading
+          ? <div className="p-5"><Skeleton className="h-56 w-full" /></div>
+          : chartQ.isError
+            ? <ErrorState title="Le graphique n’a pas pu être chargé" error={chartQ.error} onRetry={() => void chartQ.refetch()} retrying={chartQ.isFetching} />
+            : <MonthlyTicketsChart tombolas={chartQ.data?.data ?? []} range={filters.range} />}
+      </Panel>
+
+      <Panel className={list.isFetching && !list.isLoading ? 'overflow-hidden opacity-60 transition-opacity' : 'overflow-hidden'}>
+        <div className="border-b border-line px-4 py-3 sm:px-5">
+          <h2 className="text-sm font-semibold text-fg">Toutes les tombolas</h2>
+        </div>
+        <ResponsiveList
+          rows={rows}
+          columns={columns}
+          rowKey={t => t._id}
+          card={card}
+          onRowClick={setOpen}
+          loading={list.isLoading}
+          empty={list.isError
+            ? <ErrorState error={list.error} onRetry={() => void list.refetch()} retrying={list.isFetching} />
+            : <EmptyState icon={Ticket01Icon} title="Aucune tombola" description="Créez la tombola du mois pour que les membres puissent acheter leurs tickets."
+                action={canWrite ? <Button variant="primary" size="lg" onClick={() => setCreating(true)}>Nouvelle tombola</Button> : undefined} />}
+        />
+        {pg && <Pagination page={f.page} totalPages={pg.totalPages || 1} total={pg.totalCount ?? 0} pageSize={PAGE_SIZE} onPageChange={f.setPage} />}
+      </Panel>
+
+      <CreateTombolaModal isOpen={creating} onClose={() => setCreating(false)} onSave={handleCreate} isLoading={isSubmitting} />
+
+      <TombolaSheet
+        tombola={open}
+        api={api}
+        onClose={() => setOpen(null)}
+        footer={open && (
+          <>
+            {canWrite && open.status === TombolaStatus.OPEN && (
+              <Button variant="danger-ghost" size="lg" onClick={() => changeStatus(open, TombolaStatus.CLOSED)}>Fermer la tombola</Button>
+            )}
+            {canWrite && open.status === TombolaStatus.CLOSED && (
+              <Button variant="outline" size="lg" onClick={() => changeStatus(open, TombolaStatus.OPEN)}>Rouvrir la tombola</Button>
+            )}
+            <Button variant={isDrawable(open) && canWrite ? 'primary' : 'outline'} size="lg" onClick={() => goDraw(open)}>
+              {isDrawable(open) && canWrite ? 'Ouvrir le tirage' : 'Voir le tirage'}
+            </Button>
+          </>
+        )}
+      />
+
+      <ConfirmDialog options={confirm} onClose={() => setConfirm(null)} />
+    </div>
+  );
+}

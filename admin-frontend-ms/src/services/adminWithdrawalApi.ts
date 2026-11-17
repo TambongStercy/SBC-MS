@@ -196,10 +196,12 @@ export interface ApiResponse<T = any> {
 export async function getPendingWithdrawals(
     page: number = 1,
     limit: number = 20,
-    withdrawalType?: 'mobile_money' | 'crypto'
+    withdrawalType?: 'mobile_money' | 'crypto',
+    /** Shared page filters: { country?, from?, to? } */
+    extra: Record<string, string> = {}
 ): Promise<PendingWithdrawalsResponse> {
     try {
-        const params: any = { page, limit };
+        const params: Record<string, unknown> = { page, limit, ...extra };
         if (withdrawalType) {
             params.withdrawalType = withdrawalType;
         }
@@ -223,10 +225,14 @@ export async function getPendingWithdrawals(
 /**
  * Get withdrawal statistics for dashboard
  */
-export async function getWithdrawalStats(): Promise<WithdrawalStatsResponse> {
+export async function getWithdrawalStats(
+    /** Shared page filters, e.g. { country } */
+    extra: Record<string, string> = {}
+): Promise<WithdrawalStatsResponse> {
     try {
         const response = await apiClient.get<WithdrawalStatsResponse>(
-            '/payments/admin/withdrawals/stats'
+            '/payments/admin/withdrawals/stats',
+            { params: extra }
         );
         return response.data;
     } catch (error) {
@@ -317,9 +323,11 @@ export async function getStuckCinetPayWithdrawals(
     page: number = 1,
     limit: number = 20,
     search?: string,
+    /** Extra query filters (country, from, to). */
+    extra: Record<string, string> = {},
 ): Promise<PendingWithdrawalsResponse> {
     try {
-        const params: Record<string, string | number> = { page, limit };
+        const params: Record<string, string | number> = { page, limit, ...extra };
         if (search && search.trim()) params.search = search.trim();
         const response = await apiClient.get<PendingWithdrawalsResponse>(
             '/payments/admin/withdrawals/stuck-cinetpay',
@@ -371,9 +379,11 @@ export async function getStuckMoneyFusionWithdrawals(
     page: number = 1,
     limit: number = 20,
     search?: string,
+    /** Extra query filters (country, from, to). */
+    extra: Record<string, string> = {},
 ): Promise<PendingWithdrawalsResponse> {
     try {
-        const params: Record<string, string | number> = { page, limit };
+        const params: Record<string, string | number> = { page, limit, ...extra };
         if (search && search.trim()) params.search = search.trim();
         const response = await apiClient.get<PendingWithdrawalsResponse>(
             '/payments/admin/withdrawals/stuck-moneyfusion',
@@ -472,10 +482,12 @@ export async function bulkApproveWithdrawals(
 export async function getValidatedWithdrawals(
     page: number = 1,
     limit: number = 20,
-    status?: 'completed' | 'rejected_by_admin' | 'failed'
+    status?: 'completed' | 'rejected_by_admin' | 'failed',
+    /** Shared page filters: { country?, from?, to? } */
+    extra: Record<string, string> = {}
 ): Promise<PendingWithdrawalsResponse> {
     try {
-        const params: any = { page, limit };
+        const params: Record<string, unknown> = { page, limit, ...extra };
         if (status) {
             params.status = status;
         }

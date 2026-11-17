@@ -3,6 +3,9 @@ import { sbcLiveRefundService } from '../../services/sbc-live-refund.service';
 import { RefundStatus } from '../../database/models/sbc-live-refund.model';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
+import { dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { sendFilterError } from '../../utils/country-members';
+import { memberObjectIdMatch } from '../../utils/admin-scope';
 
 const log = logger.getLogger('SbcLiveRefundController');
 
@@ -45,14 +48,19 @@ class SbcLiveRefundController {
      * @access Admin
      */
     listRefunds = async (req: Request, res: Response) => {
+        // Admin filters: ?country = the buyer's member country, ?from/?to on createdAt (request date).
+        const adminFilters = readAdminFilters(req, res);
+        if (!adminFilters) return;
         try {
             const status = req.query.status as RefundStatus | undefined;
             const ssoClientId = req.query.ssoClientId as string | undefined;
             const limit = req.query.limit ? Number(req.query.limit) : undefined;
             const skip = req.query.skip ? Number(req.query.skip) : undefined;
-            const refunds = await sbcLiveRefundService.listRefunds({ status, ssoClientId, limit, skip });
+            const scope = { ...(await memberObjectIdMatch(adminFilters, 'buyerUserId')), ...dateMatch('createdAt', adminFilters) };
+            const refunds = await sbcLiveRefundService.listRefunds({ status, ssoClientId, limit, skip, scope });
             return res.status(200).json({ success: true, data: refunds.map((r) => this.serializeRefund(r)) });
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error(`Listing refunds failed: ${error.message}`);
             return res.status(500).json({ success: false, message: error.message });
         }

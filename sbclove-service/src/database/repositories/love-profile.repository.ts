@@ -60,13 +60,20 @@ export class LoveProfileRepository {
             .exec();
     }
 
+    /** The member ids behind every profile matching `query` (admin search scope). */
+    async distinctUserIds(query: FilterQuery<ILoveProfile>): Promise<string[]> {
+        const ids = await LoveProfileModel.distinct('userId', query).exec();
+        return ids.map(id => id.toString());
+    }
+
     async count(query: FilterQuery<ILoveProfile>): Promise<number> {
         return LoveProfileModel.countDocuments(query).exec();
     }
 
     /** Profile counts per status in a single grouped pass (admin dashboard). */
-    async countByStatus(): Promise<Record<string, number>> {
+    async countByStatus(match: FilterQuery<ILoveProfile> = {}): Promise<Record<string, number>> {
         const rows = await LoveProfileModel.aggregate<{ _id: string; count: number }>([
+            ...(Object.keys(match).length ? [{ $match: match }] : []),
             { $group: { _id: '$status', count: { $sum: 1 } } },
         ]).exec();
         return Object.fromEntries(rows.map(r => [r._id, r.count]));

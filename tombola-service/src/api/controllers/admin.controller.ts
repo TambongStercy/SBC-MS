@@ -4,6 +4,7 @@ import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { Types } from 'mongoose'; // Import Types for ObjectId validation
 import { TombolaStatus } from '../../database/models/tombolaMonth.model'; // Import enum
+import { readAdminFilters } from '../../utils/admin-filters';
 
 const log = logger.getLogger('AdminTombolaController');
 
@@ -48,13 +49,16 @@ class AdminController {
      * Retrieves a paginated list of all tombola months for admin.
      */
     async listTombolas(req: Request, res: Response, next: NextFunction): Promise<void> {
+        // ?from/?to: the month's startDate. ?country is validated but does not
+        // apply (a month belongs to no country).
+        const filters = readAdminFilters(req, res); if (!filters) return;
         const limit = parseInt(req.query.limit as string) || 20;
         const page = parseInt(req.query.page as string) || 1;
         const skip = (page - 1) * limit;
 
         log.info(`Admin Controller: Request to list all tombolas (limit: ${limit}, page: ${page})`);
         try {
-            const { tombolas, totalCount } = await tombolaService.listAllTombolasAdmin(limit, skip);
+            const { tombolas, totalCount } = await tombolaService.listAllTombolasAdmin(limit, skip, filters);
             res.status(200).json({
                 success: true,
                 message: 'Tombola months retrieved successfully.',
@@ -81,6 +85,8 @@ class AdminController {
      * Retrieves a paginated list of tickets for a specific tombola month.
      */
     async listTicketsForMonth(req: Request, res: Response, next: NextFunction): Promise<void> {
+        // ?country: the buyer's; ?from/?to: purchaseTimestamp.
+        const filters = readAdminFilters(req, res); if (!filters) return;
         const { monthId } = req.params;
         // Extract pagination and search parameters
         const limit = parseInt(req.query.limit as string) || 15; // Default limit
@@ -96,7 +102,7 @@ class AdminController {
         log.info(`Admin Controller: Request to list tickets for month ${monthId} (limit: ${limit}, page: ${page}, search: ${searchQuery || 'none'})`);
         try {
             // Pass searchQuery to the service method
-            const { tickets, totalCount } = await tombolaService.listTicketsForMonthAdmin(monthId, limit, skip, searchQuery);
+            const { tickets, totalCount } = await tombolaService.listTicketsForMonthAdmin(monthId, limit, skip, searchQuery, filters);
             res.status(200).json({
                 success: true,
                 message: `Tickets for month ${monthId} retrieved successfully.`,
@@ -258,6 +264,8 @@ class AdminController {
      * Controller: Fetch all ticket numbers for a specific tombola month.
      */
     async getAllTicketNumbers(req: Request, res: Response, next: NextFunction): Promise<void> {
+        // Same filters as the ticket list (buyer's country, purchaseTimestamp).
+        const filters = readAdminFilters(req, res); if (!filters) return;
         const log = logger.getLogger('AdminController.getAllTicketNumbers');
         const { monthId } = req.params;
         log.info(`Admin request: Fetching all ticket numbers for tombola month ID: ${monthId}`);
@@ -267,7 +275,7 @@ class AdminController {
                 throw new AppError('Invalid Tombola Month ID format.', 400);
             }
 
-            const ticketNumbers = await tombolaService.getAllTicketNumbersForMonth(monthId);
+            const ticketNumbers = await tombolaService.getAllTicketNumbersForMonth(monthId, filters);
 
             // No need to check for 404 specifically, service will return empty array if no tickets
             log.info(`Admin request successful: Returning ${ticketNumbers.length} ticket numbers for tombola month ${monthId}`);

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { Permissions } from '../lib/permissions';
 
 // Define PaginationOptions locally
 export interface PaginationOptions {
@@ -84,7 +85,10 @@ export interface AdminUserListResponse {
 // Interface for login response
 export interface AdminLoginResponse {
     token: string;
-    user: Omit<AdminUserData, 'password' | 'otps' | 'contactsOtps' | 'token'>; // Match backend service response
+    user: Omit<AdminUserData, 'password' | 'otps' | 'contactsOtps' | 'token'> & {
+        /** Effective per-module access (user-service effectivePermissions). */
+        adminPermissions?: Permissions;
+    };
 }
 
 // Interface for filters in listUsers
@@ -234,7 +238,7 @@ export const exportUnpaidInitialUsers = async (): Promise<Blob> => {
             try {
                 const errJson = JSON.parse(await error.response.data.text());
                 throw new Error(errJson.message || 'Failed to export users');
-            } catch (parseError) {
+            } catch {
                 throw new Error('Failed to export users and parse error response.');
             }
         }

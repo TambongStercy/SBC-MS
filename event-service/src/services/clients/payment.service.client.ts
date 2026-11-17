@@ -69,6 +69,25 @@ export const createResaleOrderPaymentIntent = async (args: {
     });
 };
 
+/** Open a payment session for a vote pack (animation module). */
+export const createVotePaymentIntent = async (args: {
+    userId: string;
+    amount: number;
+    voteTransactionId: string;
+    challengeName: string;
+    votes: number;
+}) => {
+    return openIntent({
+        userId: args.userId,
+        amount: args.amount,
+        paymentType: 'EVENT_CHALLENGE_VOTE',
+        metadata: {
+            voteTransactionId: args.voteTransactionId,
+            eventTitle: `${args.votes} votes — ${args.challengeName}`,
+        },
+    });
+};
+
 /**
  * Credit the buyer's main balance via payment-service /internal/deposit.
  * Used by the refund flow — recorded as an internal Transaction on the
@@ -146,5 +165,32 @@ const openIntent = async (args: {
             );
         }
         throw new AppError('Le service de paiement est injoignable.', 502);
+    }
+};
+
+export interface PaymentIntentState {
+    sessionId: string;
+    status: string;
+    amount: number;
+    currency: string;
+    paymentType: string;
+    metadata?: Record<string, any>;
+}
+
+/**
+ * The authoritative state of a payment intent (payment-service internal route),
+ * for verifying a callback or recovering one that never arrived. null = unknown
+ * session; throws when payment-service can't be reached, so callers leave the
+ * order alone rather than guess.
+ */
+export const getPaymentIntentState = async (sessionId: string): Promise<PaymentIntentState | null> => {
+    try {
+        const { data } = await client.get<{ success: boolean; data?: PaymentIntentState }>(
+            `/internal/intents/${encodeURIComponent(sessionId)}`,
+        );
+        return data?.data ?? null;
+    } catch (error: any) {
+        if (error?.response?.status === 404) return null;
+        throw new AppError(`payment-service intent lookup failed: ${error.message}`, 502);
     }
 };

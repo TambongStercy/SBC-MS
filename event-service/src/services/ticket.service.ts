@@ -30,7 +30,8 @@ export const listMyTickets = async (userId: string, params: { limit?: number; sk
     if (tickets.length === 0) return { items: [], total: 0 };
 
     const eventIds = [...new Set(tickets.map((t) => String(t.eventId)))];
-    const events = await Event.find({ _id: { $in: eventIds }, ...eventFilter }).lean();
+    // Only ISSUED/CHECKED_IN tickets reach here, so their holders get the webinar link.
+    const events = await Event.find({ _id: { $in: eventIds }, ...eventFilter }).select('+accessLink').lean();
     const eventById = new Map(events.map((e) => [String(e._id), e]));
 
     const ttIds = [...new Set(tickets.map((t) => String(t.ticketTypeId)))];
@@ -56,10 +57,15 @@ export const getMyTicket = async (userId: string, ticketId: string): Promise<Tic
     if (!ticket) throw new AppError('Billet introuvable.', 404);
 
     const [event, ticketType, activeResaleListing] = await Promise.all([
-        Event.findById(ticket.eventId).lean(),
+        Event.findById(ticket.eventId).select('+accessLink').lean(),
         TicketType.findById(ticket.ticketTypeId).lean(),
         ResaleListing.findOne({ ticketId: ticket._id, status: ResaleListingStatus.ACTIVE }).lean(),
     ]);
+
+    // The webinar link is what the buyer paid for: a refunded or cancelled ticket loses it.
+    if (event && ticket.status !== TicketStatus.ISSUED && ticket.status !== TicketStatus.CHECKED_IN) {
+        delete (event as any).accessLink;
+    }
 
     let qrImageDataUrl: string | undefined;
     if (ticket.status === TicketStatus.ISSUED && ticket.qrToken) {

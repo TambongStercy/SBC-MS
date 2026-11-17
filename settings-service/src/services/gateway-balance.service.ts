@@ -134,10 +134,13 @@ class GatewayBalanceService {
     /**
      * Get gateway balance history for auditing
      */
-    async getBalanceHistory(limit: number = 50): Promise<IGatewayBalanceHistory[]> {
+    async getBalanceHistory(limit: number = 50, range: { from?: Date; to?: Date } = {}): Promise<IGatewayBalanceHistory[]> {
         try {
+            const query = range.from || range.to
+                ? { createdAt: { ...(range.from ? { $gte: range.from } : {}), ...(range.to ? { $lte: range.to } : {}) } }
+                : {};
             const history = await GatewayBalanceHistoryModel
-                .find()
+                .find(query)
                 .sort({ createdAt: -1 })
                 .limit(limit)
                 .lean()

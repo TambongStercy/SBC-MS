@@ -1,7 +1,9 @@
 import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import config from '../../config';
+import path from 'path';
 import logger from '../../utils/logger';
+import { AccessLevel, AdminModule, allows, resolveAdminRoute } from './admin-routes';
 
 const log = logger.getLogger('AdminAllowlist');
 
@@ -13,8 +15,12 @@ const log = logger.getLogger('AdminAllowlist');
  * given themselves the role through a sign-up bug used the admin to change
  * members' emails, approve their own withdrawals and send direct payouts; this
  * check makes any such account useless however it got the role.
+ *
+ * Since 2026-11-16 the allowlisted account must also hold the module the call
+ * belongs to, in read (GET) or write (anything else): see admin-routes.ts for
+ * the path → module table and user-service config/admin-modules.ts for who
+ * holds what. Super admins (`admin`) hold every module.
  */
-const ADMIN_PATH = /\/admin(\/|$)/i;
 
 // Signing in happens before an admin token exists.
 const SIGN_IN_PATHS = new Set(['/api/users/admin/login', '/api/users/admin/login/verify-otp']);
@@ -43,11 +49,55 @@ const verifyToken = (token: string, secret: string): Record<string, unknown> | n
     }
 };
 
-export const adminAllowlist = (req: Request, res: Response, next: NextFunction) => {
-    const path = req.originalUrl.split('?')[0];
-    if (req.method === 'OPTIONS' || !ADMIN_PATH.test(path) || SIGN_IN_PATHS.has(path)) {
-        return next();
+/**
+ * The path the services will route: decoded, lowercased (Express matches
+ * routes case-insensitively), duplicate slashes and dot segments resolved.
+ * Matching the raw URL would let `/api/WhatsApp` or `/api/users//admin/…`
+ * through.
+ */
+export const normalizePath = (originalUrl: string): string => {
+    let p = originalUrl.split('?')[0].split('#')[0];
+    try { p = decodeURIComponent(p); } catch { /* keep as is: still matched below */ }
+    p = path.posix.normalize(p.replace(/\\/g, '/')).toLowerCase();
+    return p.length > 1 ? p.replace(/\/+$/, '') : p;
+};
+
+type Access = { role: string; blocked: boolean; permissions: Partial<Record<AdminModule, AccessLevel>> };
+const ACCESS_TTL_MS = 60 * 1000;
+const accessCache = new Map<string, { value: Access; expiresAt: number }>();
+
+/** The account's admin rights, from user-service (cached a minute; null when unknown). */
+async function getAccess(userId: string): Promise<Access | null> {
+    const hit = accessCache.get(userId);
+    if (hit && hit.expiresAt > Date.now()) return hit.value;
+    try {
+        const r = await fetch(`${config.services.userServiceUrl}/api/users/internal/${encodeURIComponent(userId)}/admin-access`, {
+            headers: { Authorization: `Bearer ${config.services.serviceSecret}`, 'X-Service-Name': 'gateway-service' },
+            signal: AbortSignal.timeout(4000),
+        });
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error(`user-service answered ${r.status}`);
+        const value = (await r.json())?.data as Access;
+        if (!value || typeof value.permissions !== 'object') throw new Error('malformed admin access');
+        accessCache.set(userId, { value, expiresAt: Date.now() + ACCESS_TTL_MS });
+        return value;
+    } catch (err: any) {
+        log.error(`Admin access lookup failed for ${userId}: ${err?.message}`);
+        throw err;
     }
+}
+
+/** Tests only. */
+export const clearAccessCache = () => accessCache.clear();
+
+const refuse = (res: Response, status: number, message: string) =>
+    res.status(status).json({ success: false, message });
+
+export const adminAllowlist = async (req: Request, res: Response, next: NextFunction) => {
+    const p = normalizePath(req.originalUrl);
+    if (SIGN_IN_PATHS.has(p)) return next();
+    const route = resolveAdminRoute(req.method, p);
+    if (!route) return next();
 
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
@@ -58,8 +108,21 @@ export const adminAllowlist = (req: Request, res: Response, next: NextFunction) 
     const claims = token ? verifyToken(token, config.jwt.secret) : null;
     const userId = claims ? String(claims.userId || claims.id || '') : '';
     if (!userId || !allowedIds().has(userId)) {
-        log.warn(`Admin path refused: ${req.method} ${path} user=${userId || 'none'} ip=${req.ip}`);
-        return res.status(403).json({ success: false, message: 'Admin access denied' });
+        log.warn(`Admin path refused: ${req.method} ${p} user=${userId || 'none'} ip=${req.ip}`);
+        return refuse(res, 403, 'Admin access denied');
+    }
+
+    let access: Access | null;
+    try {
+        access = await getAccess(userId);
+    } catch {
+        return refuse(res, 503, 'Vérification des droits impossible pour le moment. Réessayez.');
+    }
+    if (!access || access.blocked || !allows(access.permissions, route)) {
+        log.warn(`Admin module refused: ${req.method} ${p} module=${route.module} level=${route.level} user=${userId} role=${access?.role ?? 'unknown'}`);
+        return refuse(res, 403, route.level === 'write'
+            ? 'Vous avez cet espace en lecture seule, ou pas du tout.'
+            : 'Vous n’avez pas accès à cet espace.');
     }
     return next();
 };

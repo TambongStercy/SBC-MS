@@ -13,6 +13,9 @@ interface AuthenticatedRequest extends Request {
 import logger from '../../utils/logger'; // Assuming logger exists
 import { flashSaleService } from '../../services/flashsale.service';
 import { AppError } from '../../utils/errors';
+import FlashSaleModel from '../../database/models/flashsale.model';
+import { readAdminFilters, dateMatch } from '../../utils/admin-filters';
+import { countryMembersAmong, CountryFilterUnavailableError } from '../../utils/country-members';
 
 const log = logger.getLogger('FlashSaleController');
 
@@ -166,16 +169,39 @@ class FlashSaleController {
 
     // --- Admin Methods ---
 
+    /**
+     * Admin filters (phase 3): country = the SELLER's (`sellerUserId`, resolved
+     * through user-service, intersected with the sellers present here); from/to
+     * on `startTime` (when the sale runs — "the sales of November" are the ones
+     * that ran in November, whenever they were booked).
+     */
     async adminListFlashSales(req: Request, res: Response, next: NextFunction): Promise<void> {
         log.info('[Admin] Request received for listing all flash sales');
+        const adminFilters = readAdminFilters(req, res);
+        if (!adminFilters) return;
         try {
-            const { page = 1, limit = 20, sort, ...filters } = req.query;
+            // country/from/to are not fields: they must not reach the raw filter below.
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { page = 1, limit = 20, sort, country, from, to, ...filters } = req.query;
             const options = {
                 page: Number(page),
                 limit: Number(limit),
                 sort: sort
             };
-            const result = await flashSaleService.adminListFlashSales(filters as FilterQuery<IFlashSale>, options);
+            const scope: FilterQuery<IFlashSale> = { ...dateMatch('startTime', adminFilters) };
+            if (adminFilters.country) {
+                try {
+                    const sellers = await countryMembersAmong(adminFilters.country, await FlashSaleModel.distinct('sellerUserId'));
+                    scope.$and = [{ sellerUserId: { $in: sellers } }];
+                } catch (error) {
+                    if (error instanceof CountryFilterUnavailableError) {
+                        res.status(502).json({ success: false, message: error.message });
+                        return;
+                    }
+                    throw error;
+                }
+            }
+            const result = await flashSaleService.adminListFlashSales(filters as FilterQuery<IFlashSale>, options, scope);
             res.status(200).json({ success: true, data: result });
         } catch (error) {
             next(error);

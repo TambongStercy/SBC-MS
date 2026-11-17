@@ -74,12 +74,13 @@ export class PartnerRepository {
 
     async findAllWithPagination(
         page: number = 1,
-        limit: number = 10
+        limit: number = 10,
+        filter: Record<string, unknown> = {}
     ): Promise<PaginatedResponse<IPartner>> {
         const skip = (page - 1) * limit;
         // Find all partners, including inactive ones. Add filter if only active are needed.
-        const totalDocs = await PartnerModel.countDocuments({}).exec();
-        const docs = await PartnerModel.find({})
+        const totalDocs = await PartnerModel.countDocuments(filter).exec();
+        const docs = await PartnerModel.find(filter)
             .sort({ createdAt: -1 }) // Default sort, can be changed
             .skip(skip)
             .limit(limit)

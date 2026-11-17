@@ -1,245 +1,148 @@
-import { useState, useEffect } from 'react';
-import { motion } from "framer-motion";
-import Header from "../components/common/Header";
-import { listPartners, PartnerData, PartnerListResponse, getPartnerSummary, PartnerSummaryData } from '../services/adminUserApi';
-import Loader from '../components/common/loader';
-import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
-import { getAvatarUrl } from '../api/apiClient';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Agreement01Icon, ViewIcon } from '@hugeicons/core-free-icons';
+import type { PartnerData } from '../services/adminUserApi';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { listPartnersFiltered, partnerSummary } from '../components/members/api';
+import { ErrorState, RelativeTime } from '../components/common/DataStates';
+import { formatMoney, formatNumber } from '../components/common/format';
+import {
+  Badge, Button, EmptyState, Metric, PageHeader, Pagination, Panel, PanelHeader, ResponsiveList, Skeleton, type ListColumn,
+} from '../components/ui';
+import { MemberIdentity } from '../components/members/shared';
+import { useUrlFilters } from '../components/members/filters';
 
+const PAGE_SIZE = 20;
+const NO_FILTERS = [] as const;
+
+const PackBadge = ({ pack }: { pack: PartnerData['pack'] }) =>
+  pack === 'gold' ? <Badge tone="warning">Gold</Badge> : <Badge tone="neutral">Silver</Badge>;
+
+const StateBadge = ({ active }: { active: boolean }) =>
+  active ? <Badge tone="success">Actif</Badge> : <Badge tone="danger">Inactif</Badge>;
+
+/**
+ * Partenaires: members with a Silver or Gold partner pack and what it has
+ * earned them. A partner pack is given or removed from the member's page.
+ */
 function Partners() {
-    const [partners, setPartners] = useState<PartnerData[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [summaryStats, setSummaryStats] = useState<PartnerSummaryData | null>(null);
-    const [loadingSummary, setLoadingSummary] = useState(true);
-    const [pagination, setPagination] = useState({
-        currentPage: 1,
-        totalPages: 1,
-        totalCount: 0,
-        limit: 20
-    });
+  const navigate = useNavigate();
+  const { page, setPage } = useUrlFilters(NO_FILTERS);
 
-    useEffect(() => {
-        fetchInitialData();
-    }, []);
+  const pageFilters = usePageFilters();
+  const range = pageFilters.apiParams;
 
-    const fetchInitialData = async () => {
-        setLoading(true);
-        setLoadingSummary(true);
-        try {
-            const [summaryResponse] = await Promise.all([
-                getPartnerSummary(),
-                fetchPartners(1, 20)
-            ]);
-            setSummaryStats(summaryResponse);
-        } catch (error: any) {
-            console.error('Failed to fetch initial partner data:', error);
-            toast.error(error.message || 'Failed to load partner data');
-        } finally {
-            setLoadingSummary(false);
-        }
-    };
+  const listQuery = useQuery({
+    queryKey: ['admin-partners', range, page],
+    queryFn: () => listPartnersFiltered(range, page, PAGE_SIZE),
+    placeholderData: keepPreviousData,
+  });
+  const summaryQuery = useQuery({
+    queryKey: ['admin-partners-summary', range],
+    queryFn: () => partnerSummary(range),
+    placeholderData: keepPreviousData,
+  });
 
-    const fetchPartners = async (page = 1, limit = 20) => {
-        setLoading(true);
-        try {
-            const response = await listPartners({ page, limit });
-            setPartners(response.data);
-            setPagination(response.pagination);
-        } catch (error: any) {
-            console.error('Failed to fetch partners:', error);
-            toast.error(error.message || 'Failed to load partners');
-        } finally {
-            setLoading(false);
-        }
-    };
+  const partners = listQuery.data?.data ?? [];
+  const pagination = listQuery.data?.pagination;
+  const periodHint = pageFilters.period !== 'all' ? 'devenus partenaires sur la période' : undefined;
+  const s = summaryQuery.data;
+  const open = (p: PartnerData) => { if (p.user?._id) navigate(`/userpage/${p.user._id}`); };
+  const stat = (v?: number) => (summaryQuery.isLoading ? <Skeleton className="h-7 w-16" /> : formatNumber(v));
+  // A page number past the end (filters narrowed, old link): go to the last page.
+  const lastPage = pagination?.totalPages ?? 0;
+  useEffect(() => { if (lastPage > 0 && page > lastPage) setPage(lastPage); }, [lastPage, page, setPage]);
 
-    const handlePageChange = (newPage: number) => {
-        if (newPage > 0 && newPage <= pagination.totalPages) {
-            fetchPartners(newPage, pagination.limit);
-        }
-    };
+  const columns: ListColumn<PartnerData>[] = [
+    { key: 'who', header: 'Partenaire', cell: p => <MemberIdentity name={p.user?.name} email={p.user?.email} avatar={p.user?.avatar} /> },
+    { key: 'pack', header: 'Pack', cell: p => <PackBadge pack={p.pack} /> },
+    { key: 'amount', header: 'Gains', numeric: true, cell: p => formatMoney(p.amount ?? 0, 'XAF') },
+    { key: 'state', header: 'Statut', cell: p => <StateBadge active={p.isActive} /> },
+    { key: 'since', header: 'Partenaire depuis', cell: p => <RelativeTime value={p.createdAt} /> },
+    {
+      key: 'actions', header: <span className="sr-only">Actions</span>, hideOnCard: true, className: 'text-right',
+      cell: p => (
+        <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); open(p); }} disabled={!p.user?._id}>
+          <HugeiconsIcon icon={ViewIcon} size={16} aria-hidden="true" /> Voir la fiche
+        </Button>
+      ),
+    },
+  ];
 
-    if (loadingSummary || loading) {
-        return (
-            <div className="flex justify-center items-center h-screen">
-                <Loader name={'Partners'} />
-            </div>
-        );
-    }
+  const card = (p: PartnerData) => (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <MemberIdentity name={p.user?.name} email={p.user?.email} avatar={p.user?.avatar} />
+        <StateBadge active={p.isActive} />
+      </div>
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <PackBadge pack={p.pack} />
+        <span className="font-medium tabular-nums text-fg">{formatMoney(p.amount ?? 0, 'XAF')}</span>
+      </div>
+      <p className="text-xs text-fg-muted">Partenaire depuis <RelativeTime value={p.createdAt} /></p>
+    </div>
+  );
 
-    return (
-        <div className="flex-1 overflow-auto relative z-10 p-4">
-            <Header title="Partners Management" />
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Partenaires"
+        description="Les membres Silver et Gold et leurs gains. Le pack partenaire se donne ou se retire depuis la fiche du membre."
+      />
 
-            {/* Summary Stats */}
-            <motion.div
-                className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-            >
-                <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg shadow-lg border border-gray-700">
-                    <h3 className="text-lg font-medium text-gray-200">Total Active Partners</h3>
-                    <p className="text-2xl font-bold text-white">{summaryStats?.totalActivePartners ?? 'N/A'}</p>
-                </div>
-                <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg shadow-lg border border-gray-700">
-                    <h3 className="text-lg font-medium text-gray-200">Active Silver Partners</h3>
-                    <p className="text-2xl font-bold text-white">
-                        {summaryStats?.activeSilverPartners ?? 'N/A'}
-                    </p>
-                </div>
-                <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg shadow-lg border border-gray-700">
-                    <h3 className="text-lg font-medium text-gray-200">Active Gold Partners</h3>
-                    <p className="text-2xl font-bold text-white">
-                        {summaryStats?.activeGoldPartners ?? 'N/A'}
-                    </p>
-                </div>
-            </motion.div>
+      <PageFilters filters={pageFilters} />
 
-            {/* Partners Table */}
-            <motion.div
-                className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-            >
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-gray-900 bg-opacity-70">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Partner
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Pack
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Earnings
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Status
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Joined
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                            {partners.length > 0 ? (
-                                partners.map((partner) => (
-                                    <tr key={partner._id} className="hover:bg-gray-700 hover:bg-opacity-50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex items-center">
-                                                <div className="flex-shrink-0 h-10 w-10">
-                                                    <img
-                                                        className="h-10 w-10 rounded-full"
-                                                        src={partner.user?.avatar ? getAvatarUrl(partner.user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(partner.user?.name || 'Partner')}&background=random`}
-                                                        alt={partner.user?.name || 'Partner'}
-                                                    />
-                                                </div>
-                                                <div className="ml-4">
-                                                    <div className="text-sm font-medium text-white">
-                                                        {partner.user?.name || 'N/A'}
-                                                    </div>
-                                                    <div className="text-sm text-gray-400">
-                                                        {partner.user?.email || 'N/A'}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${partner.pack === 'gold' ? 'bg-yellow-500 bg-opacity-20 text-yellow-300' : 'bg-gray-500 bg-opacity-20 text-gray-300'}`}>
-                                                {partner.pack.toUpperCase()}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
-                                            {partner.amount} XAF
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${partner.isActive ? 'bg-green-500 bg-opacity-20 text-green-300' : 'bg-red-500 bg-opacity-20 text-red-300'}`}>
-                                                {partner.isActive ? 'Active' : 'Inactive'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                            {new Date(partner.createdAt).toLocaleDateString()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                            <Link
-                                                to={`/userpage/${partner.user?._id}`}
-                                                className="text-indigo-400 hover:text-indigo-300 transition-colors"
-                                            >
-                                                View Details
-                                            </Link>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-4 text-center text-gray-400">
-                                        No partners found
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Metric label="Partenaires actifs" value={stat(s?.totalActivePartners)} hint={periodHint} />
+        <Metric label="Gold actifs" value={stat(s?.activeGoldPartners)} hint={periodHint} />
+        <Metric label="Silver actifs" value={stat(s?.activeSilverPartners)} hint={periodHint} />
+      </div>
+      {summaryQuery.isError && (
+        <p className="text-xs text-fg-muted">
+          Les chiffres n’ont pas pu être chargés. <button className="underline" onClick={() => void summaryQuery.refetch()}>Réessayer</button>
+        </p>
+      )}
 
-                {/* Pagination */}
-                <div className="bg-gray-900 bg-opacity-50 px-4 py-3 flex items-center justify-between border-t border-gray-700">
-                    <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                        <div>
-                            <p className="text-sm text-gray-400">
-                                Showing <span className="font-medium">{partners.length > 0 ? (pagination.currentPage - 1) * pagination.limit + 1 : 0}</span> to{' '}
-                                <span className="font-medium">
-                                    {Math.min(pagination.currentPage * pagination.limit, pagination.totalCount)}
-                                </span>{' '}
-                                of <span className="font-medium">{pagination.totalCount}</span> results
-                            </p>
-                        </div>
-                        <div>
-                            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                                <button
-                                    onClick={() => handlePageChange(pagination.currentPage - 1)}
-                                    disabled={pagination.currentPage === 1}
-                                    className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-700 bg-gray-800 text-sm font-medium ${pagination.currentPage === 1 ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
-                                        }`}
-                                >
-                                    Previous
-                                </button>
-                                {/* Page numbers */}
-                                {[...Array(pagination.totalPages)].map((_, index) => (
-                                    <button
-                                        key={index}
-                                        onClick={() => handlePageChange(index + 1)}
-                                        className={`relative inline-flex items-center px-4 py-2 border ${pagination.currentPage === index + 1
-                                            ? 'border-indigo-500 bg-indigo-800 bg-opacity-20 text-indigo-300'
-                                            : 'border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700'
-                                            } text-sm font-medium`}
-                                    >
-                                        {index + 1}
-                                    </button>
-                                ))}
-                                <button
-                                    onClick={() => handlePageChange(pagination.currentPage + 1)}
-                                    disabled={pagination.currentPage === pagination.totalPages}
-                                    className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-700 bg-gray-800 text-sm font-medium ${pagination.currentPage === pagination.totalPages ? 'text-gray-500 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700'
-                                        }`}
-                                >
-                                    Next
-                                </button>
-                            </nav>
-                        </div>
-                    </div>
-                </div>
-            </motion.div>
+      <Panel>
+        <PanelHeader
+          title="Liste des partenaires"
+          description={pagination ? `${formatNumber(pagination.totalCount)} partenaire${pagination.totalCount > 1 ? 's' : ''}` : undefined}
+        />
+        <div className={listQuery.isFetching && !listQuery.isLoading ? 'opacity-60 transition-opacity' : undefined}>
+          <ResponsiveList
+            rows={partners}
+            columns={columns}
+            rowKey={p => p._id}
+            onRowClick={open}
+            card={card}
+            loading={listQuery.isLoading}
+            empty={listQuery.isError ? (
+              <ErrorState description={(listQuery.error as Error)?.message} onRetry={() => void listQuery.refetch()} retrying={listQuery.isFetching} />
+            ) : (
+              <EmptyState
+                icon={Agreement01Icon}
+                title={pageFilters.isFiltered ? 'Aucun partenaire pour ce pays ou cette période' : 'Aucun partenaire'}
+                description={pageFilters.isFiltered ? 'Changez de pays ou de période.' : 'Donnez un pack Silver ou Gold depuis la fiche d’un membre.'}
+                action={pageFilters.isFiltered ? <Button size="lg" onClick={pageFilters.reset}>Effacer les filtres</Button> : undefined}
+              />
+            )}
+          />
         </div>
-    );
+        {pagination && (
+          <Pagination
+            page={pagination.currentPage || page}
+            totalPages={pagination.totalPages}
+            total={pagination.totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        )}
+      </Panel>
+    </div>
+  );
 }
 
-export default Partners; 
+export default Partners;

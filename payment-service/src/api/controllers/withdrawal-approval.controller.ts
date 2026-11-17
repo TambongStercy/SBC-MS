@@ -5,10 +5,36 @@ import TransactionModel, { TransactionStatus, TransactionType } from '../../data
 import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { userServiceClient } from '../../services/clients/user.service.client';
+import { AdminFilters, dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { directOrMemberCountryMatch, memberObjectIdsForCountry, sendFilterError } from '../../utils/country-members';
+import { narrowRange } from '../../utils/admin-scope';
 
 type AuthenticatedRequest = Request & { user?: { userId: string; email: string; role: string } };
 
 const log = logger.getLogger('WithdrawalApprovalController');
+
+/**
+ * Admin filters of the withdrawal lists/stats (query filters only, no effect on
+ * any approval/payout path). ?country = the destination country stored on the
+ * withdrawal (metadata.accountInfo.countryCode) when it is an ISO-2 code, else
+ * the member's country: the ~37k withdrawals imported before mid-2025 carry no
+ * code. ?from/?to apply to `dateField` (createdAt unless stated otherwise).
+ * Returns the conditions to put in `$and` (the stuck lists already use `$or`).
+ */
+async function withdrawalScope(f: AdminFilters, dateField = 'createdAt'): Promise<Record<string, any>[]> {
+    const conditions: Record<string, any>[] = [];
+    if (f.country) {
+        const memberIds = await memberObjectIdsForCountry(f.country);
+        conditions.push(directOrMemberCountryMatch('metadata.accountInfo.countryCode', 'userId', f.country, memberIds));
+    }
+    const dates = dateMatch(dateField, f);
+    if (Object.keys(dates).length) conditions.push(dates);
+    return conditions;
+}
+
+function withScope(filter: Record<string, any>, conditions: Record<string, any>[]): Record<string, any> {
+    return conditions.length ? { ...filter, $and: [...(filter.$and || []), ...conditions] } : filter;
+}
 
 export class WithdrawalApprovalController {
 
@@ -24,13 +50,17 @@ export class WithdrawalApprovalController {
                 return;
             }
 
+            // Admin filters: country (see withdrawalScope), from/to on createdAt (request date).
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
+
             const { page = '1', limit = '20', withdrawalType } = req.query;
 
             const pageNum = parseInt(page as string);
             const limitNum = parseInt(limit as string);
             const skip = (pageNum - 1) * limitNum;
 
-            const filter: any = {
+            let filter: any = {
                 type: TransactionType.WITHDRAWAL,
                 status: TransactionStatus.PENDING_ADMIN_APPROVAL,
                 deleted: false
@@ -42,6 +72,7 @@ export class WithdrawalApprovalController {
             } else if (withdrawalType === 'crypto') {
                 filter['metadata.withdrawalType'] = 'crypto';
             }
+            filter = withScope(filter, await withdrawalScope(adminFilters));
 
             const transactions = await TransactionModel.find(filter)
                 .skip(skip)
@@ -156,6 +187,7 @@ export class WithdrawalApprovalController {
             });
 
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error fetching pending withdrawals:', error);
             res.status(500).json({
                 success: false,
@@ -415,6 +447,9 @@ export class WithdrawalApprovalController {
                 res.status(401).json({ success: false, message: 'Admin not authenticated' });
                 return;
             }
+            // Admin filters: country (see withdrawalScope), from/to on createdAt (request date).
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
             const { page = '1', limit = '20', search } = req.query;
             const pageNum = Math.max(1, parseInt(page as string) || 1);
             const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
@@ -435,6 +470,7 @@ export class WithdrawalApprovalController {
                 deleted: false,
                 externalTransactionId: { $ne: null, $exists: true },
             };
+            Object.assign(filter, withScope({}, await withdrawalScope(adminFilters)));
 
             const transactions = await TransactionModel.find(filter)
                 .sort({ createdAt: 1 })
@@ -482,6 +518,7 @@ export class WithdrawalApprovalController {
                 },
             });
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error listing stuck CinetPay withdrawals:', error);
             res.status(500).json({ success: false, message: 'Failed to fetch stuck CinetPay withdrawals', error: error.message });
         }
@@ -551,6 +588,10 @@ export class WithdrawalApprovalController {
                 return;
             }
 
+            // Admin filters: country (see withdrawalScope), from/to on createdAt (request date).
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
+
             const { page = '1', limit = '20', search } = req.query;
             const pageNum = Math.max(1, parseInt(page as string) || 1);
             const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
@@ -574,6 +615,7 @@ export class WithdrawalApprovalController {
                 status: { $in: [TransactionStatus.PROCESSING, TransactionStatus.PENDING] },
                 deleted: false,
             };
+            Object.assign(filter, withScope({}, await withdrawalScope(adminFilters)));
 
             const transactions = await TransactionModel.find(filter)
                 .sort({ createdAt: 1 }) // oldest first — surface long-stuck ones at the top
@@ -625,6 +667,7 @@ export class WithdrawalApprovalController {
                 },
             });
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error listing stuck MoneyFusion withdrawals:', error);
             res.status(500).json({ success: false, message: 'Failed to fetch stuck MoneyFusion withdrawals', error: error.message });
         }
@@ -729,31 +772,43 @@ export class WithdrawalApprovalController {
                 return;
             }
 
-            const pendingCount = await transactionRepository.count({
+            // Admin filters: country on every figure (see withdrawalScope).
+            // pendingApproval/processing: from/to on createdAt (request date).
+            // approvedToday/rejectedToday: their own "today" window on
+            // approvedAt/rejectedAt, narrowed by from/to (0 if the range excludes today).
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
+            const countryOnly = await withdrawalScope({ country: adminFilters.country });
+            const withCreatedAt = await withdrawalScope(adminFilters);
+            const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+            const approvedRange = narrowRange({ $gte: todayStart }, adminFilters)!;
+            const rejectedRange = narrowRange({ $gte: todayStart }, adminFilters)!;
+
+            const pendingCount = await transactionRepository.count(withScope({
                 type: TransactionType.WITHDRAWAL,
                 status: TransactionStatus.PENDING_ADMIN_APPROVAL,
                 deleted: false
-            });
+            }, withCreatedAt));
 
-            const approvedToday = await transactionRepository.count({
+            const approvedToday = await transactionRepository.count(withScope({
                 type: TransactionType.WITHDRAWAL,
                 status: { $in: [TransactionStatus.PROCESSING, TransactionStatus.COMPLETED] },
-                approvedAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+                approvedAt: approvedRange,
                 deleted: false
-            });
+            }, countryOnly));
 
-            const rejectedToday = await transactionRepository.count({
+            const rejectedToday = await transactionRepository.count(withScope({
                 type: TransactionType.WITHDRAWAL,
                 status: TransactionStatus.REJECTED_BY_ADMIN,
-                rejectedAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+                rejectedAt: rejectedRange,
                 deleted: false
-            });
+            }, countryOnly));
 
-            const processingCount = await transactionRepository.count({
+            const processingCount = await transactionRepository.count(withScope({
                 type: TransactionType.WITHDRAWAL,
                 status: TransactionStatus.PROCESSING,
                 deleted: false
-            });
+            }, withCreatedAt));
 
             res.status(200).json({
                 success: true,
@@ -766,6 +821,7 @@ export class WithdrawalApprovalController {
             });
 
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error fetching withdrawal stats:', error);
             res.status(500).json({
                 success: false,
@@ -852,25 +908,25 @@ export class WithdrawalApprovalController {
                 return;
             }
 
+            // Admin filters: country (see withdrawalScope; one member, so mostly
+            // useful to isolate payouts to another country), from/to on createdAt.
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
+
             const { userId } = req.params;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 20;
             const skip = (page - 1) * limit;
+            const historyFilter = withScope({ userId, type: 'withdrawal' }, await withdrawalScope(adminFilters));
 
             // Get all withdrawal transactions for this user (not just pending)
-            const withdrawals = await TransactionModel.find({
-                userId,
-                type: 'withdrawal'
-            })
+            const withdrawals = await TransactionModel.find(historyFilter)
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .lean();
 
-            const total = await TransactionModel.countDocuments({
-                userId,
-                type: 'withdrawal'
-            });
+            const total = await TransactionModel.countDocuments(historyFilter);
 
             // Get user details
             const userDetails = await userServiceClient.getUserDetails(userId);
@@ -896,6 +952,7 @@ export class WithdrawalApprovalController {
             });
 
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error fetching user withdrawal history:', error);
             res.status(500).json({
                 success: false,
@@ -921,9 +978,14 @@ export class WithdrawalApprovalController {
             const limit = parseInt(req.query.limit as string) || 20;
             const skip = (page - 1) * limit;
             const status = req.query.status as string; // 'completed' or 'rejected_by_admin' or 'all'
+            // Admin filters: country (see withdrawalScope), from/to on createdAt:
+            // most completed rows (the imported ones) have no approval/completion
+            // date, and the list is sorted on createdAt.
+            const adminFilters = readAdminFilters(req, res);
+            if (!adminFilters) return;
 
             // Build filter
-            const filter: any = {
+            let filter: any = {
                 type: 'withdrawal',
                 deleted: false
             };
@@ -936,6 +998,7 @@ export class WithdrawalApprovalController {
                 // Default: show all validated (completed and rejected)
                 filter.status = { $in: ['completed', 'rejected_by_admin', 'failed'] };
             }
+            filter = withScope(filter, await withdrawalScope(adminFilters));
 
             const withdrawals = await TransactionModel.find(filter)
                 .sort({ createdAt: -1 })
@@ -983,6 +1046,7 @@ export class WithdrawalApprovalController {
             });
 
         } catch (error: any) {
+            if (sendFilterError(res, error)) return;
             log.error('Error fetching validated withdrawals:', error);
             res.status(500).json({
                 success: false,

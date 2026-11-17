@@ -8,7 +8,9 @@ import RelanceMessageModel from '../../database/models/relance-message.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
 import { emailRelanceService } from '../../services/email.relance.service';
 import { campaignBudget, matchCampaignReferrals, newFilleulsLast30Days, suggestCampaign, type CampaignSuggestion } from '../../services/relance-campaign-targets.service';
-import { peopleById } from '../../services/relance-admin.service';
+import { ownerMatch, peopleById } from '../../services/relance-admin.service';
+import { AdminFilters, dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { CountryMembersUnavailableError, answerCountryUnavailable } from '../../utils/country-members';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('RelanceCampaignController');
@@ -187,6 +189,10 @@ class RelanceCampaignController {
      * GET /api/relance/admin/campaigns (admin)
      */
     async getCampaigns(req: Request, res: Response, scope: CampaignScope = {}): Promise<void> {
+        // Admin filters: country = the owner's (campaign userId); dates = campaign
+        // createdAt (the list's sort). Members' own list takes none.
+        let f: AdminFilters = {};
+        if (scope.asAdmin) { const read = readAdminFilters(req, res); if (!read) return; f = read; }
         try {
             const authenticatedUserId = (req as any).user?.userId;
             const queryUserId = req.query.userId as string;
@@ -196,10 +202,15 @@ class RelanceCampaignController {
             // member only ever sees their own — ?userId= used to let them read anyone's.
             const userId = scope.asAdmin ? queryUserId : authenticatedUserId;
 
-            const filters: any = {};
+            const filters: any = { ...dateMatch('createdAt', f) };
             if (userId) filters.userId = userId;
             if (status) filters.status = status as CampaignStatus;
             if (type) filters.type = type as CampaignType;
+            if (f.country) {
+                const owners = (await ownerMatch(CampaignModel, 'userId', f)).userId as { $in: unknown[] };
+                // With ?userId too, that owner must also be of the country.
+                filters.userId = userId ? { $in: owners.$in.filter(o => String(o) === String(userId)) } : owners;
+            }
 
             // Pagination
             const pageNum = Math.max(parseInt(page as string) || 1, 1);
@@ -230,6 +241,7 @@ class RelanceCampaignController {
             });
 
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error getting campaigns:', error);
             res.status(500).json({
                 success: false,
@@ -917,12 +929,16 @@ class RelanceCampaignController {
      * GET /api/relance/admin/campaigns/stats
      */
     async getCampaignStats(req: Request, res: Response): Promise<void> {
+        // Filters: country = the owner's (campaign userId); dates = campaign createdAt,
+        // for every figure (the sums are the matching campaigns' own counters).
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const totalCampaigns = await CampaignModel.countDocuments();
-            const activeCampaigns = await CampaignModel.countDocuments({ status: CampaignStatus.ACTIVE });
-            const completedCampaigns = await CampaignModel.countDocuments({ status: CampaignStatus.COMPLETED });
+            const match = { ...(await ownerMatch(CampaignModel, 'userId', f)), ...dateMatch('createdAt', f) };
+            const totalCampaigns = await CampaignModel.countDocuments(match);
+            const activeCampaigns = await CampaignModel.countDocuments({ ...match, status: CampaignStatus.ACTIVE });
+            const completedCampaigns = await CampaignModel.countDocuments({ ...match, status: CampaignStatus.COMPLETED });
 
-            const campaigns = await CampaignModel.find();
+            const campaigns = await CampaignModel.find(match);
             const totalTargetsEnrolled = campaigns.reduce((sum, c) => sum + c.targetsEnrolled, 0);
             const totalMessagesSent = campaigns.reduce((sum, c) => sum + c.messagesSent, 0);
             const totalMessagesDelivered = campaigns.reduce((sum, c) => sum + c.messagesDelivered, 0);
@@ -944,6 +960,7 @@ class RelanceCampaignController {
             });
 
         } catch (error: any) {
+            if (error instanceof CountryMembersUnavailableError) return answerCountryUnavailable(res);
             log.error('Error getting campaign stats:', error);
             res.status(500).json({
                 success: false,

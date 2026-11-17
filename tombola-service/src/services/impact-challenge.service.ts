@@ -8,6 +8,11 @@ import { paymentService } from './clients/payment.service.client';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 import config from '../config';
+import ChallengeVoteModel, { VotePaymentStatus } from '../database/models/challenge-vote.model';
+import EntrepreneurModel from '../database/models/entrepreneur.model';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { keepMembersOfCountry } from '../utils/country-members';
+import { countryFieldMatch } from '../utils/country-names';
 
 const log = logger.getLogger('ImpactChallengeService');
 
@@ -135,10 +140,17 @@ class ImpactChallengeService {
     async listChallenges(
         page: number = 1,
         limit: number = 10,
-        status?: ChallengeStatus
+        status?: ChallengeStatus,
+        filters: AdminFilters = {}
     ): Promise<{ challenges: IImpactChallenge[]; total: number; page: number; limit: number }> {
         const skip = (page - 1) * limit;
-        const query = status ? { status } : {};
+        // ?from/?to bound the campaign's startDate; ?country keeps the
+        // challenges with at least one entrepreneur from that country
+        // (entrepreneur.country: ISO code or name, any case).
+        const query: Record<string, unknown> = { ...(status ? { status } : {}), ...dateMatch('startDate', filters) };
+        if (filters.country) {
+            query._id = { $in: await EntrepreneurModel.distinct('challengeId', { country: countryFieldMatch(filters.country) }) };
+        }
 
         const [challenges, total] = await Promise.all([
             impactChallengeRepository.find(query, limit, skip),
@@ -416,13 +428,17 @@ class ImpactChallengeService {
     /**
      * Gets challenge analytics.
      */
-    async getChallengeAnalytics(challengeId: string): Promise<ChallengeAnalytics> {
+    async getChallengeAnalytics(challengeId: string, filters: AdminFilters = {}): Promise<ChallengeAnalytics> {
         const challenge = await impactChallengeRepository.findById(challengeId);
         if (!challenge) {
             throw new AppError('Challenge not found', 404);
         }
 
         const entrepreneurs = await entrepreneurRepository.findLeaderboardByChallenge(challengeId);
+
+        if (filters.country || filters.from || filters.to) {
+            return this.filteredAnalytics(challengeId, entrepreneurs, filters);
+        }
 
         return {
             totalVotes: challenge.totalVoteCount,
@@ -433,6 +449,46 @@ class ImpactChallengeService {
                 voteCount: e.voteCount,
                 totalAmount: e.totalAmount
             }))
+        };
+    }
+
+    /**
+     * Analytics recomputed from the votes themselves, for ?country/?from/?to:
+     * the counted votes (completed, not paid after the close — the same ones
+     * the stored totals add up), dated by the vote's createdAt, and for a
+     * country the votes of members of that country (the voter's country;
+     * non-member supports have no member and drop out).
+     */
+    private async filteredAnalytics(
+        challengeId: string,
+        entrepreneurs: Array<{ _id: Types.ObjectId; name: string }>,
+        filters: AdminFilters,
+    ): Promise<ChallengeAnalytics> {
+        const match: Record<string, unknown> = {
+            challengeId: new Types.ObjectId(challengeId),
+            paymentStatus: VotePaymentStatus.COMPLETED,
+            lateAfterClose: { $ne: true },
+            ...dateMatch('createdAt', filters),
+        };
+        if (filters.country) {
+            const voters = await ChallengeVoteModel.distinct('userId', match);
+            match.userId = { $in: await keepMembersOfCountry(voters.filter(Boolean), filters.country) };
+        }
+        const rows = await ChallengeVoteModel.aggregate<{ _id: Types.ObjectId; votes: number; amount: number }>([
+            { $match: match },
+            { $group: { _id: '$entrepreneurId', votes: { $sum: '$voteQuantity' }, amount: { $sum: '$amountPaid' } } },
+        ]);
+        const byEntrepreneur = new Map(rows.map(r => [r._id.toString(), r]));
+        const breakdown = entrepreneurs
+            .map(e => {
+                const row = byEntrepreneur.get(e._id.toString());
+                return { entrepreneurId: e._id.toString(), name: e.name, voteCount: row?.votes ?? 0, totalAmount: row?.amount ?? 0 };
+            })
+            .sort((a, b) => b.voteCount - a.voteCount);
+        return {
+            totalVotes: rows.reduce((sum, r) => sum + r.votes, 0),
+            totalAmount: rows.reduce((sum, r) => sum + r.amount, 0),
+            entrepreneurBreakdown: breakdown,
         };
     }
 

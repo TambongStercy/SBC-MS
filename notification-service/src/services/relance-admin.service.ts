@@ -5,6 +5,8 @@ import CampaignModel from '../database/models/relance-campaign.model';
 import RelancePackCreditModel from '../database/models/relance-pack-credit.model';
 import { findPack } from '../config/relance-packs';
 import { userServiceClient } from './clients/user.service.client';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
+import { memberIdSetForCountry } from '../utils/country-members';
 
 /**
  * Read models for the admin Relance screens. Kept apart from the member-facing
@@ -32,11 +34,44 @@ export async function peopleById(ids: string[]): Promise<Record<string, Person>>
     return map;
 }
 
-async function countSends(since: Date, today: Date) {
+/*
+ * Admin filters (?country, ?from, ?to) for the relance screens.
+ *
+ * Relance records have no country of their own: they belong to the parrain's
+ * country (the owner's userId: RelanceConfig.userId, RelanceTarget.referrerUserId,
+ * Campaign.userId, RelancePackCredit.userId — all ObjectIds). Rather than send the
+ * ~50–70k member ids of a big country into every query, the parrains actually
+ * present in the collection (a distinct on an indexed field: a few thousand at
+ * most) are intersected in memory with the country's members, and only those go
+ * into `$in`.
+ */
+type OwnerModel = { distinct(field: string): any };
+
+/** `{ [field]: { $in: owners of that country } }`, or `{}` without a country. Throws CountryMembersUnavailableError. */
+export async function ownerMatch(model: OwnerModel, field: string, f: AdminFilters): Promise<Record<string, unknown>> {
+    if (!f.country) return {};
+    const [members, owners] = await Promise.all([
+        memberIdSetForCountry(f.country),
+        model.distinct(field) as Promise<unknown[]>,
+    ]);
+    return { [field]: { $in: owners.filter(o => o != null && members.has(String(o))) } };
+}
+
+/**
+ * A figure with its own window ("last 30 days", "today") keeps it; ?from/?to
+ * narrow it further (the intersection), so a past range gives 0 for "today".
+ */
+export function windowMatch(field: string, since: Date, f: AdminFilters): Record<string, { $gte: Date; $lte?: Date }> {
+    const from = f.from && f.from > since ? f.from : since;
+    return { [field]: { $gte: from, ...(f.to ? { $lte: f.to } : {}) } };
+}
+
+async function countSends(since: Date, today: Date, f: AdminFilters = {}, owners: Record<string, unknown> = {}) {
+    const sentAt = windowMatch('messagesDelivered.sentAt', since, f);
     const rows: Array<{ _id: { channel: string; status: string; today: boolean }; n: number }> = await RelanceTargetModel.aggregate([
-        { $match: { 'messagesDelivered.sentAt': { $gte: since } } },
+        { $match: { ...owners, ...sentAt } },
         { $unwind: '$messagesDelivered' },
-        { $match: { 'messagesDelivered.sentAt': { $gte: since } } },
+        { $match: sentAt },
         {
             $group: {
                 _id: {
@@ -61,9 +96,10 @@ async function countSends(since: Date, today: Date) {
     return out;
 }
 
-async function packSales(since?: Date) {
+async function packSales(since: Date | undefined, f: AdminFilters, owners: Record<string, unknown>) {
+    const when = since ? windowMatch('creditedAt', since, f) : dateMatch('creditedAt', f);
     const rows: Array<{ _id: string; n: number }> = await RelancePackCreditModel.aggregate([
-        ...(since ? [{ $match: { creditedAt: { $gte: since } } }] : []),
+        { $match: { ...owners, ...when } },
         { $group: { _id: '$packId', n: { $sum: 1 } } },
     ]);
     let count = 0;
@@ -75,26 +111,42 @@ async function packSales(since?: Date) {
     return { count, amountXAF };
 }
 
-export async function adminOverview(now: Date = new Date()) {
+/**
+ * Filters: country = the parrain's, everywhere. Dates:
+ * - "active" targets (nouveaux and campaigns): `enteredLoopAt` in range;
+ * - figures with a window (today, 7 days, 30 days): window ∩ range, on
+ *   `enteredLoopAt` / `exitedLoopAt` / `messagesDelivered.sentAt` / `creditedAt`;
+ * - campaigns by status: campaign `createdAt`; packs total: `creditedAt`;
+ * - credits left: balances right now, country only (a balance has no date).
+ */
+export async function adminOverview(now: Date = new Date(), f: AdminFilters = {}) {
     const today = startOfUtcDay(now);
     const since30 = new Date(now.getTime() - 30 * DAY_MS);
     const since7 = new Date(now.getTime() - 7 * DAY_MS);
     // `campaignId: null` matches both a missing field and an explicit null.
     const nouveaux = { campaignId: null };
+    const [tOwners, cOwners, kOwners, pOwners] = await Promise.all([
+        ownerMatch(RelanceTargetModel, 'referrerUserId', f),
+        ownerMatch(RelanceConfigModel, 'userId', f),
+        ownerMatch(CampaignModel, 'userId', f),
+        ownerMatch(RelancePackCreditModel, 'userId', f),
+    ]);
+    const entered = dateMatch('enteredLoopAt', f);
 
     const [
         active, enrolledToday, paid30, finished30,
         statusRows, campaignTargetsActive,
         sends, balances, packsAll, packs30,
     ] = await Promise.all([
-        RelanceTargetModel.countDocuments({ ...nouveaux, status: TargetStatus.ACTIVE }),
-        RelanceTargetModel.countDocuments({ ...nouveaux, enteredLoopAt: { $gte: today } }),
-        RelanceTargetModel.countDocuments({ ...nouveaux, exitReason: ExitReason.PAID, exitedLoopAt: { $gte: since30 } }),
-        RelanceTargetModel.countDocuments({ ...nouveaux, exitReason: ExitReason.COMPLETED_7_DAYS, exitedLoopAt: { $gte: since30 } }),
-        CampaignModel.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-        RelanceTargetModel.countDocuments({ campaignId: { $ne: null }, status: TargetStatus.ACTIVE }),
-        countSends(since7, today),
+        RelanceTargetModel.countDocuments({ ...nouveaux, ...tOwners, status: TargetStatus.ACTIVE, ...entered }),
+        RelanceTargetModel.countDocuments({ ...nouveaux, ...tOwners, ...windowMatch('enteredLoopAt', today, f) }),
+        RelanceTargetModel.countDocuments({ ...nouveaux, ...tOwners, exitReason: ExitReason.PAID, ...windowMatch('exitedLoopAt', since30, f) }),
+        RelanceTargetModel.countDocuments({ ...nouveaux, ...tOwners, exitReason: ExitReason.COMPLETED_7_DAYS, ...windowMatch('exitedLoopAt', since30, f) }),
+        CampaignModel.aggregate([{ $match: { ...kOwners, ...dateMatch('createdAt', f) } }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+        RelanceTargetModel.countDocuments({ campaignId: { $ne: null }, ...tOwners, status: TargetStatus.ACTIVE, ...entered }),
+        countSends(since7, today, f, tOwners),
         RelanceConfigModel.aggregate([
+            { $match: cOwners },
             {
                 $group: {
                     _id: null,
@@ -104,8 +156,8 @@ export async function adminOverview(now: Date = new Date()) {
                 },
             },
         ]),
-        packSales(),
-        packSales(since30),
+        packSales(undefined, f, pOwners),
+        packSales(since30, f, pOwners),
     ]);
 
     const byStatus: Record<string, number> = {};
@@ -121,13 +173,26 @@ export async function adminOverview(now: Date = new Date()) {
     };
 }
 
-export async function adminParrains(opts: { page: number; limit: number; withCredits: boolean; userId?: string }, now: Date = new Date()) {
+/**
+ * Filters: country = the parrain's (config owner); dates = config `createdAt`
+ * (when the parrain first set relance up). The per-parrain figures (in loop,
+ * packs) stay whole: they describe the listed parrain.
+ */
+export async function adminParrains(
+    opts: { page: number; limit: number; withCredits: boolean; userId?: string; filters?: AdminFilters },
+    now: Date = new Date(),
+) {
     const today = startOfUtcDay(now);
-    const query: Record<string, unknown> = {};
+    const f = opts.filters ?? {};
+    const query: Record<string, unknown> = { ...dateMatch('createdAt', f) };
     if (opts.withCredits) query.$or = [{ emailBalance: { $gt: 0 } }, { smsBalance: { $gt: 0 } }];
+    const owners = await ownerMatch(RelanceConfigModel, 'userId', f);
+    if (owners.userId) query.userId = owners.userId;
     if (opts.userId) {
         if (!mongoose.isValidObjectId(opts.userId)) return { parrains: [], total: 0, page: opts.page, totalPages: 0 };
-        query.userId = new mongoose.Types.ObjectId(opts.userId);
+        const id = new mongoose.Types.ObjectId(opts.userId);
+        // With a country too, the parrain must also be of that country.
+        query.userId = owners.userId ? { $in: ((owners.userId as { $in: unknown[] }).$in).filter(o => id.equals(o as any)) } : id;
     }
 
     const [configs, total] = await Promise.all([

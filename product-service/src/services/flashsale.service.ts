@@ -397,7 +397,8 @@ class FlashSaleService {
     /**
      * [Admin] List all flash sales with filtering and pagination.
      */
-    async adminListFlashSales(filters: FilterQuery<IFlashSale>, options: { page: number, limit: number, sort?: any }): Promise<any> {
+    /** `scope`: the admin's country / date filters, AND-ed with `filters`. */
+    async adminListFlashSales(filters: FilterQuery<IFlashSale>, options: { page: number, limit: number, sort?: any }, scope: FilterQuery<IFlashSale> = {}): Promise<any> {
         log.info('[Admin Service] Listing flash sales with filters:', filters);
         const { page, limit, sort = { createdAt: -1 } } = options;
         const skip = (page - 1) * limit;
@@ -412,7 +413,8 @@ class FlashSaleService {
         if (findQuery.sellerUserId && typeof findQuery.sellerUserId === 'string') {
             findQuery.sellerUserId = new Types.ObjectId(findQuery.sellerUserId);
         }
-        // Add date range filtering if needed (e.g., createdAt range)
+        if (scope.startTime) findQuery.startTime = scope.startTime;
+        if (scope.$and) findQuery.$and = [...(Array.isArray(findQuery.$and) ? findQuery.$and : []), ...scope.$and];
 
         const sales = await flashSaleRepository.find(findQuery, limit, skip, sort);
         const totalCount = await flashSaleRepository.count(findQuery);

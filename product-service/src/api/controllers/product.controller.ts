@@ -4,6 +4,9 @@ import { productService } from '../../services/product.service';
 import { CustomError } from '../../utils/custom-error';
 import { ProductStatus } from '../../database/models/product.model';
 import logger from '../../utils/logger';
+import ProductModel from '../../database/models/product.model';
+import { readAdminFilters } from '../../utils/admin-filters';
+import { countryMembersAmong, CountryFilterUnavailableError } from '../../utils/country-members';
 
 // Define an interface for requests that have passed authentication
 interface AuthenticatedRequest extends Request {
@@ -600,8 +603,15 @@ export class ProductController {
      * [Admin] List all products with filtering and pagination
      * @route GET /api/products/admin
      */
+    /**
+     * Admin filters (phase 3): country = the SELLER's (product `userId`, resolved
+     * through user-service and intersected with the sellers present here, so the
+     * `$in` stays ~2k ids instead of 50–70k); from/to on the product's `createdAt`.
+     */
     async adminListProducts(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request to list products');
+        const adminFilters = readAdminFilters(req, res);
+        if (!adminFilters) return;
         try {
             const {
                 page = 1,
@@ -636,9 +646,25 @@ export class ProductController {
             log.debug('Passing filters to service:', filters);
 
             // Correctly type the status filter before passing to the service
+            let sellerIdsIn: Types.ObjectId[] | undefined;
+            if (adminFilters.country) {
+                try {
+                    sellerIdsIn = await countryMembersAmong(adminFilters.country, await ProductModel.distinct('userId'));
+                } catch (error) {
+                    if (error instanceof CountryFilterUnavailableError) {
+                        res.status(502).json({ success: false, message: error.message });
+                        return;
+                    }
+                    throw error;
+                }
+            }
+
             const serviceFilters = {
                 ...filters,
                 status: filters.status as ProductStatus | 'deleted' | 'all' | undefined,
+                sellerIdsIn,
+                createdFrom: adminFilters.from,
+                createdTo: adminFilters.to,
             };
 
             const result = await productService.adminListProducts(serviceFilters);

@@ -6,6 +6,7 @@ import { StatusMediaType } from '../../database/models/status.model';
 import { isVideo, isImage, validateFileSize } from '../middleware/upload.middleware';
 import { settingsServiceClient } from '../../services/clients/settings.service.client';
 import logger from '../../utils/logger';
+import { readAdminFilters } from '../../utils/admin-filters';
 
 const log = logger.getLogger('StatusController');
 
@@ -15,6 +16,11 @@ class StatusController {
      * GET /api/chat/statuses
      */
     async getStatusFeed(req: AuthenticatedRequest, res: Response): Promise<void> {
+        // Shared by the member feed and the admin Statuts page. Admin filters:
+        // ?country = the status's own `country` (free text: ISO-2 any case, or the
+        // FR/EN name); ?from/?to = status createdAt. The feed only ever holds live
+        // (unexpired) statuses, so dates narrow within the last 24 h.
+        const adminFilters = readAdminFilters(req, res); if (!adminFilters) return;
         try {
             const userId = req.user!.userId;
             const page = parseInt(req.query.page as string) || 1;
@@ -22,7 +28,9 @@ class StatusController {
 
             const filters = {
                 category: req.query.category as StatusCategory | undefined,
-                country: req.query.country as string | undefined,
+                country: adminFilters.country,
+                from: adminFilters.from,
+                to: adminFilters.to,
                 city: req.query.city as string | undefined,
                 search: req.query.search as string | undefined,
                 sortBy: req.query.sortBy as 'recent' | 'popular' | undefined

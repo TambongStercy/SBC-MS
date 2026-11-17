@@ -28,7 +28,9 @@ export interface IResaleListing extends Document {
 }
 
 const ResaleListingSchema = new Schema<IResaleListing>({
-    ticketId: { type: Schema.Types.ObjectId, required: true, ref: 'Ticket', index: true },
+    // No field-level index: it took the name ticketId_1 first, so the partial
+    // unique index below was never created ("existing index has the same name").
+    ticketId: { type: Schema.Types.ObjectId, required: true, ref: 'Ticket' },
     sellerUserId: { type: Schema.Types.ObjectId, required: true, index: true },
     eventId: { type: Schema.Types.ObjectId, required: true, ref: 'Event', index: true },
     originalPrice: { type: Number, required: true, min: 0 },
@@ -45,7 +47,7 @@ const ResaleListingSchema = new Schema<IResaleListing>({
 // Partial-unique so historical CANCELLED/SOLD rows don't collide.
 ResaleListingSchema.index(
     { ticketId: 1 },
-    { unique: true, partialFilterExpression: { status: 'ACTIVE' } }
+    { unique: true, partialFilterExpression: { status: 'ACTIVE' }, name: 'uniq_active_ticketId' }
 );
 ResaleListingSchema.index({ eventId: 1, status: 1, listedAt: -1 });
 ResaleListingSchema.index({ sellerUserId: 1, status: 1 });

@@ -23,6 +23,9 @@ export interface PaginationParams {
     limit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    /** Bounds on the event's own date (`timestamp`), inclusive. */
+    from?: Date;
+    to?: Date;
 }
 
 // Interface for the paginated response
@@ -114,6 +117,12 @@ class EventService {
         const { page = 1, limit = 10, sortBy = 'timestamp', sortOrder = 'desc' } = params;
         const skip = (page - 1) * limit;
         const filter: FilterQuery<IEvent> = {};
+        if (params.from || params.to) {
+            filter.timestamp = {
+                ...(params.from ? { $gte: params.from } : {}),
+                ...(params.to ? { $lte: params.to } : {}),
+            };
+        }
         const sortOptions: { [key: string]: SortOrder } = {
             [sortBy]: sortOrder === 'desc' ? -1 : 1
         };

@@ -130,6 +130,11 @@ export const scanQr = async (args: {
     // Best-effort: increment event denorm counter.
     Event.updateOne({ _id: ticket.eventId }, { $inc: { 'totals.checkedIn': 1 } }).catch(() => undefined);
 
+    // Animation rewards on arrival ("the 100th person through the door…"). Never throws.
+    const { onTrigger } = await import('../modules/animation/services/reward.service');
+    const { RuleTrigger } = await import('../modules/animation/types');
+    await onTrigger({ trigger: RuleTrigger.CHECKED_IN, eventId: String(ticket.eventId), userId: String(ticket.ownerUserId), subjectKey: `ticket:${ticket._id}` });
+
     return {
         outcome: 'VALID',
         message: 'Entrée validée.',
