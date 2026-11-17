@@ -13,6 +13,7 @@ import TransactionManagementPage from './pages/TransactionManagementPage';
 import AccountTransactionsManagementPage from './pages/AccountTransactionsManagementPage';
 import SettingsManagementPage from './pages/SettingsManagementPage';
 import NotificationsPage from './pages/NotificationsPage';
+import PopupAnnouncementsPage from './pages/PopupAnnouncementsPage';
 import PushAnnouncementsPage from './pages/PushAnnouncementsPage';
 import Partners from './pages/Partners';
 import FixFeexpayPaymentsPage from './pages/FixFeexpayPaymentsPage';
@@ -76,6 +77,7 @@ function App() {
             <Route path="/logout" element={<Deconnexion />} />
             <Route path="/userpage/:userId" element={<UsersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/notifications/popups" element={<PopupAnnouncementsPage />} />
             <Route path="/notifications/push" element={<PushAnnouncementsPage />} />
             <Route path="/fix-feexpay-payments" element={<FixFeexpayPaymentsPage />} />
             <Route path="/fix-moneyfusion-withdrawals" element={<FixMoneyFusionWithdrawalsPage />} />

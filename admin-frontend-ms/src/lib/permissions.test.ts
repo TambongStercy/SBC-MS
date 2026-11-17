@@ -61,6 +61,7 @@ describe('moduleForPath', () => {
     ['/relance/campaigns', 'relance'],
     ['/notifications', 'notifications'],
     ['/notifications/push', 'notifications'],
+    ['/notifications/popups', 'notifications'],
     ['/chat', 'communication'],
     ['/statuses', 'communication'],
     ['/settings', 'settings'],

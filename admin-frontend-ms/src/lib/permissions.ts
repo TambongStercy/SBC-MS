@@ -71,7 +71,7 @@ export const MODULE_INFO: Record<AdminModule, ModuleInfo> = {
   adsProofs: { label: 'Vérifications vidéo', description: 'Preuves vidéo des diffuseurs à vérifier.' },
   events: { label: 'SBC Event', description: 'Billetterie, organisateurs, commandes, litiges, animation.' },
   relance: { label: 'Relance', description: 'Modèles e-mail et SMS, campagnes de relance.' },
-  notifications: { label: 'Notifications', description: 'Notifications envoyées et annonces push.' },
+  notifications: { label: 'Notifications', description: 'Notifications envoyées, annonces push et pop-up.' },
   communication: { label: 'Chat et statuts', description: 'Conversations et statuts des membres.' },
   settings: { label: 'Réglages', description: 'Réglages, formations, stockage, événements communautaires.' },
   whatsapp: { label: 'WhatsApp', description: 'Connexion WhatsApp du serveur.' },

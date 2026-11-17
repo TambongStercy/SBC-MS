@@ -39,6 +39,7 @@ import {
   Video01Icon,
   Wallet01Icon,
   Wrench01Icon,
+  Comment01Icon,
 } from '@hugeicons/core-free-icons';
 import { canOpenPath, type Permissions } from '../lib/permissions';
 
@@ -156,6 +157,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Stockage', path: '/storage', icon: HardDriveIcon },
       { label: 'Notifications', path: '/notifications', icon: SentIcon },
       { label: 'Annonces push', path: '/notifications/push', icon: Megaphone02Icon },
+      { label: 'Annonces pop-up', path: '/notifications/popups', icon: Comment01Icon },
     ],
   },
 ];
