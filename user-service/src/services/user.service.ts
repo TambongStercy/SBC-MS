@@ -1,4 +1,6 @@
 import { pushNewFilleul } from './push-notify';
+import { InsufficientAvailableBalanceError } from '../database/repositories/user.repository';
+import { openSupportCase } from './clients/support.service.client';
 import { walletLedger } from './wallet-ledger.service';
 import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import bcrypt from 'bcrypt';
@@ -990,6 +992,11 @@ export class UserService {
                 source: movement.source || 'user-service.updateBalance',
                 description: movement.description,
                 compute: (user) => {
+                    // A debit only takes available money (balance - debt - reserved).
+                    if (amount < 0) {
+                        const available = (user.balance ?? 0) - Math.max(0, user.debt || 0) - (user.reservedBalance ?? 0);
+                        if (available < -amount) return null;
+                    }
                     let remainingAmountXaf = amount;
                     let currentDebt = Math.max(0, user.debt || 0);
                     let currentXaf = user.balance ?? 0;
@@ -1022,6 +1029,8 @@ export class UserService {
             if (out.pendingConflict) {
                 throw new Error(`Balance movement ${out.reference} is pending review; refusing to apply it twice`);
             }
+            if (out.guardFailed) throw new InsufficientAvailableBalanceError();
+            if (out.reversed) throw Object.assign(new Error(`Balance movement ${out.reference} was undone; use a new reference`), { statusCode: 409, code: 'MOVEMENT_UNDONE' });
             return out.user ? out.user.balance : null;
         } catch (error) {
             log.error(`Error updating balance for user ${userId}`, error);
@@ -1047,6 +1056,7 @@ export class UserService {
                 source: movement.source || 'user-service.updateUsdBalance',
                 description: movement.description,
                 compute: (user) => {
+                    if (amount < 0 && (user.usdBalance ?? 0) - (user.reservedUsdBalance ?? 0) < -amount) return null;
                     let remainingAmountUsd = amount;
                     let currentDebt = Math.max(0, user.debt || 0); // XAF
                     let currentUsd = user.usdBalance ?? 0;
@@ -1083,6 +1093,7 @@ export class UserService {
             if (out.pendingConflict) {
                 throw new Error(`USD balance movement ${out.reference} is pending review; refusing to apply it twice`);
             }
+            if (out.guardFailed) throw new InsufficientAvailableBalanceError();
             return out.user ? out.user.usdBalance : null;
         } catch (error) {
             log.error(`Error updating USD balance for user ${userId}`, error);
@@ -1118,7 +1129,7 @@ export class UserService {
                 return { success: false, message: 'User not found' };
             }
 
-            if (user.usdBalance < usdAmount) {
+            if (!(usdAmount > 0) || (user.usdBalance ?? 0) - (user.reservedUsdBalance ?? 0) < usdAmount) {
                 return { success: false, message: 'Insufficient USD balance' };
             }
 
@@ -1134,9 +1145,15 @@ export class UserService {
             const xafAmount = CurrencyConverter.usdToXafWithdrawal(usdAmount);
             const conversionRate = CURRENCY_CONVERSION_RATES.USD_TO_XAF_WITHDRAWAL;
 
-            // Update both balances
-            await userRepository.updateUsdBalance(userId, -usdAmount);
-            await userRepository.updateBalance(userId, xafAmount);
+            // Debit first, guarded (available = usdBalance - reserved); credit under its own reference.
+            const ref = `conversion:${new Types.ObjectId().toHexString()}`;
+            try {
+                await userRepository.updateUsdBalance(userId, -usdAmount, { reference: `${ref}:out`, source: 'conversion' });
+            } catch (e: any) {
+                if (e instanceof InsufficientAvailableBalanceError) return { success: false, message: 'Insufficient USD balance' };
+                throw e;
+            }
+            await this.creditConversionLeg(userId, 'XAF', xafAmount, `${ref}:in`);
 
             // Create conversion transaction record
             try {
@@ -1185,7 +1202,7 @@ export class UserService {
                 return { success: false, message: 'User not found' };
             }
 
-            if (user.balance < xafAmount) {
+            if (!(xafAmount > 0) || (user.balance ?? 0) - Math.max(0, user.debt || 0) - (user.reservedBalance ?? 0) < xafAmount) {
                 return { success: false, message: 'Insufficient XAF balance' };
             }
 
@@ -1201,9 +1218,15 @@ export class UserService {
             const usdAmount = CurrencyConverter.xafToUsd(xafAmount);
             const conversionRate = CURRENCY_CONVERSION_RATES.XAF_TO_USD;
 
-            // Update both balances
-            await userRepository.updateBalance(userId, -xafAmount);
-            await userRepository.updateUsdBalance(userId, usdAmount);
+            // Debit first, guarded (available = balance - debt - reserved); credit under its own reference.
+            const ref = `conversion:${new Types.ObjectId().toHexString()}`;
+            try {
+                await userRepository.updateBalance(userId, -xafAmount, { reference: `${ref}:out`, source: 'conversion' });
+            } catch (e: any) {
+                if (e instanceof InsufficientAvailableBalanceError) return { success: false, message: 'Insufficient XAF balance' };
+                throw e;
+            }
+            await this.creditConversionLeg(userId, 'USD', usdAmount, `${ref}:in`);
 
             // Create conversion transaction record
             try {
@@ -1237,6 +1260,29 @@ export class UserService {
             log.error(`Error converting XAF to USD for user ${userId}`, error);
             return { success: false, message: 'Conversion failed' };
         }
+    }
+
+    /**
+     * Credits the second leg of a conversion. Retried under the same reference
+     * (idempotent); never "undone" on an unclear error, which could create money.
+     */
+    private async creditConversionLeg(userId: string | Types.ObjectId, currency: 'XAF' | 'USD', amount: number, reference: string): Promise<void> {
+        let lastError: any;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                if (currency === 'XAF') await userRepository.updateBalance(userId, amount, { reference, source: 'conversion' });
+                else await userRepository.updateUsdBalance(userId, amount, { reference, source: 'conversion' });
+                return;
+            } catch (e) {
+                lastError = e;
+            }
+        }
+        log.error(`CRITICAL: conversion ${reference}: debit applied, credit of ${amount} ${currency} not confirmed: ${lastError?.message}`);
+        void openSupportCase({
+            type: 'ledger_mismatch', dedupKey: `ledger:${reference}`, severity: 'critical', subject: { userId: userId.toString() },
+            summary: `Conversion de devise : débit appliqué, crédit de ${amount} ${currency} non confirmé.`, details: { reference },
+        });
+        throw lastError;
     }
 
     /**

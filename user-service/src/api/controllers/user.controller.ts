@@ -155,6 +155,10 @@ export class UserController {
             res.status(200).json({ success: true, data: { balance: updated.balance } });
         } catch (error: any) {
             log.error(`Error spending balance: ${error.message}`);
+            if (error?.statusCode === 409) {
+                res.status(409).json({ success: false, code: error.code, message: error.message });
+                return;
+            }
             res.status(500).json({ success: false, message: 'Failed to spend balance' });
         }
     }
@@ -244,6 +248,10 @@ export class UserController {
             });
         } catch (error: any) {
             log.error(`Error updating user balance: ${error.message}`);
+            if (error?.statusCode === 409) {
+                res.status(409).json({ success: false, code: error.code, message: error.message });
+                return;
+            }
             res.status(500).json({
                 success: false,
                 message: 'Error updating user balance'
@@ -354,6 +362,10 @@ export class UserController {
             });
         } catch (error: any) {
             log.error(`Error updating user USD balance: ${error.message}`);
+            if (error?.statusCode === 409) {
+                res.status(409).json({ success: false, code: error.code, message: error.message });
+                return;
+            }
             res.status(500).json({
                 success: false,
                 message: 'Error updating user USD balance'

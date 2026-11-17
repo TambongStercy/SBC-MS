@@ -611,8 +611,8 @@ class PaymentServiceClient {
                     status: response.status,
                     responseData: response.data
                 });
-                // On API error, assume no pending transactions to avoid blocking legitimate conversions
-                return false;
+                // Fail closed: an unanswered check must not let a conversion spend money in flight.
+                return true;
             }
         } catch (error: any) {
             this.log.error(`Error checking pending transactions for user ${userId}: ${error.message}`);
@@ -622,8 +622,8 @@ class PaymentServiceClient {
                     data: error.response?.data
                 });
             }
-            // On communication error, assume no pending transactions to avoid blocking legitimate conversions
-            return false;
+            // Fail closed: an unanswered check must not let a conversion spend money in flight.
+            return true;
         }
     }
     /**

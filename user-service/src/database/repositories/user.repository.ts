@@ -8,6 +8,31 @@ import log from '../../utils/logger';
 import { phoneLookupCandidates } from '../../utils/phone.utils';
 import { OTP_SEND_COOLDOWN_MS, OTP_SEND_WINDOW_MS, OTP_SEND_MAX_IN_WINDOW } from '../../utils/otp.utils';
 
+/**
+ * Guard for every debit except a withdrawal's own reservation conversion:
+ * XAF needs balance - debt - reservedBalance >= amount, USD needs
+ * usdBalance - reservedUsdBalance >= amount.
+ */
+export function availableGuard(currency: 'XAF' | 'USD', amount: number): FilterQuery<IUser> {
+    const available = currency === 'USD'
+        ? { $subtract: [{ $ifNull: ['$usdBalance', 0] }, { $ifNull: ['$reservedUsdBalance', 0] }] }
+        : { $subtract: [{ $subtract: [{ $ifNull: ['$balance', 0] }, { $ifNull: ['$debt', 0] }] }, { $ifNull: ['$reservedBalance', 0] }] };
+    return { $expr: { $gte: [available, amount] } };
+}
+
+export class InsufficientAvailableBalanceError extends Error {
+    statusCode = 409;
+    code = 'INSUFFICIENT_AVAILABLE_BALANCE';
+    constructor(message = 'Solde disponible insuffisant.') { super(message); }
+}
+
+/** Debits refused by the guard (or replays refused as pending/undone) become explicit errors. */
+function throwIfRefused(out: { guardFailed?: boolean; pendingConflict?: boolean; reversed?: boolean; reference: string }) {
+    if (out.guardFailed) throw new InsufficientAvailableBalanceError();
+    if (out.pendingConflict) throw Object.assign(new Error(`Balance movement ${out.reference} is pending review`), { statusCode: 409, code: 'MOVEMENT_PENDING' });
+    if (out.reversed) throw Object.assign(new Error(`Balance movement ${out.reference} was undone; use a new reference`), { statusCode: 409, code: 'MOVEMENT_UNDONE' });
+}
+
 // Interface for specific user details needed by other services
 export interface UserDetails {
     _id: Types.ObjectId | string;
@@ -155,11 +180,15 @@ export class UserRepository {
         movement: { reference?: string; source?: string; description?: string } = {},
     ): Promise<IUser | null> {
         // Every balance change leaves a walletmovements row (wallet-ledger.service.ts).
+        // A debit may only take available money (balance - debt - reserved): money
+        // held by a withdrawal in flight cannot leave by another path.
         const out = await walletLedger.applyInc({
             userId, currency: 'XAF', delta: amountChange,
+            guard: amountChange < 0 ? availableGuard('XAF', -amountChange) : undefined,
             reference: movement.reference, source: movement.source || 'user-repository.updateBalance',
             description: movement.description,
         });
+        throwIfRefused(out);
         return out.user;
     }
 
@@ -188,6 +217,8 @@ export class UserRepository {
             },
             reference: movement.reference, source: movement.source || 'balance-spend', description: movement.description,
         });
+        if (out.reversed) throwIfRefused(out); // taken then given back: never "already paid"
+        if (out.pendingConflict) throwIfRefused(out);
         if (out.alreadyApplied) return out.user; // the same spend, replayed: already taken once
         return out.applied ? out.user : null;
     }
@@ -205,9 +236,11 @@ export class UserRepository {
     ): Promise<IUser | null> {
         const out = await walletLedger.applyInc({
             userId, currency: 'USD', delta: amountChange,
+            guard: amountChange < 0 ? availableGuard('USD', -amountChange) : undefined,
             reference: movement.reference, source: movement.source || 'user-repository.updateUsdBalance',
             description: movement.description,
         });
+        throwIfRefused(out);
         return out.user;
     }
 

@@ -29,6 +29,8 @@ export type MovementOutcome = {
     pendingConflict?: boolean;
     guardFailed?: boolean;
     userNotFound?: boolean;
+    /** Replay of a movement that was later undone (same reference, opposite direction): nothing moved. */
+    reversed?: boolean;
     reference: string;
     /** User after the update (or current user on a replay). */
     user: IUser | null;
@@ -115,6 +117,13 @@ class WalletLedgerService {
                 return { claimed: false, outcome: { applied: false, pendingConflict: true, reference, user } };
             }
             const user = await UserModel.findById(req.userId).exec();
+            // Undone since (same reference, opposite direction): a replay must not pass for the original.
+            const opposite = direction === WalletMovementDirection.DEBIT ? WalletMovementDirection.CREDIT : WalletMovementDirection.DEBIT;
+            const undone = await WalletMovementModel.exists({ reference, direction: opposite, status: WalletMovementStatus.APPLIED });
+            if (undone) {
+                log.warn(`Wallet movement ${direction} ${reference} was undone: replay refused`);
+                return { claimed: false, outcome: { applied: false, alreadyApplied: true, reversed: true, reference, user } };
+            }
             log.info(`Wallet movement ${direction} ${reference} already applied: no-op`);
             return { claimed: false, outcome: { applied: false, alreadyApplied: true, reference, user, balanceAfter: existing?.balanceAfter } };
         }
@@ -177,21 +186,23 @@ class WalletLedgerService {
         const field = balanceField(req.currency);
         try {
             for (let attempt = 0; attempt < 60; attempt++) {
-                const current = await UserModel.findById(req.userId).exec();
-                if (!current) {
+                // Raw document (no schema defaults): a missing field must be compared as missing.
+                const raw = await UserModel.findById(req.userId).lean() as any;
+                if (!raw) {
                     await this.unclaim(reference, direction);
                     return { applied: false, userNotFound: true, reference, user: null };
                 }
-                const plan = req.compute(current);
+                const plan = req.compute(raw as IUser);
                 if (!plan) {
                     await this.unclaim(reference, direction);
-                    return { applied: false, guardFailed: true, reference, user: current };
+                    return { applied: false, guardFailed: true, reference, user: await UserModel.findById(req.userId).exec() };
                 }
-                const raw = current.toObject() as any;
-                const filter: Record<string, any> = { _id: current._id };
+                const filter: Record<string, any> = { _id: raw._id };
                 // Every field the computation read must be unchanged (null also matches a missing field).
                 filter[field] = raw[field] ?? null;
                 filter.debt = raw.debt ?? null;
+                filter[req.currency === 'USD' ? 'reservedUsdBalance' : 'reservedBalance'] =
+                    raw[req.currency === 'USD' ? 'reservedUsdBalance' : 'reservedBalance'] ?? null;
                 const updated = await UserModel.findOneAndUpdate(filter, { $set: plan.set }, { new: true }).exec();
                 if (!updated) {
                     await new Promise((r) => setTimeout(r, 2 + Math.floor(Math.random() * 15)));

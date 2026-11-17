@@ -3,6 +3,8 @@ import { authenticateServiceRequest } from '../middleware/auth.middleware';
 import { balanceReservationService } from '../../services/balance-reservation.service';
 import { walletLedger } from '../../services/wallet-ledger.service';
 import WalletMovementModel, { WalletMovementStatus } from '../../database/models/wallet-movement.model';
+import BalanceReservationModel from '../../database/models/balance-reservation.model';
+import { subscriptionService } from '../../services/subscription.service';
 import logger from '../../utils/logger';
 
 /**
@@ -50,6 +52,16 @@ router.post('/reservations', handle(async (req, res) => {
     }
 }));
 
+router.get('/reservations', handle(async (req, res) => {
+    const state = String(req.query.state || 'held');
+    if (!['reserving', 'held', 'converting'].includes(state)) return fail(res, 400, 'BAD_STATE', 'state must be reserving, held or converting');
+    const olderThan = new Date(Date.now() - Math.max(0, Number(req.query.olderThanMinutes) || 60) * 60000);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+    const rows = await BalanceReservationModel.find({ state, updatedAt: { $lt: olderThan } })
+        .sort({ updatedAt: 1 }).limit(limit).select('transactionId userId amount currency state updatedAt -_id').lean();
+    res.status(200).json({ success: true, data: rows });
+}));
+
 router.get('/reservations/:transactionId', handle(async (req, res) => {
     const reservation = await balanceReservationService.get(req.params.transactionId);
     if (!reservation) return fail(res, 404, 'NOT_RESERVED', 'No reservation for this transaction');
@@ -74,6 +86,11 @@ router.post('/reservations/:transactionId/convert', handle(async (req, res) => {
         return res.status(409).json({ success: false, code: 'CONVERSION_CONFLICT', message: out.reason, data: { reservation: out.reservation } });
     }
     res.status(200).json({ success: true, data: out });
+}));
+
+/** Pack prices for manual activations (payment-service compares the paid amount). */
+router.get('/plan-prices', handle(async (_req, res) => {
+    res.status(200).json({ success: true, data: subscriptionService.getPlanPrices() });
 }));
 
 router.get('/available/:userId', handle(async (req, res) => {

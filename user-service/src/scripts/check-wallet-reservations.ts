@@ -163,6 +163,54 @@ const doc = async (id: Types.ObjectId) => (await UserModel.collection.findOne({ 
     assert.ok(findings.some((f) => f.kind === 'pending_movement' && f.reference === 'deposit:CRASHED'));
     ok('(11) a crashed movement stays PENDING: replays refuse, the nightly check reports it');
 
+    // (12) currency conversion cannot spend reserved money
+    (paymentService as any).hasPendingTransactions = async () => false;
+    (paymentService as any).createConversionTransaction = async () => ({});
+    const u12 = await user({ balance: 10000, usdBalance: 50 });
+    await balanceReservationService.reserve({ transactionId: 'tx-conv-xaf', userId: String(u12), amount: 8000, currency: 'XAF' });
+    await balanceReservationService.reserve({ transactionId: 'tx-conv-usd', userId: String(u12), amount: 45, currency: 'USD' });
+    assert.strictEqual((await userService.convertXafToUsd(u12, 3000)).success, false, 'XAF conversion of reserved money refused');
+    assert.strictEqual((await userService.convertUsdToXaf(u12, 10)).success, false, 'USD conversion of reserved money refused');
+    let d12 = await doc(u12);
+    assert.strictEqual(d12.balance, 10000); assert.strictEqual(d12.usdBalance, 50);
+    assert.strictEqual((await userService.convertXafToUsd(u12, 1500)).success, true, 'available money converts');
+    d12 = await doc(u12);
+    assert.strictEqual(d12.balance, 8500);
+    assert.strictEqual(await WalletMovementModel.countDocuments({ userId: u12, source: 'conversion', status: 'APPLIED' }), 2, 'both legs journalled');
+    ok('(12) conversions XAF→USD and USD→XAF cannot use reserved money; available money converts, both legs journalled');
+
+    // (13) every other debit path is guarded: debt-aware updateBalance, repository debits, admin adjust
+    const u13 = await user({ balance: 5000, debt: 1000 });
+    await balanceReservationService.reserve({ transactionId: 'tx-guard', userId: String(u13), amount: 3000, currency: 'XAF' });
+    await assert.rejects(userService.updateBalance(u13, -1001, { source: 'test' }), (e: any) => e.statusCode === 409);
+    await assert.rejects(userRepository.updateBalance(u13, -1001), (e: any) => e.code === 'INSUFFICIENT_AVAILABLE_BALANCE');
+    (paymentService as any).recordAdjustmentTransaction = async () => ({ transactionId: 'adj' });
+    await assert.rejects(userService.adminAdjustBalance(u13, -1500, 'Correction', new Types.ObjectId(), 'main'), /insuffisant/i);
+    assert.strictEqual((await doc(u13)).balance, 5000, 'nothing taken');
+    assert.strictEqual(await userService.updateBalance(u13, -1000, { source: 'test' }), 3000, 'available money (5000 - 1000 debt - 3000 reserved) can leave; the debt is then settled as before');
+    assert.strictEqual(await WalletMovementModel.countDocuments({ userId: u13, status: 'PENDING' }), 0, 'refusals leave no claim');
+    ok('(13) negative updateBalance (service + repository) and admin debit refused beyond balance - debt - reserved');
+
+    // (14) a spend undone under its reference cannot be replayed as paid
+    const u14 = await user({ balance: 1000 });
+    assert.ok(await userRepository.spendBalance(u14, 400, { reference: 'spend:ads-R1', source: 'test' }));
+    await userService.updateBalance(u14, 400, { reference: 'spend:ads-R1', source: 'balance-spend-undo' }); // undo, same reference
+    await assert.rejects(userRepository.spendBalance(u14, 400, { reference: 'spend:ads-R1', source: 'test' }), (e: any) => e.code === 'MOVEMENT_UNDONE');
+    assert.strictEqual((await doc(u14)).balance, 1000);
+    assert.ok(await userRepository.spendBalance(u14, 400, { reference: 'spend:ads-R2', source: 'test' }), 'a new reference pays normally');
+    ok('(14) spend → undo → retry with the same reference is refused (MOVEMENT_UNDONE), never reported as paid');
+
+    // (15) pending-transactions check fails closed when payment-service does not answer
+    const realClient = Object.getPrototypeOf(paymentService);
+    const probe = Object.create(realClient);
+    probe.apiClient = (paymentService as any).apiClient;
+    probe.log = (paymentService as any).log;
+    const savedBase = probe.apiClient.defaults.baseURL;
+    probe.apiClient.defaults.baseURL = 'http://127.0.0.1:1';
+    assert.strictEqual(await realClient.hasPendingTransactions.call(probe, String(u12)), true);
+    probe.apiClient.defaults.baseURL = savedBase;
+    ok('(15) hasPendingTransactions fails closed (true) when payment-service is unreachable');
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
     console.log(`\nALL PASSED (${passed})`);
