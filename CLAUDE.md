@@ -943,6 +943,16 @@ due first (`jobs/relance-journey-order.ts`); in database order the default
 backlog used his whole share. `src/tests/relance-sender.test.ts` does not load
 (pre-existing `reading 'prototype'` error), so its tests have not been running.
 
+**A paid filleul leaves every journey at once (2026-11-17).** A new filleul can
+sit in relance des nouveaux AND a running campaign of the same parrain (4,837
+did on 2026-11-17). `exit-user` used to close one journey (`findOne`); the
+other stayed open until the sender saw the payment days later and pushed
+« X vient de payer » again, with no commission behind it (Le Futuriste: 57 such
+late pushes in a week). `exitPaidReferral` (`services/relance-paid-exit.service.ts`)
+closes active and paused journeys together and pushes once per parrain, never
+to one already told. Both `exit-user` and the sender's paid check use it.
+`src/tests/relance-paid-exit.test.ts`.
+
 **Data facts that mislead:** `relancemessages` holds the admin's **7 day
 templates**, not sent messages — sends live in `relancetargets.messagesDelivered`.
 Relance pack payments are PaymentIntents whose `metadata.callbackPath` contains
