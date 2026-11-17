@@ -1,19 +1,31 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Cancel01Icon } from '@hugeicons/core-free-icons';
-import ConfirmationModal from '../common/ConfirmationModal';
+import { Download01Icon, RefreshIcon } from '@hugeicons/core-free-icons';
 import { getUserDetails } from '../../services/adminUserApi';
 import {
     EXPORT_FORMATS, EXPORT_KIND_LABELS, downloadAnimationExport, shortId,
     type ExportFormat, type ExportKind, type ExportScope,
 } from '../../api/animation';
-import { TONE_CLASSES, errorMessage, useAnim, type StatusTable, type Tone } from './shared';
+import { cn } from '../../lib/cn';
+import {
+    Badge as KitBadge, Button as KitButton, Dialog, DialogClose, DialogContent, Field, Pagination, Panel, SheetContent, Skeleton, Switch,
+    Table as KitTable, TBody, TH, THead, Textarea,
+} from '../ui';
+import { errorMessage, useAnim, type StatusTable, type Tone } from './shared';
 
-/** Small building blocks of the animation admin page, in the look of the other SBC Event pages. */
+/**
+ * Building blocks of the SBC Event « Animation » admin page, on top of the
+ * design kit (src/components/ui): same props as before, so every tab keeps
+ * working, with the kit's look, tokens and dialogs.
+ */
+
+const KIT_TONE: Record<Tone, 'neutral' | 'primary' | 'info' | 'success' | 'warning' | 'danger'> = {
+    neutral: 'neutral', primary: 'primary', accent: 'info', success: 'success', warning: 'warning', danger: 'danger',
+};
 
 export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: ReactNode }) {
-    return <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${TONE_CLASSES[tone]}`}>{children}</span>;
+    return <KitBadge tone={KIT_TONE[tone]}>{children}</KitBadge>;
 }
 
 export function StatusBadge({ status, labels }: { status: string; labels: StatusTable }) {
@@ -25,7 +37,7 @@ export function Section({ title, action, children }: { title: ReactNode; action?
     return (
         <section className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-fg-muted">{title}</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">{title}</h3>
                 {action}
             </div>
             {children}
@@ -34,10 +46,10 @@ export function Section({ title, action, children }: { title: ReactNode; action?
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-    return <div className={`bg-surface border border-line rounded-xl p-4 ${className}`}>{children}</div>;
+    return <Panel className={cn('p-4', className)}>{children}</Panel>;
 }
 
-const STAT_TONES: Partial<Record<Tone, string>> = { warning: 'border-amber-600', danger: 'border-red-600', success: 'border-emerald-300 dark:border-emerald-700' };
+const STAT_TONES: Partial<Record<Tone, string>> = { warning: 'border-warning/50', danger: 'border-danger/50', success: 'border-success/40' };
 
 /** A figure tile; clickable when `to` or `onClick` is given. */
 export function Stat({ label, value, hint, tone, to, onClick }: {
@@ -45,14 +57,14 @@ export function Stat({ label, value, hint, tone, to, onClick }: {
 }) {
     const body = (
         <>
-            <div className="text-xs text-fg-muted uppercase">{label}</div>
-            <div className="text-2xl font-bold mt-1">{value}</div>
-            {hint && <div className="text-xs text-fg-muted mt-1">{hint}</div>}
+            <p className="text-xs font-medium text-fg-muted">{label}</p>
+            <div className="mt-2 text-2xl font-semibold tracking-tight text-fg">{value}</div>
+            {hint && <div className="mt-1 text-xs text-fg-muted">{hint}</div>}
         </>
     );
-    const cls = `block text-left w-full bg-surface border rounded-xl p-4 ${(tone && STAT_TONES[tone]) || 'border-line'}`;
-    if (to) return <Link to={to} className={`${cls} hover:bg-surface-2/60 transition-colors`}>{body}</Link>;
-    if (onClick) return <button type="button" onClick={onClick} className={`${cls} hover:bg-surface-2/60 transition-colors`}>{body}</button>;
+    const cls = cn('block w-full rounded-panel border bg-surface p-4 text-left', (tone && STAT_TONES[tone]) || 'border-line');
+    if (to) return <Link to={to} className={cn(cls, 'transition-colors hover:border-line-strong')}>{body}</Link>;
+    if (onClick) return <button type="button" onClick={onClick} className={cn(cls, 'transition-colors hover:border-line-strong')}>{body}</button>;
     return <div className={cls}>{body}</div>;
 }
 
@@ -62,183 +74,202 @@ export type KVItem = [string, ReactNode] | null | false | undefined;
 export function KV({ items }: { items: KVItem[] }) {
     const rows = items.filter(Boolean) as [string, ReactNode][];
     return (
-        <dl className="divide-y divide-line border border-line rounded-lg text-sm">
+        <dl className="divide-y divide-line rounded-panel border border-line text-sm">
             {rows.map(([k, v], i) => (
-                <div key={i} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 px-3 py-2">
-                    <dt className="sm:w-56 shrink-0 text-fg-muted">{k}</dt>
-                    <dd className="text-fg wrap-break-word min-w-0">{v}</dd>
+                <div key={i} className="flex flex-col gap-0.5 px-4 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                    <dt className="shrink-0 text-xs text-fg-muted sm:w-56">{k}</dt>
+                    <dd className="min-w-0 break-words text-fg sm:text-right">{v}</dd>
                 </div>
             ))}
         </dl>
     );
 }
 
-/** A large panel over the page (detail views). */
+/** Detail view: a sheet from the right (full screen on phones). */
 export function Modal({ title, subtitle, onClose, footer, children }: {
     title: ReactNode; subtitle?: ReactNode; onClose: () => void; footer?: ReactNode; children: ReactNode;
 }) {
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [onClose]);
     return (
-        <div className="fixed inset-0 bg-black/70 z-40 flex justify-center items-start sm:items-center p-2 sm:p-6" onClick={onClose}>
-            <div className="bg-background border border-line rounded-xl w-full max-w-4xl max-h-full flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
-                    <div className="min-w-0">
-                        <h2 className="text-lg font-semibold text-fg truncate">{title}</h2>
-                        {subtitle && <div className="text-sm text-fg-muted truncate">{subtitle}</div>}
-                    </div>
-                    <button onClick={onClose} className="text-fg-muted hover:text-fg px-2 py-1" aria-label="Fermer"><HugeiconsIcon icon={Cancel01Icon} size={20} /></button>
-                </div>
-                <div className="overflow-y-auto px-5 py-4 space-y-5">{children}</div>
-                {footer && <div className="px-5 py-3 border-t border-line flex flex-wrap justify-end gap-2">{footer}</div>}
-            </div>
-        </div>
+        <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+            <SheetContent title={title} description={subtitle} footer={footer} width="xl">
+                <div className="space-y-5">{children}</div>
+            </SheetContent>
+        </Dialog>
     );
 }
 
-const BTN: Record<string, string> = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white',
-    success: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-    danger: 'bg-red-600 hover:bg-red-700 text-white',
-    warning: 'bg-amber-600 hover:bg-amber-700 text-white',
-    secondary: 'bg-surface-2 hover:bg-surface-3 text-fg border border-line-strong',
-};
+const BTN = {
+    primary: 'primary',
+    success: 'primary',
+    danger: 'danger',
+    warning: 'outline',
+    secondary: 'outline',
+} as const;
 
-export function Button({ variant = 'secondary', small, disabled, onClick, children, className = '' }: {
-    variant?: keyof typeof BTN; small?: boolean; disabled?: boolean; onClick?: () => void; children: ReactNode; className?: string;
+export function Button({ variant = 'secondary', small, disabled, loading, onClick, children, className = '' }: {
+    variant?: keyof typeof BTN; small?: boolean; disabled?: boolean; loading?: boolean; onClick?: () => void; children: ReactNode; className?: string;
 }) {
     return (
-        <button type="button" onClick={onClick} disabled={disabled}
-            className={`${small ? 'text-xs px-2 py-1' : 'text-sm px-3 py-2'} rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${BTN[variant]} ${className}`}>
+        <KitButton type="button" variant={BTN[variant]} size={small ? 'sm' : 'md'} disabled={disabled} loading={loading}
+            onClick={e => { e.stopPropagation(); onClick?.(); }}
+            className={cn(!small && 'h-11 sm:h-9', className)}>
             {children}
-        </button>
+        </KitButton>
     );
 }
 
-export const selectCls = 'border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg hover:bg-surface-2';
-export const inputCls = 'border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg';
+/** Kept for native controls still used here (date inputs). */
+export const inputCls = 'h-11 sm:h-9 rounded-control border border-line-strong bg-surface px-3 text-sm text-fg focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/20';
+export const selectCls = inputCls;
 
-/** Table frame used by every list on the page. */
+/** Table frame for the lists inside a detail view (result, live board, stuck refunds). */
 export function Table({ headers, children, empty, loading, error, onRetry }: {
     headers: ReactNode[]; children: ReactNode; empty?: ReactNode; loading?: boolean; error?: string | null; onRetry?: () => void;
 }) {
+    const n = headers.length;
     return (
-        <div className="overflow-x-auto bg-surface rounded-xl border border-line">
-            <table className="min-w-full text-sm">
-                <thead className="bg-background/50 text-fg-muted">
-                    <tr>{headers.map((h, i) => <th key={i} className="px-4 py-2 text-left font-medium whitespace-nowrap">{h}</th>)}</tr>
-                </thead>
-                <tbody>
+        <div className="overflow-hidden rounded-panel border border-line bg-surface">
+            <KitTable>
+                <THead><tr>{headers.map((h, i) => <TH key={i}>{h}</TH>)}</tr></THead>
+                <TBody>
                     {loading ? (
-                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-fg-muted">Chargement…</td></tr>
+                        <tr><td colSpan={n} className="p-4"><div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div></td></tr>
                     ) : error ? (
-                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-red-600 dark:text-red-300">
-                            {error} {onRetry && <button onClick={onRetry} className="underline ml-2">Réessayer</button>}
+                        <tr><td colSpan={n} className="px-4 py-6 text-center text-sm text-danger">
+                            {error} {onRetry && <KitButton variant="outline" size="sm" className="ml-2" onClick={onRetry}><HugeiconsIcon icon={RefreshIcon} size={14} aria-hidden="true" />Réessayer</KitButton>}
                         </td></tr>
                     ) : empty ? (
-                        <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-fg-muted">{empty}</td></tr>
+                        <tr><td colSpan={n} className="px-4 py-8 text-center text-sm text-fg-muted">{empty}</td></tr>
                     ) : children}
-                </tbody>
-            </table>
+                </TBody>
+            </KitTable>
         </div>
     );
 }
 
-export const tdCls = 'px-4 py-2 align-top';
-export const trCls = 'border-t border-line hover:bg-surface-2/40 cursor-pointer';
+export const tdCls = 'px-4 py-3 align-top text-fg';
+export const trCls = 'cursor-pointer transition-colors hover:bg-surface-2/60';
 
-/** Previous / next with the page count, in French. */
-export function Pager({ page, totalPages, total, onChange }: { page: number; totalPages: number; total?: number; onChange: (p: number) => void }) {
-    if (totalPages <= 1) return total !== undefined ? <p className="text-xs text-fg-muted">{total} résultat{total > 1 ? 's' : ''}</p> : null;
+/** Pages under a list ("1-25 sur 134", previous / next). */
+export function Pager({ page, totalPages, total, pageSize, onChange }: { page: number; totalPages: number; total?: number; pageSize?: number; onChange: (p: number) => void }) {
+    if (totalPages <= 1) return total ? <p className="px-4 py-3 text-xs text-fg-muted">{total.toLocaleString('fr-FR')} résultat{total > 1 ? 's' : ''}</p> : null;
+    const size = pageSize ?? Math.ceil((total ?? totalPages) / totalPages);
+    return <Pagination page={page} totalPages={totalPages} total={total ?? totalPages * size} pageSize={size} onPageChange={onChange} />;
+}
+
+/** Reason field + suggestions inside a confirmation. */
+function ReasonField({ label, value, onChange, suggestions, error }: { label: string; value: string; onChange: (v: string) => void; suggestions: string[]; error?: string }) {
     return (
-        <div className="flex items-center justify-end gap-3 text-sm">
-            {total !== undefined && <span className="text-fg-muted mr-auto">{total} résultats</span>}
-            <Button disabled={page <= 1} onClick={() => onChange(page - 1)}>Précédent</Button>
-            <span className="text-fg-muted">Page {page} / {totalPages}</span>
-            <Button disabled={page >= totalPages} onClick={() => onChange(page + 1)}>Suivant</Button>
+        <div className="space-y-2">
+            <Field label={label} error={error}>
+                <Textarea value={value} onChange={e => onChange(e.target.value)} rows={3} maxLength={1000} />
+            </Field>
+            {suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                    {suggestions.map(s => (
+                        <button key={s} type="button" onClick={() => onChange(s)} className="rounded-md border border-line px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg">{s}</button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
+
+const CONFIRM_VARIANT = { danger: 'danger', success: 'primary', primary: 'primary' } as const;
 
 /**
  * Confirmation before an action that takes a reason (suspend, cancel, refund,
  * reject, confirm fraud…). The reason is required (`minLength`) and sent to the
- * API; suggestions fill it in one tap. Errors are toasted, the modal stays open.
+ * API; suggestions fill it in one tap. Errors are toasted, the dialog stays open.
  */
 export function ReasonConfirm({ open, title, message, label, minLength = 3, suggestions = [], optional, confirmText, variant = 'danger', onCancel, onConfirm, children }: {
     open: boolean; title: string; message: ReactNode; label: string; minLength?: number; suggestions?: string[];
     /** The reason may stay empty. */
     optional?: boolean;
     confirmText: string; variant?: 'danger' | 'success' | 'primary'; onCancel: () => void;
-    /** Resolves when done; throw to keep the modal open (the error is shown as a toast). */
+    /** Resolves when done; throw to keep the dialog open (the error is shown as a toast). */
     onConfirm: (reason: string) => Promise<void>;
     children?: ReactNode;
 }) {
     const { notifyError } = useAnim();
     const [reason, setReason] = useState('');
     const [touched, setTouched] = useState(false);
-    useEffect(() => { if (open) { setReason(''); setTouched(false); } }, [open]);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => { if (open) { setReason(''); setTouched(false); setBusy(false); } }, [open]);
     const trimmed = reason.trim();
     const invalid = optional ? false : trimmed.length < minLength;
 
     const submit = async () => {
         setTouched(true);
         if (invalid) return;
+        setBusy(true);
         try {
             await onConfirm(trimmed);
             onCancel();
         } catch (e) {
             notifyError(errorMessage(e, 'Action impossible.'));
-        }
+        } finally { setBusy(false); }
     };
 
     return (
-        <ConfirmationModal isOpen={open} title={title} message={message} confirmText={confirmText} cancelText="Annuler"
-            variant={variant} onCancel={onCancel} onConfirm={() => (invalid ? setTouched(true) : submit())}>
-            <div className="mb-5 space-y-2">
-                {children}
-                <label className="block text-sm text-fg-muted">{label}</label>
-                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} maxLength={1000}
-                    className="w-full border border-line-strong rounded-lg px-3 py-2 text-sm bg-surface text-fg" />
-                {suggestions.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                        {suggestions.map(s => (
-                            <button key={s} type="button" onClick={() => setReason(s)} className="text-xs px-2 py-1 rounded-full bg-surface-2 text-fg hover:bg-surface-3">{s}</button>
-                        ))}
-                    </div>
-                )}
-                {touched && invalid && <p className="text-xs text-red-600 dark:text-red-400">Au moins {minLength} caractères.</p>}
-            </div>
-        </ConfirmationModal>
+        <Dialog open={open} onOpenChange={o => { if (!o && !busy) onCancel(); }}>
+            <DialogContent size="md" title={title}
+                footer={(
+                    <>
+                        <DialogClose asChild><KitButton variant="outline" size="lg" disabled={busy}>Annuler</KitButton></DialogClose>
+                        <KitButton variant={CONFIRM_VARIANT[variant]} size="lg" loading={busy} onClick={() => void submit()}>{confirmText}</KitButton>
+                    </>
+                )}>
+                <div className="space-y-4 text-sm text-fg-muted">
+                    <div>{message}</div>
+                    {children}
+                    <ReasonField label={label} value={reason} onChange={setReason} suggestions={suggestions}
+                        error={touched && invalid ? `Au moins ${minLength} caractères.` : undefined} />
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
-/** A plain yes/no confirmation; errors are toasted and the modal stays open. */
+/** A plain yes/no confirmation; errors are toasted and the dialog stays open. */
 export function SimpleConfirm({ open, title, message, confirmText, variant = 'primary', onCancel, onConfirm, children }: {
     open: boolean; title: string; message: ReactNode; confirmText: string; variant?: 'danger' | 'success' | 'primary';
     onCancel: () => void; onConfirm: () => Promise<void>; children?: ReactNode;
 }) {
     const { notifyError } = useAnim();
+    const [busy, setBusy] = useState(false);
+    const run = async () => {
+        setBusy(true);
+        try { await onConfirm(); onCancel(); } catch (e) { notifyError(errorMessage(e, 'Action impossible.')); } finally { setBusy(false); }
+    };
     return (
-        <ConfirmationModal isOpen={open} title={title} message={message} confirmText={confirmText} cancelText="Annuler" variant={variant}
-            onCancel={onCancel}
-            onConfirm={async () => {
-                try { await onConfirm(); onCancel(); } catch (e) { notifyError(errorMessage(e, 'Action impossible.')); }
-            }}>
-            {children && <div className="mb-5">{children}</div>}
-        </ConfirmationModal>
+        <Dialog open={open} onOpenChange={o => { if (!o && !busy) onCancel(); }}>
+            <DialogContent size="sm" title={title}
+                footer={(
+                    <>
+                        <DialogClose asChild><KitButton variant="outline" size="lg" disabled={busy}>Annuler</KitButton></DialogClose>
+                        <KitButton variant={CONFIRM_VARIANT[variant]} size="lg" loading={busy} onClick={() => void run()}>{confirmText}</KitButton>
+                    </>
+                )}>
+                <div className="space-y-3 text-sm text-fg-muted">
+                    <div>{message}</div>
+                    {children}
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
 export function Toggle({ label, help, checked, onChange }: { label: string; help?: string; checked: boolean; onChange: (v: boolean) => void }) {
+    const id = useId();
     return (
-        <label className="flex items-start justify-between gap-3 px-3 py-2.5 cursor-pointer">
-            <span className="min-w-0"><span className="block text-sm font-semibold text-fg">{label}</span>{help && <span className="block text-xs text-fg-muted">{help}</span>}</span>
-            <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="mt-1 h-4 w-4 accent-emerald-500" />
-        </label>
+        <div className="flex min-h-11 items-start justify-between gap-3 px-3 py-2.5">
+            <label htmlFor={id} className="min-w-0 cursor-pointer">
+                <span className="block text-sm font-medium text-fg">{label}</span>
+                {help && <span className="block text-xs text-fg-muted">{help}</span>}
+            </label>
+            <Switch id={id} checked={checked} onCheckedChange={v => onChange(v === true)} className="mt-0.5" />
+        </div>
     );
 }
 
@@ -263,13 +294,17 @@ export function ExportButtons({ kinds, scope, formats = EXPORT_FORMATS }: { kind
     return (
         <ul className="divide-y divide-line">
             {kinds.map(kind => (
-                <li key={kind} className="flex items-center justify-between gap-3 py-2">
-                    <span className="text-sm font-semibold text-fg">{EXPORT_KIND_LABELS[kind]}</span>
+                <li key={kind} className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="flex items-center gap-2 text-sm font-medium text-fg">
+                        <HugeiconsIcon icon={Download01Icon} size={16} aria-hidden="true" className="text-fg-subtle" />
+                        {EXPORT_KIND_LABELS[kind]}
+                    </span>
                     <span className="flex gap-1.5">
                         {formats.map(format => (
-                            <Button key={format} small disabled={busy !== null} onClick={() => run(kind, format)}>
-                                {busy === `${kind}.${format}` ? '…' : FORMAT_LABELS[format]}
-                            </Button>
+                            <KitButton key={format} variant="outline" size="sm" className="h-11 min-w-16 sm:h-8" disabled={busy !== null && busy !== `${kind}.${format}`}
+                                loading={busy === `${kind}.${format}`} onClick={() => void run(kind, format)}>
+                                {FORMAT_LABELS[format]}
+                            </KitButton>
                         ))}
                     </span>
                 </li>
@@ -300,8 +335,8 @@ export function UserRef({ id, fallback = 'Membre' }: { id?: string | null; fallb
     const contact = m ? [m.phoneNumber ? String(m.phoneNumber) : null, m.email].filter(Boolean).join(' · ') : '';
     return (
         <Link to={`/userpage/${id}`} onClick={e => e.stopPropagation()} className="inline-block min-w-0 hover:underline">
-            <span className="block font-medium text-blue-600 dark:text-blue-300 truncate">{m?.name || (m === undefined ? '…' : fallback)}</span>
-            <span className="block text-xs text-fg-muted truncate">{contact || shortId(id)}</span>
+            <span className="block truncate font-medium text-primary">{m?.name || (m === undefined ? '…' : fallback)}</span>
+            <span className="block truncate text-xs text-fg-muted">{contact || shortId(id)}</span>
         </Link>
     );
 }
