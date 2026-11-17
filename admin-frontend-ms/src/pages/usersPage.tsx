@@ -1,287 +1,234 @@
-import { useParams } from 'react-router-dom';
-import { motion } from "framer-motion";
-import Header from "../components/common/Header";
-import UserCard from "../components/userCard";
-import UserProductsTable from "../components/usersProductsTable";
-import { getUserDetails, AdminUserData, adminUpdateUserSubscription, adminUpdateUserPartner, PartnerPack, blockUser, unblockUser, deleteUser, restoreUser } from "../services/adminUserApi";  // Import the API function
-import { useEffect, useState } from 'react';
-import Loader from '../components/common/loader';
-import toast from 'react-hot-toast'; // Import toast for errors
-import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
+import { useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+  ArrowLeft01Icon, Delete02Icon, MoreHorizontalIcon, RestoreBinIcon, UserBlock01Icon, UserCheck01Icon, UserIcon,
+} from '@hugeicons/core-free-icons';
+import UserCard from '../components/userCard';
+import UserProductsTable from '../components/usersProductsTable';
+import {
+  getUserDetails, adminUpdateUserSubscription, adminUpdateUserPartner, PartnerPack, blockUser, unblockUser, deleteUser, restoreUser,
+  type AdminUserData, type SubscriptionType,
+} from '../services/adminUserApi';
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import { ErrorState, RelativeTime } from '../components/common/DataStates';
+import { formatDate, formatMoney } from '../components/common/format';
+import { Can } from '../components/Can';
+import {
+  Avatar, Button, EmptyState, Menu, MenuContent, MenuItem, MenuTrigger, Metric, PageHeader, Skeleton,
+} from '../components/ui';
+import { AccountStatusBadge, RoleBadge, SubscriptionBadges } from '../components/members/shared';
+import { countryLabel } from '../components/members/filters';
+import { getAvatarUrl } from '../api/apiClient';
 
-// Define SubscriptionType locally if not imported
-enum SubscriptionType {
-  CLASSIQUE = 'CLASSIQUE',
-  CIBLE = 'CIBLE',
-}
+type AccountAction = 'block' | 'unblock' | 'delete' | 'restore';
 
+const ACTION_TEXT: Record<AccountAction, { title: (n: string) => string; message: string; confirm: string; variant: 'danger' | 'success' | 'primary'; done: string }> = {
+  block: { title: n => `Bloquer ${n} ?`, message: 'Le membre ne pourra plus se connecter tant qu’il reste bloqué.', confirm: 'Bloquer', variant: 'danger', done: 'Membre bloqué.' },
+  unblock: { title: n => `Débloquer ${n} ?`, message: 'Le membre retrouvera l’accès à son compte.', confirm: 'Débloquer', variant: 'success', done: 'Membre débloqué.' },
+  delete: { title: n => `Supprimer ${n} ?`, message: 'Le compte est désactivé et masqué. La suppression est réversible : « Restaurer » le réactive.', confirm: 'Supprimer', variant: 'danger', done: 'Compte supprimé.' },
+  restore: { title: n => `Restaurer ${n} ?`, message: 'Son compte sera réactivé.', confirm: 'Restaurer', variant: 'primary', done: 'Compte restauré.' },
+};
+
+/** Fiche d’un membre: who they are, their balance and pack, and what can be changed. */
 function UsersPage() {
-  const { userId } = useParams<{ userId: string }>();  // Get the userId from the URL
-  const [userData, setUserData] = useState<AdminUserData | null>(null);  // State to hold the user data
-  const [loading, setLoading] = useState(true);  // State to manage loading
-  const [accountActionLoading, setAccountActionLoading] = useState(false);
-  const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+  const { userId } = useParams<{ userId: string }>();
+  const queryClient = useQueryClient();
+  const key = ['admin-user', userId] as const;
+  const userQuery = useQuery({
+    queryKey: key,
+    queryFn: () => getUserDetails(userId!),
+    enabled: !!userId,
+  });
+  const [action, setAction] = useState<AccountAction | null>(null);
+  const user = userQuery.data;
 
-  // Fetch the user data when the component mounts
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!userId) {
-        toast.error("Identifiant de l’utilisateur absent de l’URL.");
-        setLoading(false);
-        return;
-      }
-      try {
-        setLoading(true);
-        const fetchedData = await getUserDetails(userId);
-        console.log("User data received:", fetchedData);
-        setUserData(fetchedData);  // Store the fetched user data
-        setLoading(false);  // Set loading to false after data is fetched
-      } catch (err: any) {
-        console.error("Failed to fetch user details:", err);
-        toast.error(err.message || "Impossible de charger l’utilisateur");
-        setLoading(false);
-      }
-    };
+  const patch = (changes: Partial<AdminUserData>) => {
+    queryClient.setQueryData<AdminUserData>(key, prev => (prev ? { ...prev, ...changes } : prev));
+    void queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+  };
 
-    fetchData();
-  }, [userId]);
-
-  // Inside the component, before the return statement
-  console.log("Rendering UsersPage, loading:", loading, "userData:", userData);
-
-  // Handler for subscription changes from UserCard
-  const handleSubscriptionChange = async (targetUserId: string, newType: SubscriptionType | 'NONE') => {
-    console.log(`Handling subscription change for ${targetUserId} to ${newType}`);
-    const originalUserData = { ...userData }; // Keep backup in case of error
-    // Optimistically update local state? (Optional)
-    // setUserData(prev => prev ? ({ ...prev, role: newType === 'NONE' ? 'USER' : newType }) : null);
-
-    const toastId = toast.loading('Mise à jour de l’abonnement…');
+  const handleSubscriptionChange = async (targetUserId: string, newType: SubscriptionType.CLASSIQUE | SubscriptionType.CIBLE | 'NONE') => {
+    const id = toast.loading('Mise à jour de l’abonnement…');
     try {
       await adminUpdateUserSubscription(targetUserId, newType);
-      toast.success('Abonnement mis à jour', { id: toastId });
-      // Optionally re-fetch user data to confirm change
-      // fetchData(); 
-    } catch (error: any) {
-      console.error("Subscription update failed:", error);
-      toast.error(`Échec de la mise à jour de l’abonnement : ${error.message}`, { id: toastId });
-      // Revert optimistic update if done
-      setUserData(originalUserData as AdminUserData);
+      toast.success('Abonnement mis à jour.', { id });
+      void queryClient.invalidateQueries({ queryKey: key });
+    } catch (error) {
+      toast.error(`L’abonnement n’a pas été changé : ${(error as Error).message}`, { id });
+      throw error;
     }
   };
 
-  // Handler for partner pack changes from UserCard
   const handlePartnerPackChange = async (targetUserId: string, newPack: 'silver' | 'gold' | 'none') => {
-    console.log(`Handling partner pack change for ${targetUserId} to ${newPack}`);
-    const originalUserData = { ...userData }; // Keep backup in case of error
-
-    const toastId = toast.loading('Mise à jour du statut partenaire…');
+    const id = toast.loading('Mise à jour du statut partenaire…');
     try {
       await adminUpdateUserPartner(targetUserId, newPack);
-      toast.success('Statut partenaire mis à jour', { id: toastId });
-
-      // Update local state to reflect the change
-      if (userData) {
-        setUserData({
-          ...userData,
-          partnerPack: newPack === 'none' ? undefined :
-            (newPack === 'silver' ? PartnerPack.SILVER : PartnerPack.GOLD)
-        });
-      }
-    } catch (error: any) {
-      console.error("Partner update failed:", error);
-      toast.error(`Échec de la mise à jour du statut partenaire : ${error.message}`, { id: toastId });
-      // Revert local state
-      setUserData(originalUserData as AdminUserData);
+      toast.success('Statut partenaire mis à jour.', { id });
+      patch({ partnerPack: newPack === 'none' ? undefined : newPack === 'silver' ? PartnerPack.SILVER : PartnerPack.GOLD });
+    } catch (error) {
+      toast.error(`Le statut partenaire n’a pas été changé : ${(error as Error).message}`, { id });
+      throw error;
     }
   };
 
-  const handleAccountAction = (action: 'block' | 'unblock' | 'delete' | 'restore') => {
-    const messages = {
-      block: { title: 'Bloquer l’utilisateur', message: `Bloquer ${userData?.name} ? Il ne pourra plus se connecter.` },
-      unblock: { title: 'Débloquer l’utilisateur', message: `Débloquer ${userData?.name} ? Il retrouvera l’accès à son compte.` },
-      delete: { title: 'Supprimer l’utilisateur', message: `Supprimer ${userData?.name} ? Cette suppression est réversible.` },
-      restore: { title: 'Restaurer l’utilisateur', message: `Restaurer ${userData?.name} ? Son compte sera réactivé.` },
-    };
-    setConfirmModal({
-      ...messages[action],
-      onConfirm: async () => {
-        setConfirmModal(null);
-        setAccountActionLoading(true);
-        const toastId = toast.loading('Traitement…');
-        try {
-          if (action === 'block') await blockUser(userData!._id);
-          else if (action === 'unblock') await unblockUser(userData!._id);
-          else if (action === 'delete') await deleteUser(userData!._id);
-          else if (action === 'restore') await restoreUser(userData!._id);
-
-          setUserData(prev => {
-            if (!prev) return prev;
-            if (action === 'block') return { ...prev, blocked: true };
-            if (action === 'unblock') return { ...prev, blocked: false };
-            if (action === 'delete') return { ...prev, deleted: true };
-            if (action === 'restore') return { ...prev, deleted: false };
-            return prev;
-          });
-          toast.success('Terminé', { id: toastId });
-        } catch (err: any) {
-          toast.error(err.response?.data?.message || 'Échec de l’action', { id: toastId });
-        } finally {
-          setAccountActionLoading(false);
-        }
-      },
-    });
+  const runAction = async (a: AccountAction) => {
+    if (!user) return;
+    try {
+      if (a === 'block') await blockUser(user._id);
+      else if (a === 'unblock') await unblockUser(user._id);
+      else if (a === 'delete') await deleteUser(user._id);
+      else await restoreUser(user._id);
+      patch(a === 'block' ? { blocked: true } : a === 'unblock' ? { blocked: false } : a === 'delete' ? { deleted: true } : { deleted: false });
+      toast.success(ACTION_TEXT[a].done);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg || (err as Error).message || 'L’action n’a pas abouti.');
+    } finally {
+      setAction(null);
+    }
   };
 
-  if (loading) {
+  const back = (
+    <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2 h-11 sm:h-8">
+      <Link to="/users"><HugeiconsIcon icon={ArrowLeft01Icon} size={16} aria-hidden="true" /> Membres</Link>
+    </Button>
+  );
+
+  if (userQuery.isLoading) {
     return (
-      <div className="flex justify-center items-center h-96">
-        <Loader name={'Utilisateur'} />
+      <div className="space-y-6" aria-busy="true">
+        {back}
+        <div className="flex items-center gap-4"><Skeleton className="h-14 w-14 rounded-full" /><div className="space-y-2"><Skeleton className="h-7 w-56" /><Skeleton className="h-4 w-40" /></div></div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-24" />)}</div>
+        <Skeleton className="h-96" />
       </div>
     );
   }
 
-  // Handle case where user data couldn't be loaded but not loading anymore
-  if (!userData) {
-    console.log("Rendering 'Could not load user data' message");
+  if (!user) {
     return (
-      <div className="text-danger">
-        <Header title="Erreur" />
-        <p>Impossible de charger cet utilisateur. Vérifiez l’identifiant ou revenez en arrière.</p>
+      <div className="space-y-6">
+        {back}
+        {userQuery.isError ? (
+          <ErrorState
+            title="Ce membre n’a pas pu être chargé"
+            description={(userQuery.error as Error)?.message || 'Vérifiez l’identifiant ou revenez à la liste.'}
+            onRetry={() => void userQuery.refetch()}
+            retrying={userQuery.isFetching}
+          />
+        ) : (
+          <EmptyState icon={UserIcon} title="Membre introuvable" description="L’identifiant dans l’adresse ne correspond à aucun membre." />
+        )}
       </div>
-    )
+    );
   }
 
-  console.log("Rendering UserCard and UserProductsTable with userData:", userData);
+  const primary: AccountAction | null = user.deleted ? 'restore' : user.blocked ? 'unblock' : 'block';
 
   return (
-    <>
+    <div className="space-y-6">
       <div>
-        <Header title={`Détails de l’utilisateur : ${userData?.name || userId}`} />
-        <motion.div
-          className="bg-surface rounded-xl p-6 border border-line mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: "easeInOut" }}
-        >
-          <UserCard
-            data={{
-              _id: userData._id,
-              id: userData._id,
-              name: userData.name || 'Nom inconnu',
-              email: userData.email || 'N/A',
-              role: userData.role || 'USER',
-              phoneNumber: userData.phoneNumber?.toString() || 'N/A',
-              registeredAt: new Date(userData.createdAt || Date.now()).toLocaleDateString('fr-FR'),
-              avatar: userData.avatar ? getAvatarUrl(userData.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || 'Utilisateur')}&background=random`,
-              momoNumber: userData.momoNumber?.toString() || 'N/A',
-              momoOperator: userData.momoOperator || 'N/A',
-              city: userData.city || 'N/A',
-              region: userData.region || 'N/A',
-              isVerified: userData.isVerified,
-              activeSubscriptionTypes: userData.activeSubscriptionTypes,
-              createdAt: userData.createdAt,
-              country: userData.country,
-              partnerPack: userData.partnerPack,
-              product: []
-            }}
-            onSubscriptionChange={handleSubscriptionChange}
-            onPartnerPackChange={handlePartnerPackChange}
-          />
-        </motion.div>
-
-        {/* Account Status */}
-        <motion.div
-          className="bg-surface rounded-xl p-6 border border-line mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: "easeInOut" }}
-        >
-          <h3 className="text-lg font-semibold text-fg mb-4">Statut du compte</h3>
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="flex gap-2 items-center text-sm text-fg-muted">
-              <span>Statut :</span>
-              {userData.deleted ? (
-                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-sm text-xs font-semibold">Supprimé</span>
-              ) : userData.blocked ? (
-                <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 rounded-sm text-xs font-semibold">Bloqué</span>
-              ) : (
-                <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-sm text-xs font-semibold">Actif</span>
+        {back}
+        <PageHeader
+          className="mb-0"
+          title={(
+            <span className="flex min-w-0 items-center gap-3">
+              <Avatar src={user.avatar ? getAvatarUrl(user.avatar) : null} name={user.name || user.email} size="lg" />
+              <span className="min-w-0 break-words">{user.name || 'Sans nom'}</span>
+            </span>
+          )}
+          description={(
+            <span className="break-all">{user.email}{user.phoneNumber ? ` · ${user.phoneNumber}` : ''} · {countryLabel(user.country)}</span>
+          )}
+          actions={(
+            <Can module="members" write>
+              <Button
+                variant={primary === 'block' ? 'outline' : 'primary'}
+                size="lg"
+                className="flex-1 sm:flex-none"
+                onClick={() => setAction(primary)}
+              >
+                <HugeiconsIcon icon={primary === 'block' ? UserBlock01Icon : primary === 'unblock' ? UserCheck01Icon : RestoreBinIcon} size={18} aria-hidden="true" />
+                {ACTION_TEXT[primary].confirm}
+              </Button>
+              {!user.deleted && (
+                <Menu>
+                  <MenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-11 w-11" aria-label="Plus d’actions">
+                      <HugeiconsIcon icon={MoreHorizontalIcon} size={18} aria-hidden="true" />
+                    </Button>
+                  </MenuTrigger>
+                  <MenuContent>
+                    <MenuItem destructive onSelect={() => setAction('delete')}>
+                      <HugeiconsIcon icon={Delete02Icon} size={16} aria-hidden="true" /> Supprimer le compte
+                    </MenuItem>
+                  </MenuContent>
+                </Menu>
               )}
-            </div>
-            <div className="flex gap-2 ml-auto">
-              {userData.deleted ? (
-                <button
-                  onClick={() => handleAccountAction('restore')}
-                  disabled={accountActionLoading}
-                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
-                >
-                  Restaurer
-                </button>
-              ) : (
-                <>
-                  {userData.blocked ? (
-                    <button
-                      onClick={() => handleAccountAction('unblock')}
-                      disabled={accountActionLoading}
-                      className="px-4 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
-                    >
-                      Débloquer
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleAccountAction('block')}
-                      disabled={accountActionLoading}
-                      className="px-4 py-1.5 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
-                    >
-                      Bloquer
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleAccountAction('delete')}
-                    disabled={accountActionLoading}
-                    className="px-4 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-sm text-sm font-semibold transition-colors"
-                  >
-                    Supprimer
-                  </button>
-                </>
-              )}
-            </div>
+            </Can>
+          )}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <AccountStatusBadge user={user} />
+            <SubscriptionBadges types={user.activeSubscriptionTypes} />
+            {user.partnerPack && <span className="text-xs text-fg-muted">Partenaire {user.partnerPack === PartnerPack.GOLD ? 'Gold' : 'Silver'}</span>}
+            {user.role && user.role !== 'user' && <RoleBadge role={user.role} />}
           </div>
-        </motion.div>
-
-        <motion.div
-          className="rounded-xl mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: "easeInOut" }}
-        >
-          <UserProductsTable
-            data={{
-              id: userData._id,
-              name: userData.name,
-              email: userData.email,
-              phone: userData.phoneNumber?.toString() || 'N/A',
-              town: userData.city || userData.region || 'N/A',
-              product: []
-            }}
-          />
-        </motion.div>
+        </PageHeader>
       </div>
 
-      {confirmModal && (
-        <ConfirmationModal
-          isOpen={true}
-          title={confirmModal.title}
-          message={confirmModal.message}
-          confirmText="Confirmer"
-          cancelText="Annuler"
-          onConfirm={confirmModal.onConfirm}
-          onCancel={() => setConfirmModal(null)}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric label="Solde" value={formatMoney(user.balance ?? 0, 'XAF')} hint="retirable" />
+        <Metric label="Solde en dollars" value={formatMoney(user.usdBalance ?? 0, 'USD')} />
+        <Metric label="Membre depuis" value={<span className="text-lg">{formatDate(user.createdAt)}</span>} />
+        <Metric
+          label="Dernière connexion"
+          value={<span className="text-lg">{user.lastLogin ? <RelativeTime value={user.lastLogin} /> : '—'}</span>}
+          hint={user.isVerified ? 'Compte vérifié' : 'Compte non vérifié'}
         />
-      )}
-    </>
+      </div>
+
+      <UserCard
+        key={user._id}
+        user={user}
+        onSaved={patch}
+        onSubscriptionChange={handleSubscriptionChange}
+        onPartnerPackChange={handlePartnerPackChange}
+      />
+
+      {/* Kept from the old page: the product list is not filled by the API here (always empty). */}
+      <details className="group rounded-panel border border-line bg-surface">
+        <summary className="cursor-pointer list-none px-5 py-4 text-sm font-medium text-fg">
+          Produits et services du membre
+          <span className="ml-2 text-xs font-normal text-fg-muted">(voir la Boutique pour la gestion des produits)</span>
+        </summary>
+        <div className="border-t border-line px-2 pb-2 sm:px-4">
+          <UserProductsTable
+            data={{
+              id: user._id,
+              name: user.name,
+              email: user.email,
+              phone: user.phoneNumber?.toString() || '—',
+              town: user.city || user.region || '—',
+              product: [],
+            }}
+          />
+        </div>
+      </details>
+
+      <ConfirmationModal
+        isOpen={!!action}
+        variant={action ? ACTION_TEXT[action].variant : 'danger'}
+        title={action ? ACTION_TEXT[action].title(user.name) : ''}
+        message={action ? ACTION_TEXT[action].message : ''}
+        confirmText={action ? ACTION_TEXT[action].confirm : 'Confirmer'}
+        onConfirm={() => (action ? runAction(action) : undefined)}
+        onCancel={() => setAction(null)}
+      />
+    </div>
   );
 }
 

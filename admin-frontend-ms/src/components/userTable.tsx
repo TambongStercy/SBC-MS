@@ -1,201 +1,81 @@
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Search, Pencil } from "lucide-react";
-import { Link } from "react-router-dom";
-import { fetchUsers } from "../api"; // Import the API functions
-import Loader from "./common/loader";
-import Pagination from './Pagination'; // Import the Pagination component
-import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { fetchUsers } from '../api';
+import Pagination from './Pagination';
+import { ErrorState } from './common/DataStates';
+import { formatMoney } from './common/format';
+import { Badge, EmptyState, Panel, PanelHeader, ResponsiveList, type ListColumn } from './ui';
+import { MemberIdentity, SearchInput } from './members/shared';
 
+interface LegacyUser {
+  _id: string;
+  name?: string;
+  email?: string;
+  avatar?: string;
+  phoneNumber?: string | number;
+  balance?: number;
+  usdBalance?: number;
+  referralCode?: string;
+  isSubscribed?: boolean;
+}
+
+const PAGE_SIZE = 30;
+
+/**
+ * Legacy member list (GET /users, search by name). Not used by any screen
+ * today — the Membres page uses the admin list — kept on the kit for reuse.
+ */
 function UserTable() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [users, setUsers] = useState<any[]>([]);
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [users, setUsers] = useState<LegacyUser[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totalUsers, setTotalUsers] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const usersPerPage = 30;
+  const [attempt, setAttempt] = useState(0);
 
-  // Track the AbortController instance to cancel previous requests
-  const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
-
-  const fetchUserData = async (page: number, searchTerm: string) => {
-    // Abort any ongoing request
-    if (abortController) {
-      abortController.abort(); // Cancel the previous request
-    }
-
-    // Create a new AbortController for the current request
-    const controller = new AbortController();
-    setAbortController(controller);
-
-    setLoading(true);
-    try {
-      const usersResponse = await fetchUsers(searchTerm, page, usersPerPage, controller.signal);
-      console.log("Users Data:", usersResponse); // Debugging
-      setUsers(usersResponse.users);
-      setTotalUsers(usersResponse.total); // Assuming the API returns total users count
-    } catch (err: any) {
-      if (err.code === "ERR_CANCELED") {
-        console.log("Fetch aborted");
-      } else {
-        console.error("Error fetching data:", err);
-        setError("Impossible de charger les données");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Debounce Effect: Fetch users when searchTerm changes (after a delay)
   useEffect(() => {
-    if (debounceTimeout) clearTimeout(debounceTimeout);
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetchUsers(search, page, PAGE_SIZE, controller.signal)
+      .then(res => { setUsers(res.users ?? []); setTotal(res.total ?? 0); setLoading(false); })
+      .catch(err => {
+        if (err?.code === 'ERR_CANCELED') return;
+        setError('Impossible de charger les données');
+        setLoading(false);
+      });
+    return () => controller.abort();
+  }, [search, page, attempt]);
 
-    const timeout = setTimeout(() => {
-      fetchUserData(currentPage, searchTerm);
-    }, 500); // 500ms debounce delay
-
-    setDebounceTimeout(timeout);
-
-    return () => clearTimeout(timeout); // Cleanup previous timeout on re-render
-  }, [searchTerm, currentPage]);
-
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
-    setCurrentPage(1); // Reset to first page on new search
-  };
+  const columns: ListColumn<LegacyUser>[] = [
+    { key: 'who', header: 'Membre', cell: u => <MemberIdentity name={u.name} email={u.email} avatar={u.avatar} /> },
+    { key: 'phone', header: 'Téléphone', cell: u => <span className="tabular-nums">{u.phoneNumber || '—'}</span> },
+    { key: 'code', header: 'Code', cell: u => <span className="font-mono text-xs">{u.referralCode || '—'}</span> },
+    { key: 'balance', header: 'Solde', numeric: true, cell: u => formatMoney(u.balance ?? 0, 'XAF') },
+    { key: 'usd', header: 'Solde $', numeric: true, cell: u => formatMoney(u.usdBalance ?? 0, 'USD') },
+    { key: 'sub', header: 'Statut', cell: u => (u.isSubscribed ? <Badge tone="success">Abonné</Badge> : <Badge tone="outline">Non abonné</Badge>) },
+  ];
 
   return (
-    <motion.div
-      className="bg-surface rounded-xl p-6 border border-line mb-8"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 1, ease: "easeInOut" }}
-    >
-      <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-fg mb-4 sm:mb-0">
-          Liste d'utilisateurs
-        </h2>
-        <div className="relative w-full sm:w-auto">
-          <input
-            type="text"
-            placeholder="Rechercher..."
-            className="bg-surface border border-line-strong text-fg placeholder-fg-subtle rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-            onChange={handleSearch}
-            value={searchTerm}
-          />
-          <Search className="absolute left-3 top-2.5 text-fg-muted" size={18} />
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-line">
-          <thead>
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Avatar
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Noms
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                E-mail
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Tel
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Solde FCFA
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Solde USD
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Code
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Statut
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
-                Action
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {loading ? (
-              <div className="flex justify-center items-center h-500 m-500 overflow-auto relative z-10">
-                <Loader name={searchTerm || "Utilisateurs"} />
-              </div>
-            ) : null}
-
-            {error ? (
-              <div className="flex justify-center items-center h-500 m-10 overflow-auto relative z-10">
-                {error}
-              </div>
-            ) : null}
-
-            {!loading && !error
-              ? users.map((user) => (
-                <motion.tr
-                  key={user._id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-fg flex gap-2 items-center">
-                    <img
-                      src={getAvatarUrl(user.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'Utilisateur')}&background=random`}
-                      alt={`Avatar de ${user.name}`}
-                      className="size-8 rounded-full object-cover"
-                      loading="lazy"
-                    />
-                    {user.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                    {user.email}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                    {user.phoneNumber}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                    {user.balance ? user.balance.toLocaleString('fr-FR') : '0'} FCFA
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                    {user.usdBalance ? user.usdBalance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0,00'} USD
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                    {user.referralCode}
-                  </td>
-                  <td
-                    className="px-6 py-4 whitespace-nowrap text-sm"
-                    style={{
-                      color: user.isSubscribed ? "#10B981" : "#ec4899",
-                    }}
-                  >
-                    {user.isSubscribed ? "Abonné" : "NON Abonné"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <Link key={user._id} to={`/userpage/${user._id}`}>
-                      <button className="bg-surface-2/50 backdrop-blur-10 text-fg rounded-lg px-4 py-2">
-                        <Pencil size={18} />
-                      </button>
-                    </Link>
-                  </td>
-                </motion.tr>
-              ))
-              : null}
-          </tbody>
-        </table>
-
-        <Pagination
-          postsPerPage={usersPerPage}
-          totalPosts={totalUsers}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-        />
-      </div>
-    </motion.div>
+    <Panel>
+      <PanelHeader
+        title="Liste des membres"
+        actions={<SearchInput value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Rechercher un nom" />}
+      />
+      <ResponsiveList
+        rows={users}
+        columns={columns}
+        rowKey={u => u._id}
+        onRowClick={u => navigate(`/userpage/${u._id}`)}
+        loading={loading}
+        empty={error
+          ? <ErrorState description={error} onRetry={() => setAttempt(a => a + 1)} />
+          : <EmptyState title="Aucun membre" />}
+      />
+      <Pagination postsPerPage={PAGE_SIZE} totalPosts={total} currentPage={page} setCurrentPage={setPage} />
+    </Panel>
   );
 }
 

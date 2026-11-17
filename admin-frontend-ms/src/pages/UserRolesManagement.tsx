@@ -1,329 +1,227 @@
 /**
- * User Roles Management Page
- * Unified page for managing all user roles (USER, TESTER, WITHDRAWAL_ADMIN, ADMIN)
+ * Rôles: the role of every account (member, tester, older admin roles, super
+ * admin). Changing a role is super-admin only (module `staff`); per-module
+ * rights of staff accounts are set on the Équipe page.
  */
 
-import { useState, useEffect } from 'react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Alert02Icon, Cancel01Icon, InformationCircleIcon, UserSettings01Icon } from '@hugeicons/core-free-icons';
+import { updateUserRole, type AdminUserData, type AdminUserListFilters } from '../services/adminUserApi';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { listMembers } from '../components/members/api';
+import { ROLE_LABEL } from '../lib/roles';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import ToastContainer from '../components/common/ToastContainer';
-import { useToast } from '../hooks/useToast';
-import { listUsers, updateUserRole, AdminUserData, AdminUserListFilters } from '../services/adminUserApi';
-import { Search, Filter } from 'lucide-react';
-import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
-import { Shield01Icon, CreditCardIcon, TestTube01Icon, UserIcon } from '@hugeicons/core-free-icons';
+import { ErrorState } from '../components/common/DataStates';
+import { formatNumber } from '../components/common/format';
+import { Can } from '../components/Can';
+import {
+  Button, EmptyState, PageHeader, Pagination, Panel, PanelHeader, ResponsiveList, Select, type ListColumn,
+} from '../components/ui';
+import { AccountStatusBadge, MemberIdentity, RoleBadge, SearchInput } from '../components/members/shared';
+import { PAGE_FILTER_KEYS, countryLabel, useUrlFilters } from '../components/members/filters';
+
+const PAGE_SIZE = 20;
+const FILTER_KEYS = ['q', 'role', 'status'] as const;
+const ALL = 'all';
+/** Roles this page can give (staff = Équipe page). */
+const ROLE_CHOICES = ['user', 'tester', 'withdrawal_admin', 'admin'];
+const ROLE_FILTERS = ['user', 'tester', 'staff', 'withdrawal_admin', 'moderator', 'admin'];
+const ELEVATED = new Set(['admin', 'withdrawal_admin']);
+
+const roleLabel = (r: string) => ROLE_LABEL[r] ?? r;
 
 const UserRolesManagement = () => {
-    const { toasts, removeToast, showSuccess, showError, showWarning } = useToast();
-    const [users, setUsers] = useState<AdminUserData[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalCount, setTotalCount] = useState(0);
+  const queryClient = useQueryClient();
+  const { values, page, active: ownActive, set, setPage, clear } = useUrlFilters(FILTER_KEYS);
+  // Country only: a period (sign-up date) says nothing about who holds which role.
+  const pageFilters = usePageFilters();
+  const range = pageFilters.country ? { country: pageFilters.country } : {};
+  const active = ownActive || !!pageFilters.country;
+  const clearAll = () => clear(PAGE_FILTER_KEYS);
+  const [pending, setPending] = useState<{ user: AdminUserData; role: string } | null>(null);
 
-    // Filters
-    const [searchQuery, setSearchQuery] = useState('');
-    const [roleFilter, setRoleFilter] = useState<string>('');
-    const [statusFilter, setStatusFilter] = useState<string>('');
+  const filters: AdminUserListFilters = {
+    search: values.q || undefined,
+    role: values.role || undefined,
+    status: (values.status || undefined) as AdminUserListFilters['status'],
+  };
+  const query = useQuery({
+    queryKey: ['admin-users', 'roles', filters, range, page],
+    queryFn: () => listMembers(filters, range, page, PAGE_SIZE),
+    placeholderData: keepPreviousData,
+  });
 
-    // Confirmation modal
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
-    const [confirmAction, setConfirmAction] = useState<{
-        title: string;
-        message: string;
-        onConfirm: () => void;
-    } | null>(null);
+  const change = useMutation({
+    mutationFn: ({ user, role }: { user: AdminUserData; role: string }) => updateUserRole(user._id, role),
+    onSuccess: (_, { user, role }) => {
+      toast.success(`${user.name} a maintenant le rôle ${roleLabel(role)}.`);
+      void queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+    onError: (e: Error) => toast.error(e.message || 'Le rôle n’a pas été changé.'),
+  });
 
-    useEffect(() => {
-        loadUsers();
-    }, [currentPage, roleFilter, statusFilter]);
+  const users = query.data?.data ?? [];
+  const pagination = query.data?.pagination;
+  // A page number past the end (filters narrowed, old link): go to the last page.
+  const lastPage = pagination?.totalPages ?? 0;
+  useEffect(() => { if (lastPage > 0 && page > lastPage) setPage(lastPage); }, [lastPage, page, setPage]);
 
-    const loadUsers = async () => {
-        try {
-            setLoading(true);
-            const filters: AdminUserListFilters = {};
-
-            if (searchQuery) filters.search = searchQuery;
-            if (roleFilter) filters.role = roleFilter;
-            if (statusFilter) filters.status = statusFilter as any;
-
-            const response = await listUsers(filters, { page: currentPage, limit: 20 });
-            setUsers(response.data);
-            setTotalPages(response.pagination.totalPages);
-            setTotalCount(response.pagination.totalCount);
-        } catch (error: any) {
-            console.error('Error loading users:', error);
-            showError(error.message || 'Impossible de charger les utilisateurs');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSearch = () => {
-        setCurrentPage(1);
-        loadUsers();
-    };
-
-    const handleRoleChange = (user: AdminUserData, newRole: string) => {
-        const isElevatingToAdmin = newRole === 'admin' || newRole === 'withdrawal_admin';
-
-        setConfirmAction({
-            title: isElevatingToAdmin ? 'Confirmer le changement de rôle' : 'Changer le rôle',
-            message: isElevatingToAdmin
-                ? `Vous allez donner le rôle ${getRoleDisplayName(newRole)} à ${user.name}, avec un accès d’administration. Confirmer ?`
-                : `Passer ${user.name} au rôle ${getRoleDisplayName(newRole)} ?`,
-            onConfirm: async () => {
-                try {
-                    await updateUserRole(user._id, newRole);
-                    showSuccess(`${user.name} a maintenant le rôle ${getRoleDisplayName(newRole)}`);
-                    loadUsers();
-                } catch (error: any) {
-                    showError(error.message || 'Échec de la mise à jour du rôle');
-                }
-                setShowConfirmModal(false);
-            }
-        });
-        setShowConfirmModal(true);
-    };
-
-    const getRoleDisplayName = (role: string): string => {
-        const roleNames: Record<string, string> = {
-            'user': 'Utilisateur',
-            'admin': 'Administrateur',
-            'withdrawal_admin': 'Admin Retraits',
-            'tester': 'Testeur'
-        };
-        return roleNames[role] || role;
-    };
-
-    const getRoleBadgeColor = (role: string): string => {
-        switch (role) {
-            case 'admin':
-                return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border-red-500';
-            case 'withdrawal_admin':
-                return 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border-yellow-500';
-            case 'tester':
-                return 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 border-purple-500';
-            default:
-                return 'bg-surface-2 text-fg-muted border-line-strong';
-        }
-    };
-
-    const getRoleIcon = (role: string): IconSvgElement => {
-        switch (role) {
-            case 'admin':
-                return Shield01Icon;
-            case 'withdrawal_admin':
-                return CreditCardIcon;
-            case 'tester':
-                return TestTube01Icon;
-            default:
-                return UserIcon;
-        }
-    };
-
-    if (loading && users.length === 0) {
-        return (
-            <div>
-                <Header title="Rôles des utilisateurs" />
-                <div className="flex items-center justify-center h-96">
-                    <Loader name="Utilisateurs" />
-                </div>
-            </div>
-        );
+  const roleControl = (u: AdminUserData, phone = false) => {
+    const current = u.role || 'user';
+    if (current === 'staff' || current === 'moderator') {
+      return <Link to="/equipe" className="text-sm text-primary underline-offset-4 hover:underline">Gérer dans Équipe</Link>;
     }
-
     return (
-        <div className="text-fg">
-            <Header title="Rôles des utilisateurs" name="Gérez les rôles et les droits des utilisateurs de la plateforme" />
-
-            <main>
-
-                {/* Filters */}
-                <div className="bg-surface border border-line rounded-lg p-4 mb-6">
-                    <div className="flex flex-col lg:flex-row gap-4">
-                        {/* Search */}
-                        <div className="flex-1">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-fg-muted" size={20} />
-                                <input
-                                    type="text"
-                                    placeholder="Rechercher par nom, e-mail ou téléphone"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                                    className="w-full pl-10 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg placeholder-fg-subtle focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Role Filter */}
-                        <div className="w-full lg:w-48">
-                            <select
-                                value={roleFilter}
-                                onChange={(e) => {
-                                    setRoleFilter(e.target.value);
-                                    setCurrentPage(1);
-                                }}
-                                className="w-full px-4 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                            >
-                                <option value="">Tous les rôles</option>
-                                <option value="user">Utilisateur</option>
-                                <option value="tester">Testeur</option>
-                                <option value="withdrawal_admin">Admin Retraits</option>
-                                <option value="admin">Administrateur</option>
-                            </select>
-                        </div>
-
-                        {/* Status Filter */}
-                        <div className="w-full lg:w-48">
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => {
-                                    setStatusFilter(e.target.value);
-                                    setCurrentPage(1);
-                                }}
-                                className="w-full px-4 py-2 bg-surface border border-line-strong rounded-lg text-fg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                            >
-                                <option value="">Tous les statuts</option>
-                                <option value="active">Actif</option>
-                                <option value="blocked">Bloqué</option>
-                            </select>
-                        </div>
-
-                        {/* Search Button */}
-                        <button
-                            onClick={handleSearch}
-                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center gap-2"
-                        >
-                            <Filter size={18} />
-                            Rechercher
-                        </button>
-                    </div>
-                </div>
-
-                {/* Results Count */}
-                <div className="mb-4 text-sm text-fg-muted">
-                    {users.length} sur {totalCount} utilisateurs
-                </div>
-
-                {/* Users Table */}
-                <div className="bg-surface border border-line rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-line">
-                            <thead className="bg-surface-2">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Utilisateur</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Contact</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Rôle actuel</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Statut</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">Changer le rôle</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-surface divide-y divide-line">
-                                {users.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={5} className="px-6 py-8 text-center text-fg-muted">
-                                            Aucun utilisateur trouvé. Modifiez les filtres.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    users.map((user) => (
-                                        <tr key={user._id} className="hover:bg-surface-2">
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="flex items-center">
-                                                    <div className="shrink-0 h-10 w-10">
-                                                        <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
-                                                            {user.name.charAt(0).toUpperCase()}
-                                                        </div>
-                                                    </div>
-                                                    <div className="ml-4">
-                                                        <div className="text-sm font-medium text-fg">{user.name}</div>
-                                                        <div className="text-sm text-fg-muted">{user.email}</div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">
-                                                <div>{user.phoneNumber || '—'}</div>
-                                                <div className="text-xs text-fg-muted">{user.country || '—'}</div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full border ${getRoleBadgeColor(user.role || 'user')}`}>
-                                                    <HugeiconsIcon icon={getRoleIcon(user.role || 'user')} size={14} />
-                                                    {getRoleDisplayName(user.role || 'user')}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`px-2 py-1 text-xs rounded-full ${
-                                                    user.blocked
-                                                        ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
-                                                        : 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                                                }`}>
-                                                    {user.blocked ? 'Bloqué' : 'Actif'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <select
-                                                    value={user.role || 'user'}
-                                                    onChange={(e) => handleRoleChange(user, e.target.value)}
-                                                    className="px-3 py-1 bg-surface border border-line-strong rounded-sm text-sm text-fg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                                                >
-                                                    <option value="user">Utilisateur</option>
-                                                    <option value="tester">Testeur</option>
-                                                    <option value="withdrawal_admin">Admin Retraits</option>
-                                                    <option value="admin">Administrateur</option>
-                                                </select>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                    <div className="flex justify-center items-center gap-4 mt-6">
-                        <button
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                            className="px-4 py-2 bg-surface-2 text-fg rounded-sm disabled:opacity-50 hover:bg-surface-3"
-                        >
-                            Précédent
-                        </button>
-                        <span className="text-fg-muted">
-                            Page {currentPage} sur {totalPages}
-                        </span>
-                        <button
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                            className="px-4 py-2 bg-surface-2 text-fg rounded-sm disabled:opacity-50 hover:bg-surface-3"
-                        >
-                            Suivant
-                        </button>
-                    </div>
-                )}
-            </main>
-
-            {/* Confirmation Modal */}
-            {confirmAction && (
-                <ConfirmationModal
-                    isOpen={showConfirmModal}
-                    title={confirmAction.title}
-                    message={confirmAction.message}
-                    confirmText="Confirmer"
-                    cancelText="Annuler"
-                    onConfirm={confirmAction.onConfirm}
-                    onCancel={() => setShowConfirmModal(false)}
-                />
-            )}
-
-            {/* Toast Container */}
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <Can module="staff" write fallback={<span className="text-xs text-fg-subtle">Lecture seule</span>}>
+        <div onClick={e => e.stopPropagation()}>
+          <Select
+            value={current}
+            onValueChange={v => { if (v !== current) setPending({ user: u, role: v }); }}
+            options={(ROLE_CHOICES.includes(current) ? ROLE_CHOICES : [current, ...ROLE_CHOICES]).map(r => ({ value: r, label: roleLabel(r) }))}
+            className={phone ? 'h-11' : 'h-9 w-48'}
+          />
         </div>
+      </Can>
     );
+  };
+
+  const columns: ListColumn<AdminUserData>[] = [
+    { key: 'who', header: 'Compte', cell: u => <MemberIdentity name={u.name} email={u.email} avatar={u.avatar} /> },
+    {
+      key: 'contact', header: 'Téléphone', cell: u => (
+        <div><div className="tabular-nums">{u.phoneNumber || '—'}</div><div className="text-xs text-fg-muted">{countryLabel(u.country)}</div></div>
+      ),
+    },
+    { key: 'role', header: 'Rôle actuel', cell: u => <RoleBadge role={u.role} /> },
+    { key: 'status', header: 'Statut', cell: u => <AccountStatusBadge user={u} /> },
+    { key: 'change', header: 'Changer le rôle', cell: u => roleControl(u), hideOnCard: true },
+  ];
+
+  const card = (u: AdminUserData) => (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <MemberIdentity name={u.name} email={u.email} avatar={u.avatar} />
+        <AccountStatusBadge user={u} />
+      </div>
+      <div className="flex items-center gap-2"><RoleBadge role={u.role} /><span className="text-xs text-fg-muted">{u.phoneNumber || ''}</span></div>
+      <div className="space-y-1.5">
+        <p className="text-xs text-fg-muted">Changer le rôle</p>
+        {roleControl(u, true)}
+      </div>
+    </div>
+  );
+
+  const elevating = !!pending && ELEVATED.has(pending.role);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Rôles"
+        description="Le rôle de chaque compte : membre, testeur, super admin. Seul le super admin peut le changer."
+        actions={(
+          <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
+            <Link to="/equipe">Droits de l’équipe</Link>
+          </Button>
+        )}
+      />
+
+      <PageFilters filters={pageFilters} hidePeriod onReset={clearAll}>
+        <SearchInput value={values.q} onChange={v => set('q', v)} placeholder="Nom, e-mail ou téléphone" className="sm:flex-1 sm:max-w-md" />
+        <Select
+          value={values.role || ALL}
+          onValueChange={v => set('role', v === ALL ? '' : v)}
+          options={[{ value: ALL, label: 'Tous les rôles' }, ...ROLE_FILTERS.map(r => ({ value: r, label: roleLabel(r) }))]}
+          className="h-11 sm:h-9 sm:w-52"
+        />
+        <Select
+          value={values.status || ALL}
+          onValueChange={v => set('status', v === ALL ? '' : v)}
+          options={[{ value: ALL, label: 'Tous les statuts' }, { value: 'active', label: 'Actifs' }, { value: 'blocked', label: 'Bloqués' }]}
+          className="h-11 sm:h-9 sm:w-44"
+        />
+        {ownActive && !pageFilters.isFiltered && (
+          <Button variant="ghost" size="sm" onClick={() => clear()} className="self-start sm:self-auto">
+            <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+            Effacer les filtres
+          </Button>
+        )}
+      </PageFilters>
+
+      <Panel>
+        <PanelHeader
+          title="Comptes"
+          description={pagination ? `${formatNumber(pagination.totalCount)} compte${pagination.totalCount > 1 ? 's' : ''}` : undefined}
+        />
+        <div className={query.isFetching && !query.isLoading ? 'opacity-60 transition-opacity' : undefined}>
+          <ResponsiveList
+            rows={users}
+            columns={columns}
+            rowKey={u => u._id}
+            card={card}
+            loading={query.isLoading}
+            empty={query.isError ? (
+              <ErrorState description={(query.error as Error)?.message} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+            ) : (
+              <EmptyState
+                icon={UserSettings01Icon}
+                title="Aucun compte ne correspond"
+                description="Essayez un autre nom ou un autre rôle."
+                action={active ? <Button size="lg" onClick={clearAll}>Effacer les filtres</Button> : undefined}
+              />
+            )}
+          />
+        </div>
+        {pagination && (
+          <Pagination
+            page={pagination.currentPage || page}
+            totalPages={pagination.totalPages}
+            total={pagination.totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        )}
+      </Panel>
+
+      <Panel className="border-info/30 bg-info-soft/40">
+        <div className="flex items-start gap-3 px-4 py-3 sm:px-5">
+          <HugeiconsIcon icon={InformationCircleIcon} size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-info" />
+          <p className="text-sm text-fg-muted">
+            Pour donner à quelqu’un un accès limité (lecture ou modification, espace par espace), utilisez plutôt
+            {' '}<Link to="/equipe" className="font-medium text-primary underline-offset-4 hover:underline">Équipe</Link>.
+            {' '}Le rôle Super admin donne tous les droits.
+          </p>
+        </div>
+      </Panel>
+
+      <ConfirmationModal
+        isOpen={!!pending}
+        variant={elevating ? 'danger' : 'primary'}
+        title="Changer le rôle ?"
+        message={pending && (
+          <div className="space-y-2">
+            <p>{pending.user.name} passera de <b className="text-fg">{roleLabel(pending.user.role || 'user')}</b> à <b className="text-fg">{roleLabel(pending.role)}</b>.</p>
+            {elevating && (
+              <p className="flex items-start gap-2 text-danger">
+                <HugeiconsIcon icon={Alert02Icon} size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+                Ce rôle donne un accès à l’administration.
+              </p>
+            )}
+          </div>
+        )}
+        confirmText="Changer le rôle"
+        onConfirm={async () => {
+          if (pending) { try { await change.mutateAsync(pending); } catch { /* toast shown */ } }
+          setPending(null);
+        }}
+        onCancel={() => setPending(null)}
+      />
+    </div>
+  );
 };
 
 export default UserRolesManagement;

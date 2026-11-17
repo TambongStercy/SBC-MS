@@ -17,15 +17,15 @@ export interface RecentWithdrawal {
     currency: string;
     status: string;
     createdAt: string;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
 }
 
 /**
  * Fetch relance statistics
  */
-export async function getRelanceStats(): Promise<RelanceStats> {
+export async function getRelanceStats(filters: { country?: string; from?: string; to?: string } = {}): Promise<RelanceStats> {
     try {
-        const response = await apiClient.get('/relance/campaigns/default/stats');
+        const response = await apiClient.get('/relance/campaigns/default/stats', { params: filters });
 
         // Extract stats from the response
         const data = response.data?.data;
@@ -37,7 +37,7 @@ export async function getRelanceStats(): Promise<RelanceStats> {
             averageDeliveryRate: data?.deliveryRate || 0,
             usersInRelance: data?.totalUsersInRelance || 0
         };
-    } catch (error: any) {
+    } catch (error) {
         console.error('Error fetching relance stats:', error);
         return {
             activeCampaigns: 0,
@@ -52,17 +52,18 @@ export async function getRelanceStats(): Promise<RelanceStats> {
 /**
  * Fetch recent withdrawals
  */
-export async function getRecentWithdrawals(limit: number = 5): Promise<RecentWithdrawal[]> {
+export async function getRecentWithdrawals(limit: number = 5, filters: { country?: string; from?: string; to?: string } = {}): Promise<RecentWithdrawal[]> {
     try {
         const response = await apiClient.get('/payments/admin/withdrawals/pending', {
             params: {
+                ...filters,
                 page: 1,
                 limit
             }
         });
 
         return response.data?.data?.withdrawals || [];
-    } catch (error: any) {
+    } catch (error) {
         console.error('Error fetching recent withdrawals:', error);
         return [];
     }
@@ -75,7 +76,7 @@ export async function getUSDBalance(): Promise<number> {
     try {
         const response = await apiClient.get('/users/admin/dashboard');
         return response.data?.data?.adminUSDBalance || 0;
-    } catch (error: any) {
+    } catch (error) {
         console.error('Error fetching USD balance:', error);
         return 0;
     }

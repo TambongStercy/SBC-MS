@@ -34,8 +34,8 @@ export const logoutAdmin = async () => {
 };
 
 // Fetch Admin Dashboard Data
-export const fetchDashboard = async () => {
-    const response = await apiClient.get('/users/admin/dashboard');
+export const fetchDashboard = async (filters: { country?: string; from?: string; to?: string } = {}) => {
+    const response = await apiClient.get('/users/admin/dashboard', { params: filters });
     return response.data;
 };
 
@@ -60,10 +60,11 @@ export const fetchBalanceByCountry = async () => {
 };
 
 // Fetch Recent Transactions (Admin)
-export const fetchRecentTransactions = async (limit: number = 5) => {
+export const fetchRecentTransactions = async (limit: number = 5, filters: { country?: string; from?: string; to?: string } = {}) => {
     // Use the existing admin transaction list endpoint and sort by creation date
     const response = await apiClient.get('/payments/admin/transactions', {
         params: {
+            ...filters,
             limit,
             sortBy: 'createdAt',
             sortOrder: 'desc'
