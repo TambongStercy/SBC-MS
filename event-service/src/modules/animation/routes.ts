@@ -29,6 +29,8 @@ import * as stats from './services/stats.service';
 import * as fraud from './services/fraud.service';
 import { BOARD_CHANNEL, computeEntries, getBoard } from './services/board.service';
 import { ExportFormat, ExportKind, streamExport } from './services/export.service';
+import { AdminFilters, dateMatch, parseAdminFilters } from '../../utils/admin-filters';
+import { andIn, eventScope } from '../../utils/event-country';
 
 const log = logger.getLogger('AnimationRoutes');
 
@@ -471,12 +473,31 @@ manageRouter.get('/exports/:kind.:format', R(Perm.EXPORT), async (req, res, next
 export const adminRouter = Router();
 const adminActor = (req: Request) => ({ actorUserId: uid(req), role: TeamRole.SBC_ADMIN, ip: clientIp(req) });
 
-adminRouter.get('/stats', h(async (req) => stats.globalStats({
-    from: req.query.from ? new Date(String(req.query.from)) : undefined, to: req.query.to ? new Date(String(req.query.to)) : undefined,
-})));
+/**
+ * Admin filters (?country, ?from, ?to; 400 on bad input through the error
+ * handler). Country goes through the event (`events.country`): the returned
+ * filter already holds `$and: [{ eventId: { $in } }]` and the date bound on
+ * `dateField`. `empty` = the country has no event: answer an empty page.
+ */
+const adminScope = async (req: Request, dateField: string) => {
+    const f: AdminFilters = parseAdminFilters(req.query as Record<string, unknown>);
+    const filter: Record<string, any> = dateMatch(dateField, f);
+    const ids = await eventScope(f.country);
+    andIn(filter, 'eventId', ids);
+    return { f, filter, empty: !!ids && ids.length === 0 };
+};
+const emptyPage = (req: Request) => {
+    const { page: p, limit } = page(req);
+    return { items: [], total: 0, page: p, limit, totalPages: 1 };
+};
+
+// Every figure filtered by ?country (via the event) and ?from/?to (createdAt) — see globalStats.
+adminRouter.get('/stats', h(async (req) => stats.globalStats(parseAdminFilters(req.query as Record<string, unknown>))));
+// Dates on createdAt.
 adminRouter.get('/challenges', h(async (req) => {
     const { page: p, limit } = page(req);
-    const filter: Record<string, unknown> = {};
+    const { filter, empty } = await adminScope(req, 'createdAt');
+    if (empty) return emptyPage(req);
     if (req.query.status) filter.status = String(req.query.status);
     if (req.query.q) filter.name = { $regex: String(req.query.q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     const [items, total] = await Promise.all([
@@ -503,9 +524,12 @@ adminRouter.post('/challenges/:id/:action(suspend|resume)', h(async (req) =>
 adminRouter.post('/challenges/:id/cancel', h(async (req) => challenges.cancelChallenge(adminActor(req), req.params.id, String(req.body?.reason ?? ''))));
 adminRouter.post('/challenges/:id/freeze', h(async (req) => results.freezeResult(adminActor(req), req.params.id)));
 
+// Dates on createdAt (when the flag was raised).
 adminRouter.get('/fraud', h(async (req) => {
     const { page: p, limit } = page(req);
-    const filter: Record<string, unknown> = { status: req.query.status ? String(req.query.status) : FraudFlagStatus.OPEN };
+    const { filter, empty } = await adminScope(req, 'createdAt');
+    if (empty) return emptyPage(req);
+    filter.status = req.query.status ? String(req.query.status) : FraudFlagStatus.OPEN;
     const [items, total] = await Promise.all([
         AnimFraudFlag.find(filter).sort({ score: -1, updatedAt: -1 }).skip((p - 1) * limit).limit(limit).lean(),
         AnimFraudFlag.countDocuments(filter),
@@ -548,8 +572,12 @@ adminRouter.post('/fraud/:id/review', h(async (req) => {
     });
 }));
 
+// Dates on createdAt (when the change was requested). The response is a bare array.
 adminRouter.get('/change-requests', h(async (req) => {
-    const list = await AnimChangeRequest.find({ status: req.query.status ? String(req.query.status) : ChangeRequestStatus.PENDING }).sort({ createdAt: 1 }).limit(200).lean();
+    const { filter, empty } = await adminScope(req, 'createdAt');
+    if (empty) return [];
+    filter.status = req.query.status ? String(req.query.status) : ChangeRequestStatus.PENDING;
+    const list = await AnimChangeRequest.find(filter).sort({ createdAt: 1 }).limit(200).lean();
     // Everything the reviewer needs in words: what is changed, by whom, and the
     // names behind ids inside the before/after values (ticket types, rewards…).
     // Diff values come back as strings or ObjectIds (ids saved inside Mixed).
@@ -596,9 +624,11 @@ adminRouter.get('/change-requests', h(async (req) => {
 }));
 adminRouter.post('/change-requests/:id/review', h(async (req) => challenges.reviewChange(adminActor(req), req.params.id, Boolean(req.body?.approve), req.body?.note)));
 
+// Dates on createdAt (purchase).
 adminRouter.get('/transactions', h(async (req) => {
     const { page: p, limit } = page(req);
-    const filter: Record<string, unknown> = {};
+    const { filter, empty } = await adminScope(req, 'createdAt');
+    if (empty) return emptyPage(req);
     if (req.query.status) filter.status = String(req.query.status);
     if (req.query.review) filter['fraud.review'] = String(req.query.review);
     if (req.query.challengeId && Types.ObjectId.isValid(String(req.query.challengeId))) filter.challengeId = new Types.ObjectId(String(req.query.challengeId));
@@ -615,9 +645,12 @@ adminRouter.get('/transactions', h(async (req) => {
     return { items: enriched, total, page: p, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
 }));
 // Refunds whose money side hasn't completed (the job retries them; SBC can see and force a retry).
+// Dates on createdAt (refund opened). The response is a bare array.
 adminRouter.get('/refunds', h(async (req) => {
-    const status = req.query.status ? String(req.query.status).split(',') : ['PENDING', 'FAILED'];
-    return AnimVoteRefund.find({ status: { $in: status } }).sort({ updatedAt: -1 }).limit(200).lean();
+    const { filter, empty } = await adminScope(req, 'createdAt');
+    if (empty) return [];
+    filter.status = { $in: req.query.status ? String(req.query.status).split(',') : ['PENDING', 'FAILED'] };
+    return AnimVoteRefund.find(filter).sort({ updatedAt: -1 }).limit(200).lean();
 }));
 adminRouter.post('/refunds/:txId/retry', h(async (req) => {
     await paid.processRefundMoney(oid(req.params.txId, 'Remboursement'));
@@ -625,9 +658,11 @@ adminRouter.post('/refunds/:txId/retry', h(async (req) => {
 }));
 adminRouter.post('/transactions/:id/refund', h(async (req) => paid.adminRefund(uid(req), req.params.id, String(req.body?.reason ?? ''))));
 
+// Dates on `at` (when the action happened). Under ?country, entries without an event are left out.
 adminRouter.get('/audit', h(async (req) => {
     const { page: p, limit } = page(req);
-    const filter: Record<string, unknown> = {};
+    const { filter, empty } = await adminScope(req, 'at');
+    if (empty) return emptyPage(req);
     for (const k of ['eventId', 'challengeId']) if (req.query[k] && Types.ObjectId.isValid(String(req.query[k]))) filter[k] = new Types.ObjectId(String(req.query[k]));
     if (req.query.action) filter.action = String(req.query.action);
     const [items, total] = await Promise.all([

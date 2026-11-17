@@ -1,7 +1,7 @@
 import express from 'express';
 import { WebhookController } from '../controllers/webhook.controller';
 import { WhatsAppWebhookController } from '../controllers/whatsapp-webhook.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { rawBodyMiddleware } from '../middleware/raw-body.middleware';
 
 const router = express.Router();
@@ -33,7 +33,7 @@ router.post('/whatsapp', rawBodyMiddleware, whatsappWebhookController.handleWebh
  * Get bounce statistics (admin only)
  * GET /api/webhook/bounce-stats
  */
-router.get('/bounce-stats', authenticate, webhookController.getBounceStats);
+router.get('/bounce-stats', authenticate, requireAdmin, webhookController.getBounceStats);
 
 /**
  * Check email reputation
@@ -45,7 +45,7 @@ router.get('/email-reputation/:email', authenticate, webhookController.checkEmai
  * Cleanup bounce data (admin only)
  * POST /api/webhook/cleanup-bounces
  */
-router.post('/cleanup-bounces', authenticate, webhookController.cleanupBounceData);
+router.post('/cleanup-bounces', authenticate, requireAdmin, webhookController.cleanupBounceData);
 
 /**
  * Test webhook endpoints (development only)

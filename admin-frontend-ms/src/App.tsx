@@ -1,8 +1,7 @@
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import OverViewPage from "./pages/overViewPage";
 import Deconnexion from "./pages/Deconnexion";
 import Users from "./pages/Users";
-import Sidebar from "./components/Sidebar";
 import UsersPage from "./pages/usersPage";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -30,6 +29,7 @@ import WithdrawalApprovalPage from './pages/WithdrawalApprovalPage';
 import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
 import UserFinancialAnalyticsPage from './pages/UserFinancialAnalyticsPage';
 import UserRolesManagement from './pages/UserRolesManagement';
+import TeamPage from './pages/TeamPage';
 import ChatPage from './pages/ChatPage';
 import StatusPage from './pages/StatusPage';
 import ImpactChallengePage from './pages/ImpactChallengePage';
@@ -49,44 +49,18 @@ import EventDisputesPage from './pages/EventDisputesPage';
 import EventCommissionsPage from './pages/EventCommissionsPage';
 import EventTicketsPage from './pages/EventTicketsPage';
 import EventAnimationPage from './pages/EventAnimationPage';
-import { Toaster } from 'react-hot-toast';
 import { SocketProvider } from './contexts/SocketContext';
+import { AppShell } from './shell/AppShell';
 
 function App() {
-  const location = useLocation();
-  const isLoginRoute = location.pathname === "/login";
-
   return (
     <SocketProvider>
-    <div className="flex h-screen bg-gray-900 text-gray-100">
-      <Toaster
-        position="top-left"
-        toastOptions={{
-          style: {
-            background: '#333',
-            color: '#fff',
-          },
-          error: {
-            duration: 5000,
-          },
-        }}
-      />
+      <Routes>
+        <Route path="/login" element={<Login />} />
 
-      {/* Background Gradient and Blur */}
-      <div className="fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 opacity-80" />
-        <div className="absolute inset-0 backdrop-blur-sm" />
-      </div>
-
-      {/* Sidebar - Ensure it's above background */}
-      {!isLoginRoute && <div className="relative z-10"><Sidebar /></div>}
-
-      {/* Main Content - Ensure it's above background */}
-      <main className="relative z-10 flex-grow overflow-auto">
-        <Routes>
-          <Route path="/login" element={<Login />} />
-
-          <Route element={<ProtectedRoute />}>
+        <Route element={<ProtectedRoute />}>
+          {/* Every signed-in page is drawn inside the shell (sidebar, header, phone bars). */}
+          <Route element={<AppShell />}>
             <Route path="/" element={<OverViewPage />} />
             <Route path="/dashboard" element={<OverViewPage />} />
             <Route path="/users" element={<Users />} />
@@ -116,6 +90,7 @@ function App() {
             <Route path="/withdrawals/history" element={<WithdrawalHistoryPage />} />
             <Route path="/user-analytics" element={<UserFinancialAnalyticsPage />} />
             <Route path="/user-roles" element={<UserRolesManagement />} />
+            <Route path="/equipe" element={<TeamPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/statuses" element={<StatusPage />} />
             <Route path="/impact-challenges" element={<ImpactChallengePage />} />
@@ -139,11 +114,10 @@ function App() {
             {/* Animation & Engagement (challenges, votes): ?tab=apercu|defis|a-verifier|demandes|votes|journal|exports */}
             <Route path="/event/animation" element={<EventAnimationPage />} />
           </Route>
+        </Route>
 
-          <Route path="*" element={<Login />} />
-        </Routes>
-      </main>
-    </div>
+        <Route path="*" element={<Login />} />
+      </Routes>
     </SocketProvider>
   );
 }

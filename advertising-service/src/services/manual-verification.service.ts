@@ -161,9 +161,10 @@ export const getManualStatus = async (userId: Types.ObjectId, participationId: s
 
 // --- Admin ---
 
-export const listPendingManualVerifications = async () => {
+/** `match`: extra conditions (the admin's country / date filters). */
+export const listPendingManualVerifications = async (match: Record<string, unknown> = {}) => {
     const items = await ManualVerificationModel
-        .find({ status: ManualVerificationStatus.PENDING_REVIEW })
+        .find({ ...match, status: ManualVerificationStatus.PENDING_REVIEW })
         // By upload time, not by createdAt. createdAt is when the CODE was issued,
         // and the gap between the two is whatever the diffuseur took to record —
         // so ordering by it puts someone who asked for a code early and uploaded

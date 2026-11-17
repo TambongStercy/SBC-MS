@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Search, UserCheck, X } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon, UserCheck01Icon } from '@hugeicons/core-free-icons';
 import { AdminUserData, getUserDetails, listUsers } from '../../services/adminUserApi';
-import { fieldClass } from './styles';
+import { Button } from '../ui';
+import { SearchInput } from '../moduleKit';
 
 const describe = (u: AdminUserData) => [u.email, u.phoneNumber ? String(u.phoneNumber) : null].filter(Boolean).join(' · ');
 
@@ -66,66 +68,62 @@ const SbcAccountPicker: React.FC<{
     return (
         <div className="space-y-2">
             {value ? (
-                <div className="flex items-start justify-between gap-3 bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2">
-                    <div className="min-w-0 flex items-start gap-2">
-                        <UserCheck className="w-4 h-4 mt-0.5 text-green-400 shrink-0" />
+                <div className="flex items-start justify-between gap-3 rounded-panel border border-line bg-surface-2 px-3 py-2">
+                    <div className="flex min-w-0 items-start gap-2">
+                        <HugeiconsIcon icon={UserCheck01Icon} size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-success" />
                         {linked ? (
                             <div className="min-w-0">
-                                <p className="text-sm text-white truncate">{linked.name}</p>
-                                <p className="text-xs text-gray-400 truncate">{describe(linked)}</p>
+                                <p className="truncate text-sm text-fg">{linked.name}</p>
+                                <p className="truncate text-xs text-fg-muted">{describe(linked)}</p>
                             </div>
                         ) : linkedError ? (
                             <div className="min-w-0">
-                                <p className="text-sm text-amber-300">Compte introuvable</p>
-                                <p className="text-xs text-gray-400 break-all">Identifiant {value}</p>
+                                <p className="text-sm text-danger">Compte introuvable</p>
+                                <p className="break-all text-xs text-fg-muted">Identifiant {value}</p>
                             </div>
                         ) : (
-                            <p className="text-sm text-gray-400">Chargement…</p>
+                            <p className="text-sm text-fg-muted">Chargement…</p>
                         )}
                     </div>
                     {!disabled && (
-                        <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-red-300 inline-flex items-center gap-1 shrink-0">
-                            <X className="w-3.5 h-3.5" /> Retirer
-                        </button>
+                        <Button type="button" variant="ghost" size="sm" className="h-11 shrink-0 sm:h-8" onClick={() => onChange(null)}>
+                            <HugeiconsIcon icon={Cancel01Icon} size={14} aria-hidden="true" /> Retirer
+                        </Button>
                     )}
                 </div>
             ) : (
-                <p className="text-sm text-amber-300">Aucun compte SBC lié.</p>
+                <p className="text-sm text-[color-mix(in_oklch,var(--warning),var(--fg)_35%)]">Aucun compte SBC lié.</p>
             )}
 
             {!disabled && (
                 <>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                        <input
-                            className={`${fieldClass} pl-9`}
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            placeholder={value ? 'Lier un autre compte : nom, e-mail ou téléphone' : 'Chercher le membre : nom, e-mail ou téléphone'}
-                        />
-                    </div>
+                    <SearchInput
+                        value={query}
+                        onChange={setQuery}
+                        delay={0}
+                        placeholder={value ? 'Lier un autre compte : nom, e-mail ou téléphone' : 'Chercher le membre : nom, e-mail ou téléphone'}
+                    />
                     {suggestion && !query && (
-                        <button type="button" onClick={() => setQuery(suggestion)} className="text-xs text-blue-300 hover:text-blue-200">
+                        <Button type="button" variant="link" size="sm" onClick={() => setQuery(suggestion)}>
                             Chercher « {suggestion} »
-                        </button>
+                        </Button>
                     )}
-                    {searching && <p className="text-xs text-gray-400">Recherche…</p>}
-                    {searchError && <p className="text-xs text-red-300">{searchError}</p>}
+                    {searching && <p className="text-xs text-fg-muted">Recherche…</p>}
+                    {searchError && <p className="text-xs text-danger">{searchError}</p>}
                     {!searching && query.trim().length >= 3 && results.length === 0 && !searchError && (
-                        <p className="text-xs text-gray-400">Aucun membre trouvé.</p>
+                        <p className="text-xs text-fg-muted">Aucun membre trouvé.</p>
                     )}
                     {results.length > 0 && (
-                        <ul className="border border-gray-700 rounded-lg divide-y divide-gray-700 overflow-hidden">
+                        <ul className="divide-y divide-line overflow-hidden rounded-panel border border-line">
                             {results.map(u => (
-                                <li key={u._id} className="flex items-center justify-between gap-3 px-3 py-2 bg-gray-900/40">
+                                <li key={u._id} className="flex items-center justify-between gap-3 px-3 py-2">
                                     <div className="min-w-0">
-                                        <p className="text-sm text-white truncate">{u.name}</p>
-                                        <p className="text-xs text-gray-400 truncate">{describe(u)}</p>
+                                        <p className="truncate text-sm text-fg">{u.name}</p>
+                                        <p className="truncate text-xs text-fg-muted">{describe(u)}</p>
                                     </div>
-                                    <button type="button" onClick={() => pick(u)} disabled={u._id === value}
-                                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-600 shrink-0">
+                                    <Button type="button" variant="soft" size="sm" className="h-11 shrink-0 sm:h-8" onClick={() => pick(u)} disabled={u._id === value}>
                                         {u._id === value ? 'Lié' : 'Lier'}
-                                    </button>
+                                    </Button>
                                 </li>
                             ))}
                         </ul>

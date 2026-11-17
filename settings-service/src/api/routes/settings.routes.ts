@@ -105,6 +105,8 @@ internalRouter.get('/winner-vip-link', getWinnerVipLink);
 router.use('/internal', internalRouter);
 
 // Apply authentication middleware to all subsequent settings routes
+// Below: admin screens only. Until 2026-11-16 only PUT / checked the role, so any
+// signed-in member could replace the logo, the CGU, formations or the gateway balances.
 router.use(authenticate);
 
 // PUT /settings - Update non-file settings (URLs, etc.)
@@ -112,39 +114,39 @@ router.put('/', requireAdmin, updateSettings);
 
 // POST /settings/logo - Upload/Update company logo
 // Multer middleware processes the 'companyLogo' field from the form-data
-router.post('/logo', upload.single('companyLogo'), uploadCompanyLogo);
+router.post('/logo', requireAdmin, upload.single('companyLogo'), uploadCompanyLogo);
 
 // POST /settings/terms-pdf - Upload/Update terms PDF
 // Multer middleware processes the 'termsPdf' field from the form-data
-router.post('/terms-pdf', upload.single('termsPdf'), uploadTermsPdf);
+router.post('/terms-pdf', requireAdmin, upload.single('termsPdf'), uploadTermsPdf);
 
 // POST /settings/presentation-video - Upload/Update presentation video
 // Multer middleware processes the 'presentationVideo' field from the form-data
-router.post('/presentation-video', upload.single('presentationVideo'), uploadPresentationVideo);
+router.post('/presentation-video', requireAdmin, upload.single('presentationVideo'), uploadPresentationVideo);
 
 // POST /settings/presentation-pdf - Upload/Update presentation PDF
 // Multer middleware processes the 'presentationPdf' field from the form-data
-router.post('/presentation-pdf', upload.single('presentationPdf'), uploadPresentationPdf);
+router.post('/presentation-pdf', requireAdmin, upload.single('presentationPdf'), uploadPresentationPdf);
 
 // --- Formations Routes ---
 router.get('/formations', getFormations);
-router.post('/formations', addFormation);
-router.put('/formations/:formationId', updateFormation);
-router.delete('/formations/:formationId', removeFormation);
+router.post('/formations', requireAdmin, addFormation);
+router.put('/formations/:formationId', requireAdmin, updateFormation);
+router.delete('/formations/:formationId', requireAdmin, removeFormation);
 
 // --- Add Admin Balance Route ---
 // This route should be behind authentication for admin users.
-router.get('/stats/admin-balance', getAdminBalance);
+router.get('/stats/admin-balance', requireAdmin, getAdminBalance);
 
 // --- Gateway Balance Routes ---
 // For admin to enter external payment gateway balances and calculate revenue
-router.get('/gateway-balances', getGatewayBalances);
-router.put('/gateway-balances', updateGatewayBalances);
-router.get('/gateway-balances/history', getGatewayBalanceHistory);
-router.post('/gateway-balances/calculate-revenue', calculateAppRevenue);
+router.get('/gateway-balances', requireAdmin, getGatewayBalances);
+router.put('/gateway-balances', requireAdmin, updateGatewayBalances);
+router.get('/gateway-balances/history', requireAdmin, getGatewayBalanceHistory);
+router.post('/gateway-balances/calculate-revenue', requireAdmin, calculateAppRevenue);
 
 // --- SBC Event Commission Routes ---
 // PUT is admin-only (role checked in the controller); GET is registered above.
-router.put('/event-commissions', updateEventCommissions);
+router.put('/event-commissions', requireAdmin, updateEventCommissions);
 
 export default router; 

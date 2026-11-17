@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { recoveryController } from '../controllers/recovery.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -26,24 +26,24 @@ router.get('/internal/recovery/user-stats', (req, res, next) =>
     recoveryController.getUserRecoveryStats(req, res, next)
 );
 
-// Admin routes (require authentication)
-router.get('/admin/recovery/stats', authenticate, (req, res, next) => 
+// Admin routes: admin team only (they were login-only until 2026-11-16)
+router.get('/admin/recovery/stats', authenticate, requireAdmin, (req, res, next) => 
     recoveryController.getRecoveryStats(req, res, next)
 );
 
-router.get('/admin/recovery/records', authenticate, (req, res, next) => 
+router.get('/admin/recovery/records', authenticate, requireAdmin, (req, res, next) => 
     recoveryController.listRecoveryRecords(req, res, next)
 );
 
-router.post('/admin/recovery/run', authenticate, (req, res, next) => 
+router.post('/admin/recovery/run', authenticate, requireAdmin, (req, res, next) => 
     recoveryController.runRecovery(req, res, next)
 );
 
-router.get('/admin/recovery/records/:id', authenticate, (req, res, next) => 
+router.get('/admin/recovery/records/:id', authenticate, requireAdmin, (req, res, next) => 
     recoveryController.getRecoveryRecord(req, res, next)
 );
 
-router.post('/admin/recovery/records/:id/mark-restored', authenticate, (req, res, next) => 
+router.post('/admin/recovery/records/:id/mark-restored', authenticate, requireAdmin, (req, res, next) => 
     recoveryController.markRecordAsRestored(req, res, next)
 );
 

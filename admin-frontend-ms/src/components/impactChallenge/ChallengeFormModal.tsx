@@ -10,8 +10,8 @@ import {
     toDateInput,
     updateChallenge,
 } from '../../services/impactChallengeApi';
-import { FormModal, Notice } from './shared';
-import { btn, fieldClass, labelClass } from './styles';
+import { Button, Field, Input, Select, Textarea } from '../ui';
+import { FormSheet, Notice } from './shared';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const monthBounds = (month: number, year: number) => ({
@@ -25,6 +25,7 @@ const monthBounds = (month: number, year: number) => ({
  * Month and year are only chosen at creation: the month's tombola is created
  * and linked at that moment, and the service does not re-link it when the
  * month changes later. To change the month of a draft, delete it and create it again.
+ * An edit sends only the name, the voting dates and the description.
  */
 const ChallengeFormModal: React.FC<{
     challenge?: ImpactChallenge;
@@ -45,6 +46,7 @@ const ChallengeFormModal: React.FC<{
     const [descEn, setDescEn] = useState(challenge?.description?.en ?? '');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<Partial<Record<'name' | 'dates' | 'fr' | 'en', string>>>({});
 
     const pickMonth = (m: number, y: number) => {
         setMonth(m);
@@ -56,10 +58,14 @@ const ChallengeFormModal: React.FC<{
     };
 
     const save = async () => {
-        if (!campaignName.trim()) return setError('Donne un nom au challenge.');
-        if (!startDate || !endDate) return setError('Indique le début et la fin des votes.');
-        if (endDate < startDate) return setError('La fin des votes doit venir après le début.');
-        if (!descFr.trim() || !descEn.trim()) return setError('La description est demandée en français et en anglais.');
+        const errs: typeof fieldErrors = {};
+        if (!campaignName.trim()) errs.name = 'Donne un nom au challenge.';
+        if (!startDate || !endDate) errs.dates = 'Indique le début et la fin des votes.';
+        else if (endDate < startDate) errs.dates = 'La fin des votes doit venir après le début.';
+        if (!descFr.trim()) errs.fr = 'La description est demandée en français.';
+        if (!descEn.trim()) errs.en = 'La description est demandée en anglais.';
+        setFieldErrors(errs);
+        if (Object.keys(errs).length) return;
 
         const common = {
             campaignName: campaignName.trim(),
@@ -84,84 +90,78 @@ const ChallengeFormModal: React.FC<{
     const years = [now.getFullYear(), now.getFullYear() + 1];
 
     return (
-        <FormModal
+        <FormSheet
             title={challenge ? 'Modifier le challenge' : 'Nouveau challenge'}
+            description={challenge ? monthLabel(challenge.month, challenge.year) : 'Créé en brouillon, avec la tombola du même mois.'}
             onClose={onClose}
             busy={saving}
             footer={
                 <>
-                    <button onClick={onClose} disabled={saving} className={btn.secondary}>Annuler</button>
-                    <button onClick={save} disabled={saving} className={btn.primary}>
-                        {saving ? 'Enregistrement…' : challenge ? 'Enregistrer' : 'Créer le challenge'}
-                    </button>
+                    <Button variant="outline" size="lg" onClick={onClose} disabled={saving}>Annuler</Button>
+                    <Button variant="primary" size="lg" onClick={save} loading={saving}>
+                        {challenge ? 'Enregistrer' : 'Créer le challenge'}
+                    </Button>
                 </>
             }
         >
-            <div>
-                <label className={labelClass}>Nom du challenge</label>
-                <input className={fieldClass} value={campaignName} onChange={e => setCampaignName(e.target.value)}
+            <Field label="Nom du challenge" required error={fieldErrors.name}>
+                <Input className="h-11 sm:h-9" value={campaignName} onChange={e => setCampaignName(e.target.value)}
                     placeholder={`ex. Impact Challenge ${monthLabel(month, year)}`} />
-            </div>
+            </Field>
 
             {challenge ? (
-                <p className="text-sm text-gray-400">
-                    Mois : <span className="text-gray-200">{monthLabel(challenge.month, challenge.year)}</span>
-                    <span className="block text-xs text-gray-500 mt-0.5">
+                <div className="rounded-panel border border-line bg-surface-2 px-4 py-3 text-sm">
+                    <p className="text-fg-muted">Mois : <span className="font-medium text-fg">{monthLabel(challenge.month, challenge.year)}</span></p>
+                    <p className="mt-0.5 text-xs text-fg-muted">
                         Le mois ne se change pas : la tombola du mois est liée à la création.
                         {challenge.status === 'draft' && ' Pour un autre mois, supprime ce brouillon et crée-en un nouveau.'}
-                    </span>
-                </p>
+                    </p>
+                </div>
             ) : (
                 <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className={labelClass}>Mois</label>
-                        <select className={fieldClass} value={month} onChange={e => pickMonth(Number(e.target.value), year)}>
-                            {MONTHS_FR.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelClass}>Année</label>
-                        <select className={fieldClass} value={year} onChange={e => pickMonth(month, Number(e.target.value))}>
-                            {years.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                    </div>
+                    <Field label="Mois">
+                        <Select
+                            className="h-11 sm:h-9"
+                            value={String(month)}
+                            onValueChange={v => pickMonth(Number(v), year)}
+                            options={MONTHS_FR.map((m, i) => ({ value: String(i + 1), label: m.charAt(0).toUpperCase() + m.slice(1) }))}
+                        />
+                    </Field>
+                    <Field label="Année">
+                        <Select
+                            className="h-11 sm:h-9"
+                            value={String(year)}
+                            onValueChange={v => pickMonth(month, Number(v))}
+                            options={years.map(y => ({ value: String(y), label: String(y) }))}
+                        />
+                    </Field>
                 </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <label className={labelClass}>Début des votes</label>
-                    <input type="date" className={fieldClass} value={startDate} onChange={e => setStartDate(e.target.value)} />
-                </div>
-                <div>
-                    <label className={labelClass}>Fin des votes (jour inclus)</label>
-                    <input type="date" className={fieldClass} value={endDate} onChange={e => setEndDate(e.target.value)} />
-                </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Début des votes" required error={fieldErrors.dates}>
+                    <Input type="date" className="h-11 sm:h-9" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                </Field>
+                <Field label="Fin des votes (jour inclus)" required
+                    help={challenge?.status === 'active' ? 'Les votes se ferment tout seuls une heure après la fin du dernier jour. Une date déjà passée les ferme presque tout de suite.' : undefined}>
+                    <Input type="date" className="h-11 sm:h-9" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                </Field>
             </div>
-            {challenge?.status === 'active' && (
-                <p className="text-xs text-gray-500 -mt-2">
-                    Les votes se ferment tout seuls une heure après la fin du dernier jour. Une date de fin déjà passée les ferme presque tout de suite.
-                </p>
-            )}
 
-            <div>
-                <label className={labelClass}>Description (français)</label>
-                <textarea className={fieldClass} rows={3} value={descFr} onChange={e => setDescFr(e.target.value)}
-                    placeholder="Ce que les membres voient sur la page du challenge." />
-            </div>
-            <div>
-                <label className={labelClass}>Description (anglais)</label>
-                <textarea className={fieldClass} rows={3} value={descEn} onChange={e => setDescEn(e.target.value)}
-                    placeholder="Same text, in English." />
-            </div>
+            <Field label="Description (français)" required error={fieldErrors.fr} help="Ce que les membres voient sur la page du challenge.">
+                <Textarea rows={3} value={descFr} onChange={e => setDescFr(e.target.value)} />
+            </Field>
+            <Field label="Description (anglais)" required error={fieldErrors.en} help="Le même texte, en anglais.">
+                <Textarea rows={3} value={descEn} onChange={e => setDescEn(e.target.value)} />
+            </Field>
 
             {!challenge && (
-                <p className="text-xs text-gray-500">
-                    Le challenge est créé en brouillon, avec la tombola du même mois. Ajoute et approuve les entrepreneurs, puis ouvre les votes.
+                <p className="text-xs text-fg-muted">
+                    Ensuite : ajoute et approuve les entrepreneurs, puis ouvre les votes.
                 </p>
             )}
             {error && <Notice tone="danger">{error}</Notice>}
-        </FormModal>
+        </FormSheet>
     );
 };
 

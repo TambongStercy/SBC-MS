@@ -44,6 +44,9 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { estimateReach } from '../../services/reach.service';
 import { banDiffuseur, unbanDiffuseur } from '../../services/ranking.service';
 import { AppError } from '../../utils/errors';
+import { readAdminFilters, dateMatch } from '../../utils/admin-filters';
+import { CountryFilterUnavailableError } from '../../utils/country-members';
+import { advertiserMatch, diffuseurMatch } from '../../services/admin-scope.service';
 import config from '../../config';
 import logger from '../../utils/logger';
 
@@ -62,6 +65,9 @@ export const getVerificationStats = (_req: AuthenticatedRequest, res: Response) 
 };
 
 const fail = (res: Response, err: unknown, context: string) => {
+    if (err instanceof CountryFilterUnavailableError) {
+        return res.status(502).json({ success: false, message: err.message });
+    }
     // A Mongoose ValidationError carries the real reason (e.g. a field over its
     // maxlength). Without this it falls through to the generic 500 below and the
     // admin sees "Une erreur est survenue" with no clue which field is wrong.
@@ -90,8 +96,13 @@ const adminUserId = (req: AuthenticatedRequest): Types.ObjectId => {
  * creative, because "who is asking" is most of the judgement on a first campaign.
  * Defaults to PENDING_REVIEW; `status` widens it so the same endpoint backs the
  * admin panel's full campaign list.
+ *
+ * Admin filters: country = the ANNONCEUR's (not the countries the campaign
+ * targets); from/to on the campaign's `createdAt`.
  */
 export const listForReview = async (req: AuthenticatedRequest, res: Response) => {
+    const filters = readAdminFilters(req, res);
+    if (!filters) return;
     try {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(100, Number(req.query.limit) || 20);
@@ -109,6 +120,7 @@ export const listForReview = async (req: AuthenticatedRequest, res: Response) =>
             // PENDING_REVIEW campaigns are included so the old ones are not stranded.
             filter.status = { $in: [CampaignStatus.PAID, CampaignStatus.PENDING_REVIEW] };
         }
+        Object.assign(filter, await advertiserMatch(filters.country), dateMatch('createdAt', filters));
 
         const [items, total] = await Promise.all([
             // Oldest first: an annonceur waiting on review is blocked from paying.
@@ -177,14 +189,22 @@ export const listForReview = async (req: AuthenticatedRequest, res: Response) =>
     }
 };
 
-/** Everything the dashboard draws, computed here — the frontend aggregates nothing. */
+/**
+ * Everything the dashboard draws, computed here — the frontend aggregates nothing.
+ *
+ * Admin filters apply to every figure; which country (annonceur's or
+ * diffuseur's) and which date each one uses is documented on `overview`,
+ * `monthlySeries` and `inFlight` (in-flight counts are "now": country only).
+ */
 export const getAnalytics = async (req: AuthenticatedRequest, res: Response) => {
+    const filters = readAdminFilters(req, res);
+    if (!filters) return;
     try {
         const months = Math.min(36, Math.max(1, Number(req.query.months) || 12));
         const [summary, series, pipeline] = await Promise.all([
-            overview(),
-            monthlySeries(months),
-            inFlight(),
+            overview(filters),
+            monthlySeries(months, filters),
+            inFlight(filters),
         ]);
 
         return res.json({ success: true, data: { ...summary, pipeline, series } });
@@ -248,14 +268,20 @@ export const getCampaignPerformance = async (req: AuthenticatedRequest, res: Res
  *
  * The public leaderboard deliberately exposes user ids only; an admin chasing a
  * complaint needs to know who the row actually is.
+ *
+ * Admin filters: country = the DIFFUSEUR's; from/to on the profile's
+ * `createdAt` (when they joined as diffuseur).
  */
 export const listDiffuseurs = async (req: AuthenticatedRequest, res: Response) => {
+    const filters = readAdminFilters(req, res);
+    if (!filters) return;
     try {
         const { entries, total } = await leaderboard({
             page: Number(req.query.page) || 1,
             limit: Number(req.query.limit) || 50,
             sortBy: req.query.sortBy as 'views' | 'clicks' | 'trust' | undefined,
             measuredOnly: req.query.measuredOnly === 'true',
+            match: { ...await diffuseurMatch('userId', filters.country), ...dateMatch('createdAt', filters) },
         });
 
         const profiles = await getUserProfiles(entries.map(e => e.userId)).catch(err => {
@@ -490,10 +516,20 @@ export const unbanDiffuseurAccount = async (req: AuthenticatedRequest, res: Resp
     }
 };
 
-/** Creative replacements waiting for review, with the current creative alongside. */
-export const listMediaChanges = async (_req: AuthenticatedRequest, res: Response) => {
+/**
+ * Creative replacements waiting for review, with the current creative alongside.
+ *
+ * Admin filters: country = the campaign's ANNONCEUR's; from/to on
+ * `pendingMedia.submittedAt` (when the replacement was asked for).
+ */
+export const listMediaChanges = async (req: AuthenticatedRequest, res: Response) => {
+    const filters = readAdminFilters(req, res);
+    if (!filters) return;
     try {
-        const campaigns = await listPendingMediaChanges();
+        const campaigns = await listPendingMediaChanges({
+            ...await advertiserMatch(filters.country),
+            ...dateMatch('pendingMedia.submittedAt', filters),
+        });
         return res.json({
             success: true,
             data: campaigns.map(c => ({

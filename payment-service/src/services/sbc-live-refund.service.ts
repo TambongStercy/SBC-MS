@@ -209,8 +209,9 @@ class SbcLiveRefundService {
         log.info(`Refund ${refund._id} COMPLETED: buyer=${refund.buyerUserId} +${refund.refundAmount}, creator=${refund.creatorUserId} -${refund.creatorClawbackAmount}, txId=${tx._id}`);
     }
 
-    async listRefunds(filters: { status?: RefundStatus; ssoClientId?: string; limit?: number; skip?: number }): Promise<ISbcLiveRefund[]> {
-        const query: Record<string, any> = {};
+    async listRefunds(filters: { status?: RefundStatus; ssoClientId?: string; limit?: number; skip?: number; scope?: Record<string, any> }): Promise<ISbcLiveRefund[]> {
+        // scope: admin filters (buyer's country, createdAt range), read-only.
+        const query: Record<string, any> = { ...(filters.scope || {}) };
         if (filters.status) query.status = filters.status;
         if (filters.ssoClientId) query.ssoClientId = filters.ssoClientId;
         return SbcLiveRefund.find(query)

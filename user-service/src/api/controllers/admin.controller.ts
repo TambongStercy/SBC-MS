@@ -13,6 +13,7 @@ import { activationBalanceService } from '../../services/activation-balance.serv
 import { leaderboardBonusService, previousMonthStart, monthKey } from '../../services/leaderboard-bonus.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 import { AppError } from '../../utils/errors'; // Import AppError
+import { readAdminFilters } from '../../utils/admin-filters';
 
 const log = logger.getLogger('AdminController');
 
@@ -118,8 +119,12 @@ class AdminController {
      */
     async listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request to list users');
+        // ?country (ISO-2, any spelling stored) and ?from/?to on createdAt (aliases of
+        // the older createdFrom/createdTo, which still win when sent).
+        const f = readAdminFilters(req, res);
+        if (!f) return;
         try {
-            const { page = 1, limit = 20, status, role, search, country, profession, interests, createdFrom, createdTo, subscription, partner } = req.query;
+            const { page = 1, limit = 20, status, role, search, profession, interests, createdFrom, createdTo, subscription, partner } = req.query;
             const pagination: PaginationOptions = {
                 page: parseInt(page as string, 10) || 1,
                 limit: parseInt(limit as string, 10) || 10,
@@ -139,11 +144,11 @@ class AdminController {
                 status: status as string | undefined,
                 role: role as string | undefined,
                 search: search as string | undefined,
-                country: country as string | undefined,
+                country: f.country,
                 profession: profession as string | undefined,
                 interests: interestsArray,
-                createdFrom: createdFrom as string | undefined,
-                createdTo: createdTo as string | undefined,
+                createdFrom: (createdFrom as string | undefined) || f.from?.toISOString(),
+                createdTo: (createdTo as string | undefined) || f.to?.toISOString(),
                 subscription: subscription as string | undefined,
                 partner: partner as string | undefined,
             };
@@ -219,7 +224,15 @@ class AdminController {
             res.status(400).json({ success: false, message: 'Invalid User ID format' });
             return;
         }
-        const updateData = req.body;
+        const updateData = { ...req.body };
+        // Roles and admin rights change only through the super-admin routes
+        // (PATCH /users/:id/role, /staff/:id): a staff account with write on
+        // members must not be able to make anyone an admin, itself included.
+        delete updateData.adminPermissions;
+        if (updateData.role !== undefined && req.user?.role !== UserRole.ADMIN) {
+            res.status(403).json({ success: false, message: 'Seul un super admin peut changer un rôle.' });
+            return;
+        }
         log.info(`Admin request to update user: ${userId} with data:`, updateData);
         try {
             const updatedUser = await userService.adminUpdateUser(userId, updateData);
@@ -360,10 +373,13 @@ class AdminController {
      */
     async listLeaderboardBonuses(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         try {
+            const f = readAdminFilters(req, res);
+            if (!f) return;
             const month = (req.query.month as string) || monthKey(previousMonthStart());
             const limit = Math.min(parseInt(String(req.query.limit ?? '100'), 10) || 100, 500);
             const page = Math.max(parseInt(String(req.query.page ?? '1'), 10) || 1, 1);
-            const { items, total } = await leaderboardBonusService.listBonuses(month, limit, (page - 1) * limit);
+            // Country = the member's; from/to on the row's createdAt (inside the month).
+            const { items, total } = await leaderboardBonusService.listBonuses(month, limit, (page - 1) * limit, f);
             res.status(200).json({
                 success: true, data: items,
                 pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
@@ -496,8 +512,11 @@ class AdminController {
      */
     async getBalanceByCountryStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request for total balance by country stats');
+        // Country = the member's; from/to on the member's createdAt (signed up in the range).
+        const f = readAdminFilters(req, res);
+        if (!f) return;
         try {
-            const stats = await userService.getAggregatedBalanceByCountry();
+            const stats = await userService.getAggregatedBalanceByCountry(f);
             res.status(200).json({ success: true, data: stats });
         } catch (error) {
             log.error('Error getting balance by country stats:', error);
@@ -511,6 +530,9 @@ class AdminController {
      */
     async getMonthlyActivity(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request for monthly activity stats');
+        // from/to replace the `months` window; country = the member's.
+        const f = readAdminFilters(req, res);
+        if (!f) return;
         try {
             const monthsQuery = req.query.months as string | undefined;
             const months = monthsQuery ? parseInt(monthsQuery, 10) : 12; // Default to 12 months
@@ -520,7 +542,7 @@ class AdminController {
                 return;
             }
 
-            const stats = await userService.getMonthlyActivityStats(months);
+            const stats = await userService.getMonthlyActivityStats(months, f);
             res.status(200).json({ success: true, data: stats });
         } catch (error) {
             log.error('Error getting monthly activity stats:', error);
@@ -534,8 +556,11 @@ class AdminController {
      */
     async getUserSummaryStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request for user summary stats');
+        // Members: country + createdAt; active subscriptions: the country's members, startDate.
+        const f = readAdminFilters(req, res);
+        if (!f) return;
         try {
-            const stats = await userService.adminGetUserSummaryStats();
+            const stats = await userService.adminGetUserSummaryStats(f);
             res.status(200).json({ success: true, data: stats });
         } catch (error) {
             log.error('Error getting user summary stats (controller):', error);
@@ -579,8 +604,10 @@ class AdminController {
      */
     async getDashboardData(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request for dashboard data');
+        const f = readAdminFilters(req, res);
+        if (!f) return;
         try {
-            const dashboardData = await userService.adminGetDashboardData();
+            const dashboardData = await userService.adminGetDashboardData(f);
             res.status(200).json({ success: true, data: dashboardData });
         } catch (error) {
             log.error('Error getting admin dashboard data (controller):', error);
@@ -645,6 +672,9 @@ class AdminController {
      */
     async listPartners(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request to list partners');
+        // Country = the partner member's; from/to on the partner record's createdAt.
+        const f = readAdminFilters(req, res);
+        if (!f) return;
         try {
             const { page = 1, limit = 10 } = req.query;
             const pagination: PaginationOptions = {
@@ -652,7 +682,7 @@ class AdminController {
                 limit: parseInt(limit as string, 10) || 10,
             };
 
-            const result = await partnerService.adminListPartners(pagination.page, pagination.limit);
+            const result = await partnerService.adminListPartners(pagination.page, pagination.limit, f);
 
             res.status(200).json({
                 success: true,
@@ -680,8 +710,10 @@ class AdminController {
      */
     async getPartnerSummaryStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
         log.info('Admin request for partner summary stats');
+        const f = readAdminFilters(req, res);
+        if (!f) return;
         try {
-            const stats = await partnerService.getPartnerSummaryStats();
+            const stats = await partnerService.getPartnerSummaryStats(f);
             res.status(200).json({ success: true, data: stats });
         } catch (error) {
             log.error('Error getting partner summary stats (controller):', error);

@@ -13,8 +13,20 @@ import { checkCallbackUrl, callbackAllowlistEnforced } from '../../utils/callbac
 import InternalDepositClaim from '../../database/models/internal-deposit-claim.model';
 import { MAX_SOURCE_USERS, sumCommissionsFromSources } from '../../services/commission-sum.service';
 import { Types } from 'mongoose';
+import { AdminFilters, dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { directOrMemberCountryMatch, memberIdsForCountry, sendFilterError } from '../../utils/country-members';
+import { memberObjectIdMatch, narrowRange } from '../../utils/admin-scope';
 
 const log = logger.getLogger('PaymentController');
+
+/**
+ * Admin stats (/payments/admin/stats/* and the same handlers on /internal/stats/*,
+ * called by user-service's dashboard): ?country = the member's country (account
+ * transactions only carry the member), ?from/?to on the transaction's createdAt.
+ */
+async function statsMatch(f: AdminFilters): Promise<Record<string, any>> {
+    return { ...(await memberObjectIdMatch(f)), ...dateMatch('createdAt', f) };
+}
 
 // Mapping of country codes to dialing codes (copied from payment.service.ts)
 // Ideally, this would be in a shared utility file
@@ -1001,6 +1013,11 @@ export class PaymentController {
      */
     async adminListTransactions(req: Request, res: Response): Promise<Response> {
         log.info('Admin request: List all payment transactions');
+        // Admin filters: ?country = the intent's own countryCode when it holds an
+        // ISO-2 code, else the member's country (73% of intents have none);
+        // ?from/?to on createdAt (narrowing the older startDate/endDate if both sent).
+        const adminFilters = readAdminFilters(req, res);
+        if (!adminFilters) return res;
         try {
             // Extract query parameters for filtering and pagination
             const {
@@ -1052,6 +1069,14 @@ export class PaymentController {
             }
             // Add more filters as needed
 
+            const createdAt = narrowRange(filters.createdAt, adminFilters);
+            if (createdAt) filters.createdAt = createdAt;
+            if (adminFilters.country) {
+                // payment intents store userId as a string
+                const memberIds = await memberIdsForCountry(adminFilters.country);
+                filters.$and = [directOrMemberCountryMatch('countryCode', 'userId', adminFilters.country, memberIds)];
+            }
+
             // Construct pagination options
             const options = {
                 page: parseInt(page, 10),
@@ -1079,6 +1104,7 @@ export class PaymentController {
             });
 
         } catch (error) {
+            if (sendFilterError(res, error)) return res;
             log.error('Error in adminListTransactions:', error);
             if (error instanceof AppError) {
                 return res.status(error.statusCode).json({ success: false, message: error.message });
@@ -1096,10 +1122,13 @@ export class PaymentController {
      */
     public adminGetTotalWithdrawals = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         log.info('Admin request: Get total withdrawals');
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const totalWithdrawals = await paymentService.getTotalWithdrawalsAmount();
+            // completed withdrawals; date = createdAt (older rows have no completion date)
+            const totalWithdrawals = await paymentService.getTotalWithdrawalsAmount(await statsMatch(f));
             return res.status(200).json({ success: true, data: totalWithdrawals });
         } catch (error) {
+            if (sendFilterError(res, error)) return;
             log.error('Error in adminGetTotalWithdrawals:', error);
             next(error);
         }
@@ -1112,10 +1141,12 @@ export class PaymentController {
      */
     public adminGetTotalDeposits = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         log.info('Admin request: Get total deposits');
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const totalDeposits = await paymentService.getTotalDepositsAmount();
+            const totalDeposits = await paymentService.getTotalDepositsAmount(await statsMatch(f));
             return res.status(200).json({ success: true, data: totalDeposits });
         } catch (error) {
+            if (sendFilterError(res, error)) return;
             log.error('Error in adminGetTotalDeposits:', error);
             next(error);
         }
@@ -1129,10 +1160,12 @@ export class PaymentController {
     public adminGetTotalRevenue = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         log.info('Admin request: Get total revenue');
         // Requires clarification on what constitutes revenue
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const totalRevenue = await paymentService.getTotalRevenueAmount();
+            const totalRevenue = await paymentService.getTotalRevenueAmount(await statsMatch(f));
             return res.status(200).json({ success: true, data: totalRevenue });
         } catch (error) {
+            if (sendFilterError(res, error)) return;
             log.error('Error in adminGetTotalRevenue:', error);
             next(error);
         }
@@ -1146,10 +1179,13 @@ export class PaymentController {
     public adminGetMonthlyRevenue = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         log.info('Admin request: Get monthly revenue');
         // Requires clarification on what constitutes revenue
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const monthlyRevenue = await paymentService.getMonthlyRevenueStats(); // Defaulting to 12 months
+            // from/to replace the default 12-month window (months are still filled with 0)
+            const monthlyRevenue = await paymentService.getMonthlyRevenueStats(12, { memberMatch: await memberObjectIdMatch(f), from: f.from, to: f.to });
             return res.status(200).json({ success: true, data: monthlyRevenue });
         } catch (error) {
+            if (sendFilterError(res, error)) return;
             log.error('Error in adminGetMonthlyRevenue:', error);
             next(error);
         }
@@ -1163,10 +1199,12 @@ export class PaymentController {
     public adminGetActivityOverview = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         log.info('Admin request: Get activity overview');
         // Requires clarification on what data is needed for overview
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const activityOverview = await paymentService.getMonthlyActivityOverviewStats(); // Defaulting to 12 months
+            const activityOverview = await paymentService.getMonthlyActivityOverviewStats(12, { memberMatch: await memberObjectIdMatch(f), from: f.from, to: f.to });
             return res.status(200).json({ success: true, data: activityOverview });
         } catch (error) {
+            if (sendFilterError(res, error)) return;
             log.error('Error in adminGetActivityOverview:', error);
             next(error);
         }
@@ -1395,10 +1433,12 @@ export class PaymentController {
      */
     public adminGetTotalTransactionsCount = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         log.info('Admin request: Get total transactions count');
+        const f = readAdminFilters(req, res); if (!f) return;
         try {
-            const totalTransactions = await paymentService.getTotalTransactionsCount();
+            const totalTransactions = await paymentService.getTotalTransactionsCount(await statsMatch(f));
             return res.status(200).json({ success: true, data: totalTransactions, message: 'Total transactions count retrieved successfully.' });
         } catch (error) {
+            if (sendFilterError(res, error)) return;
             log.error('Error in adminGetTotalTransactionsCount:', error);
             next(error);
         }

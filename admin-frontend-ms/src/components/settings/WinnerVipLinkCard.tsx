@@ -1,60 +1,90 @@
-import React, { useEffect, useState } from 'react';
-import toast from 'react-hot-toast';
-import axios from 'axios';
-import { updateSettings, ISettings } from '../../services/adminSettingsApi';
+import { useEffect, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Crown02Icon } from '@hugeicons/core-free-icons';
+import { updateSettings, type ISettings } from '../../services/adminSettingsApi';
+import { Can } from '../Can';
+import { usePermission } from '../../hooks/usePermission';
+import { Badge, Button, Field, Input, Panel, PanelBody, PanelHeader } from '../ui';
+import { apiError } from '../display/format';
+
+/** Same rule as settings-service PUT /settings: WhatsApp links only, empty clears. */
+const WHATSAPP_LINK = /^https:\/\/(chat\.whatsapp\.com|wa\.me|(www\.)?whatsapp\.com)\//i;
 
 /**
  * Pack Winner VIP WhatsApp group (Rufus, 2026-11-15). Winner members see a
  * « Rejoindre le groupe VIP » button on their pack card and their profile as
- * soon as this link is set; clearing it hides the button.
+ * soon as this link is set; clearing it hides the button (unless the server's
+ * fallback WINNER_VIP_GROUP_LINK is set).
  */
-const WinnerVipLinkCard: React.FC<{ value?: string; onSaved: (settings: ISettings) => void }> = ({ value, onSaved }) => {
+export function WinnerVipLinkCard({ value, onSaved }: { value?: string; onSaved: (settings: ISettings) => void }) {
     const [link, setLink] = useState(value ?? '');
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const canWrite = usePermission('settings') === 'write';
 
     useEffect(() => { setLink(value ?? ''); }, [value]);
 
-    const save = async (e: React.FormEvent) => {
+    const trimmed = link.trim();
+    const unchanged = trimmed === (value ?? '');
+
+    const save = async (e: FormEvent) => {
         e.preventDefault();
+        if (trimmed && !WHATSAPP_LINK.test(trimmed)) {
+            setError('Collez un lien WhatsApp : https://chat.whatsapp.com/…');
+            return;
+        }
+        setError(null);
         setSaving(true);
         try {
-            const updated = await updateSettings({ winnerVipGroupUrl: link.trim() });
+            const updated = await updateSettings({ winnerVipGroupUrl: trimmed });
             onSaved(updated);
-            toast.success(link.trim() ? 'Lien du groupe VIP enregistré.' : 'Lien du groupe VIP retiré.');
-        } catch (error) {
-            const message = axios.isAxiosError(error) && error.response?.data?.message;
-            toast.error(message || "Le lien n'a pas pu être enregistré.");
+            toast.success(trimmed ? 'Lien du groupe VIP enregistré.' : 'Lien du groupe VIP retiré.');
+        } catch (err) {
+            const message = apiError(err, 'Le lien n’a pas pu être enregistré.');
+            setError(message);
+            toast.error(message);
         } finally {
             setSaving(false);
         }
     };
 
     return (
-        <form onSubmit={save} className="bg-gray-800 shadow rounded-lg p-6 space-y-3 mb-8">
-            <div>
-                <h3 className="text-lg font-semibold text-white">Pack Winner : groupe WhatsApp VIP</h3>
-                <p className="text-sm text-gray-400">
-                    Les abonnés Winner voient le bouton « Rejoindre le groupe VIP » sur leur pack et dans leur profil dès que ce lien est enregistré. Videz le champ pour retirer le bouton.
-                </p>
-            </div>
-            <label htmlFor="winnerVipGroupUrl" className="block text-sm font-medium text-gray-300">Lien d'invitation du groupe</label>
-            <input
-                id="winnerVipGroupUrl"
-                type="url"
-                value={link}
-                onChange={(e) => setLink(e.target.value)}
-                placeholder="https://chat.whatsapp.com/…"
-                className="w-full rounded-md border border-gray-600 bg-gray-700 px-3 py-2 text-white placeholder-gray-400 focus:border-indigo-500 focus:outline-none"
+        <Panel>
+            <PanelHeader
+                title={<span className="flex items-center gap-2"><HugeiconsIcon icon={Crown02Icon} size={16} className="text-fg-muted" aria-hidden="true" />Groupe WhatsApp VIP du Pack Winner</span>}
+                description="Les abonnés Winner voient « Rejoindre le groupe VIP » sur leur pack et dans leur profil dès que ce lien est enregistré."
+                actions={value ? <Badge tone="success">Bouton visible</Badge> : <Badge tone="neutral">Aucun lien</Badge>}
             />
-            <button
-                type="submit"
-                disabled={saving || link.trim() === (value ?? '')}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-        </form>
+            <PanelBody>
+                <form onSubmit={save} className="space-y-4">
+                    <Field
+                        label="Lien d’invitation du groupe"
+                        error={error ?? undefined}
+                        help="Lien WhatsApp uniquement. Videz le champ et enregistrez pour retirer le bouton (le lien de secours du serveur s’applique alors s’il existe)."
+                    >
+                        <Input
+                            className="h-11"
+                            type="url"
+                            inputMode="url"
+                            readOnly={!canWrite}
+                            value={link}
+                            onChange={e => { setLink(e.target.value); setError(null); }}
+                            placeholder="https://chat.whatsapp.com/…"
+                        />
+                    </Field>
+                    <Can module="settings" write>
+                        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            {!unchanged && <Button type="button" variant="ghost" size="lg" onClick={() => { setLink(value ?? ''); setError(null); }} disabled={saving}>Annuler</Button>}
+                            <Button type="submit" variant="primary" size="lg" loading={saving} disabled={unchanged}>
+                                {trimmed || !value ? 'Enregistrer le lien' : 'Retirer le lien'}
+                            </Button>
+                        </div>
+                    </Can>
+                </form>
+            </PanelBody>
+        </Panel>
     );
-};
+}
 
 export default WinnerVipLinkCard;

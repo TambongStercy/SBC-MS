@@ -10,6 +10,7 @@ import logger from '../../utils/logger';
 import { NotFoundError, AppError, BadRequestError, ForbiddenError } from '../../utils/errors'; // Assuming custom error classes
 import axios from 'axios';
 import { isAdminRequest } from '../middleware/auth.middleware';
+import { readAdminFilters } from '../../utils/admin-filters';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
@@ -446,7 +447,7 @@ export const getAdminBalance = async (req: Request, res: Response, next: NextFun
 
 // --- Formations Controllers ---
 
-const ADMIN_ROLES = new Set(['admin', 'tester']);
+const ADMIN_ROLES = new Set(['admin', 'staff', 'tester']);
 
 const isAdminCaller = (req: Request): boolean => {
     const user = (req as any).user;
@@ -813,9 +814,12 @@ export const updateGatewayBalances = async (req: AuthenticatedRequest, res: Resp
 export const getGatewayBalanceHistory = async (req: Request, res: Response, next: NextFunction) => {
     log.info('Handling GET /settings/gateway-balances/history request');
     const limit = parseInt(req.query.limit as string) || 50;
+    // ?from/?to bound the snapshot's createdAt. ?country is validated but not
+    // applied: the snapshots are SBC's gateway accounts, not a country's.
+    const dates = readAdminFilters(req, res); if (!dates) return;
 
     try {
-        const history = await gatewayBalanceService.getBalanceHistory(limit);
+        const history = await gatewayBalanceService.getBalanceHistory(limit, { from: dates.from, to: dates.to });
         res.status(200).json({
             success: true,
             data: history

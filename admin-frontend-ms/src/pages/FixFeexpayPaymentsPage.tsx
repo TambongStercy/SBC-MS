@@ -1,189 +1,221 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Search, Hammer } from 'lucide-react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon, UserSearch01Icon, Wrench01Icon } from '@hugeicons/core-free-icons';
 import { reprocessFeexpayPaymentsForUser, searchUsersForFeexPayFix, ReprocessFeexpayResult } from '../services/adminPaymentApi';
-import { AdminUserData } from '../services/adminUserApi'; // Reusing the AdminUserData interface
-import { getAvatarUrl } from '../api/apiClient'; // Import getAvatarUrl
+import { AdminUserData } from '../services/adminUserApi';
+import { getAvatarUrl } from '../api/apiClient';
+import { Can } from '../components/Can';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PaymentsFilterRow } from '../components/payments/PaymentsFilterRow';
+import {
+    Avatar, Badge, Button, EmptyState, PageHeader, Panel, PanelHeader, ResponsiveList, type ListColumn,
+} from '../components/ui';
+import { ErrorState, FilterBar } from '../components/common/DataStates';
+import { CheckFirst, CopyValue, SearchInput } from '../components/payments/shared';
+import { useUrlSearchAndPage } from '../components/payments/useUrlSearchAndPage';
 
-interface FixFeexpayPaymentsPageProps {
-    embedded?: boolean; // Suppress <Header /> when rendered inside the unified /fix-provider-issues tabbed page.
+/** Payment intent statuses FeexPay correction can report. */
+const RESULT_STATUS_LABELS: Record<string, string> = {
+    SUCCEEDED: 'Réussi',
+    FAILED: 'Échoué',
+    PENDING: 'En attente',
+    PROCESSING: 'En cours',
+    PENDING_PROVIDER: 'En attente du fournisseur',
+    PENDING_USER_INPUT: 'En attente du membre',
+    ERROR: 'Erreur',
+    CANCELED: 'Annulé',
+    EXPIRED: 'Expiré',
+};
+const RESULT_TONE: Record<string, 'success' | 'danger' | 'warning' | 'neutral'> = {
+    SUCCEEDED: 'success', FAILED: 'danger', ERROR: 'danger', CANCELED: 'neutral', EXPIRED: 'neutral',
+};
+
+/** The service answers in English: say it in French, keep unknown text as is. */
+function resultMessage(message: string): string {
+    const ok = /^Reprocessing successful\. New status: (\w+)\.?$/.exec(message);
+    if (ok) return `Statut redemandé à FeexPay : ${RESULT_STATUS_LABELS[ok[1]] ?? ok[1]}.`;
+    const ko = /^Reprocessing failed: (.*?)\.?$/.exec(message);
+    if (ko) return `FeexPay n’a pas pu être interrogé : ${ko[1]}.`;
+    return message;
 }
 
+interface FixFeexpayPaymentsPageProps {
+    embedded?: boolean; // Suppress the page header when rendered inside the unified /fix-provider-issues page.
+}
+
+/**
+ * A member says they paid by FeexPay and nothing happened: find them, then ask
+ * FeexPay again for every pending / processing / error payment they have. Only
+ * what FeexPay confirms is applied (server side, it stops at the first success).
+ */
 function FixFeexpayPaymentsPage({ embedded = false }: FixFeexpayPaymentsPageProps = {}) {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [users, setUsers] = useState<AdminUserData[]>([]);
-    const [loadingUsers, setLoadingUsers] = useState(false);
+    const { input, setInput, q, clear } = useUrlSearchAndPage();
     const [reprocessingUserId, setReprocessingUserId] = useState<string | null>(null);
-    const [reprocessingResults, setReprocessingResults] = useState<Record<string, ReprocessFeexpayResult[]>>({});
-    const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
+    const [reprocessingResults, setReprocessingResults] = useState<Record<string, { name: string; results: ReprocessFeexpayResult[] }>>({});
 
-    // Debounce search input
-    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setSearchTerm(event.target.value);
-        if (debounceTimeout) {
-            clearTimeout(debounceTimeout);
-        }
-        const timeout = setTimeout(() => {
-            if (event.target.value.trim() !== '') {
-                fetchUsers(event.target.value);
-            } else {
-                setUsers([]); // Clear users when search box is empty
-            }
-        }, 500);
-        setDebounceTimeout(timeout);
-    };
+    // Country narrows the member search; a period means nothing here.
+    const filters = usePageFilters();
+    const usersQuery = useQuery({
+        queryKey: ['payments-feexpay-member-search', q, filters.country],
+        queryFn: () => searchUsersForFeexPayFix(q, filters.country || undefined),
+        enabled: q !== '',
+    });
 
-    const fetchUsers = useCallback(async (query: string) => {
-        setLoadingUsers(true);
-        try {
-            const fetchedUsers = await searchUsersForFeexPayFix(query);
-            setUsers(fetchedUsers);
-        } catch (error) {
-            toast.error("Failed to search users.");
-            console.error("Failed to search users:", error);
-        } finally {
-            setLoadingUsers(false);
-        }
-    }, []);
+    useEffect(() => {
+        if (usersQuery.isError) toast.error('La recherche de membres a échoué.');
+    }, [usersQuery.isError]);
 
-    const handleReprocessPayments = useCallback(async (userId: string) => {
-        setReprocessingUserId(userId); // Set the user being reprocessed
-        setReprocessingResults(prev => ({ ...prev, [userId]: [] })); // Clear previous results for this user
-        const toastId = toast.loading('Initiating payment fix... This might take up to 5 minutes.', { duration: 300000 }); // 5 minutes duration
-
+    const handleReprocessPayments = async (user: AdminUserData) => {
+        const userId = user._id;
+        if (reprocessingUserId) return; // one correction at a time
+        setReprocessingUserId(userId);
+        setReprocessingResults(prev => ({ ...prev, [userId]: { name: user.name, results: [] } }));
+        const toastId = toast.loading('Correction des paiements en cours… Cela peut prendre jusqu\'à 5 minutes.', { duration: 300000 });
         try {
             const results = await reprocessFeexpayPaymentsForUser(userId);
-            setReprocessingResults(prev => ({ ...prev, [userId]: results }));
-            toast.success('Payment fix initiated. Check results.', { id: toastId }); // Dismiss and show success
+            setReprocessingResults(prev => ({ ...prev, [userId]: { name: user.name, results } }));
+            toast.success('Correction lancée. Consultez les résultats.', { id: toastId });
         } catch (error) {
-            console.error("Error during reprocessing:", error);
-            toast.error("Failed to initiate payment fix.", { id: toastId }); // Dismiss and show error
-            setReprocessingResults(prev => ({ ...prev, [userId]: [{ sessionId: '', status: '', message: 'Failed to reprocess.' }] }));
+            console.error('Error during reprocessing:', error);
+            toast.error('Impossible de lancer la correction.', { id: toastId });
+            setReprocessingResults(prev => ({ ...prev, [userId]: { name: user.name, results: [{ sessionId: '', status: '', message: 'Le retraitement a échoué.' }] } }));
         } finally {
-            setReprocessingUserId(null); // Reset after completion
-            toast.dismiss(toastId); // Ensure the loading toast is always dismissed
+            setReprocessingUserId(null);
+            toast.dismiss(toastId);
         }
-    }, []);
+    };
 
-    // Initial fetch for popular/recent users or clear users if no search term
-    useEffect(() => {
-        // On initial load, if there's no search term, ensure users list is empty.
-        // If you want to show initial users, call fetchUsers with a default query or empty string
-        // if (searchTerm === '') { 
-        //     setUsers([]);
-        // } else {
-        //     fetchUsers(searchTerm);
-        // }
-    }, []);
+    const users = q ? usersQuery.data ?? [] : [];
+
+    const actionButton = (u: AdminUserData, phone: boolean) => {
+        const busy = reprocessingUserId === u._id;
+        return (
+            <Can module="payments" write fallback={phone ? null : <span className="text-xs text-fg-subtle">Lecture seule</span>}>
+                <Button
+                    variant="soft"
+                    size={phone ? 'lg' : 'sm'}
+                    className={phone ? 'w-full' : undefined}
+                    loading={busy}
+                    disabled={!!reprocessingUserId && !busy}
+                    onClick={e => { e.stopPropagation(); void handleReprocessPayments(u); }}
+                >
+                    {!busy && <HugeiconsIcon icon={Wrench01Icon} size={16} aria-hidden="true" />}
+                    {busy ? 'Correction…' : 'Corriger ses paiements FeexPay'}
+                </Button>
+            </Can>
+        );
+    };
+
+    const identity = (u: AdminUserData) => (
+        <div className="flex min-w-0 items-center gap-3">
+            <Avatar src={getAvatarUrl(u.avatar)} name={u.name || '?'} size="sm" />
+            <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-fg">{u.name || 'Sans nom'}</p>
+                <p className="truncate text-xs text-fg-muted">{u.email || '—'}</p>
+            </div>
+        </div>
+    );
+
+    const columns: ListColumn<AdminUserData>[] = [
+        { key: 'member', header: 'Membre', cell: identity },
+        { key: 'phone', header: 'Téléphone', cell: u => <span className="font-mono text-sm">{u.phoneNumber || '—'}</span> },
+        { key: 'action', header: <span className="sr-only">Action</span>, className: 'text-right', hideOnCard: true, cell: u => actionButton(u, false) },
+    ];
+
+    const resultEntries = Object.entries(reprocessingResults).reverse();
 
     return (
-        <div className="flex-1 overflow-auto relative z-10">
-            {!embedded && <Header title="Fix FeexPay Payments" />}
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
-                <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-8"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 1, ease: "easeInOut" }}
-                >
-                    <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4">Search Users</h2>
-                    <div className="relative w-full mb-6">
-                        <input
-                            type="text"
-                            placeholder="Search by name, email, or phone number..."
-                            className="bg-gray-700 text-white placeholder-gray-400 rounded-lg pl-10 pr-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            value={searchTerm}
-                            onChange={handleSearchChange}
-                        />
-                        <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                    </div>
+        <div className="flex flex-col gap-6">
+            {!embedded && (
+                <PageHeader
+                    className="mb-0"
+                    title="Paiements FeexPay à corriger"
+                    description="Un membre a payé par FeexPay mais rien ne s’est passé : retrouvez-le et redemandez à FeexPay le statut de ses paiements."
+                />
+            )}
+            {!embedded && <PaymentsFilterRow filters={filters} hidePeriod />}
 
-                    {loadingUsers ? (
-                        <div className="text-center py-4"><Loader name="Users" /></div>
-                    ) : users.length === 0 && searchTerm !== '' ? (
-                        <p className="text-center text-gray-400">No users found matching "{searchTerm}".</p>
-                    ) : users.length === 0 && searchTerm === '' ? (
-                        <p className="text-center text-gray-400">Start typing to search for users.</p>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-700">
-                                <thead>
-                                    <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Avatar</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Phone</th>
-                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-700">
-                                    {users.map((user) => (
-                                        <tr key={user._id}>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
-                                                <img
-                                                    src={getAvatarUrl(user.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
-                                                    alt={`${user.name}'s avatar`}
-                                                    className="h-10 w-10 rounded-full object-cover"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">{user.name}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">{user.email || 'N/A'}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">{user.phoneNumber || 'N/A'}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                                <button
-                                                    onClick={() => handleReprocessPayments(user._id)}
-                                                    disabled={reprocessingUserId === user._id}
-                                                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                                                >
-                                                    {reprocessingUserId === user._id ? (
-                                                        <><Hammer size={16} className="animate-spin mr-2" /> Fixing...</>
-                                                    ) : (
-                                                        <><Hammer size={16} className="mr-2" /> Fix FeexPay Payments</>
-                                                    )}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </motion.div>
-
-                {Object.keys(reprocessingResults).length > 0 && (
-                    <motion.div
-                        className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mt-8"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 1, ease: "easeInOut" }}
-                    >
-                        <h2 className="text-lg sm:text-xl font-semibold text-gray-100 mb-4">Reprocessing Results</h2>
-                        {Object.entries(reprocessingResults).map(([userId, results]) => (
-                            <div key={userId} className="mb-6 p-4 border border-gray-700 rounded-lg">
-                                <h3 className="text-md font-medium text-gray-100 mb-2">Results for User ID: {userId}</h3>
-                                {results.length === 0 ? (
-                                    <p className="text-gray-400">No errors to fix found for this user.</p>
+            {resultEntries.length > 0 && (
+                <Panel>
+                    <PanelHeader
+                        title="Résultats des corrections"
+                        description="Ce que FeexPay a répondu, membre par membre (le plus récent en haut)."
+                        actions={(
+                            <Button variant="ghost" size="sm" className="h-11 sm:h-8" onClick={() => setReprocessingResults({})} disabled={!!reprocessingUserId}>
+                                <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+                                Effacer
+                            </Button>
+                        )}
+                    />
+                    <div className="space-y-4 px-5 pb-4">
+                        {resultEntries.map(([userId, { name, results }]) => (
+                            <div key={userId} className="rounded-control border border-line">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
+                                    <p className="text-sm font-medium text-fg">{name || 'Membre'}</p>
+                                    <CopyValue value={userId} label="Copier l’ID du membre" />
+                                </div>
+                                {reprocessingUserId === userId ? (
+                                    <p className="px-4 py-3 text-sm text-fg-muted">Correction en cours… (jusqu’à 5 minutes)</p>
+                                ) : results.length === 0 ? (
+                                    <p className="px-4 py-3 text-sm text-fg-muted">Aucun paiement FeexPay en attente pour ce membre : rien à corriger.</p>
                                 ) : (
-                                    <ul className="list-disc list-inside text-gray-300">
-                                        {results.map((result, index) => (
-                                            <li key={index} className="mb-1">
-                                                <span className="font-semibold">Session ID:</span> {result.sessionId} -
-                                                <span className={`font-semibold ${result.status === 'SUCCEEDED' ? 'text-green-400' : result.status === 'FAILED' ? 'text-red-400' : 'text-yellow-400'}`}>Status: {result.status}</span> -
-                                                Message: {result.message}
+                                    <ul className="divide-y divide-line">
+                                        {results.map((r, i) => (
+                                            <li key={`${r.sessionId}-${i}`} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm text-fg">{resultMessage(r.message)}</p>
+                                                    {r.sessionId && <CopyValue value={r.sessionId} label="Copier l’ID de session" className="mt-0.5" />}
+                                                </div>
+                                                {r.status && <Badge tone={RESULT_TONE[r.status] ?? 'warning'} className="self-start sm:self-center">{RESULT_STATUS_LABELS[r.status] ?? r.status}</Badge>}
                                             </li>
                                         ))}
                                     </ul>
                                 )}
                             </div>
                         ))}
-                    </motion.div>
-                )}
-            </main>
+                    </div>
+                </Panel>
+            )}
+
+            <Panel>
+                <PanelHeader title="Rechercher le membre" description="Par nom, e-mail ou téléphone." />
+                <div className="space-y-3 px-5 pb-4">
+                    <FilterBar active={!!input && !filters.isFiltered} onClear={clear}>
+                        <SearchInput value={input} onChange={setInput} label="Rechercher un membre" placeholder="Nom, e-mail ou téléphone" />
+                    </FilterBar>
+                    <CheckFirst>
+                        <p>
+                            La correction redemande à FeexPay le statut des paiements en attente du membre et n’applique que ce que FeexPay confirme.
+                            Un paiement « en attente » est le plus souvent abandonné : le contrôle automatique le revérifie déjà toutes les 10 minutes.
+                        </p>
+                    </CheckFirst>
+                </div>
+                <ResponsiveList
+                    rows={users}
+                    columns={columns}
+                    rowKey={u => u._id}
+                    className="border-t border-line"
+                    loading={q !== '' && usersQuery.isLoading}
+                    card={u => (
+                        <div className="space-y-3">
+                            {identity(u)}
+                            {u.phoneNumber && <p className="font-mono text-sm text-fg-muted">{u.phoneNumber}</p>}
+                            {actionButton(u, true)}
+                        </div>
+                    )}
+                    empty={!q ? (
+                        <EmptyState icon={UserSearch01Icon} title="Commencez à taper pour rechercher un membre" description="Le membre qui dit avoir payé par FeexPay sans résultat." />
+                    ) : usersQuery.isError ? (
+                        <ErrorState title="La recherche a échoué" onRetry={() => void usersQuery.refetch()} retrying={usersQuery.isFetching} />
+                    ) : (
+                        <EmptyState title={`Aucun membre ne correspond à « ${q} »`} description="Essayez l’e-mail ou le numéro de téléphone." />
+                    )}
+                />
+            </Panel>
         </div>
     );
 }
 
-export default FixFeexpayPaymentsPage; 
+export default FixFeexpayPaymentsPage;

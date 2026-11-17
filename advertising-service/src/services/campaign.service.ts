@@ -312,8 +312,9 @@ export const rejectMediaChange = async (
 };
 
 /** Replacement creatives waiting for an admin, oldest first. */
-export const listPendingMediaChanges = () =>
-    CampaignModel.find({ pendingMedia: { $exists: true } })
+/** `match`: extra conditions (the admin's country / date filters). */
+export const listPendingMediaChanges = (match: Record<string, unknown> = {}) =>
+    CampaignModel.find({ ...match, pendingMedia: { $exists: true } })
         .sort({ 'pendingMedia.submittedAt': 1 })
         .lean();
 

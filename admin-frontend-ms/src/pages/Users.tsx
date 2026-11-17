@@ -1,381 +1,260 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Header from "../components/common/Header";
-import { motion } from "framer-motion";
-import StatCard from "../components/common/statCard";
-import {
-  UsersRound,
-  UserRoundPlus,
-  UserRoundCheck,
-  // UserRound,
-} from "lucide-react";
-import Loader from "../components/common/loader";
-import { listUsers, AdminUserData, AdminUserListFilters, AdminUserListResponse, getUserSummaryStats, UserSummaryStats, SubscriptionType, blockUser, unblockUser } from '../services/adminUserApi';
-import { PaginationOptions } from '../services/adminUserApi';
-import toast from 'react-hot-toast';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon, MoreHorizontalIcon, UserBlock01Icon, UserCheck01Icon, UserGroupIcon, ViewIcon } from '@hugeicons/core-free-icons';
+import { blockUser, unblockUser, type AdminUserData, type AdminUserListFilters } from '../services/adminUserApi';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { listMembers, memberSummary } from '../components/members/api';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import { getAvatarUrl } from '../api/apiClient';
+import { ErrorState } from '../components/common/DataStates';
+import { formatMoney, formatNumber } from '../components/common/format';
+import { Can } from '../components/Can';
+import {
+  Button, EmptyState, Menu, MenuContent, MenuItem, MenuTrigger, Metric, PageHeader, Pagination, Panel, PanelHeader,
+  ResponsiveList, Select, Skeleton, type ListColumn,
+} from '../components/ui';
+import { AccountStatusBadge, MemberIdentity, SearchInput, SubscriptionBadges } from '../components/members/shared';
+import { PAGE_FILTER_KEYS, countryLabel, useUrlFilters } from '../components/members/filters';
 
-interface UserTablePlaceholderProps {
-  users: AdminUserData[];
-  onViewUser: (userId: string) => void;
-  onToggleBlock: (user: AdminUserData) => void;
-  blockingId: string | null;
-}
+const PAGE_SIZE = 20;
+const FILTER_KEYS = ['q', 'status'] as const;
+const ALL = 'all';
 
-const UserTablePlaceholder: React.FC<UserTablePlaceholderProps> = ({
-  users,
-  onViewUser,
-  onToggleBlock,
-  blockingId,
-}) => (
-  <div className="overflow-x-auto shadow-md rounded-lg">
-    <table className="min-w-full divide-y divide-gray-700">
-      <thead className="bg-gray-800">
-        <tr>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Avatar</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Phone Number</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Subscription</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Relance</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance FCFA</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance USD</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Country</th>
-          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-          <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>
-        </tr>
-      </thead>
-      <tbody className="bg-gray-900 divide-y divide-gray-700">
-        {users.map((user) => (
-          <tr key={user._id} className="hover:bg-gray-800">
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-100">
-              <img
-                src={user.avatar ? getAvatarUrl(user.avatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random`}
-                alt={`${user.name}'s avatar`}
-                className="h-10 w-10 rounded-full object-cover"
-              />
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100">{user.name}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.email}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.phoneNumber || 'N/A'}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm">
-              {user.activeSubscriptionTypes && user.activeSubscriptionTypes.length > 0 ? (
-                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                  user.activeSubscriptionTypes.includes(SubscriptionType.CIBLE) ? 'bg-amber-500 text-amber-100' :
-                  user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'bg-green-500 text-green-100' :
-                  'bg-gray-500 text-gray-100'
-                }`}>
-                  {user.activeSubscriptionTypes.includes(SubscriptionType.CIBLE) ? 'Cible' :
-                   user.activeSubscriptionTypes.includes(SubscriptionType.CLASSIQUE) ? 'Classique' : 'None'}
-                </span>
-              ) : (
-                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">None</span>
-              )}
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm">
-              {user.activeSubscriptionTypes && user.activeSubscriptionTypes.includes(SubscriptionType.RELANCE) ? (
-                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-500 text-blue-100">Active</span>
-              ) : (
-                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-500 text-gray-100">Inactive</span>
-              )}
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.balance !== undefined ? user.balance.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' FCFA' : 'N/A'}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.usdBalance !== undefined ? user.usdBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : '0.00 USD'}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.country || 'N/A'}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm">
-              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.blocked ? 'bg-red-500 text-red-100' : user.deleted ? 'bg-gray-500 text-gray-100' : 'bg-green-500 text-green-100'}`}>
-                {user.deleted ? 'Deleted' : user.blocked ? 'Blocked' : 'Active'}
-              </span>
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center">
-              <div className="flex items-center justify-center gap-2">
-                <button
-                  onClick={() => onViewUser(user._id)}
-                  className="text-indigo-400 hover:text-indigo-300"
-                >
-                  View
-                </button>
-                {!user.deleted && (
-                  <button
-                    onClick={() => onToggleBlock(user)}
-                    disabled={blockingId === user._id}
-                    className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors disabled:opacity-50 ${
-                      user.blocked
-                        ? 'bg-green-700 text-green-100 hover:bg-green-600'
-                        : 'bg-red-700 text-red-100 hover:bg-red-600'
-                    }`}
-                  >
-                    {blockingId === user._id ? '...' : user.blocked ? 'Unblock' : 'Block'}
-                  </button>
-                )}
-              </div>
-            </td>
-          </tr>
-        ))}
-        {users.length === 0 && (
-          <tr>
-            <td colSpan={11} className="px-6 py-4 text-center text-sm text-gray-400">No users match the current filters.</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-);
+const STATUS_OPTIONS = [
+  { value: ALL, label: 'Tous les statuts' },
+  { value: 'active', label: 'Actifs' },
+  { value: 'blocked', label: 'Bloqués' },
+  { value: 'deleted', label: 'Supprimés' },
+];
 
-const PaginationPlaceholder: React.FC<{
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-}> = ({ currentPage, totalPages, onPageChange }) => (
-  <div className="flex justify-between items-center mt-4">
-    <button
-      onClick={() => onPageChange(currentPage - 1)}
-      disabled={currentPage <= 1}
-      className="px-4 py-2 bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      Previous
-    </button>
-    <span>Page {currentPage} of {totalPages}</span>
-    <button
-      onClick={() => onPageChange(currentPage + 1)}
-      disabled={currentPage >= totalPages}
-      className="px-4 py-2 bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      Next
-    </button>
-  </div>
-);
+const pct = (part?: number, total?: number) =>
+  part != null && total ? `${Math.round((part / total) * 1000) / 10} % des membres`.replace('.', ',') : undefined;
 
-const UserFiltersPlaceholder: React.FC<{
-  filters: AdminUserListFilters;
-  onFilterChange: (filters: AdminUserListFilters) => void;
-}> = ({ filters, onFilterChange }) => {
-  const [searchInput, setSearchInput] = useState(filters.search || '');
-  const [statusInput, setStatusInput] = useState(filters.status || '');
-
-  useEffect(() => {
-    setSearchInput(filters.search || '');
-    setStatusInput(filters.status || '');
-  }, [filters]);
-
-  const handleLocalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    if (name === 'search') {
-      setSearchInput(value);
-    }
-    if (name === 'status') {
-      setStatusInput(value);
-    }
-  };
-
-  const handleApplyFilters = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log("Applying filters:", { search: searchInput, status: statusInput });
-    onFilterChange({
-      search: searchInput || undefined,
-      status: (statusInput || undefined) as AdminUserListFilters['status']
-    });
-  };
-
-  return (
-    <form onSubmit={handleApplyFilters} className="mb-4 flex flex-wrap gap-4 items-center bg-gray-800 p-4 rounded-lg shadow">
-      <input
-        type="text"
-        name="search"
-        placeholder="Search name, email..."
-        value={searchInput}
-        onChange={handleLocalInputChange}
-        className="px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 flex-grow"
-      />
-      <select
-        name="status"
-        value={statusInput}
-        onChange={handleLocalInputChange}
-        className="px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-      >
-        <option value="">All Statuses</option>
-        <option value="active">Active</option>
-        <option value="inactive">Inactive</option> {/* Assuming inactive exists */}
-        <option value="blocked">Blocked</option>
-        <option value="deleted">Deleted</option> {/* Assuming deleted exists */}
-      </select>
-      <button
-        type="submit"
-        className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-      >
-        Search
-      </button>
-    </form>
-  );
-};
-
+/** Membres: find a member, see their pack and balance, block or open the profile. */
 function Users() {
   const navigate = useNavigate();
-  const [users, setUsers] = useState<AdminUserData[]>([]);
-  const [pagination, setPagination] = useState<PaginationOptions>({ page: 1, limit: 10 });
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState<AdminUserListFilters>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [summaryStats, setSummaryStats] = useState<UserSummaryStats | null>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-
-  const fetchUsersList = useCallback(async () => {
-    setIsLoading(true);
-    const loadingToastId = toast.loading('Fetching users list...');
-    try {
-      console.log('Fetching users with filters:', filters, 'and pagination:', pagination);
-      const response: AdminUserListResponse = await listUsers(filters, pagination);
-      console.log('Received users response:', response);
-      setUsers(response.data || []);
-      setTotalPages(response.pagination?.totalPages || 1);
-      setTotalCount(response.pagination?.totalCount || 0);
-
-      const currentPageFromResponse = response.pagination?.currentPage;
-      if (currentPageFromResponse !== undefined && currentPageFromResponse !== pagination.page) {
-        setPagination(prev => ({ ...prev, page: currentPageFromResponse }));
-      }
-      toast.dismiss(loadingToastId);
-    } catch (err: any) {
-      console.error("Failed to fetch users:", err);
-      toast.error(`Failed to load users list: ${err.message}`);
-      toast.dismiss(loadingToastId);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filters, pagination]);
-
-  const fetchSummaryStats = useCallback(async () => {
-    setIsLoadingStats(true);
-    try {
-      const stats = await getUserSummaryStats();
-      setSummaryStats(stats);
-    } catch (err: any) {
-      console.error("Failed to fetch summary stats:", err);
-      toast.error(`Failed to load summary stats: ${err.message}`);
-      setSummaryStats(null);
-    } finally {
-      setIsLoadingStats(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUsersList();
-    fetchSummaryStats();
-  }, [fetchUsersList, fetchSummaryStats]);
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage > 0 && newPage <= totalPages) {
-      setPagination(prev => ({ ...prev, page: newPage }));
-    }
-  };
-
-  const handleFilterChange = (newFilters: AdminUserListFilters) => {
-    setPagination(prev => ({ ...prev, page: 1 }));
-    setFilters(newFilters);
-  };
-
-  const [blockingId, setBlockingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { values, page, active: ownActive, set, setPage, clear } = useUrlFilters(FILTER_KEYS);
+  const pageFilters = usePageFilters();
+  const range = pageFilters.apiParams;
+  const active = ownActive || pageFilters.isFiltered;
+  const clearAll = () => clear(PAGE_FILTER_KEYS);
   const [confirmBlock, setConfirmBlock] = useState<AdminUserData | null>(null);
 
-  // --- Action Handlers ---
-  const handleViewUser = (userId: string) => {
-    navigate(`/userpage/${userId}`);
+  const filters: AdminUserListFilters = {
+    search: values.q || undefined,
+    status: (values.status || undefined) as AdminUserListFilters['status'],
   };
+  const listKey = ['admin-users', filters, range, page] as const;
 
-  const handleToggleBlock = async (user: AdminUserData) => {
-    setBlockingId(user._id);
-    try {
-      if (user.blocked) {
-        await unblockUser(user._id);
-        toast.success(`${user.name} unblocked`);
-      } else {
-        await blockUser(user._id);
-        toast.success(`${user.name} blocked`);
-      }
-      setUsers(prev => prev.map(u => u._id === user._id ? { ...u, blocked: !u.blocked } : u));
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Action failed');
-    } finally {
-      setBlockingId(null);
-    }
-  };
+  const usersQuery = useQuery({
+    queryKey: listKey,
+    queryFn: () => listMembers(filters, range, page, PAGE_SIZE),
+    placeholderData: keepPreviousData,
+  });
+  const statsQuery = useQuery({
+    queryKey: ['admin-users-summary', range],
+    queryFn: () => memberSummary(range),
+    placeholderData: keepPreviousData,
+  });
 
-  if ((isLoading || isLoadingStats) && users.length === 0 && !summaryStats) {
-    return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
-        <Loader name={"Users Data"} />
+  const toggleBlock = useMutation({
+    mutationFn: (user: AdminUserData) => (user.blocked ? unblockUser(user._id) : blockUser(user._id)),
+    onSuccess: (_, user) => {
+      toast.success(user.blocked ? `${user.name} est débloqué.` : `${user.name} est bloqué.`);
+      void queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg || 'L’action n’a pas abouti. Réessayez.');
+    },
+  });
+
+  const users = usersQuery.data?.data ?? [];
+  const pagination = usersQuery.data?.pagination;
+  const stats = statsQuery.data;
+  const open = (u: AdminUserData) => navigate(`/userpage/${u._id}`);
+  // A page number past the end (filters narrowed, old link): go to the last page.
+  const lastPage = pagination?.totalPages ?? 0;
+  useEffect(() => { if (lastPage > 0 && page > lastPage) setPage(lastPage); }, [lastPage, page, setPage]);
+
+  const rowActions = (u: AdminUserData, phone = false) => (
+    <div className={phone ? 'grid grid-cols-[1fr_auto] gap-2' : 'flex items-center justify-end gap-1'} onClick={e => e.stopPropagation()}>
+      <Button variant={phone ? 'outline' : 'ghost'} size={phone ? 'lg' : 'sm'} onClick={() => open(u)}>
+        <HugeiconsIcon icon={ViewIcon} size={16} aria-hidden="true" />
+        Voir la fiche
+      </Button>
+      {!u.deleted && (
+        <Can module="members" write>
+          <Menu>
+            <MenuTrigger asChild>
+              <Button variant="ghost" size={phone ? 'icon' : 'icon-sm'} className={phone ? 'h-11 w-11' : undefined} aria-label={`Plus d’actions pour ${u.name}`}>
+                <HugeiconsIcon icon={MoreHorizontalIcon} size={16} aria-hidden="true" />
+              </Button>
+            </MenuTrigger>
+            <MenuContent>
+              {u.blocked ? (
+                <MenuItem onSelect={() => setConfirmBlock(u)}>
+                  <HugeiconsIcon icon={UserCheck01Icon} size={16} aria-hidden="true" /> Débloquer
+                </MenuItem>
+              ) : (
+                <MenuItem destructive onSelect={() => setConfirmBlock(u)}>
+                  <HugeiconsIcon icon={UserBlock01Icon} size={16} aria-hidden="true" /> Bloquer
+                </MenuItem>
+              )}
+            </MenuContent>
+          </Menu>
+        </Can>
+      )}
+    </div>
+  );
+
+  const balances = (u: AdminUserData) => (
+    <div className="text-right tabular-nums">
+      <div>{formatMoney(u.balance ?? 0, 'XAF')}</div>
+      {!!u.usdBalance && <div className="text-xs text-fg-muted">{formatMoney(u.usdBalance, 'USD')}</div>}
+    </div>
+  );
+
+  const columns: ListColumn<AdminUserData>[] = [
+    { key: 'member', header: 'Membre', cell: u => <MemberIdentity name={u.name} email={u.email} avatar={u.avatar} /> },
+    {
+      key: 'contact', header: 'Téléphone', cell: u => (
+        <div className="min-w-0">
+          <div className="tabular-nums">{u.phoneNumber || '—'}</div>
+          <div className="text-xs text-fg-muted">{countryLabel(u.country)}</div>
+        </div>
+      ),
+    },
+    { key: 'sub', header: 'Abonnement', cell: u => <SubscriptionBadges types={u.activeSubscriptionTypes} /> },
+    { key: 'balance', header: 'Solde', numeric: true, cell: balances },
+    { key: 'status', header: 'Statut', cell: u => <AccountStatusBadge user={u} /> },
+    { key: 'actions', header: <span className="sr-only">Actions</span>, cell: u => rowActions(u), hideOnCard: true, className: 'text-right' },
+  ];
+
+  const card = (u: AdminUserData) => (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <MemberIdentity name={u.name} email={u.email} avatar={u.avatar} />
+        <AccountStatusBadge user={u} />
       </div>
-    );
-  }
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <SubscriptionBadges types={u.activeSubscriptionTypes} />
+        <span className="font-medium tabular-nums text-fg">{formatMoney(u.balance ?? 0, 'XAF')}</span>
+      </div>
+      <p className="text-xs text-fg-muted">{u.phoneNumber || 'Pas de téléphone'} · {countryLabel(u.country)}</p>
+      {rowActions(u, true)}
+    </div>
+  );
 
-  // const totalSubscribers = summaryStats ? summaryStats.activeClassique + summaryStats.activeCible : 0;
+  const total = stats?.totalUsers;
+  const statValue = (v?: number) => (statsQuery.isLoading ? <Skeleton className="h-7 w-24" /> : formatNumber(v));
 
   return (
-    <div className="flex-1 overflow-auto relative z-10">
-      <Header title="Utilisateurs" />
-      <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
-        <motion.div
-          className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: "easeInOut" }}
-        >
-          <StatCard
-            name="Total Users"
-            icon={UsersRound}
-            value={(totalCount > 0 ? totalCount : (summaryStats?.totalUsers ?? 0)).toString()}
-            color="#6366F1"
-          />
-          <StatCard
-            name="Abonnés Classique"
-            icon={UserRoundCheck}
-            value={isLoadingStats ? "..." : (summaryStats?.activeClassique ?? 0).toString()}
-            color="#10B981"
-          />
-          <StatCard
-            name="Abonnés Cible"
-            icon={UserRoundPlus}
-            value={isLoadingStats ? "..." : (summaryStats?.activeCible ?? 0).toString()}
-            color="#F59E0B"
-          />
-        </motion.div>
-        <UserFiltersPlaceholder filters={filters} onFilterChange={handleFilterChange} />
+    <div className="space-y-6">
+      <PageHeader
+        title="Membres"
+        description="Retrouvez un membre, voyez son abonnement et son solde, ouvrez sa fiche pour la modifier."
+      />
 
-        {isLoading && users.length === 0 && <div className="text-center py-4 text-gray-400">Loading users list...</div>}
-
-        {!isLoading && users.length === 0 && (
-          <div className="text-center py-4 text-gray-400">No users found matching the criteria.</div>
+      <PageFilters filters={pageFilters} onReset={clearAll}>
+        <SearchInput value={values.q} onChange={v => set('q', v)} placeholder="Nom, e-mail, téléphone ou identifiant" className="sm:flex-1 sm:max-w-md" />
+        <Select
+          value={values.status || ALL}
+          onValueChange={v => set('status', v === ALL ? '' : v)}
+          options={STATUS_OPTIONS}
+          className="h-11 sm:h-9 sm:w-44"
+        />
+        {ownActive && !pageFilters.isFiltered && (
+          <Button variant="ghost" size="sm" onClick={() => clear()} className="self-start sm:self-auto">
+            <HugeiconsIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
+            Effacer les filtres
+          </Button>
         )}
+      </PageFilters>
 
-        {users.length > 0 && (
-          <UserTablePlaceholder
-            users={users}
-            onViewUser={handleViewUser}
-            onToggleBlock={setConfirmBlock}
-            blockingId={blockingId}
+      <div className={`grid grid-cols-2 gap-3 ${ownActive ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+        <Metric
+          className="col-span-2 lg:col-span-1"
+          label={pageFilters.period !== 'all' ? 'Inscrits sur la période' : 'Membres inscrits'}
+          value={statValue(total)}
+          hint={pageFilters.country ? countryLabel(pageFilters.country) : undefined}
+        />
+        <Metric label="Abonnés Classique" value={statValue(stats?.activeClassique)} hint={pageFilters.period === 'all' ? pct(stats?.activeClassique, total) : 'abonnements démarrés sur la période'} />
+        <Metric label="Abonnés Ciblé" value={statValue(stats?.activeCible)} hint={pageFilters.period === 'all' ? pct(stats?.activeCible, total) : 'abonnements démarrés sur la période'} />
+        {ownActive && (
+          <Metric
+            className="col-span-2 lg:col-span-1"
+            label="Résultats de la recherche"
+            value={usersQuery.isLoading ? <Skeleton className="h-7 w-24" /> : formatNumber(pagination?.totalCount)}
+            hint="membres trouvés"
           />
         )}
+      </div>
 
-        {users.length > 0 && totalPages > 1 && (
-          <PaginationPlaceholder
-            currentPage={pagination.page}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
+      <Panel>
+        <PanelHeader
+          title="Liste des membres"
+          description={pagination ? `${formatNumber(pagination.totalCount)} membre${pagination.totalCount > 1 ? 's' : ''}` : undefined}
+        />
+        <div className={usersQuery.isFetching && !usersQuery.isLoading ? 'opacity-60 transition-opacity' : undefined}>
+          <ResponsiveList
+            rows={users}
+            columns={columns}
+            rowKey={u => u._id}
+            onRowClick={open}
+            card={card}
+            loading={usersQuery.isLoading}
+            empty={usersQuery.isError ? (
+              <ErrorState
+                description={(usersQuery.error as Error)?.message}
+                onRetry={() => void usersQuery.refetch()}
+                retrying={usersQuery.isFetching}
+              />
+            ) : (
+              <EmptyState
+                icon={UserGroupIcon}
+                title={active ? 'Aucun membre ne correspond' : 'Aucun membre'}
+                description={active ? 'Essayez un autre nom, numéro ou statut.' : undefined}
+                action={active ? <Button size="lg" onClick={clearAll}>Effacer les filtres</Button> : undefined}
+              />
+            )}
+          />
+        </div>
+        {pagination && (
+          <Pagination
+            page={pagination.currentPage || page}
+            totalPages={pagination.totalPages}
+            total={pagination.totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
           />
         )}
-        <div className="text-sm text-gray-400 mt-2">Total users found: {totalCount}</div>
-      </main>
+      </Panel>
+
+      {statsQuery.isError && (
+        <p className="text-xs text-fg-muted">
+          Les chiffres du haut n’ont pas pu être chargés. <button className="underline" onClick={() => void statsQuery.refetch()}>Réessayer</button>
+        </p>
+      )}
+
       <ConfirmationModal
         isOpen={!!confirmBlock}
         variant={confirmBlock?.blocked ? 'success' : 'danger'}
         title={confirmBlock?.blocked ? `Débloquer ${confirmBlock?.name} ?` : `Bloquer ${confirmBlock?.name} ?`}
         message={confirmBlock?.blocked
           ? 'Le membre pourra de nouveau se connecter.'
-          : 'Le membre ne pourra plus se connecter.'}
+          : 'Le membre ne pourra plus se connecter tant qu’il reste bloqué.'}
         confirmText={confirmBlock?.blocked ? 'Débloquer' : 'Bloquer'}
-        onConfirm={async () => { if (confirmBlock) await handleToggleBlock(confirmBlock); setConfirmBlock(null); }}
+        onConfirm={async () => {
+          if (confirmBlock) {
+            try { await toggleBlock.mutateAsync(confirmBlock); } catch { /* toast already shown */ }
+          }
+          setConfirmBlock(null);
+        }}
         onCancel={() => setConfirmBlock(null)}
       />
     </div>

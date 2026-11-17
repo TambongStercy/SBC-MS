@@ -37,13 +37,13 @@ const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFuncti
     }
 };
 
-/** True when the request carries a valid token of an admin (role 'admin'). */
+/** True when the request carries a valid token of an admin or admin team member (the gateway checks the module). */
 export const isAdminRequest = (req: Request): boolean => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return false;
     try {
         const decoded = jwt.verify(authHeader.split(' ')[1], config.jwt.secret) as { role?: string };
-        return decoded.role === 'admin';
+        return decoded.role === 'admin' || decoded.role === 'staff';
     } catch {
         return false;
     }

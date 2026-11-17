@@ -71,8 +71,9 @@ export class LoveProfileRepository {
     }
 
     /** Profile counts per status in a single grouped pass (admin dashboard). */
-    async countByStatus(): Promise<Record<string, number>> {
+    async countByStatus(match: FilterQuery<ILoveProfile> = {}): Promise<Record<string, number>> {
         const rows = await LoveProfileModel.aggregate<{ _id: string; count: number }>([
+            ...(Object.keys(match).length ? [{ $match: match }] : []),
             { $group: { _id: '$status', count: { $sum: 1 } } },
         ]).exec();
         return Object.fromEntries(rows.map(r => [r._id, r.count]));

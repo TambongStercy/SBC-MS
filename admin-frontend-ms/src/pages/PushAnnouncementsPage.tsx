@@ -1,138 +1,114 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+    Alert02Icon, ArrowRight01Icon, Megaphone02Icon, Moon02Icon, Notification03Icon, SentIcon, UserGroupIcon,
+} from '@hugeicons/core-free-icons';
 import apiClient from '../api/apiClient';
-import { useToast } from '../hooks/useToast';
-import ToastContainer from '../components/common/ToastContainer';
-import ConfirmationModal from '../components/common/ConfirmationModal';
-import { countryCodeToNameMap } from '../utils/countryUtils';
+import { Can } from '../components/Can';
+import {
+    Badge, Button, Dialog, DialogClose, DialogContent, EmptyState, Field, Input, Metric, PageHeader, Panel, PanelBody,
+    PanelHeader, ResponsiveList, Segmented, Select, Skeleton, Switch, Textarea, type ListColumn,
+} from '../components/ui';
+import { ErrorState } from '../components/display/ErrorState';
+import { RelativeDate } from '../components/display/RelativeDate';
+import { apiError, fmtInt } from '../components/display/format';
+import { CountryPicker } from '../components/notifications/CountryPicker';
+import { PageFilters } from '../components/filters/PageFilters';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { countryName as pageCountryName } from '../lib/countries';
+import {
+    APP_PAGES, BODY_MAX, describeFilter, isNightInDouala, pageLabel, SEX_LABEL, SUBSCRIPTION_LABEL, TITLE_MAX,
+    type Announcement, type PushFilter, type PushOverview,
+} from '../components/notifications/pushShared';
 
-type Filter = { countries?: string[]; subscription?: 'subscribed' | 'unsubscribed'; sex?: 'male' | 'female' };
-type Announcement = {
-    _id: string; title: string; body: string; url?: string; recipients: number; createdAt: string;
-    filter?: Filter; sendNow?: boolean;
-};
-type Overview = { recent: Announcement[]; toAllToday: number; toAllPerDay: number; audience: number };
+const OVERVIEW_KEY = ['push', 'announcements'] as const;
 
-const COUNTRIES = Object.entries(countryCodeToNameMap)
-    .filter(([code]) => /^[A-Z]{2}$/.test(code))
-    .sort((a, b) => a[1].localeCompare(b[1], 'fr'));
-
-const SUBSCRIPTION_LABEL = { subscribed: 'Subscribed', unsubscribed: 'Not subscribed' } as const;
-const SEX_LABEL = { male: 'Men', female: 'Women' } as const;
-
-/** "Everyone", or "Cameroun, Gabon · Not subscribed · Women". */
-const describeFilter = (f?: Filter) => {
-    if (!f) return 'Everyone';
-    const parts = [
-        f.countries?.length ? f.countries.map(c => countryCodeToNameMap[c] ?? c).join(', ') : '',
-        f.subscription ? SUBSCRIPTION_LABEL[f.subscription] : '',
-        f.sex ? SEX_LABEL[f.sex] : '',
-    ].filter(Boolean);
-    return parts.length ? parts.join(' · ') : 'Everyone';
-};
-
-/**
- * Pages of the member app an announcement can open, as members know them.
- * A list rather than a text box: an admin should not have to know routes.
- * Keep in step with SBC-WEB-UI's App.tsx when pages move.
- */
-const APP_PAGES: Array<{ group: string; pages: Array<{ label: string; url: string }> }> = [
-    { group: 'Général', pages: [
-        { label: 'Accueil', url: '/' },
-        { label: 'Formations', url: '/formations' },
-        { label: 'SBC Shop', url: '/marketplace' },
-        { label: 'Classement', url: '/classement' },
-        { label: 'Contacts', url: '/contacts' },
-        { label: 'Messages', url: '/chat' },
-        { label: 'SBC Love', url: '/sbclove' },
-    ] },
-    { group: 'Argent', pages: [
-        { label: 'Portefeuille', url: '/wallet' },
-        { label: 'Solde d\'activation', url: '/activation-balance' },
-        { label: 'Abonnement', url: '/abonnement' },
-    ] },
-    { group: 'Parrainage', pages: [
-        { label: 'Mes filleuls', url: '/filleuls' },
-        { label: 'Espace partenaire', url: '/partenaire' },
-        { label: 'Relance', url: '/relance' },
-        { label: 'Campagnes de relance', url: '/relance/campagnes' },
-    ] },
-    { group: 'Événements', pages: [
-        { label: 'Événements', url: '/events' },
-        { label: 'Mes billets', url: '/events/mes-billets' },
-        { label: 'Revente de billets', url: '/events/revente' },
-    ] },
-    { group: 'Ads Network', pages: [
-        { label: 'Ads Network', url: '/ads-network' },
-        { label: 'Espace diffuseur', url: '/ads-network/diffuseur' },
-        { label: 'Espace annonceur', url: '/ads-network/annonceur' },
-        { label: 'Nouvelle campagne pub', url: '/ads-network/annonceur/nouvelle-campagne' },
-    ] },
-    { group: 'Compte', pages: [
-        { label: 'Profil', url: '/profile' },
-        { label: 'Notifications', url: '/notifications' },
-    ] },
+const PAGE_OPTIONS = APP_PAGES.flatMap(g => g.pages.map(p => ({
+    value: p.url,
+    label: <span>{p.label} <span className="text-fg-subtle">· {g.group}</span></span>,
+})));
+const SUBSCRIPTION_OPTIONS = [
+    { value: 'all', label: 'Tous' },
+    { value: 'subscribed', label: SUBSCRIPTION_LABEL.subscribed },
+    { value: 'unsubscribed', label: SUBSCRIPTION_LABEL.unsubscribed },
 ];
-const pageLabel = (url: string) => APP_PAGES.flatMap(g => g.pages).find(p => p.url === url)?.label ?? 'Accueil';
+const SEX_OPTIONS = [
+    { value: 'all', label: 'Tous' },
+    { value: 'male', label: SEX_LABEL.male },
+    { value: 'female', label: SEX_LABEL.female },
+];
 
-/** Douala hour now (UTC+1, no DST): announcements wait 22:00–07:00 unless sent now. */
-const doualaHour = () => (new Date().getUTCHours() + 1) % 24;
-const isNightInDouala = () => { const h = doualaHour(); return h >= 22 || h < 7; };
+const membres = (n: number) => `${fmtInt(n)} membre${n > 1 ? 's' : ''}`;
 
-const TITLE_MAX = 120;
-const BODY_MAX = 400;
+/** What members see on their phone. */
+function PushPreview({ title, body, url }: { title: string; body: string; url: string }) {
+    return (
+        <div className="flex items-start gap-3 rounded-panel border border-line bg-surface-2 p-3">
+            {/* The icon members actually see on their phone. */}
+            <img src="/sbc-app-icon.png" alt="" className="h-10 w-10 shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-fg">{title || 'Titre de l’annonce'}</p>
+                <p className="line-clamp-3 text-sm text-fg-muted">{body || 'Le message apparaît ici.'}</p>
+                <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                    Découvrir <HugeiconsIcon icon={ArrowRight01Icon} size={12} aria-hidden="true" /> {pageLabel(url)}
+                </p>
+            </div>
+        </div>
+    );
+}
 
 /**
- * Push announcements to members who turned notifications on — everyone, or
- * those a filter picks. One to everyone per 24 h (server-side): past that,
- * people stop reading — or switch "Annonces SBC" off, and then nothing
- * reaches them. Targeted ones are not limited.
+ * Annonces push (module `notifications`): a push to members who turned
+ * notifications on — everyone, or those a filter picks. One to everyone per
+ * 24 h (server-side): past that, people stop reading or switch "Annonces SBC"
+ * off. Targeted ones are not limited. Sent at night (22:00–07:00 Douala) they
+ * wait for 07:00 unless "send now" is ticked.
+ * Server: notification-service /push/admin/{announcements,audience,announce}.
  */
-const PushAnnouncementsPage: React.FC = () => {
-    const { toasts, removeToast, showSuccess, showError } = useToast();
-    const [overview, setOverview] = useState<Overview | null>(null);
-    const [loading, setLoading] = useState(true);
+export default function PushAnnouncementsPage() {
+    const queryClient = useQueryClient();
+    const filters = usePageFilters();
+    // Unfiltered: what the composer relies on (audience to everyone, the 24 h cap).
+    // The page's country/period filters only scope the history below: they must
+    // never change who an announcement goes to (its own picker decides that).
+    const overview = useQuery({
+        queryKey: [...OVERVIEW_KEY, {}],
+        queryFn: async () => (await apiClient.get('/notifications/push/admin/announcements')).data.data as PushOverview,
+    });
+    const history = useQuery({
+        queryKey: [...OVERVIEW_KEY, filters.apiParams],
+        queryFn: async () => (await apiClient.get('/notifications/push/admin/announcements', { params: filters.apiParams })).data.data as PushOverview,
+        placeholderData: keepPreviousData,
+    });
+
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
     const [url, setUrl] = useState('/');
-    const [targeted, setTargeted] = useState(false);
+    const [targeted, setTargeted] = useState<'all' | 'filter'>('all');
     const [countries, setCountries] = useState<string[]>([]);
-    const [countrySearch, setCountrySearch] = useState('');
-    const [subscription, setSubscription] = useState<'' | 'subscribed' | 'unsubscribed'>('');
-    const [sex, setSex] = useState<'' | 'male' | 'female'>('');
+    const [subscription, setSubscription] = useState('all');
+    const [sex, setSex] = useState('all');
     const [filteredCount, setFilteredCount] = useState<number | null>(null);
     const [counting, setCounting] = useState(false);
     const [sendNow, setSendNow] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
-    const [sending, setSending] = useState(false);
-
-    const load = useCallback(async () => {
-        setLoading(true);
-        try {
-            const { data } = await apiClient.get('/notifications/push/admin/announcements');
-            setOverview(data.data);
-        } catch {
-            showError('Could not load announcements.');
-        } finally {
-            setLoading(false);
-        }
-    }, [showError]);
-
-    useEffect(() => { load(); }, [load]);
 
     // "Filter" with nothing picked is everyone, exactly as the server reads it.
-    const filter: Filter | null = useMemo(() => {
-        if (!targeted) return null;
-        const f: Filter = {
+    const filter: PushFilter | null = useMemo(() => {
+        if (targeted !== 'filter') return null;
+        const f: PushFilter = {
             ...(countries.length ? { countries } : {}),
-            ...(subscription ? { subscription } : {}),
-            ...(sex ? { sex } : {}),
+            ...(subscription !== 'all' ? { subscription: subscription as PushFilter['subscription'] } : {}),
+            ...(sex !== 'all' ? { sex: sex as PushFilter['sex'] } : {}),
         };
         return Object.keys(f).length ? f : null;
     }, [targeted, countries, subscription, sex]);
 
-    // Live count while the admin shapes the filter.
+    // Live count while the admin shapes the filter (read-only call).
     useEffect(() => {
-        if (!filter) { setFilteredCount(null); return; }
+        if (!filter) { setFilteredCount(null); setCounting(false); return; }
         let cancelled = false;
         setCounting(true);
         const timer = setTimeout(async () => {
@@ -148,263 +124,271 @@ const PushAnnouncementsPage: React.FC = () => {
         return () => { cancelled = true; clearTimeout(timer); };
     }, [filter]);
 
+    const o = overview.data;
     const toAll = !filter;
-    const reach = toAll ? overview?.audience ?? 0 : filteredCount;
-    const capReached = toAll && !!overview && overview.toAllToday >= overview.toAllPerDay;
-    const canSend = !!title.trim() && !!body.trim() && !capReached && !sending && !counting && !!reach;
+    const reach = toAll ? o?.audience ?? 0 : filteredCount;
+    const capReached = toAll && !!o && o.toAllToday >= o.toAllPerDay;
     const night = isNightInDouala();
-    const shownCountries = COUNTRIES.filter(([code, name]) =>
-        !countrySearch.trim() || `${code} ${name}`.toLowerCase().includes(countrySearch.trim().toLowerCase()));
-    const toggleCountry = (code: string) =>
-        setCountries(cs => cs.includes(code) ? cs.filter(c => c !== code) : [...cs, code]);
+    const missing = !title.trim() || !body.trim();
+    const canSend = !missing && !capReached && !counting && !!reach;
 
-    const buttonLabel = capReached
-        ? 'Daily limit to everyone reached — add a filter'
-        : toAll ? 'Send to everyone' : `Send to ${counting || reach === null ? '…' : reach} member(s)`;
-
-    const send = async () => {
-        setSending(true);
-        try {
-            const { data } = await apiClient.post('/notifications/push/admin/announce', {
-                title: title.trim(), body: body.trim(), url,
-                ...(filter ? { filter } : {}),
-                ...(night && sendNow ? { sendNow: true } : {}),
-            });
-            showSuccess(data.data.heldUntil
-                ? `Saved for ${data.data.recipients} member(s): in their notifications now, on their phones at 07:00 (Douala).`
-                : `Sending to ${data.data.recipients} member(s).`);
+    const send = useMutation({
+        mutationFn: async () => (await apiClient.post('/notifications/push/admin/announce', {
+            title: title.trim(), body: body.trim(), url,
+            ...(filter ? { filter } : {}),
+            ...(night && sendNow ? { sendNow: true } : {}),
+        })).data.data as { recipients: number; heldUntil?: string },
+        onSuccess: res => {
+            toast.success(res.heldUntil
+                ? `Enregistrée pour ${membres(res.recipients)} : visible tout de suite dans leurs notifications, sur leur téléphone à 07:00 (Douala).`
+                : `Envoi à ${membres(res.recipients)}.`);
             setTitle(''); setBody(''); setUrl('/'); setSendNow(false);
-            load();
-        } catch (err) {
-            const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-            showError(message || 'The announcement could not be sent.');
-        } finally {
-            setSending(false);
             setConfirmOpen(false);
-        }
-    };
+            void queryClient.invalidateQueries({ queryKey: OVERVIEW_KEY });
+        },
+        onError: err => {
+            toast.error(apiError(err, 'L’annonce n’a pas pu être envoyée.'));
+            setConfirmOpen(false);
+        },
+    });
 
-    return (
-        <div className="flex-1 overflow-auto relative z-10 bg-gray-900 text-white p-4 md:p-8">
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
-            <h1 className="text-2xl md:text-3xl font-bold mb-6">Push Announcements</h1>
+    const sendLabel = capReached
+        ? 'Limite du jour atteinte : ajoutez un filtre'
+        : missing ? 'Saisissez un titre et un message'
+            : toAll ? `Envoyer à tout le monde (${membres(o?.audience ?? 0)})`
+                : counting || reach === null ? 'Comptage des destinataires…' : `Envoyer à ${membres(reach)}`;
 
-            <div className="max-w-3xl mx-auto grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-gray-800 rounded-lg p-4">
-                    <div className="text-sm text-gray-400">Members with notifications on</div>
-                    <div className="text-2xl font-bold">{loading ? '…' : overview?.audience ?? 0}</div>
+    const columns: ListColumn<Announcement>[] = [
+        {
+            key: 'msg', header: 'Annonce', className: 'max-w-0 w-1/2',
+            cell: a => (
+                <div className="min-w-0">
+                    <p className="truncate font-medium text-fg">{a.title}</p>
+                    <p className="line-clamp-2 text-xs text-fg-muted">{a.body}</p>
                 </div>
-                <div className="bg-gray-800 rounded-lg p-4">
-                    <div className="text-sm text-gray-400">To everyone, last 24 h</div>
-                    <div className={`text-2xl font-bold ${overview && overview.toAllToday >= overview.toAllPerDay ? 'text-red-400' : ''}`}>
-                        {loading ? '…' : `${overview?.toAllToday ?? 0} / ${overview?.toAllPerDay ?? 1}`}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">Filtered ones are not limited</div>
+            ),
+        },
+        {
+            key: 'to', header: 'Destinataires',
+            cell: a => (
+                <div className="min-w-0">
+                    <p className="tabular-nums text-fg">{membres(a.recipients)}</p>
+                    <p className="truncate text-xs text-fg-muted">{describeFilter(a.filter)}</p>
                 </div>
+            ),
+        },
+        { key: 'page', header: 'Ouvre', cell: a => <span className="text-fg-muted">{a.url ? pageLabel(a.url) : '—'}</span> },
+        {
+            key: 'when', header: 'Envoyée',
+            cell: a => (
+                <div className="flex flex-col items-start gap-1">
+                    <RelativeDate value={a.createdAt} className="text-fg-muted" />
+                    {a.sendNow && <Badge tone="warning"><HugeiconsIcon icon={Moon02Icon} size={12} aria-hidden="true" />De nuit</Badge>}
+                </div>
+            ),
+        },
+    ];
+
+    const card = (a: Announcement) => (
+        <div className="space-y-1.5">
+            <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 font-medium text-fg">{a.title}</p>
+                <RelativeDate value={a.createdAt} className="shrink-0 text-xs text-fg-muted" />
             </div>
+            <p className="line-clamp-2 text-sm text-fg-muted">{a.body}</p>
+            <p className="text-xs text-fg-muted">
+                {membres(a.recipients)} · {describeFilter(a.filter)}{a.url ? ` · ${pageLabel(a.url)}` : ''}
+            </p>
+            {a.sendNow && <Badge tone="warning"><HugeiconsIcon icon={Moon02Icon} size={12} aria-hidden="true" />Envoyée de nuit</Badge>}
+        </div>
+    );
 
-            <div className="max-w-3xl mx-auto bg-gray-800 rounded-lg p-6 space-y-4">
-                <label className="block">
-                    <span className="text-sm text-gray-300">Title</span>
-                    <input
-                        value={title}
-                        maxLength={TITLE_MAX}
-                        onChange={e => setTitle(e.target.value)}
-                        placeholder="Nouvelle formation disponible"
-                        className="mt-1 w-full bg-gray-700 rounded-md px-3 py-2 text-white"
-                    />
-                </label>
-                <label className="block">
-                    <span className="text-sm text-gray-300">Message ({body.length}/{BODY_MAX})</span>
-                    <textarea
-                        value={body}
-                        maxLength={BODY_MAX}
-                        rows={3}
-                        onChange={e => setBody(e.target.value)}
-                        placeholder="Découvre la formation « Vendre sur WhatsApp » dès maintenant."
-                        className="mt-1 w-full bg-gray-700 rounded-md px-3 py-2 text-white"
-                    />
-                </label>
-                <label className="block">
-                    <span className="text-sm text-gray-300">Tapping it opens</span>
-                    <select
-                        value={url}
-                        onChange={e => setUrl(e.target.value)}
-                        className="mt-1 w-full bg-gray-700 rounded-md px-3 py-2 text-white"
-                    >
-                        {APP_PAGES.map(g => (
-                            <optgroup key={g.group} label={g.group}>
-                                {g.pages.map(p => <option key={p.url} value={p.url}>{p.label}</option>)}
-                            </optgroup>
-                        ))}
-                    </select>
-                </label>
+    const composer = (
+        <Panel>
+            <PanelHeader title="Nouvelle annonce" description="Une notification sur le téléphone des membres qui ont activé « Annonces SBC »." />
+            <PanelBody className="space-y-5">
+                <Field label="Titre" help={`${title.length}/${TITLE_MAX}`}>
+                    <Input className="h-11" value={title} maxLength={TITLE_MAX} onChange={e => setTitle(e.target.value)} placeholder="Nouvelle formation disponible" />
+                </Field>
+                <Field label="Message" help={`${body.length}/${BODY_MAX}`}>
+                    <Textarea rows={3} value={body} maxLength={BODY_MAX} onChange={e => setBody(e.target.value)} placeholder="Découvre la formation « Vendre sur WhatsApp » dès maintenant." />
+                </Field>
+                <Field label="Page ouverte au toucher">
+                    <Select className="h-11" value={url} onValueChange={setUrl} options={PAGE_OPTIONS} />
+                </Field>
 
-                <div>
-                    <span className="text-sm text-gray-300">Who gets it</span>
-                    <div role="radiogroup" className="mt-1 grid grid-cols-2 gap-1 p-1 bg-gray-700 rounded-md">
-                        {[{ value: false, label: 'Everyone' }, { value: true, label: 'Filter' }].map(o => (
-                            <button
-                                key={o.label}
-                                role="radio"
-                                aria-checked={targeted === o.value}
-                                onClick={() => setTargeted(o.value)}
-                                className={`py-1.5 rounded text-sm font-semibold ${targeted === o.value ? 'bg-gray-900 text-white' : 'text-gray-300'}`}
-                            >
-                                {o.label}
-                            </button>
-                        ))}
-                    </div>
+                <div className="space-y-3">
+                    <p className="text-sm font-medium text-fg">Destinataires</p>
+                    <Segmented
+                        fill
+                        size="lg"
+                        label="Destinataires"
+                        value={targeted}
+                        onValueChange={setTargeted}
+                        options={[{ value: 'all', label: 'Tout le monde' }, { value: 'filter', label: 'Filtrer' }]}
+                    />
+                    {targeted === 'filter' && (
+                        <div className="space-y-4 rounded-panel border border-line bg-surface-2 p-4">
+                            <CountryPicker value={countries} onChange={setCountries} />
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Field label="Abonnement">
+                                    <Select className="h-11" value={subscription} onValueChange={setSubscription} options={SUBSCRIPTION_OPTIONS} />
+                                </Field>
+                                <Field label="Sexe">
+                                    <Select className="h-11" value={sex} onValueChange={setSex} options={SEX_OPTIONS} />
+                                </Field>
+                            </div>
+                            <p className="text-sm" aria-live="polite">
+                                {!filter
+                                    ? <span className="text-fg">Aucun filtre choisi : l’annonce part à tout le monde.</span>
+                                    : counting
+                                        ? <span className="text-fg-muted">Comptage…</span>
+                                        : filteredCount === null
+                                            ? <span className="text-danger">Impossible de compter les membres pour le moment.</span>
+                                            : <span className="text-fg">Touche <strong className="tabular-nums">{fmtInt(filteredCount)}</strong> membre{filteredCount > 1 ? 's' : ''} avec notifications activées.</span>}
+                            </p>
+                        </div>
+                    )}
                 </div>
 
-                {targeted && (
-                    <div className="space-y-3 bg-gray-900/50 rounded-md p-3">
-                        <div>
-                            <div className="flex items-baseline justify-between">
-                                <span className="text-sm text-gray-300">Countries</span>
-                                {countries.length > 0 && (
-                                    <button onClick={() => setCountries([])} className="text-xs text-blue-300">Clear ({countries.length})</button>
-                                )}
-                            </div>
-                            {countries.length > 0 && (
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                    {countries.map(c => (
-                                        <button key={c} onClick={() => toggleCountry(c)} className="text-xs bg-blue-600 rounded-full px-2 py-0.5">
-                                            {countryCodeToNameMap[c] ?? c} ×
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                            <input
-                                value={countrySearch}
-                                onChange={e => setCountrySearch(e.target.value)}
-                                placeholder="Search a country"
-                                className="mt-2 w-full bg-gray-700 rounded-md px-3 py-1.5 text-sm text-white"
-                            />
-                            <div className="mt-1 max-h-40 overflow-auto rounded-md bg-gray-800">
-                                {shownCountries.map(([code, name]) => (
-                                    <label key={code} className="flex items-center gap-2 px-3 py-1 text-sm hover:bg-gray-700 cursor-pointer">
-                                        <input type="checkbox" checked={countries.includes(code)} onChange={() => toggleCountry(code)} />
-                                        {name}
-                                    </label>
-                                ))}
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">None picked = all countries.</p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <label className="block">
-                                <span className="text-sm text-gray-300">Subscription</span>
-                                <select
-                                    value={subscription}
-                                    onChange={e => setSubscription(e.target.value as typeof subscription)}
-                                    className="mt-1 w-full bg-gray-700 rounded-md px-3 py-2 text-white"
-                                >
-                                    <option value="">All</option>
-                                    <option value="subscribed">{SUBSCRIPTION_LABEL.subscribed}</option>
-                                    <option value="unsubscribed">{SUBSCRIPTION_LABEL.unsubscribed}</option>
-                                </select>
-                            </label>
-                            <label className="block">
-                                <span className="text-sm text-gray-300">Sex</span>
-                                <select
-                                    value={sex}
-                                    onChange={e => setSex(e.target.value as typeof sex)}
-                                    className="mt-1 w-full bg-gray-700 rounded-md px-3 py-2 text-white"
-                                >
-                                    <option value="">All</option>
-                                    <option value="male">{SEX_LABEL.male}</option>
-                                    <option value="female">{SEX_LABEL.female}</option>
-                                </select>
-                            </label>
-                        </div>
-                        <p className="text-sm">
-                            {!filter
-                                ? <span className="text-amber-300">Nothing picked: it goes to everyone.</span>
-                                : counting
-                                    ? <span className="text-gray-400">Counting…</span>
-                                    : filteredCount === null
-                                        ? <span className="text-red-400">Could not count members right now.</span>
-                                        : <span>Reaches <strong>{filteredCount}</strong> member(s) with notifications on.</span>}
-                        </p>
-                    </div>
-                )}
-
-                {(title || body) && (
-                    <div>
-                        <div className="text-sm text-gray-400 mb-1">Preview</div>
-                        <div className="bg-gray-950 rounded-xl p-3 flex gap-3 items-start">
-                            {/* The icon members actually see on their phone. */}
-                            <img src="/sbc-app-icon.png" alt="" className="w-10 h-10 rounded-full shrink-0" />
-                            <div className="min-w-0 flex-1">
-                                <div className="font-semibold truncate">{title || 'Title'}</div>
-                                <div className="text-sm text-gray-300 line-clamp-3">{body || 'Message'}</div>
-                                <div className="mt-2 inline-block text-xs font-semibold text-blue-300">Découvrir → {pageLabel(url)}</div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <button
-                    onClick={() => setConfirmOpen(true)}
-                    disabled={!canSend}
-                    className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-40 rounded-md py-2 font-semibold"
-                >
-                    {buttonLabel}
-                </button>
                 {night && (
-                    <div className="text-sm text-amber-300 bg-amber-900/30 rounded-md px-3 py-2 space-y-2">
-                        <p>
+                    <div className="space-y-3 rounded-panel border border-warning/40 bg-warning-soft/40 p-4">
+                        <p className="flex items-start gap-2 text-sm text-fg">
+                            <HugeiconsIcon icon={Moon02Icon} size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
                             {sendNow
-                                ? 'Phones buzz now, in the night. Keep this for real emergencies.'
-                                : "It's night in Douala: members see it in their notifications right away, but phones only buzz at 07:00."}
+                                ? 'Les téléphones sonneront maintenant, en pleine nuit. À réserver aux vraies urgences.'
+                                : 'Il fait nuit à Douala : les membres la voient tout de suite dans leurs notifications, mais leur téléphone ne sonne qu’à 07:00.'}
                         </p>
-                        <label className="flex items-center gap-2 cursor-pointer text-amber-100">
-                            <input type="checkbox" checked={sendNow} onChange={e => setSendNow(e.target.checked)} />
-                            Send now anyway, even at night
+                        <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-fg">
+                            <Switch checked={sendNow} onCheckedChange={setSendNow} />
+                            Faire sonner les téléphones maintenant, malgré la nuit
                         </label>
                     </div>
                 )}
-                <p className="text-xs text-gray-400">
-                    Members who switched off « Annonces SBC » don't receive it.
-                </p>
-            </div>
 
-            <div className="max-w-3xl mx-auto mt-6">
-                <h2 className="text-lg font-semibold mb-3">Recent</h2>
-                {overview?.recent.length ? (
-                    <ul className="space-y-2">
-                        {overview.recent.map(a => (
-                            <li key={a._id} className="bg-gray-800 rounded-lg p-3">
-                                <div className="flex justify-between gap-3">
-                                    <span className="font-medium">{a.title}</span>
-                                    <span className="text-xs text-gray-400 shrink-0">{new Date(a.createdAt).toLocaleString()}</span>
-                                </div>
-                                <div className="text-sm text-gray-300">{a.body}</div>
-                                <div className="text-xs text-gray-400 mt-1">
-                                    {a.recipients} member(s) · {describeFilter(a.filter)}{a.url ? ` · ${pageLabel(a.url)}` : ''}{a.sendNow ? ' · sent at night' : ''}
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="text-sm text-gray-400">{loading ? 'Loading…' : 'No announcement yet.'}</p>
+                {capReached && (
+                    <p className="flex items-start gap-2 text-sm text-danger" role="alert">
+                        <HugeiconsIcon icon={Alert02Icon} size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        Une annonce à tout le monde est déjà partie ces dernières 24 h. Choisissez « Filtrer » pour viser un groupe : les annonces filtrées ne sont pas limitées.
+                    </p>
                 )}
+
+                {/* Sticky on phones: the form is long, the action stays in reach. */}
+                <div className="sticky bottom-0 -mx-5 border-t border-line bg-surface px-5 py-3 sm:static sm:mx-0 sm:border-0 sm:p-0">
+                    <Button variant="primary" size="lg" className="w-full" disabled={!canSend} onClick={() => setConfirmOpen(true)}>
+                        <HugeiconsIcon icon={SentIcon} size={16} aria-hidden="true" />
+                        {sendLabel}
+                    </Button>
+                    <p className="mt-2 text-xs text-fg-muted">Les membres qui ont désactivé « Annonces SBC » ne la reçoivent pas.</p>
+                </div>
+            </PanelBody>
+        </Panel>
+    );
+
+    return (
+        <div className="space-y-6">
+            <PageHeader
+                title="Annonces push"
+                description="Prévenir les membres sur leur téléphone : une nouveauté, une formation, une urgence."
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+                <Metric
+                    label="Membres joignables"
+                    value={overview.isLoading ? <Skeleton className="h-7 w-20" /> : fmtInt(o?.audience)}
+                    hint="Notifications activées"
+                    icon={UserGroupIcon}
+                />
+                <Metric
+                    label="À tout le monde (24 h)"
+                    value={overview.isLoading ? <Skeleton className="h-7 w-16" /> : `${fmtInt(o?.toAllToday)} / ${fmtInt(o?.toAllPerDay ?? 1)}`}
+                    hint={capReached ? 'Limite atteinte · filtrées illimitées' : 'Les annonces filtrées ne sont pas limitées'}
+                    tone={capReached ? 'danger' : 'neutral'}
+                    icon={Megaphone02Icon}
+                />
             </div>
 
-            <ConfirmationModal
-                isOpen={confirmOpen}
-                title="Send this announcement?"
-                message={toAll
-                    ? `It goes to ${reach ?? 0} member(s). Only ${overview?.toAllPerDay ?? 1} announcement to everyone per 24 h. It cannot be recalled.`
-                    : `It goes to ${reach ?? 0} member(s): ${describeFilter(filter ?? undefined)}. It cannot be recalled.`}
-                confirmText="Send"
-                cancelText="Cancel"
-                isLoading={sending}
-                onConfirm={send}
-                onCancel={() => setConfirmOpen(false)}
-            />
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                <Can
+                    module="notifications"
+                    write
+                    fallback={(
+                        <Panel>
+                            <EmptyState icon={Notification03Icon} title="Lecture seule" description="Vous pouvez consulter les annonces envoyées, pas en envoyer." />
+                        </Panel>
+                    )}
+                >
+                    {composer}
+                </Can>
+
+                <div className="space-y-6">
+                    <Panel>
+                        <PanelHeader title="Aperçu" description="Ce que les membres verront." />
+                        <PanelBody><PushPreview title={title} body={body} url={url} /></PanelBody>
+                    </Panel>
+                </div>
+            </div>
+
+            <section className="space-y-3" aria-labelledby="push-history">
+            <h2 id="push-history" className="text-base font-semibold text-fg">Historique des annonces</h2>
+            <PageFilters filters={filters} />
+            <Panel className={history.isPlaceholderData ? 'opacity-60 transition-opacity' : undefined}>
+                <PanelHeader
+                    title="Annonces récentes"
+                    description={filters.country && history.data
+                        ? `${pageCountryName(filters.country)} : les 20 dernières annonces reçues dans ce pays · ${membres(history.data.audience)} joignables`
+                        : 'Les 20 dernières, la plus récente en premier.'}
+                />
+                <ResponsiveList
+                    rows={history.data?.recent ?? []}
+                    columns={columns}
+                    rowKey={a => a._id}
+                    card={card}
+                    loading={history.isLoading}
+                    empty={history.isError ? (
+                        <ErrorState message={apiError(history.error, 'Les annonces n’ont pas pu être chargées.')} onRetry={() => void history.refetch()} retrying={history.isFetching} />
+                    ) : filters.isFiltered ? (
+                        <EmptyState icon={Megaphone02Icon} title="Aucune annonce pour ces filtres" description="Changez de pays ou de période pour en voir d’autres." />
+                    ) : (
+                        <EmptyState icon={Megaphone02Icon} title="Aucune annonce pour le moment" description="Les annonces envoyées s’affichent ici, avec leurs destinataires." />
+                    )}
+                />
+            </Panel>
+            </section>
+
+            <Dialog open={confirmOpen} onOpenChange={open => { if (!send.isPending) setConfirmOpen(open); }}>
+                {confirmOpen && (
+                    <DialogContent
+                        title={`Envoyer à ${membres(reach ?? 0)} ?`}
+                        description="Une annonce envoyée ne peut pas être retirée."
+                        footer={(
+                            <>
+                                <DialogClose asChild><Button variant="outline" size="lg" disabled={send.isPending}>Annuler</Button></DialogClose>
+                                <Button variant="primary" size="lg" loading={send.isPending} onClick={() => send.mutate()}>
+                                    Envoyer à {membres(reach ?? 0)}
+                                </Button>
+                            </>
+                        )}
+                    >
+                        <div className="space-y-3 text-sm">
+                            <PushPreview title={title} body={body} url={url} />
+                            <dl className="space-y-1.5">
+                                <div className="flex justify-between gap-3"><dt className="text-fg-muted">Destinataires</dt><dd className="text-right text-fg">{describeFilter(filter)}</dd></div>
+                                <div className="flex justify-between gap-3"><dt className="text-fg-muted">Nombre</dt><dd className="tabular-nums text-fg">{membres(reach ?? 0)}</dd></div>
+                                <div className="flex justify-between gap-3">
+                                    <dt className="text-fg-muted">Sonnerie</dt>
+                                    <dd className="text-right text-fg">{!night ? 'Tout de suite' : sendNow ? 'Tout de suite, malgré la nuit' : 'À 07:00 (Douala)'}</dd>
+                                </div>
+                            </dl>
+                            {toAll && (
+                                <p className="text-fg-muted">
+                                    C’est l’annonce à tout le monde du jour : {fmtInt(o?.toAllPerDay ?? 1)} au maximum par 24 h.
+                                </p>
+                            )}
+                        </div>
+                    </DialogContent>
+                )}
+            </Dialog>
         </div>
     );
-};
-
-export default PushAnnouncementsPage;
+}

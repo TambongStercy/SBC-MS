@@ -25,6 +25,7 @@ import {
     getMyFilleulsBoard,
 } from '../../services/leaderboard.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
+import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
 
 /**
  * A refused code send. The wait goes in the body for the app's countdown and in
@@ -2165,12 +2166,13 @@ export class UserController {
         try {
             const { country } = req.query;
 
-            if (!country || typeof country !== 'string') {
-                res.status(400).json({ success: false, message: 'Country code is required' });
+            if (!country || typeof country !== 'string' || !/^[A-Za-z]{2}$/.test(country.trim())) {
+                res.status(400).json({ success: false, message: 'Code pays ISO-2 requis (ex. CM).' });
                 return;
             }
 
-            const users = await this.userService.getUserIdsByCountry(country);
+            // Any case; legacy names ("Cameroun", "Congo-Brazzaville") are matched too.
+            const users = await this.userService.getUserIdsByCountry(country.trim().toUpperCase());
             res.status(200).json({ success: true, data: users });
         } catch (error: any) {
             this.log.error(`Error getting user IDs by country: ${error.message}`, error);
@@ -3131,7 +3133,18 @@ export class UserController {
             // cannot tip it into a neighbouring month.
             const monthStart = startOfCurrentMonthDouala(new Date(Date.UTC(year, month - 1, 15, 12)));
 
-            const country = typeof req.query.country === 'string' ? req.query.country.trim() : '';
+            // ?country is validated like every admin list (ISO-2, 400 otherwise) and
+            // matches legacy spellings. from/to do not apply: the board IS a month.
+            let country = '';
+            try {
+                country = parseAdminFilters(req.query as Record<string, unknown>).country ?? '';
+            } catch (e) {
+                if (e instanceof AdminFilterError) {
+                    res.status(400).json({ success: false, message: e.message });
+                    return;
+                }
+                throw e;
+            }
             const groupByCountry = String(req.query.groupBy ?? '') === 'country';
 
             // Three shapes: one country's board, every country's board, or global.

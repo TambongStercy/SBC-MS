@@ -1,116 +1,107 @@
-import React from 'react';
-import { Product } from '../../pages/ProductsManagementPage'; // Import Product interface only
-import { Edit, Trash2, Zap } from 'lucide-react'; // Icons for actions
-import { ImageDisplay } from '../common/ImageDisplay';
+import React, { useState } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Delete02Icon, Edit02Icon, FlashIcon, Image01Icon } from '@hugeicons/core-free-icons';
+import type { Product } from '../../pages/ProductsManagementPage';
 import { getFileUrl } from '../../utils/fileUtils';
+import { cn } from '../../lib/cn';
+import { Badge, Button, MenuItem, ResponsiveList, type ListColumn } from '../ui';
+import { Can } from '../Can';
+import { Money, RowMenu, StatusBadge, type StatusMap } from '../moduleKit';
+
+/** Product status in words. Note: it changes nothing in the member app (products are listed whatever their status). */
+export const PRODUCT_STATUS: StatusMap = {
+    pending: ['En attente', 'warning'],
+    approved: ['Approuvé', 'success'],
+    rejected: ['Rejeté', 'danger'],
+    deleted: ['Supprimé', 'neutral'],
+};
+
+/** A product photo (file id or URL), or a neutral placeholder when there is none or it fails. */
+export function ProductThumb({ src, alt, className }: { src?: string; alt: string; className?: string }) {
+    const [failed, setFailed] = useState(false);
+    if (!src || failed) {
+        return (
+            <span className={cn('flex shrink-0 items-center justify-center rounded-md bg-surface-3 text-fg-subtle', className)} aria-label="Pas d’image">
+                <HugeiconsIcon icon={Image01Icon} size={16} aria-hidden="true" />
+            </span>
+        );
+    }
+    return <img src={getFileUrl(src)} alt={alt} loading="lazy" onError={() => setFailed(true)} className={cn('shrink-0 rounded-md object-cover', className)} />;
+}
 
 interface ProductListProps {
     products: Product[];
     isLoading: boolean;
+    empty?: React.ReactNode;
+    onOpen: (product: Product) => void;
     onEdit: (product: Product) => void;
-    onDelete: (productId: string) => void;
+    onDelete: (productId: string, productName?: string) => void;
     onManageFlashSale: (product: Product) => void;
 }
 
-const ProductList: React.FC<ProductListProps> = ({
-    products,
-    isLoading,
-    onEdit,
-    onDelete,
-    onManageFlashSale,
-}) => {
+const FlashBadge = ({ on }: { on?: boolean }) =>
+    on ? <Badge tone="warning"><HugeiconsIcon icon={FlashIcon} size={12} aria-hidden="true" />Vente flash</Badge> : <span className="text-fg-subtle">—</span>;
 
-    // Define utility functions directly within the component
-    const formatCurrency = (amount: number): string => {
-        // Basic XAF formatting, adjust as needed
-        return new Intl.NumberFormat('fr-CM', { style: 'currency', currency: 'XAF' }).format(amount);
-    };
+/** Products: table on desktop, cards on phones. Row → details; Modifier visible; vente flash and Supprimer in ⋯. */
+const ProductList: React.FC<ProductListProps> = ({ products, isLoading, empty, onOpen, onEdit, onDelete, onManageFlashSale }) => {
+    const actions = (p: Product) => (
+        <Can module="boutique" write>
+            <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                <Button variant="ghost" size="sm" className="h-11 sm:h-8" onClick={() => onEdit(p)}>
+                    <HugeiconsIcon icon={Edit02Icon} size={16} aria-hidden="true" />Modifier
+                </Button>
+                <RowMenu>
+                    <MenuItem onSelect={() => onManageFlashSale(p)}><HugeiconsIcon icon={FlashIcon} size={16} aria-hidden="true" />Gérer la vente flash</MenuItem>
+                    <MenuItem destructive onSelect={() => onDelete(p._id, p.name)}><HugeiconsIcon icon={Delete02Icon} size={16} aria-hidden="true" />Supprimer le produit</MenuItem>
+                </RowMenu>
+            </div>
+        </Can>
+    );
 
-    console.log("Rendering product in list:", products); // Keep this log for now
+    const identity = (p: Product) => (
+        <div className="flex min-w-0 items-center gap-3">
+            <ProductThumb src={p.imagesUrl?.[0]} alt={p.name} className="h-10 w-10" />
+            <div className="min-w-0">
+                <p className="truncate font-medium text-fg">{p.name}</p>
+                <p className="truncate text-xs text-fg-muted">{p.category}{p.subcategory ? ` › ${p.subcategory}` : ''}</p>
+            </div>
+        </div>
+    );
 
-    if (isLoading) {
-        return <div className="text-center p-4">Loading products...</div>;
-    }
+    const columns: ListColumn<Product>[] = [
+        { key: 'product', header: 'Produit', cell: identity, className: 'max-w-[28rem]' },
+        { key: 'price', header: 'Prix', numeric: true, cell: p => <Money value={p.price} /> },
+        { key: 'status', header: 'Statut', cell: p => <StatusBadge status={p.status} map={PRODUCT_STATUS} /> },
+        { key: 'flash', header: 'Vente flash', cell: p => <FlashBadge on={p.hasActiveFlashSale} /> },
+        { key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', hideOnCard: true, cell: actions },
+    ];
 
-    if (!products || products.length === 0) {
-        return <div className="text-center p-4 text-gray-500">No products found.</div>;
-    }
+    const card = (p: Product) => (
+        <div className="space-y-2">
+            <div className="flex items-start justify-between gap-3">
+                {identity(p)}
+                <Money value={p.price} className="text-sm font-medium text-fg" />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={p.status} map={PRODUCT_STATUS} />
+                {p.hasActiveFlashSale && <FlashBadge on />}
+            </div>
+            {actions(p)}
+        </div>
+    );
 
     return (
-        <div className="overflow-x-auto shadow-md rounded-lg">
-            <table className="w-full text-sm text-left text-gray-400">
-                <thead className="text-xs uppercase bg-gray-700 text-gray-300">
-                    <tr>
-                        <th scope="col" className="px-6 py-3">Image</th>
-                        <th scope="col" className="px-6 py-3">Name</th>
-                        <th scope="col" className="px-6 py-3">Category</th>
-                        <th scope="col" className="px-6 py-3">Price</th>
-                        <th scope="col" className="px-6 py-3">Status</th>
-                        <th scope="col" className="px-6 py-3">Active Flash Sale</th>
-                        <th scope="col" className="px-6 py-3">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {products.map((product) => {
-                        // Use product.status from backend if available, otherwise fallback
-                        const statusText = product.status ? product.status.charAt(0).toUpperCase() + product.status.slice(1) : 'Unknown';
-                        const statusColor = product.status === 'approved' ? 'bg-green-900 text-green-300' : product.status === 'pending' ? 'bg-yellow-900 text-yellow-300' : product.status === 'rejected' ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300';
-
-                        return (
-                            <tr key={product._id} className="border-b bg-gray-800 border-gray-700 hover:bg-gray-600">
-                                <td className="px-6 py-4">
-                                    {product.imagesUrl && product.imagesUrl.length > 0 ? (
-                                        // Check if it's already a full URL or needs processing
-                                        product.imagesUrl[0].startsWith('http') ? (
-                                            <img
-                                                src={product.imagesUrl[0]}
-                                                alt={product.name}
-                                                className="w-16 h-16 object-cover rounded"
-                                            />
-                                        ) : (
-                                            <ImageDisplay
-                                                fileId={product.imagesUrl[0]}
-                                                alt={product.name}
-                                                className="w-16 h-16 object-cover rounded"
-                                            />
-                                        )
-                                    ) : (
-                                        <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-500">
-                                            No Image
-                                        </div>
-                                    )}
-                                </td>
-                                <th scope="row" className="px-6 py-4 font-medium whitespace-nowrap text-white">
-                                    {product.name}
-                                </th>
-                                <td className="px-6 py-4">
-                                    {product.category}{product.subcategory ? ` > ${product.subcategory}` : ''}
-                                </td>
-                                <td className="px-6 py-4">
-                                    {formatCurrency(product.price)}
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor}`}>
-                                        {statusText}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded text-xs font-medium ${product.hasActiveFlashSale ? 'bg-yellow-700 text-yellow-200' : 'bg-gray-700 text-gray-300'}`}>
-                                        {product.hasActiveFlashSale ? 'Yes' : 'No'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 space-x-2 whitespace-nowrap">
-                                    <button onClick={() => onEdit(product)} className="p-1 rounded text-blue-400 hover:bg-gray-700" title="Edit Product"><Edit size={16} /></button>
-                                    <button onClick={() => onManageFlashSale(product)} className="p-1 rounded text-yellow-400 hover:bg-gray-700" title="Manage Flash Sale"><Zap size={16} /></button>
-                                    <button onClick={() => onDelete(product._id)} className="p-1 rounded text-red-500 hover:bg-gray-700" title="Delete Product"><Trash2 size={16} /></button>
-                                </td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-        </div>
+        <ResponsiveList
+            rows={products}
+            columns={columns}
+            card={card}
+            rowKey={p => p._id}
+            onRowClick={onOpen}
+            loading={isLoading}
+            empty={empty}
+            className="border-t border-line"
+        />
     );
 };
 
-export default ProductList; 
+export default ProductList;

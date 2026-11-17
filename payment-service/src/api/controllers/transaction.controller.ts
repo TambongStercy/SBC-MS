@@ -8,6 +8,9 @@ import logger from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { PaginationOptions } from '../../types/pagination';
 import { cinetpayPayoutService } from '../../services/cinetpay-payout.service';
+import { dateMatch, readAdminFilters } from '../../utils/admin-filters';
+import { memberObjectIdsForCountry, sendFilterError } from '../../utils/country-members';
+import { narrowRange } from '../../utils/admin-scope';
 
 const log = logger.getLogger('TransactionController');
 
@@ -565,6 +568,10 @@ export class TransactionController {
      */
     async adminListAccountTransactions(req: Request, res: Response): Promise<Response> {
         log.info('Admin request: List all account transactions');
+        // Admin filters: ?country = the member's country (userId ObjectIds, cached
+        // ids-by-country); ?from/?to on createdAt (narrowing startDate/endDate).
+        const adminFilters = readAdminFilters(req, res);
+        if (!adminFilters) return res;
         try {
             // Extract query parameters for filtering and pagination
             const {
@@ -616,6 +623,13 @@ export class TransactionController {
                 // If filtering on absolute value is needed, service layer adjustment is required.
             }
 
+            const createdAt = narrowRange(filters.createdAt, adminFilters);
+            if (createdAt) filters.createdAt = createdAt;
+            if (adminFilters.country) {
+                // In $and so that a userSearchTerm (which sets userId) still intersects with it.
+                filters.$and = [{ userId: { $in: await memberObjectIdsForCountry(adminFilters.country) } }];
+            }
+
             // Construct pagination options
             const options: PaginationOptions = {
                 page: parseInt(page, 10),
@@ -639,6 +653,7 @@ export class TransactionController {
             });
 
         } catch (error) {
+            if (sendFilterError(res, error)) return res;
             log.error('Error in adminListAccountTransactions:', error);
             if (error instanceof AppError) {
                 return res.status(error.statusCode).json({ success: false, message: error.message });
@@ -654,9 +669,12 @@ export class TransactionController {
      */
     async adminGetUserAnalytics(req: Request, res: Response): Promise<Response> {
         log.info('Admin request: User financial analytics');
+        // Admin filters: ?country = the member's country (cached ids-by-country,
+        // ISO-2 only), ?from/?to on the transactions' createdAt.
+        const adminFilters = readAdminFilters(req, res);
+        if (!adminFilters) return res;
         try {
             const {
-                country,
                 minAmount = '50000',
                 page = '1',
                 limit = '50',
@@ -669,28 +687,18 @@ export class TransactionController {
             const minAmountNum = parseFloat(minAmount as string) || 0;
             const sort = sortBy as 'totalWithdrawn' | 'totalEarned' | 'total';
 
-            // If country filter, get userIds from user-service first
+            // Country filter: member ids from user-service (cached 5 min). An empty
+            // list means nobody (it used to fall through to "every country").
             let userIds: Types.ObjectId[] | undefined;
-            if (country && typeof country === 'string') {
-                try {
-                    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3001';
-                    const serviceSecret = process.env.SERVICE_SECRET || '';
-                    const axios = require('axios');
-                    const response = await axios.get(`${userServiceUrl}/users/internal/ids-by-country`, {
-                        params: { country },
-                        headers: {
-                            'Authorization': `Bearer ${serviceSecret}`,
-                            'x-service-name': 'payment-service',
-                        },
-                        timeout: 30000,
+            if (adminFilters.country) {
+                userIds = await memberObjectIdsForCountry(adminFilters.country);
+                log.info(`Found ${userIds.length} users for country ${adminFilters.country}`);
+                if (userIds.length === 0) {
+                    return res.status(200).json({
+                        success: true,
+                        data: [],
+                        pagination: { page: pageNum, limit: limitNum, total: 0, totalPages: 0 },
                     });
-                    if (response.data?.success && Array.isArray(response.data.data)) {
-                        userIds = response.data.data.map((id: string) => new Types.ObjectId(id));
-                        log.info(`Found ${userIds!.length} users for country ${country}`);
-                    }
-                } catch (err: any) {
-                    log.error(`Failed to fetch user IDs by country: ${err.message}`);
-                    return res.status(502).json({ success: false, message: 'Failed to fetch user data for country filter' });
                 }
             }
 
@@ -702,6 +710,7 @@ export class TransactionController {
                 limit: limitNum,
                 sortBy: sort,
                 sortOrder: sortOrder as 'asc' | 'desc',
+                dateMatch: dateMatch('createdAt', adminFilters),
             });
 
             // Enrich with user details via batch endpoint
@@ -762,6 +771,7 @@ export class TransactionController {
                 },
             });
         } catch (error) {
+            if (sendFilterError(res, error)) return res;
             log.error('Error in adminGetUserAnalytics:', error);
             if (error instanceof AppError) {
                 return res.status(error.statusCode).json({ success: false, message: error.message });

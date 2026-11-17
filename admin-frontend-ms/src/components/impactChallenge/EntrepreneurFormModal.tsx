@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Upload01Icon } from '@hugeicons/core-free-icons';
 import {
     Entrepreneur,
     EntrepreneurInput,
@@ -13,8 +14,9 @@ import {
 } from '../../services/impactChallengeApi';
 import { countryCodeToNameMap } from '../../utils/countryUtils';
 import SbcAccountPicker from './SbcAccountPicker';
-import { FormModal, Notice } from './shared';
-import { btn, fieldClass, labelClass } from './styles';
+import { Button, Field, Input, Select, Textarea } from '../ui';
+import { cn } from '../../lib/cn';
+import { FormSheet, Notice } from './shared';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -134,93 +136,85 @@ const EntrepreneurFormModal: React.FC<{
     const uploading = progress !== null || checkingVideo;
 
     return (
-        <FormModal
+        <FormSheet
             wide
             title={e ? `Modifier ${e.name}` : 'Ajouter un entrepreneur'}
+            description="Tous les champs sont demandés par l’app, vidéo comprise."
             onClose={onClose}
             busy={saving || uploading}
             footer={
                 <>
-                    <button onClick={onClose} disabled={saving || uploading} className={btn.secondary}>Annuler</button>
-                    <button onClick={save} disabled={saving || uploading} className={btn.primary}>
-                        {saving ? 'Enregistrement…' : 'Enregistrer'}
-                    </button>
+                    <Button variant="outline" size="lg" onClick={onClose} disabled={saving || uploading}>Annuler</Button>
+                    <Button variant="primary" size="lg" onClick={save} loading={saving} disabled={uploading}>Enregistrer</Button>
                 </>
             }
         >
-            <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                    <label className={labelClass}>Nom complet</label>
-                    <input className={fieldClass} value={f.name} onChange={ev => set('name', ev.target.value)} />
-                </div>
-                <div>
-                    <label className={labelClass}>Nom du projet</label>
-                    <input className={fieldClass} value={f.projectName} onChange={ev => set('projectName', ev.target.value)} />
-                </div>
-                <div>
-                    <label className={labelClass}>E-mail</label>
-                    <input type="email" className={fieldClass} value={f.email} onChange={ev => set('email', ev.target.value)} />
-                </div>
-                <div>
-                    <label className={labelClass}>Téléphone</label>
-                    <input type="tel" className={fieldClass} value={f.phoneNumber} onChange={ev => set('phoneNumber', ev.target.value)}
+            <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Nom complet" required>
+                    <Input className="h-11 sm:h-9" value={f.name} onChange={ev => set('name', ev.target.value)} />
+                </Field>
+                <Field label="Nom du projet" required>
+                    <Input className="h-11 sm:h-9" value={f.projectName} onChange={ev => set('projectName', ev.target.value)} />
+                </Field>
+                <Field label="E-mail" required>
+                    <Input type="email" className="h-11 sm:h-9" value={f.email} onChange={ev => set('email', ev.target.value)} />
+                </Field>
+                <Field label="Téléphone" required>
+                    <Input type="tel" className="h-11 sm:h-9" value={f.phoneNumber} onChange={ev => set('phoneNumber', ev.target.value)}
                         placeholder="ex. 237 6XX XX XX XX" />
-                </div>
-                <div>
-                    <label className={labelClass}>Pays</label>
-                    <select className={fieldClass} value={f.country} onChange={ev => set('country', ev.target.value)}>
-                        {countries.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className={labelClass}>Ville</label>
-                    <input className={fieldClass} value={f.city} onChange={ev => set('city', ev.target.value)} />
-                </div>
+                </Field>
+                <Field label="Pays" required>
+                    <Select className="h-11 sm:h-9" value={f.country} onValueChange={v => set('country', v)}
+                        options={countries.map(([code, name]) => ({ value: code, label: name }))} />
+                </Field>
+                <Field label="Ville" required>
+                    <Input className="h-11 sm:h-9" value={f.city} onChange={ev => set('city', ev.target.value)} />
+                </Field>
             </div>
-            <div>
-                <label className={labelClass}>Secteur d’activité</label>
-                <input className={fieldClass} value={f.businessCategory} onChange={ev => set('businessCategory', ev.target.value)}
+            <Field label="Secteur d’activité" required>
+                <Input className="h-11 sm:h-9" value={f.businessCategory} onChange={ev => set('businessCategory', ev.target.value)}
                     placeholder="Agriculture, couture, transport…" />
-            </div>
-            <div>
-                <label className={labelClass}>Le projet (français)</label>
-                <textarea className={fieldClass} rows={3} value={f.fr} onChange={ev => set('fr', ev.target.value)} />
-            </div>
-            <div>
-                <label className={labelClass}>Le projet (anglais)</label>
-                <textarea className={fieldClass} rows={3} value={f.en} onChange={ev => set('en', ev.target.value)} />
-            </div>
+            </Field>
+            <Field label="Le projet (français)" required>
+                <Textarea rows={3} value={f.fr} onChange={ev => set('fr', ev.target.value)} />
+            </Field>
+            <Field label="Le projet (anglais)" required>
+                <Textarea rows={3} value={f.en} onChange={ev => set('en', ev.target.value)} />
+            </Field>
 
-            <div>
-                <label className={labelClass}>Vidéo de présentation ({VIDEO_MAX_SECONDS} s au maximum)</label>
+            <div className="space-y-2">
+                <p className="text-sm font-medium text-fg">Vidéo de présentation ({VIDEO_MAX_SECONDS} s au maximum)<span className="text-danger" aria-hidden="true"> *</span></p>
                 {video && (
-                    <div className="mb-2">
+                    <div>
                         <video src={video.url} controls playsInline preload="metadata"
-                            className="w-full max-h-64 rounded-xl bg-black border border-gray-700" />
-                        <p className="text-xs text-gray-400 mt-1">
+                            className="max-h-64 w-full rounded-panel border border-line bg-black" />
+                        <p className="mt-1 text-xs text-fg-muted">
                             {video.filename}{video.duration !== undefined ? ` · ${video.duration} s` : ''}
                         </p>
                     </div>
                 )}
-                <label className={`inline-flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-lg text-sm ${uploading ? 'opacity-60 cursor-wait' : 'hover:bg-gray-600 cursor-pointer'}`}>
-                    <Upload className="w-4 h-4" />
+                <label className={cn(
+                    'inline-flex h-11 items-center gap-2 rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-fg sm:h-9',
+                    uploading ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-surface-2',
+                )}>
+                    <HugeiconsIcon icon={Upload01Icon} size={16} aria-hidden="true" />
                     {checkingVideo ? 'Vérification de la durée…' : progress !== null ? `Envoi… ${progress} %` : video ? 'Remplacer la vidéo' : 'Choisir la vidéo'}
-                    <input type="file" accept="video/*" className="hidden" disabled={uploading}
+                    <input type="file" accept="video/*" className="sr-only" disabled={uploading}
                         onChange={ev => { const file = ev.target.files?.[0]; ev.target.value = ''; if (file) pickVideo(file); }} />
                 </label>
-                <p className="text-xs text-gray-500 mt-1">La durée est vérifiée avant l’envoi. {VIDEO_MAX_MB} Mo au maximum.</p>
+                <p className="text-xs text-fg-muted">La durée est vérifiée avant l’envoi. {VIDEO_MAX_MB} Mo au maximum.</p>
             </div>
 
-            <div>
-                <label className={labelClass}>Compte SBC de l’entrepreneur</label>
+            <div className="space-y-2">
+                <p className="text-sm font-medium text-fg">Compte SBC de l’entrepreneur</p>
                 <SbcAccountPicker value={userId} onChange={setUserId} suggestion={f.email.trim() || undefined} />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-fg-muted">
                     Indispensable pour lui verser ses gains s’il gagne : sa part est créditée sur le solde de ce compte. Sans compte lié, le versement est refusé.
                 </p>
             </div>
 
             {error && <Notice tone="danger">{error}</Notice>}
-        </FormModal>
+        </FormSheet>
     );
 };
 

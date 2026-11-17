@@ -151,6 +151,23 @@ class UserServiceClient {
     }
 
     /**
+     * Ids (hex strings) of every member of a country, deleted ones included, for
+     * the admin `?country=` filters. Throws when user-service cannot answer: a
+     * silent empty list would read as "nobody in this country".
+     */
+    async getUserIdsByCountry(country: string): Promise<string[]> {
+        const response = await axios.get(`${this.userServiceUrl}/users/internal/ids-by-country`, {
+            params: { country },
+            headers: { 'Authorization': `Bearer ${this.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+            timeout: 30000,
+        });
+        if (!response.data?.success || !Array.isArray(response.data.data)) {
+            throw new Error(`user-service ids-by-country answered without a list for ${country}`);
+        }
+        return response.data.data.map(String);
+    }
+
+    /**
      * The relance subset for one user, including country (which batch-details
      * lacks). Null when user-service cannot answer.
      */

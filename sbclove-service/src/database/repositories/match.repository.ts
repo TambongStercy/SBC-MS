@@ -1,4 +1,4 @@
-import { Types } from 'mongoose';
+import { FilterQuery, Types } from 'mongoose';
 import MatchModel, { IMatch } from '../models/match.model';
 import { ContactChoice } from '../../types/sbclove.enums';
 import logger from '../../utils/logger';
@@ -122,9 +122,10 @@ export class MatchRepository {
         return new Map(rows.map(r => [r._id.toString(), { matches: r.matches, conversations: r.conversations }]));
     }
 
-    /** Global totals for the admin dashboard: one pass over the collection. */
-    async totals(): Promise<{ matches: number; contactUnlocked: number; conversations: number }> {
+    /** Totals for the admin dashboard: one pass over the matches in `match` (all by default). */
+    async totals(match: FilterQuery<IMatch> = {}): Promise<{ matches: number; contactUnlocked: number; conversations: number }> {
         const [row] = await MatchModel.aggregate<{ matches: number; contactUnlocked: number; conversations: number }>([
+            ...(Object.keys(match).length ? [{ $match: match }] : []),
             {
                 $group: {
                     _id: null,

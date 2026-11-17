@@ -150,7 +150,8 @@ export const authenticateServiceRequest = async (
  * 'admin', so it refused real admins too — hence the case-insensitive compare.
  */
 export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    if (typeof req.user?.role === 'string' && req.user.role.toLowerCase() === 'admin') {
+    // 'staff' = admin team member; the gateway checks its module and read/write (admin-routes.ts).
+    if (typeof req.user?.role === 'string' && ['admin', 'staff'].includes(req.user.role.toLowerCase())) {
         return next();
     }
     return res.status(403).json({ success: false, message: 'Admin access required.' });

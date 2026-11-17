@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import {
     FRAUD_SIGNAL_LABELS, VOTING_MODE_LABELS, apiErrorCode, cancelAnimationChallenge, fmtDate, freezeAnimationResult, getAnimationChallenge, num,
-    resumeAnimationChallenge, suspendAnimationChallenge, xaf, type AnimChallenge, type ChallengeStatus,
+    resumeAnimationChallenge, suspendAnimationChallenge, type AnimChallenge, type ChallengeStatus,
 } from '../../api/animation';
+import { usePermission } from '../../hooks/usePermission';
+import { Button as KitButton } from '../ui';
+import { Notice, formatMoney as xaf } from '../moduleKit';
 import {
     CHALLENGE_STATUS, EVENT_STATUS_LABELS, FLAG_STATUS, FREEZE_BLOCK_SCORE, FREEZE_ERRORS, PERIOD_LABELS, RESULT_STATUS,
     SCOPE_LABELS, SCORING_LABELS, TIE_RULE_LABELS, errorMessage, flagSubjectKind, plural, useAnim, useAsync,
@@ -39,6 +42,7 @@ function config(c: AnimChallenge): Array<[string, string]> {
  */
 export default function ChallengeDetail({ id, onClose }: { id: string; onClose: () => void }) {
     const { refresh, notifySuccess, setParams } = useAnim();
+    const canWrite = usePermission('events') === 'write';
     const [action, setAction] = useState<Action | null>(null);
     const [freezeError, setFreezeError] = useState<{ code?: string; message: string } | null>(null);
     const q = useAsync(() => getAnimationChallenge(id), id);
@@ -48,7 +52,7 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
     const done = (msg: string) => { notifySuccess(msg); refresh(); };
     const go = (params: Record<string, string>) => { onClose(); setParams(params); };
 
-    const footer = c && !isFinal(c.status) ? (
+    const footer = c && canWrite && !isFinal(c.status) ? (
         <>
             {c.status === 'RESULTS_PENDING' && <Button variant="success" onClick={() => setAction('freeze')}>Figer le résultat…</Button>}
             {c.suspendedAt
@@ -62,31 +66,31 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
         <Modal onClose={onClose} footer={footer}
             title={c?.name ?? 'Défi'}
             subtitle={d?.event ? `${d.event.title}${d.event.status ? ` · ${EVENT_STATUS_LABELS[d.event.status] ?? ''}` : ''}` : undefined}>
-            {q.loading && !d ? <p className="text-gray-400">Chargement…</p> : !d || !c ? (
-                <div className="bg-red-900/30 border border-red-800 text-red-300 rounded-xl p-4">
-                    Défi introuvable ou impossible à charger. <button onClick={q.reload} className="underline ml-2">Réessayer</button>
-                </div>
+            {q.loading && !d ? <p className="text-fg-muted">Chargement…</p> : !d || !c ? (
+                <Notice tone="danger">
+                    Défi introuvable ou impossible à charger. <KitButton variant="outline" size="sm" className="ml-2" onClick={q.reload}>Réessayer</KitButton>
+                </Notice>
             ) : (
                 <>
                     <div className="flex flex-wrap items-center gap-1.5">
                         <StatusBadge status={c.status} labels={CHALLENGE_STATUS} />
                         {c.suspendedAt && <Badge tone="danger">Suspendu le {fmtDate(c.suspendedAt)}</Badge>}
                         {openFlags.length > 0 && <Badge tone="warning">{openFlags.length} {plural(openFlags.length, 'signalement ouvert', 'signalements ouverts')}</Badge>}
-                        <button onClick={q.reload} className="ml-auto text-xs text-gray-300 hover:text-white border border-gray-600 rounded px-2 py-1">{q.loading ? 'Chargement…' : 'Recharger'}</button>
+                        <KitButton variant="ghost" size="sm" className="ml-auto" loading={q.loading} onClick={q.reload}>Recharger</KitButton>
                     </div>
                     {c.suspendedAt && c.suspendedReason && (
-                        <p className="text-sm rounded-lg bg-red-900/30 border border-red-800 text-red-100 px-3 py-2"><b>Motif de suspension :</b> {c.suspendedReason}</p>
+                        <Notice tone="danger"><strong className="font-semibold">Motif de suspension :</strong> {c.suspendedReason}</Notice>
                     )}
                     {c.cancellation && (
-                        <p className="text-sm rounded-lg bg-gray-800 border border-gray-700 px-3 py-2">
+                        <p className="rounded-panel border border-line px-3 py-2 text-sm text-fg">
                             Annulé le {fmtDate(c.cancellation.at)} — {c.cancellation.reason} ({num(c.cancellation.refundedTransactions)} {plural(c.cancellation.refundedTransactions, 'achat remboursé', 'achats remboursés')})
                         </p>
                     )}
                     {freezeError && (
-                        <p className="text-sm rounded-lg bg-amber-900/30 border border-amber-700 text-amber-100 px-3 py-2" role="alert">
+                        <Notice tone="warning">
                             {freezeError.message}
-                            {freezeError.code === 'FRAUD_REVIEW_PENDING' && <> <button onClick={() => go({ tab: 'a-verifier' })} className="font-semibold text-blue-300 underline">Ouvrir « À vérifier »</button></>}
-                        </p>
+                            {freezeError.code === 'FRAUD_REVIEW_PENDING' && <> <button onClick={() => go({ tab: 'a-verifier' })} className="font-medium text-primary underline">Ouvrir « À vérifier »</button></>}
+                        </Notice>
                     )}
 
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -95,16 +99,16 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
                         <Stat label="Votes payants" value={num(c.counters.paidVotes)} hint={`${num(c.counters.paidTransactions)} ${plural(c.counters.paidTransactions, 'achat')}`} />
                         <Stat label="Revenus" value={xaf(c.counters.paidRevenue)} />
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
-                        <button onClick={() => go({ tab: 'votes', defi: c._id })} className="text-blue-300 hover:underline">Voir ses votes payants</button>
-                        <button onClick={() => go({ tab: 'journal', defi: c._id })} className="text-blue-300 hover:underline">Voir son journal</button>
+                    <div className="flex flex-wrap gap-2">
+                        <KitButton variant="soft" size="sm" className="h-11 sm:h-8" onClick={() => go({ tab: 'votes', defi: c._id })}>Voir ses votes payants</KitButton>
+                        <KitButton variant="soft" size="sm" className="h-11 sm:h-8" onClick={() => go({ tab: 'journal', defi: c._id })}>Voir son journal</KitButton>
                     </div>
 
                     <Section title="Configuration"><KV items={config(c)} /></Section>
 
                     <Section title="Résultat">
                         <Card>
-                            {!d.result ? <p className="text-sm text-gray-400">Pas encore calculé (le résultat est calculé à la clôture des votes).</p> : (
+                            {!d.result ? <p className="text-sm text-fg-muted">Pas encore calculé (le résultat est calculé à la clôture des votes).</p> : (
                                 <div className="space-y-3">
                                     <div className="flex flex-wrap gap-1.5">
                                         <StatusBadge status={d.result.status} labels={RESULT_STATUS} />
@@ -116,54 +120,54 @@ export default function ChallengeDetail({ id, onClose }: { id: string; onClose: 
                                         d.result.publishedAt ? ['Publié le', fmtDate(d.result.publishedAt)] : null,
                                     ]} />
                                     {d.result.ties?.length > 0 && (
-                                        <p className="text-sm text-amber-300">{plural(d.result.ties.length, 'Égalité', 'Égalités')} : {d.result.ties.map(t => `rang ${t.rank} (${t.candidateIds.length} candidats)`).join(', ')}</p>
+                                        <p className="text-sm text-fg">{plural(d.result.ties.length, 'Égalité', 'Égalités')} : {d.result.ties.map(t => `rang ${t.rank} (${t.candidateIds.length} candidats)`).join(', ')}</p>
                                     )}
                                     {d.result.entries?.length > 0 && (
                                         <Table headers={['Rang', 'Candidat', 'Votes', 'Score']}>
                                             {d.result.entries.slice(0, 10).map(e => (
-                                                <tr key={e.candidateId} className="border-t border-gray-700">
-                                                    <td className={`${tdCls} font-bold`}>{e.rank}{e.sharedRank ? ' (ex æquo)' : ''}</td>
-                                                    <td className={tdCls}>{e.displayName} <span className="text-gray-400">n°{e.number}</span></td>
-                                                    <td className={`${tdCls} text-right`}>{num(e.totalVotes)}</td>
-                                                    <td className={`${tdCls} text-right`}>{num(Math.round(e.score * 100) / 100)}</td>
+                                                <tr key={e.candidateId} className="border-t border-line">
+                                                    <td className={`${tdCls} font-semibold tabular-nums`}>{e.rank}{e.sharedRank ? ' (ex æquo)' : ''}</td>
+                                                    <td className={tdCls}>{e.displayName} <span className="text-fg-muted">n°{e.number}</span></td>
+                                                    <td className={`${tdCls} text-right tabular-nums`}>{num(e.totalVotes)}</td>
+                                                    <td className={`${tdCls} text-right tabular-nums`}>{num(Math.round(e.score * 100) / 100)}</td>
                                                 </tr>
                                             ))}
                                         </Table>
                                     )}
-                                    <p className="text-xs text-gray-500 break-all">Empreinte de contrôle : {d.result.inputsHash}</p>
+                                    <p className="text-xs text-fg-subtle break-all">Empreinte de contrôle : {d.result.inputsHash}</p>
                                 </div>
                             )}
                         </Card>
                     </Section>
 
                     <Section title="Classement en direct (top 20)">
-                        {d.board && <p className="text-xs text-gray-400">{num(d.board.totals.candidates)} candidats classés · {num(d.board.totals.votes)} votes comptés{d.board.computedAt ? ` · ${fmtDate(d.board.computedAt)}` : ''}</p>}
+                        {d.board && <p className="text-xs text-fg-muted">{num(d.board.totals.candidates)} candidats classés · {num(d.board.totals.votes)} votes comptés{d.board.computedAt ? ` · ${fmtDate(d.board.computedAt)}` : ''}</p>}
                         <Table headers={['Rang', 'Candidat', 'Catégorie', 'Gratuits', 'Payants', 'Total', 'Score']}
                             empty={!d.board?.entries.length ? 'Aucun candidat approuvé.' : undefined}>
                             {d.board?.entries.slice(0, 20).map(e => (
-                                <tr key={e.candidateId} className="border-t border-gray-700">
-                                    <td className={`${tdCls} font-bold`}>{e.rank}</td>
-                                    <td className={tdCls}><span className="font-medium">{e.displayName}</span> <span className="text-gray-400">n°{e.number}</span></td>
+                                <tr key={e.candidateId} className="border-t border-line">
+                                    <td className={`${tdCls} font-semibold tabular-nums`}>{e.rank}</td>
+                                    <td className={tdCls}><span className="font-medium">{e.displayName}</span> <span className="text-fg-muted">n°{e.number}</span></td>
                                     <td className={tdCls}>{e.category || '—'}</td>
-                                    <td className={`${tdCls} text-right`}>{num(e.freeVotes)}</td>
-                                    <td className={`${tdCls} text-right`}>{num(e.paidVotes)}</td>
-                                    <td className={`${tdCls} text-right font-semibold`}>{num(e.totalVotes)}</td>
-                                    <td className={`${tdCls} text-right`}>{typeof e.score === 'number' ? num(Math.round(e.score * 100) / 100) : '—'}</td>
+                                    <td className={`${tdCls} text-right tabular-nums`}>{num(e.freeVotes)}</td>
+                                    <td className={`${tdCls} text-right tabular-nums`}>{num(e.paidVotes)}</td>
+                                    <td className={`${tdCls} text-right font-semibold tabular-nums`}>{num(e.totalVotes)}</td>
+                                    <td className={`${tdCls} text-right tabular-nums`}>{typeof e.score === 'number' ? num(Math.round(e.score * 100) / 100) : '—'}</td>
                                 </tr>
                             ))}
                         </Table>
                     </Section>
 
-                    <Section title={`Signalements (${d.flags.length})`} action={<button onClick={() => go({ tab: 'a-verifier' })} className="text-sm font-semibold text-blue-300">File « À vérifier »</button>}>
-                        {d.flags.length === 0 ? <Card><p className="text-sm text-gray-400">Aucun signalement.</p></Card> : (
-                            <ul className="divide-y divide-gray-700 border border-gray-700 rounded-lg">
+                    <Section title={`Signalements (${d.flags.length})`} action={<button onClick={() => go({ tab: 'a-verifier' })} className="text-sm font-medium text-primary hover:underline">File « À vérifier »</button>}>
+                        {d.flags.length === 0 ? <Card><p className="text-sm text-fg-muted">Aucun signalement.</p></Card> : (
+                            <ul className="divide-y divide-line rounded-panel border border-line">
                                 {d.flags.map(f => (
                                     <li key={f._id} className="px-3 py-2.5 space-y-1">
                                         <span className="flex items-center justify-between gap-2">
-                                            <span className="font-semibold text-sm">{flagSubjectKind(f)}{f.subjectLabel ? ` · ${f.subjectLabel}` : ''}</span>
+                                            <span className="text-sm font-medium text-fg">{flagSubjectKind(f)}{f.subjectLabel ? ` · ${f.subjectLabel}` : ''}</span>
                                             <span className="flex gap-1.5"><Badge tone={f.score >= FREEZE_BLOCK_SCORE ? 'danger' : 'neutral'}>Score {f.score}</Badge><StatusBadge status={f.status} labels={FLAG_STATUS} /></span>
                                         </span>
-                                        <span className="block text-xs text-gray-400">{f.signals.map(s => FRAUD_SIGNAL_LABELS[s.code]?.label ?? 'Autre signal').join(', ')} · {fmtDate(f.createdAt)}</span>
+                                        <span className="block text-xs text-fg-muted">{f.signals.map(s => FRAUD_SIGNAL_LABELS[s.code]?.label ?? 'Autre signal').join(', ')} · {fmtDate(f.createdAt)}</span>
                                     </li>
                                 ))}
                             </ul>

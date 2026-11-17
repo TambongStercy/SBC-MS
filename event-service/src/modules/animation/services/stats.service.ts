@@ -6,6 +6,8 @@ import { AnimAuditLog, AnimFraudFlag } from '../models/governance.model';
 import { AnimBoardSnapshot, AnimRewardWinner } from '../models/reward.model';
 import { AnimVoteTransaction } from '../models/vote.model';
 import { AnimCtx, FraudFlagStatus, VoteTxStatus } from '../types';
+import { AdminFilters, dateMatch } from '../../../utils/admin-filters';
+import { eventScope } from '../../../utils/event-country';
 
 /** Organizer dashboard for one event (§30). */
 export const eventOverview = async (ctx: Pick<AnimCtx, 'eventId'>) => {
@@ -57,9 +59,16 @@ export const boardHistory = async (challengeId: string, candidateId?: string) =>
     }));
 };
 
-/** SBC administration (§41). */
-export const globalStats = async (opts: { from?: Date; to?: Date } = {}) => {
-    const range = opts.from || opts.to ? { createdAt: { ...(opts.from ? { $gte: opts.from } : {}), ...(opts.to ? { $lt: opts.to } : {}) } } : {};
+/**
+ * SBC administration (§41). Admin filters: ?country through the event (every
+ * figure is scoped to the events held in that country), ?from/?to on each
+ * record's createdAt (both inclusive). `openFraudFlags` is the live review
+ * queue: country applies, dates do not.
+ */
+export const globalStats = async (opts: AdminFilters = {}) => {
+    const eventIds = await eventScope(opts.country);
+    const scope = eventIds ? { eventId: { $in: eventIds } } : {};
+    const range = { ...dateMatch('createdAt', opts), ...scope };
     const [challenges, events, candidates, money, rewards, perEvent, perOrganizer, openFlags] = await Promise.all([
         AnimChallenge.aggregate<{ _id: string; n: number; free: number; paid: number }>([
             { $match: range },
@@ -82,7 +91,7 @@ export const globalStats = async (opts: { from?: Date; to?: Date } = {}) => {
             { $group: { _id: '$organizerId', challenges: { $sum: 1 }, votes: { $sum: { $add: ['$counters.freeVotes', '$counters.paidVotes'] } }, revenue: { $sum: '$counters.paidRevenue' } } },
             { $sort: { revenue: -1, votes: -1 } }, { $limit: 20 },
         ]),
-        AnimFraudFlag.countDocuments({ status: FraudFlagStatus.OPEN }),
+        AnimFraudFlag.countDocuments({ status: FraudFlagStatus.OPEN, ...scope }),
     ]);
     const evNames = await Event.find({ _id: { $in: perEvent.map((e) => e._id) } }).select('title slug').lean();
     const orgNames = await Organizer.find({ _id: { $in: perOrganizer.map((o) => o._id) } }).select('displayName').lean();

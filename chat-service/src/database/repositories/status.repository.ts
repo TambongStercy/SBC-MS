@@ -2,13 +2,18 @@ import { Types, FilterQuery } from 'mongoose';
 import StatusModel, { IStatus, StatusMediaType } from '../models/status.model';
 import { StatusCategory } from '../../config/status-categories';
 import logger from '../../utils/logger';
+import { countryFieldMatch } from '../../utils/country-names';
 
 const log = logger.getLogger('StatusRepository');
 
 export interface StatusFilters {
     category?: StatusCategory;
+    /** ISO-2; matches the free-text field in any case, or the country's FR/EN names. */
     country?: string;
     city?: string;
+    /** createdAt bounds (inclusive). */
+    from?: Date;
+    to?: Date;
     search?: string;
     authorId?: string | Types.ObjectId;
     sortBy?: 'recent' | 'popular';
@@ -52,7 +57,13 @@ export class StatusRepository {
             query.category = filters.category;
         }
         if (filters.country) {
-            query.country = filters.country;
+            query.country = countryFieldMatch(filters.country);
+        }
+        if (filters.from || filters.to) {
+            query.createdAt = {
+                ...(filters.from ? { $gte: filters.from } : {}),
+                ...(filters.to ? { $lte: filters.to } : {}),
+            };
         }
         if (filters.city) {
             query.city = filters.city;

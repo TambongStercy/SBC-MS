@@ -1,155 +1,119 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { RefreshCw, Trophy } from 'lucide-react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
-import Pagination from '../components/common/Pagination';
-import { LeaderboardEntry, apiErrorMessage, getDiffuseurLeaderboard } from '../api/adsNetwork';
+import { useQuery } from '@tanstack/react-query';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Award01Icon, RefreshIcon } from '@hugeicons/core-free-icons';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import {
+  Badge, Button, EmptyState, PageHeader, Pagination, Panel, PanelHeader, ResponsiveList, Segmented, Switch, Tooltip, type ListColumn,
+} from '../components/ui';
+import { ErrorState, count, formatNumber, formatPercent, useUrlFilters } from '../components/moduleKit';
+import type { LeaderboardEntry } from '../api/adsNetwork';
+import { fetchLeaderboard } from '../components/adsNetwork/api';
+import { getCountryName } from '../utils/countryUtils';
 
 const PAGE_SIZE = 50;
+const SHARED_KEYS = ['pays', 'periode', 'du', 'au'];
+const KEYS = ['tri', 'mesurees'] as const;
+type Sort = 'views' | 'clicks' | 'trust';
 
-const trustColor = (score: number) =>
-    score >= 70 ? 'text-green-300' : score >= 40 ? 'text-amber-300' : 'text-red-300';
+const trustTone = (score: number) => (score >= 70 ? 'success' : score >= 40 ? 'warning' : 'danger');
 
-/** Diffuseur leaderboard: reach, click-through and reliability side by side. */
-const AdsNetworkDiffuseursPage: React.FC = () => {
-    const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [page, setPage] = useState(1);
-    const [total, setTotal] = useState(0);
-    const [sortBy, setSortBy] = useState<'views' | 'clicks' | 'trust'>('views');
-    const [measuredOnly, setMeasuredOnly] = useState(false);
+/**
+ * Diffuseur ranking: reach, click-through and reliability side by side.
+ * Country = the diffuseur's; period = when they joined the network.
+ */
+export default function AdsNetworkDiffuseursPage() {
+  const filters = usePageFilters();
+  const own = useUrlFilters(KEYS, { tri: 'views' });
+  const sortBy = (['views', 'clicks', 'trust'].includes(own.values.tri) ? own.values.tri : 'views') as Sort;
+  const measuredOnly = own.values.mesurees === '1';
 
-    const fetchData = useCallback(async () => {
-        try {
-            setError(null);
-            setLoading(true);
-            const res = await getDiffuseurLeaderboard({ page, limit: PAGE_SIZE, sortBy, measuredOnly });
-            setEntries(res.entries);
-            setTotal(res.total ?? res.entries.length);
-        } catch (err) {
-            setError(apiErrorMessage(err, 'Impossible de charger le classement'));
-        } finally {
-            setLoading(false);
-        }
-    }, [page, sortBy, measuredOnly]);
+  const list = useQuery({
+    queryKey: ['ads', 'diffuseurs', own.page, sortBy, measuredOnly, filters.apiParams],
+    queryFn: () => fetchLeaderboard({ page: own.page, limit: PAGE_SIZE, sortBy, measuredOnly }, filters.apiParams),
+    placeholderData: prev => prev,
+  });
+  const entries = list.data?.entries ?? [];
+  const total = list.data?.total ?? entries.length;
+  const rankOf = (e: LeaderboardEntry) => (own.page - 1) * PAGE_SIZE + entries.indexOf(e) + 1;
 
-    useEffect(() => { fetchData(); }, [fetchData]);
-
-    return (
-        <div className="flex-1 overflow-auto relative z-10">
-            <Header title="SBC Ads Network — Diffuseurs" />
-            <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
-                <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl p-6 border border-gray-700 mb-6"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                >
-                    <p className="text-sm text-gray-400 mb-4">
-                        La moyenne de vues est <strong>déclarée</strong> tant que le diffuseur n'a pas
-                        terminé sa campagne test, <strong>mesurée</strong> ensuite. Les deux sont
-                        distinguées ci-dessous : une moyenne déclarée n'engage que celui qui l'a écrite.
-                    </p>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <select
-                            value={sortBy}
-                            onChange={(e) => { setSortBy(e.target.value as 'views' | 'clicks' | 'trust'); setPage(1); }}
-                            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
-                        >
-                            <option value="views">Trier par vues</option>
-                            <option value="clicks">Trier par clics</option>
-                            <option value="trust">Trier par score de confiance</option>
-                        </select>
-                        <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input
-                                type="checkbox"
-                                checked={measuredOnly}
-                                onChange={(e) => { setMeasuredOnly(e.target.checked); setPage(1); }}
-                                className="rounded bg-gray-700 border-gray-600"
-                            />
-                            Moyennes mesurées uniquement
-                        </label>
-                        <button
-                            onClick={fetchData}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm"
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            Rafraîchir
-                        </button>
-                        <div className="text-sm text-gray-400 ml-auto">
-                            {loading ? 'Chargement…' : `${total} diffuseur${total === 1 ? '' : 's'}`}
-                        </div>
-                    </div>
-                    {error && (
-                        <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-200 mt-4">{error}</div>
-                    )}
-                </motion.div>
-
-                <motion.div
-                    className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg rounded-xl border border-gray-700 overflow-hidden"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                >
-                    {loading ? (
-                        <div className="p-12 flex justify-center"><Loader name="Chargement du classement…" /></div>
-                    ) : entries.length === 0 ? (
-                        <div className="p-12 text-center text-gray-400">
-                            <Trophy className="w-12 h-12 mx-auto mb-3 text-gray-600" />
-                            <p>Aucun diffuseur inscrit pour le moment.</p>
-                        </div>
-                    ) : (
-                        <table className="w-full text-sm">
-                            <thead className="bg-gray-900/50 text-gray-300">
-                                <tr>
-                                    <th className="px-4 py-3 text-left">#</th>
-                                    <th className="px-4 py-3 text-left">Diffuseur</th>
-                                    <th className="px-4 py-3 text-left">Moyenne de vues</th>
-                                    <th className="px-4 py-3 text-left">Vues vérifiées</th>
-                                    <th className="px-4 py-3 text-left">Clics</th>
-                                    <th className="px-4 py-3 text-left">Taux de clic</th>
-                                    <th className="px-4 py-3 text-left">Campagnes</th>
-                                    <th className="px-4 py-3 text-left">Confiance</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {entries.map((e, i) => (
-                                    <tr key={e.userId} className="border-t border-gray-700">
-                                        <td className="px-4 py-3 text-gray-500">{(page - 1) * PAGE_SIZE + i + 1}</td>
-                                        <td className="px-4 py-3">
-                                            <div className="text-white">{e.name || e.userId}</div>
-                                            <div className="text-xs text-gray-500">
-                                                {[e.phoneNumber, e.country].filter(Boolean).join(' · ')}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-gray-100">{e.averageViews.toLocaleString('fr-FR')}</span>
-                                            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${e.isMeasured ? 'bg-green-900/40 text-green-200' : 'bg-gray-700 text-gray-400'}`}>
-                                                {e.isMeasured ? 'mesurée' : 'déclarée'}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-200">{e.totalVerifiedViews.toLocaleString('fr-FR')}</td>
-                                        <td className="px-4 py-3 text-gray-200">{e.totalClicks.toLocaleString('fr-FR')}</td>
-                                        <td className="px-4 py-3 text-gray-300">{(e.clickThroughRate * 100).toFixed(2)}%</td>
-                                        <td className="px-4 py-3 text-gray-300">{e.campaignsCompleted}</td>
-                                        <td className={`px-4 py-3 font-medium ${trustColor(e.trustScore)}`}>{e.trustScore}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </motion.div>
-
-                <div className="mt-4">
-                    <Pagination
-                        currentPage={page}
-                        totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-                        onPageChange={setPage}
-                    />
-                </div>
-            </main>
+  const columns: ListColumn<LeaderboardEntry>[] = [
+    {
+      key: 'who', header: 'Diffuseur', cell: e => (
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="w-7 shrink-0 text-right text-xs tabular-nums text-fg-subtle">{rankOf(e)}</span>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-fg">{e.name || e.userId}</p>
+            <p className="truncate text-xs text-fg-muted">{[e.phoneNumber, e.country && getCountryName(e.country)].filter(Boolean).join(' · ') || '—'}</p>
+          </div>
         </div>
-    );
-};
+      ),
+    },
+    {
+      key: 'avg', header: 'Moyenne de vues', numeric: true, cell: e => (
+        <span className="inline-flex items-center gap-2">
+          {formatNumber(e.averageViews)}
+          <Tooltip content={e.isMeasured ? 'Mesurée par la campagne test' : 'Déclarée par le diffuseur, pas encore mesurée'}>
+            <span tabIndex={0}><Badge tone={e.isMeasured ? 'success' : 'neutral'}>{e.isMeasured ? 'mesurée' : 'déclarée'}</Badge></span>
+          </Tooltip>
+        </span>
+      ),
+    },
+    { key: 'views', header: 'Vues vérifiées', numeric: true, cell: e => formatNumber(e.totalVerifiedViews) },
+    { key: 'clicks', header: 'Clics', numeric: true, cell: e => <>{formatNumber(e.totalClicks)} <span className="text-xs text-fg-muted">({formatPercent(e.clickThroughRate, 2)})</span></> },
+    { key: 'done', header: 'Campagnes', numeric: true, cell: e => formatNumber(e.campaignsCompleted) },
+    { key: 'trust', header: 'Confiance', numeric: true, cell: e => <Badge tone={trustTone(e.trustScore)}>{e.trustScore} / 100</Badge> },
+  ];
 
-export default AdsNetworkDiffuseursPage;
+  return (
+    <div className="space-y-6">
+      <PageHeader
+       
+        title="Diffuseurs"
+        description="Le classement des diffuseurs : audience, clics et fiabilité. Une moyenne « déclarée » n’engage que celui qui l’a écrite ; elle devient « mesurée » après la campagne test."
+        actions={(
+          <Button variant="outline" size="lg" className="w-full sm:w-auto" onClick={() => void list.refetch()} loading={list.isFetching}>
+            {!list.isFetching && <HugeiconsIcon icon={RefreshIcon} size={16} aria-hidden="true" />}
+            Actualiser
+          </Button>
+        )}
+      />
+
+      <PageFilters filters={filters} onReset={() => own.clear(SHARED_KEYS)}>
+        <Segmented
+          label="Trier par"
+          size="lg"
+          value={sortBy}
+          onValueChange={v => own.set({ tri: v === 'views' ? '' : v })}
+          options={[{ value: 'views', label: 'Vues' }, { value: 'clicks', label: 'Clics' }, { value: 'trust', label: 'Confiance' }]}
+          className="self-start sm:self-auto sm:[&>button]:h-8"
+        />
+        <label className="flex min-h-11 items-center gap-2 text-sm text-fg sm:min-h-9">
+          <Switch checked={measuredOnly} onCheckedChange={v => own.set({ mesurees: v ? '1' : '' })} />
+          Moyennes mesurées uniquement
+        </label>
+        {own.activeCount > 0 && !filters.isFiltered && (
+          <Button variant="ghost" size="sm" className="h-11 self-start sm:h-9 sm:self-auto" onClick={() => own.clear()}>Effacer les filtres</Button>
+        )}
+      </PageFilters>
+
+      <Panel>
+        <PanelHeader title="Classement" description={list.data ? count(total, 'diffuseur') : undefined} />
+        <div className={list.isFetching && list.data ? 'opacity-60 transition-opacity' : undefined}>
+          <ResponsiveList
+            rows={entries}
+            columns={columns}
+            rowKey={e => e.userId}
+            loading={list.isLoading}
+            empty={list.isError ? (
+              <ErrorState error={list.error} onRetry={() => void list.refetch()} retrying={list.isFetching} />
+            ) : (
+              <EmptyState icon={Award01Icon} title="Aucun diffuseur pour ces filtres" description="Les membres inscrits comme diffuseurs apparaissent ici." />
+            )}
+          />
+        </div>
+        <Pagination page={own.page} totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))} total={total} pageSize={PAGE_SIZE} onPageChange={own.setPage} />
+      </Panel>
+    </div>
+  );
+}

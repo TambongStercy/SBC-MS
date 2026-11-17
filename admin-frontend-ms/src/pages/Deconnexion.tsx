@@ -1,9 +1,12 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { LogOut, ArrowLeft } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowLeft01Icon, Logout01Icon } from "@hugeicons/core-free-icons";
 import { logoutAdmin } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { Button } from "../components/ui";
 
+/** Confirms the sign-out, tells the server, then clears the session (the guard sends to /login). */
 function Deconnexion() {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -14,7 +17,6 @@ function Deconnexion() {
       await logoutAdmin();
       // Use the auth context to clear local state
       logout();
-      // Navigation is handled by the logout function in AuthContext
     } catch (error) {
       console.error("Error logging out:", error);
       // Even if the API call fails, still logout locally
@@ -27,41 +29,32 @@ function Deconnexion() {
   };
 
   return (
-    <motion.div
-      className="flex flex-col justify-center items-center h-screen w-screen bg-gray-900 text-gray-100 z-10"
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: "easeInOut" }}
-    >
+    <div className="flex min-h-[60dvh] items-center justify-center">
       <motion.div
-        className="bg-gray-800 rounded-lg p-8 shadow-lg text-center"
-        initial={{ scale: 0.9 }}
-        animate={{ scale: 1 }}
-        transition={{ duration: 0.3, ease: "easeInOut" }}
+        className="w-full max-w-md rounded-panel border border-line bg-surface p-6 text-center sm:p-8"
+        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
       >
-        <h2 className="text-2xl font-bold mb-4">Êtes-vous sûr de vouloir vous déconnecter ?</h2>
-        <p className="mb-6 text-gray-300">Vous devrez vous reconnecter pour accéder à votre compte.</p>
+        <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-danger-soft text-danger" aria-hidden="true">
+          <HugeiconsIcon icon={Logout01Icon} size={22} />
+        </span>
+        <h1 className="mb-2 text-xl font-semibold text-fg">Êtes-vous sûr de vouloir vous déconnecter ?</h1>
+        <p className="mb-6 text-sm text-fg-muted">Vous devrez vous reconnecter pour accéder à votre compte.</p>
 
-        <div className="flex space-x-4 justify-center">
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center"
-          >
-            <LogOut size={18} className="mr-2" />
-            Se Déconnecter
-          </button>
-          <button
-            onClick={handleCancel}
-            className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center"
-          >
-            <ArrowLeft size={18} className="mr-2" />
+        <div className="flex flex-col-reverse justify-center gap-2 sm:flex-row">
+          <Button variant="outline" size="lg" onClick={handleCancel}>
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={18} aria-hidden="true" />
             Annuler
-          </button>
+          </Button>
+          <Button variant="danger" size="lg" onClick={handleLogout}>
+            <HugeiconsIcon icon={Logout01Icon} size={18} aria-hidden="true" />
+            Se déconnecter
+          </Button>
         </div>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
 
 export default Deconnexion;
-

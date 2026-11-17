@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     FRAUD_FLAG_STATUS_LABELS, FRAUD_SIGNAL_LABELS, fmtDate, listFraudFlags, num, reviewFraudFlag, type AnimFraudFlag, type FraudFlagStatus,
 } from '../../api/animation';
+import { InformationCircleIcon, Shield01Icon } from '@hugeicons/core-free-icons';
+import { Can } from '../Can';
+import { usePermission } from '../../hooks/usePermission';
+import { EmptyState, Panel, ResponsiveList, Segmented, type ListColumn } from '../ui';
+import { DateText, ErrorState, Notice } from '../moduleKit';
 import { FLAG_STATUS, FREEZE_BLOCK_SCORE, flagSubjectKind, plural, shortRef, useAnim, useAsync } from './shared';
-import { Badge, Button, Card, KV, Modal, Pager, ReasonConfirm, Section, StatusBadge, Table, Toggle, UserRef, selectCls, tdCls, trCls } from './ui';
+import { Badge, Button, KV, Modal, Pager, ReasonConfirm, Section, StatusBadge, Toggle, UserRef } from './ui';
 
 const PAGE = 24;
 const signalName = (code: string) => FRAUD_SIGNAL_LABELS[code]?.label ?? 'Autre signal';
@@ -11,7 +16,7 @@ const measure = (v: number | undefined, code: string) => (v === undefined || v =
 
 function Subject({ f }: { f: AnimFraudFlag }) {
     const name = f.subjectLabel || (f.subjectType === 'IP' ? shortRef(f.subjectId) : 'Inconnu');
-    return <span className="min-w-0"><span className="block text-xs text-gray-400">{flagSubjectKind(f)}</span><span className="block font-medium">{name}</span></span>;
+    return <span className="min-w-0"><span className="block text-xs text-fg-muted">{flagSubjectKind(f)}</span><span className="block font-medium">{name}</span></span>;
 }
 
 function Score({ f }: { f: AnimFraudFlag }) {
@@ -25,14 +30,18 @@ type Review = { flag: AnimFraudFlag; decision: 'clear' | 'confirm' };
  * automatically — clearing or confirming is SBC's call, highest scores first.
  */
 export default function FraudTab() {
-    const { refresh, notifySuccess } = useAnim();
+    const { refresh, notifySuccess, apiParams, queueParams, scopeKey } = useAnim();
+    const canWrite = usePermission('events') === 'write';
     const [status, setStatus] = useState<FraudFlagStatus>('OPEN');
     const [page, setPage] = useState(1);
+    // a new country/period starts again at page 1
+    useEffect(() => { setPage(1); }, [scopeKey]);
     const [legend, setLegend] = useState(false);
     const [open, setOpen] = useState<AnimFraudFlag | null>(null);
     const [review, setReview] = useState<Review | null>(null);
     const [opts, setOpts] = useState({ voidVotes: true, refund: false, disqualify: false });
-    const q = useAsync(() => listFraudFlags({ status, page, limit: PAGE }), `${status}|${page}`);
+    // open flags are a queue: country only, whatever the period
+    const q = useAsync(() => listFraudFlags({ status, page, limit: PAGE, ...(status === 'OPEN' ? queueParams : apiParams) }), `${status}|${page}|${scopeKey}`);
     const items = q.data?.items ?? [];
 
     const start = (flag: AnimFraudFlag, decision: Review['decision']) => {
@@ -40,51 +49,62 @@ export default function FraudTab() {
         setReview({ flag, decision });
     };
 
+    const columns: ListColumn<AnimFraudFlag>[] = [
+        { key: 'subject', header: 'Sujet', cell: f => <Subject f={f} /> },
+        { key: 'challenge', header: 'Défi', cell: f => <span className="text-fg-muted">{f.challenge?.name ?? 'Défi'}</span> },
+        { key: 'signals', header: 'Signaux', cell: f => <span className="text-fg-muted">{f.signals.map(x => signalName(x.code)).join(', ')}</span> },
+        { key: 'score', header: 'Score', cell: f => <Score f={f} /> },
+        { key: 'at', header: 'Signalé', cell: f => <DateText value={f.createdAt} className="text-fg-muted" /> },
+        {
+            key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', hideOnCard: true,
+            cell: f => f.status === 'OPEN' ? (
+                <Can module="events" write>
+                    <span className="inline-flex gap-1.5">
+                        <Button small onClick={() => start(f, 'clear')}>Classer</Button>
+                        <Button small variant="danger" onClick={() => start(f, 'confirm')}>Fraude…</Button>
+                    </span>
+                </Can>
+            ) : <StatusBadge status={f.status} labels={FLAG_STATUS} />,
+        },
+    ];
+
     return (
-        <div className="space-y-3">
-            <p className="text-sm text-gray-400">
+        <div className="space-y-4">
+            <Notice icon={InformationCircleIcon}>
                 Les signaux anti-fraude ne suppriment jamais rien automatiquement : ils placent un compte, un achat, un candidat, une adresse
                 réseau ou un appareil « à vérifier ». Un signalement ouvert de score {FREEZE_BLOCK_SCORE} ou plus empêche de figer le résultat du défi.
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-                <select value={status} onChange={e => { setStatus(e.target.value as FraudFlagStatus); setPage(1); }} className={selectCls}>
-                    {(['OPEN', 'CLEARED', 'CONFIRMED'] as FraudFlagStatus[]).map(s => <option key={s} value={s}>{FRAUD_FLAG_STATUS_LABELS[s]}</option>)}
-                </select>
-                <Button className="ml-auto" onClick={() => setLegend(v => !v)}>{legend ? 'Masquer' : 'Comprendre'} les signaux</Button>
-            </div>
-            {legend && (
-                <Card className="grid md:grid-cols-2 gap-3">
-                    {Object.entries(FRAUD_SIGNAL_LABELS).map(([code, s]) => (
-                        <div key={code} className="text-sm"><p className="font-semibold text-gray-100">{s.label}</p><p className="text-gray-400">{s.help}</p></div>
-                    ))}
-                </Card>
-            )}
-
-            <Table headers={['Sujet', 'Défi', 'Signaux', 'Score', 'Signalé', 'Statut', '']}
-                loading={q.loading && !q.data} error={q.data ? null : q.error} onRetry={q.reload}
-                empty={q.data && items.length === 0 ? (status === 'OPEN' ? 'Rien à vérifier pour le moment' : 'Aucun signalement') : undefined}>
-                {items.map(f => (
-                    <tr key={f._id} className={trCls} onClick={() => setOpen(f)}>
-                        <td className={tdCls}><Subject f={f} /></td>
-                        <td className={`${tdCls} text-gray-300`}>{f.challenge?.name ?? 'Défi'}</td>
-                        <td className={`${tdCls} text-gray-300`}>{f.signals.map(s => signalName(s.code)).join(', ')}</td>
-                        <td className={tdCls}><Score f={f} /></td>
-                        <td className={`${tdCls} text-xs text-gray-400 whitespace-nowrap`}>{fmtDate(f.createdAt)}</td>
-                        <td className={tdCls}><StatusBadge status={f.status} labels={FLAG_STATUS} /></td>
-                        <td className={`${tdCls} whitespace-nowrap space-x-2`} onClick={e => e.stopPropagation()}>
-                            {f.status === 'OPEN' && <>
-                                <Button small onClick={() => start(f, 'clear')}>Classer</Button>
-                                <Button small variant="danger" onClick={() => start(f, 'confirm')}>Fraude</Button>
-                            </>}
-                        </td>
-                    </tr>
-                ))}
-            </Table>
-            {q.data && <Pager page={page} totalPages={Math.max(1, q.data.totalPages)} total={q.data.total} onChange={setPage} />}
+            </Notice>
+            <Panel>
+                <div className="flex flex-col gap-2 border-b border-line p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <Segmented label="Statut des signalements" value={status} onValueChange={v => { setStatus(v); setPage(1); }}
+                        options={(['OPEN', 'CLEARED', 'CONFIRMED'] as FraudFlagStatus[]).map(x => ({ value: x, label: FRAUD_FLAG_STATUS_LABELS[x] }))} />
+                    <Button onClick={() => setLegend(v => !v)}>{legend ? 'Masquer' : 'Comprendre'} les signaux</Button>
+                </div>
+                {legend && (
+                    <div className="grid gap-3 border-b border-line p-4 md:grid-cols-2">
+                        {Object.entries(FRAUD_SIGNAL_LABELS).map(([code, x]) => (
+                            <div key={code} className="text-sm"><p className="font-medium text-fg">{x.label}</p><p className="text-fg-muted">{x.help}</p></div>
+                        ))}
+                    </div>
+                )}
+                <div className={q.loading && q.data ? 'opacity-60 transition-opacity' : undefined}>
+                    <ResponsiveList
+                        rows={items}
+                        columns={columns}
+                        rowKey={f => f._id}
+                        onRowClick={setOpen}
+                        loading={q.loading && !q.data}
+                        empty={q.error && !q.data ? <ErrorState error={new Error(q.error)} onRetry={q.reload} /> : (
+                            <EmptyState icon={Shield01Icon} title={status === 'OPEN' ? 'Rien à vérifier pour le moment' : 'Aucun signalement'} />
+                        )}
+                    />
+                </div>
+                {q.data && <Pager page={page} totalPages={Math.max(1, q.data.totalPages)} total={q.data.total} pageSize={PAGE} onChange={setPage} />}
+            </Panel>
 
             {open && (
                 <Modal onClose={() => setOpen(null)} title={`${flagSubjectKind(open)} à vérifier`} subtitle={open.challenge?.name}
-                    footer={open.status === 'OPEN' ? <>
+                    footer={open.status === 'OPEN' && canWrite ? <>
                         <Button onClick={() => start(open, 'clear')}>Classer sans suite…</Button>
                         <Button variant="danger" onClick={() => start(open, 'confirm')}>Confirmer la fraude…</Button>
                     </> : undefined}>
@@ -93,7 +113,7 @@ export default function FraudTab() {
                         {open.score >= FREEZE_BLOCK_SCORE && open.status === 'OPEN' && <Badge tone="warning">Bloque le figeage du résultat</Badge>}
                     </div>
                     {open.subjectType === 'USER' ? <UserRef id={open.subjectId} fallback={open.subjectLabel ?? 'Compte'} /> : (
-                        <p className="font-semibold">{open.subjectLabel || (open.subjectType === 'IP' ? `${flagSubjectKind(open)} partagé${open.subjectId.startsWith('ua:') ? '' : 'e'} · ${shortRef(open.subjectId)}` : 'Sujet inconnu')}</p>
+                        <p className="font-medium text-fg">{open.subjectLabel || (open.subjectType === 'IP' ? `${flagSubjectKind(open)} partagé${open.subjectId.startsWith('ua:') ? '' : 'e'} · ${shortRef(open.subjectId)}` : 'Sujet inconnu')}</p>
                     )}
                     <KV items={[
                         ['Défi', open.challenge?.name ?? 'Défi'],
@@ -105,11 +125,11 @@ export default function FraudTab() {
                     <Section title="Signaux">
                         <ul className="space-y-2">
                             {open.signals.map((s, i) => (
-                                <li key={i} className="rounded-lg bg-gray-800 border border-gray-700 p-3 text-sm space-y-1">
-                                    <p className="font-semibold">{signalName(s.code)}</p>
-                                    {FRAUD_SIGNAL_LABELS[s.code]?.help && <p className="text-gray-400">{FRAUD_SIGNAL_LABELS[s.code].help}</p>}
-                                    <p><span className="text-gray-400">Mesuré :</span> <b>{measure(s.value, s.code)}</b> <span className="text-gray-400">· seuil {measure(s.threshold, s.code)}</span></p>
-                                    {s.note && <p className="text-gray-400">{s.note}</p>}
+                                <li key={i} className="space-y-1 rounded-panel border border-line p-3 text-sm">
+                                    <p className="font-medium text-fg">{signalName(s.code)}</p>
+                                    {FRAUD_SIGNAL_LABELS[s.code]?.help && <p className="text-fg-muted">{FRAUD_SIGNAL_LABELS[s.code].help}</p>}
+                                    <p><span className="text-fg-muted">Mesuré :</span> <b>{measure(s.value, s.code)}</b> <span className="text-fg-muted">· seuil {measure(s.threshold, s.code)}</span></p>
+                                    {s.note && <p className="text-fg-muted">{s.note}</p>}
                                 </li>
                             ))}
                         </ul>
@@ -117,7 +137,7 @@ export default function FraudTab() {
                 </Modal>
             )}
 
-            {review && (
+            {review && canWrite && (
                 <>
                     <ReasonConfirm open={review.decision === 'clear'} title="Classer sans suite ?" variant="primary"
                         message="Le signalement est clos et les achats concernés sont marqués comme vérifiés. Aucun vote n’est modifié."
@@ -128,7 +148,7 @@ export default function FraudTab() {
                             setOpen(null); refresh();
                         }} />
                     <ReasonConfirm open={review.decision === 'confirm'} title="Confirmer la fraude ?"
-                        message="Choisis les mesures à appliquer. Chacune est journalisée."
+                        message="Choisissez les mesures à appliquer. Chacune est journalisée."
                         label="Note (obligatoire)" minLength={3} confirmText="Confirmer la fraude" onCancel={() => setReview(null)}
                         onConfirm={async (note) => {
                             const { result } = await reviewFraudFlag(review.flag._id, {
@@ -144,7 +164,7 @@ export default function FraudTab() {
                             notifySuccess(`Fraude confirmée${parts.length ? ` : ${parts.join(', ')}` : ''}.`);
                             setOpen(null); refresh();
                         }}>
-                        <div className="divide-y divide-gray-700 border border-gray-700 rounded-lg mb-3">
+                        <div className="divide-y divide-line rounded-panel border border-line">
                             <Toggle label="Annuler les votes gratuits" checked={opts.voidVotes} onChange={v => setOpts({ ...opts, voidVotes: v })}
                                 help={review.flag.subjectType === 'TRANSACTION' ? 'Sans effet pour un achat (aucun vote gratuit associé).' : undefined} />
                             <Toggle label="Rembourser les achats" checked={opts.refund} onChange={v => setOpts({ ...opts, refund: v })}

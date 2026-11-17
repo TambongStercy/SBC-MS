@@ -42,7 +42,8 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 
 export const authorizeAdmin = (req: Request, res: Response, next: NextFunction): void => {
     const user = (req as AuthenticatedRequest).user;
-    if (user && (user.role === 'admin' || user.role === 'tester')) {
+    // 'staff' = admin team member; the gateway checks its module and read/write (admin-routes.ts).
+    if (user && (user.role === 'admin' || user.role === 'staff' || user.role === 'tester')) {
         next();
     } else {
         log.warn(`Admin authorization failed for user: ${user?.userId}. Role: ${user?.role}`);

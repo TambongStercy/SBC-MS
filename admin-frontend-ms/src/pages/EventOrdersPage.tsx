@@ -1,158 +1,207 @@
-import { useCallback, useEffect, useState } from 'react';
-import Header from '../components/common/Header';
-import Loader from '../components/common/loader';
-import ConfirmationModal from '../components/common/ConfirmationModal';
-import ToastContainer from '../components/common/ToastContainer';
-import { useToast } from '../hooks/useToast';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { MoneyReceive02Icon, ShoppingCart01Icon, ViewIcon } from '@hugeicons/core-free-icons';
+import { listAdminOrders, refundOrder, type AdminOrder, type OrderKind, type OrderStatus } from '../api/event';
+import { Can } from '../components/Can';
+import { usePageFilters } from '../hooks/usePageFilters';
+import { PageFilters } from '../components/filters/PageFilters';
+import { useClearAll } from '../components/event/useClearAll';
+import { usePermission } from '../hooks/usePermission';
 import {
-    AdminOrder, OrderStatus, OrderKind,
-    listAdminOrders, refundOrder, apiErrorMessage,
-} from '../api/event';
+  Button, Dialog, EmptyState, Input, MenuItem, PageHeader, Pagination, Panel, ResponsiveList, SheetContent, type ListColumn,
+} from '../components/ui';
+import {
+  ConfirmDialog, CopyId, DateText, DetailList, ErrorState, FilterBar, FilterSelect, Money, RowMenu, SheetSection, StatusBadge,
+  formatDateTime, formatMoney, formatNumber, useUrlFilters, type ConfirmOptions,
+} from '../components/moduleKit';
+import { ORDER_KIND, ORDER_STATUS, PAGE_SIZE, isObjectId } from '../components/event/shared';
+import { TwoLines } from '../components/event/TwoLines';
 
-const STATUS_STYLES: Record<OrderStatus, string> = {
-    PENDING: 'bg-gray-100 text-gray-700',
-    PAID: 'bg-emerald-100 text-emerald-800',
-    FAILED: 'bg-red-100 text-red-800',
-    CANCELLED: 'bg-red-100 text-red-800',
-    REFUNDED: 'bg-amber-100 text-amber-800',
-};
+const STATUS_OPTIONS = [
+  { value: 'PAID', label: 'Payées' },
+  { value: 'PENDING', label: 'En attente' },
+  { value: 'FAILED', label: 'Échouées' },
+  { value: 'CANCELLED', label: 'Annulées' },
+  { value: 'REFUNDED', label: 'Remboursées' },
+];
+const KIND_OPTIONS = [
+  { value: 'PRIMARY', label: 'Ventes directes' },
+  { value: 'RESALE', label: 'Reventes' },
+];
 
-const fmt = (iso?: string) => iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
-const objectId = (v: string) => /^[0-9a-f]{24}$/i.test(v.trim()) ? v.trim() : undefined;
+const holderName = (o: AdminOrder) => `${o.holder.firstName} ${o.holder.lastName}`.trim() || 'Acheteur';
+const refundable = (o: AdminOrder) => o.status === 'PAID' && o.kind === 'PRIMARY';
 
+/** An id filter: the API casts it to an ObjectId and fails on a partial value, so it is sent only once complete. */
+function IdFilter({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const partial = value !== '' && !isObjectId(value);
+  return (
+    <div className="min-w-0">
+      <Input value={value} onChange={e => onChange(e.target.value.trim())} placeholder={label} aria-label={label}
+        aria-invalid={partial || undefined} className="h-11 font-mono sm:h-9" />
+      {partial && <p className="mt-1 text-xs text-fg-muted">Collez l’identifiant complet (24 caractères).</p>}
+    </div>
+  );
+}
+
+/** SBC Event orders: every purchase (direct sale or resale), with the refund of a paid direct sale. */
 export default function EventOrdersPage() {
-    const [items, setItems] = useState<AdminOrder[]>([]);
-    const [status, setStatus] = useState<OrderStatus | ''>('');
-    const [kind, setKind] = useState<OrderKind | ''>('');
-    const [eventId, setEventId] = useState('');
-    const [userId, setUserId] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [confirm, setConfirm] = useState<{ title: string; message: string; onConfirm: () => Promise<void> } | null>(null);
-    const { toasts, removeToast, showSuccess, showError } = useToast();
+  const qc = useQueryClient();
+  const f = useUrlFilters(['status', 'kind', 'eventId', 'userId'] as const);
+  const filters = usePageFilters();
+  const clearAll = useClearAll(['status', 'kind', 'eventId', 'userId']);
+  const { status, kind, eventId, userId } = f.values;
+  const [detail, setDetail] = useState<AdminOrder | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmOptions | null>(null);
+  const canWrite = usePermission('events') === 'write';
 
-    const load = useCallback(async () => {
-        setLoading(true);
-        try {
-            const { items } = await listAdminOrders({
-                status: status || undefined,
-                kind: kind || undefined,
-                // only sent once a full id is typed — the API casts it to an
-                // ObjectId and 500s on a partial value
-                eventId: objectId(eventId),
-                userId: objectId(userId),
-                limit: 100,
-            });
-            setItems(items);
-        } catch (e: any) { showError(apiErrorMessage(e, 'Erreur.')); }
-        finally { setLoading(false); }
-    }, [status, kind, eventId, userId, showError]);
+  const list = useQuery({
+    queryKey: ['event', 'orders', status, kind, eventId, userId, f.page, filters.apiParams],
+    queryFn: () => listAdminOrders({
+      status: (status || undefined) as OrderStatus | undefined,
+      kind: (kind || undefined) as OrderKind | undefined,
+      eventId: isObjectId(eventId) ? eventId : undefined,
+      userId: isObjectId(userId) ? userId : undefined,
+      limit: PAGE_SIZE,
+      skip: (f.page - 1) * PAGE_SIZE,
+      ...filters.apiParams,
+    }),
+    placeholderData: keepPreviousData,
+  });
+  const items = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
 
-    // debounced so typing an id doesn't fire a request per keystroke
-    useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
+  const refund = (o: AdminOrder) => setConfirm({
+    title: `Rembourser ${formatMoney(o.total)} ?`,
+    description: `${holderName(o)} est remboursé sur son solde SBC principal et ses billets de cette commande sont invalidés.`,
+    confirmLabel: 'Rembourser',
+    onConfirm: async () => {
+      await refundOrder(o._id, 'Remboursement administrateur');
+      toast.success('Commande remboursée.');
+      setDetail(null);
+      void qc.invalidateQueries({ queryKey: ['event', 'orders'] });
+    },
+  });
 
-    const doRefund = (o: AdminOrder) => setConfirm({
-        title: 'Rembourser la commande',
-        message: `Rembourser ${o.total.toLocaleString('fr-FR')} XAF à l'acheteur ${o.holder.firstName} ${o.holder.lastName} ? Les billets seront invalidés et le solde principal de l'acheteur sera crédité.`,
-        onConfirm: async () => {
-            try {
-                await refundOrder(o._id, 'Remboursement administrateur');
-                showSuccess('Commande remboursée.');
-                setConfirm(null);
-                load();
-            } catch (e: any) { showError(apiErrorMessage(e, 'Erreur.')); setConfirm(null); }
-        },
-    });
+  const menu = (o: AdminOrder) => (
+    <RowMenu>
+      <MenuItem onSelect={() => setDetail(o)}><HugeiconsIcon icon={ViewIcon} size={16} aria-hidden="true" />Voir la commande</MenuItem>
+      {canWrite && refundable(o) && (
+        <MenuItem destructive onSelect={() => refund(o)}><HugeiconsIcon icon={MoneyReceive02Icon} size={16} aria-hidden="true" />Rembourser…</MenuItem>
+      )}
+    </RowMenu>
+  );
 
-    return (
-        <div className="flex-1 overflow-y-auto">
-            <Header title="SBC Event — Commandes" />
-            <div className="p-6 space-y-4">
-                <div className="flex items-center gap-3 flex-wrap">
-                    <select value={status} onChange={(e) => setStatus(e.target.value as OrderStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
-                        <option value="">Tous les statuts</option>
-                        <option value="PAID">Payées</option>
-                        <option value="PENDING">En attente</option>
-                        <option value="FAILED">Échouées</option>
-                        <option value="CANCELLED">Annulées</option>
-                        <option value="REFUNDED">Remboursées</option>
-                    </select>
-                    <select value={kind} onChange={(e) => setKind(e.target.value as OrderKind | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
-                        <option value="">Toutes les commandes</option>
-                        <option value="PRIMARY">Vente primaire</option>
-                        <option value="RESALE">Revente</option>
-                    </select>
-                    <input
-                        value={eventId}
-                        onChange={(e) => setEventId(e.target.value)}
-                        placeholder="ID événement"
-                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-56 font-mono bg-gray-700 text-white"
-                    />
-                    <input
-                        value={userId}
-                        onChange={(e) => setUserId(e.target.value)}
-                        placeholder="ID acheteur"
-                        className="border border-gray-600 rounded-lg px-3 py-2 text-sm w-56 font-mono bg-gray-700 text-white"
-                    />
-                    <button onClick={load} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">Rafraîchir</button>
-                </div>
+  const columns: ListColumn<AdminOrder>[] = [
+    { key: 'buyer', header: 'Acheteur', cell: o => <TwoLines main={holderName(o)} sub={o.holder.phone} /> },
+    { key: 'kind', header: 'Type', cell: o => <StatusBadge status={o.kind} map={ORDER_KIND} /> },
+    { key: 'status', header: 'Statut', cell: o => <StatusBadge status={o.status} map={ORDER_STATUS} /> },
+    { key: 'total', header: 'Total', numeric: true, cell: o => <Money value={o.total} className="font-medium" /> },
+    { key: 'paid', header: 'Payée', cell: o => <DateText value={o.paidAt} className="text-fg-muted" /> },
+    { key: 'actions', header: <span className="sr-only">Actions</span>, className: 'text-right', hideOnCard: true, cell: menu },
+  ];
 
-                {loading ? <Loader name="Chargement..." /> : (
-                    <div className="overflow-x-auto bg-gray-800 rounded-xl border border-gray-700">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-gray-900/50 text-gray-300">
-                                <tr>
-                                    <th className="px-4 py-2 text-left">Commande</th>
-                                    <th className="px-4 py-2 text-left">Acheteur</th>
-                                    <th className="px-4 py-2 text-left">Type</th>
-                                    <th className="px-4 py-2 text-left">Statut</th>
-                                    <th className="px-4 py-2 text-right">Total</th>
-                                    <th className="px-4 py-2 text-left">Payée le</th>
-                                    <th className="px-4 py-2 text-left">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {items.length === 0 && (
-                                    <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Aucune commande.</td></tr>
-                                )}
-                                {items.map((o) => (
-                                    <tr key={o._id} className="border-t border-gray-700">
-                                        <td className="px-4 py-2 text-xs font-mono">{o._id.slice(-8)}</td>
-                                        <td className="px-4 py-2">
-                                            <div className="font-medium">{o.holder.firstName} {o.holder.lastName}</div>
-                                            <div className="text-xs text-gray-400">{o.holder.phone}</div>
-                                            {o.holder.email && <div className="text-xs text-gray-400">{o.holder.email}</div>}
-                                        </td>
-                                        <td className="px-4 py-2 text-xs">
-                                            <span className={`px-2 py-1 rounded-full ${o.kind === 'RESALE' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>{o.kind}</span>
-                                        </td>
-                                        <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[o.status]}`}>{o.status}</span></td>
-                                        <td className="px-4 py-2 text-right text-sm font-semibold">{o.total.toLocaleString('fr-FR')} XAF</td>
-                                        <td className="px-4 py-2 text-xs">{fmt(o.paidAt)}</td>
-                                        <td className="px-4 py-2">
-                                            {o.status === 'PAID' && o.kind === 'PRIMARY' && (
-                                                <button onClick={() => doRefund(o)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded">Rembourser</button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+  const card = (o: AdminOrder) => (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <TwoLines main={holderName(o)} sub={o.holder.phone} />
+        <Money value={o.total} className="text-sm font-semibold text-fg" />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge status={o.status} map={ORDER_STATUS} />
+        <StatusBadge status={o.kind} map={ORDER_KIND} />
+        <span className="text-xs text-fg-muted"><DateText value={o.paidAt ?? o.createdAt} /></span>
+      </div>
+    </div>
+  );
 
-            {confirm && (
-                <ConfirmationModal
-                    isOpen
-                    title={confirm.title}
-                    message={confirm.message}
-                    confirmText="Confirmer"
-                    cancelText="Annuler"
-                    onConfirm={confirm.onConfirm}
-                    onCancel={() => setConfirm(null)}
-                />
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Commandes" description="Toutes les commandes de billets, ventes directes et reventes. Une vente directe payée peut être remboursée." />
+
+      <PageFilters filters={filters} onReset={clearAll}>
+        <FilterBar
+          filterCount={4}
+          activeCount={filters.isFiltered ? 0 : f.activeCount}
+          onClear={f.clear}
+          filters={(
+            <>
+              <FilterSelect label="Statut" allLabel="Tous les statuts" value={status} onChange={v => f.set({ status: v })} options={STATUS_OPTIONS} />
+              <FilterSelect label="Type" allLabel="Tous les types" value={kind} onChange={v => f.set({ kind: v })} options={KIND_OPTIONS} />
+              <IdFilter label="ID événement" value={eventId} onChange={v => f.set({ eventId: v })} />
+              <IdFilter label="ID acheteur" value={userId} onChange={v => f.set({ userId: v })} />
+            </>
+          )}
+          trailing={list.data && <span className="text-sm text-fg-muted">{formatNumber(total)} commande{total > 1 ? 's' : ''}</span>}
+        />
+      </PageFilters>
+
+      <Panel>
+        <div className={list.isFetching && list.data ? 'opacity-60 transition-opacity' : undefined}>
+          <ResponsiveList
+            rows={items}
+            columns={columns}
+            rowKey={o => o._id}
+            onRowClick={setDetail}
+            card={card}
+            loading={list.isLoading}
+            empty={list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} retrying={list.isFetching} /> : (
+              <EmptyState icon={ShoppingCart01Icon} title="Aucune commande"
+                description={(f.activeCount || filters.isFiltered) ? 'Aucune commande ne correspond à ces filtres.' : 'Les commandes de billets apparaîtront ici.'}
+                action={(f.activeCount || filters.isFiltered) ? <Button size="lg" onClick={clearAll}>Effacer les filtres</Button> : undefined} />
             )}
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
+          />
         </div>
-    );
+        <Pagination page={f.page} totalPages={Math.ceil(total / PAGE_SIZE)} total={total} pageSize={PAGE_SIZE} onPageChange={f.setPage} />
+      </Panel>
+
+      <Dialog open={!!detail} onOpenChange={o => { if (!o) setDetail(null); }}>
+        {detail && (
+          <SheetContent
+            title={`Commande de ${holderName(detail)}`}
+            description={<span className="inline-flex gap-1.5"><StatusBadge status={detail.status} map={ORDER_STATUS} /><StatusBadge status={detail.kind} map={ORDER_KIND} /></span>}
+            footer={refundable(detail) ? (
+              <Can module="events" write>
+                <Button variant="danger" size="lg" onClick={() => refund(detail)}>
+                  <HugeiconsIcon icon={MoneyReceive02Icon} size={16} aria-hidden="true" />Rembourser {formatMoney(detail.total)}…
+                </Button>
+              </Can>
+            ) : undefined}
+          >
+            <div className="space-y-5">
+              <SheetSection title="Montants">
+                <DetailList items={[
+                  ['Sous-total', <Money key="s" value={detail.subtotal} />],
+                  ['Commission SBC', <Money key="c" value={detail.commission} />],
+                  ['Total payé', <Money key="t" value={detail.total} className="font-semibold" />],
+                ]} />
+              </SheetSection>
+              <SheetSection title="Acheteur">
+                <DetailList items={[
+                  ['Nom', holderName(detail)],
+                  ['Téléphone', detail.holder.phone || '—'],
+                  !!detail.holder.email && ['E-mail', detail.holder.email],
+                  ['Compte SBC', <Link key="u" to={`/userpage/${detail.userId}`} className="text-primary hover:underline">Ouvrir la fiche membre</Link>],
+                ]} />
+              </SheetSection>
+              <SheetSection title="Références">
+                <DetailList items={[
+                  ['Créée le', formatDateTime(detail.createdAt)],
+                  ['Payée le', formatDateTime(detail.paidAt)],
+                  ['Commande', <CopyId key="o" value={detail._id} />],
+                  ['Événement', <CopyId key="e" value={detail.eventId} />],
+                  !!detail.paymentSessionId && ['Paiement', <span key="p" className="break-all font-mono text-xs">{detail.paymentSessionId}</span>],
+                ]} />
+              </SheetSection>
+            </div>
+          </SheetContent>
+        )}
+      </Dialog>
+
+      <ConfirmDialog options={confirm} onClose={() => setConfirm(null)} />
+    </div>
+  );
 }

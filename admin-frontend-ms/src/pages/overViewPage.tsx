@@ -1,52 +1,40 @@
-import { useEffect, useState } from "react";
-import Header from "../components/common/Header";
-import StatCard from "../components/common/statCard";
-import { motion } from "framer-motion";
+import { useMemo } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  BadgeSwissFranc,
-  UserRound,
-  UserRoundCheck,
-  ListChecks,
-  // Package,
-  // CalendarDays,
-  // Ticket,
-  Landmark,
-  ChevronDown,
-  Target,
-  MessageSquare,
-  TrendingUp,
-  DollarSign,
-  Wallet,
-  Users,
-} from "lucide-react";
-import UsersOverViewCahrt from "../components/charts/usersOverViewCahrt";
-import ComparisonChart from "../components/charts/ComparisonChart";
-import MonthlyRevenueChart from "../components/charts/MonthlyRevenueChart";
-import ActivityOverviewChart from "../components/charts/ActivityOverviewChart";
+  ArrowRight01Icon, Megaphone01Icon, MoneyReceive01Icon, MoneySend01Icon, RefreshIcon, UserGroupIcon, CrownIcon,
+} from "@hugeicons/core-free-icons";
+import { fetchDashboard, fetchRecentTransactions } from "../api";
+import type { AccountTransaction } from "../services/adminAccountTransactionApi";
+import { getRelanceStats, getRecentWithdrawals } from "../services/adminDashboardApi";
+import { usePageFilters } from "../hooks/usePageFilters";
+import { usePermission } from "../hooks/usePermission";
+import { countryName } from "../lib/countries";
+import { getCountryName } from "../utils/countryUtils";
+import PageFilters from "../components/filters/PageFilters";
+import { Button, Metric, PageHeader, Panel, PanelBody, PanelHeader, Skeleton } from "../components/ui";
+import { ErrorState } from "../components/common/DataStates";
+import { formatDelta, formatMoney, formatNumber } from "../components/common/format";
 import RecentTransactionsList from "../components/common/RecentTransactionsList";
-
-import { fetchDashboard, fetchRecentTransactions } from "../api"; // Import the API functions
-import { AccountTransaction } from "../services/adminAccountTransactionApi"; // Import the shared AccountTransaction type
-import { getRelanceStats, getRecentWithdrawals, RelanceStats, RecentWithdrawal } from "../services/adminDashboardApi";
 import RecentWithdrawalsList from "../components/common/RecentWithdrawalsList";
 import GatewayBalancesCard from "../components/common/GatewayBalancesCard";
+import { AttentionPanel } from "../components/dashboard/AttentionPanel";
+import { EvolutionPanel, type ChartSpec, type EvolutionView, type EvolutionWindow } from "../components/dashboard/EvolutionPanel";
+import { RankedBars } from "../components/dashboard/RankedBars";
+import { addMonths, buildPoints, lastTwoMonths, monthName, monthOf, monthRange, toMonthMap } from "../components/dashboard/months";
 
-import Loader from "../components/common/loader";
-import { getCountryName } from "../utils/countryUtils"; // Import the new helper
-
-// --- Define Interface for Dashboard Data ---
+// --- Dashboard payload (GET /users/admin/dashboard) ---
 export interface MonthlyRevenueData {
   month: string;      // e.g., "2024-5"
   totalAmount: number;
 }
 
-// New interface for monthly aggregated counts
 export interface MonthlyCountData {
   month: string; // e.g., "2024-02"
   count: number;
 }
 
-// Export the interface so other components can import it
 export interface ActivityOverviewData {
   month: string;      // e.g., "2024-5"
   deposits: number;
@@ -56,389 +44,381 @@ export interface ActivityOverviewData {
 
 interface AdminDashboardData {
   adminBalance: number;
-  adminUSDBalance?: number; // USD balance
+  adminUSDBalance?: number;
   count: number;
-  classiqueSubCount: number; // Updated: Separate Classique subscription count
-  cibleSubCount: number; // Updated: Separate Cible subscription count
-  relanceSubCount: number; // Active Relance subscription count
+  classiqueSubCount: number;
+  cibleSubCount: number;
+  relanceSubCount: number;
   monthlyAllUsers: MonthlyCountData[];
   monthlyClassiqueSubs: MonthlyCountData[];
   monthlyCibleSubs: MonthlyCountData[];
   monthlyRelanceSubs: MonthlyCountData[];
   totalTransactions: number;
   totalWithdrawals: number;
-  totalDeposits: number; // Total deposit transactions
+  totalDeposits: number;
   totalRevenue: number;
-  // User Balances - Separated by currency
-  totalUserBalanceXAF: number; // Sum of all users' XAF balances
-  totalUserBalanceUSD: number; // Sum of all users' USD balances
-  totalUserActivationBalance: number; // Sum of all users' activation balances
-  totalCountryBalances: number; // Sum of all user XAF balances across countries
+  totalUserBalanceXAF: number;
+  totalUserBalanceUSD: number;
+  totalUserActivationBalance: number;
+  totalCountryBalances: number;
   monthlyRevenue: MonthlyRevenueData[];
   balancesByCountry: { [countryCode: string]: number };
   activityOverview: ActivityOverviewData[];
 }
-// --- End Interface ---
 
-// Helper function to get a consistent color based on country code
-// Basic hash function for demonstration - might need a better one for more countries
-const getColorForCountry = (countryCode: string) => {
-  const colors = [
-    "#22c55e", // green-500
-    "#eab308", // yellow-500
-    "#f97316", // orange-500
-    "#84cc16", // lime-500
-    "#ef4444", // red-500
-    "#3b82f6", // blue-500
-    "#a855f7", // purple-500
-    "#d946ef", // fuchsia-500
-    "#14b8a6", // teal-500
-  ];
-  let hash = 0;
-  for (let i = 0; i < countryCode.length; i++) {
-    hash = countryCode.charCodeAt(i) + ((hash << 5) - hash);
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
-};
+const WINDOWS: EvolutionWindow[] = ['12', '24', 'all'];
 
+/** "Octobre : 1 234 (+12 % vs septembre)" from a month map, or null when there is nothing to compare. */
+function monthHint(map: Map<string, number>, fmt: (v: number) => string): string | null {
+  const { last, before, lastValue, beforeValue } = lastTwoMonths(map);
+  if (!lastValue && !beforeValue) return null;
+  const delta = formatDelta(lastValue, beforeValue);
+  const lastName = monthName(last).split(' ')[0];
+  const beforeName = monthName(before).split(' ')[0].toLowerCase();
+  return `${lastName} : ${fmt(lastValue)}${delta ? ` (${delta} vs ${beforeName})` : ''}`;
+}
+
+const SmallFigure = ({ label, value, hint }: { label: string; value: string; hint?: string }) => (
+  <div className="min-w-0">
+    <p className="text-xs text-fg-muted">{label}</p>
+    <p className="mt-0.5 text-lg font-semibold tracking-tight text-fg">{value}</p>
+    {hint && <p className="text-xs text-fg-subtle">{hint}</p>}
+  </div>
+);
+
+/**
+ * Accueil: what needs someone today (queues), the four numbers that matter,
+ * monthly trends (readable, one unit per chart, table view), balances.
+ * Everything follows the page's country + period filters, except the queues
+ * (country only: an old item still waits).
+ */
 const OverViewPage = () => {
-  // State to store dashboard and users data
-  const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(null);
-  const [recentTransactions, setRecentTransactions] = useState<AccountTransaction[]>([]);
-  const [relanceStats, setRelanceStats] = useState<RelanceStats | null>(null);
-  const [recentWithdrawals, setRecentWithdrawals] = useState<RecentWithdrawal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [monthlyData, setMonthlyData] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null); // State for selected country
+  const filters = usePageFilters();
+  const [params, setParams] = useSearchParams();
+  const view: EvolutionView = params.get('vue') === 'tableau' ? 'table' : 'charts';
+  const rawWindow = params.get('fenetre');
+  const windowValue: EvolutionWindow = WINDOWS.includes(rawWindow as EvolutionWindow) ? (rawWindow as EvolutionWindow) : '12';
+  const setParam = (key: string, value: string | null) => setParams(prev => {
+    const next = new URLSearchParams(prev);
+    if (value) next.set(key, value); else next.delete(key);
+    return next;
+  }, { replace: true });
 
-  // Fetch dashboard and users data when the component mounts
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [dashboardResponse, recentTransactionsResponse, relanceStatsData, recentWithdrawalsData] = await Promise.all([
-          fetchDashboard(),
-          fetchRecentTransactions(5),
-          getRelanceStats(),
-          getRecentWithdrawals(5)
-        ]);
+  const canWithdrawals = usePermission('withdrawals') !== 'none';
+  const canRelance = usePermission('relance') !== 'none';
+  const canFinance = usePermission('finance') !== 'none';
+  const { apiParams } = filters;
+  const countryOnly = useMemo(() => (filters.country ? { country: filters.country } : {}), [filters.country]);
 
-        console.log("Raw Dashboard Response:", dashboardResponse);
+  const dashboard = useQuery({
+    queryKey: ['dashboard', apiParams],
+    queryFn: async () => {
+      const res = await fetchDashboard(apiParams);
+      const data = res?.data as AdminDashboardData | undefined;
+      if (!data || typeof data.adminBalance === 'undefined') throw new Error('Réponse du tableau de bord incomplète.');
+      return data;
+    },
+    placeholderData: prev => prev,
+  });
+  const recentTx = useQuery({
+    queryKey: ['dashboard-recent-tx', apiParams],
+    queryFn: () => fetchRecentTransactions(6, apiParams) as Promise<AccountTransaction[]>,
+    enabled: canFinance,
+    placeholderData: prev => prev,
+  });
+  const pendingWithdrawals = useQuery({
+    queryKey: ['dashboard-pending-withdrawals', countryOnly],
+    queryFn: () => getRecentWithdrawals(5, countryOnly),
+    enabled: canWithdrawals,
+  });
+  const relance = useQuery({
+    queryKey: ['dashboard-relance', apiParams],
+    queryFn: () => getRelanceStats(apiParams),
+    enabled: canRelance,
+  });
 
-        const actualDashboardData = dashboardResponse.data;
+  const d = dashboard.data;
 
-        if (!actualDashboardData || typeof actualDashboardData.adminBalance === 'undefined') {
-          console.error("Dashboard data seems invalid or missing key properties.", actualDashboardData);
-          throw new Error("Received invalid dashboard data structure from API.");
-        }
+  // --- Monthly series ---
+  const maps = useMemo(() => ({
+    users: toMonthMap(d?.monthlyAllUsers, r => r.count),
+    classique: toMonthMap(d?.monthlyClassiqueSubs, r => r.count),
+    cible: toMonthMap(d?.monthlyCibleSubs, r => r.count),
+    relance: toMonthMap(d?.monthlyRelanceSubs, r => r.count),
+    revenue: toMonthMap(d?.monthlyRevenue, r => r.totalAmount),
+    deposits: toMonthMap(d?.activityOverview, r => r.deposits),
+    withdrawals: toMonthMap(d?.activityOverview, r => r.withdrawals),
+    payments: toMonthMap(d?.activityOverview, r => r.payments),
+  }), [d]);
 
-        setDashboardData(actualDashboardData);
-        setRecentTransactions(recentTransactionsResponse);
-        setRelanceStats(relanceStatsData);
-        setRecentWithdrawals(recentWithdrawalsData);
+  const allTime = filters.period === 'all';
+  const { charts, tooShort } = useMemo(() => {
+    const now = monthOf(new Date());
+    const firstData = [...maps.users.keys(), ...maps.classique.keys(), ...maps.cible.keys()].sort()[0] ?? now;
+    let memberKeys: string[];
+    let payKeys: string[];
+    let payNote: string | undefined;
+    if (allTime) {
+      const start = windowValue === 'all' ? firstData : addMonths(now, -(Number(windowValue) - 1));
+      memberKeys = monthRange(start, now);
+      // Without a period the API sends payment figures for the last 12 months only.
+      payKeys = monthRange(addMonths(now, -11), now);
+      if (windowValue !== '12') payNote = 'Sans période choisie, le serveur ne renvoie que les 12 derniers mois pour cette mesure.';
+    } else {
+      const from = filters.range.from ? monthOf(filters.range.from) : firstData;
+      const toDate = filters.range.to && filters.range.to < new Date() ? filters.range.to : new Date();
+      memberKeys = monthRange(from, monthOf(toDate));
+      payKeys = memberKeys;
+    }
+    const subSeries = [
+      { key: 'classique', label: 'Classique' },
+      { key: 'cible', label: 'Ciblé' },
+      ...(memberKeys.some(k => (maps.relance.get(k) ?? 0) > 0) ? [{ key: 'relance', label: 'Relance' }] : []),
+    ];
+    const specs: ChartSpec[] = [
+      {
+        id: 'members', title: 'Inscriptions', description: 'Nouveaux membres par mois', unit: 'count',
+        series: [{ key: 'users', label: 'Inscriptions' }],
+        points: buildPoints(memberKeys, { users: maps.users }),
+      },
+      {
+        id: 'subs', title: 'Nouveaux abonnements', description: 'Abonnements démarrés par mois, par pack', unit: 'count',
+        series: subSeries,
+        points: buildPoints(memberKeys, { classique: maps.classique, cible: maps.cible, relance: maps.relance }),
+      },
+      {
+        id: 'revenue', title: 'Revenu', description: 'Paiements réussis par mois, en francs', unit: 'money',
+        series: [{ key: 'revenue', label: 'Revenu' }],
+        points: buildPoints(payKeys, { revenue: maps.revenue }),
+        note: payNote,
+      },
+      {
+        id: 'ops', title: 'Opérations réussies', description: 'Nombre d’opérations terminées par mois', unit: 'count',
+        series: [{ key: 'deposits', label: 'Dépôts' }, { key: 'withdrawals', label: 'Retraits' }, { key: 'payments', label: 'Paiements' }],
+        points: buildPoints(payKeys, { deposits: maps.deposits, withdrawals: maps.withdrawals, payments: maps.payments }),
+        note: payNote,
+      },
+    ];
+    return { charts: specs, tooShort: memberKeys.length < 2 };
+  }, [maps, allTime, windowValue, filters.range]);
 
-        if (actualDashboardData.balancesByCountry && Object.keys(actualDashboardData.balancesByCountry).length > 0) {
-          setSelectedCountryCode(Object.keys(actualDashboardData.balancesByCountry)[0]);
-        }
+  const countryBars = useMemo(() => Object.entries(d?.balancesByCountry ?? {})
+    .map(([code, value]) => ({ key: code, label: getCountryName(code) || code, value: Number(value) || 0 }))
+    .filter(i => i.value !== 0), [d]);
 
-        // Now directly use the pre-aggregated monthly data from the backend
-        const formattedUsersData = actualDashboardData.monthlyAllUsers
-          .filter((allUserMonth: MonthlyCountData) => allUserMonth.month) // Filter out null/undefined months
-          .map((allUserMonth: MonthlyCountData) => {
-            const classiqueMonth = actualDashboardData.monthlyClassiqueSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
-            const cibleMonth = actualDashboardData.monthlyCibleSubs.find((s: MonthlyCountData) => s.month === allUserMonth.month);
-            const relanceMonth = actualDashboardData.monthlyRelanceSubs?.find((s: MonthlyCountData) => s.month === allUserMonth.month);
+  const refresh = () => {
+    void dashboard.refetch();
+    if (canFinance) void recentTx.refetch();
+    if (canWithdrawals) void pendingWithdrawals.refetch();
+    if (canRelance) void relance.refetch();
+  };
 
-            // Convert month format from "2024-02" to "Feb 24"
-            const [year, month] = allUserMonth.month.split('-');
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const monthLabel = `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`;
-
-            return {
-              monthLabel: monthLabel, // Chart expects "monthLabel"
-              Users: allUserMonth.count, // Chart expects "Users" (capital U)
-              Classique: classiqueMonth?.count || 0, // Chart expects "Classique" (capital C)
-              Cible: cibleMonth?.count || 0, // Chart expects "Cible" (capital C)
-              Relance: relanceMonth?.count || 0, // Chart expects "Relance" (capital R)
-            };
-          });
-        setMonthlyData(formattedUsersData);
-
-        setLoading(false);
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        setError("Failed to load data");
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, []); // Empty dependency array ensures it runs once
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
-        <Loader name={"Admin"} />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex justify-center items-center h-screen w-screen overflow-auto relative z-10">
-        {error}
-      </div>
-    );
-  }
+  const periodHint = allTime ? null : 'sur la période';
+  const membersHint = allTime ? monthHint(maps.users, v => `${formatNumber(v)} inscrits`) : 'inscrits sur la période';
+  const revenueHint = allTime ? monthHint(maps.revenue, formatMoney) : periodHint;
+  const subsTotal = d ? d.classiqueSubCount + d.cibleSubCount + (d.relanceSubCount || 0) : 0;
 
   return (
-    <div className="flex-1 relative z-10">
-      <Header title="Tableau de bord" />
+    <div className="space-y-6">
+      <PageHeader
+        title="Accueil"
+        description="Ce qui attend une action, puis les chiffres clés de SBC."
+        actions={(
+          <Button size="lg" className="w-full sm:w-auto" onClick={refresh} loading={dashboard.isFetching && !dashboard.isLoading}>
+            {!(dashboard.isFetching && !dashboard.isLoading) && <HugeiconsIcon icon={RefreshIcon} size={16} aria-hidden="true" />}
+            Actualiser
+          </Button>
+        )}
+      >
+        <PageFilters
+          filters={filters}
+          className="mb-0"
+          // One URL update: a second setSearchParams in the same tick would undo the reset.
+          onReset={() => setParams(prev => {
+            const next = new URLSearchParams(prev);
+            ['pays', 'periode', 'du', 'au', 'fenetre'].forEach(k => next.delete(k));
+            return next;
+          }, { replace: true })}
+        />
+      </PageHeader>
 
-      <main className="max-w-7xl mx-auto py-6 px-4 lg:px-8">
-        <motion.div
-          className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 mb-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: "easeInOut" }}
-        >
-          {/* CORE STATS */}
-          <StatCard
-            name="Solde Admin (XAF)"
-            icon={BadgeSwissFranc}
-            value={dashboardData?.adminBalance != null ? `${Math.round(dashboardData.adminBalance).toLocaleString('en-US')} F` : "N/A"}
-            color="#6366f1"
-          />
-          <StatCard
-            name="Solde Admin (USD)"
-            icon={DollarSign}
-            value={dashboardData?.adminUSDBalance != null ? `$${dashboardData.adminUSDBalance.toFixed(2)}` : "$0.00"}
-            color="#10b981"
-          />
-          <StatCard
-            name="Total Utilisateurs"
-            icon={UserRound}
-            value={dashboardData?.count || "N/A"}
-            color="#ec4899"
-          />
-          <StatCard
-            name="Abonnés Classique"
-            icon={UserRoundCheck}
-            value={dashboardData?.classiqueSubCount || "N/A"}
-            color="#f59e0b"
-          />
-          <StatCard
-            name="Abonnés Cible"
-            icon={UserRoundCheck}
-            value={dashboardData?.cibleSubCount || "N/A"}
-            color="#8b5cf6"
-          />
-          <StatCard
-            name="Abonnés Relance"
-            icon={UserRoundCheck}
-            value={dashboardData?.relanceSubCount || "N/A"}
-            color="#ef4444"
-          />
-
-          {/* USER BALANCES SECTION */}
-          <StatCard
-            name="Soldes Users (XAF)"
-            icon={Wallet}
-            value={dashboardData?.totalUserBalanceXAF != null ? `${Math.round(dashboardData.totalUserBalanceXAF).toLocaleString('en-US')} F` : "N/A"}
-            color="#3b82f6"
-          />
-          <StatCard
-            name="Soldes Users (USD)"
-            icon={DollarSign}
-            value={dashboardData?.totalUserBalanceUSD != null ? `$${dashboardData.totalUserBalanceUSD.toFixed(2)}` : "$0.00"}
-            color="#059669"
-          />
-          <StatCard
-            name="Soldes Activation"
-            icon={Users}
-            value={dashboardData?.totalUserActivationBalance != null ? `${Math.round(dashboardData.totalUserActivationBalance).toLocaleString('en-US')} F` : "N/A"}
-            color="#7c3aed"
-          />
-
-          {/* TRANSACTION STATS */}
-          <StatCard
-            name="Revenu Total"
-            icon={BadgeSwissFranc}
-            value={dashboardData?.totalRevenue != null ? `${Math.round(dashboardData.totalRevenue).toLocaleString('en-US')} F` : "N/A"}
-            color="#14b8a6"
-          />
-          <StatCard
-            name="Total Retraits"
-            icon={BadgeSwissFranc}
-            value={dashboardData?.totalWithdrawals != null ? `${Math.round(dashboardData.totalWithdrawals).toLocaleString('en-US')} F` : "N/A"}
-            color="#ef4444"
-          />
-          <StatCard
-            name="Total Transactions"
-            icon={ListChecks}
-            value={dashboardData?.totalTransactions || "N/A"}
-            color="#10b981"
-          />
-          <StatCard
-            name="Total Dépôts"
-            icon={BadgeSwissFranc}
-            value={dashboardData?.totalDeposits != null ? `${Math.round(dashboardData.totalDeposits).toLocaleString('en-US')} F` : "N/A"}
-            color="#16a34a"
-          />
-
-          {/* RELANCE STATS */}
-          {relanceStats && (
-            <>
-              <StatCard
-                name="Campagnes Actives"
-                icon={Target}
-                value={relanceStats.activeCampaigns || 0}
-                color="#a855f7"
-              />
-              <StatCard
-                name="Messages Envoyés"
-                icon={MessageSquare}
-                value={relanceStats.totalMessagesSent || 0}
-                color="#06b6d4"
-              />
-              <StatCard
-                name="Taux de Livraison"
-                icon={TrendingUp}
-                value={`${(relanceStats.averageDeliveryRate || 0).toFixed(1)}%`}
-                color="#f59e0b"
-              />
-            </>
-          )}
-
-          {/* DYNAMIC COUNTRY BALANCE DISPLAY */}
-          {dashboardData?.balancesByCountry && Object.keys(dashboardData.balancesByCountry).length > 0 && (
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow flex flex-col justify-between col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-4"> {/* Updated: Container spans remaining width */}
-              {/* Country Selection Dropdown */}
-              <div className="relative">
-                <select
-                  value={selectedCountryCode || ''}
-                  onChange={(e) => setSelectedCountryCode(e.target.value)}
-                  className="block w-full appearance-none bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 py-2 px-3 pr-8 rounded leading-tight focus:outline-none focus:bg-white dark:focus:bg-gray-600 focus:border-gray-500 dark:focus:border-gray-400 text-sm mb-2" // Added text-sm and mb-2
-                >
-                  {Object.keys(dashboardData.balancesByCountry).map((countryCode) => (
-                    <option key={countryCode} value={countryCode}>
-                      {getCountryName(countryCode)}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-                  <ChevronDown size={18} />
-                </div>
-              </div>
-
-              {/* Selected Country Balance Card */}
-              {selectedCountryCode && (
-                <StatCard
-                  key={selectedCountryCode} // Ensure re-render on change
-                  name={`Solde ${getCountryName(selectedCountryCode)}`}
-                  icon={Landmark}
-                  value={dashboardData.balancesByCountry[selectedCountryCode] != null ? `${Math.round(dashboardData.balancesByCountry[selectedCountryCode]).toLocaleString('en-US')} F` : "N/A"}
-                  color={getColorForCountry(selectedCountryCode)}
-                />
+      {/* 1. À traiter */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className={canWithdrawals ? 'lg:col-span-2' : 'lg:col-span-3'}>
+          <AttentionPanel country={filters.country || undefined} />
+        </div>
+        {canWithdrawals && (
+          <Panel>
+            <PanelHeader title="Derniers retraits en attente" description="Les plus récents, toutes dates confondues." />
+            <PanelBody className="pt-0">
+              {pendingWithdrawals.isLoading ? (
+                <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12" />)}</div>
+              ) : pendingWithdrawals.isError ? (
+                <ErrorState onRetry={() => void pendingWithdrawals.refetch()} retrying={pendingWithdrawals.isFetching} className="py-6" />
+              ) : (
+                <RecentWithdrawalsList withdrawals={pendingWithdrawals.data ?? []} />
               )}
-            </div>
-          )}
-        </motion.div>
+            </PanelBody>
+          </Panel>
+        )}
+      </div>
 
-        {/* GATEWAY BALANCES SECTION */}
-        <div className="mb-8">
-          <GatewayBalancesCard
-            totalUserBalanceXAF={dashboardData?.totalUserBalanceXAF || 0}
-            totalUserBalanceUSD={dashboardData?.totalUserBalanceUSD || 0}
+      {/* 2. Key figures */}
+      {dashboard.isError && !d ? (
+        <Panel>
+          <ErrorState
+            title="Les chiffres n’ont pas pu être chargés"
+            description={dashboard.error instanceof Error ? dashboard.error.message : undefined}
+            onRetry={() => void dashboard.refetch()}
+            retrying={dashboard.isFetching}
           />
-        </div>
-
-        {/* CHARTS & LISTS */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <UsersOverViewCahrt data={monthlyData} />
-
-            {/* Monthly Revenue Chart */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow md:col-span-1">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Revenu Mensuel
-              </h3>
-              <MonthlyRevenueChart data={dashboardData?.monthlyRevenue || []} />
-            </div>
-
-            {/* Activity Overview Chart */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow md:col-span-1">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Aperçu de l'Activité Mensuelle
-              </h3>
-              <ActivityOverviewChart data={dashboardData?.activityOverview || []} />
-            </div>
+        </Panel>
+      ) : (
+        <section aria-label="Chiffres clés" className={dashboard.isFetching && d ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric
+              label={allTime ? 'Membres' : 'Nouveaux membres'}
+              icon={UserGroupIcon}
+              tone="primary"
+              value={d ? formatNumber(d.count) : <Skeleton className="h-8 w-24" />}
+              hint={d ? membersHint : undefined}
+            />
+            <Metric
+              label={allTime ? 'Abonnés actifs' : 'Abonnements démarrés, encore actifs'}
+              icon={CrownIcon}
+              value={d ? formatNumber(subsTotal) : <Skeleton className="h-8 w-24" />}
+              hint={d ? `Classique ${formatNumber(d.classiqueSubCount)} · Ciblé ${formatNumber(d.cibleSubCount)}${d.relanceSubCount ? ` · Relance ${formatNumber(d.relanceSubCount)}` : ''}` : undefined}
+            />
+            <Metric
+              label="Revenu (paiements réussis)"
+              icon={MoneyReceive01Icon}
+              tone="success"
+              value={d ? formatMoney(d.totalRevenue) : <Skeleton className="h-8 w-32" />}
+              hint={d ? revenueHint : undefined}
+            />
+            <Metric
+              label="Retraits payés"
+              icon={MoneySend01Icon}
+              value={d ? formatMoney(d.totalWithdrawals) : <Skeleton className="h-8 w-32" />}
+              hint={d ? `Dépôts : ${formatMoney(d.totalDeposits)}${periodHint ? ` ${periodHint}` : ''}` : undefined}
+            />
           </div>
+        </section>
+      )}
 
-          {/* Right Sidebar Area (Comparison Charts + Recent Transactions) */}
-          <div className="flex flex-col gap-8">
-            {/* Comparison Charts */}
-            {dashboardData && (
-              <>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow h-64"> {/* Fixed height */}
-                  <ComparisonChart
-                    title="Utilisateurs vs Abonnés"
-                    data={[
-                      { name: "Autres Utilisateurs", value: dashboardData.count - (dashboardData.classiqueSubCount + dashboardData.cibleSubCount + (dashboardData.relanceSubCount || 0)) },
-                      { name: "Abonnés Classique", value: dashboardData.classiqueSubCount },
-                      { name: "Abonnés Cible", value: dashboardData.cibleSubCount },
-                      { name: "Abonnés Relance", value: dashboardData.relanceSubCount || 0 },
-                    ]}
-                    colors={['#6b7280', '#f59e0b', '#8b5cf6', '#ef4444']} // gray, amber, purple, red
-                  />
+      {/* 3. Trends */}
+      {d ? (
+        <EvolutionPanel
+          charts={charts}
+          view={view}
+          onViewChange={v => setParam('vue', v === 'table' ? 'tableau' : null)}
+          windowValue={windowValue}
+          onWindowChange={w => setParam('fenetre', w === '12' ? null : w === 'all' ? 'all' : w)}
+          showWindow={allTime}
+          refetching={dashboard.isFetching}
+          empty={tooShort ? (
+            <p className="rounded-control bg-surface-2 px-4 py-6 text-center text-sm text-fg-muted">
+              Les graphiques sont par mois : sur une période de moins de deux mois, ils n’auraient qu’un point.
+              Les totaux de la période sont dans les chiffres clés ci-dessus.
+            </p>
+          ) : undefined}
+        />
+      ) : !dashboard.isError && (
+        <Panel className="p-5"><Skeleton className="h-72 w-full" /></Panel>
+      )}
+
+      {/* 4. Balances */}
+      {d && (
+        <div className="grid gap-6 xl:grid-cols-3">
+          <Panel className="xl:col-span-1">
+            <PanelHeader
+              title="Soldes"
+              description={[
+                allTime ? 'Ce que les membres ont sur leur solde' : 'Soldes des membres inscrits sur la période',
+                filters.country ? ` (membres de ${countryName(filters.country)})` : '',
+                ' ; le compte SBC est global.',
+              ].join('')}
+            />
+            <PanelBody className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <SmallFigure label="Compte SBC" value={formatMoney(d.adminBalance)} hint={d.adminUSDBalance != null ? formatMoney(d.adminUSDBalance, 'USD') : undefined} />
+                <SmallFigure label="Soldes des membres" value={formatMoney(d.totalUserBalanceXAF)} hint={formatMoney(d.totalUserBalanceUSD, 'USD')} />
+                <SmallFigure label="Soldes d’activation" value={formatMoney(d.totalUserActivationBalance)} />
+                <SmallFigure label="Transactions" value={formatNumber(d.totalTransactions)} hint={periodHint ?? 'depuis le début'} />
+              </div>
+              {countryBars.length > 0 && (
+                <div className="border-t border-line pt-4">
+                  <p className="mb-3 text-xs font-medium text-fg-muted">Soldes des membres par pays</p>
+                  <RankedBars items={countryBars} format={v => formatMoney(v)} ariaLabel="Soldes des membres par pays" />
                 </div>
-
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow h-64"> {/* Fixed height */}
-                  <ComparisonChart
-                    title="Revenu vs Retraits"
-                    data={[
-                      { name: "Revenu Total", value: dashboardData.totalRevenue },
-                      { name: "Retraits Totals", value: dashboardData.totalWithdrawals },
-                    ]}
-                    colors={['#14b8a6', '#ef4444']} // teal, red
-                  />
-                </div>
-
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow h-64"> {/* Fixed height */}
-                  <ComparisonChart
-                    title="Transactions vs Utilisateurs"
-                    data={[
-                      { name: "Transactions", value: dashboardData.totalTransactions },
-                      { name: "Utilisateurs", value: dashboardData.count },
-                    ]}
-                    colors={['#10b981', '#ec4899']} // emerald, pink
-                  />
-                </div>
-              </>
-            )}
-
-            {/* Recent Transactions List */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Transactions Récentes
-              </h3>
-              <RecentTransactionsList transactions={recentTransactions} />
-            </div>
-
-            {/* Recent Withdrawals List */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                Retraits Récents
-              </h3>
-              <RecentWithdrawalsList withdrawals={recentWithdrawals} />
-            </div>
+              )}
+            </PanelBody>
+          </Panel>
+          <div className="xl:col-span-2">
+            <GatewayBalancesCard
+              totalUserBalanceXAF={d.totalUserBalanceXAF || 0}
+              totalUserBalanceUSD={d.totalUserBalanceUSD || 0}
+              liabilitiesScope={filters.country ? countryName(filters.country) : undefined}
+            />
           </div>
         </div>
-      </main>
+      )}
+
+      {/* 5. Activity */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {canFinance && (
+          <Panel className={canRelance ? 'lg:col-span-2' : 'lg:col-span-3'}>
+            <PanelHeader
+              title="Derniers paiements"
+              description="Paiements entrants, du plus récent au plus ancien."
+              actions={(
+                <Button asChild variant="ghost" size="sm" className="h-11 sm:h-8">
+                  <Link to="/transactions">Tout voir <HugeiconsIcon icon={ArrowRight01Icon} size={16} aria-hidden="true" /></Link>
+                </Button>
+              )}
+            />
+            <PanelBody className="pt-0">
+              {recentTx.isLoading ? (
+                <div className="space-y-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
+              ) : recentTx.isError ? (
+                <ErrorState onRetry={() => void recentTx.refetch()} retrying={recentTx.isFetching} className="py-6" />
+              ) : (
+                <RecentTransactionsList transactions={recentTx.data ?? []} />
+              )}
+            </PanelBody>
+          </Panel>
+        )}
+        {canRelance && (
+          <Panel>
+            <PanelHeader
+              title="Relance"
+              description="Messages de relance des filleuls."
+              actions={(
+                <Button asChild variant="ghost" size="sm" className="h-11 sm:h-8">
+                  <Link to="/relance/dashboard">Ouvrir <HugeiconsIcon icon={ArrowRight01Icon} size={16} aria-hidden="true" /></Link>
+                </Button>
+              )}
+            />
+            <PanelBody className="pt-0">
+              {relance.isLoading ? <Skeleton className="h-20" /> : (
+                <div className="grid grid-cols-2 gap-4">
+                  <SmallFigure label="Campagnes actives" value={formatNumber(relance.data?.activeCampaigns ?? 0)} />
+                  <SmallFigure label="Membres en relance" value={formatNumber(relance.data?.usersInRelance ?? 0)} />
+                  <SmallFigure label="Messages envoyés" value={formatNumber(relance.data?.totalMessagesSent ?? 0)} />
+                  <SmallFigure
+                    label="Taux de livraison"
+                    value={`${(relance.data?.averageDeliveryRate ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}\u202f%`}
+                  />
+                </div>
+              )}
+              <p className="mt-4 flex items-center gap-2 text-xs text-fg-subtle">
+                <HugeiconsIcon icon={Megaphone01Icon} size={14} aria-hidden="true" />
+                Chiffres de la relance des nouveaux filleuls.
+              </p>
+            </PanelBody>
+          </Panel>
+        )}
+      </div>
     </div>
   );
 };

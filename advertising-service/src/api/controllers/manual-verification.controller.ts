@@ -10,6 +10,9 @@ import {
     rejectManualVerification,
 } from '../../services/manual-verification.service';
 import { AppError } from '../../utils/errors';
+import { readAdminFilters, dateMatch } from '../../utils/admin-filters';
+import { CountryFilterUnavailableError } from '../../utils/country-members';
+import { diffuseurMatch } from '../../services/admin-scope.service';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('ManualVerificationController');
@@ -21,6 +24,9 @@ const currentUserId = (req: AuthenticatedRequest): Types.ObjectId => {
 };
 
 const fail = (res: Response, err: unknown, context: string) => {
+    if (err instanceof CountryFilterUnavailableError) {
+        return res.status(502).json({ success: false, message: err.message });
+    }
     const status = (err as AppError)?.statusCode ?? 500;
     if (status >= 500) log.error(`${context}: ${(err as Error)?.message}`, { stack: (err as Error)?.stack });
     return res.status(status).json({
@@ -60,9 +66,18 @@ export const manualStatus = async (req: AuthenticatedRequest, res: Response) => 
 
 // --- Admin ---
 
-export const listPending = async (_req: AuthenticatedRequest, res: Response) => {
+/**
+ * Admin filters: country = the DIFFUSEUR's; from/to on `uploadedAt` (when the
+ * proof video was sent, which is also the queue's order).
+ */
+export const listPending = async (req: AuthenticatedRequest, res: Response) => {
+    const filters = readAdminFilters(req, res);
+    if (!filters) return;
     try {
-        const data = await listPendingManualVerifications();
+        const data = await listPendingManualVerifications({
+            ...await diffuseurMatch('diffuseurUserId', filters.country),
+            ...dateMatch('uploadedAt', filters),
+        });
         return res.json({ success: true, data });
     } catch (err) {
         return fail(res, err, 'listPending');

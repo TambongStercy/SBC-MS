@@ -13,14 +13,14 @@ import {
 
 export type Tone = 'neutral' | 'primary' | 'accent' | 'success' | 'warning' | 'danger';
 
-/** Badge colours, matching the other SBC Event pages. */
+/** Badge colours (design tokens), matching the kit's Badge tones. */
 export const TONE_CLASSES: Record<Tone, string> = {
-    neutral: 'bg-gray-100 text-gray-700',
-    primary: 'bg-blue-100 text-blue-700',
-    accent: 'bg-purple-100 text-purple-700',
-    success: 'bg-emerald-100 text-emerald-800',
-    warning: 'bg-amber-100 text-amber-800',
-    danger: 'bg-red-100 text-red-800',
+    neutral: 'bg-surface-3 text-fg-muted',
+    primary: 'bg-primary-soft text-primary',
+    accent: 'bg-info-soft text-info',
+    success: 'bg-success-soft text-success',
+    warning: 'bg-warning-soft text-fg',
+    danger: 'bg-danger-soft text-danger',
 };
 
 export type StatusTable = Record<string, [string, Tone]>;
@@ -244,12 +244,12 @@ export function flatten(v: unknown, prefix = '', depth = 0): Array<[string, unkn
 // ---------- counts (tab badges, SBC Event dashboard « À traiter ») ----------
 
 /** Open fraud flags ("À vérifier"): one row asked for, the total read. */
-export const countOpenFraudFlags = async (): Promise<number> =>
-    (await listFraudFlags({ status: 'OPEN', page: 1, limit: 1 })).total;
+export const countOpenFraudFlags = async (scope: { country?: string } = {}): Promise<number> =>
+    (await listFraudFlags({ status: 'OPEN', page: 1, limit: 1, ...scope })).total;
 
 /** Change requests waiting for SBC. The route is unpaginated and capped at 200. */
-export const countPendingChangeRequests = async (): Promise<number> =>
-    (await listChangeRequests({ status: 'PENDING' })).length;
+export const countPendingChangeRequests = async (scope: { country?: string } = {}): Promise<number> =>
+    (await listChangeRequests({ status: 'PENDING', ...scope })).length;
 
 // ---------- page context ----------
 
@@ -262,6 +262,12 @@ export interface AnimPageContext {
     /** Query-string state of the page (`tab`, `defi`, `statut`). */
     param: (key: string) => string;
     setParams: (next: Record<string, string>) => void;
+    /** Country + period of the page filter row ({country?, from?, to?}): lists, figures. */
+    apiParams: { country?: string; from?: string; to?: string };
+    /** Country only: queues (« À vérifier », pending requests) show every pending item whatever the period. */
+    queueParams: { country?: string };
+    /** Cache key of apiParams/queueParams, for useAsync keys. */
+    scopeKey: string;
 }
 
 export const AnimContext = createContext<AnimPageContext | null>(null);

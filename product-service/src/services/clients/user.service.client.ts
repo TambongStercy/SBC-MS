@@ -222,6 +222,29 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Ids (hex strings) of every member of a country, deleted members included,
+     * for the admin `?country=` filter. Throws on any failure: a list that
+     * silently dropped its country filter would show every country under one flag.
+     */
+    async getUserIdsByCountry(country: string): Promise<string[]> {
+        const { data } = await axios.get<{ success: boolean; data?: string[]; message?: string }>(
+            `${this.baseUrl}/users/internal/ids-by-country`,
+            {
+                params: { country },
+                timeout: 30000,
+                headers: {
+                    Authorization: `Bearer ${this.serviceSecret}`,
+                    'x-service-name': 'product-service',
+                },
+            },
+        );
+        if (!data?.success || !Array.isArray(data.data)) {
+            throw new AppError(data?.message || "user-service did not return the country's members", 502);
+        }
+        return data.data;
+    }
+
     // --- NEW METHOD: Find User IDs by Search Term ---
     async findUserIdsBySearchTerm(searchTerm: string): Promise<string[] | null> {
         if (!this.baseUrl) {

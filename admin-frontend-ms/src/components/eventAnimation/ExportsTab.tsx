@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { ExportKind } from '../../api/animation';
+import { Panel, PanelBody, PanelHeader } from '../ui';
+import { FilterBar, FilterSelect } from '../moduleKit';
 import { useChallengeIndex } from './shared';
-import { Card, ExportButtons, selectCls } from './ui';
+import { ExportButtons } from './ui';
 
 const ALL: ExportKind[] = ['leaderboard', 'results', 'winners', 'transactions', 'votes', 'candidates', 'audit'];
 
@@ -19,24 +21,29 @@ export default function ExportsTab() {
     const kinds = challengeId ? ALL : ALL.filter(k => k !== 'leaderboard');
 
     return (
-        <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-                <select value={eventId} onChange={e => { setEventId(e.target.value); setChallengeId(''); }} className={`${selectCls} max-w-xs`}>
-                    <option value="">Tous les événements</option>
-                    {events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-                </select>
-                <select value={challengeId} onChange={e => setChallengeId(e.target.value)} className={`${selectCls} max-w-xs`}>
-                    <option value="">Tous les défis</option>
-                    {pickable.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                </select>
+        <Panel>
+            <div className="border-b border-line p-4">
+                <FilterBar
+                    filterCount={2}
+                    activeCount={(eventId ? 1 : 0) + (challengeId ? 1 : 0)}
+                    onClear={() => { setEventId(''); setChallengeId(''); }}
+                    filters={(
+                        <>
+                            <FilterSelect label="Événement" allLabel="Tous les événements" value={eventId} onChange={v => { setEventId(v); setChallengeId(''); }}
+                                options={events.map(e => ({ value: e.id, label: e.title }))} />
+                            <FilterSelect label="Défi" allLabel="Tous les défis" value={challengeId} onChange={setChallengeId}
+                                options={pickable.map(c => ({ value: c._id, label: c.name }))} />
+                        </>
+                    )}
+                />
             </div>
-            <Card>
-                <p className="text-xs text-gray-400 mb-2">
-                    {challengeId ? 'Exports du défi choisi.' : eventId ? 'Exports de l’événement choisi.' : 'Exports de tout le module.'}
-                    {!challengeId && ' Le classement en direct demande de choisir un défi.'}
-                </p>
+            <PanelHeader
+                title={challengeId ? 'Exports du défi choisi' : eventId ? 'Exports de l’événement choisi' : 'Exports de tout le module'}
+                description={challengeId ? undefined : 'Le classement en direct demande de choisir un défi.'}
+            />
+            <PanelBody>
                 <ExportButtons kinds={kinds} scope={{ eventId: eventId || undefined, challengeId: challengeId || undefined }} />
-            </Card>
-        </div>
+            </PanelBody>
+        </Panel>
     );
 }

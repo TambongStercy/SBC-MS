@@ -66,6 +66,32 @@ router.post('/bulk-approve', (req, res) => {
     withdrawalApprovalController.bulkApproveWithdrawals(req, res);
 });
 
+// The two stuck lists must come before GET /:transactionId, which would
+// otherwise take "stuck-moneyfusion" as an id and answer 404 (it did until 2026-11-16).
+/**
+ * @route   GET /api/admin/withdrawals/stuck-moneyfusion
+ * @desc    List MoneyFusion withdrawals stuck in PROCESSING/PENDING (MF doesn't
+ *          deliver payout webhooks, so these need manual reconciliation).
+ *          Powers the dedicated "Fix MoneyFusion Withdrawals" admin page.
+ * @access  Private (Admin only)
+ * @query   page, limit (capped at 100), search (matches name/email/phone/tx/momo)
+ */
+router.get('/stuck-moneyfusion', (req, res) => {
+    withdrawalApprovalController.getStuckMoneyFusionWithdrawals(req, res);
+});
+
+/**
+ * @route   GET /api/admin/withdrawals/stuck-cinetpay
+ * @desc    List CinetPay withdrawals stuck in PROCESSING/PENDING (CinetPay
+ *          doesn't reliably deliver payout webhooks; polling their status API
+ *          is their own recommended fallback per their docs). Powers the
+ *          dedicated "Fix CinetPay Withdrawals" admin page.
+ * @access  Private (Admin only)
+ */
+router.get('/stuck-cinetpay', (req, res) => {
+    withdrawalApprovalController.getStuckCinetPayWithdrawals(req, res);
+});
+
 /**
  * @route   GET /api/admin/withdrawals/:transactionId
  * @desc    Get withdrawal details by transaction ID
@@ -94,30 +120,6 @@ router.post('/:transactionId/approve', (req, res) => {
  */
 router.post('/:transactionId/reject', (req, res) => {
     withdrawalApprovalController.rejectWithdrawal(req, res);
-});
-
-/**
- * @route   GET /api/admin/withdrawals/stuck-moneyfusion
- * @desc    List MoneyFusion withdrawals stuck in PROCESSING/PENDING (MF doesn't
- *          deliver payout webhooks, so these need manual reconciliation).
- *          Powers the dedicated "Fix MoneyFusion Withdrawals" admin page.
- * @access  Private (Admin only)
- * @query   page, limit (capped at 100), search (matches name/email/phone/tx/momo)
- */
-router.get('/stuck-moneyfusion', (req, res) => {
-    withdrawalApprovalController.getStuckMoneyFusionWithdrawals(req, res);
-});
-
-/**
- * @route   GET /api/admin/withdrawals/stuck-cinetpay
- * @desc    List CinetPay withdrawals stuck in PROCESSING/PENDING (CinetPay
- *          doesn't reliably deliver payout webhooks; polling their status API
- *          is their own recommended fallback per their docs). Powers the
- *          dedicated "Fix CinetPay Withdrawals" admin page.
- * @access  Private (Admin only)
- */
-router.get('/stuck-cinetpay', (req, res) => {
-    withdrawalApprovalController.getStuckCinetPayWithdrawals(req, res);
 });
 
 /**

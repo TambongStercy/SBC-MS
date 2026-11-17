@@ -1,7 +1,8 @@
 import { pushNewFilleul } from './push-notify';
 import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import bcrypt from 'bcrypt';
-import { IUser, UserRole, OtpPurpose } from '../database/models/user.model';
+import { IUser, UserRole, OtpPurpose, ADMIN_CAPABLE_ROLES } from '../database/models/user.model';
+import { effectivePermissions } from '../config/admin-modules';
 import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
@@ -40,6 +41,8 @@ import { settingsService } from './clients/settings.service.client';
 import { AppError, OtpThrottledError } from '../utils/errors';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
+import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsForCountry } from '../utils/country-filter';
+import { AdminFilters, dateMatch } from '../utils/admin-filters';
 import { alertContactChange } from './contact-change-alert';
 import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
 
@@ -207,6 +210,10 @@ const COMMISSION_RATES = {
 
 // Define partner commission rates (aligned with distributeSubscriptionCommission)
 const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
+
+/** adminPermissions comes back as a Map from a document, a plain object from lean(). */
+export const toPlainPermissions = (p: unknown): Record<string, unknown> =>
+    p instanceof Map ? Object.fromEntries(p) : ((p as Record<string, unknown>) || {});
 
 export class UserService {
     private subscriptionRepository = subscriptionRepository; // Inject repository
@@ -2134,7 +2141,7 @@ export class UserService {
         // --- Role Check ---
         // Staff roles sign in to the admin; each service still decides what a
         // role may call (user-service admin routes stay ADMIN-only).
-        const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
+        const STAFF_ROLES: string[] = ADMIN_CAPABLE_ROLES;
         if (!STAFF_ROLES.includes(user.role)) {
             log.warn(`Admin login attempt failed: User ${email} has no staff role.`);
             throw new Error('Access Denied: Not an admin user');
@@ -2192,7 +2199,7 @@ export class UserService {
             throw new Error('Invalid code');
         }
         const user = await userRepository.findById(userId);
-        const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.WITHDRAWAL_ADMIN, UserRole.MODERATOR];
+        const STAFF_ROLES: string[] = ADMIN_CAPABLE_ROLES;
         if (!user || !STAFF_ROLES.includes(user.role) || user.blocked || user.deleted) {
             log.warn(`Admin login code refused for ${userId}: not an active staff account.`);
             throw new Error('Invalid code');
@@ -2214,7 +2221,10 @@ export class UserService {
         await userRepository.updateById(user._id, { token });
 
         log.info(`Admin user ${user.email} logged in successfully (ip ${ipAddress || 'unknown'}).`);
-        return { token, user: this.mapUserToResponse(user) };
+        // The admin shows only the modules the account may open; the gateway
+        // enforces the same map on every call (GET /users/admin/me/access refreshes it).
+        const permissions = effectivePermissions(user.role, toPlainPermissions(user.adminPermissions));
+        return { token, user: { ...this.mapUserToResponse(user), adminPermissions: permissions } as any };
     }
 
     /**
@@ -2628,10 +2638,26 @@ export class UserService {
 
     // --- Admin Specific Methods ---
 
+    /** Admin filters on `users`: country (any spelling), signed up (createdAt) in the range. */
+    private async adminUserMatch(f: AdminFilters): Promise<Record<string, unknown>> {
+        return {
+            ...(f.country ? { country: await countryCondition(f.country) } : {}),
+            ...dateMatch('createdAt', f),
+        };
+    }
+
+    /** Admin filters on `subscriptions`: the country's members, started (startDate) in the range. */
+    private async adminSubscriptionMatch(f: AdminFilters): Promise<Record<string, unknown>> {
+        return {
+            ...(f.country ? { user: await countryMemberIn(SubscriptionModel, 'user', f.country) } : {}),
+            ...dateMatch('startDate', f),
+        };
+    }
+
     /**
      * [Admin] Get summary statistics about users and subscriptions.
      */
-    async adminGetUserSummaryStats(): Promise<{
+    async adminGetUserSummaryStats(f: AdminFilters = {}): Promise<{
         totalUsers: number;
         activeClassique: number;
         activeCible: number;
@@ -2640,10 +2666,14 @@ export class UserService {
         log.info('Admin request for user summary stats');
         try {
             // Fetch counts in parallel
+            // Filters: members of the country, signed up (createdAt) in the range;
+            // subscriptions of the country's members, started (startDate) in the range.
+            const userMatch = await this.adminUserMatch(f);
+            const subMatch = await this.adminSubscriptionMatch(f);
             const [totalUserCount, classiqueCount, cibleCount] = await Promise.all([
-                userRepository.countDocuments({ deleted: { $ne: true } }), // Count non-deleted users
-                subscriptionRepository.countActiveSubscriptionsByType(SubscriptionType.CLASSIQUE),
-                subscriptionRepository.countActiveSubscriptionsByType(SubscriptionType.CIBLE)
+                userRepository.countDocuments({ deleted: { $ne: true }, ...userMatch }), // Count non-deleted users
+                subscriptionRepository.countActiveSubscriptionsByType(SubscriptionType.CLASSIQUE, subMatch),
+                subscriptionRepository.countActiveSubscriptionsByType(SubscriptionType.CIBLE, subMatch)
             ]);
 
             log.debug('User summary stats results:', { totalUserCount, classiqueCount, cibleCount });
@@ -2736,9 +2766,10 @@ export class UserService {
             };
         }
 
-        // Country filter (case-insensitive exact match)
+        // Country filter: ISO-2 any case, legacy names too ("Cameroun"), on the
+        // indexed field (utils/country-filter.ts).
         if (filters.country) {
-            query.country = { $regex: `^${filters.country.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' };
+            query.country = await countryCondition(filters.country);
         }
 
         // Profession filter (case-insensitive partial match)
@@ -3115,7 +3146,7 @@ export class UserService {
     /**
      * [Admin] Get total user balance aggregated by country.
      */
-    async getAggregatedBalanceByCountry(): Promise<{ _id: string | null; totalBalance: number }[]> {
+    async getAggregatedBalanceByCountry(f: AdminFilters = {}): Promise<{ _id: string | null; totalBalance: number }[]> {
         log.info('Aggregating total balance by country for admin dashboard');
         try {
             const aggregationResult = await UserModel.aggregate([
@@ -3123,7 +3154,9 @@ export class UserService {
                     $match: {
                         // Optional: Filter out blocked/deleted users if necessary
                         blocked: { $ne: true },
-                        deleted: { $ne: true }
+                        deleted: { $ne: true },
+                        // Admin filters: the member's country, signed up (createdAt) in the range.
+                        ...(await this.adminUserMatch(f)),
                     }
                 },
                 {
@@ -3144,11 +3177,16 @@ export class UserService {
                 }
             ]).exec();
 
-            // Handle null country case if necessary
-            return aggregationResult.map(item => ({
-                _id: item.country, // Use renamed field
-                totalBalance: item.totalBalance
-            }));
+            // Fold legacy spellings into their code ("Congo-Brazzaville" → CG), so a
+            // country appears once; values that cannot be placed stay as stored.
+            const folded = new Map<string | null, number>();
+            for (const item of aggregationResult) {
+                const key = isoOfCountryValue(item.country) ?? item.country ?? null;
+                folded.set(key, (folded.get(key) ?? 0) + item.totalBalance);
+            }
+            return [...folded.entries()]
+                .map(([country, totalBalance]) => ({ _id: country, totalBalance }))
+                .sort((a, b) => b.totalBalance - a.totalBalance);
 
         } catch (error) {
             log.error('Error aggregating balance by country:', error);
@@ -3160,20 +3198,29 @@ export class UserService {
      * [Admin] Get monthly registration and active subscription counts.
      * Note: This requires corresponding aggregation methods in SubscriptionRepository.
      */
-    async getMonthlyActivityStats(months: number = 12): Promise<any[]> {
+    async getMonthlyActivityStats(months: number = 12, f: AdminFilters = {}): Promise<any[]> {
         log.info(`Getting monthly activity stats for the last ${months} months`);
         try {
-            const endDate = new Date();
-            const startDate = new Date();
-            startDate.setMonth(startDate.getMonth() - months);
-            startDate.setDate(1); // Start from beginning of the month
-            startDate.setHours(0, 0, 0, 0);
+            // from/to replace the window (to defaults to now, from to `months` before to).
+            const endDate = f.to ? new Date(f.to) : new Date();
+            const startDate = f.from ? new Date(f.from) : new Date(endDate);
+            if (!f.from) {
+                startDate.setMonth(startDate.getMonth() - months);
+                startDate.setDate(1); // Start from beginning of the month
+                startDate.setHours(0, 0, 0, 0);
+            }
+            // Country: registrations of the country's members, subscriptions of its members.
+            const countryUsers = f.country ? { country: await countryCondition(f.country) } : {};
+            const countrySubs = f.country
+                ? { user: await countryMemberIn(SubscriptionModel, 'user', f.country) }
+                : {};
 
             // 1. Aggregate Registrations per Month (from UserModel)
             const registrationStatsPromise = UserModel.aggregate([
                 {
                     $match: {
                         createdAt: { $gte: startDate, $lte: endDate },
+                        ...countryUsers,
                     }
                 },
                 {
@@ -3196,8 +3243,8 @@ export class UserService {
             ]).exec();
 
             // 2. Get Monthly Active Subscription Counts from SubscriptionRepository
-            const classiqueSubsPromise = this.subscriptionRepository.getMonthlyActiveSubscriptionCounts(SubscriptionType.CLASSIQUE, startDate, endDate);
-            const cibleSubsPromise = this.subscriptionRepository.getMonthlyActiveSubscriptionCounts(SubscriptionType.CIBLE, startDate, endDate);
+            const classiqueSubsPromise = this.subscriptionRepository.getMonthlyActiveSubscriptionCounts(SubscriptionType.CLASSIQUE, startDate, endDate, countrySubs);
+            const cibleSubsPromise = this.subscriptionRepository.getMonthlyActiveSubscriptionCounts(SubscriptionType.CIBLE, startDate, endDate, countrySubs);
 
             // Run aggregations in parallel
             const [registrationStats, classiqueSubs, cibleSubs] = await Promise.all([
@@ -3497,9 +3544,17 @@ export class UserService {
     /**
      * [Admin] Gathers data from multiple sources for the admin dashboard.
      */
-    async adminGetDashboardData(): Promise<AdminDashboardData> {
+    async adminGetDashboardData(f: AdminFilters = {}): Promise<AdminDashboardData> {
         try {
             log.info('Fetching admin dashboard data...');
+
+            // Admin filters (phase 3):
+            // - members: the country's (any spelling), signed up (createdAt) in the range;
+            // - subscriptions: the country's members', started (startDate) in the range;
+            // - payment figures: forwarded to payment-service (member's country, tx createdAt);
+            // - adminBalance (SBC's own settings balance) has no country or date: unfiltered.
+            const userMatch = await this.adminUserMatch(f);
+            const subMatch = await this.adminSubscriptionMatch(f);
 
             log.info('Step 1: Fetching all users and other dashboard data');
 
@@ -3531,26 +3586,29 @@ export class UserService {
                 activityOverviewData,
             ] = await Promise.all([
                 // Fetch basic user data for counts and balances (including USD and activation balances)
-                UserModel.find({ deleted: { $ne: true } })
+                UserModel.find({ deleted: { $ne: true }, ...userMatch })
                     .select('createdAt balance usdBalance activationBalance country phoneNumber _id')
                     .lean()
                     .exec(),
                 SubscriptionModel.countDocuments({
+                    ...subMatch,
                     status: SubscriptionStatus.ACTIVE,
                     subscriptionType: SubscriptionType.CLASSIQUE
                 }).exec(),
                 SubscriptionModel.countDocuments({
+                    ...subMatch,
                     status: SubscriptionStatus.ACTIVE,
                     subscriptionType: SubscriptionType.CIBLE
                 }).exec(),
                 SubscriptionModel.countDocuments({
+                    ...subMatch,
                     status: SubscriptionStatus.ACTIVE,
                     subscriptionType: SubscriptionType.RELANCE
                 }).exec(),
 
                 // Aggregation for all monthly user registrations
                 UserModel.aggregate([
-                    { $match: { deleted: { $ne: true } } }, // Only count non-deleted users
+                    { $match: { deleted: { $ne: true }, ...userMatch } }, // Only count non-deleted users
                     {
                         $group: {
                             _id: {
@@ -3578,7 +3636,7 @@ export class UserService {
 
                 // Aggregation for monthly Classique subscriptions
                 SubscriptionModel.aggregate([
-                    { $match: { subscriptionType: SubscriptionType.CLASSIQUE } }, // Filter by type
+                    { $match: { ...subMatch, subscriptionType: SubscriptionType.CLASSIQUE } }, // Filter by type
                     {
                         $group: {
                             _id: {
@@ -3606,7 +3664,7 @@ export class UserService {
 
                 // Aggregation for monthly Cible subscriptions
                 SubscriptionModel.aggregate([
-                    { $match: { subscriptionType: SubscriptionType.CIBLE } }, // Filter by type
+                    { $match: { ...subMatch, subscriptionType: SubscriptionType.CIBLE } }, // Filter by type
                     {
                         $group: {
                             _id: {
@@ -3634,7 +3692,7 @@ export class UserService {
 
                 // Aggregation for monthly Relance subscriptions
                 SubscriptionModel.aggregate([
-                    { $match: { subscriptionType: SubscriptionType.RELANCE } },
+                    { $match: { ...subMatch, subscriptionType: SubscriptionType.RELANCE } },
                     {
                         $group: {
                             _id: {
@@ -3662,12 +3720,12 @@ export class UserService {
 
                 // External Service Calls
                 settingsService.getAdminBalance(), // NEW: Fetch admin balance from settings-service
-                paymentService.getTotalTransactions(),
-                paymentService.getTotalWithdrawals(),
-                paymentService.getTotalDepositsAmount(), // NEW: Fetch total deposits
-                paymentService.getTotalRevenue(),
-                paymentService.getMonthlyRevenue(),
-                paymentService.getActivityOverview(),
+                paymentService.getTotalTransactions(f),
+                paymentService.getTotalWithdrawals(f),
+                paymentService.getTotalDepositsAmount(f), // NEW: Fetch total deposits
+                paymentService.getTotalRevenue(f),
+                paymentService.getMonthlyRevenue(f),
+                paymentService.getActivityOverview(f),
             ]);
             // --- End Parallel Fetch ---
 
@@ -4891,11 +4949,11 @@ export class UserService {
      */
     async getUserIdsByCountry(country: string): Promise<string[]> {
         try {
-            const users = await UserModel.find(
-                { country, deleted: { $ne: true } },
-                { _id: 1 }
-            ).lean();
-            return users.map((u: { _id: any }) => u._id.toString());
+            // Case-insensitive and legacy-name aware (see utils/country-filter.ts).
+            // Deleted members are included on purpose: their transactions, tickets,
+            // orders… still belong to their country in admin lists and totals.
+            // The raw collection skips the soft-delete hook.
+            return (await memberObjectIdsForCountry(country)).map((id) => id.toString());
         } catch (error: any) {
             log.error(`Error getting user IDs by country: ${error.message}`);
             throw new Error('Failed to get user IDs by country');
