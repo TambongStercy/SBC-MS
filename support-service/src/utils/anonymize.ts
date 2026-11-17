@@ -18,7 +18,7 @@ const PHONE = /(?:\+|00)?\d(?:[\s.\-()]*\d){7,}/g;
 // References: Mongo ids, uuids, SUP-000123, SBX-..., tokens mixing letters and digits.
 const OBJECT_ID = /\b[a-f0-9]{24}\b/gi;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-const PREFIXED_REF = /\b[A-Z]{2,5}[-_][A-Z0-9_-]{3,}\b/gi;
+const PREFIXED_REF = /\b[A-Z]{2,5}[-_](?=[A-Z0-9_-]*\d)[A-Z0-9_-]{3,}\b/gi;
 const MIXED_TOKEN = /\b(?=[A-Z0-9_-]*\d)(?=[A-Z0-9_-]*[A-Z])[A-Z0-9_-]{6,}\b/gi;
 const LONG_NUMBER = /\d{4,}/g;
 
@@ -28,10 +28,10 @@ export function anonymizeQuestion(text: string): string {
     s = s.replace(URL, '[lien]');
     s = s.replace(UUID, '[référence]');
     s = s.replace(OBJECT_ID, '[référence]');
-    s = s.replace(AMOUNT_BEFORE, '[montant]');
-    s = s.replace(AMOUNT_AFTER, '[montant]');
-    s = s.replace(PHONE, '[numéro]');
     s = s.replace(PREFIXED_REF, '[référence]');
+    s = s.replace(AMOUNT_BEFORE, '[montant] ');
+    s = s.replace(AMOUNT_AFTER, '[montant] ');
+    s = s.replace(PHONE, '[numéro]');
     s = s.replace(MIXED_TOKEN, '[référence]');
     s = s.replace(LONG_NUMBER, '[nombre]');
     return s.replace(/\s{2,}/g, ' ').trim();
@@ -49,14 +49,15 @@ export type SensitiveRoute = 'activation' | 'withdrawal' | 'ticket';
 /**
  * Questions about money or the member's own account never go to the AI:
  * they get the secure path (activation check, withdrawal status) or a ticket.
+ * Run it on the anonymised text (an amount shows up as [montant]).
  */
 export function classifySensitive(text: string): SensitiveRoute | null {
-    const s = norm(text);
+    const s = norm(text.includes('[montant]') ? text : anonymizeQuestion(text));
+    if (s.includes('[montant]') && !WITHDRAWAL.test(s) && !ACTIVATION.test(s)) return 'ticket';
     if (WITHDRAWAL.test(s)) return 'withdrawal';
     if (ACTIVATION.test(s) && (MONEY.test(s) || /\b(compte|account)\b/.test(s))) return 'activation';
     if (/\b(pas active|non active|activer mon compte|activation)\b/.test(s)) return 'activation';
-    if (MONEY.test(s) || PERSONAL.test(s)) return 'ticket';
-    if (/\d/.test(s) && /\b(f|fr|xaf|usd)\b/.test(s)) return 'ticket';
+    if (MONEY.test(s) || PERSONAL.test(s) || s.includes('[montant]')) return 'ticket';
     return null;
 }
 

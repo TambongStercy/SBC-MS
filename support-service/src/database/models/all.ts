@@ -10,3 +10,4 @@ export { ViewTask, AssignmentHistory } from './view-task.model';
 export { KbArticle } from './kb.model';
 export { BotConversation, AssistantUsage } from './bot.model';
 export { AgentNotification } from './agent-notification.model';
+export { GuideTree } from './guide.model';

@@ -27,10 +27,10 @@ async function uniform<T>(fn: () => Promise<T>): Promise<T> {
     }
 }
 
+/** Sets the readable sbc_sup_csrf cookie (Path=/) when missing; 204. */
 router.get('/csrf', (req: Request, res: Response) => {
-    const existing = req.cookies?.[config.cookies.csrf];
-    const token = existing || setCsrfCookie(res);
-    res.json({ success: true, data: { csrfToken: token } });
+    if (!req.cookies?.[config.cookies.csrf]) setCsrfCookie(res);
+    res.status(204).end();
 });
 
 router.post('/login', ah(async (req, res) => {

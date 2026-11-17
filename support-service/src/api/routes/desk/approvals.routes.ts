@@ -7,6 +7,7 @@ import { APPROVAL_PERMISSIONS, approve, cancel, executeAgain, reject } from '../
 import { hasPermission } from '../../../config/permissions';
 import { badRequest, notFound } from '../../../utils/errors';
 import { maskEmail, maskPhone } from '../../../utils/mask';
+import { presentApproval } from '../../presenters';
 
 const router = Router();
 
@@ -14,10 +15,11 @@ const ref = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.n
 
 /** The new contact value is shown in clear only to full readers. */
 function present(a: any, roles: string[]) {
-    if (a.type !== 'contact_change' || hasPermission(roles, 'members.read.full')) return a;
+    if (!a) return a;
+    if (a.type !== 'contact_change' || hasPermission(roles, 'members.read.full')) return presentApproval(a);
     const p = { ...a.payload };
     p.newValue = p.field === 'email' ? maskEmail(p.newValue) : maskPhone(p.newValue);
-    return { ...a, payload: p };
+    return presentApproval({ ...a, payload: p });
 }
 
 /** Requests an agent may see: the ones it made, and the types it may approve. */
@@ -25,7 +27,9 @@ router.get('/', ah(async (req, res) => {
     const agent = agentOf(req);
     const approvable = Object.entries(APPROVAL_PERMISSIONS).filter(([, p]) => hasPermission(agent.roles, p.approve)).map(([t]) => t);
     const q = req.query as Record<string, string>;
-    const filter: Record<string, unknown> = { $or: [{ 'requestedBy.id': agent.id }, { type: { $in: approvable } }] };
+    const filter: Record<string, unknown> = q.mine === '1' || q.mine === 'true'
+        ? { 'requestedBy.id': agent.id }
+        : { $or: [{ 'requestedBy.id': agent.id }, { type: { $in: approvable } }] };
     if (q.status && (APPROVAL_STATUSES as readonly string[]).includes(q.status)) filter.status = q.status;
     if (q.type) filter.type = q.type;
     const items = await Approval.find(filter).sort({ createdAt: -1 }).limit(200).lean();

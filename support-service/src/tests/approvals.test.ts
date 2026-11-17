@@ -19,7 +19,7 @@ describe('approvals', () => {
             const jarR = await login(requester);
             const jarM = await login(manager);
 
-            const created = await desk('post', '/activation/manual', jarR).send({
+            const created = await desk('post', '/activation/manual-requests', jarR, { 'x-reauth-token': await reauthToken(requester, jarR) }).send({
                 userId, gateway: 'cinetpay', externalRef: 'CP-REF-123', plan: 'CIBLE', reason: 'Paiement confirmé par SMS opérateur, webhook perdu',
             });
             expect(created.status).toBe(201);
@@ -68,7 +68,7 @@ describe('approvals', () => {
             const other = await makeAgent(['support_admin']);
             const jarR = await login(requester);
             const jarM = await login(manager);
-            const created = await desk('post', '/activation/manual', jarR).send({ userId, gateway: 'feexpay', externalRef: 'FX-1', plan: 'CLASSIQUE', reason: 'Le membre a fourni le reçu opérateur' });
+            const created = await desk('post', '/activation/manual-requests', jarR, { 'x-reauth-token': await reauthToken(requester, jarR) }).send({ userId, gateway: 'feexpay', externalRef: 'FX-1', plan: 'CLASSIQUE', reason: 'Le membre a fourni le reçu opérateur' });
             const id = created.body.data.approvalId;
             const r = await desk('post', `/approvals/${id}/approve`, jarM, { 'x-reauth-token': await reauthToken(manager, jarM) }).send({});
             expect(r.body.data.status).toBe('approved');
