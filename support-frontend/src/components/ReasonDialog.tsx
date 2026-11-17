@@ -48,7 +48,7 @@ export function ReasonDialog({ open, onOpenChange, title, description, label = '
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title={title} description={description}>
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form onSubmit={submit} noValidate className="flex flex-col gap-4">
           {children}
           <Field label={label} required={required} error={error || undefined}>
             <Textarea value={reason} onChange={e => setReason(e.target.value)} placeholder={placeholder} rows={3} />
