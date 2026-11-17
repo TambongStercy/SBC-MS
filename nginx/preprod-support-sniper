@@ -1,0 +1,113 @@
+# =====================
+# SBC Support (preprod): preprod-support.sniperbuisnesscenter.com
+# Agent desk (support-frontend/dist) + /api/ → gateway on 6000 (same origin, no CORS).
+# =====================
+# Deploy: sudo cp nginx/preprod-support-sniper /etc/nginx/sites-available/preprod-support-sniper
+#         sudo ln -sf /etc/nginx/sites-available/preprod-support-sniper /etc/nginx/sites-enabled/preprod-support-sniper
+#         sudo nginx -t && sudo systemctl reload nginx
+# Certificate: the *.sniperbuisnesscenter.com / sniperbuisnesscenter.com cert below must
+# cover preprod-support.sniperbuisnesscenter.com; if it does not, run certbot for it first.
+# Security headers are set once at server level: no location below uses add_header,
+# so they are never dropped by nginx's add_header inheritance rule.
+# =====================
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name preprod-support.sniperbuisnesscenter.com;
+
+    # Trust Cloudflare IPs for real IP restoration
+    set_real_ip_from 103.21.244.0/22;
+    set_real_ip_from 103.22.200.0/22;
+    set_real_ip_from 103.31.4.0/22;
+    set_real_ip_from 141.101.64.0/18;
+    set_real_ip_from 108.162.192.0/18;
+    set_real_ip_from 190.93.240.0/20;
+    set_real_ip_from 188.114.96.0/20;
+    set_real_ip_from 197.234.240.0/22;
+    set_real_ip_from 198.41.128.0/17;
+    set_real_ip_from 162.158.0.0/15;
+    set_real_ip_from 104.16.0.0/13;
+    set_real_ip_from 104.24.0.0/14;
+    set_real_ip_from 172.64.0.0/13;
+    set_real_ip_from 131.0.72.0/22;
+    set_real_ip_from 2400:cb00::/32;
+    set_real_ip_from 2606:4700::/32;
+    set_real_ip_from 2803:f800::/32;
+    set_real_ip_from 2405:b500::/32;
+    set_real_ip_from 2405:8100::/32;
+    set_real_ip_from 2a06:98c0::/29;
+    set_real_ip_from 2c0f:f248::/32;
+    real_ip_header CF-Connecting-IP;
+
+    ssl_certificate /etc/letsencrypt/live/sniperbuisnesscenter.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sniperbuisnesscenter.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    root /var/www/SBC-MS-preprod/support-frontend/dist;
+    index index.html;
+    server_tokens off;
+
+    # Turnstile (challenges.cloudflare.com) for the login; R2 public media and
+    # presigned URLs for attachments and proof videos. No inline script or style.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data: blob: https://media.sniperbuisnesscenter.com https://media-preprod.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; media-src 'self' blob: https://media.sniperbuisnesscenter.com https://media-preprod.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; frame-src https://challenges.cloudflare.com https://media.sniperbuisnesscenter.com https://media-preprod.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    location /.well-known/acme-challenge/ {
+        allow all;
+        root /var/www/sniper;
+    }
+
+    # API → gateway (path kept: /api/support/... reaches support-service).
+    location ^~ /api/ {
+        proxy_pass http://127.0.0.1:6000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header CF-Connecting-IP $remote_addr;
+        client_max_body_size 12M;   # attachments are limited to 10 MB by the service
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
+    # index.html is never cached, so a deploy is picked up at once.
+    location = /index.html {
+        expires -1;
+    }
+
+    # Hashed build assets.
+    location ^~ /assets/ {
+        expires 1y;
+        access_log off;
+        try_files $uri =404;
+    }
+
+    # SPA routes.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    access_log /var/log/nginx/preprod-support.sniperbuisnesscenter.com.access.log;
+    error_log /var/log/nginx/preprod-support.sniperbuisnesscenter.com.error.log;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name preprod-support.sniperbuisnesscenter.com;
+    location /.well-known/acme-challenge/ {
+        allow all;
+        root /var/www/sniper;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

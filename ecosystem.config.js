@@ -98,6 +98,15 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3009
       }
+    },
+    {
+      name: 'support-service',
+      cwd: './support-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3012
+      }
     }
   ]
 };

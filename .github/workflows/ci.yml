@@ -22,6 +22,7 @@ jobs:
           - sbclove-service
           - advertising-service
           - event-service
+          - support-service
       fail-fast: false
 
     steps:
@@ -40,6 +41,56 @@ jobs:
       - name: Build TypeScript
         working-directory: ${{ matrix.service }}
         run: npm run build
+
+  test-support:
+    name: Test support-service
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:8.0
+        ports: ['27017:27017']
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: support-service/package-lock.json
+
+      - name: Install dependencies
+        working-directory: support-service
+        run: npm ci
+
+      - name: Type check (tests included)
+        working-directory: support-service
+        run: npx tsc --noEmit
+
+      - name: Tests (sbc_support_test, Redis DB 15)
+        working-directory: support-service
+        run: npm test
+
+  build-support-frontend:
+    name: Build Support Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The agent front lives on its own branch until merged: skip while absent.
+      - name: Install, test and build
+        run: |
+          if [ ! -f support-frontend/package.json ]; then echo "support-frontend not in this tree, skipping"; exit 0; fi
+          cd support-frontend
+          npm ci
+          if npm run | grep -q "^  test"; then npm test -- --run; fi
+          npm run build
 
   build-admin:
     name: Build Admin Frontend
