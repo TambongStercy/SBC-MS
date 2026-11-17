@@ -78,6 +78,17 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
         res.status(404).json({ success: false, message: 'Ressource introuvable.', code: 'NOT_FOUND' });
         return;
     }
+    // A model rule the service did not check first: say which field, as a 400.
+    if (err.name === 'ValidationError') {
+        const fields = Object.keys((err as any).errors || {});
+        log.warn(`Validation error on ${req.method} ${req.originalUrl}: ${fields.join(', ')}`);
+        res.status(400).json({
+            success: false,
+            message: fields.length ? `Informations manquantes ou invalides : ${fields.join(', ')}.` : 'Informations manquantes ou invalides.',
+            code: 'VALIDATION_ERROR',
+        });
+        return;
+    }
     log.error('Unhandled application error:', err);
     const statusCode = (err as any).statusCode || 500;
     const message = (config.nodeEnv === 'production' && statusCode === 500)
