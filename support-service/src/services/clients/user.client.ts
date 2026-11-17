@@ -38,7 +38,7 @@ export interface ContactChangeResult { ok: boolean; code?: string; message?: str
 export async function contactChange(body: {
     userId: string; field: 'email' | 'phoneNumber'; newValue: string; step: ContactChangeStep; code?: string; approvalId: string;
 }): Promise<ContactChangeResult> {
-    const r = await serviceRequest('user', 'POST', `${BASE}/support/contact-change`, { body });
+    const r = await serviceRequest('user', 'POST', `${BASE}/support/contact-change`, { body, businessCodes5xx: ['CHANNEL_UNAVAILABLE'] });
     if (r.ok) return { ok: true };
     if (isRouteMissing(r)) throw new DependencyError('user', 404);
     return { ok: false, code: r.code, message: r.message };

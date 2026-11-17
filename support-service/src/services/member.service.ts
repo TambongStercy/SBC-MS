@@ -17,7 +17,9 @@ export function presentMember(m: SupportMember, roles: string[]) {
     const money = full || hasPermission(roles, 'finance.read');
     return {
         _id: String(m._id), id: String(m._id), name: m.name, country: m.country ?? null, city: m.city ?? null, sex: m.sex ?? null, language: m.language ?? null,
-        role: m.role ?? null, createdAt: m.createdAt ?? null, lastLogin: m.lastLogin ?? null, isVerified: m.isVerified ?? null,
+        role: m.role ?? null, createdAt: m.createdAt ?? null,
+        // user-service fills `lastLogin` from ipLastUpdated: it is the last activity, not a sign-in.
+        lastLogin: m.lastLogin ?? null, lastActivityAt: m.lastLogin ?? null, isVerified: m.isVerified ?? null,
         blocked: m.blocked ?? false, deleted: m.deleted ?? false, referrerId: m.referrerId ?? null, referrerName: m.referrerName ?? null,
         email: full ? m.email ?? null : maskEmail(m.email), phoneNumber: full ? m.phoneNumber ?? null : maskPhone(m.phoneNumber),
         masked: !full,
@@ -90,6 +92,25 @@ const involved = (a: { requestedBy: AgentRef; approvals: { agent: AgentRef }[] }
 
 const NEUTRAL_UNAVAILABLE = 'Cette adresse ou ce numéro ne peut pas être utilisé. Demandez-en un autre au membre.';
 
+/**
+ * user-service refusals, in French. None of them consumes the approval: it
+ * stays `approved` and the step can be tried again later (CHANNEL_UNAVAILABLE:
+ * phone changes are off while WhatsApp OTP is off — never retried automatically).
+ */
+const CONTACT_ERRORS: Record<string, { status: number; message: string }> = {
+    CONTACT_UNAVAILABLE: { status: 400, message: NEUTRAL_UNAVAILABLE },
+    CHANNEL_UNAVAILABLE: { status: 503, message: 'Changement de téléphone indisponible pour le moment. La demande validée reste utilisable plus tard.' },
+    INVALID_CODE: { status: 400, message: 'Code incorrect ou expiré. Demandez au membre le dernier code reçu, ou renvoyez-en un.' },
+    SAME_VALUE: { status: 400, message: 'La nouvelle valeur est identique à celle du compte.' },
+    CODE_COOLDOWN: { status: 429, message: 'Un code vient d’être envoyé. Patientez avant d’en demander un autre.' },
+    STATE_CHANGED: { status: 409, message: 'Le compte du membre a changé entre-temps. Vérifiez sa fiche avant de continuer.' },
+};
+
+function contactError(code: string | undefined, fallback: string, fallbackCode: string): AppError {
+    const e = code ? CONTACT_ERRORS[code] : undefined;
+    return e ? new AppError(e.status, e.message, code) : new AppError(400, fallback, code || fallbackCode);
+}
+
 /** Sends the confirmation code to the NEW contact (user-service). */
 export async function sendContactCode(approvalId: string, agent: AgentRef, roles: string[], ctx: { ip?: string; userAgent?: string }) {
     const a = await approvedContactChange(approvalId);
@@ -97,10 +118,7 @@ export async function sendContactCode(approvalId: string, agent: AgentRef, roles
     const p = a.payload as { field: 'email' | 'phoneNumber'; newValue: string };
     const r = await contactChange({ userId: a.subject.userId!, field: p.field, newValue: p.newValue, step: 'send-code', approvalId });
     await audit({ actor: { type: 'agent', ...agent }, action: 'member.contact_change.code_sent', result: r.ok ? 'ok' : 'error', target: { type: 'member', id: a.subject.userId }, meta: { approvalId, field: p.field, upstreamCode: r.code ?? null }, ...ctx });
-    if (!r.ok) {
-        if (r.code === 'CONTACT_UNAVAILABLE') throw new AppError(400, NEUTRAL_UNAVAILABLE, 'CONTACT_UNAVAILABLE');
-        throw new AppError(400, r.message || 'Envoi du code refusé.', r.code || 'SEND_FAILED');
-    }
+    if (!r.ok) throw contactError(r.code, r.message || 'Envoi du code refusé.', 'SEND_FAILED');
     await Approval.updateOne({ _id: a._id }, { $set: { 'payload.codeSentAt': new Date() } });
     return { ok: true };
 }
@@ -114,8 +132,7 @@ export async function applyContactChange(approvalId: string, code: unknown, agen
     const r = await contactChange({ userId: a.subject.userId!, field: p.field, newValue: p.newValue, step: 'apply', code: code.trim(), approvalId });
     if (!r.ok) {
         await audit({ actor: { type: 'agent', ...agent }, action: 'member.contact_change.apply_refused', result: 'denied', target: { type: 'member', id: a.subject.userId }, meta: { approvalId, upstreamCode: r.code ?? null }, ...ctx });
-        if (r.code === 'CONTACT_UNAVAILABLE') throw new AppError(400, NEUTRAL_UNAVAILABLE, 'CONTACT_UNAVAILABLE');
-        throw new AppError(400, r.message || 'Code refusé.', r.code || 'APPLY_FAILED');
+        throw contactError(r.code, r.message || 'Code refusé.', 'APPLY_FAILED');
     }
     const u = await Approval.updateOne({ _id: a._id, status: 'approved' }, { $set: { status: 'executed', execution: { at: new Date(), by: agent, ok: true } } });
     await audit({

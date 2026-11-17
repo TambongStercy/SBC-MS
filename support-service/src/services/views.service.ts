@@ -182,8 +182,10 @@ export async function decideTask(id: string, agent: { id: string; name: string; 
     if (ban && !canBan) throw forbidden('Seul un superviseur peut bannir.', 'BAN_FORBIDDEN');
 
     const role = agent.roles.includes('views_supervisor') ? 'views_supervisor' : agent.roles.includes('support_admin') ? 'support_admin' : 'verifier';
+    // advertising-service honours `ban` only for views_supervisor / support_admin: never send it otherwise.
+    const sendBan = ban && (role === 'views_supervisor' || role === 'support_admin');
     const res = await decideProof(t.sourceId, {
-        decision, observedViews, reason: reason ?? undefined, ban: ban || undefined, actor: { agentId: agent.id, name: agent.name, role },
+        decision, observedViews, reason: reason ?? undefined, ...(sendBan ? { ban: true } : {}), actor: { agentId: agent.id, name: agent.name, role },
     });
     if (!res.ok && !res.alreadyDecided) throw badRequest(res.message || 'Décision refusée par le service publicité.', res.code || 'DECISION_REFUSED');
 

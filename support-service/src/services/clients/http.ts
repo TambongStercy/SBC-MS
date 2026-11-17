@@ -26,7 +26,7 @@ export async function serviceRequest<T = any>(
     service: ServiceName,
     method: 'GET' | 'POST',
     path: string,
-    opts: { body?: unknown; query?: Record<string, string | number | undefined | null>; timeoutMs?: number; actor?: string } = {},
+    opts: { body?: unknown; query?: Record<string, string | number | undefined | null>; timeoutMs?: number; actor?: string; businessCodes5xx?: string[] } = {},
 ): Promise<ServiceResponse<T>> {
     const base = config.services[service];
     const qs = opts.query
@@ -58,7 +58,8 @@ export async function serviceRequest<T = any>(
     }
     let json: any = null;
     try { json = await res.json(); } catch { json = null; }
-    if (res.status >= 500) {
+    // A 5xx carrying a known business code (e.g. CHANNEL_UNAVAILABLE) is an answer, not an outage.
+    if (res.status >= 500 && !(json?.code && opts.businessCodes5xx?.includes(json.code))) {
         log.warn(`${service} answered ${res.status}`, { path });
         throw new DependencyError(service, res.status);
     }
