@@ -1,6 +1,8 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
-export type AnnouncementFilter = { countries?: string[]; subscription?: 'subscribed' | 'unsubscribed'; sex?: 'male' | 'female' };
+import type { AnnouncementTargeting } from '../../services/announcement-targeting';
+
+export type AnnouncementFilter = AnnouncementTargeting;
 
 /** An admin announcement; kept to cap how often everyone gets one. */
 export interface IPushAnnouncement extends Document {

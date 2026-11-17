@@ -293,6 +293,28 @@ Rufus: staff accounts get, per module, no access / read-only / write.
   {permissions}` (makes the member `staff`), `DELETE /users/admin/staff/:id`
   (back to member); `GET /users/admin/me/access` for the signed-in account.
 
+### Pop-up announcements (2026-11-17)
+
+The admin writes an announcement that opens as a pop-up in the member app
+(admin page « Annonces pop-up », `/notifications/popups`, module `notifications`).
+- **Server:** notification-service `routes/popup-announcement.routes.ts`, models
+  `popupannouncements` and `popupannouncementviews` (one row per member and
+  announcement: shownAt / closedAt / clickedAt, each counted once).
+  - Member: `GET /api/notifications/announcements/next` (newest live one this
+    member matches and has not closed or tapped), `POST /:id/event {type}`.
+  - Admin: `/api/notifications/announcements/admin` (list, `options`, `audience`
+    (read-only POST), create, PATCH status active/paused/ended, DELETE).
+- **Targeting** (`services/announcement-targeting.ts`, shared with push
+  announcements): countries, age range, sex, subscribed or not, interests (any
+  of), professions (any of). user-service applies it (`announcementQuery`:
+  `filter-for-announcement`, `count-for-announcement`,
+  `announcement-targeting-options`). A member whose profile lacks a field a
+  criterion needs is not picked (about 45% have interests/profession/birth date).
+  A contradictory filter is refused (400), never widened to everyone.
+- The member's match is cached 10 min per announcement version. The app asks
+  once per session, after the consent window and before the install prompt.
+- Checks: `user-service/src/scripts/check-announcement-filter.ts`.
+
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
 

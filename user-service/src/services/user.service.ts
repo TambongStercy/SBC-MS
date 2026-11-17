@@ -215,6 +215,53 @@ const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
 export const toPlainPermissions = (p: unknown): Record<string, unknown> =>
     p instanceof Map ? Object.fromEntries(p) : ((p as Record<string, unknown>) || {});
 
+/** Who an announcement is for. Empty = every member. */
+export interface AnnouncementTargeting {
+    countries?: string[];
+    subscription?: 'subscribed' | 'unsubscribed';
+    sex?: string;
+    interests?: string[];
+    professions?: string[];
+    ageMin?: number;
+    ageMax?: number;
+}
+
+let targetingOptionsCache: { at: number; data: { interests: { value: string; count: number }[]; professions: { value: string; count: number }[] } } | null = null;
+
+const stringList = (v: unknown): string[] =>
+    Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map(x => x.trim()))].slice(0, 200) : [];
+const age = (v: unknown): number | undefined => {
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
+    return Number.isInteger(n) && n >= 0 && n <= 120 ? n : undefined;
+};
+
+/** The user query for an announcement's criteria (subscription is applied separately). */
+export function announcementQuery(filter: AnnouncementTargeting, now = new Date()): Record<string, unknown> {
+    const query: Record<string, unknown> = { deleted: { $ne: true }, blocked: { $ne: true } };
+    const countries = stringList(filter.countries).filter(c => /^[a-z]{2}$/i.test(c));
+    if (countries.length) {
+        const codes = countries.map(c => c.toUpperCase());
+        query.country = { $in: [...codes, ...codes.map(c => c.toLowerCase())] };
+    }
+    if (filter.sex === 'male' || filter.sex === 'female') query.sex = filter.sex;
+    const interests = stringList(filter.interests);
+    if (interests.length) query.interests = { $in: interests };
+    const professions = stringList(filter.professions);
+    if (professions.length) query.profession = { $in: professions };
+    const min = age(filter.ageMin);
+    const max = age(filter.ageMax);
+    if (min !== undefined || max !== undefined) {
+        const yearsAgo = (years: number) => { const d = new Date(now); d.setFullYear(d.getFullYear() - years); return d; };
+        const birth: Record<string, Date> = {};
+        // Aged at least `min` today: born on or before today's date `min` years ago.
+        if (min !== undefined) birth.$lte = yearsAgo(min);
+        // Aged at most `max`: born after today's date `max + 1` years ago.
+        if (max !== undefined) birth.$gt = yearsAgo(max + 1);
+        query.birthDate = birth;
+    }
+    return query;
+}
+
 export class UserService {
     private subscriptionRepository = subscriptionRepository; // Inject repository
 
@@ -3416,27 +3463,60 @@ export class UserService {
      * Blocked and deleted accounts never match. Used by notification-service
      * for targeted push announcements.
      */
-    async filterForAnnouncement(
-        userIds: string[],
-        filter: { countries?: string[]; subscription?: 'subscribed' | 'unsubscribed'; sex?: string },
-    ): Promise<string[]> {
+    /**
+     * The members an announcement (push or pop-up) is for, among `userIds`.
+     * Every criterion narrows (AND); a list criterion matches any of its values (OR).
+     * A member whose profile lacks a field a criterion needs is not picked.
+     */
+    async filterForAnnouncement(userIds: string[], filter: AnnouncementTargeting): Promise<string[]> {
         const ids = userIds.filter(id => Types.ObjectId.isValid(id)).map(id => new Types.ObjectId(id));
-        const query: Record<string, unknown> = { _id: { $in: ids }, deleted: { $ne: true }, blocked: { $ne: true } };
-        if (filter.countries?.length) {
-            const codes = filter.countries.map(c => c.trim().toUpperCase());
-            query.country = { $in: [...codes, ...codes.map(c => c.toLowerCase())] };
-        }
-        if (filter.sex) query.sex = filter.sex;
+        const query = { ...announcementQuery(filter), _id: { $in: ids } };
         let matched = (await UserModel.find(query).select('_id').lean()).map(u => String(u._id));
         if (filter.subscription) {
-            const subscribed = new Set((await SubscriptionModel.distinct('user', {
-                user: { $in: matched.map(id => new Types.ObjectId(id)) },
-                status: SubscriptionStatus.ACTIVE,
-                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
-            })).map(String));
+            const subscribed = await this.registeredMemberIds(matched);
             matched = matched.filter(id => (filter.subscription === 'subscribed') === subscribed.has(id));
         }
         return matched;
+    }
+
+    /** How many members an announcement would reach (all members, not only those with push). */
+    async countForAnnouncement(filter: AnnouncementTargeting): Promise<number> {
+        const query: Record<string, unknown> = announcementQuery(filter);
+        if (filter.subscription) {
+            const subscribed = await SubscriptionModel.distinct('user', {
+                status: SubscriptionStatus.ACTIVE,
+                subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+            });
+            query._id = filter.subscription === 'subscribed' ? { $in: subscribed } : { $nin: subscribed };
+        }
+        return UserModel.countDocuments(query);
+    }
+
+    /** Interests and professions members picked, most common first (cached 10 min). */
+    async announcementTargetingOptions(): Promise<{ interests: { value: string; count: number }[]; professions: { value: string; count: number }[] }> {
+        if (targetingOptionsCache && targetingOptionsCache.at > Date.now() - 10 * 60_000) return targetingOptionsCache.data;
+        const live = { deleted: { $ne: true }, blocked: { $ne: true } };
+        const [interests, professions] = await Promise.all([
+            UserModel.aggregate([{ $match: { ...live, 'interests.0': { $exists: true } } }, { $unwind: '$interests' },
+                { $group: { _id: '$interests', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 300 }]),
+            UserModel.aggregate([{ $match: { ...live, profession: { $nin: [null, ''] } } },
+                { $group: { _id: '$profession', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 300 }]),
+        ]);
+        const clean = (rows: { _id: unknown; count: number }[]) => rows
+            .filter(r => typeof r._id === 'string' && r._id.trim())
+            .map(r => ({ value: r._id as string, count: r.count }));
+        const data = { interests: clean(interests), professions: clean(professions) };
+        targetingOptionsCache = { at: Date.now(), data };
+        return data;
+    }
+
+    /** Of these members, those with an active registration pack (Classique or Ciblé). */
+    private async registeredMemberIds(memberIds: string[]): Promise<Set<string>> {
+        return new Set((await SubscriptionModel.distinct('user', {
+            user: { $in: memberIds.map(id => new Types.ObjectId(id)) },
+            status: SubscriptionStatus.ACTIVE,
+            subscriptionType: { $in: [SubscriptionType.CLASSIQUE, SubscriptionType.CIBLE] },
+        })).map(String));
     }
 
     async getRelanceDetailsByIds(userIds: (string | Types.ObjectId)[]): Promise<any[]> {

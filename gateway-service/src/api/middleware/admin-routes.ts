@@ -59,6 +59,7 @@ const RULES: Rule[] = [
     // --- notification-service ---
     { pattern: /^\/api\/relance\/admin(\/|$)/, module: 'relance' },
     { pattern: /^\/api\/notifications\/push\/admin(\/|$)/, module: 'notifications' },
+    { pattern: /^\/api\/notifications\/announcements\/admin(\/|$)/, module: 'notifications' },
     { pattern: /^\/api\/notifications\/(custom|templated|follow-up)(\/|$)/, module: 'notifications' },
     { pattern: /^\/api\/webhook\/(bounce-stats|cleanup-bounces)$/, module: 'notifications' },
     { pattern: /^\/api\/whatsapp(\/|$)/, module: 'whatsapp' },
@@ -87,6 +88,7 @@ const RULES: Rule[] = [
 /** POST calls that only read (previews, audience counts). */
 const READ_ONLY_POSTS: RegExp[] = [
     /^\/api\/notifications\/push\/admin\/audience$/,
+    /^\/api\/notifications\/announcements\/admin\/audience$/,
     /^\/api\/relance\/admin\/messages\/preview$/,
     /^\/api\/relance\/admin\/sms-templates\/preview$/,
 ];

@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import PushPreferenceModel from '../../database/models/push-preference.model';
 import PushAnnouncementModel, { AnnouncementFilter } from '../../database/models/push-announcement.model';
 import { userServiceClient } from '../../services/clients/user.service.client';
+import { targetingFrom } from '../../services/announcement-targeting';
 import { endOfQuietHours, inQuietHours, isPushCategory, PUSH_CATEGORIES, QUIET_FROM_H, QUIET_UNTIL_H } from '../../services/push-categories';
 import logger from '../../utils/logger';
 import config from '../../config';
@@ -111,17 +112,11 @@ router.post('/internal/send', authenticateServiceRequest, async (req, res) => {
 export const ANNOUNCEMENTS_TO_ALL_PER_DAY = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** A clean filter from the request; null when it asks for nothing (= everyone). */
-function filterFrom(raw: any): AnnouncementFilter | null {
-    if (!raw || typeof raw !== 'object') return null;
-    const countries = Array.isArray(raw.countries)
-        ? [...new Set(raw.countries.filter((c: unknown) => typeof c === 'string' && /^[a-z]{2}$/i.test(c)).map((c: string) => c.toUpperCase()))] as string[]
-        : [];
-    const subscription = raw.subscription === 'subscribed' || raw.subscription === 'unsubscribed' ? raw.subscription : undefined;
-    const sex = raw.sex === 'male' || raw.sex === 'female' ? raw.sex : undefined;
-    const filter: AnnouncementFilter = { ...(countries.length ? { countries } : {}), ...(subscription ? { subscription } : {}), ...(sex ? { sex } : {}) };
-    return Object.keys(filter).length ? filter : null;
-}
+/**
+ * A clean filter from the request; null when it asks for nothing (= everyone).
+ * A contradictory one throws TargetingError: never fall back to "everyone".
+ */
+const filterFrom = (raw: unknown): AnnouncementFilter | null => targetingFrom(raw);
 
 /** Members with push on that the filter picks; null when user-service cannot say. */
 async function audienceFor(filter: AnnouncementFilter | null): Promise<string[] | null> {
@@ -173,7 +168,9 @@ router.get('/admin/announcements', authenticate, requireAdmin, async (req, res) 
 
 /** How many members a filter reaches, for the admin page while it is being set. */
 router.post('/admin/audience', authenticate, requireAdmin, async (req, res) => {
-    const audience = await audienceFor(filterFrom(req.body?.filter));
+    let filter: AnnouncementFilter | null;
+    try { filter = filterFrom(req.body?.filter); } catch (e) { res.status(400).json({ success: false, message: (e as Error).message }); return; }
+    const audience = await audienceFor(filter);
     if (!audience) { res.status(503).json({ success: false, message: 'Impossible de compter les membres pour le moment.' }); return; }
     res.status(200).json({ success: true, data: { count: audience.length } });
 });
@@ -181,7 +178,8 @@ router.post('/admin/audience', authenticate, requireAdmin, async (req, res) => {
 router.post('/admin/announce', authenticate, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     const message = messageFrom(req.body);
     if (!message) { res.status(400).json({ success: false, message: 'Titre et message requis.' }); return; }
-    const filter = filterFrom(req.body?.filter);
+    let filter: AnnouncementFilter | null;
+    try { filter = filterFrom(req.body?.filter); } catch (e) { res.status(400).json({ success: false, message: (e as Error).message }); return; }
     const toAll = !filter;
     const sendNow = req.body?.sendNow === true;
     if (toAll && (await toAllToday()) >= ANNOUNCEMENTS_TO_ALL_PER_DAY) {

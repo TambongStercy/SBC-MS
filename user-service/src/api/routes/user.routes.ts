@@ -81,6 +81,8 @@ serviceRouter.post('/relance-details', (req, res) => userController.getRelanceDe
 
 // Internal: of the members with push on, those a targeted announcement picks (notification-service).
 serviceRouter.post('/filter-for-announcement', (req, res) => userController.filterForAnnouncement(req, res));
+serviceRouter.post('/count-for-announcement', (req, res) => userController.countForAnnouncement(req, res));
+serviceRouter.get('/announcement-targeting-options', (req, res) => userController.announcementTargetingOptions(req, res));
 
 // Internal route to get the advertising targeting subset (advertising-service).
 // Campaign targeting runs on these fields; batch-details carries none of them.

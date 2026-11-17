@@ -135,9 +135,9 @@ class UserServiceClient {
 
     /**
      * Of the given members, those a targeted announcement filter picks
-     * (countries, subscription, sex). Null when user-service cannot answer.
+     * (see services/announcement-targeting.ts). Null when user-service cannot answer.
      */
-    async filterForAnnouncement(userIds: string[], filter: Record<string, unknown>): Promise<string[] | null> {
+    async filterForAnnouncement(userIds: string[], filter: object): Promise<string[] | null> {
         try {
             const response = await axios.post(`${this.userServiceUrl}/users/internal/filter-for-announcement`, { userIds, filter }, {
                 headers: { 'Authorization': `Bearer ${this.serviceSecret}`, 'X-Service-Name': 'notification-service' },
@@ -146,6 +146,34 @@ class UserServiceClient {
             return Array.isArray(response.data?.data?.userIds) ? response.data.data.userIds : null;
         } catch (error: any) {
             log.error('Error filtering members for an announcement:', error.response?.data || error.message);
+            return null;
+        }
+    }
+
+    /** How many members (push or not) a targeting reaches. Null when user-service cannot answer. */
+    async countForAnnouncement(filter: object): Promise<number | null> {
+        try {
+            const response = await axios.post(`${this.userServiceUrl}/users/internal/count-for-announcement`, { filter }, {
+                headers: { 'Authorization': `Bearer ${this.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+                timeout: 20000,
+            });
+            return typeof response.data?.data?.count === 'number' ? response.data.data.count : null;
+        } catch (error: any) {
+            log.error('Error counting an announcement audience:', error.response?.data || error.message);
+            return null;
+        }
+    }
+
+    /** Interests and professions members picked, with counts. Null when user-service cannot answer. */
+    async announcementTargetingOptions(): Promise<{ interests: { value: string; count: number }[]; professions: { value: string; count: number }[] } | null> {
+        try {
+            const response = await axios.get(`${this.userServiceUrl}/users/internal/announcement-targeting-options`, {
+                headers: { 'Authorization': `Bearer ${this.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+                timeout: 20000,
+            });
+            return response.data?.data ?? null;
+        } catch (error: any) {
+            log.error('Error listing announcement targeting options:', error.response?.data || error.message);
             return null;
         }
     }

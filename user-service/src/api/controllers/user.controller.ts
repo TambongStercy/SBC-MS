@@ -2016,6 +2016,37 @@ export class UserController {
         }
     }
 
+    /**
+     * [Internal] How many members an announcement would reach.
+     * @route POST /api/users/internal/count-for-announcement  Body: { filter }
+     */
+    async countForAnnouncement(req: Request, res: Response): Promise<void> {
+        try {
+            const filter = req.body?.filter;
+            if (typeof filter !== 'object' || filter === null) {
+                res.status(400).json({ success: false, message: 'filter (object) is required.' });
+                return;
+            }
+            res.status(200).json({ success: true, data: { count: await this.userService.countForAnnouncement(filter) } });
+        } catch (error: any) {
+            this.log.error(`Error counting an announcement's audience: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to count members.' });
+        }
+    }
+
+    /**
+     * [Internal] Interests and professions members picked, with counts.
+     * @route GET /api/users/internal/announcement-targeting-options
+     */
+    async announcementTargetingOptions(_req: Request, res: Response): Promise<void> {
+        try {
+            res.status(200).json({ success: true, data: await this.userService.announcementTargetingOptions() });
+        } catch (error: any) {
+            this.log.error(`Error listing announcement targeting options: ${error.message}`, error);
+            res.status(500).json({ success: false, message: 'Failed to list the options.' });
+        }
+    }
+
     async getRelanceDetailsByIds(req: Request, res: Response): Promise<void> {
         try {
             const { userIds } = req.body;
