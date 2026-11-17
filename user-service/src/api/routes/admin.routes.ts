@@ -4,6 +4,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth.middlewar
 import { authorize } from '../middleware/rbac.middleware'; // Assuming RBAC middleware exists
 import { UserRole, ADMIN_CAPABLE_ROLES } from '../../database/models/user.model'; // Import UserRole enum
 import { adminAccessController } from '../controllers/admin-access.controller';
+import { protectAdminAccounts } from '../middleware/protect-admin-accounts.middleware';
 import { adminLimiter, strictLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
 
 const router = Router();
@@ -23,6 +24,8 @@ router.use(authenticate as any);
 router.use(authorize(ADMIN_CAPABLE_ROLES) as any);
 router.use(adminLimiter); // Apply general admin limiter to all subsequent routes
 const superAdminOnly = authorize([UserRole.ADMIN]) as any;
+// Changes to an admin-team account (admin, staff, ...) stay super-admin only.
+const notOnAdminAccounts = protectAdminAccounts() as any;
 
 // --- Admin access (per-module rights) ---
 router.get('/me/access', adminAccessController.getMyAccess as any);
@@ -44,16 +47,16 @@ router.get('/users', adminController.listUsers as any); // GET /api/admin/users
 router.get('/users/unpaid-initial', adminController.exportUnpaidInitialUsers as any); // Existing route
 router.get('/users/:userId', adminController.getUserDetails as any); // GET /api/admin/users/:userId
 router.get('/users/:userId/referrals', adminController.getUserReferrals as any); // a member's filleuls, for the admin member page
-router.put('/users/:userId', adminController.updateUser as any); // PUT /api/admin/users/:userId
-router.patch('/users/:userId/block', adminController.blockUser as any); // PATCH /api/admin/users/:userId/block
-router.patch('/users/:userId/unblock', adminController.unblockUser as any); // PATCH /api/admin/users/:userId/unblock
-router.delete('/users/:userId', adminController.deleteUser as any); // DELETE /api/admin/users/:userId (Soft Delete)
-router.patch('/users/:userId/restore', adminController.restoreUser as any); // PATCH /api/admin/users/:userId/restore
-router.post('/users/:userId/adjust-balance', adminController.adjustBalance as any); // POST /api/admin/users/:userId/adjust-balance
-router.post('/users/:userId/cancel-activation-transfer', adminController.cancelActivationTransfer as any); // POST /api/admin/users/:userId/cancel-activation-transfer
+router.put('/users/:userId', notOnAdminAccounts, adminController.updateUser as any); // PUT /api/admin/users/:userId
+router.patch('/users/:userId/block', notOnAdminAccounts, adminController.blockUser as any); // PATCH /api/admin/users/:userId/block
+router.patch('/users/:userId/unblock', notOnAdminAccounts, adminController.unblockUser as any); // PATCH /api/admin/users/:userId/unblock
+router.delete('/users/:userId', notOnAdminAccounts, adminController.deleteUser as any); // DELETE /api/admin/users/:userId (Soft Delete)
+router.patch('/users/:userId/restore', notOnAdminAccounts, adminController.restoreUser as any); // PATCH /api/admin/users/:userId/restore
+router.post('/users/:userId/adjust-balance', notOnAdminAccounts, adminController.adjustBalance as any); // POST /api/admin/users/:userId/adjust-balance
+router.post('/users/:userId/cancel-activation-transfer', notOnAdminAccounts, adminController.cancelActivationTransfer as any); // POST /api/admin/users/:userId/cancel-activation-transfer
 
 // Route to set/update subscription type
-router.patch('/users/:userId/subscription', adminController.adminSetUserSubscription as any); // PATCH /api/admin/users/:userId/subscription
+router.patch('/users/:userId/subscription', notOnAdminAccounts, adminController.adminSetUserSubscription as any); // PATCH /api/admin/users/:userId/subscription
 
 // Route to set/update user role (e.g., assign tester role)
 router.patch('/users/:userId/role', superAdminOnly, adminController.setUserRole as any); // PATCH /api/admin/users/:userId/role
@@ -62,8 +65,8 @@ router.patch('/users/:userId/role', superAdminOnly, adminController.setUserRole 
 router.get('/users/:userId/subscriptions', adminController.getUserSubscriptions as any); // GET /api/admin/users/:userId/subscriptions
 
 // --- Partner Management Routes (Admin Only) ---
-router.post('/partners/set-user-partner', adminController.setUserAsPartner as any); // POST /api/admin/partners/set-user-partner
-router.patch('/partners/:userId/deactivate', adminController.deactivatePartner as any); // PATCH /api/admin/partners/:userId/deactivate
+router.post('/partners/set-user-partner', protectAdminAccounts('body') as any, adminController.setUserAsPartner as any); // POST /api/admin/partners/set-user-partner
+router.patch('/partners/:userId/deactivate', notOnAdminAccounts, adminController.deactivatePartner as any); // PATCH /api/admin/partners/:userId/deactivate
 
 // --- Route to list all partners ---
 router.get('/partners', adminController.listPartners as any); // GET /api/admin/partners
