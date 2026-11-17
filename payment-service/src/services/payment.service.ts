@@ -4,6 +4,7 @@ import { Types, Aggregate } from 'mongoose';
 import transactionRepository, { CreateTransactionInput } from '../database/repositories/transaction.repository';
 import paymentIntentRepository, { CreatePaymentIntentInput, UpdatePaymentIntentInput } from '../database/repositories/paymentIntent.repository';
 import { TransactionStatus, TransactionType, Currency, ITransaction } from '../database/models/transaction.model';
+import PaymentIntentModel from '../database/models/PaymentIntent';
 import TransactionModel from '../database/models/transaction.model';
 import pendingPayoutWebhookModel from '../database/models/pending-payout-webhook.model';
 import { userServiceClient, UserDetails, UserDetailsWithMomo } from './clients/user.service.client';
@@ -31,6 +32,11 @@ import { ssoWebhookService } from './sso-webhook.service';
 import { buildCinetPayPayer } from '../utils/cinetpay-payer';
 import { checkCallbackUrl, callbackAllowlistEnforced } from '../utils/callback-allowlist';
 import * as sandbox from './sandbox.service';
+import {
+    reserveForWithdrawal, completeWithdrawal, endWithdrawal, transitionWithdrawal, releaseWithdrawalReservation,
+    OPEN_WITHDRAWAL_STATUSES, COMPLETABLE_STATUSES,
+} from './withdrawal-lifecycle';
+import { openSupportCase } from './clients/support.service.client';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -269,11 +275,13 @@ class PaymentService {
             await transactionRepository.updateStatus(transaction.transactionId, TransactionStatus.COMPLETED);
 
             // Update user balance based on currency
+            // Ledger reference = this deposit: a retried call cannot credit twice.
+            const depositMovement = { reference: `deposit:${transaction.transactionId}`, source: isCommission ? 'commission' : 'deposit' };
             if (currency === Currency.USD) {
-                await userServiceClient.updateUserUsdBalance(userId.toString(), amount);
+                await userServiceClient.updateUserUsdBalance(userId.toString(), amount, depositMovement);
                 log.info(`Updated USD balance for user ${userId} by ${amount} USD`);
             } else {
-                await userServiceClient.updateUserBalance(userId.toString(), amount);
+                await userServiceClient.updateUserBalance(userId.toString(), amount, depositMovement);
                 log.info(`Updated XAF balance for user ${userId} by ${amount} ${currency}`);
             }
 
@@ -327,7 +335,7 @@ class PaymentService {
         });
         if (existing) return existing;
 
-        if (!(await userServiceClient.spendBalance(args.userId, args.amount))) {
+        if (!(await userServiceClient.spendBalance(args.userId, args.amount, { reference: `spend:${args.reference}`, source: 'balance-spend' }))) {
             throw new AppError('Solde SBC insuffisant.', 409);
         }
         try {
@@ -345,7 +353,7 @@ class PaymentService {
             return tx;
         } catch (err: any) {
             // The money left the balance but nothing records it: put it back.
-            await userServiceClient.updateUserBalance(args.userId, args.amount).catch((e: any) =>
+            await userServiceClient.updateUserBalance(args.userId, args.amount, { reference: `spend-undo:${args.reference}`, source: 'balance-spend-undo' }).catch((e: any) =>
                 log.error(`CRITICAL: balance payment ${args.reference} debited ${args.amount} XAF from ${args.userId}, `
                     + `was not recorded, and could not be put back: ${e.message}`));
             throw err;
@@ -387,7 +395,7 @@ class PaymentService {
         const refundId = refund.transactionId;
         await transactionRepository.updateStatus(refundId, TransactionStatus.PENDING);
         try {
-            await userServiceClient.updateUserBalance(String(spent.userId), Math.abs(spent.amount));
+            await userServiceClient.updateUserBalance(String(spent.userId), Math.abs(spent.amount), { reference: `balance-refund:${args.reference}`, source: 'balance-refund' });
         } catch (err) {
             await transactionRepository.updateStatus(refundId, TransactionStatus.FAILED);
             throw err;
@@ -474,6 +482,53 @@ class PaymentService {
     }
 
     /**
+     * The withdrawal already created under this Idempotency-Key, shaped like an
+     * initiation response; null when there is none (or no key).
+     */
+    private async findWithdrawalByIdempotencyKey(userId: string | Types.ObjectId, idempotencyKey?: string) {
+        if (!idempotencyKey) return null;
+        const existing = await TransactionModel.findOne({
+            userId: new Types.ObjectId(userId.toString()), idempotencyKey, type: TransactionType.WITHDRAWAL,
+        }).lean<ITransaction>();
+        if (!existing) return null;
+        log.info(`Withdrawal request replayed with idempotency key for user ${userId}: returning ${existing.transactionId} (${existing.status})`);
+        return {
+            transactionId: existing.transactionId,
+            amount: existing.amount,
+            fee: existing.fee,
+            total: existing.metadata?.netAmountRequested,
+            status: existing.status,
+            expiresAt: existing.verificationExpiry,
+            message: 'Cette demande de retrait a déjà été enregistrée.',
+            idempotentReplay: true,
+        };
+    }
+
+    /**
+     * Reserves a freshly created withdrawal's amount, or ends it as FAILED and
+     * throws when the available balance does not cover it (or user-service is
+     * unreachable: fail closed).
+     */
+    private async reserveOrFail(tx: ITransaction): Promise<void> {
+        let reserved = false;
+        try {
+            reserved = await reserveForWithdrawal(tx);
+        } catch (error: any) {
+            await transitionWithdrawal(tx.transactionId, OPEN_WITHDRAWAL_STATUSES, TransactionStatus.FAILED, {
+                'metadata.failureReason': `Reservation unavailable: ${error.message}`,
+            });
+            throw error instanceof AppError ? error : new AppError('Les retraits sont momentanément indisponibles. Réessayez dans quelques minutes.', 503);
+        }
+        if (!reserved) {
+            await transitionWithdrawal(tx.transactionId, OPEN_WITHDRAWAL_STATUSES, TransactionStatus.FAILED, {
+                'metadata.failureReason': 'Insufficient available balance (reservation refused)',
+                'metadata.reservation.state': 'refused',
+            });
+            throw new AppError('Solde disponible insuffisant pour ce retrait (frais compris). Un retrait en cours peut bloquer une partie de votre solde.', 400);
+        }
+    }
+
+    /**
      * Refuses the withdrawal while the member's email or phone number changed
      * less than WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE (48 h) ago
      * (user-service utils/withdrawal-lock.ts, Rufus 2026-10-22). Called on
@@ -519,9 +574,14 @@ class PaymentService {
         netAmountDesired: number, // Renamed 'amount' to 'netAmountDesired' for clarity (this is in the target currency)
         // Removed `currency` from input, as it will be derived from momoOperator
         ipAddress?: string,
-        deviceInfo?: string
+        deviceInfo?: string,
+        idempotencyKey?: string,
     ) {
         log.info(`Initiating withdrawal request for user ${userId}: NET ${netAmountDesired} (target currency will be derived)`);
+
+        // A repeated request (same Idempotency-Key) returns the first one, whatever happened since.
+        const replay = await this.findWithdrawalByIdempotencyKey(userId, idempotencyKey);
+        if (replay) return replay;
 
         // --- GLOBAL WITHDRAWAL CONTROL CHECK ---
         if (!config.withdrawalsEnabled) {
@@ -541,7 +601,9 @@ class PaymentService {
         const dailyWithdrawalsCount = await TransactionModel.countDocuments({
             userId: new Types.ObjectId(userId.toString()),
             type: TransactionType.WITHDRAWAL,
-            status: { $in: [TransactionStatus.COMPLETED, TransactionStatus.PENDING, TransactionStatus.PROCESSING, TransactionStatus.PENDING_OTP_VERIFICATION] },
+            // pending_admin_approval counts too: it was left out, so approved-later
+            // requests did not count towards the limit (support phase 2).
+            status: { $in: [TransactionStatus.COMPLETED, TransactionStatus.PENDING, TransactionStatus.PROCESSING, TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING_ADMIN_APPROVAL] },
             createdAt: { $gte: today, $lt: tomorrow }
         });
 
@@ -553,10 +615,12 @@ class PaymentService {
         // --- End Daily Withdrawal Limit Check ---
 
         // --- Soft Lock / Check for existing PENDING_OTP_VERIFICATION, PENDING, or PROCESSING withdrawal ---
+        // pending_admin_approval is an active withdrawal too: before support phase 2 it
+        // was not in this list, so a member could stack a second request behind it.
         const existingActiveWithdrawal = await transactionRepository.findOneByFilters({
             userId: new Types.ObjectId(userId.toString()),
             type: TransactionType.WITHDRAWAL,
-            status: { $in: [TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
+            status: { $in: [TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING_ADMIN_APPROVAL, TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
         });
 
         if (existingActiveWithdrawal) {
@@ -571,6 +635,8 @@ class PaymentService {
                 const { verificationExpiry } = await this.sendWithdrawalOTP(existingActiveWithdrawal.transactionId);
                 otpExpiresAt = verificationExpiry; // Use the new expiry from re-send
                 message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) awaiting OTP verification. Please complete or cancel it before initiating a new one. An OTP has been re-sent to your registered contact for this existing request.`;
+            } else if (existingActiveWithdrawal.status === TransactionStatus.PENDING_ADMIN_APPROVAL) {
+                message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) awaiting approval. Please wait for it to be processed before initiating a new withdrawal.`;
             } else if (existingActiveWithdrawal.status === TransactionStatus.PENDING || existingActiveWithdrawal.status === TransactionStatus.PROCESSING) {
                 message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) that is currently being processed. Please be patient and wait for it to complete before initiating a new withdrawal. Processing typically takes a few minutes.`;
             } else {
@@ -752,24 +818,38 @@ class PaymentService {
                 throw new AppError('Insufficient balance for this withdrawal amount including fees.', 400);
             }
 
-            const withdrawalTransaction = await transactionRepository.create({
-                userId: new Types.ObjectId(userId.toString()), // Ensure ObjectId
-                type: TransactionType.WITHDRAWAL,
-                amount: grossAmountToDebitInXAF, // Store the GROSS amount in XAF that will be debited
-                fee: feeInXAF, // Fee stored in XAF
-                currency: Currency.XAF, // Transaction currency is always XAF for balance debits
-                status: TransactionStatus.PENDING_OTP_VERIFICATION,
-                description: `Demande de retrait pour NET ${netAmountDesired} ${targetPayoutCurrency}. Débit brut: ${grossAmountToDebitInXAF} FCFA.`,
-                metadata: {
-                    method: withdrawalDetails.method,
-                    accountInfo: withdrawalDetails.accountInfo, // Store derived account info
-                    netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
-                    payoutCurrency: targetPayoutCurrency, // Store the target payout currency
-                    selectedPayoutService: providerName // Store which service was selected
-                },
-                ipAddress,
-                deviceInfo
-            });
+            let withdrawalTransaction: ITransaction;
+            try {
+                withdrawalTransaction = await transactionRepository.create({
+                    userId: new Types.ObjectId(userId.toString()), // Ensure ObjectId
+                    type: TransactionType.WITHDRAWAL,
+                    amount: grossAmountToDebitInXAF, // Store the GROSS amount in XAF that will be debited
+                    fee: feeInXAF, // Fee stored in XAF
+                    currency: Currency.XAF, // Transaction currency is always XAF for balance debits
+                    status: TransactionStatus.PENDING_OTP_VERIFICATION,
+                    description: `Demande de retrait pour NET ${netAmountDesired} ${targetPayoutCurrency}. Débit brut: ${grossAmountToDebitInXAF} FCFA.`,
+                    metadata: {
+                        method: withdrawalDetails.method,
+                        accountInfo: withdrawalDetails.accountInfo, // Store derived account info
+                        netAmountRequested: netAmountDesired, // Store the net amount explicitly in its original currency
+                        payoutCurrency: targetPayoutCurrency, // Store the target payout currency
+                        selectedPayoutService: providerName, // Store which service was selected
+                        reservation: { amount: grossAmountToDebitInXAF, currency: 'XAF', state: 'requested' },
+                    },
+                    ipAddress,
+                    deviceInfo,
+                    idempotencyKey,
+                });
+            } catch (createError: any) {
+                const replayed = createError?.code === 11000 ? await this.findWithdrawalByIdempotencyKey(userId, idempotencyKey) : null;
+                if (replayed) return replayed;
+                throw createError;
+            }
+
+            // Hold the gross amount now (atomic in user-service: balance - debt -
+            // reserved must cover it), so no second withdrawal, payment or transfer
+            // can use it while this one is in flight. Refused → the request ends here.
+            await this.reserveOrFail(withdrawalTransaction);
 
             // Send OTP for verification, linking it to the newly created transaction
             const { verificationCode, verificationExpiry } = await this.sendWithdrawalOTP(withdrawalTransaction.transactionId);
@@ -847,7 +927,7 @@ class PaymentService {
 
             if (transaction.verificationExpiry < new Date()) {
                 // OTP Expired
-                await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, { failureReason: 'OTP Expired' });
+                await endWithdrawal(transactionId, { from: [TransactionStatus.PENDING_OTP_VERIFICATION], to: TransactionStatus.FAILED, set: { 'metadata.failureReason': 'OTP Expired' }, reason: 'verification_failed' });
                 throw new AppError('Verification code expired. Please re-initiate withdrawal.', 400);
             }
 
@@ -871,9 +951,7 @@ class PaymentService {
                 const usdAmount = metadata?.usdAmount;
                 if (!usdAmount) {
                     log.error(`Transaction ${transactionId} missing USD amount for crypto withdrawal`);
-                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
-                        failureReason: 'Missing USD amount for crypto withdrawal'
-                    });
+                    await endWithdrawal(transactionId, { from: [TransactionStatus.PENDING_OTP_VERIFICATION], to: TransactionStatus.FAILED, set: { 'metadata.failureReason': 'Missing USD amount for crypto withdrawal' }, reason: 'verification_failed' });
                     throw new AppError('Invalid crypto withdrawal transaction data.', 500);
                 }
 
@@ -882,17 +960,13 @@ class PaymentService {
                 // Check if user has sufficient USD balance (amount already includes fees from initiation)
                 if (userUsdBalance < usdAmount) {
                     log.warn(`User ${userId} has insufficient USD balance for crypto withdrawal. Required: ${usdAmount} USD, Available: ${userUsdBalance} USD`);
-                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
-                        failureReason: `Insufficient USD balance. Required: ${usdAmount} USD, Available: ${userUsdBalance} USD`
-                    });
+                    await endWithdrawal(transactionId, { from: [TransactionStatus.PENDING_OTP_VERIFICATION], to: TransactionStatus.FAILED, set: { 'metadata.failureReason': `Insufficient USD balance. Required: ${usdAmount} USD, Available: ${userUsdBalance} USD` }, reason: 'verification_failed' });
                     throw new AppError(`Insufficient USD balance for crypto withdrawal. Available: ${userUsdBalance} USD, Required: ${usdAmount} USD`, 400);
                 }
 
                 if (userUsdBalance <= 0) {
                     log.warn(`User ${userId} has zero or negative USD balance: ${userUsdBalance} USD`);
-                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
-                        failureReason: 'Insufficient USD balance (zero or negative)'
-                    });
+                    await endWithdrawal(transactionId, { from: [TransactionStatus.PENDING_OTP_VERIFICATION], to: TransactionStatus.FAILED, set: { 'metadata.failureReason': 'Insufficient USD balance (zero or negative)' }, reason: 'verification_failed' });
                     throw new AppError('Your USD balance is zero or negative. Cannot process crypto withdrawal.', 400);
                 }
 
@@ -905,17 +979,13 @@ class PaymentService {
                 // We need to ensure user still has sufficient balance before processing
                 if (userXafBalance < amount) {
                     log.warn(`User ${userId} has insufficient XAF balance for mobile money withdrawal. Required: ${amount} XAF, Available: ${userXafBalance} XAF`);
-                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
-                        failureReason: `Insufficient XAF balance. Required: ${amount} XAF, Available: ${userXafBalance} XAF`
-                    });
+                    await endWithdrawal(transactionId, { from: [TransactionStatus.PENDING_OTP_VERIFICATION], to: TransactionStatus.FAILED, set: { 'metadata.failureReason': `Insufficient XAF balance. Required: ${amount} XAF, Available: ${userXafBalance} XAF` }, reason: 'verification_failed' });
                     throw new AppError(`Insufficient XAF balance for mobile money withdrawal. Available: ${userXafBalance} XAF, Required: ${amount} XAF`, 400);
                 }
 
                 if (userXafBalance <= 0) {
                     log.warn(`User ${userId} has zero or negative XAF balance: ${userXafBalance} XAF`);
-                    await transactionRepository.updateStatus(transactionId, TransactionStatus.FAILED, {
-                        failureReason: 'Insufficient XAF balance (zero or negative)'
-                    });
+                    await endWithdrawal(transactionId, { from: [TransactionStatus.PENDING_OTP_VERIFICATION], to: TransactionStatus.FAILED, set: { 'metadata.failureReason': 'Insufficient XAF balance (zero or negative)' }, reason: 'verification_failed' });
                     throw new AppError('Your XAF balance is zero or negative. Cannot process mobile money withdrawal.', 400);
                 }
 
@@ -926,20 +996,34 @@ class PaymentService {
             // NEW FLOW: After OTP verification, set status to PENDING_ADMIN_APPROVAL
             // Update transaction status to PENDING_ADMIN_APPROVAL (awaiting admin approval)
             // Clear OTP fields now that verification is complete
-            const updatedTransaction = await transactionRepository.update(transaction._id, {
-                status: TransactionStatus.PENDING_ADMIN_APPROVAL, // Awaiting admin approval
-                verificationCode: undefined,
-                verificationExpiry: undefined,
-                metadata: {
-                    ...(metadata || {}),
-                    statusDetails: 'OTP verified, awaiting admin approval',
-                    withdrawalType: isCryptoWithdrawal ? 'crypto' : 'mobile_money'
+            // A request created before reservations existed holds its amount now.
+            if (metadata?.reservation?.state !== 'held') {
+                const held = await reserveForWithdrawal(transaction);
+                if (!held) {
+                    await endWithdrawal(transactionId, {
+                        from: [TransactionStatus.PENDING_OTP_VERIFICATION], to: TransactionStatus.FAILED,
+                        set: { 'metadata.failureReason': 'Insufficient available balance (reservation refused at verification)' },
+                        reason: 'insufficient_at_verification',
+                    });
+                    throw new AppError('Solde disponible insuffisant pour ce retrait (frais compris).', 400);
                 }
-            });
+            }
+
+            // One conditional write: a code submitted twice (or racing a cancellation) moves it once.
+            const updatedTransaction = await transitionWithdrawal(
+                transactionId,
+                [TransactionStatus.PENDING_OTP_VERIFICATION],
+                TransactionStatus.PENDING_ADMIN_APPROVAL,
+                {
+                    'metadata.statusDetails': 'OTP verified, awaiting admin approval',
+                    'metadata.withdrawalType': isCryptoWithdrawal ? 'crypto' : 'mobile_money',
+                },
+                { verificationCode: '', verificationExpiry: '' },
+            );
 
             if (!updatedTransaction) {
-                log.error(`Failed to update transaction ${transactionId} status to PENDING after OTP verification.`);
-                throw new AppError('Failed to finalize withdrawal verification.', 500);
+                log.warn(`Withdrawal ${transactionId} changed state during OTP verification; not moved to approval.`);
+                throw new AppError('Cette demande de retrait a déjà été traitée.', 409);
             }
 
             // NEW FLOW: No automatic processing - just notify user and return
@@ -1392,11 +1476,14 @@ class PaymentService {
             // A transfer to another account is a withdrawal by another name.
             await this.assertWithdrawalsNotLocked(fromUserId);
 
-            // Check if sender has sufficient balance
-            const senderBalance = await userServiceClient.getBalance(fromUserId.toString());
-            if (senderBalance < amount) {
+            // Take the money first, in one conditional write (balance - debt -
+            // reserved must cover it): a check-then-debit let two transfers, or a
+            // transfer and a withdrawal in flight, spend the same money.
+            const transferRef = `member-transfer:${new Types.ObjectId().toHexString()}`;
+            if (!(await userServiceClient.spendBalance(fromUserId.toString(), amount, { reference: transferRef, source: 'member-transfer' }))) {
                 throw new AppError('Insufficient balance', 400); // Use AppError
             }
+            try {
 
             // Fetch sender details for notification
             let senderEmail: string | undefined;
@@ -1458,9 +1545,8 @@ class PaymentService {
             await transactionRepository.updateStatus(senderTransaction.transactionId, TransactionStatus.COMPLETED);
             await transactionRepository.updateStatus(recipientTransaction.transactionId, TransactionStatus.COMPLETED);
 
-            // Update balances for both users
-            await userServiceClient.updateUserBalance(fromUserId.toString(), -amount);
-            await userServiceClient.updateUserBalance(toUserId.toString(), amount);
+            // The sender was debited above; credit the recipient.
+            await userServiceClient.updateUserBalance(toUserId.toString(), amount, { reference: `${transferRef}:in`, source: 'member-transfer' });
 
             // Send notifications to both users
             if (senderEmail) {
@@ -1496,6 +1582,12 @@ class PaymentService {
                 senderTransaction,
                 recipientTransaction
             };
+            } catch (afterDebitError: any) {
+                log.error(`Member transfer ${transferRef} failed after debiting ${fromUserId}: ${afterDebitError.message}. Putting the money back.`);
+                await userServiceClient.updateUserBalance(fromUserId.toString(), amount, { reference: `${transferRef}:undo`, source: 'member-transfer-undo' })
+                    .catch((e: any) => log.error(`CRITICAL: member transfer ${transferRef} debited ${amount} from ${fromUserId} and could not be put back: ${e.message}`));
+                throw afterDebitError;
+            }
         } catch (error: any) {
             log.error(`Error processing payment: ${error.message}`, error);
             if (error instanceof AppError) {
@@ -1726,24 +1818,18 @@ class PaymentService {
             throw new AppError(`Cannot cancel withdrawal with status '${transaction.status}'. Only withdrawals with status '${TransactionStatus.PENDING_OTP_VERIFICATION}' can be cancelled.`, 400);
         }
 
-        // Proceed with cancellation logic
-        if (transaction.status === TransactionStatus.PENDING_OTP_VERIFICATION) {
-            await transactionRepository.update(transaction._id, {
-                status: TransactionStatus.CANCELLED,
-                verificationCode: undefined,
-                verificationExpiry: undefined,
-                metadata: {
-                    ...(transaction.metadata || {}),
-                    cancellationReason: 'User cancelled OTP verification'
-                }
-            });
-            log.info(`Withdrawal transaction ${transactionId} for user ${userId} successfully cancelled (OTP stage).`);
-
-            // No balance refund needed here as balance is only debited *after* OTP verification.
-        } else {
-            log.warn(`Withdrawal transaction ${transactionId} cannot be cancelled at its current status: ${transaction.status}.`);
-            throw new AppError(`Withdrawal cannot be cancelled. It is currently in "${transaction.status}" status.`, 400);
+        // One conditional write; the reservation is released only by the call that cancelled.
+        const cancelled = await endWithdrawal(transactionId, {
+            from: [TransactionStatus.PENDING_OTP_VERIFICATION],
+            to: TransactionStatus.CANCELLED,
+            set: { 'metadata.cancellationReason': isSystemCall ? 'OTP verification window expired' : 'User cancelled OTP verification' },
+            unset: { verificationCode: '', verificationExpiry: '' },
+            reason: isSystemCall ? 'otp_window_expired' : 'cancelled_by_member',
+        });
+        if (!cancelled) {
+            throw new AppError('Withdrawal cannot be cancelled: its status changed in the meantime.', 409);
         }
+        log.info(`Withdrawal transaction ${transactionId} for user ${userId} successfully cancelled (OTP stage); reservation released.`);
     }
 
     /**
@@ -2106,6 +2192,14 @@ class PaymentService {
         ipAddress?: string,
         deviceInfo?: string
     ) {
+        // Disabled (support phase 2): this deprecated path paid a crypto payout at
+        // once, without OTP, admin approval or the global switch, to any address
+        // the caller typed, and debited the XAF balance by the USD figure. The
+        // supported flow is initiateCryptoWithdrawalWithOTP (reserved, approved).
+        if (process.env.LEGACY_CRYPTO_PAYOUT_ENABLED !== 'true') {
+            log.warn(`Refused legacy crypto payout for user ${userId} (${netAmountDesired} ${cryptoCurrency}): path disabled`);
+            throw new AppError('Ce mode de retrait crypto n\'est plus disponible. Utilisez le retrait crypto avec code de vérification.', 410);
+        }
         try {
             log.info(`Creating crypto payout for user ${userId}: ${netAmountDesired} ${cryptoCurrency} to ${cryptoAddress}`);
 
@@ -2212,9 +2306,13 @@ class PaymentService {
         userId: string | Types.ObjectId,
         usdAmount: number,
         ipAddress?: string,
-        deviceInfo?: string
+        deviceInfo?: string,
+        idempotencyKey?: string,
     ) {
         log.info(`Initiating crypto withdrawal with OTP for user ${userId}: ${usdAmount} USD`);
+
+        const replay = await this.findWithdrawalByIdempotencyKey(userId, idempotencyKey);
+        if (replay) return { success: true, ...replay };
 
         // --- GLOBAL WITHDRAWAL CONTROL CHECK ---
         if (!config.withdrawalsEnabled) {
@@ -2234,7 +2332,9 @@ class PaymentService {
         const dailyWithdrawalsCount = await TransactionModel.countDocuments({
             userId: new Types.ObjectId(userId.toString()),
             type: TransactionType.WITHDRAWAL,
-            status: { $in: [TransactionStatus.COMPLETED, TransactionStatus.PENDING, TransactionStatus.PROCESSING, TransactionStatus.PENDING_OTP_VERIFICATION] },
+            // pending_admin_approval counts too: it was left out, so approved-later
+            // requests did not count towards the limit (support phase 2).
+            status: { $in: [TransactionStatus.COMPLETED, TransactionStatus.PENDING, TransactionStatus.PROCESSING, TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING_ADMIN_APPROVAL] },
             createdAt: { $gte: today, $lt: tomorrow }
         });
 
@@ -2275,7 +2375,7 @@ class PaymentService {
         const existingPendingWithdrawal = await TransactionModel.findOne({
             userId: new Types.ObjectId(userId.toString()),
             type: TransactionType.WITHDRAWAL,
-            status: { $in: [TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
+            status: { $in: [TransactionStatus.PENDING_OTP_VERIFICATION, TransactionStatus.PENDING_ADMIN_APPROVAL, TransactionStatus.PENDING, TransactionStatus.PROCESSING] },
             'metadata.payoutMethod': 'nowpayments'
         });
 
@@ -2358,15 +2458,27 @@ class PaymentService {
                 cryptoCurrency: userDetails.cryptoWalletCurrency,
                 usdAmount: usdAmount, // Store original USD amount
                 netAmountRequested: usdAmount,
-                payoutCurrency: userDetails.cryptoWalletCurrency
+                payoutCurrency: userDetails.cryptoWalletCurrency,
+                reservation: { amount: Math.round(totalRequiredBalanceInUSD * 100) / 100, currency: 'USD', state: 'requested' },
             },
             verificationCode,
             verificationExpiry,
             ipAddress,
-            deviceInfo
+            deviceInfo,
+            idempotencyKey,
         };
 
-        const transaction = await transactionRepository.create(transactionInput);
+        let transaction: ITransaction;
+        try {
+            transaction = await transactionRepository.create(transactionInput);
+        } catch (createError: any) {
+            const replayed = createError?.code === 11000 ? await this.findWithdrawalByIdempotencyKey(userId, idempotencyKey) : null;
+            if (replayed) return { success: true, ...replayed };
+            throw createError;
+        }
+
+        // Hold amount + fee in USD until the payout's final answer.
+        await this.reserveOrFail(transaction);
 
         // Send OTP notification via email or SMS
         const userName = userDetails.name || 'User';
@@ -2458,59 +2570,49 @@ class PaymentService {
                 throw new Error('Transaction not found for payout webhook');
             }
 
-            // Skip if already in final state
-            if (transaction.status === TransactionStatus.COMPLETED || transaction.status === TransactionStatus.FAILED) {
-                log.warn(`Payout webhook received for already processed transaction: ${transaction.transactionId}, Status: ${transaction.status}`);
-                return;
-            }
-
             // Map NOWPayments payout status to internal status
             const newStatus = nowPaymentsService.mapPayoutStatusToInternal(status);
 
-            // Update transaction status
-            await transactionRepository.updateById(transaction._id.toString(), {
-                status: newStatus,
-                metadata: {
-                    ...transaction.metadata,
-                    payoutWebhookPayload: payload,
-                    transactionHash: hash,
-                    finalAmount: parseFloat(amount || '0'), // Convert string amount to number
-                    finalCurrency: currency,
-                    finalAddress: address,
-                    batchWithdrawalId: batch_withdrawal_id,
-                    extraId: extra_id,
-                    error: error,
-                    payoutDescription: payout_description,
-                    uniqueExternalId: unique_external_id,
-                    isRequestPayouts: is_request_payouts,
-                    createdAt: created_at,
-                    requestedAt: requested_at,
-                    updatedAt: updated_at,
-                    completedAt: newStatus === TransactionStatus.COMPLETED ? new Date() : undefined
-                }
-            });
+            const webhookFields = {
+                'metadata.payoutWebhookPayload': payload,
+                'metadata.transactionHash': hash,
+                'metadata.finalAmount': parseFloat(amount || '0'),
+                'metadata.finalCurrency': currency,
+                'metadata.finalAddress': address,
+                'metadata.batchWithdrawalId': batch_withdrawal_id,
+                'metadata.extraId': extra_id,
+                'metadata.error': error,
+                'metadata.uniqueExternalId': unique_external_id,
+            };
 
-            log.info(`Transaction ${transaction.transactionId} status updated to ${newStatus} via NOWPayments payout webhook.`);
+            if (transaction.type !== TransactionType.WITHDRAWAL) {
+                log.info(`Transaction ${transaction.transactionId} is not a withdrawal, skipping`);
+                return;
+            }
 
-            // Handle balance updates for withdrawal transactions
-            if (transaction.type === 'withdrawal') {
-                if (newStatus === TransactionStatus.COMPLETED) {
-                    // For successful crypto withdrawals, debit the user's USD balance
-                    // This is the final deduction when the payout is confirmed successful
-                    const totalAmountToDebit = -(transaction.amount + (transaction.fee || 0));
-
-                    await userServiceClient.updateUserUsdBalance(transaction.userId.toString(), totalAmountToDebit);
-                    log.info(`Debited ${Math.abs(totalAmountToDebit)} USD from user ${transaction.userId.toString()} for completed NOWPayments withdrawal`);
+            // Conditional transitions: a replayed or out-of-order event moves nothing.
+            if (newStatus === TransactionStatus.COMPLETED) {
+                const done = await completeWithdrawal(transaction.transactionId, {
+                    from: COMPLETABLE_STATUSES, source: 'nowpayments-payout', set: { ...webhookFields, 'metadata.completedAt': new Date() },
+                });
+                if (done) {
+                    log.info(`NOWPayments withdrawal ${transaction.transactionId} completed; USD wallet settled (amount + fee).`);
                     pushWithdrawalResult(transaction, 'completed');
-
-                } else if (newStatus === TransactionStatus.FAILED) {
-                    // For failed withdrawals, only update transaction status
-                    // No balance refund needed since balance is only deducted on success
-                    log.info(`NOWPayments withdrawal failed/rejected for transaction ${transaction.transactionId}. No balance changes needed.`);
+                }
+            } else if (newStatus === TransactionStatus.FAILED) {
+                const ended = await endWithdrawal(transaction.transactionId, {
+                    from: COMPLETABLE_STATUSES, to: TransactionStatus.FAILED, set: webhookFields, reason: 'nowpayments_failed',
+                });
+                if (ended) {
+                    log.info(`NOWPayments withdrawal failed/rejected for transaction ${transaction.transactionId}. Reservation released, balance never debited.`);
                     pushWithdrawalResult(transaction, 'failed');
                 }
             } else {
-                log.info(`Transaction ${transaction.transactionId} is not a withdrawal, skipping balance update`);
+                await TransactionModel.updateOne(
+                    { transactionId: transaction.transactionId, status: { $in: COMPLETABLE_STATUSES } },
+                    { $set: webhookFields },
+                );
+                log.info(`NOWPayments payout ${transaction.transactionId}: non-final status ${status}, no transition.`);
             }
 
         } catch (error: any) {
@@ -3779,8 +3881,16 @@ class PaymentService {
         }
     }
 
-    public async handleMoneyFusionPayinWebhook(payload: any): Promise<void> {
-        const { event, tokenPay, Montant, personal_Info } = payload;
+    /**
+     * MoneyFusion payin webhook. MF signs nothing, so the webhook is only a hint
+     * (REC-06): the outcome applied is the one MF's own status endpoint
+     * (paiementNotif/<tokenPay>) gives, and a success is applied only when its
+     * amount and our session (personal_Info) match the intent; otherwise the
+     * intent is left as it is and a case goes to finance. `verified` is that
+     * status answer when the caller (PayinReconciler) already has it.
+     */
+    public async handleMoneyFusionPayinWebhook(payload: any, verified?: any): Promise<void> {
+        const { event, tokenPay } = payload || {};
 
         // MoneyFusion delivers both payin AND payout webhooks to the same globally-
         // configured URL in their dashboard, ignoring the per-payout webhookUrl we pass
@@ -3792,52 +3902,98 @@ class PaymentService {
         }
 
         log.info(`MoneyFusion payin webhook received: event=${event}, tokenPay=${tokenPay}`);
+        if (!tokenPay) return;
 
         const paymentIntent = await paymentIntentRepository.findByGatewayPaymentId(tokenPay, PaymentGateway.MONEYFUSION);
         if (!paymentIntent) {
             log.warn(`MoneyFusion payin webhook: Payment intent not found for token ${tokenPay}`);
             return;
         }
-
-        const status = moneyFusionService.mapPayinWebhookStatus(event);
-        let newPaymentStatus: PaymentStatus;
-
-        if (status === 'completed') {
-            newPaymentStatus = PaymentStatus.SUCCEEDED;
-        } else if (status === 'failed') {
-            newPaymentStatus = PaymentStatus.FAILED;
-        } else {
-            newPaymentStatus = PaymentStatus.PROCESSING;
-        }
-
-        // Avoid processing duplicate events
-        if (paymentIntent.status === newPaymentStatus) {
-            log.info(`MoneyFusion payin webhook: Status already ${newPaymentStatus} for session ${paymentIntent.sessionId}, skipping`);
-            return;
-        }
-
         if (paymentIntent.status === PaymentStatus.SUCCEEDED || paymentIntent.status === PaymentStatus.FAILED) {
             log.info(`MoneyFusion payin webhook: Payment already in final state ${paymentIntent.status}, skipping`);
             return;
         }
 
+        const hinted = moneyFusionService.mapPayinWebhookStatus(event);
+        if (hinted === 'pending') {
+            log.info(`MoneyFusion payin webhook: pending hint for ${paymentIntent.sessionId}, nothing to apply`);
+            return;
+        }
+
+        // Ask MoneyFusion what really happened (sandbox references are their own answer).
+        let data = verified;
+        if (!data) {
+            if (sandbox.isSandboxActive() && sandbox.isSandboxRef(tokenPay)) {
+                data = { statut: sandbox.refStatusNow(tokenPay) === 'completed' ? 'paid' : 'failure', sandbox: true };
+            } else {
+                data = await moneyFusionService.checkPaymentStatus(tokenPay);
+            }
+        }
+        if (!data) {
+            log.warn(`MoneyFusion payin ${paymentIntent.sessionId}: status endpoint gave no answer; webhook "${event}" not applied (the reconciler retries).`);
+            return;
+        }
+        const statut = String(data.statut ?? data.status ?? '').toLowerCase();
+        const confirmed = statut === 'paid' || statut === 'success' || statut === 'completed';
+        const refused = statut === 'failure' || statut === 'cancelled' || statut === 'no paid';
+        if (!confirmed && !refused) {
+            log.info(`MoneyFusion payin ${paymentIntent.sessionId}: MF says "${statut}", webhook "${event}" not applied`);
+            return;
+        }
+
+        if (confirmed && !data.sandbox) {
+            const check = this.moneyFusionPayinConcordance(paymentIntent, data);
+            if (!check.ok) {
+                log.error(`MoneyFusion payin ${paymentIntent.sessionId} confirmed by MF but not concordant: ${check.reason}. Sent to review.`);
+                await PaymentIntentModel.updateOne(
+                    { sessionId: paymentIntent.sessionId },
+                    { $set: { 'metadata.mfReview': { at: new Date(), reason: check.reason, montant: data.Montant ?? null } } },
+                );
+                void openSupportCase({
+                    type: check.amountMismatch ? 'amount_mismatch' : 'activation',
+                    dedupKey: `payin:${paymentIntent.sessionId}:${check.amountMismatch ? 'amount' : 'review'}`,
+                    severity: 'critical',
+                    subject: { userId: String(paymentIntent.userId), sessionId: paymentIntent.sessionId, gateway: 'moneyfusion' },
+                    summary: `Paiement MoneyFusion confirmé mais non concordant (${check.reason}) : non appliqué, à vérifier.`,
+                    details: { tokenPay, montant: data.Montant ?? null, expected: check.expected },
+                });
+                return;
+            }
+        }
+
+        const newPaymentStatus = confirmed ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED;
         // MoneyFusion reports Montant in the currency MF expected for the payin
         // country (see MF_PAYIN_CURRENCY) — USD for RDC, GNF for Guinée-Conakry,
         // XAF/XOF elsewhere. We recorded the expected currency on the intent's
-        // metadata when initiating; use it here so paidCurrency reflects reality
-        // and downstream code can distinguish raw paidAmount from our XAF books.
+        // metadata when initiating; use it here so paidCurrency reflects reality.
         const paidCurrency = paymentIntent.metadata?.mfPayinCurrency || paymentIntent.currency;
+        const paidAmount = Number(data.Montant ?? payload.Montant ?? paymentIntent.amount);
 
-        const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-            status: newPaymentStatus,
-            paidAmount: Montant,
-            paidCurrency,
-            webhookHistory: [...(paymentIntent.webhookHistory || []), { timestamp: new Date(), status: newPaymentStatus, providerData: payload }],
-        } as any);
-
-        if (updated && (updated.status === PaymentStatus.SUCCEEDED || updated.status === PaymentStatus.FAILED)) {
-            await this.handlePaymentCompletion(updated);
+        // One conditional write: of two deliveries (or a delivery and the reconciler) only one completes it.
+        const updated = await paymentIntentRepository.addWebhookEvent(paymentIntent.sessionId, newPaymentStatus, { ...payload, verifiedStatus: statut });
+        if (!updated) {
+            log.info(`MoneyFusion payin ${paymentIntent.sessionId}: already moved by another delivery`);
+            return;
         }
+        await PaymentIntentModel.updateOne({ sessionId: paymentIntent.sessionId }, { $set: { paidAmount, paidCurrency } });
+        await this.handlePaymentCompletion({ ...(updated as any).toObject?.() ?? updated, paidAmount, paidCurrency } as IPaymentIntent);
+    }
+
+    /** Amount (to the unit) and our session id in MF's status answer must match the intent. */
+    private moneyFusionPayinConcordance(intent: IPaymentIntent, data: any): { ok: boolean; amountMismatch: boolean; reason: string; expected: number } {
+        const expected = Number(intent.metadata?.mfPayinAmount ?? intent.amount ?? 0);
+        const paid = Number(String(data?.Montant ?? data?.montant ?? '').replace(/[^\d.]/g, ''));
+        if (!Number.isFinite(paid) || !(paid > 0)) {
+            return { ok: false, amountMismatch: false, reason: 'montant absent de la réponse MoneyFusion', expected };
+        }
+        if (paid < expected - 1) {
+            return { ok: false, amountMismatch: true, reason: `montant payé ${paid}, attendu ${expected}`, expected };
+        }
+        const info = Array.isArray(data?.personal_Info) ? data.personal_Info[0] : data?.personal_Info;
+        if (info?.sessionId && String(info.sessionId) !== intent.sessionId) {
+            return { ok: false, amountMismatch: false, reason: `session ${info.sessionId} au lieu de ${intent.sessionId}`, expected };
+        }
+        return { ok: true, amountMismatch: false, reason: 'concordant', expected };
     }
 
     /**
@@ -3925,31 +4081,87 @@ class PaymentService {
 
         const status = moneyFusionService.mapPayoutWebhookStatus(event);
 
-        // Debit-on-success pattern (matches FeexPay handler at processFeexpayWebhookUpdate).
-        // The wallet is NOT debited at admin-approval time; it is debited only when the
-        // provider confirms a successful payout. On failure, no refund is needed.
+        // MoneyFusion signs nothing and has no payout status API: the webhook is a
+        // hint (REC-06). It completes a withdrawal only when its amount AND number
+        // match what we sent, on top of the tokenPay that found it; anything less
+        // goes to review with the funds still reserved. Debit-on-success: the
+        // wallet is debited (reservation converted) only on that completion.
         if (status === 'completed') {
-            if (transaction.status !== TransactionStatus.COMPLETED) {
-                await transactionRepository.update(transaction._id, {
-                    status: TransactionStatus.COMPLETED,
-                    'metadata.payoutCompletedAt': new Date().toISOString(),
+            const evidence = this.moneyFusionPayoutConcordance(transaction, payload);
+            if (!evidence.concordant) {
+                log.warn(`MoneyFusion payout webhook for ${transaction.transactionId} not applied: ${evidence.reason}`);
+                await TransactionModel.updateOne(
+                    { transactionId: transaction.transactionId },
+                    { $set: { 'metadata.mfWebhookReview': { at: new Date(), event, reason: evidence.reason, received: evidence.received } } },
+                );
+                void openSupportCase({
+                    type: evidence.amountMismatch ? 'amount_mismatch' : 'withdrawal_divergence',
+                    dedupKey: `withdrawal:${transaction.transactionId}:divergence`,
+                    severity: evidence.amountMismatch ? 'critical' : 'warning',
+                    subject: { userId: transaction.userId.toString(), transactionId: transaction.transactionId, gateway: 'moneyfusion' },
+                    summary: `Webhook MoneyFusion « terminé » non appliqué : ${evidence.reason}. Vérifier sur le tableau de bord MoneyFusion (tokenPay ${tokenPay}).`,
+                    details: { tokenPay, event, received: evidence.received, expected: evidence.expected },
                 });
-                const amountToDebit = -Math.abs(transaction.amount);
-                await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
-                log.info(`MoneyFusion payout completed: ${transaction.transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
+                return;
+            }
+            const done = await completeWithdrawal(transaction.transactionId, {
+                from: COMPLETABLE_STATUSES, source: 'moneyfusion-payout-webhook',
+                set: { 'metadata.mfWebhookEvidence': evidence.received },
+            });
+            if (done) {
+                log.info(`MoneyFusion payout completed: ${transaction.transactionId}; wallet settled for user ${transaction.userId}`);
                 pushWithdrawalResult(transaction, 'completed');
             }
         } else if (status === 'failed') {
-            if (transaction.status !== TransactionStatus.FAILED) {
-                await this.handleFailedWithdrawal(
-                    transaction.transactionId,
-                    `MoneyFusion reported failure: ${event}`,
-                    tokenPay
-                );
-            }
+            await this.handleFailedWithdrawal(
+                transaction.transactionId,
+                `MoneyFusion reported failure: ${event}`,
+                tokenPay
+            );
         } else {
             log.info(`MoneyFusion payout webhook: pending/no-op for ${transaction.transactionId} (event="${event}"), no status change`);
         }
+    }
+
+    /**
+     * Does a MoneyFusion payout webhook carry the amount and the number we sent?
+     * Field names vary between MF payloads, so several spellings are read. The
+     * amount may be MF's gross figure (what its dashboard shows) or the net we
+     * sent; both are accepted to the franc. Sandbox references are their own proof.
+     */
+    private moneyFusionPayoutConcordance(tx: ITransaction, payload: any): {
+        concordant: boolean; amountMismatch: boolean; reason: string;
+        received: Record<string, unknown>; expected: Record<string, unknown>;
+    } {
+        const tokenPay = payload?.tokenPay;
+        if (sandbox.isSandboxActive() && sandbox.isSandboxRef(tokenPay)) {
+            return { concordant: true, amountMismatch: false, reason: 'sandbox reference', received: { tokenPay }, expected: {} };
+        }
+        const pick = (...vals: unknown[]) => vals.find((v) => v !== undefined && v !== null && v !== '');
+        const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
+        const rawAmount = pick(payload?.Montant, payload?.montant, payload?.amount, data.Montant, data.montant, data.amount);
+        const rawNumber = pick(payload?.numeroSend, payload?.phone, payload?.numero, payload?.numeroCompte, payload?.number,
+            data.numeroSend, data.phone, data.numero, data.numeroCompte);
+        const gross = Math.abs(tx.amount);
+        const net = Math.round((gross - (tx.fee || 0)) * 100) / 100;
+        const amount = rawAmount === undefined ? undefined : Number(String(rawAmount).replace(/[^\d.]/g, ''));
+        const digits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+        const ours = digits(tx.metadata?.accountInfo?.fullMomoNumber);
+        const theirs = digits(rawNumber);
+        const amountOk = amount !== undefined && Number.isFinite(amount) && (Math.abs(amount - net) <= 1 || Math.abs(amount - gross) <= 1);
+        const numberOk = !!theirs && !!ours && theirs.slice(-8) === ours.slice(-8);
+        const received = { tokenPay, amount: rawAmount ?? null, number: rawNumber ? `…${theirs.slice(-4)}` : null };
+        const expected = { net, gross, number: ours ? `…${ours.slice(-4)}` : null };
+        if (rawAmount !== undefined && !amountOk) {
+            return { concordant: false, amountMismatch: true, reason: `montant reçu ${rawAmount}, attendu ${net} (net) ou ${gross} (brut)`, received, expected };
+        }
+        if (rawNumber !== undefined && !numberOk) {
+            return { concordant: false, amountMismatch: false, reason: 'numéro du webhook différent du numéro de retrait', received, expected };
+        }
+        if (!amountOk || !numberOk) {
+            return { concordant: false, amountMismatch: false, reason: 'le webhook ne contient pas le montant et le numéro à comparer', received, expected };
+        }
+        return { concordant: true, amountMismatch: false, reason: 'tokenPay, montant et numéro concordants', received, expected };
     }
 
     /**
@@ -4006,20 +4218,27 @@ class PaymentService {
             };
         }
 
-        // Apply the same bookkeeping as the (never-arriving) success webhook would.
-        await transactionRepository.update(transaction._id, {
-            status: TransactionStatus.COMPLETED,
-            'metadata.payoutCompletedAt': new Date().toISOString(),
-            'metadata.manualCompletion': {
-                by: adminId,
-                at: new Date().toISOString(),
-                notes: adminNotes || null,
-                reason: 'MoneyFusion does not deliver payout webhooks; admin confirmed payout out-of-band',
+        // Apply the same bookkeeping as the (never-arriving) success webhook would,
+        // as one conditional transition: two clicks (or a click racing a webhook)
+        // debit once.
+        const done = await completeWithdrawal(transactionId, {
+            from: [TransactionStatus.PROCESSING, TransactionStatus.PENDING],
+            source: `admin-manual-complete:${adminId}`,
+            set: {
+                'metadata.manualCompletion': {
+                    by: adminId,
+                    at: new Date().toISOString(),
+                    notes: adminNotes || null,
+                    reason: 'MoneyFusion does not deliver payout webhooks; admin confirmed payout out-of-band',
+                },
             },
         });
-        const amountToDebit = -Math.abs(transaction.amount);
-        await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
-        log.info(`Admin ${adminId} manually completed MoneyFusion withdrawal ${transactionId}; debited ${amountToDebit} from user ${transaction.userId}`);
+        if (!done) {
+            const current = await transactionRepository.findByTransactionId(transactionId);
+            if (current?.status === TransactionStatus.COMPLETED) return { success: true, transaction: current };
+            return { success: false, error: `Withdrawal status changed meanwhile (now '${current?.status}'); nothing applied.` };
+        }
+        log.info(`Admin ${adminId} manually completed MoneyFusion withdrawal ${transactionId}; wallet settled for user ${transaction.userId}`);
         pushWithdrawalResult(transaction, 'completed');
 
         const updated = await transactionRepository.findByTransactionId(transactionId);
@@ -4168,21 +4387,23 @@ class PaymentService {
 
         // Apply based on CinetPay's verdict
         if (cinetpayStatus === 'completed') {
-            await transactionRepository.update(transaction._id, {
-                status: TransactionStatus.COMPLETED,
-                'metadata.payoutCompletedAt': new Date().toISOString(),
-                'metadata.reconciliation': {
+            const done = await completeWithdrawal(transactionId, {
+                from: [TransactionStatus.PROCESSING, TransactionStatus.PENDING],
+                source: `admin-reconcile-cinetpay:${adminId}`,
+                set: { 'metadata.reconciliation': {
                     by: adminId,
                     at: new Date().toISOString(),
                     source: 'CinetPay status API',
                     cinetpayStatus,
                     cinetpayComment: verified.comment || null,
                     reason: 'CinetPay never called notify webhook; verified via status API per their docs recommendation',
-                },
+                } },
             });
-            const amountToDebit = -Math.abs(transaction.amount);
-            await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
-            log.info(`Admin ${adminId} reconciled CinetPay withdrawal ${transactionId} as COMPLETED; debited ${amountToDebit} from user ${transaction.userId}`);
+            if (!done) {
+                const current = await transactionRepository.findByTransactionId(transactionId);
+                return { success: true, action: 'no-op', cinetpayStatus, transaction: current };
+            }
+            log.info(`Admin ${adminId} reconciled CinetPay withdrawal ${transactionId} as COMPLETED; wallet settled for user ${transaction.userId}`);
             pushWithdrawalResult(transaction, 'completed');
             const updated = await transactionRepository.findByTransactionId(transactionId);
             return { success: true, action: 'completed', cinetpayStatus, transaction: updated };
@@ -5694,6 +5915,10 @@ class PaymentService {
                 }
             });
 
+            // Hold the member's money before anything is sent (same rule as the
+            // member flow): refused when balance - debt - reserved does not cover it.
+            await this.reserveOrFail(withdrawalTransaction);
+
             let payoutPromise: Promise<CinetPayPayoutResult | FeexPayPayoutResult>;
 
             if (providerName === 'CinetPay') {
@@ -5749,28 +5974,25 @@ class PaymentService {
 
                 if (payoutRes.success) {
                     log.info(`${finalProviderName} payout initiated for admin-Tx ${withdrawalTransaction.transactionId}. Provider Tx ID: ${providerTxId}`);
-                    transactionRepository.update(withdrawalTransaction._id, {
+                    // Reference always stored; PENDING → PROCESSING only if no webhook got there first.
+                    TransactionModel.updateOne({ transactionId: withdrawalTransaction.transactionId }, { $set: {
                         externalTransactionId: providerTxId,
                         serviceProvider: finalProviderName,
-                        status: TransactionStatus.PROCESSING, // Mark as processing externally
-                        metadata: {
-                            ...(withdrawalTransaction.metadata || {}),
-                            payoutInitiationStatus: payoutRes.status,
-                            payoutMessage: payoutMessage,
-                            // Store provider specific lot/reference if available
-                            providerSpecificRef: (payoutRes as any).lot || (payoutRes as any).feexpayReference
-                        }
-                    }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} with ${finalProviderName} payout details:`, err));
+                        'metadata.payoutInitiationStatus': payoutRes.status,
+                        'metadata.payoutMessage': payoutMessage,
+                        'metadata.providerSpecificRef': (payoutRes as any).lot || (payoutRes as any).feexpayReference,
+                    } }).then(() => TransactionModel.updateOne(
+                        { transactionId: withdrawalTransaction.transactionId, status: TransactionStatus.PENDING },
+                        { $set: { status: TransactionStatus.PROCESSING } },
+                    )).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} with ${finalProviderName} payout details:`, err));
                 } else {
                     log.error(`${finalProviderName} payout initiation failed for admin-Tx ${withdrawalTransaction.transactionId}: ${payoutMessage}`);
-                    // Mark transaction as failed, no refund needed as balance wasn't debited.
-                    transactionRepository.update(withdrawalTransaction._id, {
-                        status: TransactionStatus.FAILED,
-                        metadata: {
-                            ...(withdrawalTransaction.metadata || {}),
-                            failureReason: `External payout failed (Admin): ${payoutMessage}`,
-                            payoutError: payoutMessage
-                        }
+                    // Failed, reservation released; no refund needed as balance wasn't debited.
+                    endWithdrawal(withdrawalTransaction.transactionId, {
+                        from: [TransactionStatus.PENDING],
+                        to: TransactionStatus.FAILED,
+                        set: { 'metadata.failureReason': `External payout failed (Admin): ${payoutMessage}`, 'metadata.payoutError': payoutMessage },
+                        reason: 'admin_payout_initiation_failed',
                     }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} status to FAILED after payout failure:`, err));
                     // Send notification for failed payout initiation
                     if (userDetails?.email) {
@@ -5789,26 +6011,19 @@ class PaymentService {
             })
                 .catch(err => {
                     log.error(`Unhandled error during payout for admin-Tx ${withdrawalTransaction.transactionId}:`, err);
-                    transactionRepository.update(withdrawalTransaction._id, {
-                        status: TransactionStatus.FAILED,
-                        metadata: {
-                            ...(withdrawalTransaction.metadata || {}),
-                            failureReason: `Internal payout system error (Admin): ${err.message}`
-                        }
-                    }).catch(err => log.error(`Failed to update admin-Tx ${withdrawalTransaction.transactionId} status to FAILED after system error:`, err));
-                    // Send notification for system error during payout initiation
-                    if (userDetails?.email) {
-                        notificationService.sendTransactionFailureEmail({
-                            email: userDetails.email,
-                            name: userDetails.name || 'Customer',
-                            transactionId: withdrawalTransaction.transactionId,
-                            transactionType: 'withdrawal',
-                            amount: netAmountDesired, // Net amount for notification
-                            currency: targetPayoutCurrency, // Target currency for notification
-                            date: new Date().toISOString(),
-                            reason: `System error during payout initiation (Admin): ${err.message}`
-                        }).catch(err => log.error(`Failed to send failure notification for admin-Tx ${withdrawalTransaction.transactionId}:`, err));
-                    }
+                    // Unknown whether the provider took it: keep PENDING with the money
+                    // reserved and open a case, rather than failing and releasing.
+                    TransactionModel.updateOne(
+                        { transactionId: withdrawalTransaction.transactionId, status: TransactionStatus.PENDING },
+                        { $set: { 'metadata.payoutError': `Internal payout system error (Admin): ${err.message}`, 'metadata.needsReview': true } },
+                    ).catch(e => log.error(`Failed to flag admin-Tx ${withdrawalTransaction.transactionId} after system error:`, e));
+                    void openSupportCase({
+                        type: 'unknown_status', dedupKey: `withdrawal:${withdrawalTransaction.transactionId}:unknown`, severity: 'warning',
+                        subject: { userId: targetUserId.toString(), transactionId: withdrawalTransaction.transactionId },
+                        summary: 'Retrait initié par un admin : erreur pendant l\'envoi au prestataire, statut inconnu (fonds réservés).',
+                        details: { error: err.message },
+                    });
+                    // No failure email here: the outcome is unknown, finance resolves the case.
                 });
 
             // Return details of the created transaction
@@ -6116,12 +6331,6 @@ class PaymentService {
             log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
         }
 
-        // Allow processing of failed transactions if the provider status is now successful
-        if (transaction.status === TransactionStatus.FAILED && providerStatusMessage !== 'completed') {
-            log.warn(`Payout webhook: Transaction ${internalTransactionId} already failed and provider status is not successful. Skipping update.`);
-            return;
-        }
-
         const isFromJob = fullProviderPayload?.fromJob === true;
         let cinetpayTransactionId: string | undefined;
 
@@ -6197,86 +6406,70 @@ class PaymentService {
             case 'processing':
             case 'pending':
             default:
-                // If CinetPay API says it's still pending/processing, we keep our internal status as such.
-                // We shouldn't receive 'pending'/'processing' on a final webhook, but handle defensively.
-                log.warn(`Webhook received for non-final API status (${verifiedPayoutStatus.status}). Keeping transaction as PROCESSING.`);
-                finalStatus = TransactionStatus.PROCESSING; // Or whatever represents "in progress"
-                break;
+                log.warn(`Webhook received for non-final API status (${verifiedPayoutStatus.status}). Keeping transaction as is.`);
+                await transactionRepository.releaseProcessingClaim(internalTransactionId, transaction.metadata?.webhookProcessingId);
+                return;
         }
 
-        // The gross amount debited from the user's balance is stored in the transaction in XAF
         const grossAmountToDebitInXAF = Math.abs(transaction.amount);
-        // The net amount and target currency for notification are in metadata
         const netAmountForNotification = transaction.metadata?.netAmountRequested || (grossAmountToDebitInXAF - (transaction.fee || 0));
         const targetCurrencyForNotification = transaction.metadata?.payoutCurrency || transaction.currency;
 
-
-        let updateStatus: TransactionStatus = finalStatus;
-        let updateMetadata: Record<string, any> = {
-            ...(transaction.metadata || {}),
-            providerWebhookStatus: finalStatus, // Reflects the *API-confirmed* status mapped to our enum
-            providerWebhookMessage: verifiedPayoutStatus?.comment || providerStatusMessage, // Use API comment, fallback to webhook message
-            providerRawWebhookData: fullProviderPayload, // Still store full raw data for audit
-            cinetpayApiStatus: verifiedPayoutStatus?.status, // Store the exact API status
-            cinetpayApiComment: verifiedPayoutStatus?.comment, // Store API comment
-            cinetpayOperator: verifiedPayoutStatus?.operator, // Store operator from API
+        const providerFields = {
+            'metadata.providerWebhookStatus': finalStatus,
+            'metadata.providerWebhookMessage': verifiedPayoutStatus?.comment || providerStatusMessage,
+            'metadata.providerRawWebhookData': fullProviderPayload,
+            'metadata.cinetpayApiStatus': verifiedPayoutStatus?.status,
+            'metadata.cinetpayApiComment': verifiedPayoutStatus?.comment,
+            'metadata.cinetpayOperator': verifiedPayoutStatus?.operator,
         };
 
-        const providerName = 'CinetPay'; // This webhook is specifically for CinetPay
-
-        if (finalStatus === TransactionStatus.COMPLETED) {
-            log.info(`Payout for transaction ${internalTransactionId} is COMPLETED. Debiting user balance.`);
-            try {
-                // Debit user's balance - allowing negative balance if insufficient
-                await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
-                log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
-                pushWithdrawalResult(transaction, 'completed');
-
-            } catch (balanceError: any) {
-                // DO NOT change the transaction status to FAILED. The payout was successful.
-                // This is a critical internal error that needs to be resolved separately.
-                log.error(`CRITICAL: The payout for transaction ${internalTransactionId} was SUCCESSFUL with the provider, but failed to debit the user's balance. Manual intervention required.`, balanceError);
-
-                // Add metadata to flag the issue without changing the transaction's final status.
-                updateMetadata.internalFailureReason = `Balance debit failed after provider success: ${balanceError.message}`;
-                updateMetadata.balanceUpdateFailed = true; // Add a specific flag for this issue.
-
-                // NOTE: updateStatus is NOT changed here. It remains COMPLETED.
-            }
-        } else if (finalStatus === TransactionStatus.FAILED) {
-            log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
-            if (transaction.metadata?.adminAction !== true) pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
-            updateMetadata.failureReason = `External payout failed: ${verifiedPayoutStatus?.comment || providerStatusMessage}`;
-
-            // Send failure notification (only if it's a regular user withdrawal)
-            // For admin-initiated direct payouts, the admin might get a different notification or none.
-            if (transaction.metadata?.adminAction !== true) { // If it's a user's withdrawal (not admin-initiated user withdrawal or direct payout)
-                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
-                if (userDetails?.email) {
-                    await notificationService.sendTransactionFailureEmail({
-                        email: userDetails.email,
-                        name: userDetails.name || 'Customer',
-                        transactionId: transaction.transactionId,
-                        transactionType: 'withdrawal',
-                        amount: netAmountForNotification,
-                        currency: targetCurrencyForNotification,
-                        date: new Date().toISOString(),
-                        reason: verifiedPayoutStatus?.comment || providerStatusMessage || 'External payout failed.'
-                    });
-                    log.info(`Failure notification sent for transaction ${internalTransactionId}.`);
+        try {
+            if (finalStatus === TransactionStatus.COMPLETED) {
+                // Conditional transition + one wallet settlement. A FAILED transaction may
+                // still complete here because CinetPay's status API (not the webhook) says so.
+                const done = await completeWithdrawal(internalTransactionId, {
+                    from: [...COMPLETABLE_STATUSES, TransactionStatus.FAILED],
+                    source: isFromJob ? 'cinetpay-status-job' : 'cinetpay-payout-webhook',
+                    set: providerFields,
+                });
+                if (done) {
+                    log.info(`Payout for transaction ${internalTransactionId} is COMPLETED; wallet settled (${grossAmountToDebitInXAF} XAF).`);
+                    pushWithdrawalResult(transaction, 'completed');
                 }
             } else {
-                log.info(`Skipping user failure notification for admin-initiated transaction ${internalTransactionId}.`);
-                // Optionally notify admin here about the direct payout failure
+                const ended = await endWithdrawal(internalTransactionId, {
+                    from: COMPLETABLE_STATUSES,
+                    to: TransactionStatus.FAILED,
+                    set: { ...providerFields, 'metadata.failureReason': `External payout failed: ${verifiedPayoutStatus?.comment || providerStatusMessage}` },
+                    reason: 'cinetpay_failed',
+                });
+                if (ended) {
+                    log.warn(`Payout for transaction ${internalTransactionId} is FAILED. Reservation released, no balance debit.`);
+                    if (transaction.metadata?.adminAction !== true) {
+                        pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
+                        const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                        if (userDetails?.email) {
+                            await notificationService.sendTransactionFailureEmail({
+                                email: userDetails.email,
+                                name: userDetails.name || 'Customer',
+                                transactionId: transaction.transactionId,
+                                transactionType: 'withdrawal',
+                                amount: netAmountForNotification,
+                                currency: targetCurrencyForNotification,
+                                date: new Date().toISOString(),
+                                reason: verifiedPayoutStatus?.comment || providerStatusMessage || 'External payout failed.'
+                            });
+                            log.info(`Failure notification sent for transaction ${internalTransactionId}.`);
+                        }
+                    } else {
+                        log.info(`Skipping user failure notification for admin-initiated transaction ${internalTransactionId}.`);
+                    }
+                }
             }
+        } finally {
+            await transactionRepository.releaseProcessingClaim(internalTransactionId, transaction.metadata?.webhookProcessingId).catch(() => undefined);
         }
-
-        // Update the transaction record with the final status and metadata
-        await transactionRepository.update(transaction._id, {
-            status: updateStatus,
-            metadata: updateMetadata
-        });
-        log.info(`Transaction ${internalTransactionId} status updated to ${updateStatus} based on webhook.`);
     }
 
     // This new or modified method would fetch the total count
@@ -6352,8 +6545,9 @@ class PaymentService {
                     feexpayResponse // Store the full FeexPay response
                 );
                 if (!updatedIntent) {
-                    log.error(`Failed to update PaymentIntent ${paymentIntent.sessionId} after FeexPay status check.`);
-                    throw new AppError('Failed to update payment intent status.', 500);
+                    // Another delivery moved it first (conditional write): report the current state.
+                    log.info(`PaymentIntent ${paymentIntent.sessionId} already moved by another delivery; no second completion.`);
+                    return (await paymentIntentRepository.findBySessionId(paymentIntent.sessionId)) || paymentIntent;
                 }
                 log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to ${newStatus} via FeexPay status check.`);
 
@@ -6366,13 +6560,11 @@ class PaymentService {
         } catch (error: any) {
             log.error(`Error checking FeexPay status for ${gatewayPaymentId}:`, error.response?.data || error.message);
             // If API call fails, update status to ERROR and log the error for debugging
-            await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-                status: PaymentStatus.ERROR,
-                metadata: {
-                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
-                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
-                }
-            });
+            // Never over a final state: a concurrent delivery may have just succeeded it.
+            await PaymentIntentModel.updateOne(
+                { sessionId: paymentIntent.sessionId, status: { $nin: [PaymentStatus.SUCCEEDED, PaymentStatus.FAILED] } },
+                { $set: { status: PaymentStatus.ERROR, 'metadata.feexpayStatusCheckError': error.response?.data || error.message } },
+            );
             throw new AppError('Failed to retrieve or update FeexPay transaction status.', error.response?.status || 500);
         }
     }
@@ -6470,8 +6662,8 @@ class PaymentService {
                     feexpayResponse // Store the full FeexPay response
                 );
                 if (!updatedIntent) {
-                    log.error(`Failed to update PaymentIntent ${paymentIntent.sessionId} after FeexPay status check.`);
-                    throw new AppError('Failed to update payment intent status internally.', 500);
+                    log.info(`PaymentIntent ${paymentIntent.sessionId} already moved by another delivery; no second completion.`);
+                    return (await paymentIntentRepository.findBySessionId(paymentIntent.sessionId)) || paymentIntent;
                 }
                 log.info(`PaymentIntent ${paymentIntent.sessionId} status updated to ${newStatus} via FeexPay status check.`);
 
@@ -6484,13 +6676,11 @@ class PaymentService {
         } catch (error: any) {
             log.error(`Error checking FeexPay status for ${feexpayReference} (session ${sessionId}):`, error.response?.data || error.message);
             // If API call fails, update status to ERROR and log the error for debugging
-            await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-                status: PaymentStatus.ERROR,
-                metadata: {
-                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
-                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
-                }
-            });
+            // Never over a final state: a concurrent delivery may have just succeeded it.
+            await PaymentIntentModel.updateOne(
+                { sessionId: paymentIntent.sessionId, status: { $nin: [PaymentStatus.SUCCEEDED, PaymentStatus.FAILED] } },
+                { $set: { status: PaymentStatus.ERROR, 'metadata.feexpayStatusCheckError': error.response?.data || error.message } },
+            );
             throw new AppError('Failed to retrieve or update FeexPay transaction status. Please try again later.', error.response?.status || 500);
         }
     }
@@ -6624,122 +6814,158 @@ class PaymentService {
             throw new AppError('Internal transaction not found for FeexPay webhook.', 404);
         }
 
-        log.info(`Webhook details from service: internalTxId=${internalTransactionId}, feexpayRef=${feexpayReference}, status="${providerStatus}"`);
+        log.info(`Webhook details from service: internalTxId=${internalTransactionId}, feexpayRef=${feexpayReference}, status="${providerStatus}" (to be re-verified)`);
 
-        // ATOMIC CLAIM: Prevent race conditions where multiple webhook calls process the same transaction
-        // This atomically checks status AND marks the transaction as being processed
+        // Lease against a concurrent delivery of the same webhook (not what prevents a
+        // double debit: the conditional transitions below do).
         const transaction = await transactionRepository.claimTransactionForProcessing(
             internalTransactionId,
-            [TransactionStatus.COMPLETED] // Don't process if already completed
+            [TransactionStatus.COMPLETED]
         );
 
         if (!transaction) {
-            // Check if transaction exists but was already completed
             const existingTransaction = await transactionRepository.findByTransactionId(internalTransactionId);
             if (existingTransaction) {
                 if (existingTransaction.status === TransactionStatus.COMPLETED) {
-                    log.warn(`FeexPay Payout webhook: Transaction ${internalTransactionId} already completed (atomic check). Skipping duplicate processing.`);
+                    log.warn(`FeexPay Payout webhook: Transaction ${internalTransactionId} already completed. Skipping duplicate processing.`);
                     return;
                 }
-                // Transaction exists but couldn't be claimed for another reason
-                log.warn(`FeexPay Payout webhook: Transaction ${internalTransactionId} exists but could not be claimed. Status: ${existingTransaction.status}`);
+                log.warn(`FeexPay Payout webhook: Transaction ${internalTransactionId} is being processed by another delivery (status ${existingTransaction.status}).`);
                 return;
             }
             log.error(`FeexPay Payout webhook: Transaction ${internalTransactionId} not found in DB. Cannot process.`);
             throw new AppError('Internal transaction not found for webhook processing.', 404);
         }
 
-        if (transaction.type !== TransactionType.WITHDRAWAL) {
-            log.warn(`Payout webhook: Transaction ${internalTransactionId} is not a withdrawal. Skipping balance update but updating status.`);
-        }
+        try {
+            if (transaction.type !== TransactionType.WITHDRAWAL) {
+                log.warn(`FeexPay payout webhook: ${internalTransactionId} is not a withdrawal; ignored.`);
+                return;
+            }
 
-        // Allow processing of failed transactions if the provider status is now successful
-        if (transaction.status === TransactionStatus.FAILED && providerStatus !== 'completed') {
-            log.warn(`Payout webhook: Transaction ${internalTransactionId} already failed and provider status is not successful. Skipping update.`);
-            return;
-        }
+            // The webhook is unauthenticated: never act on its body. Ask FeexPay's
+            // payout status API about OUR stored reference and act on that answer.
+            const reference = transaction.externalTransactionId || feexpayReference;
+            if (!reference) {
+                log.error(`FeexPay payout webhook for ${internalTransactionId}: no reference to verify; ignored.`);
+                return;
+            }
+            if (transaction.externalTransactionId && feexpayReference && feexpayReference !== transaction.externalTransactionId) {
+                log.warn(`FeexPay payout webhook for ${internalTransactionId} carries reference ${feexpayReference}, ours is ${transaction.externalTransactionId}: verifying ours.`);
+            }
 
-        // The status from feexPayPayoutService is already mapped to our internal 'completed'/'failed' etc.
-        let finalStatus: TransactionStatus;
-        if (providerStatus === 'completed') {
-            finalStatus = TransactionStatus.COMPLETED;
-        } else if (providerStatus === 'failed') {
-            finalStatus = TransactionStatus.FAILED;
-        } else {
-            log.warn(`Received non-final FeexPay payout status for Tx ID ${internalTransactionId}: ${providerStatus}. Ignoring.`);
-            return; // Only process final states
-        }
-
-
-        const grossAmountToDebitInXAF = Math.abs(transaction.amount);
-        const netAmountForNotification = transaction.metadata?.netAmountRequested || (grossAmountToDebitInXAF - (transaction.fee || 0));
-        const targetCurrencyForNotification = transaction.metadata?.payoutCurrency || transaction.currency;
-
-        let updateStatus: TransactionStatus = finalStatus;
-        let updateMetadata: Record<string, any> = {
-            ...(transaction.metadata || {}),
-            providerWebhookStatus: providerStatus,
-            providerWebhookMessage: providerMessage,
-            providerRawWebhookData: payload,
-        };
-
-        if (finalStatus === TransactionStatus.COMPLETED) {
-            log.info(`Payout for transaction ${internalTransactionId} is COMPLETED. Debiting user balance.`);
+            let verified: FeexPayPayoutStatus;
             try {
-                // Debit user's balance - allowing negative balance if insufficient
-                await userServiceClient.updateUserBalance(transaction.userId.toString(), -grossAmountToDebitInXAF);
-                log.info(`User ${transaction.userId.toString()} balance debited by ${grossAmountToDebitInXAF} XAF for completed withdrawal ${internalTransactionId}.`);
-                pushWithdrawalResult(transaction, 'completed');
-
-                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
-                if (userDetails?.email) {
-                    await notificationService.sendTransactionSuccessEmail({
-                        email: userDetails.email,
-                        name: userDetails.name || 'Customer',
-                        transactionType: 'withdrawal',
-                        transactionId: transaction.transactionId,
-                        amount: netAmountForNotification,
-                        currency: targetCurrencyForNotification,
-                        date: new Date().toISOString(),
-                    });
-                    log.info(`Success notification sent for transaction ${internalTransactionId}.`);
-                }
-            } catch (balanceError: any) {
-                log.error(`CRITICAL: Failed to debit user balance for completed payout ${internalTransactionId}: ${balanceError.message}. Marking transaction as FAILED.`, balanceError);
-                updateStatus = TransactionStatus.FAILED;
-                updateMetadata.internalFailureReason = `Balance debit failed after provider success: ${balanceError.message}`;
+                verified = await feexPayPayoutService.checkPayoutStatus(reference);
+            } catch (verifyError: any) {
+                // Provider unreachable: nothing changes (the status checker retries). 503 lets FeexPay retry too.
+                log.error(`FeexPay payout status check failed for ${internalTransactionId} (${reference}): ${verifyError.message}`);
+                throw new AppError('Payout status could not be verified with FeexPay; will retry.', 503);
             }
-        } else if (finalStatus === TransactionStatus.FAILED) {
-            log.warn(`Payout for transaction ${internalTransactionId} is FAILED. No balance debit needed.`);
-            if (transaction.metadata?.adminAction !== true) pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
-            updateMetadata.failureReason = `External payout failed: ${providerMessage}`;
 
-            if (transaction.metadata?.adminAction !== true) {
-                const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
-                if (userDetails?.email) {
-                    await notificationService.sendTransactionFailureEmail({
-                        email: userDetails.email,
-                        name: userDetails.name || 'Customer',
-                        transactionId: transaction.transactionId,
-                        transactionType: 'withdrawal',
-                        amount: netAmountForNotification,
-                        currency: targetCurrencyForNotification,
-                        date: new Date().toISOString(),
-                        reason: providerMessage || 'External payout failed.'
-                    });
-                    log.info(`Failure notification sent for transaction ${internalTransactionId}.`);
-                }
+            // When we never stored a reference, the one in the webhook must belong to this transaction.
+            if (!transaction.externalTransactionId && verified.transactionId && verified.transactionId !== reference && verified.transactionId !== transaction.transactionId) {
+                log.error(`FeexPay reference ${reference} belongs to ${verified.transactionId}, not ${transaction.transactionId}: ignored.`);
+                void openSupportCase({
+                    type: 'withdrawal_divergence', dedupKey: `withdrawal:${transaction.transactionId}:divergence`, severity: 'warning',
+                    subject: { userId: transaction.userId.toString(), transactionId: transaction.transactionId, gateway: 'feexpay' },
+                    summary: 'Webhook FeexPay avec une référence qui ne correspond pas à ce retrait : ignoré.',
+                    details: { reference, verifiedFor: verified.transactionId },
+                });
+                return;
             }
+
+            const net = Math.round((Math.abs(transaction.amount) - (transaction.fee || 0)) * 100) / 100;
+            const expectedNet = Number(transaction.metadata?.netAmountRequested ?? net);
+            const providerAmount = Number(verified.amount);
+            // Outside [net requested, gross debited] (to the franc) is a mismatch: FeexPay
+            // may report its own fees on top of the net, never less than the net nor
+            // more than what the member is debited.
+            const amountMismatch = providerAmount > 0
+                && (providerAmount < Math.min(expectedNet, net) - 1 || providerAmount > Math.abs(transaction.amount) + 1);
+
+            const grossAmountToDebitInXAF = Math.abs(transaction.amount);
+            const netAmountForNotification = transaction.metadata?.netAmountRequested || (grossAmountToDebitInXAF - (transaction.fee || 0));
+            const targetCurrencyForNotification = transaction.metadata?.payoutCurrency || transaction.currency;
+            const providerFields = {
+                serviceProvider: transaction.serviceProvider || 'FeexPay',
+                externalTransactionId: transaction.externalTransactionId || reference,
+                'metadata.providerWebhookStatus': providerStatus,
+                'metadata.providerWebhookMessage': providerMessage,
+                'metadata.providerRawWebhookData': payload,
+                'metadata.feexpayVerifiedStatus': verified.status,
+                'metadata.feexpayVerifiedAmount': verified.amount,
+            };
+
+            if (verified.status === 'completed') {
+                if (amountMismatch) {
+                    log.error(`FeexPay payout ${internalTransactionId}: verified amount ${providerAmount} differs from ${expectedNet}; sent to review.`);
+                    void openSupportCase({
+                        type: 'amount_mismatch', dedupKey: `withdrawal:${transaction.transactionId}:amount`, severity: 'critical',
+                        subject: { userId: transaction.userId.toString(), transactionId: transaction.transactionId, gateway: 'feexpay' },
+                        summary: `FeexPay confirme un paiement de ${providerAmount} au lieu de ${expectedNet} : à vérifier avant toute finalisation.`,
+                        details: { reference, providerAmount, expectedNet },
+                    });
+                    return;
+                }
+                const done = await completeWithdrawal(internalTransactionId, {
+                    from: [...COMPLETABLE_STATUSES, TransactionStatus.FAILED],
+                    source: 'feexpay-payout-webhook (verified)',
+                    set: providerFields,
+                });
+                if (done) {
+                    log.info(`Payout for transaction ${internalTransactionId} verified COMPLETED with FeexPay; wallet settled.`);
+                    pushWithdrawalResult(transaction, 'completed');
+                    const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                    if (userDetails?.email) {
+                        await notificationService.sendTransactionSuccessEmail({
+                            email: userDetails.email,
+                            name: userDetails.name || 'Customer',
+                            transactionType: 'withdrawal',
+                            transactionId: transaction.transactionId,
+                            amount: netAmountForNotification,
+                            currency: targetCurrencyForNotification,
+                            date: new Date().toISOString(),
+                        });
+                    }
+                }
+            } else if (verified.status === 'failed') {
+                const ended = await endWithdrawal(internalTransactionId, {
+                    from: COMPLETABLE_STATUSES,
+                    to: TransactionStatus.FAILED,
+                    set: { ...providerFields, 'metadata.failureReason': `External payout failed: ${verified.comment || providerMessage}` },
+                    reason: 'feexpay_failed',
+                });
+                if (ended) {
+                    log.warn(`Payout for transaction ${internalTransactionId} verified FAILED with FeexPay. Reservation released, no balance debit.`);
+                    if (transaction.metadata?.adminAction !== true) {
+                        pushWithdrawalResult(transaction, 'failed', { saysNotDebited: true });
+                        const userDetails = await userServiceClient.getUserDetails(transaction.userId.toString());
+                        if (userDetails?.email) {
+                            await notificationService.sendTransactionFailureEmail({
+                                email: userDetails.email,
+                                name: userDetails.name || 'Customer',
+                                transactionId: transaction.transactionId,
+                                transactionType: 'withdrawal',
+                                amount: netAmountForNotification,
+                                currency: targetCurrencyForNotification,
+                                date: new Date().toISOString(),
+                                reason: verified.comment || providerMessage || 'External payout failed.'
+                            });
+                        }
+                    }
+                }
+            } else {
+                // Webhook says final, FeexPay says still in progress: trust FeexPay, change nothing.
+                log.warn(`FeexPay payout webhook for ${internalTransactionId} said "${providerStatus}" but the status API says "${verified.status}": no change.`);
+                await TransactionModel.updateOne(
+                    { transactionId: internalTransactionId, status: { $in: COMPLETABLE_STATUSES } },
+                    { $set: { 'metadata.feexpayVerifiedStatus': verified.status, 'metadata.lastUnconfirmedWebhook': { at: new Date(), status: providerStatus } } },
+                );
+            }
+        } finally {
+            await transactionRepository.releaseProcessingClaim(internalTransactionId, transaction.metadata?.webhookProcessingId).catch(() => undefined);
         }
-
-        // Update the transaction record with the final status and metadata
-        await transactionRepository.update(transaction._id, {
-            status: updateStatus,
-            serviceProvider: transaction.serviceProvider || 'FeexPay', // Set provider if not already set
-            externalTransactionId: transaction.externalTransactionId || feexpayReference,
-            metadata: updateMetadata
-        });
-        log.info(`Transaction ${internalTransactionId} status updated to ${updateStatus} based on FeexPay webhook.`);
     }
 
     /**
@@ -6762,20 +6988,19 @@ class PaymentService {
         }
 
         switch (update.newStatus) {
-            case 'completed':
-                await transactionRepository.update(transaction._id, {
-                    status: TransactionStatus.COMPLETED,
-                    'metadata.statusDetails': update.comment,
-                    'metadata.providerTransactionId': update.feexpayReference,
+            case 'completed': {
+                // Conditional: completes (and debits) once, whatever else reports it.
+                const done = await completeWithdrawal(update.internalTransactionId, {
+                    from: COMPLETABLE_STATUSES,
+                    source: 'feexpay-status-check',
+                    set: { 'metadata.statusDetails': update.comment, 'metadata.providerTransactionId': update.feexpayReference },
                 });
-
-                // DEBIT the user's balance now that the payout is confirmed.
-                const amountToDebit = -Math.abs(transaction.amount);
-                await userServiceClient.updateUserBalance(transaction.userId.toString(), amountToDebit);
-                log.info(`Transaction ${update.internalTransactionId} successfully marked as COMPLETED and debited ${amountToDebit} from user ${transaction.userId}.`);
-                pushWithdrawalResult(transaction, 'completed');
-
+                if (done) {
+                    log.info(`Transaction ${update.internalTransactionId} marked COMPLETED (FeexPay status API); wallet settled for user ${transaction.userId}.`);
+                    pushWithdrawalResult(transaction, 'completed');
+                }
                 break;
+            }
 
             case 'failed':
                 // If it failed, just mark as failed. No refund is needed as balance was never debited.
@@ -6788,11 +7013,14 @@ class PaymentService {
 
             case 'pending':
             case 'processing':
-                // If status is still pending/processing, just update the status details.
-                await transactionRepository.update(transaction._id, {
-                    status: update.newStatus === 'pending' ? TransactionStatus.PENDING : TransactionStatus.PROCESSING,
-                    'metadata.statusDetails': `FeexPay status is ${update.newStatus}. Last check: ${new Date().toISOString()}`,
-                });
+                // Still in progress at FeexPay: note it, never moving a final status back.
+                await TransactionModel.updateOne(
+                    { transactionId: update.internalTransactionId, status: { $in: COMPLETABLE_STATUSES } },
+                    { $set: {
+                        status: update.newStatus === 'pending' ? TransactionStatus.PENDING : TransactionStatus.PROCESSING,
+                        'metadata.statusDetails': `FeexPay status is ${update.newStatus}. Last check: ${new Date().toISOString()}`,
+                    } },
+                );
                 log.info(`Transaction ${update.internalTransactionId} is still in progress with status: ${update.newStatus}.`);
                 break;
         }
@@ -6806,27 +7034,24 @@ class PaymentService {
     private async handleFailedWithdrawal(transactionId: string, reason: string, providerTransactionId?: string): Promise<void> {
         log.error(`Processing failed withdrawal for transaction ${transactionId}. Reason: ${reason}`);
 
-        const transaction = await transactionRepository.findByTransactionId(transactionId);
-
-        if (!transaction) {
-            log.error(`Cannot process failed withdrawal: Transaction ${transactionId} not found.`);
-            return;
-        }
-
-        // Prevent multiple updates
-        if (transaction.status === TransactionStatus.FAILED) {
-            log.warn(`Transaction ${transactionId} is already marked as FAILED. Skipping update.`);
-            return;
-        }
-
-        // Update transaction status to FAILED
-        await transactionRepository.update(transaction._id, {
-            status: TransactionStatus.FAILED,
-            'metadata.failureReason': reason,
-            'metadata.providerTransactionId': providerTransactionId,
-            'metadata.statusDetails': `Failed at ${new Date().toISOString()}`
+        // One conditional write from an in-flight status; the reservation is
+        // released (never a refund: the balance was never debited) and the member
+        // told only by the call that actually failed it.
+        const transaction = await endWithdrawal(transactionId, {
+            from: COMPLETABLE_STATUSES,
+            to: TransactionStatus.FAILED,
+            set: {
+                'metadata.failureReason': reason,
+                'metadata.providerTransactionId': providerTransactionId,
+                'metadata.statusDetails': `Failed at ${new Date().toISOString()}`,
+            },
+            reason: 'payout_failed',
         });
-        log.info(`Transaction ${transactionId} successfully marked as FAILED.`);
+        if (!transaction) {
+            log.warn(`Transaction ${transactionId} not failed: not found or no longer in flight (already final). Skipping.`);
+            return;
+        }
+        log.info(`Transaction ${transactionId} successfully marked as FAILED; reservation released.`);
         // Debit-on-success: a mobile-money withdrawal that failed never touched the balance.
         pushWithdrawalResult(transaction, 'failed', { saysNotDebited: (transaction.metadata?.payoutCurrency || transaction.currency) !== 'USD' });
 
@@ -6916,21 +7141,36 @@ class PaymentService {
             // Stays PENDING_ADMIN_APPROVAL: it can be approved once the lock ends.
             await this.assertWithdrawalsNotLocked(transaction.userId, 'admin');
 
-            // Update transaction with approval details
-            transaction.approvedBy = new Types.ObjectId(adminId);
-            transaction.approvedAt = new Date();
-            transaction.status = TransactionStatus.PROCESSING;
-            if (adminNotes) {
-                transaction.adminNotes = adminNotes;
+            // Re-check the reservation before paying out: it must still hold the
+            // amount. A request from before reservations existed reserves now, and
+            // stays pending (not paid) when the available balance no longer covers it.
+            const reservation = await userServiceClient.getWithdrawalReservation(transactionId);
+            if (!reservation) {
+                const held = await reserveForWithdrawal(transaction);
+                if (!held) {
+                    return { success: false, error: 'Solde disponible insuffisant : la somme de ce retrait n\'est plus disponible (retrait laissé en attente).' };
+                }
+            } else if (reservation.state !== 'held') {
+                log.error(`Approval of ${transactionId} refused: reservation is ${reservation.state}`);
+                return { success: false, error: `La réservation de ce retrait n'est plus active (${reservation.state}).` };
             }
 
-            if (!transaction.metadata) {
-                transaction.metadata = {};
+            // One conditional write: two admins (or two clicks) approve once.
+            const approved = await transitionWithdrawal(
+                transactionId,
+                [TransactionStatus.PENDING_ADMIN_APPROVAL],
+                TransactionStatus.PROCESSING,
+                {
+                    approvedBy: new Types.ObjectId(adminId),
+                    approvedAt: new Date(),
+                    ...(adminNotes ? { adminNotes } : {}),
+                    'metadata.approvalStatus': 'approved',
+                    'metadata.approvedByAdmin': adminId,
+                },
+            );
+            if (!approved) {
+                return { success: false, error: 'Ce retrait a déjà été traité par ailleurs.' };
             }
-            transaction.metadata.approvalStatus = 'approved';
-            transaction.metadata.approvedByAdmin = adminId;
-
-            await transaction.save();
 
             // Notify user about approval
             try {
@@ -6957,16 +7197,16 @@ class PaymentService {
 
             if (withdrawalType === 'crypto') {
                 // Process crypto withdrawal
-                await this.processCryptoWithdrawalPayout(transaction);
+                await this.processCryptoWithdrawalPayout(approved);
             } else {
                 // Process mobile money withdrawal
-                await this.processMobileMoneyWithdrawalPayout(transaction);
+                await this.processMobileMoneyWithdrawalPayout(approved);
             }
 
             log.info(`[PAYOUT-TRACE] ${transactionId}: payout call returned`);
             log.info(`Withdrawal ${transactionId} approved by admin ${adminId} and processing initiated`);
 
-            return { success: true, transaction };
+            return { success: true, transaction: approved };
 
         } catch (error: any) {
             log.error(`Error approving withdrawal ${transactionId}:`, error);
@@ -7008,22 +7248,23 @@ class PaymentService {
             // when the payment provider confirms successful payout via webhook.
             // At PENDING_ADMIN_APPROVAL stage, no balance has been deducted yet.
 
-            // Update transaction with rejection details
-            transaction.rejectedBy = new Types.ObjectId(adminId);
-            transaction.rejectedAt = new Date();
-            transaction.rejectionReason = rejectionReason;
-            transaction.status = TransactionStatus.REJECTED_BY_ADMIN;
-            if (adminNotes) {
-                transaction.adminNotes = adminNotes;
+            // One conditional write; the reservation is released by the call that rejected.
+            const rejected = await endWithdrawal(transactionId, {
+                from: [TransactionStatus.PENDING_ADMIN_APPROVAL],
+                to: TransactionStatus.REJECTED_BY_ADMIN,
+                set: {
+                    rejectedBy: new Types.ObjectId(adminId),
+                    rejectedAt: new Date(),
+                    rejectionReason,
+                    ...(adminNotes ? { adminNotes } : {}),
+                    'metadata.approvalStatus': 'rejected',
+                    'metadata.rejectedByAdmin': adminId,
+                },
+                reason: 'rejected_by_admin',
+            });
+            if (!rejected) {
+                return { success: false, error: 'Ce retrait a déjà été traité par ailleurs.' };
             }
-
-            if (!transaction.metadata) {
-                transaction.metadata = {};
-            }
-            transaction.metadata.approvalStatus = 'rejected';
-            transaction.metadata.rejectedByAdmin = adminId;
-
-            await transaction.save();
 
             // Notify user about rejection
             try {
@@ -7042,9 +7283,9 @@ class PaymentService {
                 log.error(`Failed to send rejection notification for ${transactionId}:`, notifError);
             }
 
-            log.info(`Withdrawal ${transactionId} rejected by admin ${adminId}. No balance changes (balance only debited on provider confirmation).`);
+            log.info(`Withdrawal ${transactionId} rejected by admin ${adminId}. Reservation released; balance was never debited.`);
 
-            return { success: true, transaction };
+            return { success: true, transaction: rejected };
 
         } catch (error: any) {
             log.error(`Error rejecting withdrawal ${transactionId}:`, error);
@@ -7232,10 +7473,14 @@ class PaymentService {
             );
             log.error(`Error processing mobile money payout for ${transaction.transactionId}:`, error);
 
-            // Check if this is a timeout error - keep in PROCESSING for webhook confirmation
+            // Timeout or a connection cut after sending: the provider may have the
+            // payout. Keep PROCESSING (funds stay reserved) for the webhook / status
+            // checker — never fail and release on a timeout alone.
             const isTimeoutError = error.message?.includes('timeout') ||
                                    error.code === 'ECONNABORTED' ||
-                                   error.code === 'ETIMEDOUT';
+                                   error.code === 'ETIMEDOUT' ||
+                                   error.code === 'ECONNRESET' ||
+                                   /socket hang up|ECONNRESET|EPIPE/i.test(error.message || '');
 
             if (isTimeoutError) {
                 // Timeout doesn't mean the payout failed - it may still be processing on the provider side
@@ -7255,13 +7500,12 @@ class PaymentService {
                 return;
             }
 
-            // For non-timeout errors, mark as failed
-            await transactionRepository.update(transaction._id, {
-                status: TransactionStatus.FAILED,
-                metadata: {
-                    ...(transaction.metadata || {}),
-                    failureReason: error.message
-                }
+            // The provider refused it (or it never left): failed, reservation released.
+            await endWithdrawal(transaction.transactionId, {
+                from: [TransactionStatus.PROCESSING],
+                to: TransactionStatus.FAILED,
+                set: { 'metadata.failureReason': error.message },
+                reason: 'payout_initiation_failed',
             });
             throw error;
         }
@@ -7312,13 +7556,12 @@ class PaymentService {
 
         } catch (error: any) {
             log.error(`Error processing crypto payout for ${transaction.transactionId}:`, error);
-            // Update transaction to failed
-            await transactionRepository.update(transaction._id, {
-                status: TransactionStatus.FAILED,
-                metadata: {
-                    ...(transaction.metadata || {}),
-                    failureReason: error.message
-                }
+            // Failed at initiation: conditional transition, USD reservation released.
+            await endWithdrawal(transaction.transactionId, {
+                from: [TransactionStatus.PROCESSING],
+                to: TransactionStatus.FAILED,
+                set: { 'metadata.failureReason': error.message },
+                reason: 'crypto_payout_initiation_failed',
             });
             throw error;
         }

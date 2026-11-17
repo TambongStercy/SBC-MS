@@ -1,4 +1,5 @@
 import paymentService from '../../services/payment.service';
+import nowPaymentsService from '../../services/nowpayments.service';
 import { Request, Response, NextFunction } from 'express';
 import { IPaymentIntent, PaymentStatus } from '../../database/interfaces/IPaymentIntent';
 import { Currency, TransactionType } from '../../database/models/transaction.model';
@@ -603,6 +604,12 @@ export class PaymentController {
 
             log.info(`Received NOWPayments webhook for order: ${payload?.order_id}, payment: ${payload?.payment_id}`);
 
+            // Signature is mandatory: no header, no secret or a wrong HMAC → refused.
+            if (!nowPaymentsService.verifyIpnRequest((req as any).rawBody, payload, signature)) {
+                log.warn(`NOWPayments webhook refused: missing or invalid signature (order ${payload?.order_id})`);
+                return res.status(401).json({ success: false, message: 'Invalid signature' });
+            }
+
             if (!payload.payment_id || !payload.order_id) {
                 log.warn('NOWPayments webhook missing required fields');
                 return res.status(400).json({
@@ -631,6 +638,12 @@ export class PaymentController {
         try {
             const payload = req.body;
             const signature = req.headers['x-nowpayments-sig'] as string;
+
+            // Signature is mandatory: no header, no secret or a wrong HMAC → refused.
+            if (!nowPaymentsService.verifyIpnRequest((req as any).rawBody, payload, signature)) {
+                log.warn('NOWPayments payout webhook refused: missing or invalid signature');
+                return res.status(401).json({ success: false, message: 'Invalid signature' });
+            }
 
             // Handle both array and single object responses
             const payoutData = Array.isArray(payload) ? payload[0] : payload;
@@ -792,7 +805,7 @@ export class PaymentController {
             res.status(200).json(result);
         } catch (error: any) {
             log.error('Error creating crypto payout:', error);
-            res.status(500).json({
+            res.status(error.statusCode || 500).json({
                 success: false,
                 message: error.message || 'Failed to create crypto payout'
             });

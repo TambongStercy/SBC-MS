@@ -9,6 +9,7 @@ import logger from './utils/logger';
 import { paymentProcessor } from './jobs/paymentProcessor';
 import { transactionStatusChecker } from './jobs/transaction-status-checker.job';
 import { payinReconciler } from './jobs/payin-reconciler.job';
+import { financeReconciliationJob } from './jobs/finance-reconciliation.job';
 import { sandboxSweeper } from './jobs/sandbox-sweeper.job';
 import { warnIfMisconfigured } from './services/sandbox.service';
 import path from 'path';
@@ -46,8 +47,9 @@ app.use(helmet({
         },
     },
 })); // Security headers with custom CSP
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] })); // Cross-origin resource sharing
-app.use(express.json()); // Parse JSON request body
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'] })); // Cross-origin resource sharing
+// Keep the raw bytes: webhook signatures (NOWPayments IPN) are computed over them.
+app.use(express.json({ verify: (req, _res, buf) => { (req as any).rawBody = buf; } })); // Parse JSON request body
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request body
 
 // Set View Engine
@@ -137,6 +139,8 @@ async function startServer() {
         // looked at withdrawals, so a dropped payin webhook was permanent: the
         // payer was debited and the app went on asking them to pay.
         payinReconciler.start();
+        // Daily withdrawal reconciliation: opens support cases, never frees money on a timeout.
+        financeReconciliationJob.start();
 
         // Payment sandbox (preprod only — refused outright in production)
         warnIfMisconfigured();
@@ -158,6 +162,7 @@ async function startServer() {
             // Stop transaction status checker
             transactionStatusChecker.stop();
             payinReconciler.stop();
+            financeReconciliationJob.stop();
 
             // Stop sandbox sweeper (no-op unless the sandbox is active)
             sandboxSweeper.stop();

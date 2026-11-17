@@ -67,6 +67,21 @@ export interface ReferralStats {
     totalSubscribedReferrals: number;
 }
 
+/** Optional wallet-ledger fields sent with a balance change (user-service walletmovements). */
+export interface LedgerMovement {
+    reference?: string;
+    source?: string;
+    description?: string;
+}
+
+export type ReserveOutcome = 'reserved' | 'already_reserved' | 'insufficient' | 'conflict';
+export interface SettleOutcome {
+    status: 'converted' | 'already_converted' | 'debited_unreserved';
+    lateAfterRelease?: boolean;
+    reservedDrift?: boolean;
+    balanceAfter?: number;
+}
+
 // Locally define SubscriptionType to avoid direct dependency on user-service model
 type SubscriptionType = 'CLASSIQUE' | 'CIBLE' | 'RELANCE' | 'NONE';
 
@@ -175,9 +190,9 @@ class UserServiceClient {
      * Takes `amount` off the main balance in one conditional update (user-service
      * checks the balance net of debt). False when it does not cover it.
      */
-    async spendBalance(userId: string, amount: number): Promise<boolean> {
+    async spendBalance(userId: string, amount: number, movement: LedgerMovement = {}): Promise<boolean> {
         try {
-            await this.request('post', `/users/internal/${userId}/spend-balance`, { amount });
+            await this.request('post', `/users/internal/${userId}/spend-balance`, { amount, ...movement });
             return true;
         } catch (error: any) {
             if (error instanceof AppError && error.statusCode === 409) return false;
@@ -185,7 +200,11 @@ class UserServiceClient {
         }
     }
 
-    async updateUserBalance(userId: string, amount: number): Promise<void> {
+    /**
+     * `movement.reference` makes the change idempotent in user-service's wallet
+     * ledger (walletmovements): the same reference never moves the balance twice.
+     */
+    async updateUserBalance(userId: string, amount: number, movement: LedgerMovement = {}): Promise<void> {
         if (!this.baseUrl) {
             log.error('Cannot update user balance: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
@@ -193,7 +212,7 @@ class UserServiceClient {
         const path = `/users/internal/${userId}/balance`;
         try {
             log.info(`Updating balance for user ${userId} by ${amount} via user-service request method.`);
-            const response = await this.request<{ success: boolean; data?: { newBalance?: number } }>('post', path, { amount });
+            const response = await this.request<{ success: boolean; data?: { newBalance?: number } }>('post', path, { amount, ...movement });
 
             if (response?.success) {
                 log.info(`Successfully updated balance for user ${userId}. New balance: ${response.data?.newBalance ?? 'N/A'}`);
@@ -522,7 +541,7 @@ class UserServiceClient {
 
 
     // USD Balance methods for crypto payments
-    async updateUserUsdBalance(userId: string, amount: number): Promise<void> {
+    async updateUserUsdBalance(userId: string, amount: number, movement: LedgerMovement = {}): Promise<void> {
         if (!this.baseUrl) {
             log.error('Cannot update user USD balance: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
@@ -530,7 +549,7 @@ class UserServiceClient {
         const path = `/users/internal/${userId}/usd-balance`;
         try {
             log.debug(`Updating USD balance for user ${userId} by ${amount}`);
-            const response = await this.request<{ success: boolean; usdBalance?: number }>('post', path, { amount });
+            const response = await this.request<{ success: boolean; usdBalance?: number }>('post', path, { amount, ...movement });
 
             if (response?.success) {
                 log.info(`Successfully updated USD balance for user ${userId}`);
@@ -656,6 +675,72 @@ class UserServiceClient {
             };
         }
     }
+
+    // ─── Wallet reservations (user-service /users/internal/wallet) ──────────
+    // Withdrawals hold their gross amount from request to final provider answer.
+    // Transport errors are thrown (callers fail closed); business answers are returned.
+
+    private async walletCall(method: 'get' | 'post', path: string, data?: any): Promise<{ status: number; body: any }> {
+        if (!this.baseUrl) throw new AppError('User service is not configured.', 503);
+        try {
+            const res = await axios({
+                method, url: `${this.baseUrl}/users/internal/wallet${path}`, data, timeout: 15000,
+                headers: { Authorization: `Bearer ${this.serviceSecret}`, 'x-service-name': 'payment-service' },
+                validateStatus: (s) => s < 500,
+            });
+            return { status: res.status, body: res.data };
+        } catch (error: any) {
+            log.error(`Wallet call ${method.toUpperCase()} ${path} failed: ${error.response?.status ?? ''} ${error.message}`);
+            throw new AppError('Le service des soldes est momentanément indisponible. Réessayez dans quelques minutes.', 503);
+        }
+    }
+
+    async reserveWithdrawalFunds(input: { transactionId: string; userId: string; amount: number; currency: 'XAF' | 'USD' }): Promise<ReserveOutcome> {
+        const { status, body } = await this.walletCall('post', '/reservations', input);
+        if (status === 201 || status === 200) return body?.data?.status === 'already_reserved' ? 'already_reserved' : 'reserved';
+        if (status === 409 && body?.code === 'INSUFFICIENT_AVAILABLE_BALANCE') return 'insufficient';
+        if (status === 409) return 'conflict';
+        throw new AppError(body?.message || `Reservation refused (${status})`, status === 404 ? 404 : 400);
+    }
+
+    async releaseWithdrawalFunds(transactionId: string, reason: string): Promise<'released' | 'already_released' | 'not_reserved' | 'conflict'> {
+        const { status, body } = await this.walletCall('post', `/reservations/${encodeURIComponent(transactionId)}/release`, { reason });
+        if (status === 200) return body?.data?.status;
+        if (status === 409) return 'conflict';
+        throw new AppError(body?.message || `Release refused (${status})`, 400);
+    }
+
+    /** Payout confirmed: debit once (converts the reservation, or plain debit for a legacy withdrawal). */
+    async settleWithdrawal(input: { transactionId: string; userId: string; amount: number; currency: 'XAF' | 'USD'; description?: string }): Promise<SettleOutcome> {
+        const { status, body } = await this.walletCall('post', `/reservations/${encodeURIComponent(input.transactionId)}/convert`, input);
+        if (status === 200) return body.data as SettleOutcome;
+        throw new AppError(body?.message || `Settlement refused (${status})`, status === 409 ? 409 : 400);
+    }
+
+    async getWithdrawalReservation(transactionId: string): Promise<{ state: string; amount: number; currency: string; userId: string } | null> {
+        const { status, body } = await this.walletCall('get', `/reservations/${encodeURIComponent(transactionId)}`);
+        if (status === 404) return null;
+        if (status === 200) return body.data;
+        throw new AppError(body?.message || `Reservation lookup failed (${status})`, 503);
+    }
+
+    async getAvailableBalance(userId: string): Promise<{ balance: number; debt: number; reservedBalance: number; available: number; usdBalance: number; reservedUsdBalance: number; availableUsd: number } | null> {
+        const { status, body } = await this.walletCall('get', `/available/${encodeURIComponent(userId)}`);
+        if (status === 404) return null;
+        return body?.data ?? null;
+    }
+
+    async lookupWalletMovements(references: string[]): Promise<Array<{ reference: string; direction: string; amount: number; currency: string }>> {
+        if (!references.length) return [];
+        const { body } = await this.walletCall('post', '/movements/lookup', { references });
+        return body?.data ?? [];
+    }
+
+    async listWalletMovements(referencePrefix: string, since: Date): Promise<Array<{ reference: string; direction: string; amount: number; currency: string; userId: string; appliedAt: string }>> {
+        const { body } = await this.walletCall('get', `/movements?referencePrefix=${encodeURIComponent(referencePrefix)}&since=${encodeURIComponent(since.toISOString())}&limit=2000`);
+        return body?.data ?? [];
+    }
+
 }
 
 export const userServiceClient = new UserServiceClient(); 

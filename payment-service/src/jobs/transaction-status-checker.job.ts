@@ -5,6 +5,8 @@ import transactionRepository from '../database/repositories/transaction.reposito
 import paymentService from '../services/payment.service';
 import { feexPayPayoutService } from '../services/feexpay-payout.service'; // Import FeexPay service
 import nowPaymentsService from '../services/nowpayments.service'; // Import NOWPayments service
+import { endWithdrawal } from '../services/withdrawal-lifecycle';
+import { openSupportCase } from '../services/clients/support.service.client';
 
 const log = logger.getLogger('TransactionStatusChecker');
 
@@ -114,11 +116,15 @@ export class TransactionStatusChecker {
     }
 
     /**
-     * Auto-expires pending withdrawal transactions that are older than 24 hours.
-     * This includes both PENDING and PENDING_ADMIN_APPROVAL statuses.
+     * Withdrawals still awaiting admin approval after 24 hours expire, and their
+     * reservation is released (they never reached a provider). Each expiry is
+     * one conditional write, so an approval landing at the same moment wins or
+     * loses cleanly.
      *
-     * NOTE: No balance refund is needed because user balance is only debited
-     * when the payment provider confirms successful payout via webhook.
+     * PENDING withdrawals are no longer expired here (support phase 2): PENDING
+     * can mean "sent to the provider, answer not stored yet", and freeing the
+     * money on a timeout could pay it twice. They are reported as
+     * `unknown_status` cases instead and keep their reservation.
      */
     private async autoExpireOldWithdrawals(): Promise<void> {
         try {
@@ -127,56 +133,53 @@ export class TransactionStatusChecker {
             const twentyFourHoursAgo = new Date();
             twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-            // Find all PENDING or PENDING_ADMIN_APPROVAL withdrawals older than 24 hours
             const expiredWithdrawals = await TransactionModel.find({
                 type: TransactionType.WITHDRAWAL,
-                status: { $in: [TransactionStatus.PENDING, TransactionStatus.PENDING_ADMIN_APPROVAL] },
+                status: TransactionStatus.PENDING_ADMIN_APPROVAL,
                 createdAt: { $lt: twentyFourHoursAgo },
                 deleted: { $ne: true }
-            }).lean();
-
-            if (expiredWithdrawals.length === 0) {
-                log.debug('No expired pending withdrawals found.');
-                return;
-            }
-
-            log.info(`Found ${expiredWithdrawals.length} pending withdrawals older than 24 hours. Auto-expiring...`);
+            }).select('transactionId userId createdAt').lean();
 
             let expiredCount = 0;
-            let failedCount = 0;
-
             for (const withdrawal of expiredWithdrawals) {
                 try {
                     const hoursOld = Math.floor((Date.now() - new Date(withdrawal.createdAt).getTime()) / (1000 * 60 * 60));
-                    const previousStatus = withdrawal.status;
-
-                    // Use EXPIRED status - no balance refund needed since balance
-                    // is only debited when payment provider confirms success
-                    await transactionRepository.updateStatus(
-                        withdrawal.transactionId,
-                        TransactionStatus.EXPIRED,
-                        {
-                            metadata: {
-                                ...(withdrawal.metadata || {}),
-                                expirationReason: `Auto-expired: Approval window expired after ${hoursOld} hours (24 hour limit)`,
-                                previousStatus: previousStatus,
-                                autoExpiredAt: new Date(),
-                                autoExpired: true
-                            }
-                        }
-                    );
-
-                    log.info(`Auto-expired withdrawal ${withdrawal.transactionId} for user ${withdrawal.userId} (was ${previousStatus}, ${hoursOld} hours old). No balance changes.`);
-                    expiredCount++;
-
+                    const ended = await endWithdrawal(withdrawal.transactionId, {
+                        from: [TransactionStatus.PENDING_ADMIN_APPROVAL],
+                        to: TransactionStatus.EXPIRED,
+                        set: {
+                            'metadata.expirationReason': `Auto-expired: Approval window expired after ${hoursOld} hours (24 hour limit)`,
+                            'metadata.previousStatus': TransactionStatus.PENDING_ADMIN_APPROVAL,
+                            'metadata.autoExpiredAt': new Date(),
+                            'metadata.autoExpired': true,
+                        },
+                        reason: 'approval_window_expired',
+                    });
+                    if (ended) {
+                        expiredCount++;
+                        log.info(`Auto-expired withdrawal ${withdrawal.transactionId} for user ${withdrawal.userId} (${hoursOld} hours old). Reservation released.`);
+                    }
                 } catch (error) {
                     log.error(`Error auto-expiring withdrawal ${withdrawal.transactionId}:`, error);
-                    failedCount++;
                 }
             }
+            if (expiredWithdrawals.length) log.info(`Auto-expiration complete: ${expiredCount} expired`);
 
-            log.info(`Auto-expiration complete: ${expiredCount} expired, ${failedCount} failed`);
-
+            // PENDING past 24 h: report, never free.
+            const stalePending = await TransactionModel.find({
+                type: TransactionType.WITHDRAWAL,
+                status: TransactionStatus.PENDING,
+                createdAt: { $lt: twentyFourHoursAgo },
+                deleted: { $ne: true },
+            }).select('transactionId userId createdAt externalTransactionId').limit(200).lean();
+            for (const w of stalePending) {
+                void openSupportCase({
+                    type: 'unknown_status', dedupKey: `withdrawal:${w.transactionId}:unknown`, severity: 'warning',
+                    subject: { userId: w.userId?.toString(), transactionId: w.transactionId },
+                    summary: 'Retrait en attente depuis plus de 24 h sans réponse finale du prestataire (fonds toujours réservés).',
+                    details: { createdAt: w.createdAt, externalTransactionId: w.externalTransactionId ?? null },
+                });
+            }
         } catch (error) {
             log.error('Error in autoExpireOldWithdrawals:', error);
         }

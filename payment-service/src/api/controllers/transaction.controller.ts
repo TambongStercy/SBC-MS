@@ -264,6 +264,17 @@ export class TransactionController {
             const ipAddress = req.ip || '';
             const deviceInfo = req.get('User-Agent') || '';
 
+            // Optional idempotency key (header `Idempotency-Key`, or body `idempotencyKey`):
+            // one key = one withdrawal request per member; a repeated tap returns the first.
+            const rawKey = req.get('Idempotency-Key') ?? req.body?.idempotencyKey;
+            let idempotencyKey: string | undefined;
+            if (rawKey !== undefined && rawKey !== null && rawKey !== '') {
+                if (typeof rawKey !== 'string' || !/^[A-Za-z0-9_.:-]{8,100}$/.test(rawKey)) {
+                    return res.status(400).json({ success: false, message: 'Invalid Idempotency-Key (8-100 characters: letters, digits, _ . : -).' });
+                }
+                idempotencyKey = rawKey;
+            }
+
             // Route to appropriate withdrawal method based on type
             let withdrawalResult;
             if (withdrawalType === 'crypto') {
@@ -271,7 +282,8 @@ export class TransactionController {
                     userId,
                     amount,
                     ipAddress,
-                    deviceInfo
+                    deviceInfo,
+                    idempotencyKey,
                 );
             } else {
                 
@@ -280,7 +292,8 @@ export class TransactionController {
                     userId,
                     amount,
                     ipAddress,
-                    deviceInfo
+                    deviceInfo,
+                    idempotencyKey,
                 );
             }
 
