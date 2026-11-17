@@ -96,6 +96,8 @@ const main = async () => {
     userServiceClient.getUserDetails = async () => ({ email: null, name: 'Check' });
     notificationService.sendTransactionSuccessEmail = async () => true;
     notificationService.sendTransactionFailureEmail = async () => true;
+    const pushes: any[] = [];
+    notificationService.sendPush = async (p: any) => { pushes.push(p); return true; };
 
     const paymentService = require('../services/payment.service').default;
     const { sandboxSweeper } = require('../jobs/sandbox-sweeper.job');
@@ -181,11 +183,23 @@ const main = async () => {
     check('the failed payout never touched a wallet',
         !balanceCalls.some(c => String(c.userId) === String(mfFail.userId)));
 
+    // --- The user hears about it on their phone ---
+    const pushFor = (tx: any) => pushes.filter(p => p.userId === String(tx.userId));
+    check('each completed payout pushes "Retrait envoyé"',
+        [mfOk, feexOk, cpOk].every(tx => pushFor(tx).some(p => p.title === 'Retrait envoyé ✅' && p.category === 'money')),
+        JSON.stringify(pushes.map(p => p.title)));
+    check('the failed payout pushes "non abouti" and says the balance was not debited',
+        pushFor(mfFail).length === 1 && pushFor(mfFail)[0].body.includes("Ton solde n'a pas été débité."),
+        pushFor(mfFail)[0]?.body);
+    check('a payout still in progress pushes nothing', pushFor(mfHang).length === 0);
+
     // --- Sweeping again must not double-debit ---
     balanceCalls.length = 0;
+    const pushesBefore = pushes.length;
     await sandboxSweeper.sweep();
     check('a second sweep debits nothing', balanceCalls.filter(c => c.amount < 0).length === 0,
         `${balanceCalls.length} calls`);
+    check('… and pushes nothing again', pushes.length === pushesBefore, `${pushes.length - pushesBefore} new`);
 
     // --- Hosted-checkout payins: the sandbox checkout page resolves them ---
     const hostedIntent = await seedIntent('hang'); // interactive payins park as hang

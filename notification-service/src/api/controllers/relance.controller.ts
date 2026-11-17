@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
+import mongoose from 'mongoose';
 import logger from '../../utils/logger';
 import RelanceConfigModel from '../../database/models/relance-config.model';
 import RelanceMessageModel from '../../database/models/relance-message.model';
@@ -761,7 +762,11 @@ class RelanceController {
                         callbackPath: callbackUrl
                     }
                 },
-                { headers: { 'x-service-secret': config.services.serviceSecret }, timeout: 10000 }
+                {
+                    // payment-service accepts only `Authorization: Bearer` on /payments/intents.
+                    headers: { Authorization: `Bearer ${config.services.serviceSecret}`, 'X-Service-Name': 'notification-service' },
+                    timeout: 10000,
+                }
             );
 
             // payment-service `/payments/intents` returns only { sessionId, clientSecret }.
@@ -969,6 +974,42 @@ class RelanceController {
         } catch (error: any) {
             log.error('Error fetching relance SMS messages:', error);
             res.status(500).json({ success: false, message: 'Impossible de charger les SMS.' });
+        }
+    }
+
+    /**
+     * GET /api/relance/earnings — what relance brought the parrain: how many of
+     * their relanced filleuls paid, and the commissions those payments earned
+     * them (payment-service holds the money; it is summed there). Earnings are
+     * null when payment-service cannot answer, so the count still shows.
+     */
+    async getEarnings(req: AuthenticatedRequest, res: Response): Promise<void> {
+        const userId = req.user?.userId;
+        if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+        try {
+            const paidIds = (await RelanceTargetModel.distinct('referralUserId', {
+                referrerUserId: new mongoose.Types.ObjectId(userId),
+                exitReason: ExitReason.PAID,
+            })).map(String);
+            if (paidIds.length === 0) {
+                res.status(200).json({ success: true, data: { paid: 0, earnings: { XAF: 0, USD: 0 } } });
+                return;
+            }
+            let earnings: { XAF: number; USD: number } | null = null;
+            try {
+                const r = await axios.post(
+                    `${config.services.paymentService}/internal/user/${userId}/commissions-from`,
+                    { sourceUserIds: paidIds.slice(0, 5000) },
+                    { headers: { Authorization: `Bearer ${config.services.serviceSecret}`, 'X-Service-Name': 'notification-service' }, timeout: 8000 },
+                );
+                earnings = { XAF: r.data?.data?.XAF ?? 0, USD: r.data?.data?.USD ?? 0 };
+            } catch (err: any) {
+                log.warn(`Earnings: payment-service did not answer for user ${userId}: ${err?.message}`);
+            }
+            res.status(200).json({ success: true, data: { paid: paidIds.length, earnings } });
+        } catch (error: any) {
+            log.error('Error computing relance earnings:', error);
+            res.status(500).json({ success: false, message: 'Impossible de calculer vos gains.' });
         }
     }
 

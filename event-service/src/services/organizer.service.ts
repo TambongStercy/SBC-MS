@@ -58,13 +58,3 @@ export const approveOrganizer = async (organizerId: string): Promise<IOrganizer>
     if (!org) throw new AppError('Organisateur introuvable.', 404);
     return org;
 };
-
-export const suspendOrganizer = async (organizerId: string, reason?: string): Promise<IOrganizer> => {
-    const org = await Organizer.findByIdAndUpdate(
-        organizerId,
-        { $set: { status: OrganizerStatus.SUSPENDED, suspendedAt: new Date(), suspensionReason: reason } },
-        { new: true },
-    );
-    if (!org) throw new AppError('Organisateur introuvable.', 404);
-    return org;
-};

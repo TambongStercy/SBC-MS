@@ -1,4 +1,5 @@
 import UserModel, { IUser, OtpPurpose } from '../models/user.model';
+import EventOrganizerLedgerModel, { EventOrganizerLedgerDirection, EventOrganizerLedgerStatus } from '../models/event-organizer-ledger.model';
 import SubscriptionModel, { ISubscription, SubscriptionStatus, SubscriptionType } from '../models/subscription.model';
 import mongoose, { Types, FilterQuery } from 'mongoose';
 import { ContactSearchFilters, ContactSearchResponse } from '../../types/contact.types';
@@ -306,23 +307,6 @@ export class UserRepository {
     }
 
     /**
-     * SBC Event organizer earnings. Credit-only here; the only exit is the
-     * transfer-to-main flow below — same shape as advertisingBalance, and for the
-     * same reason (keeps the withdrawal path from ever having to know about
-     * a second source of funds).
-     */
-    async creditEventOrganizerBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
-        if (amount <= 0) {
-            throw new Error('Credit amount must be positive');
-        }
-        return UserModel.findOneAndUpdate(
-            { _id: userId },
-            { $inc: { eventOrganizerBalance: amount } },
-            { new: true }
-        ).exec();
-    }
-
-    /**
      * Moves event-organizer earnings into the main balance so they can be withdrawn.
      * The precondition on eventOrganizerBalance is part of the query, so two
      * concurrent transfers cannot both succeed and overdraw.
@@ -339,31 +323,93 @@ export class UserRepository {
     }
 
     /**
-     * Debit the seller's eventOrganizerBalance for a resale refund.
+     * Moves eventOrganizerBalance once per {reference, direction}. A replay —
+     * webhook, reconciler or sweeper retry — returns `applied: false` with the
+     * current user and moves nothing.
      *
-     * Unlike a normal transfer, this may go BELOW zero — the seller could
-     * already have transferred their earnings out to main balance before the
-     * dispute/refund landed. We debit what we can and let the balance sit
-     * negative until the seller either replenishes it (future sales) or an
-     * admin adjusts. A negative balance blocks the transfer-to-main flow
-     * naturally (guarded by $gte), so no further harm.
+     * On a replica set the ledger insert and the $inc commit together. Without
+     * one (local dev) it inserts PENDING, moves the balance, then marks APPLIED;
+     * a replay that finds a PENDING row refuses with `pendingConflict` instead
+     * of guessing whether the balance already moved.
      *
-     * Uses the schema's { min: 0 } validator override via strict: false is NOT
-     * an option — instead we drop the schema min guard temporarily on the doc
-     * we return so a negative value is legal for this specific write.
+     * A DEBIT may take the balance below zero: the seller may already have
+     * moved the money to their main balance before a refund lands. A negative
+     * balance blocks transferEventOrganizerToMain ($gte guard) until later
+     * earnings or an admin settle it.
      */
-    async debitEventOrganizerBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
-        if (amount <= 0) {
-            throw new Error('Debit amount must be positive');
+    async applyEventOrganizerMovement(entry: {
+        userId: string;
+        amount: number;
+        reference: string;
+        direction: EventOrganizerLedgerDirection;
+        description?: string;
+    }): Promise<{ applied: boolean; user: IUser | null; pendingConflict?: boolean; pendingSince?: Date }> {
+        if (!(entry.amount > 0)) throw new Error('Amount must be positive');
+        const userId = new Types.ObjectId(entry.userId);
+        const delta = entry.direction === EventOrganizerLedgerDirection.CREDIT ? entry.amount : -entry.amount;
+        const isDuplicate = (err: any) => err?.code === 11000;
+        const row = {
+            reference: entry.reference,
+            direction: entry.direction,
+            userId,
+            amount: entry.amount,
+            description: entry.description,
+        };
+
+        const existingOutcome = async () => {
+            const existing = await EventOrganizerLedgerModel.findOne({ reference: entry.reference, direction: entry.direction }).lean();
+            const user = await UserModel.findById(userId).exec();
+            if (existing?.status === EventOrganizerLedgerStatus.PENDING) {
+                return { applied: false, user, pendingConflict: true, pendingSince: existing.createdAt };
+            }
+            return { applied: false, user };
+        };
+
+        // Transactional path.
+        let session: mongoose.ClientSession | null = null;
+        try {
+            const txSession = await UserModel.startSession();
+            session = txSession;
+            let user: IUser | null = null;
+            await txSession.withTransaction(async () => {
+                await EventOrganizerLedgerModel.create([{ ...row, status: EventOrganizerLedgerStatus.APPLIED }], { session: txSession });
+                // updateOne, not findOneAndUpdate: a debit may go below the min: 0
+                // validator on purpose (a resale refund can take the balance negative).
+                const res = await UserModel.updateOne({ _id: userId }, { $inc: { eventOrganizerBalance: delta } }, { session: txSession }).exec();
+                if (res.matchedCount === 0) throw Object.assign(new Error('User not found'), { notFound: true });
+                user = await UserModel.findById(userId).session(txSession).exec();
+            });
+            return { applied: true, user };
+        } catch (error: any) {
+            if (isDuplicate(error)) return existingOutcome();
+            if (error?.notFound) return { applied: false, user: null };
+            const noReplicaSet = /replica set|Transaction numbers|transactions are not supported/i.test(error?.message || '')
+                || error?.code === 20;
+            if (!noReplicaSet) throw error;
+            log.warn(`Event-organizer ledger: no transactions available, using the sequential path (${error.message})`);
+        } finally {
+            await session?.endSession();
         }
-        // Use updateOne + separate fetch to bypass the min: 0 validator on this write.
-        // (Mongoose's runValidators is off by default for update ops, so this works.)
-        await UserModel.updateOne(
-            { _id: userId },
-            { $inc: { eventOrganizerBalance: -amount } },
-        ).exec();
-        return UserModel.findById(userId).exec();
+
+        // Sequential fallback.
+        try {
+            await EventOrganizerLedgerModel.create({ ...row, status: EventOrganizerLedgerStatus.PENDING });
+        } catch (error: any) {
+            if (isDuplicate(error)) return existingOutcome();
+            throw error;
+        }
+        const res = await UserModel.updateOne({ _id: userId }, { $inc: { eventOrganizerBalance: delta } }).exec();
+        if (res.matchedCount === 0) {
+            await EventOrganizerLedgerModel.deleteOne({ reference: entry.reference, direction: entry.direction });
+            return { applied: false, user: null };
+        }
+        await EventOrganizerLedgerModel.updateOne(
+            { reference: entry.reference, direction: entry.direction },
+            { $set: { status: EventOrganizerLedgerStatus.APPLIED } },
+        );
+        return { applied: true, user: await UserModel.findById(userId).exec() };
     }
+
 
     /**
      * Atomically credit (positive amount) or debit (negative amount) a user's
@@ -821,6 +867,50 @@ export class UserRepository {
             .select('_id name email avatar sex birthDate city country isVerified createdAt')
             .lean()
             .exec();
+    }
+
+    /**
+     * [Internal] SBC Event team / jury invitations: resolve one member from an
+     * email or a phone number. A local number (no country code) matches only
+     * when exactly one account ends with it — never guess between two people.
+     */
+    async findEventMemberByContact(contact: string): Promise<IUser[]> {
+        const value = contact.trim();
+        if (value.includes('@')) {
+            const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return UserModel.find({ email: { $regex: `^${escaped}$`, $options: 'i' }, deleted: { $ne: true } })
+                .select('_id name avatar email phoneNumber').limit(2).lean().exec() as unknown as IUser[];
+        }
+        const digits = value.replace(/\D/g, '');
+        if (digits.length < 8) return [];
+        const exact = await UserModel.find({ phoneNumber: digits, deleted: { $ne: true } })
+            .select('_id name avatar email phoneNumber').limit(2).lean().exec();
+        if (exact.length) return exact as unknown as IUser[];
+        return UserModel.find({ phoneNumber: { $regex: `${digits}$` }, deleted: { $ne: true } })
+            .select('_id name avatar email phoneNumber').limit(2).lean().exec() as unknown as IUser[];
+    }
+
+    /**
+     * [Internal] SBCLOVE admin search: which of `userIds` match `term` on name,
+     * email, phone or city. Scoped to the given ids (the SBCLOVE members) so a
+     * common term can't drag in the whole user base, and unverified or blocked
+     * accounts stay findable — the moderator is looking for exactly those.
+     */
+    async findSbcloveMemberIdsMatching(userIds: Types.ObjectId[], term: string): Promise<string[]> {
+        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const or: FilterQuery<IUser>[] = [
+            { name: { $regex: escaped, $options: 'i' } },
+            { email: { $regex: escaped, $options: 'i' } },
+            { city: { $regex: escaped, $options: 'i' } },
+        ];
+        // Phones are stored as digit strings; "+237 699-12" should still find them.
+        const digits = term.replace(/\D/g, '');
+        if (digits.length >= 4) or.push({ phoneNumber: { $regex: digits } });
+        const users = await UserModel.find({ _id: { $in: userIds }, deleted: { $ne: true }, $or: or })
+            .select('_id')
+            .lean()
+            .exec();
+        return users.map(user => (user._id as Types.ObjectId).toHexString());
     }
 
     /**

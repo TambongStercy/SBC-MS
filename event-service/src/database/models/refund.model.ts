@@ -14,6 +14,8 @@ export interface IRefund extends Document {
     reason?: string;
     initiatedByAdminId: Types.ObjectId;
     providerRef?: string;
+    /** The organizer's net credit for the order was taken back (primary orders). */
+    organizerDebitedAt?: Date;
     status: RefundStatus;
     completedAt?: Date;
     createdAt: Date;
@@ -27,6 +29,7 @@ const RefundSchema = new Schema<IRefund>({
     reason: { type: String, maxlength: 500 },
     initiatedByAdminId: { type: Schema.Types.ObjectId, required: true },
     providerRef: { type: String },
+    organizerDebitedAt: { type: Date },
     status: { type: String, enum: Object.values(RefundStatus), default: RefundStatus.PENDING, index: true },
     completedAt: { type: Date },
 }, { timestamps: true });

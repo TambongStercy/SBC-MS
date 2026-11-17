@@ -16,7 +16,11 @@ const FIELDS = [
     { key: 'primaryPct', label: 'Commission vente initiale', min: 0, max: 50, help: 'Prélevée sur chaque billet vendu par l\'organisateur. Entre 0 % et 50 %.' },
     { key: 'resalePct', label: 'Commission revente', min: 0, max: 50, help: 'Prélevée sur chaque revente entre particuliers. Entre 0 % et 50 %.' },
     { key: 'defaultMaxResalePricePct', label: 'Prix de revente maximum', min: 100, max: 300, help: 'Plafond du prix de revente, en % du prix d\'origine. Entre 100 % et 300 %.' },
+    { key: 'votePct', label: 'Commission sur les votes payants', min: 0, max: 50, help: 'Prélevée sur chaque pack de votes acheté dans un défi (module Animation). Entre 0 % et 50 %.' },
 ] as const;
+
+// votePct is absent on settings-service builds older than the Animation module: show its default (10 %).
+const DEFAULT_VOTE_PCT = 0.1;
 
 type FieldKey = typeof FIELDS[number]['key'];
 type Form = Record<FieldKey, string>;
@@ -24,7 +28,7 @@ type Form = Record<FieldKey, string>;
 const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
 
 export default function EventCommissionsPage() {
-    const [form, setForm] = useState<Form>({ primaryPct: '', resalePct: '', defaultMaxResalePricePct: '' });
+    const [form, setForm] = useState<Form>({ primaryPct: '', resalePct: '', defaultMaxResalePricePct: '', votePct: '' });
     const [saved, setSaved] = useState<Form | null>(null);
     const [examplePrice, setExamplePrice] = useState('10000');
     const [loading, setLoading] = useState(true);
@@ -40,10 +44,11 @@ export default function EventCommissionsPage() {
                     primaryPct: String(c.primaryPct * 100),
                     resalePct: String(c.resalePct * 100),
                     defaultMaxResalePricePct: String(c.defaultMaxResalePricePct),
+                    votePct: String(+((c.votePct ?? DEFAULT_VOTE_PCT) * 100).toFixed(2)),
                 };
                 setForm(next);
                 setSaved(next);
-            } catch (e: any) {
+            } catch (e: unknown) {
                 showError(apiErrorMessage(e, 'Impossible de charger les taux de commission.'));
             } finally { setLoading(false); }
         })();
@@ -70,6 +75,7 @@ export default function EventCommissionsPage() {
         const resale = (Number(form.resalePct) || 0) / 100;
         const maxPct = Number(form.defaultMaxResalePricePct) || 0;
         const resalePrice = price * maxPct / 100;
+        const vote = (Number(form.votePct) || 0) / 100;
         return {
             price,
             primaryFee: price * primary,
@@ -77,6 +83,8 @@ export default function EventCommissionsPage() {
             resalePrice,
             resaleFee: resalePrice * resale,
             sellerNet: resalePrice * (1 - resale),
+            voteFee: price * vote,
+            voteOrganizerNet: price * (1 - vote),
         };
     }, [examplePrice, form]);
 
@@ -87,11 +95,13 @@ export default function EventCommissionsPage() {
                 primaryPct: Number(form.primaryPct) / 100,
                 resalePct: Number(form.resalePct) / 100,
                 defaultMaxResalePricePct: Number(form.defaultMaxResalePricePct),
+                votePct: Number(form.votePct) / 100,
             });
             setSaved({
                 primaryPct: String(updated.primaryPct * 100),
                 resalePct: String(updated.resalePct * 100),
                 defaultMaxResalePricePct: String(updated.defaultMaxResalePricePct),
+                votePct: String(+((updated.votePct ?? Number(form.votePct) / 100) * 100).toFixed(2)),
             });
             setConfirmOpen(false);
             // event-service garde une copie en cache 60 s : on la purge tout de suite.
@@ -101,7 +111,7 @@ export default function EventCommissionsPage() {
             } catch {
                 showSuccess('Taux enregistrés. Ils seront appliqués dans moins de 60 secondes.');
             }
-        } catch (e: any) {
+        } catch (e: unknown) {
             showError(apiErrorMessage(e, 'Enregistrement impossible.'));
             setConfirmOpen(false);
         } finally { setSaving(false); }
@@ -115,8 +125,8 @@ export default function EventCommissionsPage() {
                     <>
                         <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-5">
                             <p className="text-sm text-gray-400">
-                                Ces taux s'appliquent à toutes les nouvelles ventes de billets. Les commandes déjà payées
-                                conservent le taux en vigueur au moment de l'achat.
+                                Ces taux s'appliquent à toutes les nouvelles ventes de billets et de packs de votes. Ce qui est
+                                déjà payé conserve le taux en vigueur au moment de l'achat.
                             </p>
 
                             {FIELDS.map((f) => (
@@ -165,7 +175,7 @@ export default function EventCommissionsPage() {
                                 />
                                 <span className="text-sm text-gray-400">FCFA</span>
                             </div>
-                            <div className="grid md:grid-cols-2 gap-4 text-sm">
+                            <div className="grid md:grid-cols-3 gap-4 text-sm">
                                 <div className="bg-gray-900/50 text-gray-300 rounded-lg p-4 space-y-1">
                                     <div className="font-medium text-gray-300 mb-2">Vente initiale</div>
                                     <div className="flex justify-between"><span className="text-gray-400">Prix du billet</span><span>{fmt(example.price)} FCFA</span></div>
@@ -178,6 +188,12 @@ export default function EventCommissionsPage() {
                                     <div className="flex justify-between"><span className="text-gray-400">Commission SBC ({form.resalePct || 0} %)</span><span className="text-red-400">−{fmt(example.resaleFee)} FCFA</span></div>
                                     <div className="flex justify-between font-semibold border-t border-gray-700 pt-1 mt-1"><span>Reversé au revendeur</span><span>{fmt(example.sellerNet)} FCFA</span></div>
                                 </div>
+                                <div className="bg-gray-900/50 text-gray-300 rounded-lg p-4 space-y-1">
+                                    <div className="font-medium text-gray-300 mb-2">Pack de votes au même prix</div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Prix du pack</span><span>{fmt(example.price)} FCFA</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Commission SBC ({form.votePct || 0} %)</span><span className="text-red-400">−{fmt(example.voteFee)} FCFA</span></div>
+                                    <div className="flex justify-between font-semibold border-t border-gray-700 pt-1 mt-1"><span>Reversé à l'organisateur</span><span>{fmt(example.voteOrganizerNet)} FCFA</span></div>
+                                </div>
                             </div>
                         </div>
                     </>
@@ -187,7 +203,7 @@ export default function EventCommissionsPage() {
             <ConfirmationModal
                 isOpen={confirmOpen}
                 title="Modifier les taux de commission"
-                message={`Vente initiale ${form.primaryPct} %, revente ${form.resalePct} %, prix de revente max ${form.defaultMaxResalePricePct} %. Ces taux s'appliqueront à toutes les nouvelles ventes.`}
+                message={`Vente initiale ${form.primaryPct} %, revente ${form.resalePct} %, prix de revente max ${form.defaultMaxResalePricePct} %, votes payants ${form.votePct} %. Ces taux s'appliqueront à toutes les nouvelles ventes de billets et de packs de votes.`}
                 confirmText="Enregistrer"
                 cancelText="Annuler"
                 onConfirm={doSave}

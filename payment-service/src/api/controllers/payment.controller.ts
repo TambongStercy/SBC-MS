@@ -9,6 +9,10 @@ import { AppError } from '../../utils/errors';
 import QRCode from 'qrcode';
 import { paymentIntentRepository } from '../../database/repositories/paymentIntent.repository';
 import * as sandbox from '../../services/sandbox.service';
+import { checkCallbackUrl, callbackAllowlistEnforced } from '../../utils/callback-allowlist';
+import InternalDepositClaim from '../../database/models/internal-deposit-claim.model';
+import { MAX_SOURCE_USERS, sumCommissionsFromSources } from '../../services/commission-sum.service';
+import { Types } from 'mongoose';
 
 const log = logger.getLogger('PaymentController');
 
@@ -354,6 +358,18 @@ export class PaymentController {
             // Basic check for required fields (service layer does more robust validation)
             if (!userId || !amount || !currency || !paymentType) {
                 return res.status(400).json({ success: false, message: 'Missing required fields: userId, amount, currency, paymentType' });
+            }
+
+            // The callback is sent our service secret — see utils/callback-allowlist.
+            if (typeof metadata?.callbackPath === 'string') {
+                const verdict = checkCallbackUrl(metadata.callbackPath);
+                if (!verdict.allowed) {
+                    if (callbackAllowlistEnforced()) {
+                        log.error(`Refused payment intent from ${req.header('X-Service-Name') || 'unknown service'}: callbackPath ${verdict.reason}`);
+                        return res.status(400).json({ success: false, message: 'callbackPath is not an allowed service URL' });
+                    }
+                    log.warn(`Payment intent callbackPath would be blocked by the allowlist (${verdict.reason}): ${metadata.callbackPath}`);
+                }
             }
 
             const paymentIntent = await paymentService.createPaymentIntent({
@@ -828,6 +844,40 @@ export class PaymentController {
     };
 
     /**
+     * [INTERNAL] A payment intent's authoritative state, so a service can verify
+     * a callback (status AND amount) instead of trusting its payload.
+     * @route GET /api/internal/intents/:sessionId
+     */
+    public getInternalIntent = async (req: Request, res: Response): Promise<void> => {
+        try {
+            const intent = await paymentIntentRepository.findBySessionId(req.params.sessionId);
+            if (!intent) {
+                res.status(404).json({ success: false, message: 'Payment intent not found' });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data: {
+                    sessionId: intent.sessionId,
+                    status: intent.status,
+                    amount: intent.amount,
+                    currency: intent.currency,
+                    paidAmount: intent.paidAmount,
+                    paidCurrency: intent.paidCurrency,
+                    paymentType: intent.paymentType,
+                    gateway: intent.gateway,
+                    gatewayPaymentId: intent.gatewayPaymentId,
+                    metadata: intent.metadata,
+                    updatedAt: intent.updatedAt,
+                },
+            });
+        } catch (error: any) {
+            log.error(`getInternalIntent failed for ${req.params.sessionId}: ${error.message}`);
+            res.status(500).json({ success: false, message: 'Failed to load payment intent' });
+        }
+    };
+
+    /**
      * [INTERNAL] Record an internal deposit transaction
      * @route POST /api/internal/deposit
      */
@@ -846,17 +896,50 @@ export class PaymentController {
                 res.status(400).json({ success: false, message: 'Invalid currency code' });
                 return;
             }
-            const transaction = await paymentService.processDeposit(
-                userId,
-                amount,
-                currency as Currency,
-                {
-                    provider: 'internal',
-                    transactionId: `internal_${Date.now()}`,
-                    metadata: metadata
-                },
-                description
-            );
+            // A caller-supplied reference makes the deposit exactly-once (refund
+            // retries). Without one, behaviour is unchanged.
+            const reference = typeof metadata?.reference === 'string' ? metadata.reference : undefined;
+            if (reference) {
+                try {
+                    await InternalDepositClaim.create({ reference, userId, amount, status: 'PENDING' });
+                } catch (err: any) {
+                    if (err?.code !== 11000) throw err;
+                    const claim = await InternalDepositClaim.findOne({ reference, userId }).lean();
+                    if (claim?.status === 'APPLIED') {
+                        log.info(`Internal deposit ${reference} for ${userId} already applied (${claim.transactionId}); nothing moved.`);
+                        res.status(200).json({
+                            success: true,
+                            message: 'Internal deposit already recorded',
+                            data: { transactionId: claim.transactionId, status: 'completed', alreadyApplied: true },
+                        });
+                        return;
+                    }
+                    log.warn(`Internal deposit ${reference} for ${userId} is PENDING (in progress or crashed) — refusing a second credit.`);
+                    res.status(409).json({ success: false, message: `Deposit ${reference} is pending verification` });
+                    return;
+                }
+            }
+            let transaction;
+            try {
+                transaction = await paymentService.processDeposit(
+                    userId,
+                    amount,
+                    currency as Currency,
+                    {
+                        provider: 'internal',
+                        transactionId: `internal_${Date.now()}`,
+                        metadata: metadata
+                    },
+                    description
+                );
+            } catch (depositError) {
+                // Nothing was credited: free the reference so the caller can retry.
+                if (reference) await InternalDepositClaim.deleteOne({ reference, userId, status: 'PENDING' });
+                throw depositError;
+            }
+            if (reference) {
+                await InternalDepositClaim.updateOne({ reference, userId }, { $set: { status: 'APPLIED', transactionId: transaction.transactionId } });
+            }
             res.status(201).json({
                 success: true,
                 message: 'Internal deposit recorded successfully',
@@ -1177,6 +1260,28 @@ export class PaymentController {
      * @route GET /api/internal/user/:userId/has-pending-withdrawal
      * @access Internal Service Request
      */
+    /**
+     * [INTERNAL] Commissions a user earned from given filleuls (relance's "gagné grâce à la relance").
+     * @route POST /api/internal/user/:userId/commissions-from
+     * Body: { sourceUserIds: string[] }. Read-only.
+     */
+    public getCommissionsFromSources = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+        const { userId } = req.params;
+        const { sourceUserIds } = req.body ?? {};
+        try {
+            if (!Types.ObjectId.isValid(userId) || !Array.isArray(sourceUserIds) || sourceUserIds.length > MAX_SOURCE_USERS) {
+                return res.status(400).json({ success: false, message: `userId and up to ${MAX_SOURCE_USERS} sourceUserIds are required.` });
+            }
+            if (sourceUserIds.length === 0) {
+                return res.status(200).json({ success: true, data: { XAF: 0, USD: 0, commissions: 0 } });
+            }
+            return res.status(200).json({ success: true, data: await sumCommissionsFromSources(userId, sourceUserIds) });
+        } catch (error: any) {
+            log.error(`Error summing commissions for user ${userId}:`, error);
+            next(error);
+        }
+    }
+
     public checkUserPendingWithdrawal = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
         const { userId } = req.params;
         log.info(`Internal request: Check pending withdrawal for user ${userId}`);

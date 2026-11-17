@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Header from '../components/common/Header';
 import Loader from '../components/common/loader';
-import { getEventDashboard } from '../api/event';
+import { getEventDashboard, listAdminDisputes } from '../api/event';
+import { countOpenFraudFlags, countPendingChangeRequests } from '../components/eventAnimation/shared';
 
 interface Dashboard {
     organizers: { pending: number; approved: number; suspended: number; total: number };
-    events: { draft: number; published: number; suspended: number; cancelled: number; completed: number; total: number };
+    // pendingReview / rejected: added with event review — absent on older deployments
+    events: { draft: number; pendingReview?: number; rejected?: number; published: number; suspended: number; cancelled: number; completed: number; total: number };
     tickets: { issued: number; checkedIn: number; refunded: number; cancelled: number; total: number };
     orders: { paidCount: number; gross: number };
     commissions: { primary: { total: number; count: number }; resale: { total: number; count: number } };
@@ -24,17 +27,45 @@ const StatCard = ({ label, value, sub }: { label: string; value: string | number
     </div>
 );
 
+/** Pending work outside the dashboard payload; each count is optional (an older backend just shows « — »). */
+interface Queues { disputes?: number; fraud?: number; changes?: number }
+
+/** One pending-work tile: highlighted when something waits, links to where it is handled. */
+const TodoCard = ({ label, value, to, sub, tone = 'warning' }: { label: string; value?: number; to: string; sub?: string; tone?: 'warning' | 'danger' }) => {
+    const waiting = !!value;
+    const border = waiting ? (tone === 'danger' ? 'border-red-600' : 'border-amber-600') : 'border-gray-700';
+    return (
+        <Link to={to} className={`block bg-gray-800 border ${border} rounded-xl p-4 hover:bg-gray-700/60 transition-colors`}>
+            <div className="text-xs text-gray-400 uppercase">{label}</div>
+            <div className={`text-2xl font-bold mt-1 ${waiting ? (tone === 'danger' ? 'text-red-300' : 'text-amber-300') : ''}`}>{value ?? '—'}</div>
+            <div className="text-xs text-gray-400 mt-1">{sub ?? (waiting ? 'À traiter' : 'Rien en attente')}</div>
+        </Link>
+    );
+};
+
 export default function EventDashboardPage() {
     const [data, setData] = useState<Dashboard | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [queues, setQueues] = useState<Queues>({});
+
+    useEffect(() => {
+        // Each queue is loaded on its own so one failing endpoint never hides the others.
+        const settle = <T,>(p: Promise<T>) => p.then(v => v, () => undefined);
+        Promise.all([
+            settle(listAdminDisputes({ status: 'OPEN', limit: 1 }).then(r => r.total)),
+            settle(countOpenFraudFlags()),
+            settle(countPendingChangeRequests()),
+        ]).then(([disputes, fraud, changes]) => setQueues({ disputes, fraud, changes }));
+    }, []);
 
     useEffect(() => {
         (async () => {
             try {
                 setData(await getEventDashboard());
-            } catch (e: any) {
-                setError(e?.response?.data?.message || e?.message || 'Erreur');
+            } catch (e: unknown) {
+                const err = e as { response?: { data?: { message?: string } }; message?: string };
+                setError(err?.response?.data?.message || err?.message || 'Erreur');
             } finally { setLoading(false); }
         })();
     }, []);
@@ -47,9 +78,20 @@ export default function EventDashboardPage() {
                 {error && <div className="bg-red-900/30 border border-red-800 text-red-300 rounded-xl p-4">{error}</div>}
                 {data && (
                     <>
+                        <section className="space-y-2">
+                            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">À traiter</h2>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                                <TodoCard label="Événements à valider" value={data.events.pendingReview} to="/event/events?status=PENDING_REVIEW"
+                                    sub={data.events.rejected ? `${data.events.rejected} refusé(s) en attente de correction` : undefined} />
+                                <TodoCard label="Organisateurs à approuver" value={data.organizers.pending} to="/event/organizers" />
+                                <TodoCard label="Litiges ouverts" value={queues.disputes} to="/event/disputes" />
+                                <TodoCard label="Animation : activités suspectes" value={queues.fraud} to="/event/animation?tab=a-verifier" tone="danger" />
+                                <TodoCard label="Animation : demandes de modification" value={queues.changes} to="/event/animation?tab=demandes" />
+                            </div>
+                        </section>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <StatCard label="Organisateurs" value={data.organizers.total} sub={`${data.organizers.pending} en attente · ${data.organizers.approved} approuvés`} />
-                            <StatCard label="Événements" value={data.events.total} sub={`${data.events.published} publiés · ${data.events.draft} brouillons`} />
+                            <StatCard label="Événements" value={data.events.total} sub={`${data.events.published} publiés · ${data.events.pendingReview ?? 0} à valider · ${data.events.draft} brouillons`} />
                             <StatCard label="Billets" value={data.tickets.total} sub={`${data.tickets.issued} émis · ${data.tickets.checkedIn} entrés`} />
                             <StatCard label="Commandes payées" value={data.orders.paidCount} sub={`CA: ${(data.orders.gross).toLocaleString('fr-FR')} XAF`} />
                         </div>
@@ -69,6 +111,7 @@ export default function EventDashboardPage() {
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <StatCard label="Événements suspendus" value={data.events.suspended} />
                             <StatCard label="Événements annulés" value={data.events.cancelled} />
+                            <StatCard label="Événements refusés" value={data.events.rejected ?? '—'} sub="En attente de correction par l'organisateur" />
                             <StatCard label="Billets remboursés" value={data.tickets.refunded} />
                         </div>
                     </>

@@ -25,6 +25,7 @@ export const EVENT_COMMISSION_DEFAULTS: IEventCommissions = {
     primaryPct: 0.05,
     resalePct: 0.10,
     defaultMaxResalePricePct: 120,
+    votePct: 0.10,
 };
 
 // Interface for the response of the generic upload
@@ -556,6 +557,7 @@ class SettingsService {
             primaryPct: c?.primaryPct ?? EVENT_COMMISSION_DEFAULTS.primaryPct,
             resalePct: c?.resalePct ?? EVENT_COMMISSION_DEFAULTS.resalePct,
             defaultMaxResalePricePct: c?.defaultMaxResalePricePct ?? EVENT_COMMISSION_DEFAULTS.defaultMaxResalePricePct,
+            votePct: c?.votePct ?? EVENT_COMMISSION_DEFAULTS.votePct,
         };
     }
 
@@ -571,6 +573,7 @@ class SettingsService {
                 primaryPct: settings.eventCommissions!.primaryPct,
                 resalePct: settings.eventCommissions!.resalePct,
                 defaultMaxResalePricePct: settings.eventCommissions!.defaultMaxResalePricePct,
+                votePct: settings.eventCommissions!.votePct ?? EVENT_COMMISSION_DEFAULTS.votePct,
             };
         } catch (error: any) {
             log.error('Error updating SBC Event commissions:', error);

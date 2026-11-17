@@ -4,7 +4,7 @@ import Loader from '../components/common/loader';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import ToastContainer from '../components/common/ToastContainer';
 import { useToast } from '../hooks/useToast';
-import { AdminOrganizer, OrganizerStatus, listOrganizers, approveOrganizer, suspendOrganizer, apiErrorMessage } from '../api/event';
+import { AdminOrganizer, OrganizerStatus, listOrganizers, approveOrganizer, apiErrorMessage } from '../api/event';
 
 const STATUS_STYLES: Record<OrganizerStatus, string> = {
     PENDING: 'bg-amber-100 text-amber-800',
@@ -12,6 +12,18 @@ const STATUS_STYLES: Record<OrganizerStatus, string> = {
     SUSPENDED: 'bg-red-100 text-red-800',
 };
 
+const STATUS_LABELS: Record<OrganizerStatus, string> = {
+    PENDING: 'En attente',
+    APPROVED: 'Approuvé',
+    SUSPENDED: 'Suspendu',
+};
+
+/**
+ * Organisers: approve newcomers. There is no organiser suspension any more:
+ * SBC accepts or refuses each event instead (Événements → « À valider »), so
+ * one bad event never blocks an organiser's other events. Organisers suspended
+ * before that change can still be reactivated here.
+ */
 export default function EventOrganizersPage() {
     const [items, setItems] = useState<AdminOrganizer[]>([]);
     const [status, setStatus] = useState<OrganizerStatus | ''>('');
@@ -24,42 +36,36 @@ export default function EventOrganizersPage() {
         try {
             const { items } = await listOrganizers({ status: status || undefined, limit: 100 });
             setItems(items);
-        } catch (e: any) { showError(apiErrorMessage(e, 'Impossible de charger les organisateurs.')); }
+        } catch (e: unknown) { showError(apiErrorMessage(e, 'Impossible de charger les organisateurs.')); }
         finally { setLoading(false); }
     }, [status, showError]);
 
     useEffect(() => { load(); }, [load]);
 
-    const doApprove = (o: AdminOrganizer) => setConfirm({
-        title: 'Approuver l\'organisateur',
-        message: `${o.displayName} pourra créer et publier des événements.`,
-        onConfirm: async () => {
-            try {
-                await approveOrganizer(o._id);
-                showSuccess('Organisateur approuvé.');
-                setConfirm(null);
-                load();
-            } catch (e: any) { showError(apiErrorMessage(e, 'Erreur.')); setConfirm(null); }
-        },
-    });
-
-    const doSuspend = (o: AdminOrganizer) => setConfirm({
-        title: 'Suspendre l\'organisateur',
-        message: `${o.displayName} ne pourra plus créer de nouveaux événements.`,
-        onConfirm: async () => {
-            try {
-                await suspendOrganizer(o._id);
-                showSuccess('Organisateur suspendu.');
-                setConfirm(null);
-                load();
-            } catch (e: any) { showError(apiErrorMessage(e, 'Erreur.')); setConfirm(null); }
-        },
-    });
+    const doApprove = (o: AdminOrganizer) => {
+        const verb = o.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver';
+        setConfirm({
+            title: `${verb} l'organisateur`,
+            message: `${o.displayName} aura accès à son espace organisateur pour créer ses événements. Chacun sera soumis à la validation de SBC avant d'être mis en vente.`,
+            onConfirm: async () => {
+                try {
+                    await approveOrganizer(o._id);
+                    showSuccess(o.status === 'SUSPENDED' ? 'Organisateur réactivé.' : 'Organisateur approuvé.');
+                    setConfirm(null);
+                    load();
+                } catch (e: unknown) { showError(apiErrorMessage(e, 'Erreur.')); setConfirm(null); }
+            },
+        });
+    };
 
     return (
         <div className="flex-1 overflow-y-auto">
             <Header title="SBC Event — Organisateurs" />
             <div className="p-6 space-y-4">
+                <p className="text-sm text-gray-400">
+                    Il n'y a plus de suspension d'organisateur : SBC accepte ou refuse chaque événement envoyé
+                    (page Événements, filtre « À valider »). Un événement refusé ne bloque pas les autres événements de l'organisateur.
+                </p>
                 <div className="flex items-center gap-3">
                     <select value={status} onChange={(e) => setStatus(e.target.value as OrganizerStatus | '')} className="border border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-700 text-white hover:bg-gray-600">
                         <option value="">Tous les statuts</option>
@@ -93,11 +99,10 @@ export default function EventOrganizersPage() {
                                             <div className="text-xs">{o.contactEmail}</div>
                                             <div className="text-xs text-gray-400">{o.contactPhone}</div>
                                         </td>
-                                        <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[o.status]}`}>{o.status}</span></td>
+                                        <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[o.status]}`}>{STATUS_LABELS[o.status] ?? o.status}</span></td>
                                         <td className="px-4 py-2 text-xs">{o.stats?.eventsPublished ?? 0}</td>
                                         <td className="px-4 py-2 space-x-2">
-                                            {o.status !== 'APPROVED' && <button onClick={() => doApprove(o)} className="text-xs bg-emerald-600 text-white px-2 py-1 rounded">Approuver</button>}
-                                            {o.status !== 'SUSPENDED' && <button onClick={() => doSuspend(o)} className="text-xs bg-red-600 text-white px-2 py-1 rounded">Suspendre</button>}
+                                            {o.status !== 'APPROVED' && <button onClick={() => doApprove(o)} className="text-xs bg-emerald-600 text-white px-2 py-1 rounded">{o.status === 'SUSPENDED' ? 'Réactiver' : 'Approuver'}</button>}
                                         </td>
                                     </tr>
                                 ))}
@@ -114,6 +119,7 @@ export default function EventOrganizersPage() {
                     message={confirm.message}
                     confirmText="Confirmer"
                     cancelText="Annuler"
+                    variant="success"
                     onConfirm={confirm.onConfirm}
                     onCancel={() => setConfirm(null)}
                 />
