@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Search01Icon, UserSearch01Icon } from '@hugeicons/core-free-icons';
@@ -16,25 +16,25 @@ const MIN_CHARS = 2;
 export default function MembersPage() {
   const navigate = useNavigate();
   const perms = usePermissions();
-  const [params, setParams] = useSearchParams();
-  const q = params.get('q') ?? '';
-  const [text, setText] = useState(q);
+  // The search text (an email or a phone number, usually) stays in memory only:
+  // never in the address bar, the browser history, or a URL a server would log.
+  const [q, setQ] = useState('');
+  const [text, setText] = useState('');
 
-  // Debounced: the address bar (and the search) follow the box 400 ms after typing stops.
+  // Debounced: the search follows the box 400 ms after typing stops.
   useEffect(() => {
     const clean = text.trim();
     if (clean === q) return;
-    const t = setTimeout(() => setParams(clean ? { q: clean } : {}, { replace: true }), 400);
+    const t = setTimeout(() => setQ(clean), 400);
     return () => clearTimeout(t);
-  }, [text, q, setParams]);
+  }, [text, q]);
 
   const enabled = q.length >= MIN_CHARS;
-  const search = useQuery({ queryKey: ['members', 'search', q], queryFn: () => membersApi.search(q), enabled, staleTime: 60_000 });
+  const search = useQuery({ queryKey: ['members', 'search', q], queryFn: () => membersApi.search(q), enabled, staleTime: 60_000, gcTime: 60_000 });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const clean = text.trim();
-    setParams(clean ? { q: clean } : {}, { replace: true });
+    setQ(text.trim());
   };
 
   const columns: ListColumn<MemberHit>[] = [
