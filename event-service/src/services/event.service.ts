@@ -64,6 +64,20 @@ const applyCategoryRules = (fields: Record<string, any>) => {
     }
 };
 
+/**
+ * A physical event needs its place: city, venue and address are required by
+ * the model, and an empty one used to reach Mongoose and come back as a 500
+ * ("unexpected error") instead of saying what is missing.
+ */
+const PLACE_LABELS: Record<'city' | 'venue' | 'address', string> = { city: 'la ville', venue: 'le lieu', address: "l'adresse" };
+const requirePlace = (place: Record<'city' | 'venue' | 'address', unknown>) => {
+    const missing = (Object.keys(PLACE_LABELS) as (keyof typeof PLACE_LABELS)[])
+        .filter(k => typeof place[k] !== 'string' || !(place[k] as string).trim());
+    if (missing.length) {
+        throw new AppError(`Indiquez ${missing.map(k => PLACE_LABELS[k]).join(', ')} de l'événement.`, 400);
+    }
+};
+
 export const createEvent = async (organizerId: string, payload: Partial<IEvent>): Promise<IEvent> => {
     if (!payload.title?.trim()) throw new AppError('Le titre est obligatoire.', 400);
     if (!payload.description?.trim()) throw new AppError('La description est obligatoire.', 400);
@@ -90,6 +104,7 @@ export const createEvent = async (organizerId: string, payload: Partial<IEvent>)
     if (fields.category === WEBINAR_CATEGORY && !fields.accessLink) {
         throw new AppError('Ajoutez le lien WhatsApp du webinaire.', 400);
     }
+    if (fields.category !== WEBINAR_CATEGORY) requirePlace(fields as any);
 
     const slug = await generateUniqueSlug(payload.title);
 
@@ -143,6 +158,16 @@ export const updateEvent = async (
     applyCategoryRules(merged);
     for (const key of ['city', 'venue', 'address', 'resaleEnabled', 'accessLink'] as const) {
         if (key in patch || merged.category === WEBINAR_CATEGORY || key === 'accessLink') patch[key] = merged[key];
+    }
+    if (merged.category !== WEBINAR_CATEGORY) {
+        for (const key of ['city', 'venue', 'address'] as const) {
+            if (typeof patch[key] === 'string') patch[key] = patch[key].trim();
+        }
+        requirePlace({
+            city: patch.city ?? event.city,
+            venue: patch.venue ?? event.venue,
+            address: patch.address ?? event.address,
+        });
     }
 
     // A form save resends every field, so only a field whose value actually
