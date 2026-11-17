@@ -1255,6 +1255,49 @@ hand-started process (it holds port 3009) and stop it, make sure
 `sbclove-service/.env` has the same `JWT_SECRET` as `user-service/.env`, and run
 `npm install` there if `node_modules` is missing (see the section above).
 
+### SBC Support (support-service, 2026-11-17)
+
+Agent desk + member « Aide » + internal case/view-task intake. Contract:
+`docs/support/CONTRACT.md` (routes, roles, settings, env).
+- **Ports / PM2:** 3012 `support-service` (prod, DB `sbc_support`), 6012
+  `support-preprod` (DB `sbc_support_preprod`). Health `/health` (200 only when
+  Mongo and Redis answer; dependencies listed, never fatal).
+- **Gateway:** `/api/support/*` → `SUPPORT_SERVICE_URL` (path kept). It is marked
+  `public` in `admin-routes.ts`: the desk has its own agents, TOTP, cookies and
+  CSRF, and must never go through `ADMIN_ALLOWLIST`.
+- **Front:** `support-frontend/dist` on `support.` / `preprod-support.`
+  (`nginx/support-sniper`, `nginx/preprod-support-sniper`); `REBUILD_SUPPORT`
+  in the deploy scripts.
+- **Env (support-service/.env, see `.env.example`):** required
+  `SUPPORT_JWT_SECRET` (≠ `JWT_SECRET`), `TOTP_ENC_KEY` (`openssl rand -base64 32`;
+  never rotate without re-enrolling every agent), `SERVICE_SECRET`, `JWT_SECRET`
+  (same as user-service), `MONGODB_URI`, `SUPPORT_PUBLIC_URL`; then the four
+  service URLs, `TURNSTILE_SECRET`, `DEEPSEEK_API_KEY`, `R2_*` +
+  `R2_PRIVATE_BUCKET` (default `sbc-support-private`). It refuses to start
+  without the required ones.
+- **First deploy:** the usual new-service traps apply (section above): the
+  deploy script picks the service up only on the 2nd run, run `npm install` in
+  `support-service/` by hand, set `SUPPORT_SERVICE_URL` in `gateway-service/.env`
+  and `pm2 reload gateway-service --update-env`. Then DNS (Cloudflare, proxied)
+  for `support` / `preprod-support`, the vhosts + certificate, a Cloudflare rate
+  rule on `/api/support/desk/auth/*`, the Turnstile site key/secret, the R2
+  bucket. Check `curl localhost:3012/health` and `https://support.…/api/support/health`.
+- **First admin:** `cd support-service && node dist/scripts/create-support-admin.js
+  --email <email> --name "<name>"` prints a one-time activation link (48 h) to
+  stdout only: hand it over directly, never paste it in a chat log. The agent
+  sets a password (≥ 12 chars, not a common one) and enrols TOTP at first sign-in.
+  Lost phone: Administration → Agents → new activation link (wipes password,
+  TOTP and backup codes).
+- **Audit:** `auditlogs` is append-only and hash-chained;
+  `node dist/scripts/verify-audit-chain.js` exits 1 on any altered or missing
+  row. Give the service's Mongo user no update/remove right on it when users
+  are introduced.
+- **Money:** support never moves money. Activation, regularisation and
+  re-checks are calls to payment-service (§2.2) after an approval by a
+  different agent; kill switches live in the support `settings` collection.
+- **Tests:** `npm test` (Jest + supertest) uses `sbc_support_test` and Redis
+  DB 15 only, mocks every outbound call.
+
 ### CinetPay per-country accounts
 
 CinetPay's new platform (which we use, at `api.cinetpay.co` with OAuth) issues

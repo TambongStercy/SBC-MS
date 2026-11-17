@@ -84,7 +84,7 @@ Subscription activation idempotency (phase 3, owner side, no API): collection
 | `POST /withdrawals/:transactionId/regularize` | `{ action: 'complete'\|'fail', reason, evidence: string[], approvalId }` | conditional transition; `409 code=STATE_CHANGED` if not in an allowed state |
 | `POST /activation/manual` | `{ userId, gateway, externalRef, plan, approvalId }` | verifies `externalRef` at the provider; unique `{gateway, gatewayPaymentId}`; `409 code=REF_ALREADY_USED`, `422 code=PROVIDER_NOT_CONFIRMED` |
 | `GET /finance/summary` | `?from&to&country` | counts and sums per business status, ages bucketed `<24h`, `24-48h`, `48-72h`, `>72h` |
-| `GET /finance/withdrawals` | `?status&ageBucket&gateway&country&page&limit` | paginated list for the finance board |
+| `GET /finance/withdrawals` | `?status&ageBucket&gateway&country&from&to&page&limit` | `{ items, total, page, limit }`; items `{ transactionId, userId, amount, currency, status, businessStatus, method, gateway, country, createdAt, updatedAt, ageBucket }`. `status=non_final` = every withdrawal without a final provider answer (used by support's 24/48/72 h job) |
 
 ```
 RecheckResult = { result: 'confirmed'|'pending'|'not_found'|'failed'|'provider_unavailable',
@@ -138,6 +138,7 @@ Idle 30 min, absolute 12 h.
 
 | Route | Body | Result |
 |---|---|---|
+| `GET /desk/auth/csrf` | — | 204; sets the readable `sbc_sup_csrf` cookie (`Path=/`) when missing (sign-in needs it too) |
 | `POST /desk/auth/login` | `{ email, password, turnstileToken? }` | `{ step: 'totp'\|'enroll', challengeId }` — same error and timing whatever the reason |
 | `POST /desk/auth/totp` | `{ challengeId, code? , backupCode? }` | sets cookies, `{ agent }` |
 | `POST /desk/auth/enroll/start` | `{ challengeId }` | `{ otpauthUrl, qrDataUrl }` |
@@ -152,21 +153,43 @@ Modules (all under `/desk`, each route checks a permission server-side; refusals
 `agents`, `settings`, `audit`, `approvals`, `members`, `tickets`, `templates`, `kb`,
 `activation`, `finance`, `cases`, `views`, `reports`, `notifications`.
 
+Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend). Lists are
+`{ items, total, page, limit }` unless noted; sensitive routes need `x-reauth-token`.
+
+| Area | Routes |
+|---|---|
+| agents (`agents.manage`) | `GET /agents` (array), `GET /roles`, `POST /agents` → `{ agent, activationUrl }` (link shown once; `delivery:'email'` emails it instead), `PUT /agents/:id/roles`, `POST /agents/:id/disable\|enable\|activation-link\|revoke-sessions`, `GET /agents/:id/sessions` |
+| settings / audit | `GET /settings`, `PUT /settings/:key { value, reason }`; `GET /audit?actor&action&objectId&from&to&page&limit`, `POST /audit/verify` → `{ ok, checked, firstBrokenSeq, verifiedAt }` |
+| approvals | `GET /approvals?status&mine=1` (array), `GET /approvals/:id`, `POST /approvals/:id/approve { note }`, `/reject { reason }`, `/execute` (retry after an owner outage), `/cancel` |
+| members | `GET /members/search?q`, `GET /members/:id` → `{ member }`, `GET /members/:id/payins\|withdrawals\|tickets`, `POST /members/:id/contact-change` → `{ approvalId }`, `POST /members/contact-change/:approvalId/send-code`, `POST /members/contact-change/:approvalId/apply { code }` |
+| tickets | `GET /tickets?queue&status(new…closed\|active)&priority&assignee&q`, `GET /tickets/queues`, `GET /tickets/assignees`, `GET /tickets/:id` → `{ ticket, messages, events }`, `POST /tickets/:id/messages { body, internal, attachmentIds? }`, `/status { status, reason }`, `/assign { agentId }`, `/priority`, `/take`, `GET /tickets/:id/attachments/:aid/url`, `POST /attachments` (multipart `file` → `{ id }`) |
+| templates / kb / guides | `GET\|POST /templates`, `PUT\|DELETE /templates/:id`; `GET /kb/categories`, `GET\|POST /kb/articles`, `GET\|PUT /kb/articles/:id`, `POST /kb/articles/:id/publish { version }\|unpublish`; `GET\|PUT /guides { nodes }` |
+| activation / finance / cases | `POST /activation/check { userId?, sessionId?, reference? }` → RecheckResult, `POST /activation/manual-requests { userId, gateway, externalRef, plan, reason, caseId? }` → `{ approvalId }`; `GET /finance/summary`, `GET /finance/withdrawals`, `POST /finance/withdrawals/:tx/recheck`, `POST /finance/withdrawals/:tx/regularization-requests { action, reason, evidence[], caseId? }`; `GET /cases?type(…\|finance)&status&severity&assignee`, `GET /cases/:id`, `POST /cases/:id/assign\|comments\|status\|recheck` |
+| views | `GET /views/current`, `POST /views/next`, `POST /views/availability`, `GET /views/mine`, `GET /views/tasks/:id`, `POST /views/tasks/:id/start\|heartbeat\|decision { decision: approve\|reject\|review\|technical_error, observedViews?, reason?, ban?, version }`; supervisor: `GET /views/board`, `GET /views/tasks?state`, `GET /views/verifiers`, `POST /views/tasks/:id/reassign { agentId\|null, reason }`, `GET\|PUT /views/settings`, `GET /views/qa`, `POST /views/qa/:taskId { verdict: confirmed\|corrected, decision?, observedViews?, reason }`, `GET /views/stats` |
+| reports / bell / meta | `GET /reports/agents?from&to&agentId` → `{ from, to, rows }`, `GET /reports/agents/export` (CSV, `export`, audited), `GET /reports/summary`, `GET /reports/export?type=tickets\|cases\|views`; `GET /notifications`, `POST /notifications/:id/read\|read-all`; `GET /meta` |
+
+Ticket statuses are stored with the CdC keys (`nouveau`, `ouvert`, `en_attente_membre`,
+`en_attente_interne`, `resolu`, `ferme`, used as is by `/me/*`); the desk reads and writes the
+English keys `new`, `open`, `waiting_member`, `waiting_internal`, `resolved`, `closed`.
+
 ### 3.2 Member — `/me/*` (member JWT from the app, verified with `JWT_SECRET`, any role)
 
 | Route | Notes |
 |---|---|
 | `GET /me/kb/categories`, `GET /me/kb/search?q=`, `GET /me/kb/articles/:slug` | published articles only |
 | `GET /me/guides` | guided-paths tree (FAQ flows) |
-| `POST /me/assistant/ask` `{ question, conversationId? }` | `{ conversationId, answer, source: 'faq'\|'ai'\|'route', articles: [{slug,title}], route?: 'activation'\|'withdrawal'\|'ticket', canEscalate }` |
-| `POST /me/assistant/:conversationId/escalate` `{ category }` | creates a ticket with the conversation attached |
-| `GET /me/tickets`, `POST /me/tickets`, `GET /me/tickets/:id`, `POST /me/tickets/:id/messages`, `POST /me/tickets/:id/close` | own tickets only; internal notes never returned |
+| `POST /me/assistant/ask` `{ question, conversationId?, level?: 'faq'\|'ai' }` | `{ conversationId, answer, source: 'faq'\|'ai'\|'route', articles: [{slug,title}], route?: 'activation'\|'withdrawal'\|'ticket', canEscalate }`. Default level `faq`; the app re-sends the same question with `level:'ai'` when the member clicks « Ça ne répond pas ». Only `ai` may call DeepSeek (money routing, caps and kill switch still apply) |
+| `POST /me/assistant/:conversationId/escalate` `{ category }` | creates a ticket with the conversation attached → `{ ticketId, number }` (same ticket on a repeat) |
+| `GET /me/tickets/categories` | `[{ key, label }]` |
+| `GET /me/tickets`, `POST /me/tickets` `{ category, subject, message, attachmentIds? }`, `GET /me/tickets/:id`, `POST /me/tickets/:id/messages` `{ message, attachmentIds? }`, `POST /me/tickets/:id/close` | own tickets only; internal notes never returned; message author `{ type, name }` |
 | `POST /me/attachments` (multipart, `file`) | images/PDF ≤ 10 MB → `{ id }` |
-| `GET /me/activation/status` | own recent payins + subscription state |
-| `POST /me/activation/check` `{ sessionId?, reference? }` | recheck; `not_found`/`provider_unavailable` ⇒ activation case + ticket |
-| `GET /me/withdrawals` / `GET /me/withdrawals/:id` | real status in plain French (business status mapping) |
+| `GET /me/activation/status` | `{ activated, subscription: { type, status, startDate, endDate } \| null, payins: [...] }` |
+| `POST /me/activation/check` `{ sessionId?, reference? }` | `{ result, message, statusLabel, ticketId, ticketNumber? }`; `not_found`/`provider_unavailable` ⇒ activation case + ticket (`ticketId` set) |
+| `GET /me/withdrawals` / `GET /me/withdrawals/:id` | `{ id, amount, currency, method, businessStatus, statusLabel, explanation, createdAt, updatedAt }` (short French label + one French sentence) |
+| `GET /me/guides` | guided-paths tree: nodes `{ id, label, text?, action?, category?, articles?, children? }` (editable from the desk) |
 
-Rate limits (Redis, per member): assistant 20/day, ticket creation 5/day, activation check 10/h.
+Rate limits (Redis, per member): assistant 20/day (setting), ticket creation 5/day (incl.
+escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIMITED'`.
 
 ## 4. Roles and permissions
 
@@ -200,10 +223,10 @@ Defaults pending SBC (Rufus) validation — CdC §15.1. All are settings, not co
 
 | Key | Default |
 |---|---|
-| `approval.regularization` | always double approval |
+| `approval.regularization` | `always` (requester + a different finance_manager); only value accepted for now |
 | `approval.manualActivation` | always |
 | `approval.contactChange` | always |
-| `approval.withdrawalManualCompleteAbove` | 50 000 XAF |
+| `approval.withdrawalManualCompleteAbove` | 50 000 XAF (stored; no effect while every regularization needs approval) |
 | `finance.alertHours` | `[24, 48, 72]` (alert, case to finance_manager, critical) |
 | `views.assignmentMode` | `round_robin` (`round_robin` \| `load` \| `manual`) |
 | `views.unstartedRequeueMinutes` | 10 |
@@ -222,8 +245,13 @@ base64, required), `SERVICE_SECRET` (required), `JWT_SECRET` (member tokens, req
 `NOTIFICATION_SERVICE_URL`, `SUPPORT_PUBLIC_URL`, `SUPPORT_ALLOWED_ORIGINS`,
 `TURNSTILE_SECRET` (optional; login skips Turnstile when unset, logs a warning in prod),
 `DEEPSEEK_API_KEY` (optional), `DEEPSEEK_MODEL` (default `deepseek-chat`),
-`R2_*` (reuse the names used by other services; private bucket for attachments).
-The service refuses to start without the required ones.
+`R2_*` (reuse the names used by other services; private bucket for attachments:
+`R2_PRIVATE_BUCKET`, default `sbc-support-private`, objects under `support/attachments/`).
+Optional: `REDIS_KEY_PREFIX` (default `sbc-support:<NODE_ENV>:`), `MEMBER_APP_URL`,
+`COOKIE_SECURE=false` (local http only; ignored in production), `LOGIN_MIN_MS` (700),
+`JOBS_ENABLED`, `DEEPSEEK_PRICE_IN_PER_M` / `DEEPSEEK_PRICE_OUT_PER_M` (budget accounting).
+The service refuses to start without the required ones (and in production without
+`MONGODB_URI` and `SUPPORT_PUBLIC_URL`).
 
 ## 7. Branches
 
