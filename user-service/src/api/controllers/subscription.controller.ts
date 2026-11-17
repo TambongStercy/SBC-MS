@@ -313,7 +313,12 @@ export class SubscriptionController {
             this.log.info(`Subscription activation/update successful for session ${sessionId}`);
             res.status(200).json({ success: true, message: 'Subscription activated successfully.' });
 
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.code === 'ACTIVATION_IN_PROGRESS') {
+                // Same payment being activated right now by another delivery: not done yet, so not a 2xx.
+                res.status(409).json({ success: false, code: 'ACTIVATION_IN_PROGRESS', message: error.message });
+                return;
+            }
             this.log.error(`Error processing successful payment webhook for session ${sessionId}:`, error);
             const message = error instanceof Error ? error.message : 'Failed to activate subscription after payment confirmation';
             res.status(500).json({ success: false, message });
