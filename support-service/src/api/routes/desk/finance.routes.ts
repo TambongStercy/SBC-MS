@@ -14,6 +14,7 @@ import { getSetting } from '../../../services/settings.service';
 import { hasPermission } from '../../../config/permissions';
 import { Approval } from '../../../database/models/approval.model';
 import { badRequest, conflict } from '../../../utils/errors';
+import { periodEndParam } from '../../../utils/dates';
 
 const router = Router();
 const ref = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.name, roles: a.roles }; };
@@ -47,6 +48,8 @@ router.post('/activation/check', requirePermission('activation.check'), ah(async
     res.json({ success: true, data: result });
 }));
 
+const MANUAL_PLANS = ['CLASSIQUE', 'CIBLE', 'UPGRADE'] as const;
+
 /** Manual activation: always through an approval (approval.manualActivation = always). */
 const manualRequest = ah(async (req, res) => {
     const b = req.body ?? {};
@@ -55,6 +58,8 @@ const manualRequest = ah(async (req, res) => {
     const externalRef = typeof b.externalRef === 'string' ? b.externalRef.trim().slice(0, 120) : '';
     const plan = typeof b.plan === 'string' ? b.plan.trim().toUpperCase().slice(0, 30) : '';
     if (!userId || !gateway || !externalRef || !plan) throw badRequest('Membre, opérateur, référence et pack sont obligatoires.', 'BAD_REQUEST');
+    // payment-service activates only these (CONTRACT §2.2): refuse others now, not after a second agent has approved.
+    if (!MANUAL_PLANS.includes(plan as any)) throw badRequest('Pack non activable manuellement : CLASSIQUE, CIBLE ou UPGRADE uniquement.', 'BAD_PLAN');
     if (await getSetting('approval.manualActivation') !== 'always') throw conflict('Réglage inattendu.', 'SETTING');
     const a = await createApproval({
         type: 'manual_activation', requestedBy: ref(req), reason: reason(b.reason), payload: { userId, gateway, externalRef, plan },
@@ -85,12 +90,12 @@ export function presentFinanceSummary(raw: { currency?: string; byBusinessStatus
 
 router.get('/finance/summary', requirePermission('finance.read'), ah(async (req, res) => {
     const q = req.query as Record<string, string>;
-    res.json({ success: true, data: presentFinanceSummary(await financeSummary({ from: q.from, to: q.to, country: q.country }) as any) });
+    res.json({ success: true, data: presentFinanceSummary(await financeSummary({ from: q.from, to: periodEndParam(q.to), country: q.country, gateway: q.gateway }) as any) });
 }));
 
 router.get('/finance/withdrawals', requirePermission('finance.read'), ah(async (req, res) => {
     const q = req.query as Record<string, string>;
-    const data = await financeWithdrawals({ status: q.status, ageBucket: q.ageBucket, gateway: q.gateway, country: q.country, from: q.from, to: q.to, page: q.page, limit: q.limit });
+    const data = await financeWithdrawals({ status: q.status, ageBucket: q.ageBucket, gateway: q.gateway, country: q.country, from: q.from, to: periodEndParam(q.to), page: q.page, limit: q.limit });
     const page = asPage(data, Number(q.page) || 1, Number(q.limit) || 50) as any;
     // payment-service knows the member only by id: add the name the agents look for.
     const names = await memberNames((page.items ?? []).map((w: any) => w.userId));
@@ -135,8 +140,26 @@ async function caseOut(id: string) {
     return presentCase(c, await agentNames([c.assigneeId]), await memberNames([c.subject?.userId]));
 }
 
-/** type may be 'finance' (every non-activation type). */
-router.get('/cases', requirePermission('cases.work'), ah(async (req, res) => {
+/**
+ * Activation cases belong to support agents too (CdC §4): on them, activation.check
+ * stands for cases.work and finance.recheck. Other cases keep the finance permission.
+ */
+function caseAccess(financePerm: 'cases.work' | 'finance.recheck') {
+    return ah(async (req: any, res: any, next: any) => {
+        const roles = agentOf(req).roles;
+        if (hasPermission(roles, financePerm)) return next();
+        const c = await cases.getCase(req.params.id);
+        if (c.type === 'activation' && hasPermission(roles, 'activation.check')) return next();
+        return requirePermission(financePerm)(req, res, next);
+    });
+}
+
+/** type may be 'finance' (every non-activation type); support agents may list activation cases only. */
+router.get('/cases', (req, res, next) => {
+    const roles = agentOf(req).roles;
+    if (!hasPermission(roles, 'cases.work') && req.query.type === 'activation' && hasPermission(roles, 'activation.check')) return next();
+    return requirePermission('cases.work')(req, res, next);
+}, ah(async (req, res) => {
     const q = { ...(req.query as Record<string, unknown>) };
     const r = await cases.listCases(q, agentOf(req).id);
     res.json({ success: true, data: { ...r, items: await presentCases(r.items) } });
@@ -152,19 +175,19 @@ router.get('/cases/:id', ah(async (req, res, next) => {
     res.json({ success: true, data: presentCase(c, await agentNames([c.assigneeId]), await memberNames([c.subject?.userId])) });
 }));
 
-router.post('/cases/:id/assign', requirePermission('cases.work'), ah(async (req, res) => {
+router.post('/cases/:id/assign', caseAccess('cases.work'), ah(async (req, res) => {
     const to = req.body?.agentId !== undefined ? req.body.agentId : (req.body?.assigneeId ?? null);
     const r = await cases.assignCase(req.params.id, ref(req), to);
     await audit({ actor: actorOf(req), action: 'case.assigned', target: { type: 'case', id: req.params.id }, before: r.before, after: r.after, ...reqCtx(req) });
     res.json({ success: true, data: await caseOut(req.params.id) });
 }));
 
-router.post('/cases/:id/comments', requirePermission('cases.work'), ah(async (req, res) => {
+router.post('/cases/:id/comments', caseAccess('cases.work'), ah(async (req, res) => {
     await cases.commentCase(req.params.id, ref(req), req.body?.body);
     res.json({ success: true, data: await caseOut(req.params.id) });
 }));
 
-router.post('/cases/:id/status', requirePermission('cases.work'), ah(async (req, res) => {
+router.post('/cases/:id/status', caseAccess('cases.work'), ah(async (req, res) => {
     const note = typeof (req.body?.reason ?? req.body?.note) === 'string' ? String(req.body.reason ?? req.body.note).slice(0, 500) : undefined;
     const r = await cases.setCaseStatus(req.params.id, ref(req), req.body?.status, note);
     await audit({ actor: actorOf(req), action: 'case.status', target: { type: 'case', id: req.params.id }, before: r.before, after: r.after, reason: note ?? null, ...reqCtx(req) });
@@ -172,7 +195,7 @@ router.post('/cases/:id/status', requirePermission('cases.work'), ah(async (req,
 }));
 
 /** → RecheckResult (also stored on the case). */
-router.post('/cases/:id/recheck', requirePermission('finance.recheck'), ah(async (req, res) => {
+router.post('/cases/:id/recheck', caseAccess('finance.recheck'), ah(async (req, res) => {
     const r = await cases.recheckCase(req.params.id, ref(req));
     await audit({ actor: actorOf(req), action: 'case.recheck', target: { type: 'case', id: req.params.id }, after: { result: r.result.result }, ...reqCtx(req) });
     res.json({ success: true, data: r.result });

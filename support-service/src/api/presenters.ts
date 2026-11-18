@@ -78,13 +78,21 @@ export async function presentMessage(m: any) {
     };
 }
 
-export function presentEvent(e: any) {
+export function presentEvent(e: any, agents: Record<string, { id: string; name: string }> = {}) {
     const kind = e.kind === 'assigned' ? 'assign' : e.kind;
     const conv = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'string' ? (kind === 'status' ? deskStatus(v) : v) : JSON.stringify(v));
+    const to = conv(e.to);
     return {
         id: String(e._id), type: kind, actor: e.by?.id ? { id: String(e.by.id), name: e.by.name ?? '' } : undefined,
-        from: conv(e.from), to: conv(e.to), reason: e.note ?? undefined, at: iso(e.createdAt),
+        from: conv(e.from), to, toName: kind === 'assign' && to ? agents[to]?.name ?? null : undefined,
+        reason: e.note ?? undefined, at: iso(e.createdAt),
     };
+}
+
+/** Events with the assigned agents' names resolved (the timeline shows names, not ids). */
+export async function presentEvents(list: any[]) {
+    const agents = await agentNames(list.filter((e) => e.kind === 'assigned' || e.kind === 'assign').map((e) => (typeof e.to === 'string' ? e.to : null)));
+    return list.map((e) => presentEvent(e, agents));
 }
 
 export function presentCase(c: any, names: Record<string, { id: string; name: string }>, members: Record<string, string> = {}) {

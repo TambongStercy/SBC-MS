@@ -12,7 +12,7 @@ import { hasPermission, permissionsFor } from '../../../config/permissions';
 import { OPEN_TICKET_STATUSES, TICKET_CATEGORIES } from '../../../config/constants';
 import { Attachment, ResponseTemplate, Ticket, TicketMessage } from '../../../database/models/ticket.model';
 import { Agent } from '../../../database/models/agent.model';
-import { agentNames, memberNames, presentEvent, presentMessage, presentTicket, presentTickets, storedStatus } from '../../presenters';
+import { agentNames, memberNames, presentEvents, presentMessage, presentTicket, presentTickets, storedStatus } from '../../presenters';
 import { badRequest, notFound } from '../../../utils/errors';
 
 const router = Router();
@@ -66,7 +66,7 @@ router.get('/tickets/:id', requirePermission('tickets.read'), ah(async (req, res
     const raw = await TicketMessage.find({ ticketId: d.ticket._id }).sort({ createdAt: 1 }).limit(500).lean();
     res.json({
         success: true,
-        data: { ticket: presentTicket(d.ticket, names, d.ticket.memberName ? {} : await memberNames([d.ticket.memberId])), messages: await Promise.all(raw.map(presentMessage)), events: d.events.map(presentEvent) },
+        data: { ticket: presentTicket(d.ticket, names, d.ticket.memberName ? {} : await memberNames([d.ticket.memberId])), messages: await Promise.all(raw.map(presentMessage)), events: await presentEvents(d.events) },
     });
 }));
 

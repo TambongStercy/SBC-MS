@@ -51,7 +51,7 @@ export async function manualActivation(body: { userId: string; gateway: string; 
     return { ok: r.ok, status: r.status, code: r.code, message: r.message, data: r.data };
 }
 
-export async function financeSummary(query: { from?: string; to?: string; country?: string }) {
+export async function financeSummary(query: { from?: string; to?: string; country?: string; gateway?: string }) {
     return requireOk('payment', await serviceRequest('payment', 'GET', `${BASE}/finance/summary`, { query }));
 }
 

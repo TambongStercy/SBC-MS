@@ -3,9 +3,10 @@ import { Case } from '../database/models/case.model';
 import { ViewTask } from '../database/models/view-task.model';
 import { badRequest } from '../utils/errors';
 import { agentStats } from './views.service';
+import { periodEnd } from '../utils/dates';
 
 export function parsePeriod(q: Record<string, unknown>): { from: Date; to: Date } {
-    const to = q.to ? new Date(String(q.to)) : new Date();
+    const to = q.to ? periodEnd(q.to) : new Date();
     const from = q.from ? new Date(String(q.from)) : new Date(to.getTime() - 30 * 24 * 3600 * 1000);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) throw badRequest('Période invalide.', 'BAD_PERIOD');
     if (to.getTime() - from.getTime() > 366 * 24 * 3600 * 1000) throw badRequest('Période trop longue (un an au plus).', 'BAD_PERIOD');

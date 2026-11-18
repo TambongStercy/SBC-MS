@@ -9,6 +9,7 @@ import { Setting } from '../../../database/models/setting.model';
 import { revokeAllSessions } from '../../../services/auth/session.service';
 import { badRequest } from '../../../utils/errors';
 import { agentNames, page, presentAudit } from '../../presenters';
+import { periodEnd } from '../../../utils/dates';
 
 const router = Router();
 const reasonOf = (req: any) => (typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 1000) : null);
@@ -97,12 +98,18 @@ router.get('/audit', requirePermission('audit.read'), ah(async (req, res) => {
     const q = req.query as Record<string, string>;
     const filter: Record<string, unknown> = {};
     if (q.action) filter.action = q.action;
-    if (q.actor || q.actorId) filter['actor.id'] = q.actor || q.actorId;
+    const actor = String(q.actor || q.actorId || '').trim();
+    // "Agent (nom ou id)": an agent id matches exactly; any other text matches an id
+    // (system actors such as "seed-kb") or, ignoring case, part of the name.
+    if (actor) {
+        const esc = actor.slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.$or = /^[a-f0-9]{24}$/i.test(actor) ? [{ 'actor.id': actor }] : [{ 'actor.id': actor }, { 'actor.name': { $regex: esc, $options: 'i' } }];
+    }
     if (q.objectId || q.targetId) filter['target.id'] = q.objectId || q.targetId;
     if (q.result) filter.result = q.result;
     const range: Record<string, Date> = {};
     if (q.from && !Number.isNaN(Date.parse(q.from))) range.$gte = new Date(q.from);
-    if (q.to && !Number.isNaN(Date.parse(q.to))) range.$lt = new Date(q.to);
+    if (q.to && !Number.isNaN(periodEnd(q.to).getTime())) range.$lte = periodEnd(q.to);
     if (Object.keys(range).length) filter.at = range;
     const p = page(q, 50);
     const [items, total] = await Promise.all([
