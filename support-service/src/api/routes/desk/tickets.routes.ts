@@ -132,7 +132,10 @@ router.post('/attachments', requirePermission('tickets.reply'), upload.single('f
 const presentTemplate = (t: any) => ({ id: String(t._id), title: t.title, category: t.category ?? '', language: t.language, body: t.body, active: t.active, updatedAt: t.updatedAt });
 
 router.get('/templates', requirePermission('tickets.reply'), ah(async (req, res) => {
-    const list = await listTemplates(req.query as any, hasPermission(agentOf(req).roles, 'templates.manage'));
+    // Deleted replies stay in the database (active:false) but come back only when a manager
+    // explicitly asks: the editor and the composer list the live ones.
+    const withDeleted = req.query.includeInactive === '1' && hasPermission(agentOf(req).roles, 'templates.manage');
+    const list = await listTemplates(req.query as any, withDeleted);
     const lang = typeof req.query.language === 'string' ? req.query.language : null;
     res.json({ success: true, data: list.filter((t) => !lang || t.language === lang).map(presentTemplate) });
 }));

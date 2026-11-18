@@ -11,7 +11,7 @@ import { getSetting, setSetting } from '../../../services/settings.service';
 import { getProof } from '../../../services/clients/advertising.client';
 import { ViewTask } from '../../../database/models/view-task.model';
 import { Agent } from '../../../database/models/agent.model';
-import { agentNames, presentViewTask, presentViewTasks } from '../../presenters';
+import { agentNames, presentProof, presentViewTask, presentViewTasks } from '../../presenters';
 import { badRequest } from '../../../utils/errors';
 
 const router = Router();
@@ -19,6 +19,22 @@ const router = Router();
 /** The proof from advertising-service; null (not an error) when it cannot be read. */
 async function proofOf(sourceId: string) {
     try { return await getProof(sourceId); } catch { return null; }
+}
+
+/**
+ * The supervisor's lists (to review, quality check) show each proof's campaign,
+ * diffuseur, day and video: proofs are read from advertising for the first 50
+ * tasks, 8 at a time; a proof that cannot be read leaves that row without it.
+ */
+async function tasksWithProofs(list: any[]) {
+    const names = await agentNames(list.map((t) => t.assigneeId));
+    const proofs: unknown[] = new Array(list.length).fill(undefined);
+    const head = list.slice(0, 50);
+    for (let i = 0; i < head.length; i += 8) {
+        const batch = await Promise.all(head.slice(i, i + 8).map((t) => proofOf(t.sourceId)));
+        batch.forEach((p, j) => { proofs[i + j] = p ?? undefined; });
+    }
+    return list.map((t, i) => presentViewTask(t, names, proofs[i]));
 }
 
 async function taskOut(t: any, withProof = false) {
@@ -47,13 +63,14 @@ router.post('/availability', requirePermission('views.verify'), ah(async (req, r
 
 router.get('/mine', requirePermission('views.verify'), ah(async (req, res) => {
     const me = new Types.ObjectId(agentOf(req).id);
-    const [active, decided] = await Promise.all([
+    const [active, decided, self] = await Promise.all([
         ViewTask.find({ assigneeId: me, state: { $in: ACTIVE_VIEW_STATES } }).sort({ assignedAt: 1 }).lean(),
         ViewTask.find({ 'decision.by': String(me), 'decision.at': { $gte: dayStart() } }).sort({ 'decision.at': -1 }).limit(100).lean(),
+        Agent.findById(me, { 'views.available': 1 }).lean(),
     ]);
     const approved = decided.filter((t) => t.decision?.decision === 'approve').length;
     const rejected = decided.filter((t) => t.decision?.decision === 'reject').length;
-    res.json({ success: true, data: { items: await presentViewTasks([...active, ...decided]), today: { decided: approved + rejected, approved, rejected } } });
+    res.json({ success: true, data: { items: await presentViewTasks([...active, ...decided]), today: { decided: approved + rejected, approved, rejected }, available: (self as any)?.views?.available === true } });
 }));
 
 router.get('/tasks/:id', ah(async (req, res, next) => {
@@ -61,7 +78,7 @@ router.get('/tasks/:id', ah(async (req, res, next) => {
     const supervisor = hasPermission(roles, 'views.supervise');
     if (!supervisor && !hasPermission(roles, 'views.verify')) return requirePermission('views.verify')(req, res, next);
     const d = await views.taskDetail(req.params.id, agentOf(req), supervisor);
-    res.json({ success: true, data: { ...(await taskOut(d.task)), proof: d.proof, history: d.history } });
+    res.json({ success: true, data: { ...(await taskOut(d.task)), proof: presentProof(d.proof), history: d.history } });
 }));
 
 router.post('/tasks/:id/start', requirePermission('views.verify'), ah(async (req, res) => {
@@ -128,7 +145,7 @@ router.get('/board', requirePermission('views.supervise'), ah(async (_req, res) 
 router.get('/tasks', requirePermission('views.supervise'), ah(async (req, res) => {
     const state = typeof req.query.state === 'string' && (VIEW_TASK_STATES as readonly string[]).includes(req.query.state) ? req.query.state : 'available';
     const list = await ViewTask.find({ state }).sort({ submittedAt: 1 }).limit(200).lean();
-    res.json({ success: true, data: await presentViewTasks(list) });
+    res.json({ success: true, data: state === 'available' ? await presentViewTasks(list) : await tasksWithProofs(list) });
 }));
 
 router.get('/verifiers', requirePermission('views.supervise'), ah(async (_req, res) => {
@@ -178,7 +195,7 @@ router.put('/settings', requirePermission('views.supervise'), ah(async (req, res
 
 router.get('/qa', requirePermission('views.supervise'), ah(async (_req, res) => {
     const list = await ViewTask.find({ 'qa.sampled': true }).sort({ 'decision.at': -1 }).limit(200).lean();
-    const tasks = await presentViewTasks(list);
+    const tasks = await tasksWithProofs(list);
     res.json({ success: true, data: tasks.map((task, i) => ({ task, verdict: list[i].qa?.verdict === 'overturned' ? 'corrected' : list[i].qa?.verdict ?? null })) });
 }));
 

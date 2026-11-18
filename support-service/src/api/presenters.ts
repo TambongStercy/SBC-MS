@@ -137,6 +137,38 @@ export function presentApproval(a: any) {
 
 const VIEW_DECISION_TO_DESK: Record<string, string> = { approve: 'approve', reject: 'reject', to_review: 'review', tech_error: 'technical_error' };
 
+const PROOF_STATUS_FR: Record<string, string> = { approved: 'validée', rejected: 'rejetée', pending_review: 'en attente', pending: 'en attente' };
+const frDate = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '');
+
+/**
+ * advertising-service's proof (CONTRACT §2.3) in the agent app's shape: the
+ * history becomes a dated list of plain-French lines (events, then earlier
+ * attempts), and a name advertising could not read is never sent as null.
+ */
+export function presentProof(raw: any) {
+    if (!raw || typeof raw !== 'object') return raw ?? null;
+    const events = (Array.isArray(raw.history?.events) ? raw.history.events : []).map((e: any) => {
+        const who = e.by?.name ? ` par ${e.by.name}` : '';
+        const label = e.action === 'submitted' ? 'Preuve envoyée'
+            : e.action === 'approved' ? `Validée${typeof e.observedViewCount === 'number' ? ` (${e.observedViewCount} vues)` : ''}${who}`
+            : e.action === 'rejected' ? `Rejetée${who}${e.reason ? ` : ${e.reason}` : ''}${e.ban ? ' (diffuseur banni)' : ''}`
+            : e.action === 'decision_reverted' ? `Décision annulée${e.reason ? ` : ${e.reason}` : ''}`
+            : String(e.action ?? 'Événement');
+        return { at: iso(e.at), label };
+    });
+    const attempts = (Array.isArray(raw.history?.previousAttempts) ? raw.history.previousAttempts : []).map((a: any) => ({
+        at: iso(a.submittedAt ?? a.reviewedAt),
+        label: `Tentative précédente (jour ${a.dayIndex}, ${frDate(a.submittedAt)}) : ${PROOF_STATUS_FR[a.status] ?? a.status}${a.rejectionReason ? ` — ${a.rejectionReason}` : ''}`,
+    }));
+    const history = Array.isArray(raw.history) ? raw.history : [...events, ...attempts].sort((x, y) => String(x.at ?? '').localeCompare(String(y.at ?? '')));
+    return {
+        ...raw,
+        campaign: { ...(raw.campaign ?? {}), name: raw.campaign?.name || 'Campagne sans titre' },
+        diffuseur: { ...(raw.diffuseur ?? {}), name: raw.diffuseur?.name || 'Nom indisponible' },
+        history,
+    };
+}
+
 export function presentViewTask(t: any, names: Record<string, { id: string; name: string }>, proof?: unknown) {
     return {
         id: String(t._id), sourceId: t.sourceId, state: t.state,
@@ -145,7 +177,7 @@ export function presentViewTask(t: any, names: Record<string, { id: string; name
         decidedAt: iso(t.decision?.at), decision: t.decision?.decision ? VIEW_DECISION_TO_DESK[t.decision.decision] ?? t.decision.decision : null,
         observedViews: t.decision?.observedViews ?? null, reason: t.decision?.reason ?? null, version: t.version,
         country: t.country ?? undefined, dayIndex: t.dayIndex ?? undefined, campaignId: t.campaignId ?? undefined,
-        submittedAt: iso(t.submittedAt), qa: t.qa ?? null, ...(proof !== undefined ? { proof } : {}),
+        submittedAt: iso(t.submittedAt), qa: t.qa ?? null, ...(proof !== undefined ? { proof: presentProof(proof) } : {}),
     };
 }
 

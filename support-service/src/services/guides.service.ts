@@ -16,8 +16,10 @@ export async function memberGuides(): Promise<{ nodes: GuideNode[]; updatedAt: D
     return { nodes: (doc?.nodes as GuideNode[]) ?? GUIDES, updatedAt: doc?.updatedAt ?? null };
 }
 
-const ACTION_TO_ROUTE: Record<string, string> = { activation_check: 'activation', withdrawal_status: 'withdrawal', ticket: 'ticket', contact_change_self: 'ticket' };
-const ROUTE_TO_ACTION: Record<string, GuideNode['action']> = { activation: 'activation_check', withdrawal: 'withdrawal_status', ticket: 'ticket' };
+// Each member action has its own desk route: mapping contact_change_self to 'ticket' turned the
+// member's self-service contact change into "open a ticket" at the first save from the desk.
+const ACTION_TO_ROUTE: Record<string, string> = { activation_check: 'activation', withdrawal_status: 'withdrawal', ticket: 'ticket', contact_change_self: 'contact' };
+const ROUTE_TO_ACTION: Record<string, GuideNode['action']> = { activation: 'activation_check', withdrawal: 'withdrawal_status', ticket: 'ticket', contact: 'contact_change_self' };
 
 export interface DeskGuideNode { id: string; label: string; kind: 'question' | 'article' | 'route'; articleSlug?: string; route?: string; children: DeskGuideNode[]; text?: string; category?: string }
 
